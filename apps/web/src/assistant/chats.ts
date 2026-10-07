@@ -222,14 +222,21 @@ export function reopened(
   return next;
 }
 
-/** A kept tab's transcript and title, as its conversation's read gave them. */
+/**
+ * Kept tab `key`'s transcript and title, as its conversation's read gave them:
+ * the title only while the tab still shows `placeholder`, so a rename made
+ * while the read was out stands, and the transcript ahead of any line added
+ * since. A tab closed meanwhile takes nothing, nor does another tab open on
+ * that conversation.
+ */
 export const transcript = (
   state: AssistantState,
-  conversationId: string,
+  key: string,
   read: Pick<Chat, 'messages'> & { readonly title?: string },
-): AssistantState => ({
-  ...state,
-  chats: state.chats.map((chat) =>
-    chat.conversationId === conversationId ? { ...chat, ...read } : chat,
-  ),
-});
+  placeholder: string,
+): AssistantState =>
+  change(state, key, (chat) => ({
+    ...chat,
+    title: chat.title === placeholder ? (read.title ?? chat.title) : chat.title,
+    messages: [...read.messages, ...chat.messages],
+  }));

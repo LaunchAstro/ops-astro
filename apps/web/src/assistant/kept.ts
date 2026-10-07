@@ -136,7 +136,7 @@ export function useKeptStore(client: OperationsClient, grantKey: string | undefi
         const read = await readOne(client, id);
         const failed = { id: `kept-failed-${id}`, role: 'failed' as const, body: '', cites: [] };
         const into = typeof read === 'string' ? { messages: [{ ...failed, body: read }] } : read;
-        store.update((current) => transcript(current, id, into));
+        store.update((current) => transcript(current, chat.key, into, READING));
       })();
       reads.current.set(chat.key, landed);
     }
