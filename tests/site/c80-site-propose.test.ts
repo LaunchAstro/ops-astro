@@ -95,9 +95,36 @@ describe('C80 source proposal: the branch name is a closed grammar', () => {
     'xseam-5b0e2c1a-3d4f-4a6b-8c7d-9e0f1a2b3c4',
   ])('refuses the branch %s with nothing sent', async (branch) => {
     const site = provider({ content: BEFORE });
-    expect(await proposeSource({ ...proposal, branch }, site.deps)).toEqual({
+    const correction = { ...proposal.correction, seam: branch };
+    expect(await proposeSource({ ...proposal, correction }, site.deps)).toEqual({
       kind: 'refused',
       code: 'SEAM_INVALID',
+    });
+    expect(site.sent).toEqual([]);
+  });
+});
+
+describe("C80 source proposal: only on the correction's own party's site", () => {
+  const B_PAGE = 'https://client-b.example/team/';
+  const B_FILE = 'src/pages/team.md';
+  const PARTY_B = '7e1c3a5b-9d2f-4c6e-8b0a-1f3e5d7c9a2b';
+
+  it("refuses party A's correction naming party B's page and file, with nothing sent", async () => {
+    const site = provider({ content: BEFORE });
+    const correction = { ...proposal.correction, pageUrl: B_PAGE, targetPath: B_FILE };
+    expect(await proposeSource({ ...proposal, correction }, site.deps)).toEqual({
+      kind: 'refused',
+      code: 'PAGE_OUTSIDE_PARTY_SITE',
+    });
+    expect(site.sent).toEqual([]);
+  });
+
+  it("refuses party A's correction on party B's site, with nothing sent", async () => {
+    const site = provider({ content: BEFORE });
+    const other = { ...proposal.site, partyId: PARTY_B };
+    expect(await proposeSource({ ...proposal, site: other }, site.deps)).toEqual({
+      kind: 'refused',
+      code: 'PARTY_SITE_MISMATCH',
     });
     expect(site.sent).toEqual([]);
   });

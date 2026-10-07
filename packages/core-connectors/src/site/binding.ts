@@ -81,13 +81,26 @@ export interface BoundCorrection {
 
 export type MadeBinding =
   | { readonly ok: true; readonly binding: SiteBinding }
-  | { readonly ok: false; readonly code: 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE' };
+  | { readonly ok: false; readonly code: SiteRefusal };
+
+type SiteRefusal = 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE';
 
 /**
- * The correction's binding on its own party's site, or the refusal: another
- * party's site, or a page and file the site does not hold as one pair, byte
- * for byte (no other spelling is read as the same page).
+ * Another party's site, or a page and file the site does not hold as one
+ * pair, byte for byte (no other spelling is read as the same page); else nothing.
  */
+export function partySiteRefuses(
+  site: PartySite,
+  correction: BoundCorrection,
+): SiteRefusal | undefined {
+  if (correction.partyId !== site.partyId) return 'PARTY_SITE_MISMATCH';
+  const held = site.pages.some(
+    (page) => page.pageUrl === correction.pageUrl && page.path === correction.targetPath,
+  );
+  return held ? undefined : 'PAGE_OUTSIDE_PARTY_SITE';
+}
+
+/** The correction's binding on its own party's site, or `partySiteRefuses`'s refusal. */
 export function siteBindingFor(
   site: PartySite,
   correction: BoundCorrection,
@@ -95,11 +108,8 @@ export function siteBindingFor(
     readonly proposal: Omit<SiteBinding['proposal'], 'branch'>;
   },
 ): MadeBinding {
-  if (correction.partyId !== site.partyId) return { ok: false, code: 'PARTY_SITE_MISMATCH' };
-  const held = site.pages.some(
-    (page) => page.pageUrl === correction.pageUrl && page.path === correction.targetPath,
-  );
-  if (!held) return { ok: false, code: 'PAGE_OUTSIDE_PARTY_SITE' };
+  const code = partySiteRefuses(site, correction);
+  if (code !== undefined) return { ok: false, code };
   const { partyId, repository, defaultBranch, project } = site;
   return {
     ok: true,

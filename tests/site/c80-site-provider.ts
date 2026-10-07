@@ -10,6 +10,7 @@ import {
   contentDigest,
   versionDigestOf,
   type BindingDependencies,
+  type PartySite,
   type ProposeInput,
   type SiteBinding,
   type TransportAnswer,
@@ -238,11 +239,19 @@ export const proposed = (): Provider =>
     request: { number: 17, head: HEAD, merged: false },
   });
 
-export const proposal: ProposeInput = {
+/** Party A's site on the double: the About page and its file. */
+export const PARTY_A = '0b8d6f2e-1c4a-4e7b-9a3d-5f6e7d8c9b0a';
+export const partySite: PartySite = {
+  partyId: PARTY_A,
   repository: REPOSITORY,
-  path: 'src/pages/about.md',
   defaultBranch: 'main',
-  branch: SEAM,
+  project: PROJECT,
+  pages: [{ pageUrl: PAGE, path: 'src/pages/about.md' }],
+};
+
+export const proposal: ProposeInput = {
+  site: partySite,
+  correction: { partyId: PARTY_A, pageUrl: PAGE, targetPath: 'src/pages/about.md', seam: SEAM },
   baseRevision: 'base-commit',
   blob: 'blob-base',
   after: AFTER,

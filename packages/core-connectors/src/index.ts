@@ -178,6 +178,7 @@ export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
   bindingRefuses,
   mergeAndFind,
+  partySiteRefuses,
   readServed,
   readSiteSource,
   revertForward,
