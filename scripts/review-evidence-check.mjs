@@ -10,6 +10,10 @@
 //    Sol's review is owed (owner, 1 October 2026), the `needs-sol` label and
 //    a `Sol-owed:` line naming its row in stage1/SOL-OWED.md.
 //
+// 4. The trusted internal Stage 1 owner epoch permits an explicit unreviewed,
+//    full-range debt marker to defer model and human review outcomes/records.
+//    Checkpoints and every non-review check remain required.
+//
 // It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
 // runs in continuous integration and in its own tests. It reads no reviewer
 // identity: a green result proves the evidence is bound to this exact head,
@@ -92,7 +96,7 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, owed, buried, html, prose } = readBody(body);
+const { stated, record, owed, deferrals, buried, html, prose } = readBody(body);
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
@@ -193,6 +197,37 @@ const explain = {
 
 const failures = [];
 
+// Owner, 8 October epoch: model and human reviews follow internal Stage 1
+// delivery. Only trusted repository configuration may activate this route.
+// The PR supplies scope and debt, never authority. No outcome is invented.
+const DEFERRAL_EPOCH = 'DOMAINFIRST20261008';
+const deferring =
+  process.env['OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL'] === DEFERRAL_EPOCH && deferrals.length > 0;
+const DEFERRAL_FORM =
+  /^Review deferral: DOMAINFIRST20261008 internal-stage1 (?<base>[0-9a-f]{40})\.\.(?<head>[0-9a-f]{40}) stage1\/SOL-OWED\.md$/u;
+if (deferrals.length > 0 && !deferring) {
+  failures.push('review deferral requires the trusted internal Stage 1 owner epoch.');
+}
+if (deferring) {
+  const mark = deferrals.length === 1 ? DEFERRAL_FORM.exec(deferrals[0].line) : null;
+  if (mark === null || mark.groups.base !== base || mark.groups.head !== head) {
+    failures.push(
+      'review deferral must be one exact top-level marker for internal-stage1, ' +
+        'the current full BASE_SHA..HEAD_SHA range and stage1/SOL-OWED.md.',
+    );
+  }
+  if (
+    stated.length > 0 ||
+    owed.length > 0 ||
+    Object.values(record).some((values) => values.length > 0) ||
+    /\b(?:approve[ds]?|approval|accepted|reviewed|no\s+findings|all\s+closed|reviews?\s+(?:complete[ds]?|passed))\b/iu.test(
+      prose,
+    )
+  ) {
+    failures.push('review deferral cannot carry review outcomes, records or approval claims.');
+  }
+}
+
 // A recorded revision names this head when either is a prefix of the other,
 // both read in lowercase (security review of d77b375, finding 3; round 14).
 const current = head.toLowerCase();
@@ -205,7 +240,9 @@ const checkpoint = /Review checkpoint[\s\S]{0,600}?head:\s*([0-9a-f]{7,40})/iu.e
 // Every code-review field, not the first. One good line does not excuse a
 // later one saying the second pass was never run.
 const codeReviewLines = stated.filter((f) => f.name === 'code');
-if (codeReviewLines.length === 0) {
+if (deferring) {
+  // The exact-range debt marker replaces model/human outcomes only.
+} else if (codeReviewLines.length === 0) {
   failures.push(
     'the pull request states no code-review outcome.\n' +
       '        Add a line: `Code review: no findings`, or the findings and their\n' +
@@ -248,7 +285,9 @@ if (checkpoint === null) {
 
 const securityFields = stated.filter((f) => f.name === 'security');
 
-if (sensitive.length > 0) {
+if (deferring) {
+  // Automated security checks remain separate and required.
+} else if (sensitive.length > 0) {
   if (securityFields.length === 0) {
     failures.push(
       'this change touches the sensitive surface and carries no security review:\n' +
@@ -341,6 +380,14 @@ const companiesOf = (model) =>
     .flatMap((part) => COMPANY.filter(([r]) => r.test(part.trim())).map(([, c]) => c));
 const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
+if (deferring) {
+  const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
+  const debtLabel = builtBy.has('OpenAI') ? 'needs-second-model' : 'needs-sol';
+  if (!labels.has('unreviewed') || !labels.has(debtLabel)) {
+    failures.push(`review deferral requires current labels unreviewed and ${debtLabel}.`);
+  }
+  if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
+}
 const refused = {
   reviewer: () => false,
   model: (v) => companiesOf(v).length === 0 || companiesOf(v).some((c) => builtBy.has(c)),
@@ -393,7 +440,7 @@ const owedMark =
   Object.values(record).every((values) => values.length === 0);
 
 const recordProblems = Object.entries(record).flatMap(([name, values]) =>
-  owedMark
+  deferring || owedMark
     ? []
     : values.length === 0
       ? [`no \`${name}:\` line`]
@@ -450,6 +497,15 @@ if (failures.length > 0) {
       'review-evidence: checks" true rather than said. It is not a formality.',
   );
   process.exit(1);
+}
+
+if (deferring) {
+  console.log(
+    'review-evidence: REVIEW DEFERRED INTERNAL STAGE1. ' +
+      'Model and human reviews remain owed for this exact range in stage1/SOL-OWED.md. ' +
+      'Production, real client data and Stage 2 remain closed.',
+  );
+  process.exit(0);
 }
 
 console.log(
