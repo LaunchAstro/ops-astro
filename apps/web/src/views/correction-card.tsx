@@ -138,12 +138,14 @@ function Door(props: { readonly corrections: Corrections }): ReactElement {
   );
 }
 
-/** The door and the active business's desks. */
+/** The door and the active business's desks, under the session's grant. */
 export function SidebarCorrections(props: {
   readonly client: OperationsClient;
   readonly propose: ProposePort;
+  /** The grant it serves (`grantKeyOf`): its desks are held under it as well as the business. */
+  readonly grantKey?: string | undefined;
 }): ReactElement {
-  const corrections = useCorrections(props.client, props.propose);
+  const corrections = useCorrections(props.client, props.propose, props.grantKey);
   return (
     <div data-assistant="corrections">
       <Door corrections={corrections} />
@@ -175,12 +177,19 @@ export interface CorrectionHost {
 /** The allowance line, and the correction door and desks where the host hands in the site read. */
 export const besideAllowance = (
   allowance: ReactElement,
-  host: CorrectionHost & { readonly client: OperationsClient },
+  host: CorrectionHost & {
+    readonly client: OperationsClient;
+    readonly grantKey?: string | undefined;
+  },
 ): ReactElement => (
   <>
     {allowance}
     {host.locate === undefined ? null : (
-      <SidebarCorrections client={host.client} propose={requestPort(host.client, host.locate)} />
+      <SidebarCorrections
+        client={host.client}
+        grantKey={host.grantKey}
+        propose={requestPort(host.client, host.locate)}
+      />
     )}
   </>
 );
