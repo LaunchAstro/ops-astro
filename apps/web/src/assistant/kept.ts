@@ -173,6 +173,7 @@ export function useHistoryList(client: OperationsClient, store: Store): Assistan
     })();
   };
   const onOpen = (id: string): void => {
+    setSaid(null);
     const open = store.now().chats.find((chat) => chat.conversationId === id);
     if (open !== undefined) {
       store.update((current) => select(current, open.key));
