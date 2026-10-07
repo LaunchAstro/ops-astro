@@ -6,9 +6,12 @@
 // inputs. Nothing here reaches a provider any other way, and nothing here
 // holds a credential: custody's port borrows one per call.
 //
-// The binding is one correction's proposal: its branch is the correction's
-// seam, so a read back, publish or revert for any other seam sends nothing,
-// and a publish of any version but the one it proposed sends nothing either.
+// The binding is one correction's proposal, made from its party's site
+// (`siteBindingFor`): the runner refuses any other correction on these ports
+// before it reads or sends anything (`unbound`). Its branch is the
+// correction's seam, so a read back, publish or revert for any other seam
+// sends nothing, and a publish of any version but the one it proposed sends
+// nothing either.
 // A read back answers absent only on proof that nothing landed (the request
 // unmerged; the published change still at the default branch head), and
 // unknown otherwise: neither read names the commit a landing made, so a
@@ -17,6 +20,7 @@
 // the receipt.
 
 import {
+  bindingRefuses,
   callConnector,
   mergeAndFind,
   readServed,
@@ -87,5 +91,6 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     raiseTask: deps.raiseTask,
     now: deps.now,
     refusals: () => [...codes],
+    unbound: (correction) => bindingRefuses(binding, correction),
   };
 }

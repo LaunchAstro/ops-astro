@@ -220,6 +220,7 @@ export const APPROVED: { readonly seam: string; readonly versionDigest: string }
 };
 
 export const binding: SiteBinding = {
+  partyId: '0b8d6f2e-1c4a-4e7b-9a3d-5f6e7d8c9b0a',
   repository: REPOSITORY,
   path: 'src/pages/about.md',
   defaultBranch: 'main',

@@ -51,8 +51,8 @@ export function useRegisterWorld(): void {
   });
 }
 
-export async function approved(): Promise<string> {
-  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId }));
+export async function approved(overrides: Readonly<Record<string, unknown>> = {}): Promise<string> {
+  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, ...overrides }));
   const id = String(detail['correctionId']);
   expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
   return id;

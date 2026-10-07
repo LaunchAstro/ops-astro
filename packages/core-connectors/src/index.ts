@@ -176,11 +176,16 @@ export {
 } from './site/publish.ts';
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
+  bindingRefuses,
   mergeAndFind,
   readServed,
   readSiteSource,
   revertForward,
+  siteBindingFor,
   type BindingDependencies,
+  type BoundCorrection,
+  type MadeBinding,
+  type PartySite,
   type SiteBinding,
 } from './site/binding.ts';
 export { proposeSource, type ProposeInput } from './site/propose.ts';

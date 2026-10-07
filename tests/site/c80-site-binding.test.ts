@@ -237,7 +237,9 @@ describe('C80 publish binding: the reads', () => {
       value: { content: BEFORE },
     });
   });
+});
 
+describe('C80 publish binding: the deployment read', () => {
   it('reads a deployment as served only when ready on production, at its commit', async () => {
     const site = proposed();
     site.state.deployments[MERGED] = 'dpl_merged';

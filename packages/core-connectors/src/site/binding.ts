@@ -24,13 +24,28 @@
 //   same way.
 //
 // A publish or revert for any seam but the proposal's branch sends nothing.
+//
+// A binding is made only by `siteBindingFor`, from the correction's own
+// party's site: the one place a party is mapped to its pages and their source
+// files (#989 criterion 2). A correction of another party, or on a page or
+// file the site does not hold spelt exactly, binds to nothing.
 
 import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
 import { siteOperation } from './operations.ts';
 import type { Published } from './publish.ts';
 
-/** One correction's proposal on its providers. */
+/** One party's site: its providers, and each catalogued page with its source file. */
+export interface PartySite {
+  readonly partyId: string;
+  readonly repository: string;
+  readonly defaultBranch: string;
+  readonly project: string;
+  readonly pages: readonly { readonly pageUrl: string; readonly path: string }[];
+}
+
+/** One correction's proposal on its party's providers. */
 export interface SiteBinding {
+  readonly partyId: string;
   readonly repository: string;
   readonly path: string;
   readonly defaultBranch: string;
@@ -54,6 +69,64 @@ export interface SiteBinding {
 export interface BindingDependencies extends CallDependencies {
   /** Between deployment lookups; the binding never sleeps on its own clock. */
   readonly wait: (ms: number) => Promise<void>;
+}
+
+/** The stored correction a binding is made from and checked against. */
+export interface BoundCorrection {
+  readonly partyId: string;
+  readonly pageUrl: string;
+  readonly targetPath: string;
+  readonly seam: string;
+}
+
+export type MadeBinding =
+  | { readonly ok: true; readonly binding: SiteBinding }
+  | { readonly ok: false; readonly code: 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE' };
+
+/**
+ * The correction's binding on its own party's site, or the refusal: another
+ * party's site, or a page and file the site does not hold as one pair, byte
+ * for byte (no other spelling is read as the same page).
+ */
+export function siteBindingFor(
+  site: PartySite,
+  correction: BoundCorrection,
+  made: Pick<SiteBinding, 'change'> & {
+    readonly proposal: Omit<SiteBinding['proposal'], 'branch'>;
+  },
+): MadeBinding {
+  if (correction.partyId !== site.partyId) return { ok: false, code: 'PARTY_SITE_MISMATCH' };
+  const held = site.pages.some(
+    (page) => page.pageUrl === correction.pageUrl && page.path === correction.targetPath,
+  );
+  if (!held) return { ok: false, code: 'PAGE_OUTSIDE_PARTY_SITE' };
+  const { partyId, repository, defaultBranch, project } = site;
+  return {
+    ok: true,
+    binding: {
+      partyId,
+      repository,
+      path: correction.targetPath,
+      defaultBranch,
+      project,
+      pageUrl: correction.pageUrl,
+      proposal: { branch: correction.seam, ...made.proposal },
+      change: made.change,
+    },
+  };
+}
+
+/** The refusal of a correction this binding was not made from, or nothing. */
+export function bindingRefuses(
+  binding: SiteBinding,
+  correction: BoundCorrection,
+): string | undefined {
+  const same =
+    correction.partyId === binding.partyId &&
+    correction.pageUrl === binding.pageUrl &&
+    correction.targetPath === binding.path &&
+    correction.seam === binding.proposal.branch;
+  return same ? undefined : 'BINDING_NOT_THIS_CORRECTION';
 }
 
 const LOOKUP_ATTEMPTS = 6;
