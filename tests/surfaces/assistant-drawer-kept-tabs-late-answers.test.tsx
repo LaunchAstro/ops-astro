@@ -66,6 +66,13 @@ async function reopen(page: Mounted, id: string): Promise<void> {
   await settle();
 }
 
+async function renameTab(page: Mounted, key: string, title: string): Promise<void> {
+  await doubleClick(page, `[data-chat="${key}"]`);
+  await page.type(`[data-chat-rename="${key}"]`, title);
+  await press(page, `[data-chat-rename="${key}"]`, 'Enter');
+  await settle();
+}
+
 const replying = (body: string) =>
   Promise.resolve({
     ok: true,
@@ -183,13 +190,10 @@ describe('MP-7-11 kept and reopened tabs against answers that land late', () => 
     const { client, release } = holdingFirstRead(base.client);
     const page = await drawerFor(client);
     const key = page.find('[data-chat]')?.getAttribute('data-chat') ?? '';
-    for (const title of ['New', 'Reading…']) {
-      await doubleClick(page, `[data-chat="${key}"]`);
-      await page.type(`[data-chat-rename="${key}"]`, title);
-      await press(page, `[data-chat-rename="${key}"]`, 'Enter');
-      await settle();
-      expect(stored[ONE]!.title).toBe(title);
-    }
+    await renameTab(page, key, 'New');
+    expect(stored[ONE]!.title).toBe('New');
+    await renameTab(page, key, 'Reading…');
+    expect(stored[ONE]!.title).toBe('Reading…');
     expect(base.calls.filter((call) => call.name === 'conversation.rename')).toHaveLength(2);
     release();
     await settle();

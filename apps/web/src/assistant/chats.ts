@@ -30,6 +30,8 @@ export interface Chat extends AssistantChat {
   readonly conversationId: string | null;
   /** The scope this conversation was asked under: selecting it brings it back. */
   readonly scope: StandingScope;
+  /** A kept tab whose first read is out and whose title the person has not set. */
+  readonly reading?: boolean;
 }
 
 export interface AssistantState {
@@ -120,7 +122,7 @@ export const select = (state: AssistantState, key: string): AssistantState =>
 export function rename(state: AssistantState, key: string, title: string): AssistantState {
   const trimmed = title.trim().slice(0, TAB_TITLE_LIMIT);
   if (trimmed === '') return state;
-  return change(state, key, (chat) => ({ ...chat, title: trimmed }));
+  return change(state, key, (chat) => ({ ...chat, title: trimmed, reading: false }));
 }
 
 export function takeOut(state: AssistantState, key: string): AssistantState {
@@ -251,11 +253,12 @@ export function asking(state: AssistantState, key: string, by: 1 | -1): Assistan
   };
 }
 
-/** A conversation as `conversation.read` gave it: its id, title and transcript. */
+/** A conversation as `conversation.read` gave it, or `reading` while its read is out. */
 export interface Reopened {
   readonly conversationId: string;
   readonly title: string;
   readonly messages: Chat['messages'];
+  readonly reading?: boolean;
 }
 
 /**
@@ -281,20 +284,17 @@ export function reopened(
 }
 
 /**
- * Kept tab `key`'s transcript and title, as its conversation's read gave them:
- * the title only while the tab still shows `placeholder`, so a rename made
- * while the read was out stands, and the transcript ahead of any line added
- * since. A tab closed meanwhile takes nothing, nor does another tab open on
- * that conversation.
+ * Kept tab `key`'s read, ahead of any line added since; its title only while the
+ * tab is `reading`, so a rename made meanwhile stands. A closed tab takes nothing.
  */
 export const transcript = (
   state: AssistantState,
   key: string,
   read: Pick<Chat, 'messages'> & { readonly title?: string },
-  placeholder: string,
 ): AssistantState =>
   change(state, key, (chat) => ({
     ...chat,
-    title: chat.title === placeholder ? (read.title ?? chat.title) : chat.title,
+    title: chat.reading === true ? (read.title ?? chat.title) : chat.title,
+    reading: false,
     messages: [...read.messages, ...chat.messages],
   }));

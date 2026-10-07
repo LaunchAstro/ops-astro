@@ -77,7 +77,12 @@ function keptState(grantKey: string | undefined): AssistantState {
   const empty: AssistantState = { ...initial(), chats: [], selected: '', next: 1 };
   const tabs = reopened(
     empty,
-    kept.tabs.map((conversationId) => ({ conversationId, title: READING, messages: [] })),
+    kept.tabs.map((conversationId) => ({
+      conversationId,
+      title: READING,
+      messages: [],
+      reading: true,
+    })),
   );
   const chosen = tabs.chats.find((chat) => chat.conversationId === kept.selected);
   return chosen === undefined ? tabs : select(tabs, chosen.key);
@@ -137,7 +142,7 @@ export function useKeptStore(client: OperationsClient, grantKey: string | undefi
         const read = await readOne(client, id);
         const failed = { id: `kept-failed-${id}`, role: 'failed' as const, body: '', cites: [] };
         const into = typeof read === 'string' ? { messages: [{ ...failed, body: read }] } : read;
-        store.update((current) => transcript(current, chat.key, into, READING));
+        store.update((current) => transcript(current, chat.key, into));
       })();
       reads.current.set(chat.key, landed);
     }
