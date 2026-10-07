@@ -14,6 +14,8 @@ import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { AgentCostsResult, SkillCostsResult } from '../../packages/core-wire/src/index.ts';
 import { listRunCosts } from '../../packages/core-records/src/index.ts';
+import { withSession } from '../../packages/core-records/src/identity/login-resolution.ts';
+import { readAgentCosts } from '../../packages/core-commands/src/reads/agent-costs.ts';
 import { createCostWorld, type CostWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -178,5 +180,22 @@ describe.skipIf(serverUrl === undefined)('what the cost reads count and refuse',
       to: '2100-01-01T00:00:00.000Z',
     });
     expect(long.runs).toHaveLength(4);
+  });
+
+  it('the cost log refuses a period holding more runs than its bound, never cuts it', async () => {
+    const wide = { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z', unknown: [] };
+    const at = async (bound: number): Promise<unknown> =>
+      await withSession(
+        w.controls.fixture.db.app,
+        w.alpha,
+        w.finance.presented,
+        async (tx, s) => await readAgentCosts(tx, s, wide, bound),
+      );
+    expect(await at(3)).toMatchObject({
+      refused: true,
+      code: 'FIELD_VALUE_INVALID',
+      names: ['from', 'to'],
+    });
+    expect(await at(4)).toMatchObject({ ok: true, runs: { length: 4 } });
   });
 });
