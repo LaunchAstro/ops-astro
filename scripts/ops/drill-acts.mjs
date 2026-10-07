@@ -16,7 +16,7 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs';
-import { bound, stagingReach, value } from './backup-store-reach.mjs';
+import { bound, param, stagingReach, value } from './backup-store-reach.mjs';
 import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
@@ -38,7 +38,7 @@ async function latestHeader(storeUrl, reach, operator) {
     storeUrl,
     `set role ${RESTORE_ROLE};\n` +
       bound(
-        "select json_build_object('id', id, 'takenAt', taken_at, 'bytes', bytes, 'parts', parts, 'sha256', sha256)::text from backups.read_latest(nullif($1, '')::uuid, nullif($2, ''))",
+        `select json_build_object('id', id, 'takenAt', taken_at, 'bytes', bytes, 'parts', parts, 'sha256', sha256)::text from backups.read_latest(${param(1, 'uuid')}, ${param(2, 'text')})`,
         [operator?.personId ?? '', operator?.business ?? ''],
       ),
   );

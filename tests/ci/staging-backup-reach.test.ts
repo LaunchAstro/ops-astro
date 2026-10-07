@@ -19,6 +19,8 @@ type ReachModule = {
   reachArgs: (network: string) => string[];
   reachEnv: (url: string) => Record<string, string>;
   value: (v: unknown, type: string) => string;
+  bound: (sql: string, params: unknown[]) => string;
+  param: (n: number, type: string) => string;
 };
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const load = () =>
@@ -37,6 +39,9 @@ const importOps = async <T>(name: string): Promise<T> => {
 describe('S0-3 store reach', () => {
   reachCases1();
   reachCases2();
+  reachCases3();
+  reachCases4();
+  dotSegmentCases();
 });
 
 function reachCases1() {
@@ -97,5 +102,90 @@ function reachCases2() {
     );
     expect(value(null, 'uuid')).toBe('null::uuid');
     expect(() => value('1', 'text; drop')).toThrow();
+  });
+}
+
+function reachCases3() {
+  it('a login address outside the one shape psql is given is refused, and the refusal holds no part of it', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    for (const address of [
+      'postgres://job:s3cret@backups/store?sslmode=disable',
+      'postgres://job:s3cret@backups/store?options=-c%20role%3Dpostgres',
+      'postgres://job:s3cret@backups/store#x',
+      'mysql://job:s3cret@backups/store',
+      'postgres://job:s3cret@backups/store/extra',
+      'postgres://job:s3cret@backups/',
+      'postgres://:s3cret@backups/store',
+      'postgres://job:s3cret@[backups/store',
+      'postgres://job:s3cret@backups,other/store',
+      'postgres://job:s3cret@backups/store?sslmode=prefer',
+      'postgres://job:s3cret@backups/store?sslmode=require&sslmode=disable',
+      'postgres://job:s3cret@backups/store?sslmode=require&target_session_attrs=any',
+    ]) {
+      let message = 'accepted';
+      try {
+        reachEnv(address);
+      } catch (error) {
+        message = `${(error as Error).message} ${JSON.stringify(error)}`;
+      }
+      expect(message, address).not.toBe('accepted');
+      expect(message, address).not.toMatch(/s3cret|job|backups/u);
+    }
+  });
+
+  it('a bound value goes to psql as hex, so no quoting, newline or meta-command can end it', async () => {
+    const { bound, param } = await importOps<ReachModule>('backup-store-reach.mjs');
+    const hostile = `x' \\g\n\\! touch /tmp/owned\r`;
+    const line = bound(`select ${param(1, 'text')}, ${param(2, 'integer')}`, [hostile, null]);
+    expect(line).toBe(
+      `select nullif(convert_from(decode($1, 'hex'), 'UTF8'), '')::text, ` +
+        `nullif(convert_from(decode($2, 'hex'), 'UTF8'), '')::integer ` +
+        `\\bind '${Buffer.from(hostile).toString('hex')}' '' \\g\n`,
+    );
+    expect(() => param(1, 'text; drop')).toThrow();
+    expect(() => bound('select 1', [Symbol('x')])).toThrow();
+  });
+}
+
+function reachCases4() {
+  it('every address staging-logins writes is one a reach takes, at its TLS mode', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    const { loginAddresses } = await importOps<{
+      loginAddresses: (admin: string, staging: string, step: string) => { address: string }[];
+    }>('staging-logins.ts');
+    const admin =
+      'postgresql://postgres.stagingref:example@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres';
+    const addresses = ['before-reset', 'after-reset'].flatMap((step) =>
+      loginAddresses(admin, 'stagingref', step).map(({ address }) => address),
+    );
+    expect(addresses.length).toBeGreaterThan(0);
+    for (const address of addresses) {
+      expect(reachEnv(address)['PGSSLMODE'], 'its TLS mode').toBe('require');
+    }
+    expect(reachEnv('postgres://job:pw@backups/store?sslmode=verify-full')['PGSSLMODE']).toBe(
+      'verify-full',
+    );
+  });
+}
+
+function dotSegmentCases() {
+  it('an address the parser would read as another one, by its dot segments, is refused', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    for (const address of [
+      'postgres://job:s3cret@backups/store/../other?sslmode=require',
+      'postgres://job:s3cret@backups/store/%2e%2e/other',
+      'postgres://job:s3cret@backups/./other',
+      'postgres://job:s3cret@backups/x/%2E%2E/other',
+    ]) {
+      let env: Record<string, string> | undefined;
+      let message = 'accepted';
+      try {
+        env = reachEnv(address);
+      } catch (error) {
+        message = `${(error as Error).message} ${JSON.stringify(error)}`;
+      }
+      expect(env?.['PGDATABASE'], address).toBeUndefined();
+      expect(message, address).not.toMatch(/s3cret|job|backups/u);
+    }
   });
 }

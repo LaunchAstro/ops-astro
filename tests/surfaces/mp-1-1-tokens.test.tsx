@@ -105,6 +105,7 @@ const SHEETS = [
     '5-task',
     '7-connections',
     '7-connections-region',
+    '7-connections-costing',
   ].map((sheet) => `${styles}${sheet}.css`),
   `${root}apps/web/src/styles/6-slice.css`,
 ];

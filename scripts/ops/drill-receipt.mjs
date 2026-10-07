@@ -5,7 +5,7 @@
 // as the restore identity, through psql on staging's network
 // (backup-store-reach.mjs), every value bound.
 
-import { bound, stagingReach } from './backup-store-reach.mjs';
+import { bound, param, stagingReach } from './backup-store-reach.mjs';
 
 export const RESTORE_ROLE = 'ops_astro_backup_restore';
 
@@ -44,9 +44,7 @@ const CASTS = [
 
 /** One store call of `fn` with `record`'s fields and then `more`, every value bound. */
 async function recordThrough(fn, storeUrl, operator, record, more, reach) {
-  const casts = [...CASTS, ...more.map(([type]) => type)].map(
-    (type, i) => `nullif($${i + 1}, '')::${type}`,
-  );
+  const casts = [...CASTS, ...more.map(([type]) => type)].map((type, i) => param(i + 1, type));
   const at = await reach(
     storeUrl,
     `set role ${RESTORE_ROLE};\n` +

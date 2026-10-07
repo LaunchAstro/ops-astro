@@ -39,6 +39,27 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   process limit and rotated logs (three files of 10 MB). The only places a
   service can write are sized tmpfs mounts inside its memory limit, so staging
   cannot fill the machine's disk.
+- The backup dump and every reach of the store run in throwaway containers
+  that are removed when they end (`scripts/ops/container-run.mjs`). Their
+  login goes in by environment name, so Docker holds it in that container's
+  settings while it runs; the machine's Docker daemon runs without debug
+  logging, which would write it to the daemon's log. A create the daemon
+  finishes after the run has removed its container by name (one stalled for
+  over 20 seconds under a stop, or one whose answer docker lost) can leave
+  one such container made but never started. A run whose container docker
+  will not remove fails, naming it (the backup records stage `container`).
+  A removal docker answers is already in progress counts as gone; if the
+  daemon's own removal then fails, docker keeps the container, dead, with its
+  login. The runbook lists any of these, in any state, by the run containers'
+  own names, never staging's services, with
+  `docker ps --all --filter 'name=^ops-astro-staging-(store|backup)-[0-9a-f]{16}$'`
+  and removes each with `docker rm --force --volumes`, as the code does, so
+  the image's empty data volume goes too.
+- The store logins (`BACKUP_STORE_URL`, `BACKUP_RETENTION_URL`,
+  `RESTORE_STORE_URL`) are read as exactly
+  `postgres://user:password@host[:port]/database[?sslmode=...]`, and must
+  read back from the URL parser as written: percent-encode the user, the
+  password and the database name (`encodeURIComponent`), or the reach refuses the address.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into
@@ -64,9 +85,14 @@ unset, so the backup's env must set `OPS_EGRESS_POOLER_HOST` and
 `OPS_EGRESS_POOLER_PORT`. The relay picks the destination from the TLS hello's
 server name on 443, or from the pooler's port. It hands the bytes over an
 internal link to `egress-out`, the one service on a routed network (`egress`),
-which checks the list again. Neither hop ends TLS, so the worker, the
-forwarder and the backup dump still check each host's own certificate.
-Anything else is closed with nothing sent on.
+which checks the list again. Neither hop ends TLS, so the worker and the
+forwarder still check each host's own certificate. The backup dump and the
+upkeep purge require TLS at the mode their address names: `sslmode=require`,
+as `staging-logins.mjs` writes it, encrypts without checking the pooler's
+certificate. `verify-full` would check it, but their throwaway containers
+hold no root certificate yet (no mount, no `PGSSLROOTCERT`), so an address
+that asks for it fails to connect. Anything else is closed with
+nothing sent on.
 
 Staging's database holds made-up data only (`S0-1 no production data`).
 `scripts/local-seed.mjs` decides from what it installed itself, never from a
@@ -111,7 +137,10 @@ The backup store is a database server of its own, `backups`
 the machine. Its data is on `ops-astro-staging-backups-data`, the one
 persistent volume staging has, so backups and drill receipts outlive a
 restart. S0-1's disk row names that volume as its only exception, and the
-store bounds it itself (`S0-3 store bounded`).
+store bounds it itself (`S0-3 store bounded`). The store's admin makes it with
+`backup-store.sql` and then each numbered `backup-store-upgrade-<n>.sql` in
+order; a store made earlier runs the upgrades it has not had. Each is safe to
+run again, and each rule lives in one of these files only.
 
 The restore drill is a person's act under `operations:manage`, asked of the
 operator gate before anything else, like staging preparation and the promotion.

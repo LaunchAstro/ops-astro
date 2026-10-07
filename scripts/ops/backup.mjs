@@ -54,9 +54,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { sealer } from './archive-seal.mjs';
 import { pgDump } from './backup-dump.mjs';
-import { bound, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
+import { bound, param, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
 import { offEgress, ping } from './heartbeat.mjs';
 
+import { stopped } from './backup-dump.mjs';
 export { pgDump } from './backup-dump.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
@@ -121,7 +122,7 @@ async function* upload(source, seal, failure) {
   size += held.at(-1).length;
   failure.stage = null;
   yield* flush(true);
-  yield bound('select backups.complete_archive($1::bigint, $2::text)', [
+  yield bound(`select backups.complete_archive(${param(1, 'bigint')}, ${param(2, 'text')})`, [
     bytes,
     whole.digest('hex'),
   ]);
@@ -147,15 +148,15 @@ export async function runBackup({
   let source;
   try {
     source = await dump();
-  } catch {
-    return failed('backup run', 'dump');
+  } catch (error) {
+    // A dump that failed and whose container docker kept names it as `left`.
+    return failed('backup run', error?.left === undefined ? 'dump' : 'container');
   }
   let seal;
   try {
     seal = sealer(publicKey);
   } catch {
-    await source.stop?.();
-    return failed('backup run', 'seal');
+    return failed('backup run', await stopped(source, 'seal'));
   }
   const failure = { stage: null, bytes: 0 };
   try {
@@ -165,8 +166,7 @@ export async function runBackup({
     // A refused store or a failed seal stops the dump and waits for it, read
     // or not, so pg_dump never blocks on an unread pipe holding its snapshot
     // and locks.
-    await source.stop?.();
-    return failed('backup run', failure.stage ?? 'store');
+    return failed('backup run', await stopped(source, failure.stage ?? 'store'));
   }
   const record = { event: 'backup run', outcome: 'recorded', at, bytes: failure.bytes };
   return { ...record, heartbeat: await send(heartbeat) };

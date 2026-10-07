@@ -10,123 +10,179 @@
 // required. Every value a caller passes goes into the script as hex, through
 // `value`, so none is ever read as SQL or as a psql command.
 //
-// A reach takes a login URL and a script and answers what `psql -At` prints.
-// It throws a bare error on any failure: psql's and the server's messages can
-// carry a host or a login, so they are discarded. An archive can be as large
-// as the store's cap (REV158S criterion 5), so neither end is ever held whole:
-// a script may be a list or a stream of pieces, written to psql as psql takes
-// them, and a caller that passes `onLine` is handed each printed line in turn
-// instead of the whole output.
+// A reach takes a login address and a script and answers what `psql -At`
+// prints. It throws a bare error on any failure: psql's and the server's
+// messages can carry a host or a login, so they are discarded. An archive can
+// be as large as the store's cap (REV158S criterion 5), so neither end is ever
+// held whole: a script may be a list or a stream of pieces, written to psql as
+// psql takes them, and a caller that passes `onLine` is handed each printed
+// line in turn instead of the whole output. The container's lifetime is
+// container-run.mjs's: a refusal, a deadline or a failed client removes it.
 
-import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
+import { containerArgs, runContainer } from './container-run.mjs';
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 );
 
 const LOGIN = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGSSLMODE'];
-const TYPES = new Set(['text', 'uuid', 'timestamptz', 'integer', 'jsonb', 'bytea']);
+const TYPES = new Set(['text', 'uuid', 'timestamptz', 'integer', 'bigint', 'jsonb', 'bytea']);
+const PSQL = ['psql', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', '-f', '-'];
+const REFUSED = 'a database address is not of the one shape a login takes';
+
+// The TLS modes an address may ask for: none weaker than the reach's own.
+const SSLMODES = new Set(['require', 'verify-ca', 'verify-full']);
+// One host name or IPv4 address; never a libpq host list or an escape.
+const HOST = /^[A-Za-z0-9.-]+$/u;
 
 /**
- * The psql environment for a login URL: the parts named, the password decoded,
- * TLS required, and a connect bound in seconds only when one is given.
+ * A login address, read whole by the URL parser into the parts psql is
+ * given, and refused unless it is exactly `postgres[ql]://user[:password]@
+ * host[:port]/database`, with at most one query parameter, `sslmode`, of a
+ * mode in `SSLMODES` (staging-logins.ts writes `sslmode=require`). No other
+ * parameter, fragment, host list or second path segment, since psql is
+ * handed the parts alone and would drop anything else unseen (#408). The
+ * parser must read it back exactly as written, so a dot segment it would
+ * drop is refused too. The refusal carries no part of the address (#446).
+ */
+function loginParts(address) {
+  let parsed;
+  try {
+    parsed = new URL(address);
+  } catch {
+    throw new Error(REFUSED);
+  }
+  const path = parsed.pathname.slice(1);
+  // Read back exactly as written: the parser drops dot segments, so
+  // `/store/../other` would otherwise name `other` (Sol PRV-oa-968-R1.3).
+  const asWritten = parsed.href === address;
+  const query = [...parsed.searchParams];
+  const sslmode = query[0]?.[1] ?? 'require';
+  const shaped =
+    (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') &&
+    (query.length === 0 || (query.length === 1 && query[0][0] === 'sslmode')) &&
+    SSLMODES.has(sslmode) &&
+    parsed.hash === '' &&
+    HOST.test(parsed.hostname) &&
+    parsed.username !== '' &&
+    parsed.pathname.startsWith('/') &&
+    path !== '' &&
+    !path.includes('/') &&
+    asWritten;
+  if (!shaped) throw new Error(REFUSED);
+  let parts;
+  try {
+    parts = {
+      host: parsed.hostname,
+      port: parsed.port || '5432',
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      database: decodeURIComponent(path),
+      sslmode,
+    };
+  } catch {
+    throw new Error(REFUSED);
+  }
+  if (Object.values(parts).some((part) => part.includes('\0'))) throw new Error(REFUSED);
+  return parts;
+}
+
+/**
+ * The psql environment for a login address (`loginParts`): TLS required, at
+ * the address's own mode when it names a stricter one, and
+ * a connect bound in seconds only when one is given. pg_dump takes the same.
  */
 export function reachEnv(url, connectSeconds) {
-  const parsed = new URL(url);
+  const login = loginParts(url);
   const limit = connectSeconds === undefined ? {} : { PGCONNECT_TIMEOUT: String(connectSeconds) };
   return {
-    PGHOST: parsed.hostname,
-    PGPORT: parsed.port || '5432',
-    PGUSER: decodeURIComponent(parsed.username),
-    PGPASSWORD: decodeURIComponent(parsed.password),
-    PGDATABASE: decodeURIComponent(parsed.pathname.slice(1)),
-    PGSSLMODE: 'require',
+    PGHOST: login.host,
+    PGPORT: login.port,
+    PGUSER: login.user,
+    PGPASSWORD: login.password,
+    PGDATABASE: login.database,
+    PGSSLMODE: login.sslmode,
     ...limit,
   };
 }
 
-/**
- * `docker` arguments for one psql script on `network`: no port, the login by
- * name only. With `init`, docker runs an init as the container's PID 1, which
- * passes SIGTERM on to psql; psql as PID 1 has no handler and would ignore it.
- */
-export function reachArgs(network, names = LOGIN, { init = false } = {}) {
-  return [
-    'run',
-    '--rm',
-    '-i',
-    ...(init ? ['--init'] : []),
-    // Attached output still streams; nothing psql prints goes to a log on the host's disk.
-    '--log-driver=none',
-    `--name=${staging['x-ops-astro'].ownPrefix}-store-${randomBytes(4).toString('hex')}`,
-    `--network=${network}`,
-    ...names.map((name) => `--env=${name}`),
-    staging.services.backups.image,
-    'psql',
-    '-X',
-    '-q',
-    '-At',
-    '-v',
-    'ON_ERROR_STOP=1',
-    '-f',
-    '-',
-  ];
+/** `docker` arguments for one psql script on `network`: no port, the login by name only. */
+export function reachArgs(network, names = LOGIN) {
+  return containerArgs('store', network, names, PSQL, { stdin: true });
 }
 
 /**
  * A reach through psql on `network`: `script` is text or pieces of text. With
- * `bounds`, psql gives up connecting after `connectSeconds` and is stopped
- * after `timeoutMs` whatever it is waiting on (SIGTERM, reaching psql through
- * the container's init); the store's reach has neither.
+ * `connectSeconds`, psql gives up connecting after that; with `timeoutMs`, the
+ * run is stopped after that whatever it is waiting on. The store's reach has
+ * neither. A reach that stopped its run answers only once that stop is done,
+ * and fails if docker would not remove the container, however the client closed.
  */
 export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   return async (url, script, onLine) => {
     const login = reachEnv(url, connectSeconds);
-    const args = reachArgs(network, Object.keys(login), { init: timeoutMs !== undefined });
-    const child = spawn('docker', args, {
-      env: { ...process.env, ...login },
-      stdio: ['pipe', 'pipe', 'ignore'],
-      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
-    });
-    const exited = new Promise((resolve) => {
-      child.on('error', () => resolve(-1));
-      child.on('close', (code) => resolve(code));
-    });
-    const pieces = typeof script === 'string' ? [script] : script;
-    // One piece ahead at most: a piece can be one part's hex, 8 MiB.
-    const source = Readable.from(pieces, { objectMode: true, highWaterMark: 1 });
-    const sent = pipeline(source, child.stdin).then(
-      () => true,
-      () => false,
-    );
-    const [code, written, printed] = await Promise.all([exited, sent, readOut(child, onLine)]);
-    if (printed.error !== undefined) throw printed.error;
-    if (code === -1) throw new Error('the store could not be reached');
-    if (code !== 0 || !written) throw new Error('the store refused or could not be reached');
-    return printed.text;
+    const run = stoppable(runContainer('store', network, login, PSQL, { stdin: true }));
+    const deadline = timeoutMs === undefined ? undefined : setTimeout(run.halt, timeoutMs);
+    try {
+      const pieces = typeof script === 'string' ? [script] : script;
+      // One piece ahead at most: a piece can be one part's hex, 8 MiB.
+      const source = Readable.from(pieces, { objectMode: true, highWaterMark: 1 });
+      const sent = pipeline(source, run.child.stdin).then(
+        () => true,
+        () => false,
+      );
+      const [succeeded, written, printed] = await Promise.all([
+        run.exited,
+        sent,
+        readOut(run, onLine),
+      ]);
+      await run.halted();
+      if (printed.error !== undefined) throw printed.error;
+      if (!succeeded || !written) throw new Error('the store refused or could not be reached');
+      return printed.text;
+    } finally {
+      clearTimeout(deadline);
+    }
   };
 }
 
-/** psql's output: whole, or line by line to `onLine`, stopping psql if `onLine` throws. */
-async function readOut(child, onLine) {
+/**
+ * `run` with `halt()`, which starts its stop once however often it is asked,
+ * without waiting, and `halted()`, which settles when that stop is done (at
+ * once when none was asked) and rejects as the stop does.
+ */
+function stoppable(run) {
+  let stopping;
+  return {
+    ...run,
+    halt() {
+      stopping ??= run.stop();
+      // `halted()` answers it; until then a rejection is not unhandled.
+      stopping.catch(() => {});
+    },
+    halted: () => stopping,
+  };
+}
+
+/** psql's output: whole, or line by line to `onLine`, stopping the run if `onLine` throws. */
+async function readOut(run, onLine) {
   if (onLine === undefined) {
     const chunks = [];
-    for await (const chunk of child.stdout) chunks.push(chunk);
+    for await (const chunk of run.child.stdout) chunks.push(chunk);
     return { text: Buffer.concat(chunks).toString().replace(/\n$/u, '') };
   }
   let error;
-  for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
+  for await (const line of createInterface({ input: run.child.stdout, crlfDelay: Infinity })) {
     if (error !== undefined) continue;
     try {
       await onLine(line);
     } catch (thrown) {
       error = thrown;
-      child.kill();
+      run.halt();
     }
   }
   return { text: '', error };
@@ -167,18 +223,34 @@ export function value(v, type) {
 }
 
 /**
- * One statement whose values go as bound parameters (psql's `\bind`), never
+ * Parameter `n` of a `bound` statement, read back as `type`: the value goes
+ * as the hex of its UTF-8 text, and the empty text is null.
+ */
+export function param(n, type) {
+  if (!Number.isSafeInteger(n) || n < 1 || !TYPES.has(type) || type === 'bytea') {
+    throw new Error(`no such parameter: ${n} ${type}`);
+  }
+  return `nullif(convert_from(decode($${n}, 'hex'), 'UTF8'), '')::${type}`;
+}
+
+/**
+ * One statement whose values go as bound parameters (psql's `\\bind`), never
  * in its text, so no statement the server logs or reports carries them. Each
- * value is text of a fixed shape, checked by its caller; a null goes as the
- * empty text, which the statement reads back with `nullif($n, '')`. A value
- * that could end its quoting is refused.
+ * value goes as the hex of its text (`param` reads it back), so what psql is
+ * handed is hex digits alone, whatever the value holds: no quote, backslash or
+ * newline can end it (SLOW-V2 row 9). A string, number or JSON object is a
+ * value; null or undefined goes as null; anything else is refused.
  */
 export function bound(sql, params) {
   const args = params.map((v) => {
-    const text =
-      v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-    if (/['\\\n\r]/u.test(text)) throw new Error('a bound value is not of its fixed shape');
-    return `'${text}'`;
+    if (v === null || v === undefined) return "''";
+    let text;
+    if (typeof v === 'string') text = v;
+    else if (typeof v === 'number' && Number.isFinite(v)) text = String(v);
+    else if (typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
+      text = JSON.stringify(v);
+    } else throw new Error('a bound value is a string, a number or a plain object');
+    return `'${Buffer.from(text, 'utf8').toString('hex')}'`;
   });
   return `${sql} \\bind ${args.join(' ')} \\g\n`;
 }
