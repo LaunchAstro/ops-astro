@@ -279,8 +279,10 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
   }
 }, 10_000);
 
+// The name is percent-encoded but plain once decoded: a dump refuses any other
+// (#999), so a name with a space (#491) is refused, not mangled.
 it('the dump reads a percent-encoded database name decoded', async () => {
-  sql('create database "backup route source";');
+  sql('create database backup_route_source;');
   const control = spawnSync('docker', [
     'exec',
     server,
@@ -291,7 +293,7 @@ it('the dump reads a percent-encoded database name decoded', async () => {
     '--format=custom',
     '--schema=public',
     '-d',
-    'backup route source',
+    'backup_route_source',
   ]);
   expect(
     control.status,
@@ -302,7 +304,7 @@ it('the dump reads a percent-encoded database name decoded', async () => {
   const { pgDump } = await import(/* @vite-ignore */ path);
   let outcome: unknown;
   try {
-    const dump = await pgDump('postgres://postgres@source:5432/backup%20route%20source');
+    const dump = await pgDump('postgres://postgres@source:5432/backup%5Froute%5Fsource');
     const pieces: Buffer[] = [];
     for await (const piece of dump) pieces.push(piece);
     outcome = Buffer.concat(pieces).subarray(0, 5).toString();
