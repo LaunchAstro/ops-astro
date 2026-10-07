@@ -112,7 +112,12 @@ describe('CQ-6 one envelope', () => {
     expect(filesUsing('await lookupAttempt(')).toStrictEqual(['envelope.ts']);
     expect(filesUsing("'OPERATION_ID_REUSED'")).toStrictEqual(['envelope.ts']);
     expect(filesUsing("'OPERATION_ID_REQUIRED'")).toStrictEqual(['envelope.ts']);
-    expect(filesUsing("outcome: 'refused'")).toStrictEqual(['envelope.ts']);
+    // The one other: a conversation message refused for its page is marked in the audit
+    // chain as a model call refused (`REFUSED_CALL`), not a command's refusal settled.
+    expect(filesUsing("outcome: 'refused'")).toStrictEqual([
+      'conversation-context.ts',
+      'envelope.ts',
+    ]);
     expect(filesUsing("outcome: 'replayed'")).toStrictEqual(['envelope.ts']);
   });
 
