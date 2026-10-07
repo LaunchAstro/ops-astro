@@ -5,6 +5,7 @@
 // task is asked about again, so the recheck admits B. The route acts for the
 // person the recheck admitted or not at all: it never marks A's seat on a
 // request whose login now resolves to B.
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { connect, connectListener } from '../../packages/core-records/src/index.ts';
@@ -28,6 +29,8 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
   const ids = { subject: '', first: '', second: '', task: '' };
   let phase: 'idle' | 'armed' | 'remapped' = 'idle';
   let admittedOnRecheck: string | undefined;
+  // The mark's own calls only: the stream's rechecks and seat lookups run for the same login.
+  const marking = new AsyncLocalStorage<true>();
   const api = composeApi({
     database: pool,
     admin: s.db.admin,
@@ -40,7 +43,8 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
       presence,
       admit: async (...args) => {
         const admitted = await admitReads(...args);
-        if (phase === 'remapped' && args[4] === 'recheck' && args[2].subject === ids.subject) {
+        const own = marking.getStore() === true && args[2].subject === ids.subject;
+        if (phase === 'remapped' && own && args[4] === 'recheck') {
           const [answer] = Array.isArray(admitted) ? admitted : [];
           admittedOnRecheck ??= answer !== undefined && 'personId' in answer ? answer.personId : '';
         }
@@ -48,7 +52,7 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
       },
       viewer: async (...args) => {
         const viewer = await viewerOf(...args);
-        if (phase === 'armed' && args[2].subject === ids.subject) {
+        if (phase === 'armed' && marking.getStore() === true && args[2].subject === ids.subject) {
           // The mark resolved A; the login moves to B before the task is asked about again.
           phase = 'remapped';
           await s.db.admin.execute(
@@ -85,11 +89,11 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
     const seat = tab.heard.find((frame) => frame.event === 'seat')!.data;
 
     phase = 'armed';
-    const marked = await fetchMark(api, key, token, {
-      seat,
-      topic: topic(ids.task),
-      field: 'title',
-    });
+    const marked = await marking.run(
+      true,
+      async () =>
+        await fetchMark(api, key, token, { seat, topic: topic(ids.task), field: 'title' }),
+    );
     expect(phase, 'the login moved between the viewer and the recheck').toBe('remapped');
     expect(admittedOnRecheck, 'the recheck admitted B, who may read the task').toBe(ids.second);
     expect(marked.body, "A's seat was marked on a request whose login is B's").not.toHaveProperty(
