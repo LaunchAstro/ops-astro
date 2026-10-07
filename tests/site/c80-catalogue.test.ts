@@ -186,3 +186,17 @@ describe('C80 twelve declarations', () => {
     });
   });
 });
+
+describe('C80 atomic file publication catalogue', () => {
+  it('declares one contents write with exact blob refusal and default-branch source readback', () => {
+    const publish = registration('site.publish');
+    expect(publish.connector.pathTemplate).toBe('/repos/{repository*}/contents/{path*}');
+    expect(publish.connector.bodyParams).toEqual(['message', 'content', 'sha', 'branch']);
+    expect(publish.connector.refusalProofs).toEqual({
+      '409': 'sha_mismatch',
+      '422': 'sha_mismatch',
+    });
+    expect(publish.declaration.nothing_happened_proof).toEqual(['sha_mismatch']);
+    expect(publish.declaration.reconcile_seam.read_operation).toBe('site.source.read');
+  });
+});

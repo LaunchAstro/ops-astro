@@ -39,7 +39,11 @@ export interface ProviderState {
   blob: string;
   branches: string[];
   proposed: string | undefined;
-  request: { number: number; head: string; merged: boolean } | undefined;
+  proposalHead: string;
+  request: { number: number; head: string; merged: boolean; base?: string } | undefined;
+  proposalExtras: Record<string, string>;
+  defaultExtras: Record<string, string>;
+  stagingContent: string;
   /** Merged commits the hosting project has a production deployment for. */
   deployments: Record<string, string>;
   /** Lookups that find nothing yet, as while a deployment is being created. */
@@ -69,12 +73,14 @@ function writeContents(state: ProviderState, body: Readonly<Record<string, strin
   const content = decode(body['content'] ?? '');
   if (body['branch'] !== 'main') {
     state.proposed = content;
-    return json({ content: { sha: 'blob-head' }, commit: { sha: HEAD } }, 200);
+    return json({ content: { sha: 'blob-head' }, commit: { sha: state.proposalHead } }, 200);
   }
   state.content = content;
-  state.blob = 'blob-reverted';
-  state.deployments[REVERTED] = 'dpl_reverted';
-  return json({ content: { sha: state.blob }, commit: { sha: REVERTED } }, 200);
+  const publishing = !body['message']?.startsWith('Revert live correction ');
+  const commit = publishing ? MERGED : REVERTED;
+  state.blob = publishing ? 'blob-published' : 'blob-reverted';
+  state.deployments[commit] = publishing ? 'dpl_merged' : 'dpl_reverted';
+  return json({ content: { sha: state.blob }, commit: { sha: commit } }, 200);
 }
 
 function merge(state: ProviderState, body: Readonly<Record<string, string>>) {
@@ -83,7 +89,11 @@ function merge(state: ProviderState, body: Readonly<Record<string, string>>) {
   if (request.merged) return json({ message: 'Pull Request is not mergeable' }, 405);
   if (body['sha'] !== request.head) return json({ message: 'Head branch was modified' }, 409);
   request.merged = true;
-  state.content = state.proposed ?? state.content;
+  if (request.base === 'staging') state.stagingContent = state.proposed ?? state.content;
+  else {
+    state.content = state.proposed ?? state.content;
+    Object.assign(state.defaultExtras, state.proposalExtras);
+  }
   state.deployments[MERGED] = 'dpl_merged';
   return json({ merged: true, sha: MERGED, message: 'merged', token: 'never-crosses' });
 }
@@ -111,8 +121,8 @@ const ROUTES: Readonly<Record<string, Route>> = {
     return json({ ref: body['ref'], object: { sha: body['sha'] } }, 201);
   },
   [`POST api.github.com /repos/${REPOSITORY}/pulls`]: (state, body) => {
-    state.request = { number: 17, head: HEAD, merged: false };
-    return json({ number: 17, head: { sha: HEAD, ref: body['head'] } }, 201);
+    state.request = { number: 17, head: state.proposalHead, merged: false };
+    return json({ number: 17, head: { sha: state.proposalHead, ref: body['head'] } }, 201);
   },
   [`PUT api.github.com /repos/${REPOSITORY}/pulls/17/merge`]: merge,
   [`GET api.github.com /repos/${REPOSITORY}/pulls/17`]: (state) =>
@@ -160,7 +170,11 @@ export function provider(start: Partial<ProviderState> & Pick<ProviderState, 'co
     blob: 'blob-base',
     branches: ['main'],
     proposed: undefined,
+    proposalHead: HEAD,
     request: undefined,
+    proposalExtras: {},
+    defaultExtras: {},
+    stagingContent: start.content,
     deployments: {},
     lookupMisses: 0,
     lookupCommit: undefined,
@@ -215,8 +229,8 @@ export const VERSION_PIN: VersionPin = {
 };
 export const DIGEST: string = versionDigestOf(VERSION_PIN);
 /** The publish of the approved version on the correction's seam. */
-export const APPROVED: { readonly seam: string; readonly versionDigest: string } = {
-  seam: SEAM,
+export const APPROVED: VersionPin & { versionDigest: string } = {
+  ...VERSION_PIN,
   versionDigest: DIGEST,
 };
 

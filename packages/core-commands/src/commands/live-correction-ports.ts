@@ -12,8 +12,8 @@
 // correction's seam, so a read back, publish or revert for any other seam
 // sends nothing, and a publish of any version but the one it proposed sends
 // nothing either.
-// A read back answers absent only on proof that nothing landed (the request
-// unmerged; the published change still at the default branch head), and
+// A read back answers absent only on proof that nothing landed (the
+// pre-image still on the default branch; the published change still there), and
 // unknown otherwise: neither read names the commit a landing made, so a
 // landing it cannot place waits on a person. Every refusal and unknown the
 // guarded calls and the fence record on this run is kept, by code only, for
@@ -21,12 +21,10 @@
 
 import {
   bindingRefuses,
-  callConnector,
   mergeAndFind,
   readServed,
   readSiteSource,
   revertForward,
-  siteOperation,
   type BindingDependencies,
   type CaptureOptions,
   type ReadBack,
@@ -62,15 +60,11 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
   const fenceRecord = deps.capture.record;
   return {
     readSource: async () => await readSiteSource(binding, guarded),
-    // `site.request.read`: absent only while the request is unmerged.
+    // `site.source.read`: absent only while the default branch holds the pre-image.
     readBack: async ({ seam }): Promise<ReadBack<never>> => {
       if (!ours(seam)) return UNKNOWN;
-      const read = await callConnector(
-        siteOperation('site.request.read'),
-        { repository: binding.repository, number: binding.proposal.request },
-        guarded,
-      );
-      return read.kind === 'ok' && read.value['merged'] === false ? ABSENT : UNKNOWN;
+      const read = await readSiteSource(binding, guarded);
+      return read.kind === 'ok' && read.value.content === binding.change.before ? ABSENT : UNKNOWN;
     },
     publish: async (input) => await mergeAndFind(binding, input, guarded),
     readDeployment: async (deploymentId) => await readServed(deploymentId, guarded),

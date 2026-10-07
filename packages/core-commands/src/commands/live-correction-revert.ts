@@ -183,11 +183,11 @@ export async function runLiveRevert(
   if (!held.ok) return await leaseRefused(held.code, ports);
   const { correction, published, reverted } = held;
   if (correction.state !== 'live' || published === undefined) return refused('GATE_NOT_APPROVED');
+  const unfenced = await pageRefused(correction, ports);
+  if (unfenced !== undefined) return unfenced;
   if (reverted === undefined && held.last?.outcome === 'unknown') {
     return await unknownWaits(db, run, { step: 'revert', outcome: 'unknown' }, ports);
   }
-  const unfenced = await pageRefused(correction, ports);
-  if (unfenced !== undefined) return unfenced;
   if (reverted === undefined) {
     const marked = await takeRevert(db, run, correction.id);
     if (!marked.ok) return await leaseRefused(marked.code, ports);

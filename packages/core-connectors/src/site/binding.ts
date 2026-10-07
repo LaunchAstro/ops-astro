@@ -7,18 +7,12 @@
 //
 // - The source is the site file on the default branch, decoded as UTF-8 from
 //   canonical base64 only.
-// - The publish is the merge of the proposal's request at the head it was
-//   proposed at (`sha`), so a branch moved since is refused by the provider,
-//   never merged. Only the version the proposal's bytes are is merged: any
-//   other approved version is `PROPOSAL_SUPERSEDED`, with nothing sent. The
-//   merge carries no idempotency parameter: a second merge of the same
-//   request answers `not_mergeable`, and that answer is read back by the
-//   request's merge state. Merged already (another worker's, under a lease
-//   that lapsed) is `unknown`, never `failed`; still unmerged is the
-//   nothing-happened refusal it says it is.
-// - The deployment is found by the merged commit, a bounded number of tries
-//   while the hosting provider creates it. Not found, or found for another
-//   commit, is `unknown`: the merge happened.
+// - Publish writes the job's verified after-image on the default branch. The
+//   contents write uses the blob holding the approved pre-image as its exact
+//   precondition, so a concurrent file edit refuses the write atomically.
+//   The request remains the human review screen and is never merged.
+// - The deployment is found by the written commit, a bounded number of tries.
+//   Not found, or found for another commit, is unknown after the write.
 // - The revert writes the pre-image back on the default branch, only over the
 //   published change and at the blob just read, and finds its deployment the
 //   same way.
@@ -32,7 +26,9 @@
 
 import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
 import { siteOperation } from './operations.ts';
-import type { Published } from './publish.ts';
+import type { Published, PublishPorts } from './publish.ts';
+import { checkEnvelope } from './envelope.ts';
+import { contentDigest, versionDigestOf } from './version.ts';
 
 /** One party's site: its providers, and each catalogued page with its source file. */
 export interface PartySite {
@@ -143,7 +139,6 @@ const LOOKUP_ATTEMPTS = 6;
 const LOOKUP_WAIT_MS = 5_000;
 
 type Deployed = { readonly revision: string; readonly deploymentId: string };
-type Refused = Extract<ProviderResult<never>, { readonly kind: 'refused' }>;
 
 const call = async (
   name: string,
@@ -168,7 +163,7 @@ function decoded(base64: string): string | undefined {
   const bytes = Buffer.from(joined, 'base64');
   if (bytes.toString('base64') !== joined) return undefined;
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return undefined;
   }
@@ -181,7 +176,7 @@ export async function readSiteSource(
 ): Promise<ProviderResult<{ content: string; revision: string }>> {
   const read = await call(
     'site.source.read',
-    { repository: binding.repository, path: binding.path },
+    { repository: binding.repository, path: binding.path, ref: binding.defaultBranch },
     deps,
   );
   if (read.kind !== 'ok') return read;
@@ -213,42 +208,44 @@ async function deploymentOf(
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
 
-/** `site.request.read` after `not_mergeable`: merged already is unknown, never failed. */
-async function mergeState(
-  binding: SiteBinding,
-  refusal: Refused,
-  deps: CallDependencies,
-): Promise<ProviderResult<never>> {
-  const state = await call(
-    'site.request.read',
-    { repository: binding.repository, number: binding.proposal.request },
-    deps,
-  );
-  if (state.kind !== 'ok') return stop('unknown', 'MERGE_STATE_UNREAD', deps);
-  if (state.value['merged'] !== false) return stop('unknown', 'REQUEST_ALREADY_MERGED', deps);
-  return refusal;
-}
-
-/** `site.publish`: the merge at the proposed head, then its deployment by the merged commit. */
+/** `site.publish`: one approved contents write, then its deployment by the written commit. */
 export async function mergeAndFind(
   binding: SiteBinding,
-  input: { readonly seam: string; readonly versionDigest: string },
+  input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
   deps: BindingDependencies,
 ): Promise<ProviderResult<Published>> {
   if (input.seam !== binding.proposal.branch) return stop('refused', 'SEAM_MISMATCH', deps);
-  if (input.versionDigest !== binding.proposal.versionDigest)
+  const [file] = input.change.files;
+  if (
+    input.versionDigest !== binding.proposal.versionDigest ||
+    versionDigestOf(input) !== input.versionDigest ||
+    input.pageUrl !== binding.pageUrl ||
+    input.target.path !== binding.path ||
+    !checkEnvelope(input.change, input.target).ok ||
+    file === undefined ||
+    file.before === null ||
+    file.after === null ||
+    contentDigest(file.before) !== input.preImageDigest
+  ) {
     return stop('refused', 'PROPOSAL_SUPERSEDED', deps);
-  const { repository, proposal } = binding;
-  const merged = await call(
+  }
+  const current = await readSiteSource(binding, deps);
+  if (current.kind !== 'ok') return current;
+  if (current.value.content !== file.before) return stop('refused', 'CONTENT_DRIFTED', deps);
+  const written = await call(
     'site.publish',
-    { repository, number: proposal.request, sha: proposal.head },
+    {
+      repository: binding.repository,
+      path: binding.path,
+      branch: binding.defaultBranch,
+      sha: current.value.revision,
+      content: Buffer.from(file.after, 'utf8').toString('base64'),
+      message: `Live correction ${input.seam}`,
+    },
     deps,
   );
-  if (merged.kind === 'refused' && merged.proof === 'not_mergeable')
-    return await mergeState(binding, merged, deps);
-  if (merged.kind !== 'ok') return merged;
-  if (merged.value['merged'] !== true) return stop('unknown', 'MERGE_NOT_CONFIRMED', deps);
-  const deployed = await deploymentOf(binding, String(merged.value['sha']), deps);
+  if (written.kind !== 'ok') return written;
+  const deployed = await deploymentOf(binding, String(written.value['commit.sha']), deps);
   if (deployed.kind !== 'ok') return deployed;
   return ok({ ...deployed.value, liveUrl: binding.pageUrl });
 }

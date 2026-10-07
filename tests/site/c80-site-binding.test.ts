@@ -9,6 +9,9 @@ import { describe, expect, it } from 'vitest';
 import {
   SITE_OPERATIONS,
   mergeAndFind,
+  contentDigest,
+  versionDigestOf,
+  proposeSource,
   readServed,
   readSiteSource,
   revertForward,
@@ -17,7 +20,6 @@ import {
   AFTER,
   APPROVED,
   BEFORE,
-  HEAD,
   MERGED,
   PAGE,
   PROJECT,
@@ -28,6 +30,7 @@ import {
   json,
   line,
   proposed,
+  proposal,
   type SentRequest,
 } from './c80-site-provider.ts';
 
@@ -47,7 +50,13 @@ function catalogued(sent: SentRequest) {
       if (index === 0 ? !rest.startsWith(part) : !rest.includes(part)) return false;
       rest = rest.slice(rest.indexOf(part) + part.length);
     }
-    return JSON.stringify(names(templateQuery)) === JSON.stringify(names(query));
+    const queryNames =
+      templateQuery === undefined && connector.method === 'GET'
+        ? connector.bodyParams
+        : names(templateQuery);
+    return (
+      JSON.stringify(queryNames.length === 0 ? [''] : queryNames) === JSON.stringify(names(query))
+    );
   });
 }
 
@@ -95,10 +104,10 @@ describe('C80 publish binding: the proposal branch is the only seam', () => {
   });
 });
 
-describe('C80 publish binding: only the proposed version is merged', () => {
+describe('C80 publish binding: only the proposed version is published', () => {
   it('any other approved version is PROPOSAL_SUPERSEDED with nothing sent', async () => {
     const site = proposed();
-    const other = { seam: SEAM, versionDigest: 'sha256:another-approved-version' };
+    const other = { ...APPROVED, versionDigest: 'sha256:another-approved-version' };
     expect(await mergeAndFind(binding, other, site.deps)).toEqual({
       kind: 'refused',
       code: 'PROPOSAL_SUPERSEDED',
@@ -108,76 +117,129 @@ describe('C80 publish binding: only the proposed version is merged', () => {
   });
 });
 
-describe('C80 publish binding: the merge is at the proposed head', () => {
-  it('merges at the head proposed and finds the deployment by the merged commit', async () => {
+describe('C80 publish binding: one approved file written atomically', () => {
+  it('writes the approved after-image on the default branch and finds its written commit', async () => {
     const site = proposed();
-    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
+    const staleBinding = { ...binding, change: { before: BEFORE, after: 'unapproved bytes' } };
+    expect(await mergeAndFind(staleBinding, APPROVED, site.deps)).toEqual({
       kind: 'ok',
       value: { revision: MERGED, deploymentId: 'dpl_merged', liveUrl: PAGE },
     });
     expect(site.sent.map(line)).toEqual([
-      `PUT /repos/${REPOSITORY}/pulls/17/merge`,
+      `GET /repos/${REPOSITORY}/contents/src/pages/about.md?ref=main`,
+      `PUT /repos/${REPOSITORY}/contents/src/pages/about.md`,
       `GET /v6/deployments?projectId=${PROJECT}&sha=${MERGED}&target=production&limit=1`,
     ]);
-    expect(site.sent[0]?.body).toEqual({ sha: HEAD });
-  });
-
-  it('a branch moved since the proposal is refused by the provider, never merged', async () => {
-    const site = proposed();
-    if (site.state.request) site.state.request.head = 'c0ffee99';
-    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
-      kind: 'refused',
-      code: 'PROVIDER_REFUSED',
-      proof: 'merge_conflict',
+    expect(site.sent[1]?.body).toEqual({
+      branch: 'main',
+      sha: 'blob-base',
+      content: Buffer.from(AFTER, 'utf8').toString('base64'),
+      message: `Live correction ${SEAM}`,
     });
+    expect(site.state.content).toBe(AFTER);
     expect(site.state.request?.merged).toBe(false);
-    expect(site.state.content).toBe(BEFORE);
-  });
-});
-
-describe('C80 publish binding: not_mergeable is read back by the request merge state', () => {
-  it('merged already (another worker under a lapsed lease) is unknown, never failed', async () => {
-    const site = proposed();
-    if (site.state.request) site.state.request.merged = true;
-    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
-      kind: 'unknown',
-      code: 'REQUEST_ALREADY_MERGED',
-    });
-    expect(site.sent.map(line)).toEqual([
-      `PUT /repos/${REPOSITORY}/pulls/17/merge`,
-      `GET /repos/${REPOSITORY}/pulls/17`,
-    ]);
   });
 
-  it('still unmerged stays the nothing-happened refusal', async () => {
+  it('publishes only the approved file when another file enters the proposal before its write', async () => {
     const site = proposed();
-    site.state.answers[`PUT api.github.com /repos/${REPOSITORY}/pulls/17/merge`] = json(
-      { message: 'no' },
-      405,
-    );
+    site.state.branches = ['main'];
+    site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
+    const deps = {
+      ...site.deps,
+      transport: async (request: Parameters<typeof site.deps.transport>[0]) => {
+        const answer = await site.deps.transport(request);
+        if (request.url.pathname.endsWith('/git/refs')) {
+          site.state.proposalExtras['src/pages/contact.md'] = 'unapproved contact';
+          site.state.proposalHead = 'c0ffee99';
+        }
+        return answer;
+      },
+    };
+    const made = await proposeSource(proposal, deps);
+    expect(made.kind).toBe('ok');
+    if (made.kind !== 'ok') return;
+    expect(made.value.head).toBe('c0ffee99');
+    site.sent.length = 0;
+    expect(
+      await mergeAndFind({ ...binding, proposal: { branch: SEAM, ...made.value } }, APPROVED, deps),
+    ).toMatchObject({ kind: 'ok', value: { revision: MERGED } });
+    expect(site.state.content).toBe(AFTER);
+    expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
+    expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
+    expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+    expect(site.state.request?.merged).toBe(false);
+  });
+
+  it.each([409, 422])(
+    'refuses a concurrent default-branch edit at the atomic write with HTTP %s',
+    async (status) => {
+      const site = proposed();
+      const concurrent = BEFORE + '<p>Another footer.</p>\n';
+      const deps = {
+        ...site.deps,
+        transport: async (request: Parameters<typeof site.deps.transport>[0]) => {
+          if (request.method === 'PUT') {
+            site.state.content = concurrent;
+            site.state.blob = 'blob-concurrent';
+            if (status === 422)
+              site.state.answers[`PUT api.github.com /repos/${REPOSITORY}/contents/`] = json(
+                {},
+                status,
+              );
+          }
+          return await site.deps.transport(request);
+        },
+      };
+      expect(await mergeAndFind(binding, APPROVED, deps)).toEqual({
+        kind: 'refused',
+        code: 'PROVIDER_REFUSED',
+        proof: 'sha_mismatch',
+      });
+      expect(site.state.content).toBe(concurrent);
+      expect(site.state.deployments).toEqual({});
+      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
+      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect(site.state.request?.merged).toBe(false);
+    },
+  );
+
+  it('writes on the default branch when the human review request is retargeted', async () => {
+    const site = proposed();
+    if (site.state.request) site.state.request.base = 'staging';
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toMatchObject({ kind: 'ok' });
+    expect(site.state.content).toBe(AFTER);
+    expect(site.state.stagingContent).toBe(BEFORE);
+    expect(site.state.request?.merged).toBe(false);
+    expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+  });
+
+  it('refuses a live source that no longer holds the approved pre-image without writing', async () => {
+    const site = proposed();
+    site.state.content = BEFORE + '<p>Another footer.</p>\n';
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'refused',
-      code: 'PROVIDER_REFUSED',
-      proof: 'not_mergeable',
+      code: 'CONTENT_DRIFTED',
     });
-    expect(site.sent.map(line)).toEqual([
-      `PUT /repos/${REPOSITORY}/pulls/17/merge`,
-      `GET /repos/${REPOSITORY}/pulls/17`,
-    ]);
+    expect(site.sent.map((sent) => sent.method)).toEqual(['GET']);
   });
 
-  it('a merge state that cannot be read is unknown', async () => {
+  it('refuses changed bytes carrying the approved digest before reading or writing', async () => {
     const site = proposed();
-    if (site.state.request) site.state.request.merged = true;
-    site.state.answers[`GET api.github.com /repos/${REPOSITORY}/pulls/17`] = json({}, 500);
-    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
-      kind: 'unknown',
-      code: 'MERGE_STATE_UNREAD',
-    });
+    expect(
+      await mergeAndFind(
+        binding,
+        {
+          ...APPROVED,
+          change: { files: [{ path: binding.path, before: BEFORE, after: 'unapproved' }] },
+        },
+        site.deps,
+      ),
+    ).toEqual({ kind: 'refused', code: 'PROPOSAL_SUPERSEDED' });
+    expect(site.sent).toEqual([]);
   });
 });
 
-describe('C80 publish binding: the deployment is found by the merged commit, a bounded number of tries', () => {
+describe('C80 publish binding: the deployment is found by the written commit, a bounded number of tries', () => {
   it('found while the provider creates it, after waits', async () => {
     const site = proposed();
     site.state.lookupMisses = 2;
@@ -185,7 +247,7 @@ describe('C80 publish binding: the deployment is found by the merged commit, a b
     expect(site.waits).toEqual([5000, 5000]);
   });
 
-  it('not found after the bounded tries is unknown, with the merge sent once', async () => {
+  it('not found after the bounded tries is unknown, with the write sent once', async () => {
     const site = proposed();
     site.state.lookupMisses = 99;
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
@@ -283,5 +345,36 @@ describe('C80 publish binding: the revert', () => {
       code: 'CONTENT_DRIFTED',
     });
     expect(site.sent.map((sent) => sent.method)).toEqual(['GET']);
+  });
+});
+
+describe('C80 UTF-8 source bytes', () => {
+  it('preserves a UTF-8 byte-order mark in the source read and approved write', async () => {
+    const site = proposed();
+    const before = '\uFEFF' + BEFORE;
+    const after = '\uFEFF' + AFTER;
+    site.state.content = before;
+    const pin = {
+      ...APPROVED,
+      preImageDigest: contentDigest(before),
+      change: { files: [{ path: binding.path, before, after }] },
+    };
+    const versionDigest = versionDigestOf(pin);
+    const bomBinding = {
+      ...binding,
+      change: { before, after },
+      proposal: { ...binding.proposal, versionDigest },
+    };
+    expect(await readSiteSource(bomBinding, site.deps)).toMatchObject({
+      value: { content: before },
+    });
+    expect(await mergeAndFind(bomBinding, { ...pin, versionDigest }, site.deps)).toMatchObject({
+      kind: 'ok',
+    });
+    expect(site.state.content).toBe(after);
+    const write = site.sent.find((sent) => sent.method === 'PUT');
+    expect(Buffer.from(write?.body['content'] ?? '', 'base64').subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
+    );
   });
 });

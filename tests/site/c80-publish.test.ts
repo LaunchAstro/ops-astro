@@ -201,11 +201,11 @@ describe('C80 unknown publish outcome', () => {
   it('settles failed only on a declared nothing-happened proof', async () => {
     const p = ports({
       publish: () =>
-        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'merge_conflict' }),
+        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'sha_mismatch' }),
     });
     expect(await publishCorrection(job(), p)).toMatchObject({
       state: 'failed',
-      proof: 'merge_conflict',
+      proof: 'sha_mismatch',
     });
     const q = ports({
       publish: () =>

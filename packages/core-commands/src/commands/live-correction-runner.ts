@@ -73,7 +73,7 @@ type Deployed = { revision: string; deploymentId: string };
 /** The provider calls, each a catalogued operation through the guarded call or the fence. */
 export interface RunnerPorts {
   readonly readSource: PublishPorts['readSource'];
-  /** `site.request.read` by the seam. */
+  /** `site.source.read` of the bound file on the default branch. */
   readonly readBack: PublishPorts['readBack'];
   readonly publish: PublishPorts['publish'];
   readonly readDeployment: (
@@ -290,6 +290,8 @@ export async function runLivePublish(
     return await observe(db, run, correction, accepted, ports);
   }
   if (correction.state === 'unknown' || correction.state === 'accepted') {
+    const unfenced = await pageRefused(correction, ports);
+    if (unfenced !== undefined) return unfenced;
     return await unknownWaits(db, run, { step: 'publish', outcome: correction.state }, ports);
   }
   const job = await rebuild(correction, ports);

@@ -31,7 +31,7 @@ import {
   type Occurrence,
   type ReadBack,
 } from './reconcile.ts';
-import { contentDigest, versionDigestOf } from './version.ts';
+import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
 /** The provider's idempotency key: stable for one intended effect across retries (broker contract 3.4). */
 export function dispatchToken(operation: string, versionDigest: string): string {
@@ -72,12 +72,12 @@ type Seamed = { readonly seam: string; readonly dispatchToken: string };
 export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
-  /** `site.request.read` by the seam: absent only while the request is provably unmerged. */
-  // The wiring must return landed only when the merged head is the approved one, else unknown.
+  /** `site.source.read` of the default branch: absent only while it holds the pre-image. */
+  // A read without the written commit cannot establish a landing.
   readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
   /** `site.publish`, once. */
   readonly publish: (
-    input: Seamed & { versionDigest: string },
+    input: Seamed & VersionPin & { versionDigest: string },
   ) => Promise<ProviderResult<Published>>;
   readonly cancellation: () => Promise<'none' | 'requested'>;
   /** At most one task per reason and key (one effect's token); the reasons are a closed set. */
@@ -154,7 +154,16 @@ export async function publishCorrection(
   const token = dispatchToken('site.publish', job.version.digest);
   const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
   const send = () =>
-    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest });
+    ports.publish({
+      seam: job.seam,
+      dispatchToken: token,
+      versionDigest: job.version.digest,
+      target: job.target,
+      change: job.change,
+      preImageDigest: job.preImageDigest,
+      baseRevision: job.baseRevision,
+      pageUrl: job.pageUrl,
+    });
   const sent = await claimed(job.seam, token, async () => {
     const back = await readBack();
     const checked = await beforeDispatch(job, ports, back);

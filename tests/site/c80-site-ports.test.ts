@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's runner on its site ports: runLivePublish and runLiveRevert through
-// siteRunnerPorts, every provider call through the binding's guarded calls
-// over the providers' double (c80-site-provider.ts). A publish lands live and
-// its revert lands reverted; a binding for another seam sends nothing past the
-// source read; a request another worker merged first ends unknown, never
-// failed, with its code on the receipt. The ports bind through the
-// correction's party's site (#989 criterion 2), and run no other correction:
-// a correction of party A naming party B's page, or a binding of party B,
-// sends and captures nothing. Nothing reaches a live system.
+// C80's runner on its site ports through guarded provider calls. Publish
+// writes the approved file on the default branch and the request remains the
+// human review screen. Bindings refuse other corrections before provider
+// calls, captures or reconciliation receipts. Nothing reaches a live system.
 
 import { describe, expect, it } from 'vitest';
 import { ABOUT, AFTER, BEFORE, PAGE } from './c80-world.ts';
@@ -33,9 +28,8 @@ import {
 
 useRegisterWorld();
 
-const SOURCE = 'GET /repos/agency/site/contents/src/pages/about.md';
-const REQUEST = 'GET /repos/agency/site/pulls/17';
-const MERGE = 'PUT /repos/agency/site/pulls/17/merge';
+const SOURCE = 'GET /repos/agency/site/contents/src/pages/about.md?ref=main';
+const WRITE = 'PUT /repos/agency/site/contents/src/pages/about.md';
 const OTHER_SEAM = 'seam-00000000-0000-4000-8000-000000000000';
 /** Party B's catalogued page and its source file: on B's site, never A's. */
 const B_PAGE = 'https://client-b.example/team/';
@@ -108,6 +102,7 @@ interface Given {
   readonly wrap?: (site: Provider) => Transport;
   /** The page's status as served: anything but 200 the fence refuses. */
   readonly status?: number;
+  readonly change?: SiteBinding['change'];
 }
 
 /** The providers holding this correction's proposal, its page served from the site file. */
@@ -120,7 +115,11 @@ async function bound(id: string, given: Given = {}): Promise<Bound> {
     proposed: AFTER,
     request: { number: 17, head: HEAD, merged: false },
   });
-  const binding = bindingOf(pin, { seam, party: given.party?.() });
+  const binding = {
+    ...bindingOf(pin, { seam, party: given.party?.() }),
+    ...(given.change === undefined ? {} : { change: given.change }),
+  };
+  site.state.content = binding.change.before;
   const raised: string[] = [];
   const captured: string[] = [];
   let clock = 5_000;
@@ -162,9 +161,10 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.sent.map(line)).toEqual([
       SOURCE,
-      REQUEST,
       SOURCE,
-      MERGE,
+      SOURCE,
+      SOURCE,
+      WRITE,
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee02&target=production&limit=1',
       'GET /v13/deployments/dpl_merged',
     ]);
@@ -185,22 +185,26 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
 describe.skipIf(serverUrl === undefined)(
   'C80 runner on the site ports: what it cannot place',
   () => {
-    it('ends unknown, never failed, when another worker merged the request first', async () => {
+    it('keeps a concurrent default-branch edit when the atomic write refuses', async () => {
       const id = await approved();
+      const concurrent = BEFORE + '<p>Another footer.</p>\n';
       const { site, ports, raised } = await bound(id, {
         wrap: (double) => async (request) => {
-          const answer = await double.deps.transport(request);
-          // Another worker's merge lands just after this run read the request unmerged.
-          if (request.url.pathname.endsWith('/pulls/17') && double.state.request !== undefined)
-            double.state.request.merged = true;
-          return answer;
+          if (request.method === 'PUT') {
+            double.state.content = concurrent;
+            double.state.blob = 'blob-concurrent';
+          }
+          return await double.deps.transport(request);
         },
       });
       expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'unknown' });
-      expect(site.sent.map(line)).toEqual([SOURCE, REQUEST, SOURCE, MERGE, REQUEST]);
-      expect(await w.stateOf(id)).toBe('unknown');
-      expect(raised).toContain('REQUEST_ALREADY_MERGED');
-      expect(await refusalsOn(id, 'publish')).toContain('REQUEST_ALREADY_MERGED');
+      expect(site.state.content).toBe(concurrent);
+      expect(site.state.deployments).toEqual({});
+      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
+      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect(site.state.request?.merged).toBe(false);
+      expect(raised).toContain('RECONCILE_UNPROVEN');
+      expect(await refusalsOn(id, 'publish')).toContain('PROVIDER_REFUSED');
     });
 
     it("keeps the fence's refusal of the page for the receipt", async () => {
@@ -263,3 +267,115 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)(
+  'C80 publication leaves the human review request unmerged',
+  () => {
+    it('publishes only the approved file from a proposal holding an additional file', async () => {
+      const id = await approved();
+      const { site, ports } = await bound(id);
+      site.state.proposalExtras['src/pages/contact.md'] = 'unapproved contact';
+      site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
+      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
+      expect(site.state.content).toBe(AFTER);
+      expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
+      expect(site.state.request?.merged).toBe(false);
+      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
+      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+    });
+
+    it('publishes on the default branch after the request is retargeted', async () => {
+      const id = await approved();
+      const { site, ports } = await bound(id);
+      if (site.state.request) site.state.request.base = 'staging';
+      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
+      expect(site.state.content).toBe(AFTER);
+      expect(site.state.stagingContent).toBe(BEFORE);
+      expect(site.state.request?.merged).toBe(false);
+      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect((await receipt(id, 'publish'))['published_revision']).toEqual({
+        observed: 'c0ffee02',
+      });
+    });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'C80 binding refusal before unknown reconciliation',
+  () => {
+    it('adds no receipts or reconciliation task for an unknown publish on another binding', async () => {
+      const id = await approved();
+      const own = await bound(id);
+      await expect(
+        publish(id, {
+          ...own.ports(),
+          publish: async () => {
+            throw new Error('worker lost before effect registration');
+          },
+        }),
+      ).rejects.toThrow('worker lost');
+      const count = await w.receiptsOf(id);
+      const other = await bound(id, { seam: OTHER_SEAM });
+      expect(await publish(id, other.ports())).toEqual({
+        kind: 'refused',
+        code: 'BINDING_NOT_THIS_CORRECTION',
+        waitsOn: 'person',
+      });
+      expect(await w.receiptsOf(id)).toBe(count);
+      expect(other.raised).toEqual(['BINDING_NOT_THIS_CORRECTION']);
+      expect(other.site.sent).toEqual([]);
+      expect(other.captured).toEqual([]);
+    });
+
+    it('adds no receipts or reconciliation task for an unknown revert on another binding', async () => {
+      const id = await approved();
+      const own = await bound(id);
+      expect(await publish(id, own.ports())).toMatchObject({ kind: 'recorded', state: 'live' });
+      await expect(
+        revert(id, {
+          ...own.ports(),
+          revert: async () => {
+            throw new Error('worker lost before effect registration');
+          },
+        }),
+      ).rejects.toThrow('worker lost');
+      const count = await w.receiptsOf(id);
+      const other = await bound(id, { seam: OTHER_SEAM });
+      expect(await revert(id, other.ports())).toEqual({
+        kind: 'refused',
+        code: 'BINDING_NOT_THIS_CORRECTION',
+        waitsOn: 'person',
+      });
+      expect(await w.receiptsOf(id)).toBe(count);
+      expect(other.raised).toEqual(['BINDING_NOT_THIS_CORRECTION']);
+      expect(other.site.sent).toEqual([]);
+      expect(other.captured).toEqual([]);
+    });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approval', () => {
+  it('writes the job after-image when the binding and proposal hold different bytes', async () => {
+    const id = await approved();
+    const { site, ports } = await bound(id, {
+      change: { before: BEFORE, after: 'unapproved bytes' },
+    });
+    site.state.proposed = 'unapproved proposal bytes';
+    expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
+    expect(site.state.content).toBe(AFTER);
+    expect(site.state.request?.merged).toBe(false);
+  });
+
+  it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
+    const before = '\uFEFF' + BEFORE;
+    const after = '\uFEFF' + AFTER;
+    const id = await approved({ before, after });
+    const { site, ports } = await bound(id, { change: { before, after } });
+    expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
+    expect(site.state.content).toBe(after);
+    const write = site.sent.find((sent) => sent.method === 'PUT');
+    expect(Buffer.from(write?.body['content'] ?? '', 'base64').subarray(0, 3)).toEqual(
+      Buffer.from([0xef, 0xbb, 0xbf]),
+    );
+  });
+});

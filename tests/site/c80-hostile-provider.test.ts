@@ -42,13 +42,30 @@ const deps = (transport: Transport, recorded: string[] = []) => ({
   record: (code: string) => recorded.push(code),
 });
 
-const params = { repository: 'agency/site', number: '17' };
+const params = {
+  repository: 'agency/site',
+  path: 'src/pages/about.astro',
+  branch: 'main',
+  sha: 'blob-before',
+  content: 'PHA+',
+  message: 'Live correction',
+};
 
 describe('C80 hostile provider (source control and hosting paths)', () => {
   it('returns only the declared response fields from a well-formed answer', async () => {
-    const transport = httpOf(json({ merged: true, sha: 'def456', message: 'ok', token: 'leak' }));
+    const transport = httpOf(
+      json({
+        content: { sha: 'blob-after' },
+        commit: { sha: 'def456' },
+        message: 'ok',
+        token: 'leak',
+      }),
+    );
     const result = await callConnector(publishRegistration, params, deps(transport));
-    expect(result).toEqual({ kind: 'ok', value: { merged: true, sha: 'def456' } });
+    expect(result).toEqual({
+      kind: 'ok',
+      value: { 'content.sha': 'blob-after', 'commit.sha': 'def456' },
+    });
     expect(transport.seen[0]?.url.hostname).toBe(publishRegistration.connector.host);
   });
 });
@@ -77,7 +94,11 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
       },
       'PROVIDER_RESPONSE_MALFORMED',
     ],
-    ['a schema mismatch', json({ merged: 'yes', sha: 1 }), 'PROVIDER_RESPONSE_SCHEMA'],
+    [
+      'a schema mismatch',
+      json({ content: { sha: 'blob-after' }, commit: { sha: 1 } }),
+      'PROVIDER_RESPONSE_SCHEMA',
+    ],
     [
       'a wrong content type',
       {
@@ -150,7 +171,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     expect(
       await callConnector(
         publishRegistration,
-        { repository: '../../orgs', number: '17' },
+        { ...params, repository: '../../orgs' },
         deps(transport),
       ),
     ).toEqual({ kind: 'refused', code: 'PARAMETER_INVALID' });
@@ -158,10 +179,10 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
   });
 
   it('takes the repository as exactly owner and name, so the credential cannot reach another path', async () => {
-    const transport = httpOf(json({ merged: true, sha: 'def456' }));
+    const transport = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
     const results = await Promise.all(
       ['other-org/other-repo/git/refs', 'site', 'agency/site/'].map((repository) =>
-        callConnector(publishRegistration, { repository, number: '17' }, deps(transport)),
+        callConnector(publishRegistration, { ...params, repository }, deps(transport)),
       ),
     );
     for (const result of results)
@@ -174,7 +195,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     const answers = [
       json({ message: 'canary-token-C80-never-shown' }, 401),
       { kind: 'failed' } as const,
-      json({ merged: 'canary-token-C80-never-shown' }),
+      json({ content: { sha: 'blob-after' }, commit: { sha: 'canary-token-C80-never-shown' } }),
     ];
     const results: ConnectorResult[] = await Promise.all(
       answers.map((answer) =>
@@ -191,7 +212,7 @@ describe('C80 the guarded provider call', () => {
 
   it('a credential echoed in a declared string field cannot escape', async () => {
     const recorded: string[] = [];
-    const transport = httpOf(json({ merged: true, sha: canary }));
+    const transport = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: canary } }));
     const result = await callConnector(publishRegistration, params, deps(transport, recorded));
     // The provider did get the credential, so the search below is not vacuous.
     expect(transport.seen[0]?.headers['authorization']).toBe(`Bearer ${canary}`);
@@ -205,7 +226,7 @@ describe('C80 the guarded provider call', () => {
     const { timeoutMs } = publishRegistration.connector;
     vi.useFakeTimers();
     try {
-      const stalled = httpOf(json({ merged: true, sha: 'def456' }));
+      const stalled = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
       const pending = callConnector(publishRegistration, params, {
         ...deps(stalled),
         resolve: () => new Promise<readonly string[]>(() => {}),
@@ -217,7 +238,7 @@ describe('C80 the guarded provider call', () => {
         sent: 0,
       });
       // One deadline: a slow answer leaves the transport only what remains of it.
-      const slow = httpOf(json({ merged: true, sha: 'def456' }));
+      const slow = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
       const call = callConnector(publishRegistration, params, {
         ...deps(slow),
         resolve: () =>
