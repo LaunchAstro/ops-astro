@@ -20,6 +20,7 @@ import type {
   AssistantCitation,
   AssistantMessage,
   AssistantPage,
+  PlanCardState,
 } from '@launchastro/ui';
 import type { ScopeInput } from './subject.ts';
 
@@ -176,12 +177,27 @@ export const READ_LINE = 'kept-';
 /** The tab a line for `key` lands in: `key`, or the tab it was folded into. */
 export const keyIn = (state: AssistantState, key: string): string => state.folded[key] ?? key;
 
+const staled = (plan: NonNullable<AssistantMessage['plan']>): PlanCardState =>
+  plan.state === 'unknown' ? 'unknown' : 'stale';
+
+/** The cards plan version `version` replaces: every one not approved. */
+export const replaced = (
+  messages: readonly AssistantMessage[],
+  version: number,
+): AssistantMessage[] =>
+  messages.map((each) =>
+    each.plan !== undefined && each.plan.state !== 'approved'
+      ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: version } }
+      : each,
+  );
+
 /**
  * The tab's first question started its conversation. A tab the history
  * reopened for that same conversation while the start was out folds into it,
  * so it is never open twice. What its read gave is the start's own question,
- * already here; what was asked and answered there since follows, and a line
- * still on its way to it lands here.
+ * already here; what was asked and answered there since follows, each plan
+ * version there replacing the older ones here; its questions still out are
+ * this tab's, and a line still on its way to it lands here.
  */
 export function started(
   state: AssistantState,
@@ -199,21 +215,35 @@ export function started(
           ...state,
           chats: state.chats.filter((chat) => chat !== twin),
           folded: { ...state.folded, [twin.key]: key },
+          answering: {
+            ...state.answering,
+            [twin.key]: 0,
+            [key]: (state.answering[key] ?? 0) + (state.answering[twin.key] ?? 0),
+          },
         };
   const chosen =
     twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
   return change(chosen, key, (chat) => ({
     ...chat,
     conversationId,
-    messages: [...chat.messages, ...since],
+    messages: since.reduce<readonly AssistantMessage[]>(
+      (lines, line) => [
+        ...(line.plan === undefined ? lines : replaced(lines, line.plan.version)),
+        line,
+      ],
+      chat.messages,
+    ),
   }));
 }
 
-/** A question for tab `key` went out (+1) or came back (-1). */
-export const asking = (state: AssistantState, key: string, by: 1 | -1): AssistantState => ({
-  ...state,
-  answering: { ...state.answering, [key]: Math.max(0, (state.answering[key] ?? 0) + by) },
-});
+/** A question for tab `key` (or the tab it was folded into) went out (+1) or came back (-1). */
+export function asking(state: AssistantState, key: string, by: 1 | -1): AssistantState {
+  const into = keyIn(state, key);
+  return {
+    ...state,
+    answering: { ...state.answering, [into]: Math.max(0, (state.answering[into] ?? 0) + by) },
+  };
+}
 
 /** A conversation as `conversation.read` gave it: its id, title and transcript. */
 export interface Reopened {
