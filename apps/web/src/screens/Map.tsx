@@ -24,18 +24,20 @@
 // The look waits on the accepted prototype W4 (#603); until then the page is
 // drawn with the kit's existing section and button classes.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useCommand } from '../records/use-command.ts';
-import { needsKey } from '../records/needs-key.ts';
+import { keyOf, needsKey } from '../records/needs-key.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { MapViews } from './map/Views.tsx';
 import {
   NO_FILTERS,
   type Filters,
   type Drafts,
+  type Locked,
   type MapCommand,
   type MapViewName,
   type Send,
@@ -48,37 +50,118 @@ export interface MapScreenProps {
   readonly mapKey: string;
 }
 
-/** The page's writes: one at a time, each followed by a reread unless refused. */
-function useWrites(client: OperationsClient, reload: () => void) {
-  const command = useCommand();
-  const [sent, setSent] = useState<MapCommand>('map.revise');
+/** Whether two graduate forms hold the same patch and lines. */
+const sameForm = (one: Drafts['graduating'], two: Drafts['graduating']) =>
+  JSON.stringify(one) === JSON.stringify(two);
+
+/** What a `SCOPE_NOT_GRANTED` closes: the command's key on that one record. */
+const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${recordId}`;
+
+/**
+ * The typed words, held above the read, and the slot whose save came back
+ * stale. `sending(slot)` notes what a save sends and answers its two steps:
+ * `applied` drops the slot only if it still holds that, so words typed while
+ * the save was on its way stay in the editor; `stale` draws the conflict only
+ * if those words were not dropped meanwhile. Words dropped unsaved (Cancel,
+ * Dismiss, an emptied line) take their conflict with them, a late one
+ * included: nothing is kept, so nothing is offered to save again.
+ */
+function useDrafts() {
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
   const [graduating, setGraduating] = useState<Drafts['graduating']>(null);
   const [conflict, setConflict] = useState<string | null>(null);
+  // How often each slot's words were dropped unsaved: a reply to a save sent
+  // before the latest drop is about words the reader no longer holds.
+  const drops = useRef(new Map<string, number>());
+  const drop = (slot: string) => {
+    drops.current.set(slot, (drops.current.get(slot) ?? 0) + 1);
+    setConflict((now) => (now === slot ? null : now));
+  };
   const setText = (slot: string, text: string | null) => {
+    if (text === null) drop(slot);
     setTexts(({ [slot]: _dropped, ...rest }) => (text === null ? rest : { ...rest, [slot]: text }));
   };
+  const setForm = (form: Drafts['graduating']) => {
+    if (form === null) drop('graduate');
+    setGraduating(form);
+  };
+  const sending = (slot: string) => {
+    const dropsAtSend = drops.current.get(slot) ?? 0;
+    const stale = () => {
+      if ((drops.current.get(slot) ?? 0) === dropsAtSend) setConflict(slot);
+    };
+    if (slot === 'graduate') {
+      const sentForm = graduating;
+      return {
+        stale,
+        applied: () => {
+          setGraduating((now) => (sameForm(now, sentForm) ? null : now));
+        },
+      };
+    }
+    const sentText = texts[slot];
+    const applied = () => {
+      setTexts((now) => {
+        if (now[slot] !== sentText) return now;
+        const { [slot]: _saved, ...rest } = now;
+        return rest;
+      });
+    };
+    return { stale, applied };
+  };
+  const text = (slot: string) => texts[slot] ?? null;
+  const drafts: Drafts = { text, setText, graduating, setGraduating: setForm, conflict };
+  const open = graduating !== null || Object.keys(texts).length > 0;
+  return { drafts, open, sending, setConflict };
+}
+
+/**
+ * The page's writes: one at a time, each followed by a reread unless refused.
+ * Controls stay locked until that reread lands (`rereading`): the map drawn
+ * meanwhile is the one the write replaced, so a write sent from it would carry
+ * a revision already gone, and a graduate form kept over it whose patch is
+ * gone would not yet show as gone. A `SCOPE_NOT_GRANTED` closes the refused
+ * key on the refused record only, so a ticket the reader may not write leaves
+ * the ones they may write open.
+ */
+function useWrites(client: OperationsClient, reload: () => void, rereading: boolean) {
+  const command = useCommand();
+  const [sent, setSent] = useState<MapCommand>('map.revise');
+  const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
+  const { drafts, open, sending, setConflict } = useDrafts();
   const send: Send = (name, recordId, revision, body, slot) => {
+    const steps = slot === undefined ? undefined : sending(slot);
     setSent(name);
     setConflict(null);
     command.run(
       () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
       (settlement) => {
-        if (settlement.kind === 'ok' && slot !== undefined) {
-          if (slot === 'graduate') setGraduating(null);
-          else setText(slot, null);
+        if (settlement.kind === 'ok') steps?.applied();
+        if (settlement.kind === 'closed') {
+          setShut((now) => new Set(now).add(latch(name, recordId)));
         }
-        if (settlement.kind === 'stale' && slot !== undefined) setConflict(slot);
+        if (settlement.kind === 'stale') steps?.stale();
         // Applied, or stale: either way the map on screen is no longer the
         // server's, so read it again. A refusal leaves the map as it was.
         if (settlement.kind === 'ok' || settlement.kind === 'stale') reload();
       },
     );
   };
-  const text = (slot: string) => texts[slot] ?? null;
-  const drafts: Drafts = { text, setText, graduating, setGraduating, conflict };
-  const open = graduating !== null || Object.keys(texts).length > 0;
-  return { command, sent, send, drafts, open };
+  const locked: Locked = (name, recordId) =>
+    command.busy || rereading || shut.has(latch(name, recordId));
+  return { command, sent, send, locked, drafts, open };
+}
+
+/**
+ * The graduate form's patch is not on the map as last read: it was graduated
+ * or removed. The form is then kept to copy or dismiss, and no
+ * second save is offered (`Frontier.tsx`).
+ */
+function patchGone(state: ReadState<MapViewResult>, drafts: Drafts): boolean {
+  const form = drafts.graduating;
+  const shown = state.outcome === 'loading' ? state.previous : state.value;
+  if (drafts.conflict !== 'graduate' || form === null || shown === null) return false;
+  return !shown.map.fog.some((patch) => patch.id === form.patch);
 }
 
 export function MapScreen(props: MapScreenProps): ReactElement {
@@ -88,7 +171,8 @@ export function MapScreen(props: MapScreenProps): ReactElement {
     run: () => client.read<MapViewResult>('map.view', { recordId: props.mapKey }),
     deps: [props.mapKey],
   });
-  const { command, sent, send, drafts, open } = useWrites(client, reload);
+  const rereading = state.outcome === 'loading';
+  const { command, sent, send, locked, drafts, open } = useWrites(client, reload, rereading);
   // Held above the read, so a reread after a write keeps the view and filters.
   const [view, setView] = useState<MapViewName>('map');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
@@ -101,7 +185,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
           {needsKey(sent, 'refusal' in command.failure ? command.failure.refusal : undefined)}
         </p>
       )}
-      {drafts.conflict === null ? null : (
+      {drafts.conflict === null || patchGone(state, drafts) ? null : (
         <p className="field__error" data-map-conflict="">
           Someone else changed this map while you were typing. What you typed is kept; save it again
           to write it over the latest version.
@@ -117,7 +201,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
             onView={setView}
             filters={filters}
             onFilters={setFilters}
-            busy={command.locked}
+            locked={locked}
             send={send}
             drafts={drafts}
           />
