@@ -126,16 +126,14 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
             {props.refusal}
           </p>
         )}
-        <div className="sb__sh">
-          <span className="sb__k">Current run</span>
-          <span className="sbact__meta u-mono" data-agent="run-id">
-            {shown.head.runId ?? 'not planned'}
-          </span>
-        </div>
+        <CurrentRun runId={shown.head.runId} />
         <Summary story={shown} />
         <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
         <Unknown {...props} shown={shown} />
-        <StopAnswers {...props} runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)} />
+        <StopAnswers
+          {...props}
+          runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)}
+        />
         <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
         <StagedOutput story={shown} />
         <Gate
@@ -154,6 +152,18 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         )}
       </div>
       <RunSide {...props} shown={shown} />
+    </div>
+  );
+}
+
+/** The shown run's id, or that none is planned yet. */
+function CurrentRun({ runId }: { readonly runId: RunStory['head']['runId'] }): ReactElement {
+  return (
+    <div className="sb__sh">
+      <span className="sb__k">Current run</span>
+      <span className="sbact__meta u-mono" data-agent="run-id">
+        {runId ?? 'not planned'}
+      </span>
     </div>
   );
 }

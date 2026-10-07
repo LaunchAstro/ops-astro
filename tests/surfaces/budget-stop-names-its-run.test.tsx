@@ -92,7 +92,9 @@ describe('a budget stop names the run it acts on', () => {
     ]);
     const page = await pane(props);
     const runs = (): readonly (string | null)[] =>
-      page.all(`${MAIN} [data-agent="budget-stop"]`).map((each) => each.getAttribute('data-stop-run'));
+      page
+        .all(`${MAIN} [data-agent="budget-stop"]`)
+        .map((each) => each.getAttribute('data-stop-run'));
     expect(runs()).toStrictEqual(['run-latest']);
     await page.click('[data-attempt="1"]');
     expect(runs()).toStrictEqual(['run-earlier']);
