@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an escalation rests only on recipient grants it held before its locks, so a grant issued and revoked mid-escalation never lets it write"
+}

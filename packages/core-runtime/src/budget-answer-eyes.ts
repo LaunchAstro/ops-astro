@@ -6,6 +6,7 @@
 // different person approving the same amount whose `billing:decide` on the
 // run's task is live at the locked instant.
 
+import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
   approvalsOf,
@@ -128,4 +129,29 @@ function billingHoldsAt(tx: TenantQuery, opened: Opened): Holds {
     scope: { kind: 'record', id: opened.locked.task_id },
   } as const;
   return async (subjects) => (await checkAuthorityAt(tx, subjects, scope, opened.lockedAt)).ok;
+}
+
+/** A first approval of the top-up's figure, by the answering person, for a second to pair with. */
+export async function insertApproval(
+  tx: TenantQuery,
+  request: TopUpFigure & { readonly runId: string },
+  { locked, person }: Opened,
+): Promise<string> {
+  const id = randomUUID();
+  await tx.query(
+    `insert into public.budget_approvals
+       (business_id, id, ask_id, run_id, person_id, actor_id, amount_minor, currency)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      tx.businessId,
+      id,
+      locked.ask_id,
+      request.runId,
+      person.personId,
+      person.actorId,
+      request.amountMinor,
+      request.currency,
+    ],
+  );
+  return id;
 }

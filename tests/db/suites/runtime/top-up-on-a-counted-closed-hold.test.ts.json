@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a stop raised on a closed hold whose open call a top-up already counted, and no person closed, takes a top-up as any closed stop does; only a call a write-off or outcome closed refuses it"
+}
