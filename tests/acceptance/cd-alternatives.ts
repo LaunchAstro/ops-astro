@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-four operations that name no identifier, each with a minimal valid body.
+ * The fifty-seven operations that name no identifier, each with a minimal valid body.
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
  * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
  * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
