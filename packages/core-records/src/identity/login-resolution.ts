@@ -22,14 +22,7 @@
 // leak that makes a wrong-business read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
-import { refuseCommand, type CommandRefusal } from '../register.ts';
-import type { IdentityRefusalCode } from './refusals.ts';
-
-type Refusal = CommandRefusal<IdentityRefusalCode>;
-
-/** Identity names nothing: which of several reasons applied is itself an inference. */
-const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
-  refuseCommand(code, [], fixes);
+import { refuse, noMembership, NO_MEMBERSHIP_FIXES, type Refusal } from './access-ended.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { admitQuota, type QuotaRefusal } from './quota.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
@@ -37,6 +30,7 @@ import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
+export { NO_MEMBERSHIP_FIXES };
 
 /** What a resolved call runs as. The business is the server's value, not the caller's. */
 export interface Session {
@@ -82,11 +76,6 @@ interface ResolutionRow {
   readonly by_subject: boolean;
 }
 
-export const NO_MEMBERSHIP_FIXES = [
-  'ask an administrator of this business to link this login to a person',
-  'check that the business named in the request is the intended one',
-] as const;
-
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
 export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
 const SECOND_FACTOR_FIXES = [
@@ -124,7 +113,8 @@ const RESOLUTION = `
  *
  * Order matters and is the contract's: membership before actor. A login with
  * no active mapping, or a mapping to a person who is no longer a member, is
- * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection. The one mapped
+ * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection — or, for a login
+ * whose access here was ended (C58), `AUTH_ACCESS_ENDED`. The one mapped
  * non-member who is not refused there is an external party standing on a live
  * share and holding no business grant, whose `roleKey` is null. A person with
  * standing but no active acting identity is `ACTOR_INACTIVE`, which says more
@@ -150,11 +140,10 @@ export async function standingOf(
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
-  if (found === undefined || found.person_id === null) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
-  }
+  if (found === undefined) return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+  if (found.person_id === null) return await noMembership(tx, found.login_id);
   if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+    return await noMembership(tx, found.login_id);
   }
   if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
 
