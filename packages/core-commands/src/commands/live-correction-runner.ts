@@ -73,7 +73,7 @@ type Deployed = { revision: string; deploymentId: string };
 /** The provider calls, each a catalogued operation through the guarded call or the fence. */
 export interface RunnerPorts {
   readonly readSource: PublishPorts['readSource'];
-  /** `site.request.read` by the seam. */
+  /** `site.source.read` of the bound file on the default branch. */
   readonly readBack: PublishPorts['readBack'];
   readonly publish: PublishPorts['publish'];
   readonly readDeployment: (
@@ -89,6 +89,8 @@ export interface RunnerPorts {
   readonly now: () => number;
   /** Every refusal and unknown the guarded calls recorded on this run, by code. */
   readonly refusals: () => readonly string[];
+  /** The refusal of a correction these ports were not bound to (`bindingRefuses`), or nothing. */
+  readonly unbound: (correction: LiveCorrection) => string | undefined;
 }
 
 export type RunResult =
@@ -150,12 +152,12 @@ export async function record(
   return { kind: 'unrecorded', outcome: result.outcome, code: written.code };
 }
 
-/** A stored page the fence refuses stops the run before anything is read or sent. */
+/** Ports bound to another correction, or a stored page the fence refuses, stop the run first. */
 export async function pageRefused(
   correction: LiveCorrection,
   ports: RunnerPorts,
 ): Promise<RunResult | undefined> {
-  const code = pageNotCatalogued(correction.pageUrl, ports.capture);
+  const code = ports.unbound(correction) ?? pageNotCatalogued(correction.pageUrl, ports.capture);
   return code === undefined ? undefined : await waiting(code, ports);
 }
 
@@ -288,6 +290,8 @@ export async function runLivePublish(
     return await observe(db, run, correction, accepted, ports);
   }
   if (correction.state === 'unknown' || correction.state === 'accepted') {
+    const unfenced = await pageRefused(correction, ports);
+    if (unfenced !== undefined) return unfenced;
     return await unknownWaits(db, run, { step: 'publish', outcome: correction.state }, ports);
   }
   const job = await rebuild(correction, ports);

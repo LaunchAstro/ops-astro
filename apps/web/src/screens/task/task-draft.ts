@@ -6,6 +6,8 @@
 // **Kept for its person until Create or Cancel (DN-04), within their own
 // signed-in session.** The draft lives in this tab's storage under the
 // business and the person, so X, Escape, navigating away and a reload keep it.
+// When storage is unavailable, this tab's memory keeps it across panel remounts
+// until the session ends; a reload cannot retain that fallback.
 // Signing out, the session ending, a business switch and another person's
 // sign-in drop it (ruling ORCH57, the panel host does it). Nothing reaches the
 // server until Create.
@@ -129,7 +131,12 @@ export const newAttempt = (id: string): Attempt => ({
 /** The draft as stored: its fields and the Create still unsettled. */
 type Stored = Partial<TaskDraft> & { readonly attempt?: Partial<Attempt> };
 
+/** Writes browser storage could not keep, cleared by the same owner cleanup. */
+const unstored = new Map<string, Stored>();
+
 function readStored(storage: Storage | null, person: string): Stored | null {
+  const fallback = unstored.get(person);
+  if (fallback !== undefined) return fallback;
   try {
     const held = storage?.getItem(keyOf(person)) ?? null;
     return held === null ? null : (JSON.parse(held) as Stored);
@@ -138,7 +145,7 @@ function readStored(storage: Storage | null, person: string): Stored | null {
   }
 }
 
-/** The person's kept draft, or null when there is none or storage is blocked. */
+/** The person's kept draft from browser storage or this tab's fallback, or null. */
 export function readDraft(storage: Storage | null, person: string): TaskDraft | null {
   const stored = readStored(storage, person);
   if (stored === null) return null;
@@ -159,11 +166,15 @@ export function keepDraft(
   draft: TaskDraft,
   attempt: Attempt | null = null,
 ): void {
+  const stored: Stored = attempt === null ? draft : { ...draft, attempt };
+  unstored.set(person, stored);
   try {
-    const stored: Stored = attempt === null ? draft : { ...draft, attempt };
-    storage?.setItem(keyOf(person), JSON.stringify(stored));
+    if (storage === null) return;
+    const serialised = JSON.stringify(stored);
+    storage.setItem(keyOf(person), serialised);
+    if (storage.getItem(keyOf(person)) === serialised) unstored.delete(person);
   } catch {
-    // A blocked store keeps the draft only while the panel is open.
+    // Keep the fallback across remounts when browser storage cannot write.
   }
 }
 
@@ -180,10 +191,11 @@ export function saveAttempt(
 }
 
 export function dropDraft(storage: Storage | null, person: string): void {
+  unstored.delete(person);
   try {
     storage?.removeItem(keyOf(person));
   } catch {
-    // Nothing was kept.
+    // Browser storage is unavailable; the fallback has been cleared.
   }
 }
 
@@ -192,6 +204,9 @@ export function dropDraft(storage: Storage | null, person: string): void {
  * key of another person or business is removed unread.
  */
 export function dropOtherDrafts(storage: Storage | null, person: string | null): void {
+  for (const owner of unstored.keys()) {
+    if (owner !== person) unstored.delete(owner);
+  }
   try {
     if (storage === null) return;
     const own = person === null ? null : keyOf(person);
@@ -200,6 +215,6 @@ export function dropOtherDrafts(storage: Storage | null, person: string | null):
       if (key !== null && key !== own && key.startsWith(PREFIX)) storage.removeItem(key);
     }
   } catch {
-    // A blocked store kept nothing.
+    // Browser storage is unavailable; other owners' fallbacks have been cleared.
   }
 }

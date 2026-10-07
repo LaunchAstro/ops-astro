@@ -161,7 +161,14 @@ it('a credential echoed in a declared string field cannot escape', async () => {
   const recorded: string[] = [];
   const result = await callConnector(
     siteOperation('site.publish'),
-    { repository: 'agency/site', number: '17', sha: 'revision-approved' },
+    {
+      repository: 'agency/site',
+      path: target.path,
+      branch: 'main',
+      sha: 'blob-before',
+      content: 'PHA+',
+      message: 'Live correction',
+    },
     {
       resolve: async () => ['140.82.112.6'],
       credential: async () => canary,
@@ -170,11 +177,13 @@ it('a credential echoed in a declared string field cannot escape', async () => {
       },
       transport: async (request) => {
         expect(request.headers['authorization']).toBe(`Bearer ${canary}`);
-        return json({ merged: true, sha: canary });
+        return json({ content: { sha: 'blob-after' }, commit: { sha: canary } });
       },
     },
   );
   expect(JSON.stringify({ result, recorded })).not.toContain(canary);
+  expect(result).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
+  expect(recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
 });
 
 it('cancellation during the drift read prevents dispatch', async () => {

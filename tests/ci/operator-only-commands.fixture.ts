@@ -11,11 +11,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
@@ -40,7 +40,11 @@ export const STAGED = '0123456789ab';
 export const LINE = 'Tried the task page and the approval queue on staging; both behave.';
 
 // Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
-export const scratch: string = join(tmpdir(), `s0-1e-${randomBytes(6).toString('hex')}`);
+// Promotion checks every ancestor, so use the real checkout rather than a shared temp folder.
+export const scratch: string = join(
+  realpathSync(process.cwd()),
+  `s0-1e-${randomBytes(6).toString('hex')}`,
+);
 beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 

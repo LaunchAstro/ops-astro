@@ -46,6 +46,9 @@ export interface GoTrueLoginOptions {
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 16 * 1024;
+// Admin user responses include the person's metadata. Only the user update
+// reads up to one megabyte; factor deletion keeps the smaller bound.
+const USER_MAX_BYTES = 1024 * 1024;
 /** GoTrue takes a Go duration; this is 100 years. */
 const BAN_DURATION = '876000h';
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -71,9 +74,13 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
   // The ban is both steps: each is done once the ban holds, and asking twice is safe.
   const ban = async (subject: string): Promise<ProviderAnswer<void>> => {
     if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-    const sent = await call(to, 'PUT', `/admin/users/${subject}`, await options.adminKey(), {
-      ban_duration: BAN_DURATION,
-    });
+    const sent = await call(
+      { ...to, maxBytes: options.maxBytes ?? USER_MAX_BYTES },
+      'PUT',
+      `/admin/users/${subject}`,
+      await options.adminKey(),
+      { ban_duration: BAN_DURATION },
+    );
     // A 404 naming the user gone: nothing is left to ban, the step is done.
     if ('fault' in sent) {
       return sent.gone === 'user'

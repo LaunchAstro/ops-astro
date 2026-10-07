@@ -106,6 +106,8 @@ export function doubles(
     },
     now: () => (clock += 250),
     refusals: () => seen.fenceRefusals.map((refusal) => refusal.code),
+    // Not bound to one correction: the doubles run any correction they are given.
+    unbound: (): undefined => {},
     ...overrides,
   };
 }

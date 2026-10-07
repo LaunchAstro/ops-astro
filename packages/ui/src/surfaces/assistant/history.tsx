@@ -2,10 +2,10 @@
 //
 // MP-7-11 CS-7.33, C36: the drawer's history. A head control shows the person's
 // own past conversations, read by the caller when shown; a row opens its
-// conversation as a tab and closes the list. Showing it is view state: it
-// writes nothing.
+// conversation as a tab and closes the list. A failed read shows its reason
+// with the history rows available for retry. Showing it writes nothing.
 
-import { useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { AssistantHistory } from './types.ts';
 import { Icon } from '../../primitives/Icon.tsx';
 
@@ -15,6 +15,15 @@ export function useHistory(history: AssistantHistory | undefined): {
   readonly list: ReactElement | null;
 } {
   const [shown, setShown] = useState(false);
+  const reopening = useRef(false);
+  const said = history?.said;
+  useEffect(() => {
+    // A row closes the list before its read lands. Bring a refusal back into view.
+    if (reopening.current && said !== undefined && said !== null) {
+      reopening.current = false;
+      setShown(true);
+    }
+  }, [said]);
   if (history === undefined) return { control: null, list: null };
   const control = (
     <button
@@ -25,6 +34,7 @@ export function useHistory(history: AssistantHistory | undefined): {
       aria-label="Past conversations"
       aria-expanded={shown}
       onClick={() => {
+        reopening.current = false;
         if (!shown) history.onShow();
         setShown(!shown);
       }}
@@ -34,6 +44,7 @@ export function useHistory(history: AssistantHistory | undefined): {
   );
   if (!shown) return { control, list: null };
   const open = (id: string): void => {
+    reopening.current = true;
     setShown(false);
     history.onOpen(id);
   };
@@ -45,9 +56,8 @@ function PastList(props: {
   readonly open: (id: string) => void;
 }): ReactElement {
   const { past, said } = props.history;
-  let body: ReactElement;
-  if (said !== null) body = <p className="aip__msg aip__msg--note">{said}</p>;
-  else if (past === null) body = <p role="status">Reading your conversations…</p>;
+  let body: ReactElement | null;
+  if (past === null) body = said === null ? <p role="status">Reading your conversations…</p> : null;
   else if (past.length === 0)
     body = <p className="aip__msg aip__msg--note">No past conversations.</p>;
   else {
@@ -70,6 +80,11 @@ function PastList(props: {
   }
   return (
     <div data-assistant="past" aria-label="Past conversations">
+      {said !== null && (
+        <p className="aip__msg aip__msg--note" role="alert">
+          {said}
+        </p>
+      )}
       {body}
     </div>
   );

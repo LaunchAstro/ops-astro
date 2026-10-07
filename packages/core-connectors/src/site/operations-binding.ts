@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The operations the publish binding and the proposal's composition add to
-// the live correction's path (the batch review's recommendation for SL15):
+// the live correction's path:
 //
 // - `site.source.propose.branch` and `site.source.propose.request`: the two
 //   guarded writes `site.source.propose` composes beside its contents write
 //   (branch, commit, request; `propose.ts`);
-// - `site.request.read`: the request's merge state, which `site.publish`
-//   reads back by when the merge answers `not_mergeable`;
-// - `site.deployment.lookup`: the hosting deployment found by the merged
+// - `site.request.read`: the human review request's state;
+// - `site.deployment.lookup`: the hosting deployment found by the written
 //   commit, so the publish answers a deployment id without a promotion.
 //
 // Declarations are an adapter author's claims, evidenced against the real

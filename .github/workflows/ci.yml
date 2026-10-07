@@ -226,6 +226,13 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
+      - name: Use the official HTTPS Ubuntu archive for browser dependencies
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|' /etc/apt/apt-mirrors.txt
+          fi
       - name: The pinned headless shell for MP-1-1's harness captures and the browser proofs
         run: pnpm exec playwright install --with-deps --only-shell chromium
       # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
@@ -731,6 +738,13 @@ jobs:
       # request the wrapped command runs only when the change reaches what it
       # proves, and the step says why when it does not; on a merge group or a
       # push it always runs. No step here carries a condition.
+      - name: Use the official HTTPS Ubuntu archive for browser dependencies
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|' /etc/apt/apt-mirrors.txt
+          fi
       - name: The pinned headless shell and its system libraries
         run: node scripts/ci-scope.ts 'visual drift' -- pnpm exec playwright install --with-deps --only-shell chromium
       - name: The mode's own cases, against a made-up page

@@ -6,28 +6,25 @@
 // from the page; any `[data-new-task]` control opens the draft through the
 // gesture law, prefilled from the door; and the task open in the panel comes
 // back after a reload (S1, `aa-task-open`).
-
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, type Session, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 import { store } from './draft-support.tsx';
-
 afterEach(() => {
   unmountAll();
   sent.length = 0;
+  vi.restoreAllMocks();
 });
-
 const KEY = 'Proj-Verity-Pacing';
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
 const TASK = '.dpanel[data-panel-id="task"]';
 const TAB = '.dock__tab[data-panel="task"]';
 const DOOR = '#perspective-panel-team [data-panel-door="log"]';
-
-function sessions(): SessionStore {
-  const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
+function sessions(session: Session = SESSION): SessionStore {
+  const held = new Map([['ops-astro.session', JSON.stringify(session)]]);
   const kept: StorageLike = {
     getItem: (key) => held.get(key) ?? null,
     setItem: (key, value) => {
@@ -39,10 +36,8 @@ function sessions(): SessionStore {
   };
   return new SessionStore(kept);
 }
-
 /** What the app sent to the task and time commands, in order. */
 const sent: { readonly to: string; readonly body: Record<string, unknown> }[] = [];
-
 const fetch = ((url: string | URL, init?: RequestInit) => {
   const where = String(url);
   const write = /\/(task\/(create|set_party|set_category|assign))$/u.exec(where)?.[1];
@@ -69,8 +64,13 @@ const fetch = ((url: string | URL, init?: RequestInit) => {
   if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
   return Promise.resolve(json({ ok: false }));
 }) as unknown as typeof globalThis.fetch;
-
-async function app(storage: Storage, path = `/task/${KEY}`, width = 1100) {
+const DEFAULT_READER = { session: SESSION, fetch };
+async function app(
+  storage: Storage,
+  path = `/task/${KEY}`,
+  width = 1100,
+  reader: { readonly session: Session; readonly fetch: typeof globalThis.fetch } = DEFAULT_READER,
+) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1000 });
   const view = await mount(
@@ -79,17 +79,16 @@ async function app(storage: Storage, path = `/task/${KEY}`, width = 1100) {
       navigate={() => {
         /* stays */
       }}
-      sessions={sessions()}
+      sessions={sessions(reader.session)}
       gotrueUrl="http://identity.invalid"
       apiOrigin=""
-      fetch={fetch}
+      fetch={reader.fetch}
       storage={storage}
     />,
   );
   await tick();
   return view;
 }
-
 describe('MP-4-13 the dock’s New task is on every page', () => {
   it('the Projects (to-dos) panel’s head New opens a draft filed from the page, and the rail keeps its doors', async () => {
     const view = await app(store());
@@ -102,6 +101,66 @@ describe('MP-4-13 the dock’s New task is on every page', () => {
     expect(view.find('[data-draft-admission]')?.textContent).toContain(
       'Nothing here to guess from: due in 7 days',
     );
+  });
+});
+const ADA = { businessKey: 'alpha', email: 'ada@example.test' } satisfies Session;
+const ADA_OPEN = 'ops-astro.task-open.alpha:ada@example.test';
+const OPEN_CANARY = 'client-A-open-task-canary';
+const CANARY_ID = '55555555-5555-4555-8555-555555555555';
+/** A planted client-A task. Refusal is supplied by the API stub, never by the UI. */
+function openTaskApi() {
+  const requests: { readonly to: string; readonly body: unknown }[] = [];
+  const apiFetch: typeof globalThis.fetch = (input, init) => {
+    const to = String(input);
+    const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+    requests.push({ to, body });
+    if (to.endsWith('/task/read')) {
+      return Promise.resolve(
+        json({
+          ok: true,
+          task: task({
+            id: CANARY_ID,
+            title: OPEN_CANARY,
+            clientSet: true,
+            client: { id: 'client-a', name: 'Client A' },
+          }),
+        }),
+      );
+    }
+    return fetch(input, init);
+  };
+  return { fetch: apiFetch, requests };
+}
+describe('R07 open-task reload isolation through the App', () => {
+  it.each([
+    { crossing: 'another person', session: { businessKey: 'alpha', email: 'bea@example.test' } },
+    { crossing: 'another business', session: { businessKey: 'bravo', email: ADA.email } },
+  ])('$crossing never reads or retains Ada’s saved open-task pointer', async ({ session }) => {
+    const storage = store();
+    const api = openTaskApi();
+    const first = await app(storage, `/task/${KEY}`, 1100, { session: ADA, fetch: api.fetch });
+    await first.click(DOOR);
+    await tick();
+    expect(first.find(`${TASK} [data-panel-title]`)?.textContent).toBe(OPEN_CANARY);
+    expect(JSON.parse(storage.getItem(ADA_OPEN) ?? 'null')).toEqual({
+      taskKey: KEY,
+      door: 'log',
+      tab: null,
+    });
+    await first.unmount();
+
+    const reads = vi.spyOn(storage, 'getItem');
+    api.requests.length = 0;
+    const again = await app(storage, '/projects/', 1100, { session, fetch: api.fetch });
+    await tick();
+    expect(again.find('[data-task-panel]')).toBeNull();
+    expect(again.text()).not.toContain(OPEN_CANARY);
+    expect(again.text()).not.toContain(KEY);
+    expect(again.host.innerHTML).not.toContain(CANARY_ID);
+    expect(api.requests.some(({ to }) => to.endsWith('/task/board'))).toBe(true);
+    expect(api.requests.filter(({ to }) => to.endsWith('/task/read'))).toEqual([]);
+    expect(reads.mock.calls.map(([key]) => key)).not.toContain(ADA_OPEN);
+    expect(storage.getItem(ADA_OPEN)).toBeNull();
   });
 });
 

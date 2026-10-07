@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner on its site ports writes only the approved file atomically on the default branch, keeps concurrent edits and retargeted requests safe without merging, observes the written commit and reverts forward. Party, page, file and seam crossings send and capture nothing; unknown runs on another binding append no reconciliation receipt."
+}

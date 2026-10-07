@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The catalogued operations of the live correction (release decision section
-// 3.1, and the batch review's binding for SL15), and nothing else on its
-// path. The values are the release decision's proposal; declarations are an
-// adapter author's claims, and the walk-through evidences them against the
-// real repository and project before the first real change. `site.publish`
-// stays the merge of the approved request: its deployment is found by the
-// merged commit (`site.deployment.lookup`, `operations-binding.ts`), never
-// promoted, and an answer of `not_mergeable` is read back by the request's
-// merge state (`site.request.read`).
+// The catalogued operations of the live correction. Publish writes one
+// approved file atomically on the default branch, using its pre-image blob
+// as the precondition. The request remains the human review screen. The
+// deployment is found by the written commit and is never promoted.
 
 import {
   registerOperation,
@@ -90,27 +85,16 @@ export const SITE_OPERATIONS: readonly OperationRegistration[] = [
       acknowledgement_semantics: 'accepted',
       reconcile_mode: 'reconcilable',
       reconcile_seam: {
-        read_operation: 'site.request.read',
-        reference: 'request number, held before dispatch',
+        read_operation: 'site.source.read',
+        reference: 'bound file on the default branch, held before dispatch',
       },
-      nothing_happened_proof: ['not_mergeable', 'merge_conflict'],
+      nothing_happened_proof: ['sha_mismatch'],
       credential_tier: 'T2',
       trust_class: 'isolated_connector',
       quota_class: SOURCE_QUOTA,
       data_flow_labels: ['site_source'],
     },
-    {
-      host: SOURCE_HOST,
-      method: 'PUT',
-      pathTemplate: '/repos/{repository*}/pulls/{number}/merge',
-      bodyParams: ['sha'],
-      redirects: 'none',
-      responseSchema: { merged: 'boolean', sha: 'string' },
-      refusalProofs: { '405': 'not_mergeable', '409': 'merge_conflict' },
-      maxResponseBytes: 16_384,
-      timeoutMs: 10_000,
-      credential: 'source_control',
-    },
+    contents('PUT'),
   ),
   operation(
     {

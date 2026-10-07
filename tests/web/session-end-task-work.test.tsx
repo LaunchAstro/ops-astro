@@ -1,30 +1,22 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The session-end group (review #305 rows 19 and 22, ruling ORCH57 14:30:27Z):
-// the new-task draft and the open task panel belong to one person in one
-// business for one signed-in session. Signing out, the session ending,
-// switching business and another person signing in each drop both: the draft
-// leaves the tab's storage and the panel closes. A draft key for another person
-// or business is removed, never read. Kept for its person (DN-04) still holds
-// inside their own session, a reload included.
-//
-// Driven through the real application, against a stand-in API where Alpha and
-// Bravo each hold an unrelated task with the same key, TSK-1.
-
+// Session-end proof through the real App and tab storage, with a stand-in API.
+// Drafts and open-task pointers belong to one person in one business.
+// Alpha and Bravo hold unrelated tasks with the same key, TSK-1.
+// R07 also checks the display boundary for a refused client-A task read.
 import { act, useState, type ReactElement } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
-import { task } from './task-page-stub.tsx';
+import { NOT_FOUND, task } from './task-page-stub.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
 import { settle } from './mp-2-1-support.tsx';
-
 afterEach(async () => {
   await unmountAll();
   window.sessionStorage.clear();
+  vi.restoreAllMocks();
 });
-
 const TITLES: Readonly<Record<string, string>> = {
   alpha: 'Alpha launch brief',
   bravo: 'Bravo unrelated task',
@@ -32,15 +24,15 @@ const TITLES: Readonly<Record<string, string>> = {
 const CANARY = 'alpha-draft-canary';
 const MIA = { businessKey: 'alpha', email: 'mia@alpha.local' };
 const DRAFT_PREFIX = 'ops-astro.task-draft.';
-
+const OPEN_PREFIX = 'ops-astro.task-open.';
 const silent = (): Promise<Response> =>
   new Promise<Response>(() => {
     /* never answers */
   });
-
 /** Alpha and Bravo, each with its own TSK-1; every business call refused once `end` is called. */
-function server() {
+function server(taskReply?: Response) {
   let ended = false;
+  const requests: { readonly to: string; readonly body: unknown }[] = [];
   const answer = (at: string): Promise<Response> | Response => {
     if (at.startsWith('http://identity.invalid/token')) {
       ended = false;
@@ -54,7 +46,10 @@ function server() {
       return json({ refused: true, code: 'AUTH_SESSION_EXPIRED', names: [], fixes: [] }, 401);
     }
     if (at.endsWith('/task/read')) {
-      return json({ ok: true, task: task({ key: 'TSK-1', title: TITLES[business] }) });
+      return (
+        taskReply?.clone() ??
+        json({ ok: true, task: task({ key: 'TSK-1', title: TITLES[business] }) })
+      );
     }
     if (at.endsWith('/session/capabilities')) {
       return json({ ok: true, personId: 'p', businessKey: business, grants: [] });
@@ -66,22 +61,24 @@ function server() {
     if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
     return silent();
   };
-  const fetch = ((url: string | URL) =>
-    Promise.resolve(answer(String(url)))) as unknown as typeof globalThis.fetch;
+  const fetch: typeof globalThis.fetch = (url, init) => {
+    const to = String(url);
+    const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+    requests.push({ to, body });
+    return Promise.resolve(answer(to));
+  };
   return {
     fetch,
+    requests,
     end: (): void => {
       ended = true;
     },
   };
 }
-
 const addressBar = { go: (_path: string): void => undefined };
-
 /** The application on the tab's real storage, as `main.tsx` composes it. */
-async function open(address: string, seed: Record<string, string> = {}) {
+async function open(address: string, seed: Record<string, string> = {}, api = server()) {
   for (const [key, value] of Object.entries(seed)) window.sessionStorage.setItem(key, value);
-  const api = server();
   const sessions = new SessionStore(window.sessionStorage);
   function Harness(): ReactElement {
     const [path, setPath] = useState(address);
@@ -102,25 +99,25 @@ async function open(address: string, seed: Record<string, string> = {}) {
   await settle();
   return { view, api, sessions };
 }
-
 type View = Awaited<ReturnType<typeof open>>['view'];
-
 const go = async (path: string): Promise<void> => {
   await act(() => {
     addressBar.go(path);
   });
   await settle();
 };
-
 /** Every draft key the tab holds. */
 const draftKeys = (): readonly string[] =>
   Array.from({ length: window.sessionStorage.length }, (_, i) => window.sessionStorage.key(i))
     .filter((key): key is string => key?.startsWith(DRAFT_PREFIX) ?? false)
     .toSorted();
-
+/** Open-task pointers are checked separately: removing drafts proves nothing about these. */
+const openKeys = (): readonly string[] =>
+  Array.from({ length: window.sessionStorage.length }, (_, i) => window.sessionStorage.key(i))
+    .filter((key): key is string => key?.startsWith(OPEN_PREFIX) ?? false)
+    .toSorted();
 const panelTitle = (view: View): string | null =>
   view.find('[data-task-panel] [data-panel-title]')?.textContent ?? null;
-
 /** On the task page: a draft kept (typed, then closed) and the task panel open over it. */
 async function workInProgress(view: View): Promise<void> {
   await view.click('[data-panel-door="open"]');
@@ -132,8 +129,11 @@ async function workInProgress(view: View): Promise<void> {
   await settle();
   expect(panelTitle(view)).toBe(TITLES['alpha']);
   expect(draftKeys()).toStrictEqual([`${DRAFT_PREFIX}alpha:mia@alpha.local`]);
+  expect(openKeys()).toStrictEqual([`${OPEN_PREFIX}alpha:mia@alpha.local`]);
+  expect(
+    JSON.parse(window.sessionStorage.getItem(`${OPEN_PREFIX}alpha:mia@alpha.local`) ?? 'null'),
+  ).toMatchObject({ taskKey: 'TSK-1', door: 'open' });
 }
-
 async function signIn(view: View, email: string, business = 'alpha'): Promise<void> {
   await view.choose('#signin-business', business);
   await view.type('#signin-email', email);
@@ -141,14 +141,14 @@ async function signIn(view: View, email: string, business = 'alpha'): Promise<vo
   await view.click('form.signin__form button[type="submit"]');
   await settle();
 }
-
 /** Signed out: no draft anywhere in the tab, and no panel. */
 function expectNothingKept(view: View): void {
   expect(view.find('#signin-email')).not.toBeNull();
   expect(draftKeys()).toStrictEqual([]);
+  expect(openKeys()).toStrictEqual([]);
+  expect(view.find('[data-task-panel]')).toBeNull();
   expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(CANARY);
 }
-
 /** Signed in again, on the task page: no panel came back, and New task opens an empty draft. */
 async function expectFreshStart(view: View): Promise<void> {
   await go('/task/TSK-1');
@@ -160,9 +160,7 @@ async function expectFreshStart(view: View): Promise<void> {
   expect(view.host.querySelector<HTMLInputElement>('#panel-draft-name')?.value).toBe('');
   expect(view.text()).not.toContain(CANARY);
 }
-
 const signedInAsMia = { 'ops-astro.session': JSON.stringify(MIA) };
-
 describe('session end drops the task draft and the open panel', () => {
   it('signing out drops the draft from the tab and closes the panel; signing in again starts fresh', async () => {
     const { view } = await open('/task/TSK-1', signedInAsMia);
@@ -192,10 +190,10 @@ describe('session end drops the task draft and the open panel', () => {
     await go('/projects/');
     await signIn(view, 'noah@alpha.local');
     expect(draftKeys()).toStrictEqual([]);
+    expect(openKeys()).toStrictEqual([]);
     await expectFreshStart(view);
   });
 });
-
 describe('a business switch drops the task draft and the open panel', () => {
   it('switching from alpha to bravo closes the panel and never reads bravo’s TSK-1 as alpha’s', async () => {
     const held = {
@@ -205,11 +203,12 @@ describe('a business switch drops the task draft and the open panel', () => {
         code: 'AUTH_SESSION_EXPIRED',
       }),
     };
-    const { view, sessions } = await open('/sign-in', held);
+    const { view, sessions, api } = await open('/sign-in', held);
     await signIn(view, MIA.email, 'alpha');
     await go('/task/TSK-1');
     await workInProgress(view);
     await go('/projects/');
+    api.requests.length = 0;
     await view.click('[data-switch="held-address"]');
     await settle();
     expect(sessions.session?.businessKey).toBe('bravo');
@@ -217,9 +216,12 @@ describe('a business switch drops the task draft and the open panel', () => {
     expect(view.find('[data-task-panel]')).toBeNull();
     expect(view.find('[data-draft-panel]')).toBeNull();
     expect(draftKeys()).toStrictEqual([]);
+    expect(openKeys()).toStrictEqual([]);
+    expect(api.requests.filter(({ to }) => to.endsWith('/task/read'))).toEqual([
+      { to: '/api/b/bravo/task/read', body: { recordId: 'TSK-1' } },
+    ]);
   });
 });
-
 describe('a draft key from another person or business is removed, never read', () => {
   it('on load, another person’s and another business’s draft keys go; this person’s own is kept', async () => {
     const own = JSON.stringify({ title: 'Mia’s own draft' });
@@ -236,5 +238,61 @@ describe('a draft key from another person or business is removed, never read', (
     expect(view.host.querySelector<HTMLInputElement>('#panel-draft-name')?.value).toBe(
       'Mia’s own draft',
     );
+  });
+});
+const ADA = { businessKey: 'alpha', email: 'ada@example.test' };
+const ADA_OPEN = 'ops-astro.task-open.alpha:ada@example.test';
+const KEY = 'Proj-Verity-Pacing';
+const OPEN_CANARY = 'client-A-open-task-canary';
+const CANARY_ID = '55555555-5555-4555-8555-555555555555';
+
+describe('R07 own open-task pointer and client read refusal through the App', () => {
+  it('Ada’s own saved pointer reloads the planted client-A task', async () => {
+    const storage = window.sessionStorage;
+    storage.setItem(ADA_OPEN, JSON.stringify({ taskKey: KEY, door: 'open', tab: null }));
+    const api = server(
+      json({
+        ok: true,
+        task: task({
+          id: CANARY_ID,
+          key: KEY,
+          title: OPEN_CANARY,
+          clientSet: true,
+          client: { id: 'client-a', name: 'Client A' },
+        }),
+      }),
+    );
+    const { view } = await open('/projects/', { 'ops-astro.session': JSON.stringify(ADA) }, api);
+    expect(view.find('[data-task-panel] [data-panel-title]')?.textContent).toBe(OPEN_CANARY);
+    expect(view.host.innerHTML).toContain(CANARY_ID);
+    expect(api.requests.filter(({ to }) => to.endsWith('/task/read'))).toEqual([
+      { to: '/api/b/alpha/task/read', body: { recordId: KEY } },
+    ]);
+    expect(storage.getItem(ADA_OPEN)).not.toBeNull();
+  });
+
+  it('a client-B reader’s own saved pointer cannot display client A after the read is refused', async () => {
+    const storage = window.sessionStorage;
+    const session = { businessKey: 'alpha', email: 'client-b-reader@example.test' };
+    const own = `ops-astro.task-open.alpha:${session.email}`;
+    storage.setItem(own, JSON.stringify({ taskKey: KEY, door: 'open', tab: null }));
+    const reads = vi.spyOn(Storage.prototype, 'getItem');
+    const api = server(json(NOT_FOUND, 404));
+    const { view } = await open(
+      '/projects/',
+      { 'ops-astro.session': JSON.stringify(session) },
+      api,
+    );
+    expect(reads.mock.calls.map(([key]) => key)).toContain(own);
+    expect(api.requests.filter(({ to }) => to.endsWith('/task/read'))).toEqual([
+      { to: '/api/b/alpha/task/read', body: { recordId: KEY } },
+    ]);
+    expect(view.find('[data-task-panel]')).not.toBeNull();
+    expect(view.find('[data-task-panel]')?.textContent).toContain('NOT_FOUND');
+    expect(view.find('[data-task-panel] [data-panel-title]')).toBeNull();
+    expect(view.text()).not.toContain(OPEN_CANARY);
+    expect(view.text()).not.toContain(KEY);
+    expect(view.host.innerHTML).not.toContain(CANARY_ID);
+    expect(view.text()).not.toContain('Client A');
   });
 });
