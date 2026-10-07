@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// C80 publish binding: the runner's provider ports for one correction's
-// proposal, each provider call a catalogued operation through the one guarded
-// call, against a double of the providers behind the transport. Nothing
-// reaches a live system.
+// C80 publish binding through guarded, catalogued provider calls.
+// Local provider doubles exercise the runner's ports; no live system is reached.
 
 import { describe, expect, it } from 'vitest';
+import {
+  writesApprovedImage,
+  publishesOnlyApprovedFile,
+  refusesConcurrentEdit,
+  refusesChangedBytes,
+} from './c80-site-binding-atomic-cases.ts';
 import {
   SITE_OPERATIONS,
   mergeAndFind,
   contentDigest,
   versionDigestOf,
-  proposeSource,
   readServed,
   readSiteSource,
   revertForward,
@@ -21,16 +23,12 @@ import {
   APPROVED,
   BEFORE,
   MERGED,
-  PAGE,
-  PROJECT,
   REPOSITORY,
   REVERTED,
-  SEAM,
   binding,
   json,
   line,
   proposed,
-  proposal,
   type SentRequest,
 } from './c80-site-provider.ts';
 
@@ -118,89 +116,19 @@ describe('C80 publish binding: only the proposed version is published', () => {
 });
 
 describe('C80 publish binding: one approved file written atomically', () => {
-  it('writes the approved after-image on the default branch and finds its written commit', async () => {
-    const site = proposed();
-    const staleBinding = { ...binding, change: { before: BEFORE, after: 'unapproved bytes' } };
-    expect(await mergeAndFind(staleBinding, APPROVED, site.deps)).toEqual({
-      kind: 'ok',
-      value: { revision: MERGED, deploymentId: 'dpl_merged', liveUrl: PAGE },
-    });
-    expect(site.sent.map(line)).toEqual([
-      `GET /repos/${REPOSITORY}/contents/src/pages/about.md?ref=main`,
-      `PUT /repos/${REPOSITORY}/contents/src/pages/about.md`,
-      `GET /v6/deployments?projectId=${PROJECT}&sha=${MERGED}&target=production&limit=1`,
-    ]);
-    expect(site.sent[1]?.body).toEqual({
-      branch: 'main',
-      sha: 'blob-base',
-      content: Buffer.from(AFTER, 'utf8').toString('base64'),
-      message: `Live correction ${SEAM}`,
-    });
-    expect(site.state.content).toBe(AFTER);
-    expect(site.state.request?.merged).toBe(false);
-  });
+  it(
+    'writes the approved after-image on the default branch and finds its written commit',
+    writesApprovedImage,
+  );
 
-  it('publishes only the approved file when another file enters the proposal before its write', async () => {
-    const site = proposed();
-    site.state.branches = ['main'];
-    site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
-    const deps = {
-      ...site.deps,
-      transport: async (request: Parameters<typeof site.deps.transport>[0]) => {
-        const answer = await site.deps.transport(request);
-        if (request.url.pathname.endsWith('/git/refs')) {
-          site.state.proposalExtras['src/pages/contact.md'] = 'unapproved contact';
-          site.state.proposalHead = 'c0ffee99';
-        }
-        return answer;
-      },
-    };
-    const made = await proposeSource(proposal, deps);
-    expect(made.kind).toBe('ok');
-    if (made.kind !== 'ok') return;
-    expect(made.value.head).toBe('c0ffee99');
-    site.sent.length = 0;
-    expect(
-      await mergeAndFind({ ...binding, proposal: { branch: SEAM, ...made.value } }, APPROVED, deps),
-    ).toMatchObject({ kind: 'ok', value: { revision: MERGED } });
-    expect(site.state.content).toBe(AFTER);
-    expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
-    expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-    expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
-    expect(site.state.request?.merged).toBe(false);
-  });
+  it(
+    'publishes only the approved file when another file enters the proposal before its write',
+    publishesOnlyApprovedFile,
+  );
 
   it.each([409, 422])(
     'refuses a concurrent default-branch edit at the atomic write with HTTP %s',
-    async (status) => {
-      const site = proposed();
-      const concurrent = BEFORE + '<p>Another footer.</p>\n';
-      const deps = {
-        ...site.deps,
-        transport: async (request: Parameters<typeof site.deps.transport>[0]) => {
-          if (request.method === 'PUT') {
-            site.state.content = concurrent;
-            site.state.blob = 'blob-concurrent';
-            if (status === 422)
-              site.state.answers[`PUT api.github.com /repos/${REPOSITORY}/contents/`] = json(
-                {},
-                status,
-              );
-          }
-          return await site.deps.transport(request);
-        },
-      };
-      expect(await mergeAndFind(binding, APPROVED, deps)).toEqual({
-        kind: 'refused',
-        code: 'PROVIDER_REFUSED',
-        proof: 'sha_mismatch',
-      });
-      expect(site.state.content).toBe(concurrent);
-      expect(site.state.deployments).toEqual({});
-      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
-      expect(site.state.request?.merged).toBe(false);
-    },
+    refusesConcurrentEdit,
   );
 
   it('writes on the default branch when the human review request is retargeted', async () => {
@@ -223,20 +151,10 @@ describe('C80 publish binding: one approved file written atomically', () => {
     expect(site.sent.map((sent) => sent.method)).toEqual(['GET']);
   });
 
-  it('refuses changed bytes carrying the approved digest before reading or writing', async () => {
-    const site = proposed();
-    expect(
-      await mergeAndFind(
-        binding,
-        {
-          ...APPROVED,
-          change: { files: [{ path: binding.path, before: BEFORE, after: 'unapproved' }] },
-        },
-        site.deps,
-      ),
-    ).toEqual({ kind: 'refused', code: 'PROPOSAL_SUPERSEDED' });
-    expect(site.sent).toEqual([]);
-  });
+  it(
+    'refuses changed bytes carrying the approved digest before reading or writing',
+    refusesChangedBytes,
+  );
 });
 
 describe('C80 publish binding: the deployment is found by the written commit, a bounded number of tries', () => {

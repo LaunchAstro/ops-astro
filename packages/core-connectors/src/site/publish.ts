@@ -1,24 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The reviewed executable: the one place the live correction's real effect
-// happens. It runs under the worker lease after the gate, and every step
-// before the dispatch refuses rather than guesses (release decision
-// sections 3 and 8):
-//
-// - no approving decision on the exact version: `APPROVAL_MISSING`;
-// - a decision on another version, or bytes other than the approved ones:
-//   `PROPOSAL_SUPERSEDED` (case 4);
-// - anything wider than the envelope: `CHANGE_ENVELOPE_EXCEEDED` (case 9);
-// - cancelled before dispatch: `CANCELLED`, nothing sent;
-// - the file moved since its pre-image was pinned: `CONTENT_DRIFTED`, a wait
-//   on a person, never an overwrite (case 5).
-//
-// After the dispatch the answer is `accepted` at most, never live (D21-5);
-// an answer that cannot be read stays `unknown` with its reference and raises
-// a task (case 6); a cancellation that arrives after the dispatch is an
-// uncertain effect, not a cancellation (case 7). Live is a later observation.
-// Every send reads its effect back through the seam first, so a retry of an
-// unknown is never sent blind (broker contract 3.4).
+// Live correction effects run under the worker lease after the gate.
+// Before dispatch, refuse missing approval (`APPROVAL_MISSING`), a different
+// version or bytes (`PROPOSAL_SUPERSEDED`, case 4), a wider envelope
+// (`CHANGE_ENVELOPE_EXCEEDED`, case 9), cancellation (`CANCELLED`), and source
+// drift (`CONTENT_DRIFTED`, case 5, waiting on a person).
+// After dispatch, the answer is at most accepted, never live (D21-5). An
+// unreadable answer keeps its reference and raises a task (case 6), and late
+// cancellation is an uncertain effect (case 7). Live requires observation.
+// Every send reads back through the seam first; unknown retries are never
+// sent blind (broker contract 3.4).
 
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';

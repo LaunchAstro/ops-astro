@@ -51,6 +51,46 @@ const params = {
   message: 'Live correction',
 };
 
+const hostileAnswers = [
+  [
+    'a redirect',
+    {
+      kind: 'answer',
+      status: 307,
+      headers: { location: 'https://evil.example.net/' },
+      body: new Uint8Array(),
+    },
+    'PROVIDER_REDIRECT_REFUSED',
+  ],
+  ['a timeout', { kind: 'timeout' }, 'PROVIDER_TIMEOUT'],
+  ['an oversized body', { kind: 'oversized' }, 'PROVIDER_RESPONSE_OVERSIZED'],
+  [
+    'a malformed body',
+    {
+      kind: 'answer',
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: new TextEncoder().encode('{"merged":'),
+    },
+    'PROVIDER_RESPONSE_MALFORMED',
+  ],
+  [
+    'a schema mismatch',
+    json({ content: { sha: 'blob-after' }, commit: { sha: 1 } }),
+    'PROVIDER_RESPONSE_SCHEMA',
+  ],
+  [
+    'a wrong content type',
+    {
+      kind: 'answer',
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+      body: new TextEncoder().encode('<p>'),
+    },
+    'PROVIDER_RESPONSE_MALFORMED',
+  ],
+] as const;
+
 describe('C80 hostile provider (source control and hosting paths)', () => {
   it('returns only the declared response fields from a well-formed answer', async () => {
     const transport = httpOf(
@@ -71,45 +111,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
 });
 
 describe('C80 hostile provider (source control and hosting paths)', () => {
-  it.each([
-    [
-      'a redirect',
-      {
-        kind: 'answer',
-        status: 307,
-        headers: { location: 'https://evil.example.net/' },
-        body: new Uint8Array(),
-      },
-      'PROVIDER_REDIRECT_REFUSED',
-    ],
-    ['a timeout', { kind: 'timeout' }, 'PROVIDER_TIMEOUT'],
-    ['an oversized body', { kind: 'oversized' }, 'PROVIDER_RESPONSE_OVERSIZED'],
-    [
-      'a malformed body',
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-        body: new TextEncoder().encode('{"merged":'),
-      },
-      'PROVIDER_RESPONSE_MALFORMED',
-    ],
-    [
-      'a schema mismatch',
-      json({ content: { sha: 'blob-after' }, commit: { sha: 1 } }),
-      'PROVIDER_RESPONSE_SCHEMA',
-    ],
-    [
-      'a wrong content type',
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-        body: new TextEncoder().encode('<p>'),
-      },
-      'PROVIDER_RESPONSE_MALFORMED',
-    ],
-  ] as const)(
+  it.each(hostileAnswers)(
     'a write meeting %s is unknown, recorded, never success',
     async (_name, answer, code) => {
       const recorded: string[] = [];
