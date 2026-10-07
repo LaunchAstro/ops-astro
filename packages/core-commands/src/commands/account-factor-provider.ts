@@ -34,11 +34,13 @@ export interface SessionsEnded {
 }
 
 /**
- * The provider's calls made with the person's own token: the three
- * second-factor calls, and signing out (C58), of this session (`local`) or of
- * every other (`others`), which revokes those sessions' refresh tokens.
+ * The provider's calls made with the person's own token: the second-factor
+ * calls, and signing out (C58), of this session (`local`) or of every other
+ * (`others`), which revokes those sessions' refresh tokens.
  */
 export interface FactorProvider {
+  /** The ids of the factors the provider holds verified for the token's login. */
+  verifiedFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
   enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
   verify(
     accessToken: string,
