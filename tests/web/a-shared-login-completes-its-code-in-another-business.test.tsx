@@ -27,12 +27,12 @@ import { mount, settle } from '../surfaces/mount.tsx';
 
 const replies: Record<string, Reply> = { ...GOOD };
 beforeAll(async () => {
-  await openRoutes('solf2fix3shared', { replies: () => replies, saw: () => {} });
+  await openRoutes('sharedlogincode', { replies: () => replies, saw: () => {} });
 }, 60_000);
 afterAll(closeRoutes);
 
 // eslint-disable-next-line max-lines-per-function -- one sign-in through the real form, read as one case
-it('Sol proof, criterion correctness: a shared login completes its authenticator code in another business', async () => {
+it('a shared login completes its authenticator code in a business other than the one that recorded its factor', async () => {
   await world.db.app.withBusiness(world.bravo, async (tx) => {
     const person = await insertPerson(tx, 'Mia in Bravo');
     const actor = await insertActor(tx, person);

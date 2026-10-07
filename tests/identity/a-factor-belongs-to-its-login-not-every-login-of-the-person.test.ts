@@ -19,14 +19,14 @@ let db: FreshDatabase;
 let business: string;
 
 beforeAll(async () => {
-  db = await createFreshDatabase({ part: 'solow021' });
-  business = await insertBusiness(db.app, 'sol-ow021');
+  db = await createFreshDatabase({ part: 'factorlogin' });
+  business = await insertBusiness(db.app, 'factor-login');
 }, 120_000);
 
 afterAll(async () => await db?.drop());
 
-it('Sol proof, criterion 1: a factor belongs to its login rather than every login mapped to the person', async () => {
-  const person = await enrol(db.app, business, 'Sol two logins');
+it('a factor verified on one login asks no code of another login mapped to the same person', async () => {
+  const person = await enrol(db.app, business, 'Two logins');
   const otherSubject = `second-login-${randomUUID()}`;
   await db.app.withBusiness(business, async (tx) => {
     await insertMapping(tx, await insertLogin(tx, otherSubject), person.personId, person.actorId);
