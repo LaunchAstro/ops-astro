@@ -31,8 +31,7 @@ const TOKEN: Rgb = [51, 85, 204];
 const TOKEN_CHANGED: Rgb = [49, 82, 196];
 
 /** A white capture as wide as the viewport, one control drawn in the token colour. */
-function capture(width: number, control: { x: number; colour: Rgb }): Buffer {
-  const height = 80;
+function capture(width: number, control: { x: number; colour: Rgb }, height: 1 | 80 = 80): Buffer {
   const png = new PNG({ width, height });
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -60,7 +59,8 @@ beforeAll(() => {
   for (const page of builtPages()) {
     for (const width of packet.widths) {
       for (const theme of themesOf(packet)) {
-        writeFileSync(pictureOf(page, width, theme), capture(width, { x: 40, colour: TOKEN }));
+        // Report validation needs a real PNG of this width, not the control's pixels.
+        writeFileSync(pictureOf(page, width, theme), capture(width, { x: 40, colour: TOKEN }, 1));
       }
     }
   }
