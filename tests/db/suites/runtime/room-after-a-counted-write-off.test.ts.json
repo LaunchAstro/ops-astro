@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a hold topped up before a person wrote it off counts in the version room at every call the top-up moved to the envelope, the written-off one too, so a replacement never holds past what the envelope has left"
+}

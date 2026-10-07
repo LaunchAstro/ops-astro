@@ -57,10 +57,18 @@ export const layoutKey = (businessKey: string): string => `ops-astro.layout.${bu
  * would leave in the tab must then be left out, or it outlives the sign-out
  * that removed it. A caller notes the generation before the request and writes
  * only if it has not moved. It is the tab's, not one store's, because the tab
- * is what the leftover would outlive.
+ * is what the leftover would outlive. So it is kept in the tab's storage and
+ * carries on after a reload rather than starting again at nought: a key made
+ * from it (`grantKeyOf`) names the same session before and after a reload.
  */
 let endings = 0;
 export const sessionGeneration = (): number => endings;
+
+/** Where the tab keeps its session generation. */
+const ENDINGS_KEY = 'ops-astro.session-endings';
+
+const isCount = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
 
 /**
  * How many times this tab's owner has changed: a session ended, or a sign-in
@@ -134,6 +142,7 @@ export class SessionStore {
   readonly #kept: JsonSlot<Session>;
   readonly #returnTo: JsonSlot<Interruption>;
   readonly #held: JsonSlot<unknown[]>;
+  readonly #endings: JsonSlot<number>;
   #session: Session | null = null;
   #interruption: Interruption | null = null;
 
@@ -142,6 +151,9 @@ export class SessionStore {
     this.#kept = jsonSlot(storage, KEY, isSession);
     this.#returnTo = jsonSlot(storage, RETURN_KEY, isInterruption);
     this.#held = jsonSlot(storage, HELD_KEY, Array.isArray);
+    this.#endings = jsonSlot(storage, ENDINGS_KEY, isCount);
+    // It never goes back: a later generation already in memory stands.
+    endings = Math.max(endings, this.#endings.read() ?? 0);
     // A session kept before the cookie (S0-6c) also held its bearer: only the
     // fields a session has now are taken, and written back over the old copy.
     const kept = this.#kept.read();
@@ -203,6 +215,7 @@ export class SessionStore {
   clear(): void {
     const ending = this.#session;
     endings += 1;
+    this.#endings.write(endings);
     owners += 1;
     this.#session = null;
     this.#forgetInterruption();

@@ -98,7 +98,7 @@ function replied(store: Store, key: string, reply: ConversationReply | undefined
   else store.line(key, 'failed', reply.words);
 }
 
-/** The tab's first question with its model, its answer, then the page it was given before it started. */
+/** The tab's first question with its model, its answer, a reopened twin's later lines, then its page. */
 async function startWith(
   client: OperationsClient,
   store: Store,
@@ -128,8 +128,8 @@ async function startWith(
     );
     return null;
   }
-  store.update((current) => started(current, chat.key, id));
   replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
+  store.update((current) => started(current, chat.key, id));
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
 }

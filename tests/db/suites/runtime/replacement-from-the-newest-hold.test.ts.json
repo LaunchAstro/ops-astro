@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a replacement pickup replaces only the version's newest hold, so an older reservation's remainder is never held again beside a later hold's spend"
+}

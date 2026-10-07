@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the newest hold is the one inserted last, even when its transaction began before its predecessor was created"
+}

@@ -23,24 +23,72 @@
 // and a person is told on the task.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
-import { raiseBudgetWait, stopWords } from '../../core-custody/src/index.ts';
+import {
+  COUNTED_CAUSES,
+  countedHold,
+  raiseBudgetWait,
+  stopWords,
+} from '../../core-custody/src/index.ts';
 import { raiseAlert } from './alerts.ts';
 import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
- * SQL: what the classifier's settle of the reservation `r` counts now, its
- * calls as they stand (settled at their actual, still open or unknown at their
- * maximum), never above the figure it settled at. `r` is a query's own alias.
+ * SQL: the reservation `r`'s calls as they stand, as `spentOn` counts them (settled at their
+ * actual, still open or unknown at their maximum). `r` is a query's own alias.
  */
-export const spentNowOf = (r: string): string =>
-  `least(${r}.actual_minor, (
-     select coalesce(sum(case when c.state = 'settled' then c.actual_minor
-                              when c.state in ('reserved', 'dispatched', 'liability_unknown')
-                                then c.reserved_minor
-                              else 0 end), 0)
-       from public.model_calls c
-      where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id))`;
+export const callsSpentOf = (r: string): string =>
+  `(select coalesce(sum(case when c.state = 'settled' then c.actual_minor
+                             when c.state in ('reserved', 'dispatched', 'liability_unknown')
+                               then c.reserved_minor
+                             else 0 end), 0)
+      from public.model_calls c
+     where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id)`;
+
+/** SQL: the reservation `r` had a top-up while it was still held (`budget_answers.hold_state`). */
+export const toppedUpHeld = (r: string): string =>
+  `exists (select 1 from public.budget_answers ba
+             join public.budget_asks k on k.business_id = ba.business_id and k.id = ba.ask_id
+            where ba.business_id = ${r}.business_id and k.reservation_id = ${r}.id
+              and ba.kind = 'top_up' and ba.hold_state = 'held')`;
+
+/** SQL: what the classifier's settle of `r` counts now, never above the figure it settled at. */
+export const spentNowOf = (r: string): string => `least(${r}.actual_minor, ${callsSpentOf(r)})`;
+
+/**
+ * Before a top-up's answer marks a closed stopped hold counted (`countedHold`),
+ * its calls never sent on an ended lease, which no count took, are released
+ * uncounted, so the sweep gives nothing back for them. Under the answer's locks.
+ */
+export async function releaseUncounted(tx: TenantQuery, reservationId: string): Promise<void> {
+  await tx.query(
+    `update public.model_calls c set state = 'released', ended_at = clock_timestamp()
+       from public.reservations r, public.leases l
+      where c.business_id = $1 and c.reservation_id = $2 and c.state = 'reserved'
+        and r.business_id = c.business_id and r.id = c.reservation_id
+        and l.business_id = c.business_id and l.id = c.lease_id
+        and (l.state <> 'live' or l.expires_at <= clock_timestamp())
+        and not ${countedHold('$3')}`,
+    [tx.businessId, reservationId, COUNTED_CAUSES],
+  );
+}
+
+/**
+ * The closed hold `r` has a call sent and never resolved that no top-up counts
+ * again: a person's write-off or outcome closed it, or the hold is not counted
+ * (custody's `countedHold`, reused), so it was open when a person closed the hold.
+ */
+export async function openCallOn(tx: TenantQuery, r: { reservation_id: string }): Promise<boolean> {
+  const open = await tx.query(
+    `select 1 from public.model_calls c join public.reservations r
+         on r.business_id = c.business_id and r.id = c.reservation_id
+      where c.business_id = $1 and c.reservation_id = $2
+        and c.state in ('dispatched', 'liability_unknown')
+        and (c.outcome is not null or not ${countedHold('$3')})`,
+    [tx.businessId, r.reservation_id, COUNTED_CAUSES],
+  );
+  return open.length > 0;
+}
 
 /** A hold's spend to date, and the calls it counted while still unsent. */
 export interface Spent {

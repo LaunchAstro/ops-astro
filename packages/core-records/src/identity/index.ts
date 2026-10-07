@@ -36,9 +36,11 @@ export {
   type AssuranceLevel,
 } from './verified-subject.ts';
 export {
+  factorDigest,
   liveFactor,
   lockLoginFactors,
   loginHasVerifiedFactor,
+  loginVerifiedFactors,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,

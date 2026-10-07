@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an escalation holds its recipient's decide grants, so access.end or a revocation of that grant waits for it to commit"
+}

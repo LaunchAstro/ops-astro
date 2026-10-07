@@ -1905,7 +1905,18 @@ or delete.
   stop (`recordedRefusal`). After `happened_differently` the work reopens
   and resume has already reserved its replacement, which the refusal leaves
   held and the end releases. A settle and ask made in one transaction would still top up, but no
-  path raises that today.
+  path raises that today. The answer records the stopped hold's state as the locks read it (`hold_state`:
+  `held`, `actual` or `abandoned`; `20261007110600_budget_answer_hold_state`).
+  The version room a replacement is sized by (`versionRoom`, `pickup.ts`)
+  counts a hold topped up while `held` and closed later at its actual plus its
+  calls, since the top-up moved the calls' spend and the close charges only
+  what it adds. A hold settled at its calls before its top-up counts once, at
+  the greater. The migration records every earlier top-up `held` (money fix
+  b, #988): no earlier row says which state its hold was in, and a guess from
+  another row's stamp, step or amount can read a held top-up as closed. A hold
+  closed before such a top-up then counts its calls twice, so its replacement
+  stops at its budget and asks rather than spending past the approved ceiling.
+  No top-up is left without a state.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the

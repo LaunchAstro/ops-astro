@@ -69,13 +69,17 @@ describe('the session store over storage that throws or holds junk', () => {
     expect(new SessionStore(map({ 'ops-astro.return-to': offsite })).interruption).toBeNull();
   });
 
-  it('what it writes it reads back, and sign-out removes the session and its settings memory', () => {
+  it('what it writes it reads back, and sign-out removes the session and its settings memory, keeping only its generation', () => {
     const storage = map({ [settingsCacheKey('alpha')]: '{"session":"x"}' });
     new SessionStore(storage).set(SESSION);
     const again = new SessionStore(storage);
     expect(again.session).toEqual(SESSION);
     again.clear();
-    expect([...storage.held.keys()]).toEqual([]);
+    // Only the tab's session generation stays: a count, with nothing of the session in it.
+    expect([...storage.held.keys()]).toEqual(['ops-astro.session-endings']);
+    expect(
+      Number.isSafeInteger(JSON.parse(storage.held.get('ops-astro.session-endings') ?? '')),
+    ).toBe(true);
   });
 });
 

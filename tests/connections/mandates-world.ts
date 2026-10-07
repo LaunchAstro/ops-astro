@@ -38,14 +38,14 @@ export const AUD = (amountMinor: number): { amountMinor: number; currency: strin
 export const detail = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] ?? {}) as Record<string, unknown>;
 
-/** How a member signs in: a fresh second factor (the default), none, or one past the window. */
-export type SignIn = 'fresh' | 'no-factor' | 'stale-factor';
+/** A fresh second factor (the default), none, one past the window, or one ahead of the clock past its skew. */
+export type SignIn = 'fresh' | 'no-factor' | 'stale-factor' | 'ahead-factor';
 
 async function bearer(who: Member, signIn: SignIn): Promise<string> {
   if (signIn === 'fresh') return await tokenFor(who.presented.subject, { secondFactor: true });
   if (signIn === 'no-factor') return await tokenFor(who.presented.subject);
   const now = Math.floor(Date.now() / 1000);
-  const past = now - 2 * 60 * 60;
+  const at = signIn === 'ahead-factor' ? now + 120 : now - 2 * 60 * 60;
   return await signBearer({
     sub: who.presented.subject,
     aud: 'authenticated',
@@ -54,8 +54,8 @@ async function bearer(who: Member, signIn: SignIn): Promise<string> {
     exp: now + 600,
     aal: 'aal2',
     amr: [
-      { method: 'password', timestamp: past },
-      { method: 'totp', timestamp: past },
+      { method: 'password', timestamp: now - 2 * 60 * 60 },
+      { method: 'totp', timestamp: at },
     ],
   });
 }

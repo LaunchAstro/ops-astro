@@ -1,0 +1,176 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Connections & signal, sections 001 to 008: the fleet banner, the connector
+   controls and table, the grants, the tripwires and the night round. Ported
+   from the mockup's `app.css` (294-295, 613-676, 2912-2955, 8878-8953,
+   8999-9037, 9046-9118) onto the product's tokens. The section head, the
+   stat row, the banner, the table and the legend come from the kit; only what
+   they leave unplaced is here. */
+
+/* The fleet banner: one body that grows, then its action, centred. */
+[data-fleet-banner] .banner {
+  align-items: center;
+}
+
+/* The mono note line the page's sections share (mockup `.approval__meta`). */
+.approval__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+/* -- 002 Connectors ------------------------------------------------------ */
+.connctrls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+}
+.connctrls .facet {
+  background: var(--surface);
+}
+.connmore {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-top: var(--s-3);
+}
+.connmore .pginfo {
+  color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.conn__scroll {
+  overflow-x: auto;
+}
+.conn__row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.conn__row td {
+  padding: 0.45rem var(--s-5);
+  vertical-align: middle;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.conn__row[aria-expanded='true'],
+.conn__row:hover {
+  background: var(--surface-2);
+}
+.conn__detail > td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.conn__panel {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--s-6);
+  padding: var(--s-5) var(--s-5) var(--s-6) 2.6rem;
+}
+.conn__panel p {
+  margin: 0;
+}
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.panel__actions > p {
+  flex-basis: 100%;
+}
+
+/* -- 006 Grants ---------------------------------------------------------- */
+.grl__lede,
+.tw__lede,
+.nr__lede {
+  margin: 0;
+}
+.grl__lede {
+  color: var(--text);
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+}
+.grl__grp + .grl__grp {
+  border-top: 1px solid var(--border-strong);
+}
+.grl__banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin: 0;
+  padding: var(--s-3) var(--s-5);
+  background: color-mix(in srgb, var(--border) 22%, transparent);
+}
+.grl__grp ul,
+.tw__row,
+.nr,
+.nr__roster ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.grl__row {
+  display: grid;
+  gap: 0.35rem var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.grl__row:last-child {
+  border-bottom: 0;
+}
+.grl__row p {
+  margin: 0;
+}
+
+/* -- 007 Tripwires and 008 The night round ------------------------------- */
+.tw__row {
+  display: grid;
+  gap: 0.35rem;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.tw__row:last-child {
+  border-bottom: 0;
+}
+.tw__row p {
+  margin: 0;
+}
+.tw__row--dead {
+  border-left: 2px solid var(--warning);
+}
+.nr {
+  padding: var(--s-4) var(--s-5);
+}
+.nr > li {
+  padding: var(--s-1) 0;
+}
+.nr time {
+  display: inline-block;
+  min-width: 4.2rem;
+}
+.nr__roster h3 {
+  margin: 0;
+  padding: var(--s-3) var(--s-5) 0;
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.nr__roster li {
+  padding: var(--s-2) var(--s-5);
+}
+
+@media (width <= 900px) {
+  .conn__panel {
+    grid-template-columns: 1fr;
+  }
+}
