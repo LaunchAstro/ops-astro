@@ -86,12 +86,13 @@ async function recipientWithDecide(): Promise<{ member: Member; grantId: string 
  * The last of escalate's reads of its recipient under the locks
  * (`recheckRecipient`: actor, grant, then assignment), after both the actor
  * and the grant were checked: the first assignee read (`assignedPeople`, which
- * names no person) after the recipient's actor read.
+ * names no person) after the re-check's read of the recipient's active actor.
  */
 function recipientRead(personId: string) {
   let actorRead = false;
   return (sql: string, parameters: readonly unknown[] | undefined): boolean => {
-    if (sql.includes('from public.actors') && parameters?.[1] === personId) actorRead = true;
+    if (sql.includes("kind = 'person' and active") && parameters?.[1] === personId)
+      actorRead = true;
     return actorRead && sql.includes('join public.delegations d');
   };
 }

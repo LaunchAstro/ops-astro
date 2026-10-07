@@ -126,12 +126,13 @@ async function escalate(database: Database, version: Detail, recipient: Member, 
 /**
  * The last of the recipient checks under the locks: whether the task is theirs,
  * the first assignee read (`assignedPeople`, which names no person) after the
- * recipient's actor read.
+ * re-check's read of the recipient's active actor.
  */
 function assignmentRead(personId: string): Stop['at'] {
   let actorRead = false;
   return (sql, parameters) => {
-    if (sql.includes('from public.actors') && parameters?.[1] === personId) actorRead = true;
+    if (sql.includes("kind = 'person' and active") && parameters?.[1] === personId)
+      actorRead = true;
     return actorRead && sql.includes('join public.delegations d');
   };
 }
