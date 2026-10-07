@@ -124,7 +124,16 @@ interface Opening {
   readonly stepUp?: (code: string) => Promise<{ ok: true; sessionId: string }>;
   /** The first matching command is stored, then its answer is lost on the way back. */
   readonly lose?: RegExp;
+  /**
+   * Matching commands go through the operation register as `envelope.ts`'s
+   * `replay` keeps it: each operation keeps its first answer, a stored refusal
+   * answers again as it is, and a stored success only to a stepped-up sign-in.
+   * Until the step-up, a new operation is refused STEP_UP_REQUIRED, and stored.
+   */
+  readonly register?: RegExp;
 }
+
+const STEP_UP = { refused: true, code: 'STEP_UP_REQUIRED', names: [], fixes: [] };
 
 const FLEET = {
   ok: true,
@@ -187,6 +196,43 @@ function stubStore(): {
   };
 }
 
+/** The operation register `Opening.register` describes, and the step-up it watches. */
+function registerStub(
+  opening: Opening,
+  region: () => ConnectionGraduationResult,
+): {
+  readonly answer: (at: string, call: string) => Promise<Response | undefined>;
+  readonly stepUp: NonNullable<Opening['stepUp']> | null;
+} {
+  const registered = new Map<string, { readonly status: number; readonly body: unknown }>();
+  const asked = opening.stepUp ?? null;
+  let stepped = false;
+  return {
+    answer: async (at, call) => {
+      if (opening.register?.test(at) !== true) return;
+      const operation = String(bodyOf(call)['operationId']);
+      const kept = registered.get(operation);
+      // A stored success is withheld from a sign-in not stepped up; nothing new is stored.
+      if (kept?.status === 200 && !stepped) return json(STEP_UP, 403);
+      if (kept !== undefined) return json(kept.body, kept.status);
+      if (!stepped) {
+        registered.set(operation, { status: 403, body: STEP_UP });
+        return json(STEP_UP, 403);
+      }
+      const reply = answer(at, () => false, 'VERSION_STALE', region());
+      registered.set(operation, { status: reply.status, body: await reply.clone().json() });
+      return reply;
+    },
+    stepUp:
+      asked &&
+      (async (code) => {
+        const result = await asked(code);
+        stepped = true;
+        return result;
+      }),
+  };
+}
+
 /** Whether a call to `at` is refused: it matches, comes after `after` calls, and is the first if `once`. */
 function refuser(refuse: RegExp | undefined, opening: Opening): (at: string) => boolean {
   let refused = 0;
@@ -211,17 +257,21 @@ async function open(
   const refusing = refuser(refuse, opening);
   let lost = 0;
   const stored = stubStore();
+  const register = registerStub(opening, stored.region);
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
-    sent.push(`${at} ${String(init?.body ?? '')}`);
+    const call = `${at} ${String(init?.body ?? '')}`;
+    sent.push(call);
     if (COMMAND.test(at)) await opening.hold;
-    const reply = answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
-    if (COMMAND.test(at) && reply.ok) stored.keep(at, bodyOf(`${at} ${String(init?.body ?? '')}`));
+    const reply =
+      (await register.answer(at, call)) ??
+      answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
+    if (COMMAND.test(at) && reply.ok) stored.keep(at, bodyOf(call));
     if (opening.lose?.test(at) === true && lost++ === 0) throw new TypeError('Failed to fetch');
     return reply;
   }) as typeof globalThis.fetch;
   const screen = (businessKey = 'alpha', grantKey = 'alpha:a@x:0'): ReactElement => (
-    <StepUpContext.Provider value={opening.stepUp ?? null}>
+    <StepUpContext.Provider value={register.stepUp}>
       <ConnectionsScreen
         client={new OperationsClient({ origin: '', businessKey, signedIn: true, fetch })}
         grantKey={grantKey}
@@ -798,5 +848,30 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(commands(sent).filter((call) => call.includes('/mandate/revoke'))).toHaveLength(2);
     expect(commands(sent).filter((call) => call.includes('/graduation/promote'))).toHaveLength(0);
     expect(page.find('[data-mandate="m-yes"]')).toBeNull();
+  });
+
+  it('a lost revoke refused for a fresh sign-in on its retry revokes under a new operation once stepped up (SC2-F1)', async () => {
+    const { page, sent, signInAgain } = await open(undefined, {
+      register: /\/mandate\/revoke$/u,
+      lose: /\/mandate\/revoke$/u,
+      stepUp: steppedUp,
+    });
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await page.click(REVOKE_CONFIRMED);
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await page.click(REVOKE_CONFIRMED);
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    await tick();
+    const operations = operationsTo(sent, '/mandate/revoke');
+    expect(operations).toHaveLength(4);
+    expect(new Set(operations.slice(0, 3)).size).toBe(1);
+    expect(operations[3]).not.toBe(operations[0]);
+    expect(page.find('[data-mandate="m-yes"]')).toBeNull();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
   });
 });
