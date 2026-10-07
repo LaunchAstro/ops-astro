@@ -14,6 +14,16 @@
   min-width: 0;
 }
 
+/* The mono note line (mockup `.approval__meta`), held here until the page's
+   own sheet carries it for every section. */
+.skcsec .approval__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
 /* -- 009 Skill costing -------------------------------------------------- */
 .skc__lede {
   display: grid;
