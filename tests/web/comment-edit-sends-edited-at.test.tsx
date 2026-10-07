@@ -4,9 +4,9 @@
 // An edit of one's own message names the `edited_at` the words were typed
 // against, so the server can refuse an edit made over someone else's newer
 // one (another tab, the same author) rather than let the later one win. The
-// stamp is the one shown when the box opened; a reread while typing does not
-// move it. After a stale refusal the person has been told, and a resend names
-// the stamp the reread shows.
+// stamp is the one shown when the box opened; a reread while typing, or after
+// a lost answer, does not move it. After a stale refusal the person has been
+// told, and a resend names the stamp the reread shows.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { tick } from './task-page-stub.tsx';
@@ -75,5 +75,23 @@ describe('a comment edit names the edited_at it was typed against', () => {
     await key(seen, BOX, { key: 'Enter', ctrlKey: true });
     await tick();
     expect(sent.map((one) => one.body['expectedEditedAt'])).toStrictEqual([SHOWN, NEWER]);
+  });
+});
+
+describe('a lost answer leaves the stamp where it was', () => {
+  it('after a lost answer, a resend keeps the stamp the box opened on', async () => {
+    // The reread after the lost answer carries a newer edit of m1 from elsewhere,
+    // which the person has not been shown: the resend must still be refused stale.
+    const { view, sent, answers } = conversing(thread(SHOWN), thread(NEWER));
+    answers.set('/task/edit_comment', () => Promise.reject(new TypeError('Response lost')));
+    const seen = await view();
+    await seen.click('[data-comment-id="m1"] [data-comment-act="edit"]');
+    await typeInto(seen, BOX, "A's replacement");
+    await key(seen, BOX, { key: 'Enter', ctrlKey: true });
+    await tick();
+    answers.delete('/task/edit_comment');
+    await key(seen, BOX, { key: 'Enter', ctrlKey: true });
+    await tick();
+    expect(sent.map((one) => one.body['expectedEditedAt'])).toStrictEqual([SHOWN, SHOWN]);
   });
 });

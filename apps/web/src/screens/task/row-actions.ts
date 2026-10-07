@@ -34,10 +34,18 @@ export interface RowWrites {
 
 /**
  * The `edited_at` an edit is sent against: the one its box opened on, or, once
- * a refusal has been answered and the row read again, the row's as it now reads.
+ * a stale refusal has been shown and the row read again, the row's as it now
+ * reads. A lost answer moves nothing: its reread may carry an edit from
+ * elsewhere the person has not seen, which the resend must still be refused over.
  */
 const againstOf = (held: RowEdit | null, comment: InternalCommentView): string | null =>
-  held?.commentId === comment.id && held.because === null ? held.editedAt : comment.edited_at;
+  held?.commentId === comment.id && !held.stale ? held.editedAt : comment.edited_at;
+
+/** The edit as its answer leaves it: closed once stored, else held with why. */
+const heldAfter = (sent: RowEdit, settlement: Settlement): RowEdit | null =>
+  settlement.kind === 'ok'
+    ? null
+    : { ...sent, because: settlement.because, stale: settlement.kind === 'stale' };
 
 /** Any answer but a plain refusal may have changed the task, so it is read again. */
 const rereads = (settlement: Settlement): boolean =>
@@ -77,13 +85,10 @@ export function useRowActions(
       onEdit: (comment, body) => {
         const commentId = comment.id;
         const editedAt = againstOf(props.editing, comment);
-        props.onEditing({ commentId, body, editedAt, because: null });
+        const sent: RowEdit = { commentId, body, editedAt, because: null, stale: false };
+        props.onEditing(sent);
         send('task.edit_comment', { commentId, body, expectedEditedAt: editedAt }, (settlement) => {
-          props.onEditing(
-            settlement.kind === 'ok'
-              ? null
-              : { commentId, body, editedAt, because: settlement.because },
-          );
+          props.onEditing(heldAfter(sent, settlement));
         });
       },
       onDelete: (commentId) => {
