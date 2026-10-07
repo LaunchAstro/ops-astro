@@ -121,7 +121,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
       };
       await readInbox(counted, hana.personId, [{ kind: 'person', id: hana.personId }]);
       const read = queries;
-      const owed = await countOwed(counted, hana.personId);
+      const owed = await countOwed(counted, hana.personId, [{ kind: 'person', id: hana.personId }]);
       if (items.length !== 2) throw new Error('the inbox read made other than two item queries');
       const planOf = async (query: (typeof items)[number]): Promise<PlanNode> => {
         const [explained] = await tx.query<{ 'QUERY PLAN': readonly [{ Plan: PlanNode }] }>(

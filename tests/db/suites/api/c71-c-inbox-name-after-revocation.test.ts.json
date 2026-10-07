@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an inbox read under way when chat access is revoked does not name the group by a name given after"
+}

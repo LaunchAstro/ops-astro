@@ -27,8 +27,8 @@
 // moves the item (`recordDeliveryAttempt`).
 
 import {
+  readableNow,
   recordDeliveryAttempt,
-  taskAccess,
   type BusinessId,
   type Database,
   type InboxReason,
@@ -102,13 +102,15 @@ export async function checkItem(
   const [item] = await tx.query<{
     readonly recipient: string;
     readonly subject: string;
+    readonly raisedAt: string;
     readonly reason: InboxReason;
     readonly factKind: string;
     readonly factId: string;
     readonly client: string | null;
     readonly seen: boolean;
   }>(
-    `select i.recipient_person_id as recipient, i.subject_record_id as subject, i.reason,
+    `select i.recipient_person_id as recipient, i.subject_record_id as subject,
+            i.raised_at::text as "raisedAt", i.reason,
             i.fact_kind as "factKind", i.fact_id as "factId", r.uuid_7 as client,
             exists (select 1 from public.inbox_attention a
                      where a.business_id = i.business_id and a.item_id = i.id) as seen
@@ -118,25 +120,41 @@ export async function checkItem(
     [tx.businessId, itemId],
   );
   if (item === undefined) return 'ITEM_NOT_OPEN';
-  if ((await taskAccess(tx, item.recipient, item.subject)) !== 'readable') return 'ITEM_WITHHELD';
+  const address = await addressIfReadable(tx, item);
+  if (address === undefined) return 'ITEM_WITHHELD';
   if (item.seen) return 'ITEM_SEEN';
-  const [address] = await tx.query<{ readonly value: string }>(
-    `select value from public.person_identifiers
-      where business_id = $1 and person_id = $2 and kind = 'email' and review_state = 'confirmed'
-      order by last_observed_at desc, id limit 1`,
-    [tx.businessId, item.recipient],
-  );
-  if (address === undefined) return 'NO_ADDRESS';
+  if (address.value === null) return 'NO_ADDRESS';
   if (!(await mayStillSend(tx, itemId))) return 'EMAIL_MAY_HAVE_GONE';
   return {
     itemId,
     reason: item.reason,
     recipient: item.recipient,
     subject: item.subject,
+    raisedAt: item.raisedAt,
     to: address.value,
     client: item.client,
     mailClass: await classOf(tx, item),
   };
+}
+
+/**
+ * The recipient's confirmed address (null for none), or undefined when they cannot read the
+ * item's task now: access and the address in one statement, so access ended before it sends nothing.
+ */
+async function addressIfReadable(
+  tx: TenantQuery,
+  item: { readonly recipient: string; readonly subject: string; readonly raisedAt: string },
+): Promise<{ readonly value: string | null } | undefined> {
+  const [address] = await tx.query<{ readonly value: string | null }>(
+    `select (select value from public.person_identifiers
+              where business_id = $1 and person_id = $2 and kind = 'email'
+                and review_state = 'confirmed'
+              order by last_observed_at desc, id limit 1) as value
+       from public.records r
+      where r.business_id = $1 and r.id = $3 and ${readableNow('$2::uuid', '$4::timestamptz')}`,
+    [tx.businessId, item.recipient, item.subject, item.raisedAt],
+  );
+  return address;
 }
 
 /** One item, sent on its own: every check, the client's weekly cap, the ceiling, then `asked`. */

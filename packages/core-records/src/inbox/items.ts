@@ -42,6 +42,8 @@ export interface RaiseInboxItem {
   readonly subjectRecordId: string;
   readonly reason: InboxReason;
   readonly fact: { readonly kind: InboxFactKind; readonly id: string };
+  /** When it was raised, as timestamptz text; absent, the transaction's start. */
+  readonly raisedAt?: string | undefined;
 }
 
 export interface InboxItemAxes {
@@ -73,6 +75,8 @@ export interface Disclosed {
   /** The task's key, title and client, read in the statement that found it readable. */
   readonly task: { readonly key: string; readonly title: string | null };
   readonly clientId: string | null;
+  /** Set when the subject is a team conversation (C71): `task` is its kind and a group's name. */
+  readonly conversation: boolean;
   /** T2h's alert on the run the item points at, the one the task page shows; null otherwise. */
   readonly alert: InboxAlert | null;
 }
@@ -114,12 +118,13 @@ export async function raiseInboxItem(tx: TenantQuery, item: RaiseInboxItem): Pro
   ];
   const inserted = await tx.query<{ readonly id: string }>(
     `insert into public.inbox_items
-       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id, owed)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7)
+       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id, owed,
+        raised_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, coalesce($8::timestamptz, now()))
      on conflict (business_id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
        where work_state = 'open' do nothing
      returning id`,
-    [...values, owes(item.reason)],
+    [...values, owes(item.reason), item.raisedAt ?? null],
   );
   const id =
     inserted[0]?.id ??
@@ -178,17 +183,19 @@ export async function stampSeen(
   personId: string,
   itemId: string,
 ): Promise<boolean> {
-  const mine = await tx.query<{ readonly subject: string }>(
-    `select subject_record_id as subject from public.inbox_items
+  const mine = await tx.query<{ readonly subject: string; readonly raisedAt: string }>(
+    `select subject_record_id as subject, raised_at::text as "raisedAt" from public.inbox_items
       where business_id = $1 and id = $2 and recipient_person_id = $3`,
     [tx.businessId, itemId, personId],
   );
   // Opening needs read on the task now: an item about a task the recipient
-  // cannot read (another client's, a lost grant) is answered as not theirs.
-  const subject = mine[0]?.subject;
-  if (subject === undefined || (await taskAccess(tx, personId, subject)) !== 'readable') {
-    return false;
-  }
+  // cannot read (another client's, a lost grant, a conversation they left or
+  // rejoined since it was raised) is answered as not theirs.
+  const held = mine[0];
+  const readable = async (): Promise<boolean> =>
+    held !== undefined &&
+    (await taskAccess(tx, personId, held.subject, held.raisedAt)) === 'readable';
+  if (!(await readable())) return false;
   // The insert can wait on another stamp of the same item, so read access is
   // asked again after it, and a grant revoked meanwhile undoes this stamp
   // (#443). The app role cannot delete an attention row: a savepoint holds it.
@@ -198,7 +205,7 @@ export async function stampSeen(
      values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
     [tx.businessId, itemId, personId],
   );
-  if ((await taskAccess(tx, personId, subject)) !== 'readable') {
+  if (!(await readable())) {
     await tx.query('rollback to savepoint inbox_seen');
     await tx.query('release savepoint inbox_seen');
     return false;

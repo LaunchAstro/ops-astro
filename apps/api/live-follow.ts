@@ -2,38 +2,44 @@
 //
 // C4's one stream per tab, from join to end, and C2's presence on it: the
 // topics a tab names, and the loop that re-asks before every delivery. Moved
-// out of app.ts unchanged in what it sends, with presence added.
+// out of app.ts unchanged in what it sends, with presence added. A team
+// conversation (C71, CS-7.42) is a topic as a task is, asked about as its
+// members' alone, and carries no presence.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
+import { CONVERSATION_TOPIC, TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
 import type { Seated, Sitter } from './live-presence.ts';
+import type { LiveStream } from './live-stream.ts';
 
 export { seatFor, type Seated } from './live-presence.ts';
+export { endsWithRequest, type LiveStream } from './live-stream.ts';
 
-/** How a stream asks, for its business, whether its caller may still watch a task. */
+/** How a stream asks, for its business, whether its caller may still watch a task or a conversation. */
 export interface Watching {
   readonly businessId: string;
-  /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
-  atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
-  /** Before each delivery and on the recheck: the person admitted, or the refusal; writes nothing. */
-  again(taskId: string): Promise<string | CommandRefusal>;
+  /** At join, every topic (tasks, unless `watches` says): the login's one authentication attempt, nothing else. */
+  atDoor(
+    ids: readonly string[],
+    watches?: readonly Watch[],
+  ): Promise<readonly (string | CommandRefusal)[]>;
+  /** Before each delivery and on the recheck: a task's person admitted, a conversation's id, or the refusal; writes nothing. */
+  again(id: string, watch?: Watch): Promise<string | CommandRefusal>;
 }
 
-/** One followed task, and the name the stream gives it: the caller's own topic. */
+/** One followed task or conversation, and the name the stream gives it: the caller's own topic. */
 export interface Watch {
   readonly label: string;
+  /** The record followed: a task's id, or a conversation's where `kind` says so. */
   readonly taskId: string;
+  readonly kind?: 'conversation';
 }
 
 const MOST_TOPICS = 32;
-export const TOPICS: string = `Name each topic once, as task:<id> or board, from one to ${String(MOST_TOPICS)}.`;
+export const TOPICS: string = `Name each topic once, as task:<id>, conversation:<id> or board, from one to ${String(MOST_TOPICS)}.`;
 
 /** The board's stream (INB-1f) as one topic on the tab's stream: every frame it sends is labelled so. */
 export const BOARD = 'board';
-
-/** What a stream writes through and ends: the SSE stream, or one topic group's share of it. */
-export type LiveStream = Pick<SSEStreamingApi, 'writeSSE' | 'abort' | 'aborted' | 'onAbort'>;
 
 /** The topics a tab named, or undefined when any is malformed, repeated or too many. */
 export function topicsOf(
@@ -41,10 +47,20 @@ export function topicsOf(
 ): { readonly watches: readonly Watch[]; readonly board: boolean } | undefined {
   if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
   if (new Set(named).size !== named.length) return undefined;
-  const tasks = named.filter((label) => label !== BOARD);
-  const watches = tasks.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
-  if (!watches.every((watch): watch is Watch => watch.taskId !== undefined)) return undefined;
-  return { watches, board: tasks.length < named.length };
+  const topics = named.filter((label) => label !== BOARD);
+  const watches = topics.map((label) => watchOf(label));
+  if (!watches.every((watch) => watch !== undefined)) return undefined;
+  return { watches, board: topics.length < named.length };
+}
+
+/** A topic's kind and id, or undefined when it names neither a task nor a conversation. */
+function watchOf(label: string): Watch | undefined {
+  const task = TOPIC.exec(label)?.[1];
+  if (task !== undefined) return { label, taskId: task };
+  const conversation = CONVERSATION_TOPIC.exec(label)?.[1];
+  return conversation === undefined
+    ? undefined
+    : { label, taskId: conversation, kind: 'conversation' };
 }
 
 /**
@@ -84,33 +100,15 @@ export function sharesOf(
   });
 }
 
-/**
- * Ends `stream` with its request. A tab that leaves while the route still
- * awaits its door closes the socket before the stream exists, and the stream
- * never hears of it; the request's signal does (FIX-2B1 RS B1).
- */
-export function endsWithRequest(stream: Pick<LiveStream, 'abort'>, request: AbortSignal): void {
-  if (request.aborted) stream.abort();
-  else
-    request.addEventListener(
-      'abort',
-      () => {
-        stream.abort();
-      },
-      { once: true },
-    );
-}
-
 export const RECHECK_MS = 30_000;
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
- * One open stream: `resync` for each watched task once subscribed, `seat` when
- * it is seated, once each task's first recheck has sat or closed it, then each
- * signal once the caller is asked again, and `closed` the first time the
- * answer is no. An ended session answers no for every task on the next check,
- * and the stream ends with its last task.
+ * One open stream: `resync` for each watched task once subscribed, `seat` when it
+ * is seated, once each task's first recheck has sat or closed it, then each signal
+ * once the caller is asked again, and `closed` the first time the answer is no. An
+ * ended session answers no for every task on the next check; the stream ends with its last.
  */
 export async function follow(
   stream: LiveStream,
@@ -223,6 +221,8 @@ class Follower {
   }
 
   #sit(watch: Watch): void {
+    // A conversation carries no presence: only a task's page seats a viewer.
+    if (watch.kind !== undefined) return;
     if (this.#seated === undefined || this.#sitter === undefined) return;
     const session = { ...this.#sitter, sessionId: this.#seated.session.sessionId };
     const leave = this.#seated.presence.seat(this.#asks.businessId, watch.taskId, session, () => {
@@ -246,7 +246,7 @@ class Follower {
    * recheck answered for someone who does not sit.
    */
   async #reseat(watch: Watch, admitted: string): Promise<'sits' | 'moved' | 'other'> {
-    if (this.#seated === undefined) return 'sits';
+    if (this.#seated === undefined || watch.kind !== undefined) return 'sits';
     const now = await this.#seated.sitter();
     const was = this.#sitter;
     if (now?.personId !== was?.personId || now?.name !== was?.name || now?.side !== was?.side) {
@@ -274,7 +274,7 @@ class Follower {
     const shown = this.#presence.delete(watch);
     if ((signal === undefined && !shown) || this.#stream.aborted) return;
     if (!this.#stops.has(watch)) return;
-    const admitted = await this.#asks.again(watch.taskId);
+    const admitted = await this.#asks.again(watch.taskId, watch);
     const seat = typeof admitted === 'string' ? await this.#reseat(watch, admitted) : 'other';
     if (seat === 'other') {
       await this.#close(watch);

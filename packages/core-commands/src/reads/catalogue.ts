@@ -22,7 +22,6 @@ import {
   listTags,
   readPreferences,
   subjectsOf,
-  taskAccess,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
@@ -380,7 +379,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const { board: _board, ...paging } = operands;
       const page = boardPage(tasks, paging);
       if (page !== undefined) return page;
-      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
+      const viewer = session.personId;
+      const owed = await countOwed(tx, viewer, subjectsOf(session));
       return scope.business
         ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed };
@@ -828,7 +828,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) =>
       (await holdsAnyGrant(tx, session))
-        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        ? { ok: true, owed: await countOwed(tx, session.personId, subjectsOf(session)) }
         : NO_GRANT_AT_ALL,
   },
   // Every path to a person broken (INB-1e): `operations:read` on the business,
@@ -884,12 +884,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (
         recordId === undefined ||
         !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
-        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+        !(await liveTask(tx, spine.taskTypeId, recordId))
       ) {
         return refuseNotFound();
       }
-      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+      const trace = await readTaskTrace(tx, recordId, session.personId);
+      return trace === null
+        ? refuseNotFound()
+        : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
   // AW-12: the harness test's result on one run. No subject record and no

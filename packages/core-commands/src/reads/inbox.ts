@@ -14,9 +14,12 @@
 // would say that another client's task exists. It stays stored and comes back
 // at the first read after access returns. A gone item, about a trashed task
 // the caller still holds read on, is listed as gone and names nothing of the
-// task or the fact it points at.
+// task or the fact it points at. A mention in a team conversation (C71) is
+// about the conversation, held by its current members alone, and is named by
+// it: its kind and a group's name, never a task.
 
 import {
+  askedFor,
   clientsReached,
   countOwedItems,
   readInboxItems,
@@ -25,7 +28,12 @@ import {
   type Subject,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { InboxEntry, PersonView, UnattendedView } from '../../../core-wire/src/index.ts';
+import type {
+  InboxConversation,
+  InboxEntry,
+  PersonView,
+  UnattendedView,
+} from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
@@ -66,7 +74,7 @@ export async function readInbox(
   personId: string,
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
-  const items = await readInboxItems(tx, personId);
+  const items = await readInboxItems(tx, personId, chats(subjects));
   return await named(
     tx,
     items.filter((item) => item.access !== 'withheld'),
@@ -75,9 +83,17 @@ export async function readInbox(
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
-export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
-  return await countOwedItems(tx, personId);
+export async function countOwed(
+  tx: TenantQuery,
+  personId: string,
+  subjects: readonly Subject[],
+): Promise<number> {
+  return await countOwedItems(tx, personId, chats(subjects));
 }
+
+/** Whether conversations are shown at all: to an agent key (API-2) only when it ticks `chat:comment`. */
+const chats = (subjects: readonly Subject[]): boolean =>
+  askedFor(subjects, { collection: 'chat', action: 'comment' }).length > 0;
 
 /**
  * Which of these clients the subjects reach, by C32's own rule: a grant over
@@ -118,13 +134,27 @@ async function named(
     if (item.access !== 'readable') return entryOf(item);
     const client = reached.get(item.clientId ?? '');
     const decider = item.closedByPersonId;
+    const naming = item.conversation
+      ? { conversation: conversationOf(item.subjectRecordId, item.task) }
+      : { task: item.task };
     return {
       ...entryOf(item),
-      task: item.task,
+      ...naming,
       ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
     };
   });
+}
+
+function conversationOf(
+  conversationId: string,
+  subject: { readonly key: string; readonly title: string | null },
+): InboxConversation {
+  return {
+    conversationId,
+    kind: subject.key === 'group' ? 'group' : 'direct',
+    name: subject.title,
+  };
 }
 
 /**

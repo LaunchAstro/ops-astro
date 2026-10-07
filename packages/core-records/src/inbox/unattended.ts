@@ -26,13 +26,20 @@
 // read raises nothing for anyone, and it writes no item, grant or decision.
 // The list is the operations view's (C55) and the API's and the command
 // line's `inbox.unattended`, both behind `operations:read`.
+//
+// An item about a team conversation (C71, a mention in it) is listed only to
+// a viewer who is a current member of it, as only its members read it; its
+// path is a recipient who signs in and is a current member. Both since before
+// the item was raised: a re-added member reads from the new join only.
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
   holdsAcrossBusiness,
   holdsOnTask,
+  inConversation,
   INTERNAL_ROLE_KEYS,
+  IS_CONVERSATION,
   REACH,
   readsThroughMap,
 } from './access.ts';
@@ -53,8 +60,14 @@ export interface UnattendedItem {
 /** The reasons whose obligation any one of its recipients discharges. */
 const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
+/** A row's `inside`, membership since the item was raised, as `HELD` in read.ts asks it. */
+const INSIDE = `case when ${IS_CONVERSATION}
+  then ${inConversation('i.recipient_person_id', 'i.raised_at')} end`;
+
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
+  /** Null unless the item is about a conversation; then whether its recipient was in it since. */
+  readonly inside: boolean | null;
   /** The task's map when it was a map's ticket at the list's read (W12), else null. */
   readonly mapId: string | null;
   /** A map or map ticket, which the client view never reaches (WF-1). */
@@ -82,6 +95,7 @@ export async function readUnattended(
      select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
+            ${INSIDE} as inside,
             case when ${mapTicketCondition('r')} then r.uuid_4 end as "mapId",
             ${wayfinderCondition('r')} as wayfinder,
             (select bool_or(m.role_key = any($3::text[])) from public.memberships m
@@ -102,7 +116,8 @@ export async function readUnattended(
        from public.inbox_items i
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
-      where i.business_id = $1 and i.work_state = 'open' and ${HELD}
+      where i.business_id = $1 and i.work_state = 'open'
+        and (case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')} else ${HELD} end)
       order by i.raised_at, i.id`,
     [tx.businessId, viewerPersonId, INTERNAL_ROLE_KEYS],
   );
@@ -136,6 +151,7 @@ function obligationOf(item: UnattendedItem): string {
 async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
   if (row.internal === null && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.inside !== null) return row.inside;
   if (row.wayfinder && row.internal !== true) return false;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
   if (
