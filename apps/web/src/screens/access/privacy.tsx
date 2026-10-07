@@ -99,6 +99,8 @@ function usePrivacyForm(result: AccessReadResult) {
       setClientId(id);
       setSettings(chosen ?? OFF);
       setProvider(chosen?.providers[0] ?? 'claude');
+      // A written request is one client's: another client starts with none.
+      setRequest({});
     },
     set: (key: keyof Settings) => (on: boolean) => setSettings({ ...settings, [key]: on }),
     setField: (field: string, value: string) => setRequest({ ...request, [field]: value }),

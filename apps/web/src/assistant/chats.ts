@@ -98,10 +98,16 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
 }
 
-/** The tab `key` selected, with the scope its conversation was asked under. */
+/**
+ * The tab `key` selected, with the scope its conversation was asked under. A
+ * drafted question and its citation belong to the tab they were drafted in, so
+ * another tab starts with neither: a client's words never reach a tab of
+ * another scope.
+ */
 function selecting(state: AssistantState, key: string): AssistantState {
   const scope = state.chats.find((chat) => chat.key === key)?.scope ?? NO_SCOPE;
-  return { ...state, selected: key, scope };
+  if (key === state.selected) return { ...state, scope };
+  return { ...state, selected: key, scope, draft: '', citation: null };
 }
 
 export const select = (state: AssistantState, key: string): AssistantState =>
