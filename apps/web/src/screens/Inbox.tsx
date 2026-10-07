@@ -30,7 +30,15 @@ import { RecordState } from '../views/record-state.tsx';
 import { clientsAt } from '../client-address.ts';
 import { pathTo } from '../routes.ts';
 import type { PanelId } from '../panels.ts';
-import type { TaskPanelHost } from './task/panel-host.ts';
+
+/**
+ * What the inbox needs of the dock task panel's host (the application's
+ * `TaskPanelHost`): open a task beside the rest. Declared here so the inbox
+ * does not import the panel host, which imports the task panel's own files.
+ */
+interface InboxPanelHost {
+  readonly open: (taskKey: string, door: 'open', tab?: undefined, beside?: boolean) => void;
+}
 
 /** The group of an entry that names no client: the reader's own work. */
 const OWN_WORK: InboxGroupRef = { key: 'own', name: 'Your work' };
@@ -79,7 +87,7 @@ export function InboxScreen(props: {
   /** The dock's own door, by the gesture law; absent where there is no dock. */
   readonly openPanel?: (id: PanelId, beside: boolean, place: string) => boolean;
   /** The dock's Task panel; absent where there is none. */
-  readonly taskPanel?: TaskPanelHost;
+  readonly taskPanel?: InboxPanelHost;
 }): ReactElement {
   const { client, navigate, openPanel, taskPanel } = props;
   const { state, reload } = useRead<Inbox>({
