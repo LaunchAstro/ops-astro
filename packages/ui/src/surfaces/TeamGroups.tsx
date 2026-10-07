@@ -177,7 +177,7 @@ function Members(props: {
   );
 }
 
-/** The group's name, Rename for a manager, and Leave for any member. */
+/** The group's name, Rename for a manager, and Leave for any member still in it. */
 function GroupName(props: {
   readonly group: GroupThread;
   readonly onRename: () => void;
@@ -196,15 +196,17 @@ function GroupName(props: {
           Rename
         </button>
       ) : null}
-      <button
-        type="button"
-        className="btn btn--ghost btn--sm tmc__leave"
-        onClick={() => {
-          props.onGroup({ do: 'leave', id: group.id });
-        }}
-      >
-        Leave
-      </button>
+      {group.left ? null : (
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm tmc__leave"
+          onClick={() => {
+            props.onGroup({ do: 'leave', id: group.id });
+          }}
+        >
+          Leave
+        </button>
+      )}
     </p>
   );
 }
@@ -235,7 +237,9 @@ export function GroupHead(props: {
           onGroup={props.onGroup}
         />
       )}
-      <p className="tmc__with">With {others.map((person) => person.short).join(', ')}</p>
+      <p className="tmc__with">
+        {group.left ? 'You left this group.' : `With ${others.map((p) => p.short).join(', ')}`}
+      </p>
       {group.canManage ? (
         <Members
           group={group}

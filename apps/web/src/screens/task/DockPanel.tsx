@@ -29,6 +29,7 @@ export function useDockPanel(props: DockPanelProps): {
     readonly open: boolean;
     readonly body: ReactElement;
     readonly door: string;
+    readonly beside: boolean;
     /** False, closing nothing, while the draft's Create is out. */
     readonly close: () => boolean;
     /** A draft filed from the page or a door (DN-02); null signed out. */
@@ -52,6 +53,7 @@ export function useDockPanel(props: DockPanelProps): {
         opening === null
           ? pathTo('agency:projects-board')
           : pathTo('agency:task-detail', { key: opening.taskKey }),
+      beside: taskPanel.beside,
       close: taskPanel.close,
       file: session === null ? null : file,
     },

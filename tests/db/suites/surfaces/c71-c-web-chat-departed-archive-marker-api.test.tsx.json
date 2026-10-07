@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "reading a departed group's archive sends no read-marker write and shows no refusal"
+}
