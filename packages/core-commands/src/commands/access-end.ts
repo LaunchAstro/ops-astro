@@ -1,27 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58 (CS-2.25): end a person's access in one act, the tracked action
-// `access ended (person: login, sessions, grants)` under `access:manage`,
-// never an agent's.
+// `access ended (person: login, sessions, grants)` under `access:manage`, never an agent's.
 //
-// The act is local first. One transaction, under the business's access lock:
-// the person's membership and acting identity end, every live grant they hold
-// and every delegation they gave are revoked (`endPersonAuthority`), every
-// agent credential they issued here is revoked with its agent actor, and one
-// access ending is written per login mapped to them, owing the provider two
-// steps. From that commit login resolution refuses the person
-// (`AUTH_ACCESS_ENDED`), whatever the provider has or has not done
-// (TR-SEC5-4).
+// The act is local first. One transaction, under the business's access lock: the person's
+// membership and acting identity end, every live grant they hold and every delegation they gave are
+// revoked (`endPersonAuthority`), every agent credential they issued here is revoked with its agent
+// actor, and one access ending is written per login mapped to them, owing the provider two steps.
+// From that commit login resolution refuses the person (`AUTH_ACCESS_ENDED`), whatever the provider
+// has or has not done (TR-SEC5-4).
 //
-// The provider steps are never taken inside the act's transaction. They are
-// tried as soon as the act commits and retried by the endings loop until each
-// is done (`settleAccessEndings`): end every session, which revokes their
-// refresh tokens, then deactivate the login. A step done is stamped once and
-// never asked again. An answer the adapter does not accept, a throw or a
-// timeout is a fault by its kind alone, and the step stays owed. A provider
-// whose user is already gone answers the step done (the adapter's call, on
-// that exact answer only): it is stamped like any other, final, and never
-// owed again.
+// The provider steps are never taken inside the act's transaction. They are tried as soon as the
+// act commits and retried by the endings loop until each is done (`settleAccessEndings`): end every
+// session, which revokes their refresh tokens, then deactivate the login. A step done is stamped
+// once and never asked again. An answer the adapter does not accept, a throw or a timeout is a
+// fault by its kind alone, and the step stays owed. A provider whose user is already gone answers
+// the step done (the adapter's call, on that exact answer only): it is stamped like any other,
+// final, and never owed again.
 
 import {
   factorLoginLiveElsewhere,
