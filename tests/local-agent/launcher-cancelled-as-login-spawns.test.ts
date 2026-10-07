@@ -52,7 +52,8 @@ function inspector(url: string): {
 } {
   const socket = new WebSocket(url);
   let id = 0;
-  const replies = new Map<number, (result: unknown) => void>();
+  // One question out at a time: the test awaits each answer before the next.
+  let waiting: { readonly id: number; readonly ok: (result: unknown) => void } | undefined;
   const pauses: (() => void)[] = [];
   let pending = 0;
   socket.addEventListener('message', (event) => {
@@ -61,7 +62,11 @@ function inspector(url: string): {
       method?: string;
       result?: unknown;
     };
-    if (message.id !== undefined) replies.get(message.id)?.(message.result);
+    if (waiting !== undefined && message.id === waiting.id) {
+      const { ok } = waiting;
+      waiting = undefined;
+      ok(message.result);
+    }
     if (message.method === 'Debugger.paused') {
       const next = pauses.shift();
       if (next) next();
@@ -75,7 +80,7 @@ function inspector(url: string): {
     send: (method, params = {}) =>
       new Promise((ok) => {
         id += 1;
-        replies.set(id, ok);
+        waiting = { id, ok };
         socket.send(JSON.stringify({ id, method, params }));
       }),
     paused: () =>
