@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import {
   liveFactor,
   loginHasVerifiedFactor,
+  loginVerifiedFactors,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -41,6 +42,7 @@ import {
   removeAtProvider,
   reportOrphan,
 } from './account-factor-orphan.ts';
+import { heldElsewhere, stillHeld, type CodeTarget } from './account-factor-elsewhere.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, wrongCodeLock } from './account-factor-checks.ts';
 import { judged, type FactorCaller } from './account-factor-judged.ts';
@@ -121,7 +123,9 @@ export async function enrolSecondFactor(
  * A code checked against the person's live factor. The first good code
  * completes an enrolment; a wrong one is refused and recorded as failed. An
  * enrolment is not completed while the login holds a verified factor through
- * any business (0064), as it is not started then.
+ * any business (0064), as it is not started then. With no factor here, the
+ * code is checked against the one the login verified through another
+ * business (`account-factor-elsewhere.ts`), which sign-in asks for here too.
  */
 export async function verifySecondFactor(
   caller: FactorCaller,
@@ -132,6 +136,7 @@ export async function verifySecondFactor(
   const code = codeOf(body);
   const sending = { ...caller, attempt: randomUUID() };
   let factor: SecondFactor | undefined;
+  let held: readonly string[] = [];
   const precondition = await judged(
     sending,
     act,
@@ -140,15 +145,22 @@ export async function verifySecondFactor(
       const locked = await wrongCodeLock(tx, caller.presented.subject);
       if (locked !== undefined) return locked;
       factor = await liveFactor(tx, session.personId);
-      return factor === undefined
-        ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
-        : await enrolledElsewhere(tx, caller, factor);
+      if (factor !== undefined) return await enrolledElsewhere(tx, caller, factor);
+      held = await loginVerifiedFactors(tx, caller.presented.subject);
+      return held.length > 0
+        ? undefined
+        : refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     },
     'before',
   );
-  if (precondition !== undefined || factor === undefined || code === undefined)
-    return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-  const target = factor;
+  if (precondition !== undefined || code === undefined)
+    return precondition ?? refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
+  const found = factor ?? (await heldElsewhere(caller, provider, held));
+  if (found === undefined || 'code' in found) {
+    const refused = found ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+    return (await judged(sending, act, () => Promise.resolve(refused))) ?? refused;
+  }
+  const target = found;
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let settled: VerifyRecord = {};
   const recorded = await judged({ ...sending, proven: verified.ok }, act, async (tx, session) => {
@@ -246,9 +258,14 @@ async function recordVerify(
   tx: TenantQuery,
   session: Session,
   caller: FactorCaller,
-  target: SecondFactor,
+  target: CodeTarget,
 ): Promise<VerifyRecord> {
   const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+  // One held elsewhere is checked again: still none here, and not removed there meanwhile.
+  if (target.id === undefined)
+    return live === undefined && (await stillHeld(tx, caller, target))
+      ? {}
+      : { refusal: refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES) };
   // Removed or replaced by another tab between the two transactions.
   if (live?.id !== target.id)
     return { refusal: refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES) };

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a shared login completes its authenticator code in a business other than the one that recorded its factor"
+}

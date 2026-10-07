@@ -114,6 +114,7 @@ function racingProvider(
   const asked: string[] = [];
   const session = { accessToken: 'aal2-access-token', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
+    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
@@ -167,6 +168,7 @@ export async function stepUpAfterSignOut(): Promise<{
   await enrolHere(bravo, person, subject, true);
   const asked: string[] = [];
   const provider: FactorProvider = {
+    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
@@ -255,6 +257,7 @@ export function namingProvider(during: () => Promise<void> = async () => {}): {
   const asked: string[] = [];
   const session = { accessToken: 'aal2', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
+    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () => {
       asked.push('enrol');
       const issued = {

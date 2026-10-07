@@ -58,6 +58,8 @@ function endingHeld(pool: Database, ready: Latch, release: Latch): Database {
 }
 
 const factors: FactorProvider = {
+
+  verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
   enrol: () => Promise.resolve({ ok: false, fault: 'unreachable' }),
   verify: () => Promise.resolve({ ok: false, fault: 'unreachable' }),
   remove: () => Promise.resolve({ ok: false, fault: 'unreachable' }),

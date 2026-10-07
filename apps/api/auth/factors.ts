@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The sign-in provider's second-factor calls (C59): enrol an authenticator
-// app, prove a code, remove a factor. GoTrue's MFA endpoints, called with the
+// The sign-in provider's second-factor calls (C59): list the verified
+// factors, enrol an authenticator app, prove a code, remove a factor. GoTrue's MFA endpoints, called with the
 // person's own access token, so the provider applies its own rules to the
 // person and this server holds no provider admin key for them.
 //
@@ -39,7 +39,7 @@ type Json = Readonly<Record<string, unknown>>;
 
 /** One request to the provider: its answer unread, or a fault if none came. */
 type Request = (
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   accessToken: string,
   body?: Json,
@@ -47,7 +47,7 @@ type Request = (
 
 /** One call to the provider, its answer shaped to a JSON object or a fault. */
 type Call = (
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   accessToken: string,
   body?: Json,
@@ -67,6 +67,7 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   const request = requestGoTrue(options, limits.timeoutMs);
   const call = callGoTrue(request, limits);
   return {
+    verifiedFactors: (accessToken) => verifiedFactors(call, accessToken),
     enrol: (accessToken) => enrol(call, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
@@ -125,6 +126,27 @@ function callGoTrue(request: Request, limits: Limits): Call {
     if (!response.ok) return { ok: false, fault: 'unreachable' };
     return { ok: true, value: parsed as Json };
   };
+}
+
+// GoTrue lists a login's factors on its user (`GET /user`, `factors`, left
+// out when there are none). Only the ids of verified ones are kept; any entry
+// not shaped as a factor refuses the whole answer.
+async function verifiedFactors(
+  call: Call,
+  accessToken: string,
+): Promise<ProviderAnswer<readonly string[]>> {
+  const answer = await call('GET', '/user', accessToken);
+  if (!answer.ok) return answer;
+  const factors = answer.value['factors'] ?? [];
+  if (!Array.isArray(factors)) return { ok: false, fault: 'malformed' };
+  const verified: string[] = [];
+  for (const factor of factors as unknown[]) {
+    if (typeof factor !== 'object' || factor === null) return { ok: false, fault: 'malformed' };
+    const { id, status } = factor as Json;
+    if (!isFactorId(id) || typeof status !== 'string') return { ok: false, fault: 'malformed' };
+    if (status === 'verified') verified.push(id);
+  }
+  return { ok: true, value: verified };
 }
 
 async function enrol(call: Call, accessToken: string): Promise<ProviderAnswer<IssuedFactor>> {
