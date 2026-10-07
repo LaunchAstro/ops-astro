@@ -15,6 +15,7 @@ import {
   type FactorCaller,
 } from '../../packages/core-commands/src/commands/account-factor.ts';
 import type { FactorProvider } from '../../packages/core-commands/src/commands/account-factor-provider.ts';
+import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import {
   liveFactor,
   recordFactorEnrolled,
@@ -99,12 +100,46 @@ function listingProvider(
   };
 }
 
+/**
+ * The real GoTrue adapter, as the server builds it, over a provider whose user
+ * carries 20,000 characters of profile metadata beside the login's one verified
+ * factor, and which proves any code with a compact session.
+ */
+function largeUserProvider(asked: string[]): FactorProvider {
+  const fetch: typeof globalThis.fetch = (input, init) => {
+    const path = new URL(String(input)).pathname.replace('/auth/v1', '');
+    asked.push(`${init?.method} ${path}`);
+    if (path === '/user') {
+      return Promise.resolve(
+        Response.json({
+          id: 'user-one',
+          user_metadata: { profile: 'x'.repeat(20_000) },
+          factors: [{ id: 'factor-alpha', factor_type: 'totp', status: 'verified' }],
+        }),
+      );
+    }
+    if (path.endsWith('/challenge')) return Promise.resolve(Response.json({ id: 'challenge-one' }));
+    return Promise.resolve(
+      Response.json({
+        access_token: 'aal2-access-token',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+      }),
+    );
+  };
+  return createGoTrueFactors({ baseUrl: 'http://identity.invalid/auth/v1', fetch });
+}
+
 /** The login's code at bravo's factor route, on a password-only sign-in: the refusal code or token. */
-async function codeInBravo(subject: string, provider: FactorProvider): Promise<string> {
+async function codeInBravo(
+  subject: string,
+  provider: FactorProvider,
+  businessId: string = bravo,
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const caller: FactorCaller = {
     database: db.app,
-    businessId: bravo,
+    businessId,
     presented: {
       provider: 'supabase',
       subject,
@@ -155,5 +190,18 @@ describe.skipIf(serverUrl === undefined)('C59 a code in a business holding no fa
 
     expect(await codeInBravo(mia.subject, provider)).toBe('FACTOR_NOT_ENROLLED');
     expect(asked).toEqual(['list', 'verify factor-alpha']);
+  });
+
+  it('C59: a login whose provider user is large still completes its code in another business, and never locks', async () => {
+    const mia = await verifiedInAlpha();
+    const asked: string[] = [];
+    const provider = largeUserProvider(asked);
+
+    expect(await codeInBravo(mia.subject, provider, alpha)).toBe('aal2-access-token');
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- each code after the last, as a person retries
+      expect(await codeInBravo(mia.subject, provider)).toBe('aal2-access-token');
+    }
+    expect(asked.filter((call) => call === 'GET /user')).toHaveLength(6);
   });
 });

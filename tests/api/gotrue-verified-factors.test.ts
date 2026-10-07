@@ -57,3 +57,12 @@ it('C59: a factor list not shaped as GoTrue answers it is refused whole', async 
     fault: 'refused',
   });
 });
+
+it('C59: a user carrying large metadata beside its factors is still read, and a user past the bound is not', async () => {
+  const factors = [{ id: 'factor-one', factor_type: 'totp', status: 'verified' }];
+  const large = answering(200, { user_metadata: { profile: 'x'.repeat(20_000) }, factors });
+  expect(await large.provider.verifiedFactors('t')).toEqual({ ok: true, value: ['factor-one'] });
+
+  const past = answering(200, { user_metadata: { profile: 'x'.repeat(1024 * 1024) }, factors });
+  expect(await past.provider.verifiedFactors('t')).toEqual({ ok: false, fault: 'oversized' });
+});
