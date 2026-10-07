@@ -527,8 +527,8 @@ export interface QueuedWork {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
-  /** Who proposed the version: a worker picks up only work it proposed. */
-  readonly proposedByActorId: string;
+  /** The reading agent when it proposed the version, else null: a worker takes only its own. */
+  readonly proposedByActorId: string | null;
 }
 
 /**
