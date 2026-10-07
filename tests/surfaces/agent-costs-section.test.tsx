@@ -78,6 +78,18 @@ const COSTS: AgentCostsResult = {
   ],
 };
 
+/** Run r-1 for one of its agents, with no price yet. */
+const helped = (agent: string): AgentCostRowView =>
+  run(1, { agentActorId: agent, cost: null, unpriced: UNPRICED });
+
+/** A roll-up line of one run in one currency: its spend, or none when it has no price yet. */
+const line = (currency: string, total: string | null) => ({
+  currency,
+  runs: 1,
+  unpricedRuns: total === null ? 1 : 0,
+  total: total ?? '0',
+});
+
 const opened: Mounted[] = [];
 
 async function open(
@@ -113,6 +125,8 @@ afterEach(async () => {
 });
 
 const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
+const tile = (page: Mounted, kpi: string): string =>
+  text(page, `[data-cost-kpi="${kpi}"] .stat__num`);
 
 /** An element's data attributes, read through the DOM's own map. */
 const data = (element: Element | null | undefined): DOMStringMap =>
@@ -196,5 +210,33 @@ describe('Executive: what our agents cost us', () => {
     await none.page.unmount();
     const refused = await open('refused');
     expect(refused.page.find('[data-agent-costs]')).toBeNull();
+  });
+
+  it('a run with two agents, and an agent with runs in two currencies, count once each', async () => {
+    const [ada, bea] = ['a-1111aaaa-0000', 'a-2222bbbb-0000'];
+    const { page } = await open({
+      ...COSTS,
+      runs: [helped(ada), helped(bea), run(2, { agentActorId: ada, currency: 'USD', cost: '50' })],
+      byAgent: [
+        { agentActorId: ada, ...line('AUD', null) },
+        { agentActorId: bea, ...line('AUD', null) },
+        { agentActorId: ada, ...line('USD', '50') },
+      ],
+      byAttachment: [
+        { attachment: MERIDIAN, ...line('AUD', null) },
+        { attachment: MERIDIAN, ...line('USD', '50') },
+      ],
+    });
+    expect(tile(page, 'runs')).toBe('2');
+    expect(tile(page, 'unpriced')).toBe('1');
+    expect(tile(page, 'agents')).toBe('2');
+    expect(text(page, '[data-section="005"] .sec__right')).toBe('2 runs · API-equivalent');
+    // Every agent's row stays in the log, and each currency keeps its own roll-up line.
+    expect(page.all('[data-cost-run="r-1"]')).toHaveLength(2);
+    expect(page.all(`[data-cost-agent="${ada}"]`)).toHaveLength(2);
+    expect(page.all('[data-cost-attached="c-1"]').map((one) => one.textContent)).toStrictEqual([
+      expect.stringContaining('AUD 0.00'),
+      expect.stringContaining('USD 0.50'),
+    ]);
   });
 });

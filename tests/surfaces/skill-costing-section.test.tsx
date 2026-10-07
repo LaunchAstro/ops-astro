@@ -182,7 +182,7 @@ describe('Connections & signal: skill costing', () => {
     expect(data(page.find('[data-skill="one"] [data-figure]'))['figure']).toBe('one');
     expect(text(page, '[data-skill="one"] [data-figure]')).toContain('AUD 4.50 one run');
     expect(text(page, '[data-skill="one"] [data-figure]')).toContain(
-      'Not an average: this process has run once.',
+      'Not an average: this process has run on its own once.',
     );
     expect(page.find('[data-skill="one"] [data-figure-spread]')).toBeNull();
 
@@ -243,5 +243,32 @@ describe('Connections & signal: skill costing', () => {
     expect(numbers.at(-1)).toBe('009');
     expect(text(page, '[data-section="009"] .sec .marker')).toBe('009');
     expect(text(page, '[data-section="009"] .sec__head')).toBe('Skill costing');
+  });
+
+  it('a figure from fewer priced runs than the skill has run alone says which runs it rests on', async () => {
+    const unpriced = skill(
+      'unpriced',
+      { kind: 'none' },
+      { runs: 1, soloRuns: 1, sharedRuns: 0, unpricedRuns: 1, tasks: 1, soloTotal: '0' },
+    );
+    const onePriced = skill(
+      'one-priced',
+      { kind: 'one', amount: '120' },
+      { runs: 3, soloRuns: 3, sharedRuns: 0, unpricedRuns: 2, tasks: 3, soloTotal: '120' },
+    );
+    const { page } = await open({
+      ok: true,
+      costing: { skills: [onePriced, unpriced], split: COSTING.costing?.split ?? [] },
+    });
+    const figure = (id: string): string => text(page, `[data-skill="${id}"] [data-figure]`);
+    expect(text(page, '[data-skill="unpriced"] [data-observed]')).toContain('1 run of its own');
+    expect(figure('unpriced')).not.toContain('No run has used this process on its own');
+    expect(figure('unpriced')).toContain('Its one run on its own has no known cost yet');
+    expect(text(page, '[data-skill="one-priced"] [data-observed]')).toContain('3 runs of its own');
+    expect(figure('one-priced')).toContain('AUD 1.20 one run');
+    expect(figure('one-priced')).not.toContain('run once');
+    expect(figure('one-priced')).toContain(
+      'Not an average: 1 of its 3 runs on its own has a known cost.',
+    );
   });
 });
