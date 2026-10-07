@@ -37,6 +37,7 @@ import {
   isInProductLink,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useRereadOn } from './task/reread-on.ts';
@@ -125,6 +126,15 @@ function ProjectBoard(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
+  // A grant's drawn board stays drawn through an empty reread, so a filter on stays removable
+  // (#902); with none on, the board draws the empty state. Another grant's first read is its own.
+  const [drew, setDrew] = useState<string | null>(null);
+  useEffect(() => {
+    if (state.outcome === 'ready') setDrew(state.grantKey);
+    else setDrew((before) => (before === state.grantKey ? before : null));
+  }, [state]);
+  const board: ReadState<TaskBoardResult> =
+    state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;
   // The last board write's refusal or unknown outcome, in the server's words.
   // It belongs to the grant the write was sent under: another business's
   // board never draws it, a late answer included.
@@ -189,19 +199,7 @@ function ProjectBoard(
         Kept drawn while it reads again: a re-read after an edit or a live
         change leaves the filters, an open editor and focus where they were.
       */}
-      <RecordState
-        state={state}
-        subject="board"
-        onRetry={reload}
-        keep
-        empty={
-          <Empty
-            title="No tasks on this board yet."
-            description="You are permitted to see it and it has nothing in it."
-            hint="Create one with the form above."
-          />
-        }
-      >
+      <RecordState state={board} subject="board" onRetry={reload} keep empty={NO_TASKS}>
         {(value) =>
           // At a client filter the board waits for the names, so its filter holds.
           named && clients === null ? null : (
@@ -228,6 +226,7 @@ function ProjectBoard(
               })}
               address={query}
               clients={clients ?? NO_CLIENTS}
+              nothing={NO_TASKS}
               onAddress={(next) => {
                 if (props.inPanel === true) return;
                 window.history.replaceState(
@@ -243,6 +242,14 @@ function ProjectBoard(
     </div>
   );
 }
+
+const NO_TASKS = (
+  <Empty
+    title="No tasks on this board yet."
+    description="You are permitted to see it and it has nothing in it."
+    hint="Create one with the form above."
+  />
+);
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
 const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
