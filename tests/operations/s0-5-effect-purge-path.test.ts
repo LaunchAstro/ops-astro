@@ -40,7 +40,12 @@ async function agedTaskWithEverything(): Promise<void> {
   if ('exception' in shared) throw new Error(shared.exception);
   await applied('task.share_with_client', shared.body);
   const taskId = String(shared.body['recordId']);
-  await applied('task.duplicate', { recordId: taskId, client: null, title: 'a copy', stepNames: [] });
+  await applied('task.duplicate', {
+    recordId: taskId,
+    client: null,
+    title: 'a copy',
+    stepNames: [],
+  });
   await applied('conversation.start', {
     scope: { kind: 'task', id: taskId },
     body: 'About the task the purge takes.',

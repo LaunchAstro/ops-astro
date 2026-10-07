@@ -10,10 +10,7 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** The people the task is assigned to, read in the caller's transaction; none when unassigned. */
-export async function assignedPeople(
-  tx: TenantQuery,
-  taskId: string,
-): Promise<readonly string[]> {
+export async function assignedPeople(tx: TenantQuery, taskId: string): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly person: string }>(
     `select r.uuid_2::text as person from public.records r
       where r.business_id = $1 and r.id = $2 and r.uuid_2 is not null

@@ -22,6 +22,15 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { withdrawEndedGates } from './clear.ts';
 import { raiseInboxItem } from './items.ts';
 
+/** The task's person assignee, read in the raising transaction; null when unassigned. */
+async function assigneeOf(tx: TenantQuery, taskId: string): Promise<string | null> {
+  const rows = await tx.query<{ readonly assignee: string | null }>(
+    `select uuid_2 as assignee from public.records where business_id = $1 and id = $2`,
+    [tx.businessId, taskId],
+  );
+  return rows[0]?.assignee ?? null;
+}
+
 /** One person's decision item on a gate of the task. */
 async function raiseGateItem(
   tx: TenantQuery,

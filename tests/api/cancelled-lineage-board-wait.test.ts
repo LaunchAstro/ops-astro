@@ -13,34 +13,34 @@ import { createControls, type Controls } from './controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-describe.skipIf(serverUrl === undefined)('the board after a proposal is cancelled', () => {
-  let c: Controls;
+let c: Controls;
 
+/** The board row's wait and the reader's pending list, for one task and gate. */
+async function seen(taskId: string, gateId: string): Promise<Record<string, unknown>> {
+  const reader = c.manager.presented;
+  const board = await executeRead(c.fixture.db.app, c.fixture.business, reader, {
+    read: 'task.board',
+    board: null,
+  });
+  const pending = await executeRead(c.fixture.db.app, c.fixture.business, reader, {
+    read: 'gate.pending',
+  });
+  const row = (board as { readonly tasks?: readonly Record<string, unknown>[] }).tasks?.find(
+    (each) => each['id'] === taskId,
+  );
+  return {
+    waitReason: row?.['waitReason'],
+    awaitingDecision: row?.['awaitingDecision'],
+    pending: JSON.stringify(pending).includes(gateId),
+  };
+}
+
+describe.skipIf(serverUrl === undefined)('the board after a proposal is cancelled', () => {
   beforeAll(async () => {
     c = await createControls('cancelledwait');
   }, 180_000);
 
   afterAll(async () => await c?.drop());
-
-  /** The board row's wait and the reader's pending list, for one task and gate. */
-  async function seen(taskId: string, gateId: string): Promise<Record<string, unknown>> {
-    const reader = c.manager.presented;
-    const board = await executeRead(c.fixture.db.app, c.fixture.business, reader, {
-      read: 'task.board',
-      board: null,
-    });
-    const pending = await executeRead(c.fixture.db.app, c.fixture.business, reader, {
-      read: 'gate.pending',
-    });
-    const row = (board as { readonly tasks?: readonly Record<string, unknown>[] }).tasks?.find(
-      (each) => each['id'] === taskId,
-    );
-    return {
-      waitReason: row?.['waitReason'],
-      awaitingDecision: row?.['awaitingDecision'],
-      pending: JSON.stringify(pending).includes(gateId),
-    };
-  }
 
   it('cancelling a pending lineage removes its board approval wait', async () => {
     const task = await c.createTask('a proposal cancelled before its decision');
@@ -69,13 +69,16 @@ describe.skipIf(serverUrl === undefined)('the board after a proposal is cancelle
       note: 'the proposal was cancelled',
     });
 
-    expect({ gate: gate?.state, decide: decided.body['code'], ...(await seen(task.id, gateId)) })
-      .toEqual({
-        gate: 'pending',
-        decide: 'LINEAGE_TERMINAL',
-        waitReason: null,
-        awaitingDecision: false,
-        pending: false,
-      });
+    expect({
+      gate: gate?.state,
+      decide: decided.body['code'],
+      ...(await seen(task.id, gateId)),
+    }).toEqual({
+      gate: 'pending',
+      decide: 'LINEAGE_TERMINAL',
+      waitReason: null,
+      awaitingDecision: false,
+      pending: false,
+    });
   }, 60_000);
 });
