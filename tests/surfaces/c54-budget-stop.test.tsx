@@ -11,9 +11,7 @@
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the pane's own tests do */
 
 import { describe, expect, it } from 'vitest';
-import { IN_PANE, TASK_ID, open, press, type, type World } from './c54-page.tsx';
-
-const RUN_ID = '88888888-8888-4888-8888-888888888888';
+import { IN_PANE, RUN_ID, TASK_ID, open, press, type, type World } from './c54-page.tsx';
 
 /** A run stopped at its ceiling for the `number`th time, its latest ask unanswered. */
 function stoppedAt(number: number, answer?: World['answer']): World {

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a departed group draws only what a read asked since its departure answers, never a message from an earlier membership window"
+}

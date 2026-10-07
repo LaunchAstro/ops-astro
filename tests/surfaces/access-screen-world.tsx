@@ -97,6 +97,9 @@ export function server(
       return Promise.resolve(json({ ok: true, preferences: {} }));
     // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
+    // As is the Team tab's unread (C71).
+    if (at.endsWith('/chat/conversations'))
+      return Promise.resolve(json({ ok: true, conversations: [] }));
     if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     calls.push({
       url: at,

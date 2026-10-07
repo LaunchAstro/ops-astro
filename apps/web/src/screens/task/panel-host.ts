@@ -34,17 +34,31 @@
 // so, and the dock keeps the panel.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TaskPanelHost } from '../../screen-registry.tsx';
 import { dropOtherDrafts } from './task-draft.ts';
 import { prefillOf, type PageContext } from './task-prefill.ts';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { PanelOpening } from './Panel.tsx';
 import type { ConversationTab, PanelDoor } from './Perspectives.tsx';
 
+/** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
+export interface TaskPanelHost {
+  /** Beside: Shift's open, beside the dock's open panels rather than alone (CS-7.29). */
+  readonly open: (
+    taskKey: string,
+    door: PanelDoor,
+    tab?: ConversationTab,
+    beside?: boolean,
+  ) => void;
+  /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
+  readonly changes: number;
+}
+
 export interface TaskPanelState {
   readonly host: TaskPanelHost;
   /** The open panel's task and door, or null when it is closed or shows a draft. */
   readonly opening: PanelOpening | null;
+  /** The open task came by Shift, to sit beside the dock's open panels. */
+  readonly beside: boolean;
   /** The new-task draft's scope while the panel shows the draft (MP-4-13), else null. */
   readonly draft: DraftScope | null;
   /** Counts draft openings: each door's draft mounts afresh, with its own guesses. */
@@ -177,13 +191,15 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   const [draft, setDraft] = useState<DraftScope | null>(null);
   const [draftKey, setDraftKey] = useState(0);
   const { creating, hold } = useOwner(owner, setOpening, setDraft);
+  const [beside, setBeside] = useState(false);
   const [changes, setChanges] = useState(0);
   const { leave, leaving } = useLeave();
   const open = useCallback(
-    (taskKey: string, door: PanelDoor, tab?: ConversationTab) => {
+    (taskKey: string, door: PanelDoor, tab?: ConversationTab, by = false) => {
       if (creating.current !== null) return;
       if (taskKey !== opening?.taskKey) leave();
       setDraft(null);
+      setBeside(by);
       setOpening({ taskKey, door, tab: tab ?? null });
     },
     [opening, leave, creating],
@@ -193,6 +209,7 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
       if (creating.current !== null) return;
       leave();
       setOpening(null);
+      setBeside(false);
       setDraft(scope);
       setDraftKey((count) => count + 1);
     },
@@ -213,5 +230,5 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     return true;
   }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
-  return { host, opening, draft, draftKey, changed, close, openDraft, leaving, hold };
+  return { host, opening, beside, draft, draftKey, changed, close, openDraft, leaving, hold };
 }
