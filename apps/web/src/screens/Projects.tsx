@@ -47,7 +47,7 @@ import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
-import { NO_CLIENTS, clientNamesOf, listedOrFailed } from './projects/client-names.ts';
+import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -157,20 +157,16 @@ function ProjectBoard(
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // At a client filter (a Clients row door) every client the reader reaches (C32)
-  // is a Client filter even with no row, and the board waits for them, so a door
-  // to a quiet client keeps its filter. At none, nothing more is read. A failed
-  // read keeps the filters the address asks for, and says it failed.
+  // is a Client filter even with no row, and the board waits for them (and past
+  // the last address's answer), so a door to a quiet client keeps its filter. A
+  // failed read keeps the filters the address asks for, and says it failed.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
     grantKey: props.grantKey,
-    run: async () =>
-      named
-        ? listedOrFailed(await client.read<ClientListResult>('client.list', {}))
-        : { ok: true as const, value: { ok: true as const, clients: [] } },
+    run: () => readClients(client, named),
     deps: [named],
   });
-  // An answer to the last address's read is not this one's: wait, as for one in flight.
   const clients = useMemo(
     () => (reached.own ? clientNamesOf(reached.state, query) : null),
     [reached.own, reached.state, query],

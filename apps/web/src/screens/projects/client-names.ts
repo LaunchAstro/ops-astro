@@ -7,6 +7,7 @@
 
 import type { ClientListResult } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import type { CallResult } from '../../operations/results.ts';
 
 export const NO_CLIENTS: readonly string[] = [];
@@ -26,6 +27,15 @@ export function clientNamesOf(
   // An answer without its list reached none: the address's filters hold.
   if (!Array.isArray(answered?.clients)) return requestedIn(query);
   return answered.clients.length > 0 ? answered.clients.map((one) => one.name) : NO_CLIENTS;
+}
+
+/** The board's client list: read only at a client filter; at none, no client is asked for. */
+export async function readClients(
+  client: OperationsClient,
+  named: boolean,
+): Promise<CallResult<ClientListResult>> {
+  if (!named) return { ok: true, value: { ok: true, clients: [] } };
+  return listedOrFailed(await client.read<ClientListResult>('client.list', {}));
 }
 
 /** A client list answered without its list is a failed read, reported the way an outage is. */
