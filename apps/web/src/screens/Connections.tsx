@@ -17,7 +17,8 @@
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
 // on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
 // to 008 (grants, tripwires, the night round) are MP-14-8's, read apart on
-// `connection.signal`. Skill costing and the per-client region are later.
+// `connection.signal`. The per-client region from the scope bar down is
+// MP-14-10a's, read apart on `connection.graduation`. Skill costing is later.
 //
 // The screen is keyed on the grant in `screen-registry.tsx`, so a change of
 // business or person starts its view state and repair attempts over, and
@@ -39,6 +40,7 @@ import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { FleetTable } from './connections/fleet-table.tsx';
 import { SignalSections } from './connections/signal.tsx';
+import { GraduationRegion } from './connections/graduation.tsx';
 import type { RepairControl } from './connections/fleet-row.tsx';
 import { initialFleetView, withFacet, withOpen, type FleetView } from './connections/fleet-view.ts';
 
@@ -219,14 +221,15 @@ export function ConnectionsScreen(props: {
   readonly now?: () => number;
   readonly rollup?: RollupFloor;
 }): ReactElement {
-  const { client } = props;
+  const { client, grantKey } = props;
   const clock = props.now ?? Date.now;
   const now = clock();
+  const rollup = props.rollup === undefined ? {} : { rollup: props.rollup };
   const { state, reload } = useRead<ConnectionFleetResult>({
-    grantKey: props.grantKey,
+    grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
     isEmpty: (value) => value.connections.length === 0,
-    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
+    ...rollup,
     deps: [],
   });
   const repair = useRepair(client, reload);
@@ -254,12 +257,8 @@ export function ConnectionsScreen(props: {
         {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
       </RecordState>
       <NotConnected />
-      <SignalSections
-        client={client}
-        grantKey={props.grantKey}
-        clock={clock}
-        {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
-      />
+      <SignalSections client={client} grantKey={grantKey} clock={clock} {...rollup} />
+      <GraduationRegion key={grantKey} client={client} grantKey={grantKey} {...rollup} />
     </div>
   );
 }
