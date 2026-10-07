@@ -103,3 +103,4 @@ export {
   type ReserveRefusal,
 } from './broker.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
+export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';

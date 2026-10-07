@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a stop raised on a hold a person wrote off with a call still unknown takes no top-up, so custody never reads the hold as one that counted its open calls; the end at the stop still applies"
+}

@@ -39,9 +39,16 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { observedRefusal, recordedRefusal, releaseUnstarted, spentOn } from './budget-stop.ts';
+import {
+  observedRefusal,
+  openCallOn,
+  recordedRefusal,
+  releaseUncounted,
+  releaseUnstarted,
+  spentOn,
+} from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
-import { fourEyes } from './budget-answer-eyes.ts';
+import { fourEyes, insertApproval } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 
 export interface BudgetStopTopUpRequest extends BudgetAnswerRequest {
@@ -90,12 +97,15 @@ export async function topUpAtBudgetStop(
       value: { state: 'awaiting_second', approvalId, thresholdMinor: threshold.minor },
     };
   }
+  // Before the answer (with the hold's state, for the version room) marks a closed hold counted.
+  if (CLOSED_STOPS.includes(opened.value.locked.reservation_state))
+    await releaseUncounted(tx, opened.value.locked.reservation_id);
   const answerId = randomUUID();
   await tx.query(
     `insert into public.budget_answers
        (business_id, id, ask_id, run_id, kind, amount_minor, currency, threshold_minor,
-        first_person_id, second_person_id)
-     values ($1, $2, $3, $4, 'top_up', $5, $6, $7, $8, $9)`,
+        first_person_id, second_person_id, hold_state)
+     values ($1, $2, $3, $4, 'top_up', $5, $6, $7, $8, $9, $10)`,
     [
       tx.businessId,
       answerId,
@@ -106,6 +116,7 @@ export async function topUpAtBudgetStop(
       threshold?.minor ?? null,
       other?.person_id ?? opened.value.person.personId,
       other === undefined ? null : opened.value.person.personId,
+      opened.value.locked.reservation_state,
     ],
   );
   const heldMinor = await raiseHold(tx, request, opened.value);
@@ -135,11 +146,18 @@ async function topUpRefusal(
       'End the work instead. A terminal plan takes no top-up.',
     );
   }
-  if (locked.reservation_state !== 'held' && locked.reservation_state !== 'actual') {
+  if (!['held', ...CLOSED_STOPS].includes(locked.reservation_state)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
       'this run holds no reservation to raise',
       NOT_WAITING_FIX,
+    );
+  }
+  if (CLOSED_STOPS.includes(locked.reservation_state) && (await openCallOn(tx, locked))) {
+    return refuse(
+      'TRANSITION_NOT_PERMITTED',
+      "a call open on this run's stopped hold when a person closed it is still unresolved",
+      'End the run instead; a top-up cannot count a call left open when a person closed the hold.',
     );
   }
   const recorded = await recordedRefusal(tx, locked);
@@ -159,37 +177,13 @@ async function topUpRefusal(
   });
 }
 
-async function insertApproval(
-  tx: TenantQuery,
-  request: BudgetStopTopUpRequest,
-  { locked, person }: Opened,
-): Promise<string> {
-  const id = randomUUID();
-  await tx.query(
-    `insert into public.budget_approvals
-       (business_id, id, ask_id, run_id, person_id, actor_id, amount_minor, currency)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      tx.businessId,
-      id,
-      locked.ask_id,
-      request.runId,
-      person.personId,
-      person.actorId,
-      request.amountMinor,
-      request.currency,
-    ],
-  );
-  return id;
-}
-
 /** The hold, the envelope and the run, under the locks: the answer row is already in. */
 async function raiseHold(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<number> {
-  if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
+  if (CLOSED_STOPS.includes(locked.reservation_state)) return await holdTopUp(tx, request, locked);
   const { spent, unsent } = await spentOn(tx, locked.reservation_id);
   let heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
@@ -213,9 +207,14 @@ async function raiseHold(
 }
 
 /**
- * A stop raised because the step's calls spent its whole hold (`budget-stop.ts`):
- * that hold is settled, so the top-up is the step's fresh hold, on the envelope
- * raised by it, and the run goes back for its pickup. Under the cap and
+ * The closed holds a stop can be raised on (`budget-stop.ts`): one its calls spent whole, or a
+ * replacement's target the version had no room for, maybe closed at nothing. It stays closed.
+ */
+const CLOSED_STOPS: readonly string[] = ['actual', 'abandoned'];
+
+/**
+ * A stop raised on a closed hold (`CLOSED_STOPS`): the top-up is the step's
+ * fresh hold, on the envelope raised by it, and the run goes back for its pickup. Under the cap and
  * envelope locks the answer holds; the cap was checked for the amount.
  */
 async function holdTopUp(

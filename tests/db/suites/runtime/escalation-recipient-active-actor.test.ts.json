@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "escalation counts only the recipient's active person actor, so a decide grant left on a deactivated actor makes nobody a recipient"
+}
