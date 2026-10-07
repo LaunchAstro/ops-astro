@@ -87,7 +87,16 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.move': TASK,
   'task.rank': TASK,
   'task.trash': TASK,
-  'task.purge': TASK,
+  // A purge clears what still names the task before it deletes the row (`tasks/trash.ts`): its
+  // links and tags go, its record grants are revoked, a conversation on it and its time detach.
+  // The delete takes its inbox items with their attention and delivery rows, and a map's body, by
+  // cascade, and a live map it sat under is refreshed by the records trigger.
+  'task.purge': writing([
+    ...TASK.writes,
+    ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
+    ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
+    ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
+  ]),
   'task.read': READ,
   'task.board': READ,
   'task.queue': READ,
@@ -251,7 +260,15 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ),
   'grant.revoke': GRANTS,
   'delegation.revoke': writing([
-    ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),
+    // The agent's person is owed the decision on a task the agent held (INB-1).
+    ...client(
+      'attempts',
+      'inbox_items',
+      'leases',
+      'planned_runs',
+      'reservations',
+      'task_envelopes',
+    ),
     ...business('delegations'),
   ]),
   'task.cancel': writing(client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages')),

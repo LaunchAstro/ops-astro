@@ -5,10 +5,11 @@
 // assignee; the gate stays pending, and from then on only such a person
 // decides it. Split out of `decide.ts` to keep that file under its 1,000
 // lines: `decide` calls these under the locks it already holds, and the
-// reasoning for the locks is there. `assignedTo` is here because both the
-// recipient check and `decide`'s four eyes read it.
+// reasoning for the locks is there. `assignedTo` (the records package's, which
+// the inbox asks too) is exported here because both the recipient check and
+// `decide`'s four eyes read it.
 
-import { refuseCommand } from '../../core-records/src/index.ts';
+import { assignedTo, refuseCommand } from '../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
 import { checkAuthorityAt } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -81,25 +82,8 @@ export async function recheckEscalation(
   return await recheckRecipient(tx, request, taskId, lockedAt);
 }
 
-/** Whether the task is assigned to this person, or to their agent, read under the caller's task lock. */
-export async function assignedTo(
-  tx: TenantQuery,
-  taskId: string,
-  personId: string,
-): Promise<boolean> {
-  const rows = await tx.query<{ readonly mine: boolean }>(
-    // An agent assignee counts as its delegating person (Assign to AI).
-    `select exists (select 1 from public.records r
-                     where r.business_id = $1 and r.id = $2
-                       and (r.uuid_2 = $3
-                            or exists (select 1 from public.delegations d
-                                        where d.business_id = r.business_id
-                                          and d.id::text = r.data ->> 'agent'
-                                          and d.delegate_person_id = $3))) as mine`,
-    [tx.businessId, taskId, personId],
-  );
-  return rows[0]?.mine === true;
-}
+/** Four eyes' one reading of the assignee, read under the caller's task lock. */
+export { assignedTo };
 
 /**
  * The recipient holds the escalation role at the locked instant: decide at

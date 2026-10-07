@@ -22,6 +22,8 @@ it('every newly eligible business decider gets an escalation item', async () => 
     businessId,
     query<Row>(sql: string, parameters: readonly unknown[] = []): Promise<readonly Row[]> {
       if (sql.includes('from public.gates g')) return Promise.resolve([{ taskId }] as Row[]);
+      // Who the task is assigned to: nobody here.
+      if (sql.includes('delegate_person_id')) return Promise.resolve([]);
       if (sql.includes('from effective e')) {
         return Promise.resolve(businessDeciders.map((person_id) => ({ person_id })) as Row[]);
       }
