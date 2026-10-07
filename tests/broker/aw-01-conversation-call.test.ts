@@ -20,6 +20,7 @@ import {
 } from '../../packages/core-custody/src/index.ts';
 import { REPLAY_COMPOSE, replayAdapter } from '../../packages/core-connectors/src/index.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import {
   liveWork,
   seedSchedules,
@@ -62,14 +63,9 @@ const person = (): ModelCaller => ({
   attendedByPersonId: s.decider.personId,
 });
 
-const ask = (overrides: Partial<ConversationCallRequest['conversation']> = {}) =>
+const ask = async (overrides: Partial<ConversationCallRequest['conversation']> = {}) =>
   ({
-    conversation: {
-      id: randomUUID(),
-      businessId: s.business,
-      ownerPersonId: s.decider.personId,
-      ...overrides,
-    },
+    conversation: { ...(await seedConversation(s)), ...overrides },
     operation: REPLAY_COMPOSE.key,
     fields: [{ name: 'message', source: 'outside', value: PLANTED_PROMPT }],
   }) satisfies ConversationCallRequest;
@@ -93,7 +89,7 @@ const rowsFor = async (conversationId: string): Promise<readonly Record<string, 
   ]);
 
 it('AW-01 conversation call: the owner calls a local route, nothing reserved, the row names the conversation and no task fact', async () => {
-  const request = ask();
+  const request = await ask();
   const result = await inConversation(person(), request);
   expect(result).toMatchObject({ ok: true, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 });
   const [row, ...more] = await rowsFor(request.conversation.id);
@@ -114,7 +110,7 @@ it('AW-01 conversation call: the owner calls a local route, nothing reserved, th
 });
 
 it('AW-01 conversation call: a priced answer is above a hold of nothing, so it is held for a person, never settled', async () => {
-  const request = ask();
+  const request = await ask();
   const result = await inConversation(person(), request, withRoutes([LOCAL]));
   expect(result).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN', heldMinor: 0 });
   const [row] = await rowsFor(request.conversation.id);
@@ -137,14 +133,14 @@ it('CS-7.30 conversation call: the chosen model is handed to the adapter and sen
     ...local(),
     providers: new Map([['replay', { build, price: () => 0 }]]),
   };
-  await inConversation(person(), { ...ask(), model: 'replay-chosen' }, capturing);
+  await inConversation(person(), { ...(await ask()), model: 'replay-chosen' }, capturing);
   expect(handed).toStrictEqual(['replay-chosen']);
   const asked = world.provider.seen.slice(sent).map((seen) => JSON.parse(seen.body) as object);
   expect(asked).toMatchObject([{ model: 'replay-chosen' }]);
 });
 
 it('AW-01 conversation egress off: a cloud route from a conversation is refused before any row or request', async () => {
-  const request = ask();
+  const request = await ask();
   const before = await callCount();
   const sent = world.provider.seen.length;
   const result = await inConversation(person(), request, withRoutes([CLOUD]));
@@ -154,7 +150,7 @@ it('AW-01 conversation egress off: a cloud route from a conversation is refused 
   expect(world.provider.seen.length).toBe(sent);
   // With no field for the data classes to keep local, only the conversation's
   // own rule stands between it and the cloud route.
-  const bare = { ...ask(), fields: [] };
+  const bare = { ...(await ask()), fields: [] };
   expect(await inConversation(person(), bare, withRoutes([CLOUD]))).toMatchObject({
     ok: false,
     code: 'LOCAL_MODEL_REQUIRED',
@@ -163,7 +159,7 @@ it('AW-01 conversation egress off: a cloud route from a conversation is refused 
   expect(await rowsFor(bare.conversation.id)).toEqual([]);
   expect(world.provider.seen.length).toBe(sent);
   // The default broker (cloud only) refuses the same way.
-  expect(await inConversation(person(), ask(), broker)).toMatchObject({
+  expect(await inConversation(person(), await ask(), broker)).toMatchObject({
     ok: false,
     code: 'LOCAL_MODEL_REQUIRED',
   });
@@ -171,12 +167,12 @@ it('AW-01 conversation egress off: a cloud route from a conversation is refused 
 
 it('AW-01 conversation isolation: another business, another person, and an agent under a live delegation are refused, nothing written or sent', async () => {
   const crossings: [string, ModelCaller, ConversationCallRequest][] = [
-    ['another business', person(), ask({ businessId: bravo.business })],
-    ['another person', person(), ask({ ownerPersonId: other.personId })],
+    ['another business', person(), await ask({ businessId: bravo.business })],
+    ['another person', person(), await ask({ ownerPersonId: other.personId })],
     [
       'another person in their own session',
       { actorId: other.actorId, delegationId: null, attendedByPersonId: other.personId },
-      ask(),
+      await ask(),
     ],
     [
       'an agent under a live delegation',
@@ -185,12 +181,12 @@ it('AW-01 conversation isolation: another business, another person, and an agent
         delegationId: String(work.picked['delegationId']),
         attendedByPersonId: null,
       },
-      ask(),
+      await ask(),
     ],
     [
       'the owner through a delegation',
       { ...person(), delegationId: String(work.picked['delegationId']) },
-      ask(),
+      await ask(),
     ],
   ];
   for (const [crossing, caller, request] of crossings) {
@@ -212,7 +208,7 @@ it('AW-01 conversation isolation: another business, another person, and an agent
 });
 
 it('AW-01 conversation sweep: a call left started past ten minutes is held, never left in flight; a fresh one is left', async () => {
-  const [stale, fresh] = [randomUUID(), randomUUID()];
+  const [stale, fresh] = [(await seedConversation(s)).id, (await seedConversation(s)).id];
   await s.db.app.withBusiness(s.business, async (tx) => {
     for (const [conversationId, age] of [
       [stale, '11 minutes'],

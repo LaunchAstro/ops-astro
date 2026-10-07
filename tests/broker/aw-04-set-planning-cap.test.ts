@@ -99,7 +99,7 @@ it('AW-04 set planning cap: a billing holder moves the default AUD 50 cap, the b
   expect(first.detail).toStrictEqual({ key: 'planning', limitMinor: 1_200, currency: 'AUD' });
   expect(await caps(s)).toStrictEqual({ local: '1000000', planning: '1200' });
 
-  const request = ask(s);
+  const request = await ask(s);
   expect(await allowance(s, s.decider.personId, request.conversation.id)).toMatchObject({
     set: true,
     currency: 'AUD',

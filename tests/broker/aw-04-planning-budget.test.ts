@@ -33,7 +33,7 @@ usePlanningWorld('aw04plan');
 it('AW-04 planning budget: with no cap set, the default AUD 50 is the allowance: it reads before the first message, and the first reply holds and settles under it', async () => {
   // A business no person has set a cap for: the default is its allowance.
   const fresh = await seedSchedules(s.db, 'aw04plan-default', 1_000_000);
-  const request = ask(fresh);
+  const request = await ask(fresh);
   expect(await allowance(fresh, fresh.decider.personId, request.conversation.id)).toStrictEqual({
     set: false,
     currency: 'AUD',
@@ -63,7 +63,7 @@ it('AW-04 planning budget: with no cap set, the default AUD 50 is the allowance:
 
 it('AW-04 planning budget: the allowance line reads before the first message, then a priced reply holds its maximum and settles at its price on the envelope', async () => {
   await setCap(s, 1_200);
-  const request = ask(s);
+  const request = await ask(s);
   expect(await allowance(s, s.decider.personId, request.conversation.id)).toStrictEqual({
     set: true,
     currency: 'AUD',
@@ -87,7 +87,7 @@ it('AW-04 planning budget: the allowance line reads before the first message, th
 });
 
 it('AW-04 planning budget: a failed reply stays held at its maximum against the envelope, and the next reply that no longer fits is refused', async () => {
-  const request = ask(s);
+  const request = await ask(s);
   const before = await allowance(s, s.decider.personId, request.conversation.id);
   world.provider.mode('costly');
   expect(await plan(s, ownerOf(s), request)).toMatchObject({
@@ -145,13 +145,13 @@ it('AW-04 planning budget: two replies racing for the last of the allowance, on 
     const results = await p.bravo.db.admin.transaction(async (execute) => {
       await execute('lock table public.planning_envelopes in exclusive mode');
       const both = Promise.all([
-        plan(p.bravo, ownerOf(p.bravo), ask(p.bravo)),
+        plan(p.bravo, ownerOf(p.bravo), await ask(p.bravo)),
         callModelForPlanning(
           second,
           p.bravo.business,
           ownerOf(p.bravo),
           {
-            ...ask(p.bravo),
+            ...(await ask(p.bravo)),
             operation: 'model.replay_single',
           },
           single,

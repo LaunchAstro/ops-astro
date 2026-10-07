@@ -29,10 +29,10 @@ interface Asked {
 }
 
 async function lockConversation(tx: TenantQuery, asked: Asked): Promise<void> {
-  await tx.query('select id from conversations where business_id = $1 and id = $2 for update', [
-    tx.businessId,
-    asked.conversationId,
-  ]);
+  await tx.query(
+    'select id from conversations where business_id = $1 and id = $2 for no key update',
+    [tx.businessId, asked.conversationId],
+  );
 }
 
 describe.skipIf(serverUrl === undefined)(

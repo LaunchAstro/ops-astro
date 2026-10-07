@@ -44,7 +44,7 @@ const HELD: readonly ReplayMode[] = [
 
 /** One hostile reply on its own conversation: held at the maximum, no text, cap and envelope agreeing. */
 async function heldWithin(mode: ReplayMode): Promise<void> {
-  const request = ask(s);
+  const request = await ask(s);
   const id = request.conversation.id;
   const before = await allowance(s, s.decider.personId, id);
   world.provider.mode(mode);
@@ -80,7 +80,7 @@ it('AW-04 hostile provider: each hostile planning reply is held within its own h
   );
   expect(costly.map((row) => Number(row.observed))).toStrictEqual([1_000]);
 
-  const request = ask(s);
+  const request = await ask(s);
   expect(await allowance(s, s.decider.personId, request.conversation.id)).toMatchObject({
     leftMinor: MAXIMUM - 1,
   });
@@ -102,7 +102,7 @@ it('AW-04 hostile provider: a reply the provider proves never began is released 
       where business_id = $1 and key = 'planning'`,
     [s.business, MAXIMUM],
   );
-  const request = ask(s);
+  const request = await ask(s);
   const before = await allowance(s, s.decider.personId, request.conversation.id);
   world.provider.mode('nothing_happened');
   const result = await plan(s, ownerOf(s), request);
@@ -124,12 +124,12 @@ it('AW-04 canary: planted chat content and a planted provider answer on a planni
   );
   const planted = '203.0.113.9/collect';
   world.provider.mode('planted');
-  const answered = await plan(s, ownerOf(s), ask(s));
+  const answered = await plan(s, ownerOf(s), await ask(s));
   expect(answered).toMatchObject({ ok: true, reservedMinor: MAXIMUM });
   // The answer is the caller's data; it is never kept or logged.
   expect(answered.ok && answered.text).toContain(planted);
   world.provider.mode('malformed');
-  const refused = await plan(s, ownerOf(s), ask(s));
+  const refused = await plan(s, ownerOf(s), await ask(s));
   expect(refused).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
   const [row] = await s.db.admin.execute<{ dump: string }>(
     `select coalesce(string_agg(t, ' '), '') as dump from (

@@ -39,7 +39,8 @@ describe.skipIf(noDatabase)('run-reference upgrades preserve valid history', () 
     }, Promise.resolve());
   });
   it('the upgrade drill keeps stored rows through the scope migration', () => {
-    const previous = ALL[ALL.findIndex((migration) => migration.version === VERSION) - 1];
+    const boundKeys = '20261007174204_run_bound_keys';
+    const previous = ALL[ALL.findIndex((migration) => migration.version === boundKeys) - 1];
     expect(previous).toBeDefined();
     const run = spawnSync(
       process.execPath,
@@ -51,7 +52,7 @@ describe.skipIf(noDatabase)('run-reference upgrades preserve valid history', () 
     expect(result).toMatchObject({
       ok: true,
       differences: [],
-      applied: expect.arrayContaining([VERSION]),
+      applied: expect.arrayContaining([boundKeys, VERSION]),
     });
   }, 180_000);
 });

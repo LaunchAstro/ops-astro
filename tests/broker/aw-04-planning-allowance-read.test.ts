@@ -59,10 +59,12 @@ it("AW-04 planning allowance read: the owner reads the cap, what is left across 
   const mine = await started(s);
   const other = await started(s);
   world.provider.mode('answer');
-  const settled = await plan(s, ownerOf(s), ask(s, mine));
-  const elsewhere = await plan(s, ownerOf(s), ask(s, other));
+  const settled = await plan(s, ownerOf(s), await ask(s, mine));
+  const elsewhere = await plan(s, ownerOf(s), await ask(s, other));
   world.provider.mode('malformed');
-  expect(await plan(s, ownerOf(s), ask(s, mine))).toMatchObject({ code: 'LIABILITY_UNKNOWN' });
+  expect(await plan(s, ownerOf(s), await ask(s, mine))).toMatchObject({
+    code: 'LIABILITY_UNKNOWN',
+  });
   if (!settled.ok || !elsewhere.ok) throw new Error('the priced replies did not settle');
   const spent = settled.actualMinor;
   expect(await allowanceAs(s, s.decider, { conversationId: mine })).toStrictEqual({
@@ -113,7 +115,7 @@ async function plantedOwnRead(): Promise<{ own: unknown; mine: string; canary: R
   );
   const mine = await started(s);
   world.provider.mode('answer');
-  expect(await plan(s, ownerOf(s), ask(s, mine))).toMatchObject({ ok: true });
+  expect(await plan(s, ownerOf(s), await ask(s, mine))).toMatchObject({ ok: true });
   const own = (await allowanceAs(s, s.decider, { conversationId: mine })) as {
     allowance: { leftMinor: number; conversation: { spentMinor: number } };
   };

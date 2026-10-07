@@ -49,7 +49,7 @@ async function agentUnderDelegation(): Promise<ModelCaller> {
 }
 
 it('AW-04 planning budget isolation: another business, another client, another person under a live delegation', async () => {
-  const mine = ask(s);
+  const mine = await ask(s);
   world.provider.mode('answer');
   await setCap(s, 5_000);
   expect(await plan(s, ownerOf(s), mine)).toMatchObject({ ok: true });

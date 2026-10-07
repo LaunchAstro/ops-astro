@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// LA-1 (#859) through the real broker, custody and a stand-in runner: the side
-// panel answered, a runner refusal released, unattended work carried only under
-// the carve-out, owner line 72's refusals, and the runner key kept in.
+// LA-1 (#859) through the real broker, custody and a stand-in runner.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt, vi } from 'vitest';
@@ -24,6 +22,7 @@ import {
   type ModelCaller,
 } from '../../packages/core-custody/src/index.ts';
 import { liveWork, type Work } from '../runtime/schedules-harness.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import {
   CLOUD,
   broker,
@@ -104,8 +103,8 @@ const owner = (): ModelCaller => ({
   attendedByPersonId: s.decider.personId,
 });
 
-const ask = (message: string) => ({
-  conversation: { id: randomUUID(), businessId: s.business, ownerPersonId: s.decider.personId },
+const ask = async (message: string) => ({
+  conversation: await seedConversation(s),
   operation: LOCAL_GPT_CONVERSATION.key,
   fields: [{ name: 'message', source: 'outside' as const, value: message }],
 });
@@ -128,7 +127,7 @@ async function runStep(work: Work, with_: Broker, operation = INTERNAL_STEP.key)
 it('LA-1 side panel: a conversation message is answered by the local session, settled at nothing', async () => {
   runner.mode('answer');
   const before = runner.seen.length;
-  const request = ask(`hello ${randomUUID()}`);
+  const request = await ask(`hello ${randomUUID()}`);
   const result = await callModelInConversation(s.db.app, s.business, owner(), request, local());
   expect(result).toMatchObject({
     ok: true,
@@ -161,7 +160,7 @@ it('LA-1 side panel: a conversation message is answered by the local session, se
 it('LA-1 cap: a runner at its cap answers LOCAL_CAP_REACHED, and the call is released, nothing held', async () => {
   runner.mode('cap');
   try {
-    const request = ask('one more');
+    const request = await ask('one more');
     const result = await callModelInConversation(s.db.app, s.business, owner(), request, local());
     expect(result).toMatchObject({ ok: false, code: 'CALL_RELEASED', reason: 'LOCAL_CAP_REACHED' });
     const [row] = await conversationRows(request.conversation.id);
@@ -213,7 +212,7 @@ it.each([
 
 it('LA-1 conversation: without the carve-out the GPT route is a cloud route, refused before anything is sent', async () => {
   const before = runner.seen.length;
-  const request = ask('no carve-out');
+  const request = await ask('no carve-out');
   const result = await callModelInConversation(
     s.db.app,
     s.business,
@@ -268,8 +267,9 @@ it("LA-1 task run: another installation's tenant is refused under the carve-out,
 it("LA-1 canary: the runner's key never reaches an answer, a row, an audit event or output", async () => {
   runner.mode('answer');
   const work = await liveWork(s, 'la1 canary', 2_000);
+  const request = await ask('canary check');
   const answers = [
-    await callModelInConversation(s.db.app, s.business, owner(), ask('canary check'), local()),
+    await callModelInConversation(s.db.app, s.business, owner(), request, local()),
     await runStep(work, local()),
   ];
   expect(answers.map((answer) => answer.ok)).toEqual([true, true]);

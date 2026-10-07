@@ -58,7 +58,7 @@ beforeAll(async () => {
   // The owner's spend is the business's too: what is left counts it.
   m.ownerTalk = await started(s.decider);
   world.provider.mode('answer');
-  const settled = await plan(s, ownerOf(s), ask(s, m.ownerTalk));
+  const settled = await plan(s, ownerOf(s), await ask(s, m.ownerTalk));
   if (!settled.ok) throw new Error(`the owner's reply did not settle: ${JSON.stringify(settled)}`);
 }, 120_000);
 
@@ -103,7 +103,7 @@ it('AW-04 planning allowance read: a member without conversation:write is refuse
 it("AW-04 planning allowance read: a member's own conversation's spent and held, never a colleague's", async () => {
   const own = await started(m.writer);
   world.provider.mode('answer');
-  const base = ask(s, own);
+  const base = await ask(s, own);
   const mine = await plan(s, callerOf(m.writer), {
     ...base,
     conversation: { ...base.conversation, ownerPersonId: m.writer.personId },
@@ -111,7 +111,7 @@ it("AW-04 planning allowance read: a member's own conversation's spent and held,
   if (!mine.ok) throw new Error(`the member's reply did not settle: ${JSON.stringify(mine)}`);
   // The owner's conversation carries a hold the member's does not: a reply gone unknown.
   world.provider.mode('malformed');
-  expect(await plan(s, ownerOf(s), ask(s, m.ownerTalk))).toMatchObject({
+  expect(await plan(s, ownerOf(s), await ask(s, m.ownerTalk))).toMatchObject({
     code: 'LIABILITY_UNKNOWN',
   });
   const ownerSpent = (await allowance(s, s.decider.personId, m.ownerTalk)).conversation;

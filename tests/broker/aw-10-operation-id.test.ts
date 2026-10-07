@@ -36,12 +36,12 @@ it("AW-10 operation id: a task's call, a conversation call and a planning reply 
   );
   expect(lastOperationId()).toBe(task?.id);
 
-  const talk = ask(s);
+  const talk = await ask(s);
   await callModelInConversation(s.db.app, s.business, ownerOf(s), talk, local(s));
   const [conversation] = await rowsFor(s, talk.conversation.id);
   expect(lastOperationId()).toBe(conversation?.['id']);
 
-  const planning = ask(s);
+  const planning = await ask(s);
   await plan(s, ownerOf(s), planning);
   const [reply] = await rowsFor(s, planning.conversation.id);
   expect(lastOperationId()).toBe(reply?.['id']);

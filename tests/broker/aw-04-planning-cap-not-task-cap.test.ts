@@ -28,7 +28,7 @@ it('AW-04 planning cap is not the task cap: after the first planning reply write
   expect(await taskCap()).toBeUndefined();
 
   world.provider.mode('answer');
-  expect(await plan(fresh, ownerOf(fresh), ask(fresh))).toMatchObject({ ok: true });
+  expect(await plan(fresh, ownerOf(fresh), await ask(fresh))).toMatchObject({ ok: true });
   const [planning] = await s.db.admin.execute<{ id: string }>(
     `select id from public.budget_caps where business_id = $1 and key = 'planning'`,
     [fresh.business],

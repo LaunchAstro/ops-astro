@@ -42,7 +42,7 @@ beforeAll(async () => {
 }, 60_000);
 
 it('REVIEW-3B-1: a failed planning reply held liability_unknown is released by the pass or a person, and the planning allowance gets its hold back', async () => {
-  const request = ask(s);
+  const request = await ask(s);
   const before = await allowance(s, s.decider.personId, request.conversation.id);
 
   // The connection is cut: the provider never began the work, and the reply is held.

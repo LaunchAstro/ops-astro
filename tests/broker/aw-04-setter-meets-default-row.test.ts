@@ -49,7 +49,7 @@ it('AW-04 setter meets the default row: a reply holding the uncommitted default 
     const both = await fresh.db.admin.transaction(async (execute) => {
       // The reply writes the default row, then waits here at its envelope.
       await execute('lock table public.planning_envelopes in exclusive mode');
-      const reply = plan(fresh, ownerOf(fresh), ask(fresh));
+      const reply = plan(fresh, ownerOf(fresh), await ask(fresh));
       await waiting(execute, 1);
       // The setter cannot see the reply's row: its insert waits on the key.
       const setter = asPerson(
