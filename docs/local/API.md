@@ -1524,7 +1524,9 @@ card drew, sent together or not at all (half of one, or a fraction of a minor
 unit, is `FIELD_VALUE_INVALID` 422); under the locks, a ceiling other than the
 version's maximum and currency is `VERSION_STALE` 409 and nothing is approved
 or held. Callers that draw no ceiling send neither. `conversationId` is the caller's own conversation
-or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
+or `NOT_FOUND` 404, and becomes the audit event's origin. The accept is
+activity in that conversation, as a message is: a wrap-up written before it no
+longer covers it, and the next one, at quiet, lists the run and gate. Every other refusal
 is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
 the operation id replays it; a changed body is `OPERATION_ID_REUSED`.
