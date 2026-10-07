@@ -48,7 +48,7 @@ import {
   spentOn,
 } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
-import { fourEyes } from './budget-answer-eyes.ts';
+import { fourEyes, insertApproval } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 
 export interface BudgetStopTopUpRequest extends BudgetAnswerRequest {
@@ -175,30 +175,6 @@ async function topUpRefusal(
     wanted: BigInt(request.amountMinor),
     currency: locked.currency,
   });
-}
-
-async function insertApproval(
-  tx: TenantQuery,
-  request: BudgetStopTopUpRequest,
-  { locked, person }: Opened,
-): Promise<string> {
-  const id = randomUUID();
-  await tx.query(
-    `insert into public.budget_approvals
-       (business_id, id, ask_id, run_id, person_id, actor_id, amount_minor, currency)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      tx.businessId,
-      id,
-      locked.ask_id,
-      request.runId,
-      person.personId,
-      person.actorId,
-      request.amountMinor,
-      request.currency,
-    ],
-  );
-  return id;
 }
 
 /** The hold, the envelope and the run, under the locks: the answer row is already in. */

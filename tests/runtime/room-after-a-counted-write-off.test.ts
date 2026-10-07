@@ -220,55 +220,60 @@ describe.skipIf(serverUrl === undefined)(
   },
 );
 
+/**
+ * Sol's SC2 Scenario: after the top-up, reconciliation proves R1's step absent and reserves R2 at
+ * R1's 100 for the same step. R1 is written off at 100 and R2 ends unspent. R2's attempt shares the
+ * answer's start stamp (two transactions starting in one microsecond): nothing tells them apart.
+ */
+async function reconciledAtTheTopUpStamp() {
+  const reconciled: { r2?: unknown } = {};
+  const { work, versionId, r1 } = await countedWriteOff(100, async (held) => {
+    await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await reconcileUnknown(tx, async () => await Promise.resolve(false)),
+    );
+    const [r2] = await rows<{ id: string }>(
+      s,
+      `select r.id from public.reservations r
+        where r.business_id = $1 and r.state = 'held' and r.id <> $2
+          and r.run_id = (select run_id from public.reservations where id = $2)`,
+      [s.business, held],
+    );
+    reconciled.r2 = r2?.id;
+  });
+  const r2 = reconciled.r2;
+  await stopWorker(s, await pickup(s, r2));
+  const moved = await s.db.admin.execute(
+    `update public.budget_answers a set answered_at = t.created_at
+       from public.budget_asks k, public.attempts t
+      where k.business_id = a.business_id and k.id = a.ask_id and a.kind = 'top_up'
+        and a.business_id = $1 and k.reservation_id = $2
+        and t.business_id = a.business_id and t.reservation_id = $3
+      returning a.id`,
+    [s.business, r1, r2],
+  );
+  expect(moved, "the top-up's stamp now R2's").toHaveLength(1);
+  const collides = await rows(
+    s,
+    `select 1 from public.attempts t, public.attempts u, public.budget_answers a, public.budget_asks k
+      where t.business_id = $1 and t.reservation_id = $3 and u.business_id = $1 and u.reservation_id = $2
+        and k.business_id = $1 and k.reservation_id = $2 and a.business_id = $1 and a.ask_id = k.id
+        and a.kind = 'top_up' and t.state = 'abandoned' and t.step_id = u.step_id
+        and t.estimated_minor = a.amount_minor and t.created_at = a.answered_at`,
+    [s.business, r1, r2],
+  );
+  expect(
+    collides,
+    "R2's attempt: R1's step, the top-up's amount and stamp, ended unspent",
+  ).toHaveLength(1);
+  return { work, versionId, r1, r2 };
+}
+
 describe.skipIf(serverUrl === undefined)(
   'the version room after an upgrade, with a replacement at the top-up step, amount and stamp',
   () => {
     it('reads a top-up made while held as held when a reconciled replacement at its step and amount shares its stamp, so the written-off charge fills the version', async () => {
-      // Sol's SC2 Scenario: after the top-up, reconciliation proves R1's step
-      // absent and reserves R2 at R1's 100 for the same step. R1 is written off
-      // at 100 and R2 ends unspent. R2's attempt shares the answer's start stamp
-      // (two transactions starting in one microsecond), so before the column
-      // nothing tells the top-up from a closed-first one: it is read as held.
-      const reconciled: { r2?: unknown } = {};
-      const { work, versionId, r1 } = await countedWriteOff(100, async (held) => {
-        await s.db.app.withBusiness(
-          s.business,
-          async (tx) => await reconcileUnknown(tx, async () => await Promise.resolve(false)),
-        );
-        const [r2] = await rows<{ id: string }>(
-          s,
-          `select r.id from public.reservations r
-            where r.business_id = $1 and r.state = 'held' and r.id <> $2
-              and r.run_id = (select run_id from public.reservations where id = $2)`,
-          [s.business, held],
-        );
-        reconciled.r2 = r2?.id;
-      });
-      const r2 = reconciled.r2;
-      await stopWorker(s, await pickup(s, r2));
-      const moved = await s.db.admin.execute(
-        `update public.budget_answers a set answered_at = t.created_at
-           from public.budget_asks k, public.attempts t
-          where k.business_id = a.business_id and k.id = a.ask_id and a.kind = 'top_up'
-            and a.business_id = $1 and k.reservation_id = $2
-            and t.business_id = a.business_id and t.reservation_id = $3
-          returning a.id`,
-        [s.business, r1, r2],
-      );
-      expect(moved, "the top-up's stamp now R2's").toHaveLength(1);
-      const collides = await rows(
-        s,
-        `select 1 from public.attempts t, public.attempts u, public.budget_answers a, public.budget_asks k
-          where t.business_id = $1 and t.reservation_id = $3 and u.business_id = $1 and u.reservation_id = $2
-            and k.business_id = $1 and k.reservation_id = $2 and a.business_id = $1 and a.ask_id = k.id
-            and a.kind = 'top_up' and t.state = 'abandoned' and t.step_id = u.step_id
-            and t.estimated_minor = a.amount_minor and t.created_at = a.answered_at`,
-        [s.business, r1, r2],
-      );
-      expect(
-        collides,
-        "R2's attempt: R1's step, the top-up's amount and stamp, ended unspent",
-      ).toHaveLength(1);
+      const { work, versionId, r1, r2 } = await reconciledAtTheTopUpStamp();
       await asBeforeHoldState(s);
       const again = await asAgent(s, {
         command: 'task.pickup',

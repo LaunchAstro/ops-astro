@@ -506,16 +506,13 @@ async function claimHold(
 const NO_ROOM = "this run's spend and holds already fill the version's approved ceiling";
 
 /**
- * What the run may still hold under its version: the approved ceiling, raised
- * by the run's applied top-ups, less what its reservations of the version
- * committed (a live hold whole, a closed one at its spend). A closed hold
- * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
- * its calls plus its actual when its top-up found it held: a later close
- * charges only what it adds (`modelCallsOn`). One settled (`actual`) before
- * its top-up (every top-up records which, `hold_state`) is at the greater,
- * counted once. Any other is at its actual, its unsent calls never counted.
- * Read under the run lock. A replacement is held at most this, whatever the
- * newest-hold order says.
+ * What the run may still hold under its version: the approved ceiling, raised by the run's applied
+ * top-ups, less what its reservations of the version committed (a live hold whole, a closed one at
+ * its spend). A closed hold custody counted (`countedHold`: a top-up moved its spend, or the end)
+ * is at its calls plus its actual when its top-up found it held (`hold_state`; every top-up from
+ * before the column reads held): a later close charges only what it adds (`modelCallsOn`). One
+ * settled (`actual`) before its top-up is at the greater, counted once. Any other is at its actual,
+ * its unsent calls never counted. Read under the run lock. A replacement holds at most this.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
   const [row] = await tx.query<{ readonly room: string }>(
@@ -989,10 +986,9 @@ function replaceable(state: {
   const ended =
     state.state === 'abandoned' ||
     (state.state === 'actual' && state.attempt_state === 'abandoned');
-  // One active hold per version (0019): a version already holding elsewhere is
-  // claimed through that hold, from the queue, and not through this one. Only
-  // the newest hold is replaced: an older one's remainder ignores the spend on
-  // every hold after it, so holding it again would pass the version's ceiling.
+  // One active hold per version (0019): a version already holding elsewhere is claimed through
+  // that hold, from the queue, and not through this one. Only the newest hold is replaced: an
+  // older one's remainder ignores the spend on every hold after it, passing the version's ceiling.
   return (
     ended &&
     !state.settled &&

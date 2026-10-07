@@ -34,9 +34,8 @@ import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
- * SQL: the reservation `r`'s calls as they stand, as `spentOn` counts them
- * (settled at their actual, still open or unknown at their maximum). `r` is a
- * query's own alias.
+ * SQL: the reservation `r`'s calls as they stand, as `spentOn` counts them (settled at their
+ * actual, still open or unknown at their maximum). `r` is a query's own alias.
  */
 export const callsSpentOf = (r: string): string =>
   `(select coalesce(sum(case when c.state = 'settled' then c.actual_minor
