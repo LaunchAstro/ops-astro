@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, type CliWorld } from '../cli/api-3-world.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
-import { chart, keyOf, openMap, until } from './wayfinder-web.tsx';
+import { browserFor, chart, keyOf, openMap, until } from './wayfinder-web.tsx';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { tokenFor } from '../api/fixture.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
@@ -244,13 +244,35 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
       recordId: id,
       expectedRevision: await w.revisionOf(id),
     });
-    const reader = await cliFor(await w.member('wf4-parity-reader', ['read']));
-    const refused = await reader.run('map.graduate', {
-      ...(await at(map)),
+    // The same read-only person refused each write by the CLI and by the
+    // browser's client, the one the page sends through: the same code.
+    const readOnly = await w.member('wf4-parity-reader', ['read']);
+    const reader = await cliFor(readOnly);
+    const browser = await browserFor(w.api, readOnly, w.key);
+    const refusals = async (
+      name: 'map.graduate' | 'task.set_blocking',
+      recordId: string,
+      body: object,
+    ) => {
+      const sent = await at(recordId);
+      const cliAnswer = await reader.run(name, { ...sent, ...body });
+      const { expectedRevision } = sent;
+      const page = await browser.mutate(name, { recordId, ...body }, { expectedRevision });
+      return {
+        cli: (cliAnswer.body as { code?: string } | undefined)?.code,
+        browser: (page as { code?: string }).code,
+      };
+    };
+    const graduation = await refusals('map.graduate', map, {
       patchId: patch,
       tickets: [{ title: 'x', type: 'task' }],
     });
-    expect((refused.body as { code: string }).code).toBe('SCOPE_NOT_GRANTED');
+    expect(graduation).toStrictEqual({ cli: 'SCOPE_NOT_GRANTED', browser: 'SCOPE_NOT_GRANTED' });
+    const blocking = await refusals('task.set_blocking', tickets['a'] as string, {
+      blockedBy: [tickets['b']],
+    });
+    expect(blocking).toStrictEqual({ cli: 'SCOPE_NOT_GRANTED', browser: 'SCOPE_NOT_GRANTED' });
+    expect(await frontierOf(map)).toStrictEqual([tickets['a']]);
 
     const cli = await cliFor(lead);
     const graduated = await cli.run('map.graduate', {
