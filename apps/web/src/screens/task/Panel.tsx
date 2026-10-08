@@ -61,6 +61,7 @@ import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
+import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
@@ -242,6 +243,7 @@ function PanelHead(props: SideProps): ReactElement {
       <h2 className="t-title" data-panel-title>
         <PanelName client={props.client} task={task} onChanged={props.onChanged} />
       </h2>
+      <TaskPin taskId={task.id} />
       <button
         className="btn"
         type="button"
@@ -262,6 +264,7 @@ function PanelHead(props: SideProps): ReactElement {
         Open its page
       </a>
       <GoTo task={task} />
+      <TaskPinsNotice />
       {props.docked === true ? null : (
         <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
           Close

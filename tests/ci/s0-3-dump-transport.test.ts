@@ -35,10 +35,11 @@ process.stdout.write('PGDMP fixture');
     process.env['PGSSLMODE'] = 'disable';
     process.env['SOL_CAPTURE_PATH'] = capture;
     const path = '../../scripts/ops/backup.mjs';
-    const { pgDump }: { pgDump: (url: string) => Promise<Buffer> } = await import(
+    const { pgDump }: { pgDump: (url: string) => Promise<AsyncIterable<Buffer>> } = await import(
       /* @vite-ignore */ path
     );
-    await pgDump('postgres://backup:dummy@example.invalid/operations');
+    const pieces = await pgDump('postgres://backup:dummy@example.invalid/operations');
+    for await (const piece of pieces) expect(piece.length).toBeGreaterThan(0);
     const command = JSON.parse(readFileSync(capture, 'utf8')) as {
       args: string[];
       sslmode: string | undefined;

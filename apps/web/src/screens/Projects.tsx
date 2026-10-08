@@ -1,25 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// `/projects/`. Two tabs: the caller's inbox above the board of the
-// business's unboarded tasks with the form that makes one (CreateTask.tsx),
-// and the Work log (MP-8-4), reached by `#worklog` as the mockup's
-// `/projects/#worklog` is. The Work log reads nothing until it is first
-// opened, and stays drawn once it has been, as every tab pane does.
-//
-// The read is `task.board` with `board: null`, which the contract defines as
-// the business's unboarded tasks — the acceptance case creates a task
-// **without a board** and expects to find it (B1).
-//
-// The board is the board machine with the Projects board's nine columns
-// (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
-// and its calc line, the stage (drawn by its label in the task stage list),
-// the due and the estimate (MP-4-8) come from
-// stored records, and the hover door goes to the task's page link (MP-4-12).
-// What the product does not store yet draws a dash or nothing and is recorded
-// as such: starring (P-20). The actual is the time logged (MP-4-6). The client
-// is the read's, by name, where the reader reaches it; a Clients row door (`?f=client:"<name>"`)
-// filters the board to it, in the dock as on the page (the view is the address's).
-
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
@@ -45,6 +24,7 @@ import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
+import { useSharedTaskPins, TaskPinsNotice } from './task/task-pins-context.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
 import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
@@ -114,6 +94,7 @@ function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & { readonly hidden: boolean },
 ): ReactElement {
   const client = props.client;
+  const pins = useSharedTaskPins();
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
@@ -180,6 +161,7 @@ function ProjectBoard(
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       {/* Keyed on the reader: its lock, refusal and in-flight create are theirs. */}
       <CreateTask key={grantKey} client={client} onCreated={reload} />
+      <TaskPinsNotice />
 
       {said === null ? null : (
         <p className="field__error" role="alert" data-board-refusal>
@@ -203,7 +185,11 @@ function ProjectBoard(
               // A new place is a new view: the board opens on it afresh.
               key={props.address === undefined ? undefined : query}
               hidden={props.hidden}
-              rows={value.tasks.map((task) => rowOf(task))}
+              rows={value.tasks.map((task) =>
+                Object.assign(rowOf(task), {
+                  starred: pins?.pinnedIds.includes(task.id) ?? false,
+                }),
+              )}
               withheld={value.withheld ?? 0}
               changedAt={value.changedAt ?? null}
               stages={STAGE_LABELS}
@@ -264,7 +250,6 @@ function rowOf(task: BoardTask): ProjectRow {
     name: titleOf(task.title),
     revision: task.revision,
     rank: { number: task.rank.number, calc: task.rank.calc },
-    // No ticket builds starring yet, so the starred tier is empty (P-20).
     starred: false,
     // The client by name where the reader reaches it (C32's rule); a server
     // that predates it, or a client out of reach, sends none.

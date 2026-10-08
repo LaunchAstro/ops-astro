@@ -672,3 +672,29 @@
 .msg__signal[data-signal='owed'] {
   color: var(--warning);
 }
+
+.dtp__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dtp__action:hover,
+.dtp__action:focus-visible {
+  color: var(--accent);
+}
+.dtp__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dtp__action[data-task-pin][aria-pressed='true'] {
+  color: var(--accent);
+}

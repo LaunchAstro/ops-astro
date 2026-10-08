@@ -19,7 +19,7 @@ import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const KEY_FIXES: readonly string[] = [
-  'Name a preference this store keeps: appearance, rail.width, rail.collapsed, dock.width, dock.sheetHeight, columns.widths, tips.enabled, tips.dismissed, subtasks.showFinished, history.showTrail or agent.jobList.',
+  'Name a preference this store keeps: appearance, rail.width, rail.collapsed, dock.width, dock.sheetHeight, columns.widths, tips.enabled, tips.dismissed, subtasks.showFinished, history.showTrail, tasks.pinned or agent.jobList.',
 ];
 
 const VALUE_FIXES: readonly string[] = [
@@ -27,6 +27,7 @@ const VALUE_FIXES: readonly string[] = [
   'A width or height is a whole number of pixels above zero; columns.widths maps at most 64 column ids, of at most 64 characters, to one each.',
   'rail.collapsed takes true or false.',
   'tips.enabled, subtasks.showFinished, history.showTrail and agent.jobList take true or false; tips.dismissed takes only {}, which brings every tip back.',
+  'tasks.pinned takes an array of at most 128 unique lower-case UUID strings; [] clears the pins. Pinning grants no task access.',
 ];
 
 const TIP_FIXES: readonly string[] = [

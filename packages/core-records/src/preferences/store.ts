@@ -12,6 +12,15 @@
 // narrow their bounds; none of them adds a table.
 
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isUuid } from '../tenancy/ids.ts';
+
+/** A bounded personal ordering hint, never task authority or a task lookup. */
+const TASK_PINS_MAX = 128;
+const isTaskPins = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.length <= TASK_PINS_MAX &&
+  new Set(value).size === value.length &&
+  Array.from(value).every((id: unknown) => isUuid(id) && id === id.toLowerCase());
 
 /** A width or height in CSS pixels: a whole number no screen exceeds. */
 const isLength = (value: unknown): boolean =>
@@ -39,6 +48,7 @@ export type PreferenceKey =
   | 'tips.dismissed'
   | 'subtasks.showFinished'
   | 'history.showTrail'
+  | 'tasks.pinned'
   | 'agent.jobList';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
@@ -65,6 +75,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
   'subtasks.showFinished': (value) => typeof value === 'boolean',
   /** The dock task panel's trail shown (MP-4-8, MP-4-16); folded, the default, is no row. */
   'history.showTrail': (value) => typeof value === 'boolean',
+  /** Up to 128 unique canonical UUIDs; [] clears the person's pins. */
+  'tasks.pinned': isTaskPins,
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {
