@@ -6,6 +6,7 @@
 // made-up-rows.ts. Every name is made up. Test side only.
 
 import type { ReceiptResult, TaskExecutionResult } from '../../packages/core-wire/src/index.ts';
+import { DETAIL } from './made-up-rows.ts';
 
 type Node = TaskExecutionResult['execution']['graph']['nodes'][number];
 
@@ -74,6 +75,8 @@ const GRAPH: TaskExecutionResult['execution']['graph'] = {
 // box (states.json `receipt`).
 export const EXECUTION: TaskExecutionResult = {
   execution: {
+    taskId: DETAIL.id,
+    sourceRevision: 2,
     outcome: 'ready',
     runs: [
       {

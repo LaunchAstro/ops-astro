@@ -12,12 +12,7 @@
 
 import type { ReactElement } from 'react';
 import { Banner, drawRunState, Empty, major, Spill } from '@launchastro/ui';
-import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type OperationsClient,
-} from '../operations/client.ts';
+import type { OperationsClient } from '../operations/client.ts';
 import type {
   ExecutionRun,
   ExecutionEvent,
@@ -26,23 +21,26 @@ import type {
   ReceiptResult,
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../data/use-read.ts';
-import { isExecutionGraph, RunMap } from './run-map.tsx';
+import { RunMap } from './run-map.tsx';
+import {
+  isReadable,
+  useTaskExecution,
+  type TaskExecutionOptions,
+  type TaskExecutionRead,
+} from './task-execution.ts';
+export {
+  wholeExecution,
+  isReadable,
+  useTaskExecution,
+  type TaskExecutionRead,
+} from './task-execution.ts';
 import { Observed } from './run-observed.tsx';
+import { useRead } from '../data/use-read.ts';
 
-export interface RunProgressProps {
-  readonly client: OperationsClient;
-  readonly grantKey: string;
-  readonly taskKey: string;
-  /**
-   * The task read's latest answer. The page's one live channel re-reads the
-   * task, and each new answer re-reads the run with it, so no second stream.
-   */
-  readonly readOf: unknown;
+export interface RunProgressProps extends TaskExecutionOptions {
   /** The task read's proposals, for each run's gate on the execution map (MP-6-3). */
   readonly proposals?: readonly ProposalView[];
 }
-
 /**
  * The run of one task read under one grant. A section is keyed by both, so
  * another grant or task (business, person or client) is a new section whose
@@ -55,12 +53,16 @@ export function RunProgress(props: RunProgressProps): ReactElement {
 }
 
 function RunSection(props: RunProgressProps): ReactElement {
-  const { client, taskKey } = props;
-  const { state } = useRead<TaskExecutionResult>({
-    grantKey: props.grantKey,
-    run: async () => await wholeExecution(client, taskKey),
-    deps: [taskKey, props.readOf],
-  });
+  const state = useTaskExecution(props);
+  return <RunProgressRead {...props} state={state} />;
+}
+
+export function RunProgressRead(
+  props: RunProgressProps & {
+    readonly state: TaskExecutionRead;
+  },
+): ReactElement {
+  const { client, taskKey, state } = props;
   const value =
     state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
@@ -103,16 +105,6 @@ function RunSection(props: RunProgressProps): ReactElement {
   );
 }
 
-// An answer without the run list, or with a graph not whole, draws as
-// unavailable, never as no run or a throw. No graph: its runs and no map.
-function isReadable(value: NonNullable<TaskExecutionResult['execution']>): boolean {
-  return (
-    Array.isArray(value.runs) &&
-    Array.isArray(value.events) &&
-    (value.graph === undefined || isExecutionGraph(value.graph))
-  );
-}
-
 /** The run's record: a note when this page is behind it, then each run. */
 function Runs(props: {
   readonly client: OperationsClient;
@@ -141,37 +133,6 @@ function Runs(props: {
       ))}
     </>
   );
-}
-
-/**
- * Every page of `task.execution`, followed through `next` until the answer is
- * complete (a page holds at most 200 events), so event 201 is never dropped.
- * The events are joined in order; the runs and the outcome are the last
- * page's, which is the newest reading. A refusal or an outage on any page is
- * the answer, never a partial run. A `next` that does not move forward ends
- * the walk rather than asking for the same page again, and so does an answer
- * that carries no `next` at all.
- */
-export async function wholeExecution(
-  client: OperationsClient,
-  recordId: string,
-): Promise<CallResult<TaskExecutionResult>> {
-  let answer = await client.read<TaskExecutionResult>('task.execution', { recordId });
-  const events: ExecutionEvent[] = [];
-  let cursor = 0;
-  for (;;) {
-    if (isRefusal(answer) || isUnavailable(answer)) return answer;
-    const page = answer.value.execution;
-    if (page === undefined || !Array.isArray(page.events)) return answer;
-    events.push(...page.events);
-    if (page.complete === true || typeof page.next !== 'number' || page.next <= cursor) {
-      return { ok: true, value: { execution: { ...page, events } } };
-    }
-    cursor = page.next;
-    // One page at a time: each asks from where the last one ended.
-    // eslint-disable-next-line no-await-in-loop
-    answer = await client.read<TaskExecutionResult>('task.execution', { recordId, cursor });
-  }
 }
 
 function Run(props: {

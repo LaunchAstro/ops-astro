@@ -14,10 +14,8 @@
 // the clipboard said yes, for 1.2 s. A clipboard that refuses, or none at all,
 // is said in words beside the control with the address to copy by hand.
 //
-// **The run line has three shapes** (TP-07), worked out from the attempts on
-// the task's proposals: running, finished, or no agent at all. The running
-// shape's client, steps and owner wait on the client model and the steps
-// (U16).
+// The run line reads the page's admitted execution answer and the task's
+// carried proposal evidence. Unknown or incomplete evidence never says none.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Spill } from '@launchastro/ui';
@@ -25,18 +23,23 @@ import {
   TASK_CATEGORIES,
   type BoardCrumb,
   type InternalTaskDetail,
-  type ProposalView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../../routes.ts';
 import { drawTaskState } from '../../views/task-state.ts';
+import { runLineOf } from './run-line.ts';
+import type { TaskExecutionRead } from '../../views/task-execution.ts';
+export { runLineOf, type RunShape } from './run-line.ts';
 import { titleOf } from '../../views/task-title.ts';
 
 /** How long the tick stays after a copy that worked (TP-05). */
 export const COPIED_FOR_MS = 1200;
 
-export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactElement {
+export function TaskHeader(props: {
+  readonly task: InternalTaskDetail;
+  readonly execution: TaskExecutionRead;
+}): ReactElement {
   const { task } = props;
-  const run = runLineOf(task.proposals);
+  const run = runLineOf(task.proposals, props.execution, task.id);
   return (
     <header className="tpr">
       <nav className="tpr__crumb" aria-label="Where this task sits">
@@ -83,33 +86,6 @@ function CategoryCrumb(props: { readonly category: string | null }): ReactElemen
       <span data-crumb="category">{TASK_CATEGORIES.labelOf(props.category)}</span>
     </>
   );
-}
-
-export type RunShape = 'running' | 'finished' | 'none';
-
-/**
- * The run line: the agent attempts on every proposal, counted. Any attempt
- * still reserved or dispatched is a run in progress; otherwise every attempt
- * has ended, however it ended. An answer that did not carry the proposals
- * draws no run line, as the proposals view says "not carried" rather than
- * "none" (`views/proposals.tsx`): no attempts read is not no attempts made.
- */
-export function runLineOf(
-  proposals: readonly ProposalView[] | undefined,
-): { readonly shape: RunShape; readonly words: string } | null {
-  if (proposals === undefined) return null;
-  const attempts = proposals
-    .flatMap((proposal) => proposal.reservations)
-    .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
-  if (attempts.length === 0) {
-    return { shape: 'none', words: 'No agent has run this task. It is a person’s work so far.' };
-  }
-  const running = attempts.some(
-    (attempt) => attempt.state === 'reserved' || attempt.state === 'dispatched',
-  );
-  return running
-    ? { shape: 'running', words: `Attempt ${attempts.length} · running` }
-    : { shape: 'finished', words: 'Every run on this task has finished.' };
 }
 
 /**

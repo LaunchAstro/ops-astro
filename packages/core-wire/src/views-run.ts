@@ -112,6 +112,9 @@ export interface TaskExecutionResult {
 }
 
 export interface TaskExecution {
+  readonly taskId: string;
+  /** The task's recorded event head at this read's snapshot. */
+  readonly sourceRevision: number;
   readonly outcome: 'ready' | 'no-run' | 'stale';
   readonly runs: readonly ExecutionRun[];
   readonly events: readonly ExecutionEvent[];

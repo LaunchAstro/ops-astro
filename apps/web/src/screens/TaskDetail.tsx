@@ -97,13 +97,12 @@ import type {
   TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead, type UseReadResult } from '../data/use-read.ts';
-import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
-import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import type { DecisionNote } from '../views/proposals.tsx';
 import { keepsClosure } from '../views/gate-controls.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
@@ -123,16 +122,16 @@ import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
 import { HeldOperations, type Held } from './task/held-operations.ts';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
-import { RunProgress } from '../views/run-progress.tsx';
+import { useTaskExecution } from '../views/task-execution.ts';
+import { AgentSide } from './task/AgentSide.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
-import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import type { RowEdit } from './task/Thread.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
-import { BriefSection, DescriptionSection } from './task/Writing.tsx';
+import { DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
@@ -260,6 +259,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
                   client={client}
                   grantKey={props.grantKey}
                   task={withPageDefaults(value.task)}
+                  taskRead={value.task}
                   states={statesOf(value)}
                   draft={held}
                   note={note}
@@ -584,10 +584,12 @@ function useTaskWrites(
   return { busy, because, conflict, fields, lifecycle, onAssign, onFields };
 }
 
-interface LoadedProps {
+export interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** Stable owning answer: local view changes do not start another execution read. */
+  readonly taskRead: Task;
   /** The business's task states `task.read` sent, the Status select's choices. */
   readonly states: readonly TaskStateView[];
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
@@ -665,6 +667,13 @@ function editorOf(
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
+  const execution = useTaskExecution({
+    client,
+    grantKey: props.grantKey,
+    taskKey: task.key,
+    taskId: task.id,
+    readOf: props.taskRead,
+  });
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
   // The form shows the draft, else the task as last read: with no draft, a
   // live re-read that keeps this mounted still shows the newest value.
@@ -714,7 +723,7 @@ function Loaded(props: LoadedProps): ReactElement {
 
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
-      <TaskHeader task={task} />
+      <TaskHeader task={task} execution={execution} />
       <TaskFacts task={task} />
       <TaskPresence seen={presence.seen} />
 
@@ -749,6 +758,7 @@ function Loaded(props: LoadedProps): ReactElement {
         }
         agent={
           <AgentSide
+            execution={execution}
             props={props}
             persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
             outages={<Outages state={outages.state} taskId={task.id} />}
@@ -905,94 +915,5 @@ function EditNotices(props: {
         onDiscard={props.onDiscard}
       />
     </>
-  );
-}
-
-/** The agent section (MP-6-1): the run's pane, full width above the Agent side's columns. */
-function AgentHead({
-  props,
-  persons,
-}: {
-  readonly props: LoadedProps;
-  readonly persons: PersonListResult['persons'];
-}): ReactElement {
-  const { client, task } = props;
-  return (
-    <AgentSection
-      client={client}
-      grantKey={props.grantKey}
-      recordId={task.id}
-      title={task.title === null || task.title === '' ? task.key : task.title}
-      clientId={task.client}
-      clientUnseen={task.clientSet && task.client === null}
-      taskKey={task.key}
-      readOf={task}
-      proposals={task.proposals}
-      people={persons}
-      ledger={task.ledger}
-      onChanged={props.onChanged}
-      note={props.note}
-      onDecided={props.onDecided}
-      onStepUp={props.onStepUp}
-    />
-  );
-}
-
-/**
- * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
- * their gates with the top-up (T2e), and the run as it goes (T2a progress,
- * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
- * its gate in the main column, the standing facts about the task's run (its
- * alerts, the team's outages) beside. The agent section (MP-6-1) sits above
- * them, full width, as batch 3a drew it.
- */
-function AgentSide({
-  props,
-  persons,
-  outages,
-}: {
-  readonly props: LoadedProps;
-  readonly persons: PersonListResult['persons'];
-  readonly outages: ReactElement;
-}): ReactElement {
-  const { client, task } = props;
-  return (
-    <div className="stack">
-      <AgentHead props={props} persons={persons} />
-      <div className="tpg">
-        <div className="tpg__main">
-          <BriefSection brief={task.agentBrief} />
-          <RunProgress
-            client={client}
-            grantKey={props.grantKey}
-            proposals={task.proposals}
-            readOf={task}
-            taskKey={task.key}
-          />
-          <Proposals
-            capCurrency={task.capCurrency}
-            client={client}
-            note={props.note}
-            onChanged={props.onChanged}
-            onDecided={props.onDecided}
-            onProposeRefused={props.onProposeRefused}
-            proposeRefusal={props.proposeRefusal}
-            proposeDraft={props.proposeDraft}
-            onProposeDraft={props.onProposeDraft}
-            persons={persons}
-            proposals={task.proposals}
-            envelope={task.envelope ?? null}
-            topUpNote={props.topUpNote}
-            onTopUpNote={props.onTopUpNote}
-            recordId={task.id}
-            revision={task.revision}
-          />
-        </div>
-        <aside className="tpg__side">
-          <Alerts alerts={task.alerts} />
-          {outages}
-        </aside>
-      </div>
-    </div>
   );
 }
