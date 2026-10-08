@@ -20,6 +20,7 @@
 
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import { AssignmentCustody, type AssignmentFields } from './task/assignment-custody.ts';
 import type { TaskTimer } from './task/task-timer.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import { settle, type Settlement } from '../records/use-command.ts';
@@ -64,6 +65,7 @@ export function rowActions(options: {
   readonly client: OperationsClient;
   /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
   readonly people: readonly PersonView[] | null;
+  readonly assignment?: AssignmentCustody;
   readonly timer?: TaskTimer | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
@@ -78,6 +80,7 @@ export function rowActions(options: {
 }): RowActions {
   const { client } = options;
   const send = sender(options.onSettled, options.reload);
+  const assign = assignmentSender(options);
   return {
     onTick: (row, done) => {
       send(
@@ -96,8 +99,26 @@ export function rowActions(options: {
     ...openers(options),
     // No revision: a time entry is its own record, not a change to the task.
     ...timerAction(options.timer),
-    ...cellActions(client, options.people, send),
+    ...cellActions(client, options.people, send, assign),
   };
+}
+
+function assignmentSender(
+  options: Pick<Parameters<typeof rowActions>[0], 'client' | 'assignment' | 'onSettled' | 'reload'>,
+): (row: ProjectRow, fields: AssignmentFields) => void {
+  // Pure isolated row mounts have ephemeral custody; App supplies the durable owner.
+  const assignment =
+    options.assignment ??
+    new AssignmentCustody(options.client, options.client.businessKey, null, true);
+  const assign = (row: ProjectRow, fields: AssignmentFields): void => {
+    void assignment.choose(row.id, row.revision, fields).then((answer) => {
+      if (answer === undefined) return answer;
+      options.onSettled(refusalOf(answer));
+      if (options.assignment === undefined) options.reload();
+      return answer;
+    });
+  };
+  return assign;
 }
 
 function timerAction(timer: TaskTimer | null | undefined): RowActions {
@@ -130,6 +151,7 @@ function cellActions(
   client: OperationsClient,
   people: readonly PersonView[] | null,
   send: (sent: Promise<CallResult<unknown>>) => void,
+  assign: (row: ProjectRow, fields: AssignmentFields) => void,
 ): RowActions {
   return {
     ...(people === null
@@ -137,11 +159,11 @@ function cellActions(
       : {
           people: people.map((person) => ({ id: person.personId, name: person.name })),
           onAssign: (row, assignee) => {
-            send(client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row)));
+            assign(row, { assignee });
           },
           // Assign to AI: one of the reader's own agents the row offers.
           onAssignAgent: (row, agent) => {
-            send(client.mutate('task.assign', { recordId: row.id, fields: { agent } }, at(row)));
+            assign(row, { agent });
           },
         }),
     onDue: (row, due) => {

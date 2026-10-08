@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { NoTasks } from './projects/NoTasks.tsx';
+import { useAssignments } from './task/assignment-context.tsx';
+import { AssignmentRecoveries } from './task/AssignmentRecovery.tsx';
 import { useTimerState } from './task/task-timer-context.tsx';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
-  Empty,
   usePageToolbar,
   ProjectsBoard,
   TabPanel,
@@ -111,11 +113,12 @@ function ProjectBoard(
   const client = props.client;
   const pins = useSharedTaskPins();
   const { timer, state: timerState } = useTimerState();
+  const assignments = useAssignments(client, props.grantKey);
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
 
-  const { state, reload } = useRead<TaskBoardResult>({
+  const { state, reload, refresh } = useRead<TaskBoardResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', { board: null }),
     isEmpty: (value) => value.tasks.length === 0,
@@ -124,6 +127,7 @@ function ProjectBoard(
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
   useRereadOn(timerState.changed, reload);
+  useRereadOn(assignments.state.changed, refresh);
   // Keep this grant's drawn board through empty rereads, including timer settlements,
   // so its filter stays removable; a new grant starts with its own read.
   const [drew, setDrew] = useState<string | null>(null);
@@ -190,62 +194,58 @@ function ProjectBoard(
         </RecordState>
       ) : null}
       {/* Board edits and timer settlements keep the filters, open editor and focus. */}
-      <RecordState state={board} subject="board" onRetry={reload} keep empty={NO_TASKS}>
+      <RecordState state={board} subject="board" onRetry={reload} keep empty={<NoTasks />}>
         {(value) =>
           // At a client filter the board waits for the names, so its filter holds.
           named && clients === null ? null : (
-            <ProjectsBoard
-              // A new place is a new view: the board opens on it afresh.
-              key={props.address === undefined ? undefined : query}
-              hidden={props.hidden}
-              rows={value.tasks.map((task) =>
-                Object.assign(rowOf(task), {
-                  starred: pins?.pinnedIds.includes(task.id) ?? false,
-                }),
-              )}
-              withheld={value.withheld ?? 0}
-              changedAt={value.changedAt ?? null}
-              stages={STAGE_LABELS}
-              viewer={value.viewer ?? null}
-              {...(value.owed === undefined ? {} : { owed: value.owed })}
-              href={(row) => pathTo('agency:task-detail', { key: row.key })}
-              actions={rowActions({
-                client,
-                people: persons,
-                timer,
-                href: (key) => pathTo('agency:task-detail', { key }),
-                reload,
-                onSettled: (text) => {
-                  if (live.current === grantKey) setRefused({ grant: grantKey, text });
-                },
-                ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
-              })}
-              address={query}
-              clients={clients ?? NO_CLIENTS}
-              nothing={NO_TASKS}
-              onAddress={(next) => {
-                if (props.inPanel === true) return;
-                window.history.replaceState(
-                  window.history.state,
-                  '',
-                  `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
-                );
-              }}
-            />
+            <>
+              <AssignmentRecoveries custody={assignments.custody} tasks={value.tasks} />
+              <ProjectsBoard
+                // A new place is a new view: the board opens on it afresh.
+                key={props.address === undefined ? undefined : query}
+                hidden={props.hidden}
+                rows={value.tasks.map((task) =>
+                  Object.assign(rowOf(task), {
+                    starred: pins?.pinnedIds.includes(task.id) ?? false,
+                  }),
+                )}
+                withheld={value.withheld ?? 0}
+                changedAt={value.changedAt ?? null}
+                stages={STAGE_LABELS}
+                viewer={value.viewer ?? null}
+                {...(value.owed === undefined ? {} : { owed: value.owed })}
+                href={(row) => pathTo('agency:task-detail', { key: row.key })}
+                actions={rowActions({
+                  client,
+                  assignment: assignments.custody,
+                  people: persons,
+                  timer,
+                  href: (key) => pathTo('agency:task-detail', { key }),
+                  reload,
+                  onSettled: (text) => {
+                    if (live.current === grantKey) setRefused({ grant: grantKey, text });
+                  },
+                  ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+                })}
+                address={query}
+                clients={clients ?? NO_CLIENTS}
+                nothing={<NoTasks />}
+                onAddress={(next) => {
+                  if (props.inPanel === true) return;
+                  window.history.replaceState(
+                    window.history.state,
+                    '',
+                    `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
+                  );
+                }}
+              />
+            </>
           )
         }
       </RecordState>
     </div>
   );
 }
-
-const NO_TASKS = (
-  <Empty
-    title="No tasks on this board yet."
-    description="You are permitted to see it and it has nothing in it."
-    hint="Create one with the form above."
-  />
-);
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
 const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
