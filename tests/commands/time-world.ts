@@ -138,3 +138,30 @@ export async function timeWorld(part: string): Promise<TimeWorld> {
     },
   };
 }
+
+export function withTimerCleanup(
+  world: () => TimeWorld,
+  prove: () => Promise<void>,
+): () => Promise<void> {
+  return async () => {
+    try {
+      await prove();
+    } finally {
+      const w = world();
+      const live = await w.db.admin.execute<{
+        readonly business_id: BusinessId;
+        readonly person_id: string;
+        readonly task_id: string;
+      }>(`select business_id, person_id, task_id from public.time_entries where ended_at is null`);
+      const members = [w.ada, w.noah, w.taskOnly, w.clientA, w.bravoOwner];
+      await Promise.all(
+        live.map(async (row) => {
+          const member = members.find((person) => person.personId === row.person_id);
+          if (member === undefined)
+            throw new Error('timer cleanup found an unknown fixture person');
+          await w.as(row.business_id, member, { command: 'time.stop', taskId: row.task_id });
+        }),
+      );
+    }
+  };
+}

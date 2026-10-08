@@ -9,6 +9,7 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
+import { TaskTimerProvider } from '../../apps/web/src/screens/task/task-timer-context.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
@@ -134,7 +135,11 @@ describe('MP-5-9 the hover box holds timer, add subtask and a door: the timer fr
       newOperationId: () => 'operation-1',
     });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
+    mounted = await mount(
+      <TaskTimerProvider client={client} grantKey="alpha:ada" storage={null}>
+        <Projects navigate={() => {}} client={client} grantKey="alpha:ada" />
+      </TaskTimerProvider>,
+    );
     await settle();
     await mounted.click(`tr[data-row="${TASK_ID}"] [data-route="timer"]`);
     await settle();

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Guarded own Stop preserves operation identity, task-read revocation, business/person/task isolation, masked absence and legacy replay."
+}

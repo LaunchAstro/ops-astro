@@ -233,7 +233,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // MP-4-6. The person is the session's, so a body names only the task or
   // the entry, and what to write.
   'time.start': (tx, context, request) => startTime(tx, context, request.taskId),
-  'time.stop': (tx, context, request) => stopTime(tx, context, request.taskId),
+  'time.stop': (tx, context, request) =>
+    stopTime(tx, context, request.taskId, request.expectedEntryId),
   'time.log': (tx, context, request) =>
     logTimeEntry(tx, context, request.taskId, request.duration, request.note),
   'time.set_note': (tx, context, request) =>

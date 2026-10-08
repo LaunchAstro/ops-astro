@@ -250,7 +250,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'run.child_handback': { outcome: 'any', refusal: 'any' },
   // A duration is text the handler parses and answers in its own words.
   'time.start': { taskId: 'id' },
-  'time.stop': { taskId: 'id' },
+  'time.stop': { taskId: 'id', expectedEntryId: 'id?' },
   'time.log': { taskId: 'id', duration: 'any', note: 'any' },
   'time.set_note': { entryId: 'id', note: 'any' },
   'time.delete': { entryId: 'id' },

@@ -27,7 +27,7 @@ import type {
   ConversationReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
-import { jsonSlot, tabStorage, type JsonSlot } from '../session/storage-slot.ts';
+import { isUuid, jsonSlot, tabStorage, type JsonSlot } from '../session/storage-slot.ts';
 import {
   initial,
   READ_LINE,
@@ -47,9 +47,7 @@ interface Kept {
 /** At most this many started tabs come back. */
 export const KEPT_LIMIT = 8;
 
-const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/u;
-
-const isId = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
+const isId = (value: unknown): value is string => isUuid(value) && value === value.toLowerCase();
 
 const exactly = (value: object, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));

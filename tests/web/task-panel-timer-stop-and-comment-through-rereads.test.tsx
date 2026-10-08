@@ -24,7 +24,9 @@ function api(initiallyRunning = false) {
         time: {
           entries: [],
           totalMinutes: 0,
-          running: running ? { entryId: 'entry', startedAt: '2026-10-04T01:00:00Z' } : null,
+          running: running
+            ? { entryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', startedAt: '2026-10-04T01:00:00Z' }
+            : null,
         },
       }),
     });
@@ -41,7 +43,14 @@ function api(initiallyRunning = false) {
     }
     if (path.endsWith('/time/start')) {
       running = true;
-      return json({ recordId: null, revision: null, detail: { entryId: 'entry' } });
+      return json({
+        recordId: null,
+        revision: null,
+        detail: {
+          entryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          startedAt: '2026-10-04T01:00:00Z',
+        },
+      });
     }
     if (path.endsWith('/time/stop')) {
       stops.push(String(init?.body));
