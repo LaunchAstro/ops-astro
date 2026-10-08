@@ -15,6 +15,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
+import type { BoardFollow as Follow } from './board-props.ts';
 import { layoutColumns } from '../board/columns.ts';
 import { widthsAfterDrag } from '../board/widths.ts';
 import { fitChipRow, type ChipTier } from '../board/funnel.ts';
@@ -34,15 +35,6 @@ const FALLBACK_WIDTH = 1200;
 
 type Send = (action: BoardAction) => void;
 
-interface Follow {
-  /** Told the new query whenever the view changes. */
-  readonly onAddress?: (address: string) => void;
-  /** Told the widths to keep whenever they change. */
-  readonly onWidths?: (widths: ColumnWidths | null) => void;
-  /** Another panel is showing (D-03): the address and the undo keys stand down. */
-  readonly hidden?: boolean;
-}
-
 /** The machine and its dispatch; a step's context is the one for the filters then on. */
 export function useBoardMachine<Row>(
   context: (on: readonly string[]) => BoardContext<Row>,
@@ -56,6 +48,13 @@ export function useBoardMachine<Row>(
   const dispatch = (action: BoardAction): void => {
     setMachine((current) => reduceBoard(current, action, context(current.view.ids)));
   };
+  const revealed = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (follow.hidden === true || follow.reveal === undefined || revealed.current === follow.reveal)
+      return;
+    revealed.current = follow.reveal;
+    setMachine((current) => reduceBoard(current, { type: 'reveal' }, context(current.view.ids)));
+  }, [follow.reveal, follow.hidden, context]);
   useFollow(machine.view, follow);
   useUndoKeys(setMachine, context, follow.hidden === true);
   return { machine, dispatch };
