@@ -210,11 +210,11 @@ function ProjectBoardRead(
     props.scope.route !== undefined ||
     props.scope.filters.length > 0 ||
     props.scope.focus !== null;
+  const personRequired = props.scope.person !== undefined;
   const vocabulary = {
     pending:
-      !people.own ||
+      (personRequired && (!people.own || people.state.outcome === 'loading')) ||
       !reached.own ||
-      people.state.outcome === 'loading' ||
       reached.state.outcome === 'loading',
     people: persons ?? [],
     clients: reached.state.outcome === 'ready' ? reached.state.value.clients : [],
@@ -222,11 +222,12 @@ function ProjectBoardRead(
   const chips = scopedView ? boardScopeChips(props.scope, vocabulary) : [];
   const answer = state.outcome === 'loading' ? state.previous : state.value;
   const vocabularyFailed =
-    people.state.outcome === 'unavailable' || reached.state.outcome === 'unavailable';
+    (personRequired && people.state.outcome === 'unavailable') ||
+    reached.state.outcome === 'unavailable';
   const denied =
     state.outcome === 'denied' ||
     (scopedView &&
-      (people.state.outcome === 'denied' ||
+      ((personRequired && people.state.outcome === 'denied') ||
         reached.state.outcome === 'denied' ||
         (!vocabulary.pending && !vocabularyFailed && chips === null)));
   const admitted =
@@ -236,14 +237,14 @@ function ProjectBoardRead(
       (chips !== null &&
         !vocabularyFailed &&
         (state.outcome === 'ready' || state.outcome === 'empty') &&
-        people.own &&
+        (!personRequired || people.own) &&
         reached.own));
   const rows =
     answer === null || !admitted
       ? []
       : scopedBoardRows(answer.tasks, props.scope, chips ?? [], todayOn(new Date()));
   const boardQuery = revealedBoardQuery(query, rows, props.scope.target);
-  const wrap = useBoardTarget(rows, props.scope.target, props.place.generation);
+  const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
 
@@ -266,7 +267,7 @@ function ProjectBoardRead(
           {said}
         </p>
       )}
-      {scopedView &&
+      {personRequired &&
       (people.state.outcome === 'denied' || people.state.outcome === 'unavailable') ? (
         <RecordState state={people.state} subject="person list" onRetry={people.reload}>
           {() => null}

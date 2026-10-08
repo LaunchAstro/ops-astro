@@ -5,21 +5,30 @@ export function useBoardTarget(
   rows: readonly BoardTask[],
   target: string | undefined,
   generation: number,
+  hidden: boolean,
 ) {
   const wrap = useRef<HTMLDivElement>(null),
     focused = useRef<string | null>(null);
   const opening = `${String(generation)}:${target ?? ''}`;
   useEffect(() => {
     const row = rows.find((task) => task.key === target || task.id === target);
-    if (row === undefined || target === undefined || focused.current === opening) return;
+    if (hidden || row === undefined || target === undefined || focused.current === opening) return;
     const focus = (): boolean => {
       const node = Array.from(wrap.current?.querySelectorAll<HTMLElement>('[data-row]') ?? []).find(
         (element) => element.dataset['row'] === row.id,
       );
       const link = node?.querySelector<HTMLElement>('a.cbd__nm');
-      if (node === undefined || link === null || link === undefined) return false;
-      focused.current = opening;
+      if (
+        node === undefined ||
+        link === null ||
+        link === undefined ||
+        !link.isConnected ||
+        link.closest('[hidden]') !== null
+      )
+        return false;
       link.focus();
+      if (document.activeElement !== link) return false;
+      focused.current = opening;
       node.scrollIntoView?.({ block: 'nearest' });
       return true;
     };
@@ -29,6 +38,6 @@ export function useBoardTarget(
     });
     observer.observe(wrap.current, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [rows, target, opening]);
+  }, [rows, target, opening, hidden]);
   return wrap;
 }
