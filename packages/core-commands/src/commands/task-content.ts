@@ -8,7 +8,11 @@
 // the same rule (the Clients row door), so the board and the field agree too.
 
 import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
-import { COMMAND_SURFACE, type ClientView } from '../../../core-wire/src/index.ts';
+import {
+  COMMAND_SURFACE,
+  type ClientView,
+  type TaskClientSummary,
+} from '../../../core-wire/src/index.ts';
 
 /**
  * Writes whose history event is content; creation and client changes are not.
@@ -54,21 +58,33 @@ export async function hasContent(tx: TenantQuery, taskId: string): Promise<boole
  * id goes only to a reader whose grants reach that client, `client.list`'s
  * rule (a grant across the business, or one on the client); anyone else reads
  * null, and the task's `clientSet` says it is under one (CS-4.12). The
- * client's name is `client.list`'s to send, never this.
+ * name is served only by that same client projection, never a raw join.
  */
 export async function readClientFacts(
   tx: TenantQuery,
   taskId: string,
   subjects: readonly Subject[],
-): Promise<{ readonly client: string | null; readonly hasContent: boolean }> {
+): Promise<{
+  readonly client: string | null;
+  readonly clientSummary: TaskClientSummary;
+  readonly hasContent: boolean;
+}> {
   const [row] = await tx.query<{ readonly client: string | null }>(
     'select uuid_7 as client from records where business_id = $1 and id = $2',
     [tx.businessId, taskId],
   );
   const client = row?.client ?? null;
-  const reached = client === null ? [] : ((await clientsReached(tx, subjects)) ?? []);
+  const reached = client === null ? [] : ((await clientsReached(tx, subjects, [client])) ?? []);
+  const permitted = reached.find((one) => one.clientId === client);
+  const clientSummary: TaskClientSummary =
+    client === null
+      ? { kind: 'none' }
+      : permitted === undefined
+        ? { kind: 'withheld' }
+        : { kind: 'readable', name: permitted.name };
   return {
-    client: reached.some((one) => one.clientId === client) ? client : null,
+    client: permitted?.clientId ?? null,
+    clientSummary,
     hasContent: await hasContent(tx, taskId),
   };
 }

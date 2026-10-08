@@ -3,8 +3,8 @@
 // MP-4-8: what the dock panel's Client field reads from `task.read`, against a
 // real database. A member's detail names the client the task is under (by id,
 // C32's client model) and whether the task has content, the S0-5 answer that
-// locks the client. The field's names come from `client.list`, so the detail
-// carries an id and never a client's name.
+// locks the client. The detail serves a name only through client.list's
+// current authority projection.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -52,7 +52,7 @@ async function detail(taskId: string): Promise<{ task: Body; body: string }> {
 }
 
 live('MP-4-8 task.read names the task’s client for the Client field', () => {
-  it('a task under no client reads client null; put under one, its id and never its name', async () => {
+  it('serves none or the permitted client id and name', async () => {
     const client = await madeClient(w, w.alpha, w.ada);
     const [row] = await w.db.admin.execute<{ readonly name: string }>(
       'select name from public.clients where id = $1',
@@ -60,7 +60,9 @@ live('MP-4-8 task.read names the task’s client for the Client field', () => {
     );
     const name = String(row?.name);
     const taskId = await w.fresh(w.alpha, w.ada, 'Client field task');
-    expect((await detail(taskId)).task['client']).toBeNull();
+    const before = await detail(taskId);
+    expect(before.task['client']).toBeNull();
+    expect(before.task['clientSummary']).toStrictEqual({ kind: 'none' });
     await commandOk(w, w.alpha, w.ada, {
       command: 'task.set_party',
       recordId: taskId,
@@ -69,7 +71,7 @@ live('MP-4-8 task.read names the task’s client for the Client field', () => {
     const after = await detail(taskId);
     expect(after.task['client']).toBe(client);
     expect(after.task['clientSet']).toBe(true);
-    expect(after.body).not.toContain(name);
+    expect(after.task['clientSummary']).toStrictEqual({ kind: 'readable', name });
   });
 });
 

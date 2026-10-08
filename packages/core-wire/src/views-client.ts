@@ -10,6 +10,12 @@ export interface ClientView {
   readonly name: string;
 }
 
+/** The owning task read's client metadata, under the current client grants. */
+export type TaskClientSummary =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'readable'; readonly name: ClientView['name'] }
+  | { readonly kind: 'withheld' };
+
 /** `client.list`'s answer: the clients the caller's live grants reach. */
 export interface ClientListResult {
   readonly ok: true;

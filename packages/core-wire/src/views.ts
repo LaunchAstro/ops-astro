@@ -26,9 +26,14 @@ import type {
 import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
-import type { ClientPrivacyView, ClientView } from './views-client.ts';
+import type { ClientPrivacyView, ClientView, TaskClientSummary } from './views-client.ts';
 
-export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
+export type {
+  ClientListResult,
+  ClientPrivacyView,
+  ClientView,
+  TaskClientSummary,
+} from './views-client.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -594,10 +599,12 @@ export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
   /**
    * The client the task is under, by id (C32), or null for none (MP-4-8). Its
-   * name is `client.list`'s. A client the reader's grants do not reach is sent
+   * name is carried in `clientSummary`. A client the reader's grants do not reach is sent
    * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
    */
   readonly client: string | null;
+  /** Absent on an older answer; never permission to infer a client name. */
+  readonly clientSummary?: TaskClientSummary;
   /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
   readonly hasContent: boolean;
 }
