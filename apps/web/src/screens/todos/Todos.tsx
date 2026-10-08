@@ -8,39 +8,33 @@
 // teammate or a client by the switch or by the door that opened it
 // (`todo-scope.ts`, `TodoScopeSwitch.tsx`).
 //
-// **Reading writes nothing.** Search, its chips, the comment-count scope and
-// the sort are view state and send nothing; only the tick writes. They are
-// kept across a reread (a tick, or a write in the task panel): the last
-// answer stays drawn while the next is in flight, so the list under them is
-// never remounted.
-//
-// **The sort is kept for the session.** Remembering it for the person
-// (CS-7.24, `preference saved`) leans on the preference store (MP-2-11a),
-// which is not on this branch's base; until it is, the choice lasts as long
-// as the panel does.
+// Typed identities send authorised reads; local filters and sorting remain
+// view state. Only the tick sends a mutation. These choices are
+// kept above the checked read. A scope or vocabulary refresh hides the old
+// rows while permission is rechecked; completion keeps its current answer
+// while reading back. Sorting lasts for this mounted screen's session.
 
 import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
+import { tabRollupFloor } from '../../data/rollup-floor.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
-import { useRereadOn } from '../task/reread-on.ts';
-import { readingOf, scopeOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
+import { readingOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
 import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
 import {
-  MINE,
-  bodyOf,
-  narrowed,
-  readKeyOf,
-  waitingOf,
-  wordsOf,
-  type TodoScope,
-} from './todo-scope.ts';
+  admittedChips,
+  admittedWords,
+  scopedBody,
+  typedScope,
+  useTodoVocabulary,
+} from './typed-scope.ts';
+import { MINE, narrowed, waitingOf, type TodoScope } from './todo-scope.ts';
 
 export interface TodosScreenProps {
   readonly client: OperationsClient;
@@ -59,44 +53,179 @@ export interface TodosScreenProps {
 }
 
 export function TodosScreen(props: TodosScreenProps): ReactElement {
+  return <TodosOwner key={`${props.grantKey}:${JSON.stringify(props.scope ?? MINE)}`} {...props} />;
+}
+function useTodoFilters(props: TodosScreenProps) {
   const [scope, setScope] = useState<TodoScope>(props.scope ?? MINE);
+  const [query, setQuery] = useState('');
+  const [chips, setChips] = useState<readonly Chip[]>([]);
+  const [by, setBy] = useState<SortKey>('due');
+  const [focus, setFocus] = useState<string | null>(null);
+  const vocabulary = useTodoVocabulary(props.client, props.grantKey, props.changes ?? 0);
+  const currentChips = admittedChips(chips, vocabulary);
+  const filters = [...currentChips, ...typedScope(query, vocabulary)];
+  const read = scopedBody(scope, filters, vocabulary);
+  const interpretation = scopedWords(admittedWords(scope, vocabulary), filters, focus);
+  const tools = {
+    query,
+    onQuery: setQuery,
+    chips: currentChips,
+    onCommit: () => {
+      setChips(filters);
+      setQuery('');
+    },
+    onRemove: (index: number) => setChips(chips.filter((_, at) => at !== index)),
+    by,
+    onSort: setBy,
+    reading: interpretation || null,
+    onClear: () => {
+      setQuery('');
+      setChips([]);
+      setFocus(null);
+    },
+  };
+  return {
+    scope,
+    setScope,
+    vocabulary,
+    filters,
+    read,
+    by,
+    focus,
+    setFocus,
+    tools,
+    setChips,
+    setQuery,
+  };
+}
+function scopedWords(scope: string | null, filters: readonly Chip[], focus: string | null): string {
+  return [scope, readingOf(filters, focus)].filter((part) => part !== null).join(', ');
+}
+function TodosOwner(props: TodosScreenProps): ReactElement {
+  const {
+    scope,
+    setScope,
+    vocabulary,
+    filters,
+    read,
+    by,
+    focus,
+    setFocus,
+    tools,
+    setChips,
+    setQuery,
+  } = useTodoFilters(props);
   return (
-    <section className="todos stack" aria-label={wordsOf(scope) ?? 'My to-dos'}>
-      <TodoScopeSwitch
-        client={props.client}
-        grantKey={props.grantKey}
-        scope={scope}
-        onScope={setScope}
+    <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
+      <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
+      <TodoTools {...tools} />
+      <IdentityChoices
+        filters={filters}
+        onChoose={(next) => {
+          setChips(next);
+          setQuery('');
+        }}
       />
-      <ScopedTodos key={readKeyOf(scope)} {...props} scope={scope} />
+      {read.blocked ? (
+        <p data-todos-empty>No to-dos here. Resolve the scope to read matching work.</p>
+      ) : (
+        <ScopedTodos
+          key={JSON.stringify(read.body)}
+          {...props}
+          scope={scope}
+          body={read.body}
+          filters={filters}
+          by={by}
+          focus={focus}
+          onFocus={setFocus}
+        />
+      )}
     </section>
   );
 }
-
-/** One scope's read: a new scope mounts a new one, so no row of the last is ever drawn. */
-function ScopedTodos(props: TodosScreenProps & { readonly scope: TodoScope }): ReactElement {
-  const { client, scope } = props;
+function IdentityChoices(props: {
+  readonly filters: readonly Chip[];
+  readonly onChoose: (next: readonly Chip[]) => void;
+}): ReactElement {
+  return (
+    <>
+      {props.filters.map((chip, index) =>
+        chip.kind === 'unresolved' ? (
+          <div key={index} role="status">
+            {chip.reason}
+            {chip.choices.map((choice) => (
+              <button
+                key={`${choice.kind}:${choice.value}`}
+                type="button"
+                className="btn"
+                data-todos-identity={choice.value}
+                onClick={() =>
+                  props.onChoose(props.filters.map((each, at) => (at === index ? choice : each)))
+                }
+              >
+                {choice.kind}: {choice.name} ({choice.value})
+              </button>
+            ))}
+          </div>
+        ) : null,
+      )}
+    </>
+  );
+}
+function ScopedTodos(
+  props: TodosScreenProps & {
+    readonly scope: TodoScope;
+    readonly body: Readonly<Record<string, string>>;
+    readonly filters: readonly Chip[];
+    readonly by: SortKey;
+    readonly focus: string | null;
+    readonly onFocus: (key: string | null) => void;
+  },
+): ReactElement {
   const { state, reload } = useRead<TaskTodosResult>({
     grantKey: props.grantKey,
-    run: () => client.read<TaskTodosResult>('task.todos', bodyOf(scope)),
+    run: () => props.client.read<TaskTodosResult>('task.todos', props.body),
     deps: [],
+    rollup: tabRollupFloor(),
   });
-  useRereadOn(props.changes ?? 0, reload);
+  const { because, tick } = useTick(props.client, reload);
+  const today = todayOn((props.now ?? realTime)());
   return (
     <RecordState state={state} subject="to-dos" onRetry={reload} keep>
-      {(value) => (
-        <>
-          <WaitingCount scope={scope} waiting={waitingOf(value.todos)} />
-          <TodoList {...props} todos={narrowed(value.todos, scope)} reload={reload} />
-        </>
-      )}
+      {(value) => {
+        const rows = sorted(
+          scoped(narrowed(value.todos, props.scope), props.filters, props.focus, today),
+          props.by,
+        );
+        return (
+          <>
+            <WaitingCount client={props.body['client'] !== undefined} waiting={waitingOf(rows)} />
+            {because === null ? null : (
+              <p className="field__error" role="alert" data-todos-refusal>
+                {because}
+              </p>
+            )}
+            <div className="dp__list">
+              <div className="tl">
+                <TodoRows
+                  rows={rows}
+                  today={today}
+                  onTick={tick}
+                  onFocus={props.onFocus}
+                  {...(props.onOpen === undefined ? {} : { onOpen: props.onOpen })}
+                />
+              </div>
+            </div>
+          </>
+        );
+      }}
     </RecordState>
   );
 }
 
 /** A client's messages owed a reply, from the list's own read; absent at zero. */
-function WaitingCount(props: { readonly scope: TodoScope; readonly waiting: number }) {
-  if (props.scope.kind !== 'client' || props.waiting === 0) return null;
+function WaitingCount(props: { readonly client: boolean; readonly waiting: number }) {
+  if (!props.client || props.waiting === 0) return null;
   return (
     <p className="card__sub" data-todos-waiting-count>
       {props.waiting} {props.waiting === 1 ? 'message' : 'messages'} waiting on us
@@ -128,56 +257,6 @@ function useTick(client: OperationsClient, reload: () => void) {
     );
   };
   return { because, tick };
-}
-
-function TodoList(
-  props: TodosScreenProps & { readonly todos: readonly TodoView[]; readonly reload: () => void },
-): ReactElement {
-  const [query, setQuery] = useState('');
-  const [chips, setChips] = useState<readonly Chip[]>([]);
-  const [by, setBy] = useState<SortKey>('due');
-  const [focus, setFocus] = useState<string | null>(null);
-  const { because, tick } = useTick(props.client, props.reload);
-  const today = todayOn((props.now ?? realTime)());
-  const scope = [...chips, ...scopeOf(query)];
-  return (
-    <div className="dp__list">
-      <TodoTools
-        query={query}
-        onQuery={setQuery}
-        chips={chips}
-        onCommit={() => {
-          setChips(scope);
-          setQuery('');
-        }}
-        onRemove={(index) => {
-          setChips(chips.filter((_, at) => at !== index));
-        }}
-        by={by}
-        onSort={setBy}
-        reading={readingOf(scope, focus)}
-        onClear={() => {
-          setQuery('');
-          setChips([]);
-          setFocus(null);
-        }}
-      />
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-todos-refusal>
-          {because}
-        </p>
-      )}
-      <div className="tl">
-        <TodoRows
-          rows={sorted(scoped(props.todos, scope, focus, today), by)}
-          today={today}
-          onTick={tick}
-          onFocus={setFocus}
-          {...(props.onOpen === undefined ? {} : { onOpen: props.onOpen })}
-        />
-      </div>
-    </div>
-  );
 }
 
 function TodoRows(

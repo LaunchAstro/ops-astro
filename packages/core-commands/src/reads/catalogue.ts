@@ -16,7 +16,7 @@
 
 import {
   clientsReached,
-  isClientHere,
+  checkAuthority,
   planPresetSync,
   isUuid,
   listTags,
@@ -144,7 +144,7 @@ const NO_GRANT_AT_ALL = refuseCommand(
 );
 
 /**
- * `task.todos`'s scope (MP-7-2): none, one teammate or one client, each a
+ * `task.todos`'s scope (MP-7-2): none, a teammate, a client or their intersection, each a
  * well-formed identifier. A malformed one is refused rather than read as no
  * scope, which would answer the reader's own list to a question about someone
  * else's.
@@ -153,9 +153,6 @@ function parseTodoScope({
   person,
   client,
 }: Readonly<Record<string, unknown>>): Parsed<'task.todos'> {
-  if (person !== undefined && client !== undefined) {
-    return rejected('client', 'Send a person or a client, not both.');
-  }
   if (person !== undefined && !(typeof person === 'string' && isUuid(person))) {
     return rejected('person', 'Send person as a teammate’s person identifier.');
   }
@@ -483,16 +480,30 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A teammate is an active member here, the people `person.list` offers.
       // Another business's person, a former member and a made-up id are one
       // answer, and nothing is listed.
-      if (
-        person !== undefined &&
-        !(await listPeople(tx)).some((each) => each.personId === person)
-      ) {
-        return refuseNotFound();
+      if (person !== undefined) {
+        const vocabulary = await checkAuthority(tx, subjectsOf(session), {
+          collection: 'person',
+          action: 'read',
+          scope: { kind: 'business', id: null },
+        });
+        if (!vocabulary.ok) return vocabulary.refusal;
+        if (!(await listPeople(tx)).some((each) => each.personId === person))
+          return refuseNotFound();
       }
       // A client is one of this business's; another business's and a made-up
       // id are one NOT_FOUND, never an empty list (minimum contract 8.2).
-      if (client !== undefined && !(await isClientHere(tx, client))) return refuseNotFound();
-      const scope = client === undefined ? { person: person ?? session.personId } : { client };
+      if (
+        client !== undefined &&
+        !(await clientsReached(tx, subjectsOf(session)))?.some((each) => each.clientId === client)
+      )
+        return refuseNotFound();
+      const scope =
+        client === undefined
+          ? { person: person ?? session.personId }
+          : {
+              client,
+              ...(person === undefined ? {} : { person }),
+            };
       return { ok: true, todos: await readTodos(tx, spine, scope) };
     },
   },

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Permitted task.todos person/client intersections, direct UUID vocabulary checks, member and grant revocation, persisted owning commands and separate businesses through the fresh scratch database lifecycle"
+}

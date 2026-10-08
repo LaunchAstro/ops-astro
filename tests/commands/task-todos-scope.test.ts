@@ -3,8 +3,8 @@
 // MP-7-2's scopes on `task.todos` (CS-7.4), through the read path against a
 // real database: a teammate's open tasks (`person`) and a client's
 // (`client`), each read under the same `task:read` of the business as the
-// reader's own list, with no new key. A scope names one person or one
-// client; a malformed or doubled scope is refused, and a person who is not a
+// reader's own list, with explicit people separately requiring person:read.
+// Person and client scopes intersect; a malformed scope is refused, and a person who is not a
 // member here is not found. The crossings are in
 // `task-todos-scope-isolation.test.ts`.
 
@@ -33,6 +33,7 @@ beforeAll(async () => {
   if (serverUrl === undefined) return;
   w = await timeWorld('tds');
   await w.db.app.withBusiness(w.alpha, async (tx) => {
+    await grantTo(tx, w.ada, 'read', undefined, false, 'person');
     for (const action of ['assign', 'share'] as const) {
       // eslint-disable-next-line no-await-in-loop -- one transaction, one grant at a time
       await grantTo(tx, w.ada, action);
@@ -70,8 +71,10 @@ live('MP-7-2 scope to a person', () => {
     );
     // Asking for yourself is your own list; the unscoped read is unchanged.
     expect(await ids(w.ada, { person: w.ada.personId })).toStrictEqual(await ids(w.ada, {}));
-    // Any holder of task:read on the business reads it, whatever else they hold.
-    expect(await ids(w.taskOnly, { person: w.noah.personId })).toContain(his);
+    // Task authority alone cannot admit a direct UUID outside the person vocabulary.
+    expect((await refusalOf(w.taskOnly, { person: w.noah.personId })).code).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
   });
 
   it('a person who is not a member here is not found, and nothing is listed', async () => {
@@ -107,10 +110,9 @@ live('MP-7-2 scope to a client', () => {
   });
 });
 
-live('MP-7-2 a scope is one person or one client, well formed', () => {
-  it('refuses both at once, a malformed identifier, and a number, naming the field', async () => {
+live('MP-7-2 person and client scopes are well formed', () => {
+  it('refuses a malformed identifier and a number, naming the field', async () => {
     const cases = [
-      [{ person: w.noah.personId, client: randomUUID() }, 'client'],
       [{ person: 'noah' }, 'person'],
       [{ client: 'T-1' }, 'client'],
       [{ person: 7 }, 'person'],
