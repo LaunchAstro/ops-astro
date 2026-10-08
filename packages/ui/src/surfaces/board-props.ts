@@ -61,6 +61,8 @@ export interface BoardMachineProps<Row> {
   readonly nothing?: ReactNode;
   /** The address's query the board opens on (B-06, C6). */
   readonly address?: string;
+  /** An admitted row to reveal once, retaining sort, widths and view history. */
+  readonly reveal?: string;
   /** Told the new query whenever the view changes. */
   readonly onAddress?: (address: string) => void;
   /** The card's width in pixels; measured when absent. */

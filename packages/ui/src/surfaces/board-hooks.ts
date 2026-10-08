@@ -35,6 +35,7 @@ const FALLBACK_WIDTH = 1200;
 type Send = (action: BoardAction) => void;
 
 interface Follow {
+  readonly reveal?: string;
   /** Told the new query whenever the view changes. */
   readonly onAddress?: (address: string) => void;
   /** Told the widths to keep whenever they change. */
@@ -56,6 +57,13 @@ export function useBoardMachine<Row>(
   const dispatch = (action: BoardAction): void => {
     setMachine((current) => reduceBoard(current, action, context(current.view.ids)));
   };
+  const revealed = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (follow.hidden === true || follow.reveal === undefined || revealed.current === follow.reveal)
+      return;
+    revealed.current = follow.reveal;
+    setMachine((current) => reduceBoard(current, { type: 'reveal' }, context(current.view.ids)));
+  }, [follow.reveal, follow.hidden, context]);
   useFollow(machine.view, follow);
   useUndoKeys(setMachine, context, follow.hidden === true);
   return { machine, dispatch };

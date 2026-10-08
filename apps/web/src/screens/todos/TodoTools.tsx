@@ -7,7 +7,6 @@
 // it, and Backspace in the empty box drops the last one. None of them writes.
 
 import type { ReactElement } from 'react';
-import { pathTo } from '../../routes.ts';
 import { wordsOfChip, type Chip, type SortKey } from './todo-list.ts';
 
 export interface TodoToolsProps {
@@ -22,6 +21,7 @@ export interface TodoToolsProps {
   /** The scope read back, or null when nothing scopes the list. */
   readonly reading: string | null;
   readonly onClear: () => void;
+  readonly boardAddress?: string;
 }
 
 const SORTS: readonly { readonly key: SortKey; readonly label: string }[] = [
@@ -58,7 +58,12 @@ export function TodoTools(props: TodoToolsProps): ReactElement {
             </option>
           ))}
         </select>
-        <a className="btn" data-todos="board" href={pathTo('agency:projects-board')}>
+        <a
+          className="btn"
+          data-todos="board"
+          href={props.boardAddress}
+          aria-disabled={props.boardAddress === undefined ? true : undefined}
+        >
           Open the board
         </a>
       </div>
@@ -119,6 +124,7 @@ function ChipTag(props: { readonly chip: Chip; readonly onRemove: () => void }):
 function Reading(props: {
   readonly reading: string | null;
   readonly onClear: () => void;
+  readonly boardAddress?: string;
 }): ReactElement | null {
   if (props.reading === null) return null;
   return (

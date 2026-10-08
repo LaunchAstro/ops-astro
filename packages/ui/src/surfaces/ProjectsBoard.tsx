@@ -39,6 +39,8 @@ export interface ProjectsBoardProps {
   /** Where a row's record opens. */
   readonly href: (row: ProjectRow) => string;
   readonly address?: string;
+  /** Revealed only when it belongs to the admitted rows handed to this board. */
+  readonly target?: string;
   readonly onAddress?: (address: string) => void;
   readonly now?: Date;
   readonly width?: number;
@@ -135,6 +137,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     [props.rows, props.stages],
   );
   const cells = useCells(props, now);
+  const target = props.rows.find((row) => row.id === props.target || row.key === props.target);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
@@ -154,6 +157,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       empty={BOARD_EMPTY}
       {...(props.nothing === undefined ? {} : { nothing: props.nothing })}
       address={opening}
+      {...(target === undefined ? {} : { reveal: target.id })}
       onAddress={(next) => {
         setAddress(next);
         props.onAddress?.(next);
