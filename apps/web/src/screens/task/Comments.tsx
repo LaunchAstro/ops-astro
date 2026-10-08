@@ -170,38 +170,10 @@ export function Comments(props: CommentsProps): ReactElement {
 }
 
 function OwnedComments(props: CommentsProps): ReactElement {
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
   const scoped = (id: string): string => (props.scope === undefined ? id : `${props.scope}-${id}`);
-  const current = props.draft ?? EMPTY;
-  const { body, tab, pending } = current;
-  // A reply names a message still on the task; one deleted since is dropped,
-  // and so is one of an audience other than the tab's.
-  const parent = props.comments.find(
-    (comment) =>
-      comment.id === current.replyTo &&
-      (comment.parent ?? null) === null &&
-      (tab === 'all' || comment.audience === tab),
-  );
-  const parentId = parent?.id ?? null;
-  const { audience, kind } =
-    pending ?? POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
-  const put = (next: Partial<CommentDraft>): void => {
-    if (pending !== null) return;
-    props.onDraft({ ...current, ...next });
-  };
-  const mentions = audience === 'internal' ? (current.mentions ?? []) : [];
-  const people = useInternalTaskMentions({
-    client: props.client,
-    recordId: props.recordId,
-    ...(props.grantKey === undefined ? {} : { grantKey: props.grantKey }),
-  });
-  const needsPeople = pending === null && unavailableMentions(people, mentions);
+  const draft = useCommentDraft(props);
+  const { body, tab, pending } = draft.current;
+  const { audience, kind, parentId } = draft.intent;
   // `closed` is set when the server has said this reader may not comment. It
   // disables the control rather than merely reporting, so the same refusal is
   // not fetched again on the next press. Only an authority refusal closes the
@@ -214,12 +186,11 @@ function OwnedComments(props: CommentsProps): ReactElement {
   // unless it is a reply, which goes where its message is.
   const picking = pending === null && tab === 'all' && parentId === null;
   const locked = busy || closed || picking;
-  const cannotPost = locked || needsPeople;
+  const cannotPost = locked || draft.needsPeople;
   const rows = useRowActions(props, (commentId) => {
-    put({ replyTo: commentId });
+    draft.put({ replyTo: commentId });
   });
   const because = command.because ?? props.refusal;
-  const run = command.run;
   const form = useRef<HTMLFormElement>(null);
 
   const post = (): void => {
@@ -232,10 +203,10 @@ function OwnedComments(props: CommentsProps): ReactElement {
       audience,
       kind,
       parentId,
-      ...(mentions.length === 0 ? {} : { mentions: [...mentions] }),
+      ...(draft.mentions.length === 0 ? {} : { mentions: [...draft.mentions] }),
     };
-    put({ pending: attempt, stale: null });
-    run(
+    draft.put({ pending: attempt, stale: null });
+    command.run(
       () =>
         props.client.mutate(
           'task.comment',
@@ -252,16 +223,16 @@ function OwnedComments(props: CommentsProps): ReactElement {
           { expectedRevision: attempt.revision, operationId: attempt.operationId },
         ),
       (settlement) => {
-        if (!alive.current) return;
+        if (!draft.alive.current) return;
         if (settlement.kind === 'unknown') return;
         if (settlement.kind === 'closed') props.onRefused(settlement.because);
         if (settlement.kind === 'stale') {
-          props.onDraft({ ...current, pending: null, stale: settlement.because });
+          props.onDraft({ ...draft.current, pending: null, stale: settlement.because });
           props.onPosted();
           return;
         }
         if (settlement.kind !== 'ok') {
-          props.onDraft({ ...current, pending: null, stale: null });
+          props.onDraft({ ...draft.current, pending: null, stale: null });
           return;
         }
         // Emptied because it has been stored, and the list is reread rather
@@ -282,14 +253,15 @@ function OwnedComments(props: CommentsProps): ReactElement {
         comments={props.comments}
         tab={tab}
         actions={rows.actions}
-        onTab={(next) => {
-          const keeps = parent === undefined || next === 'all' || parent.audience === next;
-          put(keeps ? { tab: next } : { tab: next, replyTo: null });
-        }}
+        onTab={draft.onTab}
       />
       <RowRefusal because={rows.because} />
 
-      <PostNotices because={because} stale={current.stale} unresolved={!busy && pending !== null} />
+      <PostNotices
+        because={because}
+        stale={draft.current.stale}
+        unresolved={!busy && pending !== null}
+      />
 
       <form
         id={scoped('task-comment')}
@@ -300,11 +272,11 @@ function OwnedComments(props: CommentsProps): ReactElement {
           post();
         }}
       >
-        {parent === undefined ? null : (
+        {draft.parent === undefined ? null : (
           <ReplyingTo
-            body={parent.body}
+            body={draft.parent.body}
             onCancel={() => {
-              put({ replyTo: null });
+              draft.put({ replyTo: null });
             }}
           />
         )}
@@ -312,20 +284,20 @@ function OwnedComments(props: CommentsProps): ReactElement {
           id={scoped('comment-body')}
           body={body}
           locked={locked || pending !== null}
-          onPut={put}
+          onPut={draft.put}
           onSend={post}
         />
         {audience === 'internal' && !picking ? (
           <InternalTaskMentions
-            people={people}
+            people={draft.people}
             id={scoped('comment-mentions')}
-            selected={mentions}
+            selected={draft.mentions}
             locked={locked || pending !== null}
             clearLocked={busy || pending !== null}
-            onChange={(ids) => put({ mentions: ids })}
+            onChange={(ids) => draft.put({ mentions: ids })}
           />
         ) : null}
-        {needsPeople ? (
+        {draft.needsPeople ? (
           <p className="card__sub" role="status">
             Selected mentions are unavailable. Wait for the people read or clear mentions before
             posting.
@@ -345,6 +317,45 @@ function OwnedComments(props: CommentsProps): ReactElement {
       <PanelDoorButton door="reply" tab={tab} onOpenPanel={props.onOpenPanel} />
     </section>
   );
+}
+
+/** The editable draft and the exact held attempt share one audience and recipient vocabulary. */
+function useCommentDraft(props: CommentsProps) {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const current = props.draft ?? EMPTY;
+  const { tab, pending } = current;
+  // A reply names a message still on the task; one deleted since is dropped,
+  // and so is one of an audience other than the tab's.
+  const parent = props.comments.find(
+    (comment) =>
+      comment.id === current.replyTo &&
+      (comment.parent ?? null) === null &&
+      (tab === 'all' || comment.audience === tab),
+  );
+  const tabPost = POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
+  const intent = pending ?? { ...tabPost, parentId: parent?.id ?? null };
+  const put = (next: Partial<CommentDraft>): void => {
+    if (pending !== null) return;
+    props.onDraft({ ...current, ...next });
+  };
+  const onTab = (next: ConversationTab): void => {
+    const keeps = parent === undefined || next === 'all' || parent.audience === next;
+    put(keeps ? { tab: next } : { tab: next, replyTo: null });
+  };
+  const mentions = intent.audience === 'internal' ? (current.mentions ?? []) : [];
+  const people = useInternalTaskMentions({
+    client: props.client,
+    recordId: props.recordId,
+    ...(props.grantKey === undefined ? {} : { grantKey: props.grantKey }),
+  });
+  const needsPeople = pending === null && unavailableMentions(people, mentions);
+  return { current, intent, parent, put, onTab, mentions, people, needsPeople, alive };
 }
 
 /** On All nobody has said who may read a post. */

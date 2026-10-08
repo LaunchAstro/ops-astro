@@ -128,6 +128,39 @@ it.each(['SCOPE_NOT_GRANTED', 'VERSION_STALE', 'MENTION_NOT_READABLE'])(
   },
 );
 
+// Authority refusals can withhold a recorded success (envelope.ts:replay/withheldNow).
+// Their unknown-outcome custody remains P05 recovery debt, not proof of non-effect.
+it.each(['VERSION_STALE', 'MENTION_NOT_READABLE'])(
+  'an unknown attempt stays exact until a definitive %s refusal settles it',
+  async (code) => {
+    const server = transport();
+    let calls = 0;
+    server.answers.comment = () =>
+      ++calls === 1 ? Promise.reject(new Error('Lost answer')) : Promise.resolve(refusal(code));
+    const view = await open({ client: server.client });
+    await mentionAda(view);
+    await view.type('#comment-body', 'Held until answered');
+    await view.click('[data-comment="post"]');
+    expect(view.find('[data-comment="unresolved"]')).not.toBeNull();
+    await view.render(<Harness client={server.client} revision={7} />);
+    await view.click('[data-comment="post"]');
+    expect(server.posts()[1]?.body).toEqual(server.posts()[0]?.body);
+    expect(view.find('[data-comment="unresolved"]')).toBeNull();
+    expect(view.find('#comment-body')).toHaveProperty('value', 'Held until answered');
+    expect(view.find('[data-mention-person]')).not.toBeNull();
+    expect(view.find('#comment-body')).toHaveProperty('disabled', false);
+    server.answers.comment = () => Promise.resolve(response({ recordId: 'task-one', revision: 7 }));
+    await view.click('[data-comment="post"]');
+    expect(server.posts()[2]?.body).toMatchObject({
+      body: 'Held until answered',
+      mentions: [ADA],
+      expectedRevision: 7,
+      operationId: '00000000-0000-4000-8000-000000000002',
+    });
+    expect(view.find('#comment-body')).toHaveProperty('value', '');
+  },
+);
+
 it('a task change retires pending results and the old selection before a new draft is written', async () => {
   const server = transport();
   const delayed = deferredResponse();
