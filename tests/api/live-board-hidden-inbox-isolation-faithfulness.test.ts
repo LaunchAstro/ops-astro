@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 
 it('the hidden inbox isolation test fails when a hidden inbox item causes a resync', () => {
-  const folder = mkdtempSync(resolve('tests/api/.sol-ow002-faithfulness-'));
+  const folder = mkdtempSync(resolve('.sol-ow002-faithfulness-'));
   try {
     const setup = resolve(folder, 'mutation.ts');
     writeFileSync(
