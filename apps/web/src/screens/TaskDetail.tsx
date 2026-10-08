@@ -100,6 +100,7 @@ import { useRead, type UseReadResult } from '../data/use-read.ts';
 import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
+import { taskDependencyAdmission, useTaskDependencies } from '../data/board-live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
@@ -197,7 +198,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const [draft, setDraft] = useState<Draft | null>(null);
   // Lost writes' operation ids, kept above the read for this task and grant (#461).
   const operations = useRef<Held>({});
-  const { state, reload, live } = useRead<TaskReadResult>({
+  const { state, reload, live, refresh, own } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey, props.changes ?? 0],
@@ -206,6 +207,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useFreshOnPage(state, hub);
 
   // **The draft lives above the read.** A re-read under a draft or from the live

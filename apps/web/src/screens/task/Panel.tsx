@@ -38,6 +38,7 @@ import type {
   TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { hubOf } from '../../data/live.ts';
+import { taskDependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
@@ -101,7 +102,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
   const fold = useShowTrail(client);
   const conversation = useConversationHeld(opening.tab);
-  const { state, reload } = useRead<TaskReadResult>({
+  const { state, reload, refresh, own } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
     deps: [opening.taskKey],
@@ -111,6 +112,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useRereadOn(props.changes ?? 0, reload);
   const onTimer = useTimerStop(props, state.outcome === 'ready' ? state.value : null);
   const body = { ...props, fold, conversation, onTimer };
