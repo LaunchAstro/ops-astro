@@ -27,7 +27,9 @@ import type { TaskSpine } from '../commands/context.ts';
 import { SELECT, summaryOf, type TaskRowRead } from './tasks.ts';
 
 /** Whose open tasks: one person's (the reader's own, or a teammate's), or a client's. */
-export type TodoScope = { readonly person: string } | { readonly client: string };
+export type TodoScope =
+  | { readonly person: string; readonly client?: string }
+  | { readonly client: string; readonly person?: string };
 
 /** The scope's open tasks, soonest due first, then oldest. */
 export async function readTodos(
@@ -35,7 +37,8 @@ export async function readTodos(
   spine: TaskSpine,
   scope: TodoScope,
 ): Promise<readonly TodoView[]> {
-  const [person, client] = 'person' in scope ? [scope.person, null] : [null, scope.client];
+  const person = scope.person ?? null;
+  const client = scope.client ?? null;
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null

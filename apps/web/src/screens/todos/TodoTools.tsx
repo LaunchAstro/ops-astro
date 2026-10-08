@@ -96,7 +96,7 @@ function SearchBox(props: TodoToolsProps): ReactElement {
   );
 }
 
-const PLACEHOLDER = 'today, overdue, soon, p1, a category, review, waiting, tag:name, any words';
+const PLACEHOLDER = 'today, p1, person:"name", client:"name", route:team, tag:name, any words';
 
 function ChipTag(props: { readonly chip: Chip; readonly onRemove: () => void }): ReactElement {
   const words = wordsOfChip(props.chip);

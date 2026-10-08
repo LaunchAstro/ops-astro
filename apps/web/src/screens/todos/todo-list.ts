@@ -42,7 +42,20 @@ export const dueToday = (due: string | null, today: string): boolean =>
  * category (three letters or more of its label) is read as that; `tag:` names
  * a tag; any other word without a colon is a name word.
  */
+export type IdentityChip = {
+  readonly kind: 'person' | 'client';
+  readonly value: string;
+  readonly name: string;
+};
 export type Chip =
+  | IdentityChip
+  | { readonly kind: 'route'; readonly value: TodoView['whoseMove'] }
+  | {
+      readonly kind: 'unresolved';
+      readonly value: string;
+      readonly reason: string;
+      readonly choices: readonly IdentityChip[];
+    }
   | { readonly kind: 'due'; readonly value: 'today' | 'overdue' | 'soon' }
   | { readonly kind: 'waiting' }
   | { readonly kind: 'move'; readonly value: TodoView['whoseMove'] }
@@ -101,6 +114,13 @@ export function wordsOfChip(chip: Chip): {
   readonly reading: string;
 } {
   switch (chip.kind) {
+    case 'person':
+    case 'client':
+      return { kind: chip.kind, value: chip.name, reading: `${chip.kind} “${chip.name}”` };
+    case 'unresolved':
+      return { kind: 'Scope', value: chip.value, reading: chip.reason };
+    case 'route':
+      return { kind: 'Route', value: chip.value, reading: `route ${chip.value}` };
     case 'due':
       return { kind: 'Due', value: chip.value, reading: `due ${chip.value}` };
     case 'waiting':
@@ -137,6 +157,15 @@ function keeps(chip: Chip, todo: TodoView, today: string): boolean {
       if (chip.value === 'overdue') return urgency === 'overdue';
       return urgency === 'tomorrow' || urgency === 'week';
     }
+    case 'person':
+      return todo.assignee?.personId === chip.value;
+    case 'client':
+      // The server intersected this admitted client before serving any row.
+      return true;
+    case 'unresolved':
+      return false;
+    case 'route':
+      return todo.whoseMove === chip.value;
     case 'waiting':
       return todo.waitingComments > 0;
     case 'move':

@@ -41,6 +41,7 @@ beforeAll(async () => {
   ] as const) {
     // eslint-disable-next-line no-await-in-loop -- one business at a time
     await w.db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, member, 'read', undefined, false, 'person');
       await grantTo(tx, member, 'assign');
       await grantTo(tx, member, 'share');
     });
@@ -135,6 +136,7 @@ async function agentBesideTeammate() {
   const decider = await world.decider('decider');
   const mate = await world.decider('mate');
   await world.db.app.withBusiness(world.business, async (tx) => {
+    await grantTo(tx, decider, 'read', undefined, false, 'person');
     await grantTo(tx, decider, 'assign');
   });
   const picked = await world.pickUp(decider, 'the agent’s task');
