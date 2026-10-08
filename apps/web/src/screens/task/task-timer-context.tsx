@@ -233,7 +233,7 @@ export function TaskTimerNotice(): ReactElement | null {
             : `${attempt.status === 'unknown' ? 'Timer outcome unknown' : 'Timer change refused'}: ${attempt.because ?? ''}`}
           {attempt.status === 'pending' ? null : (
             <button
-              className="btn"
+              className="btn btn--secondary"
               type="button"
               data-task-timer-retry
               onClick={() => timer?.retry()}
@@ -242,7 +242,7 @@ export function TaskTimerNotice(): ReactElement | null {
             </button>
           )}
           {attempt.status === 'refused' ? (
-            <button className="btn" type="button" onClick={() => timer?.dismiss()}>
+            <button className="btn btn--secondary" type="button" onClick={() => timer?.dismiss()}>
               Dismiss refusal
             </button>
           ) : null}
