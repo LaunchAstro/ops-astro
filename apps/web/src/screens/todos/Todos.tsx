@@ -19,7 +19,8 @@ import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
-import { tabRollupFloor } from '../../data/rollup-floor.ts';
+import { dependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
+import { useRereadOn } from '../task/reread-on.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
@@ -172,22 +173,22 @@ function IdentityChoices(props: {
     </>
   );
 }
-function ScopedTodos(
-  props: TodosScreenProps & {
-    readonly scope: TodoScope;
-    readonly body: Readonly<Record<string, string>>;
-    readonly filters: readonly Chip[];
-    readonly by: SortKey;
-    readonly focus: string | null;
-    readonly onFocus: (key: string | null) => void;
-  },
-): ReactElement {
-  const { state, reload } = useRead<TaskTodosResult>({
+type ScopedTodosProps = TodosScreenProps & {
+  readonly scope: TodoScope;
+  readonly body: Readonly<Record<string, string>>;
+  readonly filters: readonly Chip[];
+  readonly by: SortKey;
+  readonly focus: string | null;
+  readonly onFocus: (key: string | null) => void;
+};
+function ScopedTodos(props: ScopedTodosProps): ReactElement {
+  const { state, reload, refresh, own } = useRead<TaskTodosResult>({
     grantKey: props.grantKey,
     run: () => props.client.read<TaskTodosResult>('task.todos', props.body),
     deps: [],
-    rollup: tabRollupFloor(),
   });
+  useTaskDependencies(props.client, props.grantKey, refresh, dependencyAdmission(state, own));
+  useRereadOn(props.changes ?? 0, reload);
   const { because, tick } = useTick(props.client, reload);
   const today = todayOn((props.now ?? realTime)());
   return (

@@ -84,6 +84,7 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
+import { useHeld } from './task/held-state.ts';
 import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -99,6 +100,7 @@ import { useRead, type UseReadResult } from '../data/use-read.ts';
 import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
+import { taskDependencyAdmission, useTaskDependencies } from '../data/board-live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
@@ -197,7 +199,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const [draft, setDraft] = useState<Draft | null>(null);
   // Lost writes' operation ids, kept above the read for this task and grant (#461).
   const operations = useRef<Held>({});
-  const { state, reload, live } = useRead<TaskReadResult>({
+  const { state, reload, live, refresh, own } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: timerRead.run,
     deps: [props.taskKey, props.changes ?? 0],
@@ -207,6 +209,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
     },
   });
   const timerRefresh = useTimerRefresh(timerRead.changed, state.outcome, reload);
+  useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useFreshOnPage(state, hub);
 
   // Drafts outlive ordinary rereads; live and timer rereads also preserve mounted
@@ -411,34 +414,6 @@ function RefreshRow(props: {
 function useKeep(held: Draft | null, identity: string, denied: boolean) {
   const [stepUp, setStepUp] = useHeld<true>(identity, denied);
   return [held !== null || stepUp !== null, setStepUp] as const;
-}
-
-function useHeld<T>(
-  identity: string,
-  denied: boolean,
-  keeps?: (held: T, next: T | null) => boolean,
-): readonly [T | null, (next: T | null) => void] {
-  // The slot always names the task and grant it is for, empty or not, so a
-  // setter from an older task or grant can tell it writes nothing here.
-  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T | null }>({
-    identity,
-    value: null,
-  });
-  if (held.identity !== identity || (denied && held.value !== null)) {
-    setHeld({ identity, value: null });
-  }
-  const value = held.identity === identity ? held.value : null;
-  const set = (next: T | null): void => {
-    // Writing what is already held keeps the same slot, so no render follows.
-    setHeld((current) =>
-      current.identity !== identity ||
-      current.value === next ||
-      (current.value !== null && keeps?.(current.value, next) === true)
-        ? current
-        : { identity, value: next },
-    );
-  };
-  return [value, set];
 }
 
 /** What the task page's writes hand back to the page that draws them. */

@@ -56,7 +56,7 @@ import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommentCustody } from './comment-custody-context.tsx';
-import type { PendingComment } from './comment-custody.ts';
+import type { CommentHold, PendingComment } from './comment-custody.ts';
 import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
 import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
 import { useRowActions } from './row-actions.ts';
@@ -166,25 +166,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
   const { custody, hold } = useCommentCustody(props.client, props.grantKey, props.recordId);
   const held = hold.pending;
   const hostDraft = props.draft ?? EMPTY;
-  const draft = useCommentDraft({
-    ...props,
-    draft:
-      held === null
-        ? hostDraft
-        : {
-            ...hostDraft,
-            body: held.body,
-            tab:
-              hostDraft.body === held.body
-                ? hostDraft.tab
-                : held.audience === 'client'
-                  ? 'client'
-                  : 'internal',
-            replyTo: held.parentId,
-            mentions: held.mentions ?? [],
-            pending: held,
-          },
-  });
+  const draft = useCommentDraft(props, held);
   const { body, tab, pending } = draft.current;
   const { audience, kind, parentId } = draft.intent;
   // `closed` is set when the server has said this reader may not comment. It
@@ -205,28 +187,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
   });
   const because = hold.failure?.because ?? props.refusal;
   const form = useRef<HTMLFormElement>(null);
-  const observed = useRef(
-    !hold.busy && held === null && matchesSubmittedDraft(hostDraft, hold.settled, props.comments)
-      ? hold.settlement - 1
-      : hold.settlement,
-  );
-  useEffect(() => {
-    if (observed.current === hold.settlement) return;
-    observed.current = hold.settlement;
-    if (matchesSubmittedDraft(hostDraft, hold.settled, props.comments)) {
-      props.onDraft(
-        hold.answered === 'ok'
-          ? { ...EMPTY, tab: hostDraft.tab }
-          : {
-              ...hostDraft,
-              pending: null,
-              stale: hold.answered === 'stale' ? because : null,
-            },
-      );
-    }
-    if (hold.answered === 'closed' && because !== null) props.onRefused(because);
-    if (hold.answered === 'ok' || hold.answered === 'stale') props.onPosted();
-  }, [hold, props, hostDraft, because]);
+  useCommentSettlement(props, hostDraft, hold);
 
   const post = (): void => {
     if (cannotPost) return;
@@ -339,6 +300,38 @@ function OwnedComments(props: CommentsProps): ReactElement {
   );
 }
 
+/** A known answer consumes only this host's submitted draft, including after a reread remount. */
+function useCommentSettlement(
+  props: CommentsProps,
+  hostDraft: CommentDraft,
+  hold: CommentHold,
+): void {
+  const held = hold.pending;
+  const because = hold.failure?.because ?? props.refusal;
+  const observed = useRef(
+    !hold.busy && held === null && matchesSubmittedDraft(hostDraft, hold.settled, props.comments)
+      ? hold.settlement - 1
+      : hold.settlement,
+  );
+  useEffect(() => {
+    if (observed.current === hold.settlement) return;
+    observed.current = hold.settlement;
+    if (matchesSubmittedDraft(hostDraft, hold.settled, props.comments)) {
+      props.onDraft(
+        hold.answered === 'ok'
+          ? { ...EMPTY, tab: hostDraft.tab }
+          : {
+              ...hostDraft,
+              pending: null,
+              stale: hold.answered === 'stale' ? because : null,
+            },
+      );
+    }
+    if (hold.answered === 'closed' && because !== null) props.onRefused(because);
+    if (hold.answered === 'ok' || hold.answered === 'stale') props.onPosted();
+  }, [hold, props, hostDraft, because]);
+}
+
 /** Only the host draft matching the answered envelope is settled by that answer. */
 function matchesSubmittedDraft(
   draft: CommentDraft,
@@ -372,8 +365,24 @@ function commentIntent(current: CommentDraft, comments: readonly InternalComment
 }
 
 /** The editable draft and the exact held attempt share one audience and recipient vocabulary. */
-function useCommentDraft(props: CommentsProps) {
-  const current = props.draft ?? EMPTY;
+function useCommentDraft(props: CommentsProps, held: PendingComment | null) {
+  const hostDraft = props.draft ?? EMPTY;
+  const current: CommentDraft =
+    held === null
+      ? hostDraft
+      : {
+          ...hostDraft,
+          body: held.body,
+          tab:
+            hostDraft.body === held.body
+              ? hostDraft.tab
+              : held.audience === 'client'
+                ? 'client'
+                : 'internal',
+          replyTo: held.parentId,
+          mentions: held.mentions ?? [],
+          pending: held,
+        };
   const { pending } = current;
   const { parent, intent } = commentIntent(current, props.comments);
   const put = (next: Partial<CommentDraft>): void => {

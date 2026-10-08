@@ -43,6 +43,8 @@ export interface UseReadResult<T> {
 
 /** `useRead`'s answer, and whether the read in flight came from the live channel. */
 export interface UseReadLive<T> extends UseReadResult<T> {
+  /** Re-read a live dependency while the host keeps its current editor mounted. */
+  readonly refresh: () => void;
   /**
    * True while the read in flight was started by the live channel, so a host
    * can keep its last answer drawn through an ordinary live change (MP-6-3).
@@ -139,6 +141,10 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     reread(false);
   }, [reread]);
 
+  const refresh = useCallback(() => {
+    reread(true);
+  }, [reread]);
+
   useEffect(() => {
     const projection = new AuthorisedRead<T>(
       isEmpty === undefined
@@ -176,7 +182,13 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
   const own = same(built.current, [grantKey, ...options.deps]);
-  return { state, reload, own, live: own && liveRef.current && state.outcome === 'loading' };
+  return {
+    state,
+    reload,
+    refresh,
+    own,
+    live: own && liveRef.current && state.outcome === 'loading',
+  };
 }
 
 /**
