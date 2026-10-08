@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Aggregate selected and unboarded board reads preserve typed admission, open pool exclusions, canonical rank, constant batched evidence and audit boundaries across synthetic businesses"
+}

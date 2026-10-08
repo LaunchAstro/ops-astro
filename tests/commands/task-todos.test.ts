@@ -37,6 +37,8 @@ beforeAll(async () => {
     for (const member of [w.ada, w.noah]) {
       // eslint-disable-next-line no-await-in-loop -- one transaction, one grant at a time
       await grantTo(tx, member, 'assign');
+      // eslint-disable-next-line no-await-in-loop -- explicit person board scope shares the vocabulary grant.
+      await grantTo(tx, member, 'read', undefined, false, 'person');
       // eslint-disable-next-line no-await-in-loop -- one transaction, one grant at a time
       await grantTo(tx, member, 'write', WHOLE, false, 'tag');
       // eslint-disable-next-line no-await-in-loop -- one transaction, one grant at a time
@@ -130,6 +132,17 @@ live('MP-7-1 my to-dos are my open tasks', () => {
     expect(mine?.tags.map((each) => each.name)).toStrictEqual(['Legal']);
     expect(mine?.waitingComments).toBe(1);
     expect(todos.find((todo) => todo.id === work.onBoard)?.waitingComments).toBe(0);
+    const board = await executeRead(w.db.app, w.alpha, w.ada.presented, {
+      read: 'task.board',
+      mode: 'aggregate',
+      person: w.ada.personId,
+    });
+    if (!('tasks' in board)) throw new Error(`Expected aggregate board ${JSON.stringify(board)}`);
+    expect(board.tasks.map((task) => task.id).toSorted()).toEqual(ids.toSorted());
+    expect(board.tasks.find((task) => task.id === work.mine)?.todo).toMatchObject({
+      tags: mine?.tags,
+      waitingComments: mine?.waitingComments,
+    });
   });
 
   it('Noah reads his own, and not Ada’s', async () => {

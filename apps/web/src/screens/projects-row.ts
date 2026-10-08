@@ -32,13 +32,19 @@ import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
  * imports it.
  */
 export interface BoardPanelHost {
-  readonly open: (taskKey: string, door: 'open' | 'reply', tab?: 'all') => void;
+  readonly open: (
+    taskKey: string,
+    door: 'open' | 'reply' | 'add-first',
+    tab?: 'all',
+    beside?: boolean,
+  ) => void;
   readonly changes: number;
 }
 /** The row open beside the board, and the door it was opened by. */
 export interface RowOpened {
   readonly id: string;
-  readonly door: 'open' | 'reply';
+  readonly door: 'open' | 'reply' | 'add-first';
+  readonly origin?: 'row';
 }
 
 /** The person assigned, or the reader's own agent holding the task (drawn as AI). */
@@ -180,9 +186,15 @@ function openers(options: {
     };
   }
   return {
-    onOpen: (row) => {
-      panel.setOpened({ id: row.id, door: 'open' });
-      panel.host.open(row.key, 'open');
+    onOpen: (row, beside = false, origin) => {
+      panel.setOpened({ id: row.id, door: 'open', ...(origin === undefined ? {} : { origin }) });
+      if (beside) panel.host.open(row.key, 'open', undefined, true);
+      else panel.host.open(row.key, 'open');
+    },
+    onAddSubtask: (row, beside = false) => {
+      panel.setOpened({ id: row.id, door: 'add-first' });
+      if (beside) panel.host.open(row.key, 'add-first', undefined, true);
+      else panel.host.open(row.key, 'add-first');
     },
     onOpenComments: (row) => {
       panel.setOpened({ id: row.id, door: 'reply' });

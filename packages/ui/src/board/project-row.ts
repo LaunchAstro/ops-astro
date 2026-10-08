@@ -67,7 +67,8 @@ export interface RowActions {
   /** A rename in place, already trimmed, changed and not blank. */
   readonly onRename?: (row: ProjectRow, title: string) => void;
   /** Open the task beside the board (a plain click, after the double-click window). */
-  readonly onOpen?: (row: ProjectRow) => void;
+  readonly onOpen?: (row: ProjectRow, beside?: boolean, origin?: 'row') => void;
+  readonly onAddSubtask?: (row: ProjectRow, beside?: boolean) => void;
   /** Open the task beside the board on its conversation: the comment badge's door (P-36). */
   readonly onOpenComments?: (row: ProjectRow) => void;
   /**
@@ -75,7 +76,11 @@ export interface RowActions {
    * by: that one element carries `data-panel-door`, so closing the panel
    * returns focus to it and not to another row's.
    */
-  readonly opened?: { readonly id: string; readonly door: 'open' | 'reply' };
+  readonly opened?: {
+    readonly id: string;
+    readonly door: 'open' | 'reply' | 'add-first';
+    readonly origin?: 'row';
+  };
   /** The hover box's timer; drawn only when the page can start one. */
   readonly onStartTimer?: (row: ProjectRow) => void;
   /** The people the assignee editor offers (MP-5-10); none, no assignee editor. */
