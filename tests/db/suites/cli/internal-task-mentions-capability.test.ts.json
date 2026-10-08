@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Structured task mentions preserve recipient authority, internal/client separation and one durable comment/inbox effect over real API/CLI replay and revocation."
+}

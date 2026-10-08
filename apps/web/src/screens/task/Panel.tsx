@@ -172,6 +172,7 @@ function PanelBody(
             />
             <PanelWork {...props} />
             <PanelConversation
+              grantKey={props.grantKey}
               client={client}
               task={task}
               held={props.conversation}

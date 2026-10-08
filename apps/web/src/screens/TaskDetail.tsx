@@ -850,6 +850,7 @@ function TeamComments(props: LoadedProps): ReactElement {
   const { client, task } = props;
   return (
     <Comments
+      grantKey={props.grantKey}
       client={client}
       comments={task.comments}
       recordId={task.id}
