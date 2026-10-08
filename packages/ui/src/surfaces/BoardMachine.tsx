@@ -171,6 +171,8 @@ function BoardBody<Row>(
           groups={props.groups}
           rowKey={props.rowKey}
           cell={props.cell}
+          onActivate={props.onActivate}
+          rowDoor={props.rowDoor}
           onSort={(key) => {
             dispatch({ type: 'sort', key });
           }}

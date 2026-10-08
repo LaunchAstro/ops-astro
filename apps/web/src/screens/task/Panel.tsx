@@ -60,6 +60,7 @@ import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
+import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
 import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
@@ -84,6 +85,7 @@ export interface TaskPanelProps extends ClientSeams {
   readonly docked?: boolean;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
   readonly onNewTask?: (scope: DraftScope) => void;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
 }
@@ -141,13 +143,14 @@ function PanelBody(
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
+  const body = useSubtaskDoor(props.opening, task.id, perspective, setPerspective);
   const counts = perspectiveCounts({
     steps: stepMarks(task.steps),
     proposals: task.proposals ?? [],
     stagedOutput: false,
   });
   return (
-    <div className="stack" data-task={task.id} data-revision={task.revision}>
+    <div ref={body} className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead {...props} />
       <PanelFields {...props} />
       <PageLink client={client} task={task} onChanged={props.onChanged} />
@@ -169,6 +172,7 @@ function PanelBody(
             />
             <PanelWork {...props} />
             <PanelConversation
+              grantKey={props.grantKey}
               client={client}
               task={task}
               held={props.conversation}
@@ -226,6 +230,7 @@ function PanelWork(props: SideProps): ReactElement {
       onChanged={props.onChanged}
       onTimer={props.onTimer}
       onOpenPanel={undefined}
+      onOpenTask={props.onOpenTask}
       doors={false}
     />
   );

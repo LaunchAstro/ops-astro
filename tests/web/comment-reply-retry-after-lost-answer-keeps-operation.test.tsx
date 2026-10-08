@@ -10,11 +10,13 @@ import { tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
 
-// Sol OW-089.2 criterion 5, retitled by what it proves; its body is Sol's.
+// Sol OW-089.2 criterion 5: a lost mutation remains one reply despite vocabulary reads.
 it('reselecting the same reply after a lost response retries the original operation', async () => {
   const stored = new Map<string, Record<string, unknown>>();
   const requests: Record<string, unknown>[] = [];
-  const fetch: typeof globalThis.fetch = async (_url, init) => {
+  const fetch: typeof globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (!String(url).endsWith('/task/comment')) throw new Error(`Unrouted request: ${String(url)}`);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     requests.push(body);
     // Model the server storing an operation, with the first response lost in transit.
@@ -67,6 +69,7 @@ it('reselecting the same reply after a lost response retries the original operat
   expect(requests).toHaveLength(2);
   expect(requests[1]?.['parentId']).toBe('parent');
   expect(requests[1]?.['body']).toBe('One reply only');
-  expect(requests[1]?.['operationId']).toBe(requests[0]?.['operationId']);
+  expect(requests[1]).toEqual(requests[0]);
+  expect(view.find('[data-comment="unresolved"]')).toBeNull();
   expect(stored.size).toBe(1);
 });

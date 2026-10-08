@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
+import {
+  Empty,
+  usePageToolbar,
+  ProjectsBoard,
+  TabPanel,
+  clientFiltersIn,
+  type ProjectRow,
+} from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
@@ -26,10 +33,12 @@ import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { useSharedTaskPins, TaskPinsNotice } from './task/task-pins-context.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
+import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
 import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
 
 export interface ProjectsProps {
+  readonly canFileTask?: boolean;
   readonly client: OperationsClient;
   readonly grantKey: string;
   /** Goes to an address inside the application. */
@@ -49,6 +58,8 @@ const queryOf = (address: string | undefined): string =>
 type ProjectsTab = 'board' | 'worklog';
 
 export function Projects(props: ProjectsProps): ReactElement {
+  const bar = usePageToolbar();
+  const { canFileTask = false, inPanel } = props;
   // The tab is its address's: a panel's own place, never the page's fragment,
   // or the page's. A chosen tab holds while that address does; a new address
   // opens on its own tab, and the Work log, once drawn, stays drawn.
@@ -70,6 +81,9 @@ export function Projects(props: ProjectsProps): ReactElement {
   };
   return (
     <div className="stack">
+      {tab === 'board' ? (
+        <ProjectsToolbar bar={inPanel === true ? null : bar} canFileTask={canFileTask} />
+      ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
