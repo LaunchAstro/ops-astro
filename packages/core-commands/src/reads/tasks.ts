@@ -20,7 +20,7 @@
 // never real.
 
 import type { TaskSpine } from '../commands/context.ts';
-import { extrasForTasks, movesOf, OPEN_TODO_SQL, type TodoScope } from './todos.ts';
+import { extrasForTasks, movesOf, OPEN_TODO_SQL, type TodoScope } from './todo-evidence.ts';
 
 import {
   commentSignals,

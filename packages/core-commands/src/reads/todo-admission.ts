@@ -10,7 +10,7 @@ import { invalid } from '../commands/operands.ts';
 import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { listPeople } from './people.ts';
 import type { Parsed } from './read-row.ts';
-import type { TodoScope } from './todos.ts';
+import type { TodoScope } from './todo-evidence.ts';
 
 export function parseTodoScope({
   person,

@@ -15,7 +15,7 @@ import { withPaging } from './detail.ts';
 import { invalid } from '../commands/operands.ts';
 import type { ReadOperands } from './requests.ts';
 import type { Parsed } from './read-row.ts';
-import type { TodoScope } from './todos.ts';
+import type { TodoScope } from './todo-evidence.ts';
 import { decideReach } from './awaiting.ts';
 import { withBoardClients } from '../commands/task-content.ts';
 
