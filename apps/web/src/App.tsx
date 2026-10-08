@@ -206,6 +206,7 @@ export function App(props: AppProps): ReactElement {
     onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
       ...screen,
+      fileTask: taskDock.panel.file,
       address: here,
       notice:
         notice === null || session === null ? null : (
@@ -219,7 +220,6 @@ export function App(props: AppProps): ReactElement {
     open: props,
   });
 
-  // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
   const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
   // The client face has no dock (R17), and nobody signed out has one.

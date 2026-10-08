@@ -23,6 +23,7 @@ export function useConversationHeld(tab: ConversationTab | null) {
 }
 
 interface PanelConversationProps {
+  readonly grantKey?: string | undefined;
   readonly client: OperationsClient;
   readonly task: Task;
   readonly held: ReturnType<typeof useConversationHeld>;
@@ -34,6 +35,7 @@ export function PanelConversation(props: PanelConversationProps): ReactElement {
   const { task, held } = props;
   return (
     <Comments
+      {...(props.grantKey === undefined ? {} : { grantKey: props.grantKey })}
       scope="panel"
       client={props.client}
       comments={task.comments}

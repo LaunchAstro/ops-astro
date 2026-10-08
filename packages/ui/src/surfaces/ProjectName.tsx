@@ -15,6 +15,9 @@ import type { ProjectRow, RowActions } from '../board/projects.ts';
 import { Icon } from '../primitives/Icon.tsx';
 
 const OPEN_DELAY_MS = 260;
+const followsLink = (
+  event: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'altKey'>,
+): boolean => event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey;
 
 export interface ProjectNameProps {
   readonly row: ProjectRow;
@@ -56,8 +59,9 @@ function tickLabel(row: ProjectRow): string {
 export const isOpened = (
   actions: RowActions | undefined,
   row: ProjectRow,
-  door: 'open' | 'reply',
-): boolean => actions?.opened?.id === row.id && actions.opened.door === door;
+  door: 'open' | 'reply' | 'add-first',
+): boolean =>
+  actions?.opened?.id === row.id && actions.opened.door === door && actions.opened.origin !== 'row';
 
 /** The name as a link, or, after a double-click, the rename input. */
 function NameOrRename(props: ProjectNameProps): ReactElement {
@@ -89,10 +93,10 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
       data-panel-door={isOpened(actions, row, 'open') ? 'open' : undefined}
       onClick={(event) => {
         const onOpen = actions?.onOpen;
-        if (onOpen === undefined || event.button !== 0) return;
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (onOpen === undefined || followsLink(event)) return;
         event.preventDefault();
         stopOpening();
+        if (event.shiftKey) return onOpen(row, true);
         opening.current = setTimeout(() => {
           opening.current = null;
           onOpen(row);
@@ -177,6 +181,12 @@ function Routes(props: {
         className="cbd__route"
         data-route="subtask"
         href={`${href}#add-subtask`}
+        data-panel-door={isOpened(actions, row, 'add-first') ? 'add-first' : undefined}
+        onClick={(event) => {
+          if (actions.onAddSubtask === undefined || followsLink(event)) return;
+          event.preventDefault();
+          actions.onAddSubtask(row, event.shiftKey);
+        }}
         aria-label={`Add a subtask to ${row.name}`}
         title="Add a subtask"
       >
