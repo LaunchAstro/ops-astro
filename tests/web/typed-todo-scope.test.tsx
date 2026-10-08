@@ -190,3 +190,40 @@ it('a client route door carries its real family, and contradictory routes cannot
   await view.type('#todos-search', 'route:team');
   expect(view.all('[data-todo-row]')).toHaveLength(0);
 });
+
+it('the compact board door carries admitted intersected scope and complete filters', async () => {
+  const t = transport();
+  const view = await mount(<TodosScreen client={t.client} grantKey="synthetic:owner" />);
+  await settle();
+  await view.type(
+    '#todos-search',
+    'person:"Noah Lee" client:"Acme Physio" route:review due:today p1 tag:urgent work',
+  );
+  await settle();
+  const door = view.find('[data-todos="board"]');
+  const address = new URL(door?.getAttribute('href') ?? '', 'http://here');
+  expect(address.searchParams.get('pool')).toBe('aggregate');
+  expect(address.searchParams.get('person')).toBe(person);
+  expect(address.searchParams.get('client')).toBe(clientId);
+  expect(address.searchParams.get('route')).toBe('Review');
+  expect(JSON.parse(address.searchParams.get('filters') ?? '[]')).toEqual([
+    { kind: 'due', value: 'today' },
+    { kind: 'priority', value: 1 },
+    { kind: 'tag', value: 'urgent' },
+    { kind: 'words', value: 'work' },
+  ]);
+});
+it('the compact board door distinguishes aggregate own work and blocks unresolved scope', async () => {
+  const t = transport();
+  const view = await mount(<TodosScreen client={t.client} grantKey="synthetic:owner" />);
+  await settle();
+  const address = new URL(
+    view.find('[data-todos="board"]')?.getAttribute('href') ?? '',
+    'http://here',
+  );
+  expect(address.searchParams.get('pool')).toBe('aggregate');
+  expect(address.searchParams.get('scope')).toBe('own');
+  await view.type('#todos-search', 'person:"Not permitted"');
+  expect(view.find('[data-todos="board"]')?.getAttribute('aria-disabled')).toBe('true');
+  expect(view.find('[data-todos="board"]')?.hasAttribute('href')).toBe(false);
+});

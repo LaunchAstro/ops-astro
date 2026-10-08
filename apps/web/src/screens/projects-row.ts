@@ -20,12 +20,20 @@
 
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
-import { AssignmentCustody, type AssignmentFields } from './task/assignment-custody.ts';
+import type { AssignmentCustody, AssignmentFields } from './task/assignment-custody.ts';
 import type { TaskTimer } from './task/task-timer.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
-import { settle, type Settlement } from '../records/use-command.ts';
+import { assignmentSender, sender } from './projects/board-settlement.ts';
+import { titleOf } from '../views/task-title.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
-import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_STAGES,
+  TASK_CATEGORIES,
+  isInProductLink,
+} from '../../../../packages/core-wire/src/index.ts';
+
+/** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
+export const STAGES = TASK_STAGES.list().map((stage) => stage.label);
 
 /**
  * What the board needs of the dock task panel's host (the application's
@@ -103,47 +111,11 @@ export function rowActions(options: {
   };
 }
 
-function assignmentSender(
-  options: Pick<Parameters<typeof rowActions>[0], 'client' | 'assignment' | 'onSettled' | 'reload'>,
-): (row: ProjectRow, fields: AssignmentFields) => void {
-  // Pure isolated row mounts have ephemeral custody; App supplies the durable owner.
-  const assignment =
-    options.assignment ??
-    new AssignmentCustody(options.client, options.client.businessKey, null, true);
-  const assign = (row: ProjectRow, fields: AssignmentFields): void => {
-    void assignment.choose(row.id, row.revision, fields).then((answer) => {
-      if (answer === undefined) return answer;
-      options.onSettled(refusalOf(answer));
-      if (options.assignment === undefined) options.reload();
-      return answer;
-    });
-  };
-  return assign;
-}
-
 function timerAction(timer: TaskTimer | null | undefined): RowActions {
   const state = timer?.snapshot();
   if (timer === null || timer === undefined || state?.attempt !== null || state.binding !== null)
     return {};
   return { onStartTimer: (row) => timer.start({ id: row.id, key: row.key, title: row.name }) };
-}
-
-/** Settled or not, the board re-reads: a refusal redraws the stored truth, and is said as well. */
-function sender(
-  onSettled: (refused: string | null) => void,
-  reload: () => void,
-): (sent: Promise<CallResult<unknown>>) => void {
-  const settleOne = async (sent: Promise<CallResult<unknown>>): Promise<void> => {
-    try {
-      onSettled(refusalOf(settle(await sent)));
-    } catch {
-      onSettled(refusalOf({ kind: 'unknown', because: 'No answer came back.' }));
-    }
-    reload();
-  };
-  return (sent) => {
-    void settleOne(sent);
-  };
 }
 
 /** The cell editors' commands (MP-5-10): assignee, due date, stage and estimate, each at the board's revision. */
@@ -233,15 +205,6 @@ function openers(options: {
   };
 }
 
-/** What the board says about a write: nothing when it landed, else the server's words. */
-function refusalOf(settled: Settlement): string | null {
-  if (settled.kind === 'ok') return null;
-  if (settled.kind === 'unknown') {
-    return `The change may not have been stored: ${settled.because} Check the row before trying again.`;
-  }
-  return `The change was not made: ${settled.because}`;
-}
-
 const pad = (n: number): string => String(n).padStart(2, '0');
 
 /**
@@ -259,4 +222,52 @@ export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['d
   const day = iso.slice(0, 10);
   if (day < today) return 'past';
   return day === today ? 'today' : 'later';
+}
+
+/** One task from the read as a Projects board row (MP-5-8). */
+export function rowOf(task: BoardTask): ProjectRow {
+  // A read from a server that predates Assign to AI, the category or the
+  // comment counts carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments' | 'client'>> =
+    task;
+  const agent = read.agent ?? null;
+  const category = read.category ?? null;
+  return {
+    id: task.id,
+    key: task.key,
+    name: titleOf(task.title),
+    revision: task.revision,
+    rank: { number: task.rank.number, calc: task.rank.calc },
+    starred: false,
+    // The client by name where the reader reaches it (C32's rule); a server
+    // that predates it, or a client out of reach, sends none.
+    client: read.client?.name ?? null,
+    assignee: assigneeOf(task, agent),
+    // The reader's own agents for the task; the read sends no one else's.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
+    // The tick sends the reader's agent's work to review unless it is there.
+    toReview:
+      agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
+    due: task.due,
+    completed: task.completedAt !== null,
+    stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),
+    status: task.state?.label ?? 'No state',
+    statusPosition: task.statePosition,
+    // A run awaiting approval is the one wait the read carries; the banner
+    // prints the mockup's word for it (B-21).
+    waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
+    // The stored category by its label (TASK_CATEGORIES); a value outside
+    // the list draws as stored, and none offers no chip (P-13).
+    category: category === null ? null : TASK_CATEGORIES.labelOf(category),
+    awaitingDecision: task.awaitingDecision,
+    estimate:
+      task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },
+    // The time logged on the task (MP-4-6); none logged draws a dash.
+    actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
+    // A stored link that is not an address inside the product is never a
+    // door (MP-4-12); the door is then the task's own page.
+    ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
+    // The reader's own waiting client signals and mentions (MP-5-8).
+    comments: read.comments ?? { client: 0, mentions: 0, latest: null },
+  };
 }

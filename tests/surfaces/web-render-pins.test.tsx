@@ -15,6 +15,7 @@
 // machine category and one with no state, because the tone map moves too.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TaskTimerProvider } from '../../apps/web/src/screens/task/task-timer-context.tsx';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount } from './mount.tsx';
@@ -158,7 +159,11 @@ describe('the board, pinned whole', () => {
       fetch,
       newOperationId: () => 'operation-1',
     });
-    const page = await mount(<Projects client={client} grantKey="alpha:ada" navigate={() => {}} />);
+    const page = await mount(
+      <TaskTimerProvider client={client} grantKey="alpha:ada" storage={null}>
+        <Projects client={client} grantKey="alpha:ada" navigate={() => {}} />
+      </TaskTimerProvider>,
+    );
     await tick();
     expect(page.host.innerHTML).toMatchSnapshot();
     await page.unmount();
