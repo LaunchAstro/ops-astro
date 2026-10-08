@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { TaskReadResult, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
+import type {
+  SearchHit,
+  TaskReadResult,
+  TaskTimeView,
+} from '../../../../../packages/core-wire/src/index.ts';
 import type { CallResult, CommandOutcome, OperationsClient } from '../../operations/client.ts';
 import { settle, type Settlement } from '../../records/use-command.ts';
 
-export interface TimerTask {
-  readonly id: string;
-  readonly key?: string;
-  readonly title?: string | null;
-}
+export type TimerTask = Pick<SearchHit, 'id'> & Partial<Pick<SearchHit, 'key' | 'title'>>;
 export interface TimerBinding {
   readonly task: TimerTask;
   readonly running: TaskTimeView['running'];
