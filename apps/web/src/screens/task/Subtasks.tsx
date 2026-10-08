@@ -2,28 +2,26 @@
 //
 // The subtask list on the Team side (MP-4-4, CS-4.25 to CS-4.27).
 //
-// **A subtask is a task.** Adding one is `task.create` under this parent, and
-// ticking one is the step's own lifecycle: `task.complete` to tick it,
-// `task.reopen` with a reason to untick it, each at the step's revision. A
-// success asks the page to read the task again, so the list, the count and
-// the percentage are always the steps the server sent.
+// Add through `task.create`; complete or reopen at the child's revision.
+// Reread the parent's steps after a write, including its count and percentage.
+// Gate steps have an eye and no tick, and stay counted until decided.
+// Enter adds at the end and keeps focus and any newer draft. A lost answer's
+// operation id is held for replay (#461).
 //
-// **A gate step has no tick.** A step whose gate waits for a decision
-// (`awaitingApproval` on the read) is decided at its gate, never ticked here:
-// its row carries an eye and a note in place of the tick, and it stays open in
-// the count until the gate is decided.
-//
-// **The box stays ready.** Enter adds and clears the box, unless a newer name is typed there,
-// and keeps the focus; the page holds its words, and a lost add's id, above the read, so Enter
-// on the same name is replayed (#461). A new step joins the end, in the server's order.
-//
-// **Finished steps fold away.** A done step, and an archived one (it left the
-// count without being done, MP-4-15), sit under "Show finished", the person's
-// own preference (`show-finished.ts`), so a reread keeps it open. An archived
-// step says when and why, and carries no tick: it comes back only when its
-// parent is reopened.
+// **Completed steps fold away.** The person's preference (`show-finished.ts`)
+// keeps the fold open across a reread. Archived steps stay visible outside the
+// fold and count, saying when and why, with no tick (DT-05).
 
-import { createContext, use, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import {
+  createContext,
+  use,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react';
+import { StepRow, StepCount } from './SubtaskRows.tsx';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useShowFinished } from './show-finished.ts';
@@ -48,77 +46,14 @@ export function stepProgress(steps: readonly StepView[]): string {
 const unfinished = (steps: readonly StepView[]): readonly StepView[] =>
   steps.filter((step) => step.archived === null && !step.done);
 
-const archivedOn = (at: string): string =>
-  new Date(at).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Australia/Brisbane',
-  });
-
-/** A step waiting at its gate: decided there, so no tick here (DT-04). */
-function GateStepRow({ step }: { readonly step: StepView }): ReactElement {
-  return (
-    <li className="sb__step" data-step={step.id} data-done={step.done} data-gate>
-      <span aria-hidden="true">◉</span>
-      <span className="sb__step-title">{step.title ?? step.key}</span>
-      <span className="sb__gate-note" data-step-gate>
-        Waiting on a gate
-      </span>
-    </li>
-  );
-}
-
-function StepRow(props: {
-  readonly step: StepView;
-  readonly busy: boolean;
-  readonly onTick: (step: StepView) => void;
-}): ReactElement {
-  const { step } = props;
-  const press = (): void => {
-    if (!props.busy) props.onTick(step);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>): void => {
-    if (event.key !== ' ' && event.key !== 'Enter') return;
-    event.preventDefault();
-    press();
-  };
-  const title = step.title ?? step.key;
-  if (step.archived === null && step.awaitingApproval) return <GateStepRow step={step} />;
-  return (
-    <li className="sb__step" data-step={step.id} data-done={step.done}>
-      {step.archived === null ? (
-        <span
-          className="tpr__tick"
-          role="checkbox"
-          tabIndex={0}
-          data-step-tick={step.id}
-          aria-label={title}
-          aria-checked={step.done}
-          aria-disabled={props.busy}
-          onClick={press}
-          onKeyDown={onKeyDown}
-        >
-          {step.done ? '✓' : ''}
-        </span>
-      ) : null}
-      <span className="sb__step-title">{title}</span>
-      {step.archived === null ? null : (
-        <span className="card__sub" data-step-archived>
-          Archived {archivedOn(step.archived.at)} · {step.archived.why}
-        </span>
-      )}
-    </li>
-  );
-}
-
 /** The box at the top of the list: Enter adds a step under this parent. */
 function AddStep(props: {
   readonly client: OperationsClient;
   readonly parentId: string;
   readonly onChanged: () => void;
 }): ReactElement {
-  const { busy, because, run } = useCommand();
+  const { locked: busy, closed, because, run } = useCommand();
+  const current = useSubtaskOwner(props.client, props.parentId);
   const own = useState('');
   const [title, setTitle] = use(StepTitleHeld) ?? own;
   const typed = useRef(title);
@@ -136,6 +71,7 @@ function AddStep(props: {
       () => props.client.mutate('task.create', body, { operationId: hold.id }),
       (settlement) => {
         hold.settle(settlement.kind);
+        if (!current()) return;
         // A name typed since is the next one, not this one's to clear.
         if (settlement.kind === 'ok' && typed.current === title) setTitle('');
         if (settlement.kind === 'ok') props.onChanged();
@@ -149,17 +85,14 @@ function AddStep(props: {
         ref={box}
         className="field__input"
         data-step-add
+        disabled={closed}
         aria-label="Add a subtask"
         placeholder="Add a subtask and press Enter"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      {because === null ? null : (
-        <p className="field__error" role="alert">
-          {because}
-        </p>
-      )}
+      <StepError because={because} />
     </>
   );
 }
@@ -183,16 +116,22 @@ function FinishedFold(props: {
   );
 }
 
-export function SubtaskList(props: {
+interface SubtaskListProps {
   readonly client: OperationsClient;
   readonly parentId: string;
+  /** The composed Team heading carries this summary; standalone lists keep their own. */
+  readonly showProgress?: boolean;
   readonly steps: readonly StepView[];
   readonly showFinished: boolean;
   readonly onShowFinished: (value: boolean) => void;
   readonly onChanged: () => void;
-}): ReactElement {
-  const { client, steps } = props;
-  const { busy, because, run } = useCommand();
+  readonly onOpenTask?: ((key: string) => void) | undefined;
+}
+
+export function SubtaskList(props: SubtaskListProps): ReactElement {
+  const { client, steps, onOpenTask } = props;
+  const { locked: busy, because, run } = useCommand();
+  const current = useSubtaskOwner(props.client, props.parentId);
   const tick = (step: StepView): void => {
     const at = { expectedRevision: step.revision };
     run(
@@ -201,15 +140,17 @@ export function SubtaskList(props: {
           ? client.mutate('task.reopen', { recordId: step.id, reason: REOPEN_REASON }, at)
           : client.mutate('task.complete', { recordId: step.id }, at),
       (settlement) => {
-        if (settlement.kind === 'ok') props.onChanged();
+        if (current() && settlement.kind === 'ok') props.onChanged();
       },
     );
   };
-  const finished = steps.filter((step) => step.archived !== null || step.done);
-  const shown = props.showFinished ? [...unfinished(steps), ...finished] : unfinished(steps);
+  const live = unfinished(steps);
+  const archived = steps.filter((step) => step.archived !== null);
+  const completed = steps.filter((step) => step.archived === null && step.done);
+  const shown = [...live, ...archived, ...(props.showFinished ? completed : [])];
   return (
     <div className="sb__steplist" data-step-list>
-      {steps.length === 0 ? null : (
+      {steps.length === 0 || props.showProgress === false ? null : (
         <span className="card__sub" data-step-count>
           {stepProgress(steps)}
         </span>
@@ -217,19 +158,20 @@ export function SubtaskList(props: {
       <AddStep client={client} parentId={props.parentId} onChanged={props.onChanged} />
       <ul className="sb__steps">
         {shown.map((step) => (
-          <StepRow key={step.id} step={step} busy={busy} onTick={tick} />
+          <StepRow key={step.id} step={step} busy={busy} onTick={tick} onOpenTask={onOpenTask} />
         ))}
       </ul>
+      {live.length === 0 && completed.length > 0 ? (
+        <p className="card__sub" data-steps-empty>
+          Nothing left on this one.
+        </p>
+      ) : null}
       <FinishedFold
-        count={finished.length}
+        count={completed.length}
         open={props.showFinished}
         onOpen={props.onShowFinished}
       />
-      {because === null ? null : (
-        <p className="field__error" role="alert">
-          {because}
-        </p>
-      )}
+      <StepError because={because} />
     </div>
   );
 }
@@ -250,6 +192,7 @@ interface TeamSubtasksProps {
   readonly onChanged: () => void;
   readonly onTimer?: ((running: string | null) => void) | undefined;
   readonly onOpenPanel: PanelOpener | undefined;
+  readonly onOpenTask?: ((key: string) => void) | undefined;
   /** False inside the dock task panel, where the edit already happens. */
   readonly doors?: boolean;
 }
@@ -268,14 +211,17 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
+      progress={<StepCount value={task.steps.length === 0 ? null : stepProgress(task.steps)} />}
       list={
         <SubtaskList
           client={props.client}
           parentId={task.id}
+          showProgress={false}
           steps={task.steps}
           showFinished={showFinished}
           onShowFinished={setShowFinished}
           onChanged={props.onChanged}
+          onOpenTask={props.onOpenTask}
         />
       }
       // The burn bar draws against the task's own estimate, and waits while it has none.
@@ -296,5 +242,29 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
       onOpenPanel={props.onOpenPanel}
       doors={props.doors ?? true}
     />
+  );
+}
+
+function useSubtaskOwner(client: OperationsClient, parentId: string): () => boolean {
+  const held = useRef({ client, parentId, active: true });
+  if (held.current.client !== client || held.current.parentId !== parentId) {
+    held.current.active = false;
+    held.current = { client, parentId, active: true };
+  }
+  const owner = held.current;
+  useEffect(() => {
+    owner.active = true;
+    return () => {
+      owner.active = false;
+    };
+  }, [owner]);
+  return () => owner.active && held.current === owner;
+}
+
+function StepError(props: { readonly because: string | null }): ReactElement | null {
+  return props.because === null ? null : (
+    <p className="field__error" role="alert">
+      {props.because}
+    </p>
   );
 }

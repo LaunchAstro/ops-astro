@@ -10,6 +10,9 @@ import { GRIP_STEP, GRIP_STEP_LARGE } from '../board/widths.ts';
 import type { ColumnSpec, LaidColumn } from '../board/types.ts';
 import { GLYPH, type BoardMachineProps } from './board-props.ts';
 
+const ROW_CONTROLS =
+  'a,button,input,select,textarea,summary,[role="button"],[role="checkbox"],[role="listbox"],[role="option"],[contenteditable]';
+
 type Sort = { readonly key: string; readonly dir: 'asc' | 'desc' } | null;
 
 interface Grip {
@@ -24,6 +27,8 @@ interface Drawn<Row> {
   readonly groups: BoardMachineProps<Row>['groups'];
   readonly rowKey: (row: Row) => string;
   readonly cell: (row: Row, key: string) => ReactNode;
+  readonly onActivate?: ((row: Row, beside: boolean) => void) | undefined;
+  readonly rowDoor?: ((row: Row) => string | undefined) | undefined;
 }
 
 export function Table<Row>(
@@ -73,9 +78,43 @@ export function Table<Row>(
 }
 
 /** The rows in order, under a banner for each group that has any when the board groups them. */
-function bodyRows<Row>(props: Drawn<Row>): ReactElement[] {
-  const drawRow = (row: Row): ReactElement => (
-    <tr key={props.rowKey(row)} data-row={props.rowKey(row)}>
+function BodyRow<Row>(props: Drawn<Row> & { readonly row: Row }): ReactElement {
+  const { row } = props;
+  return (
+    <tr
+      key={props.rowKey(row)}
+      data-row={props.rowKey(row)}
+      data-panel-door={props.rowDoor?.(row)}
+      tabIndex={props.onActivate === undefined ? undefined : 0}
+      onClick={(event) => {
+        if (
+          props.onActivate === undefined ||
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey
+        )
+          return;
+        if (!(event.target instanceof Element) || event.target.closest(ROW_CONTROLS) !== null)
+          return;
+        props.onActivate(row, event.shiftKey);
+      }}
+      onKeyDown={(event) => {
+        if (
+          props.onActivate === undefined ||
+          event.defaultPrevented ||
+          event.target !== event.currentTarget ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey
+        )
+          return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        props.onActivate(row, event.shiftKey);
+      }}
+    >
       {props.layout.map((column) => (
         <td
           key={column.key}
@@ -87,6 +126,12 @@ function bodyRows<Row>(props: Drawn<Row>): ReactElement[] {
         </td>
       ))}
     </tr>
+  );
+}
+
+function bodyRows<Row>(props: Drawn<Row>): ReactElement[] {
+  const drawRow = (row: Row): ReactElement => (
+    <BodyRow key={props.rowKey(row)} {...props} row={row} />
   );
   const grouped = props.groups;
   if (grouped === undefined) return props.rows.map((row) => drawRow(row));

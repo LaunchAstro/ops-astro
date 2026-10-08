@@ -225,7 +225,11 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     setOpening(null);
     setDraft(null);
     if (door !== undefined) {
-      document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`)?.focus();
+      const origin = document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`);
+      // A hover door is hidden when the pointer leaves its row. Row focus
+      // reveals it through the board's existing focus-within rule.
+      origin?.closest<HTMLElement>('tr[data-row]')?.focus();
+      origin?.focus();
     }
     return true;
   }, [opening, leave, creating]);

@@ -177,6 +177,7 @@ export const SCREENS: {
             onOpenPanel: (door: PanelDoor, tab?: ConversationTab) => {
               context.taskPanel?.open(context.params.key, door, tab);
             },
+            onOpenTask: (key: string) => context.taskPanel?.open(key, 'open'),
             changes: context.taskPanel.changes,
           })}
     />
