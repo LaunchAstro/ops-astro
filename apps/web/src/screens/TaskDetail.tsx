@@ -144,7 +144,7 @@ export interface TaskDetailProps {
   readonly taskKey: string;
   /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
   readonly onOpenPanel?: PanelOpener;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
   readonly changes?: number;
 }
@@ -628,7 +628,7 @@ interface LoadedProps {
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
   readonly onOpenPanel: PanelOpener | undefined;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;

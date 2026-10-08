@@ -5,20 +5,21 @@ import { Icon } from '@launchastro/ui';
 
 export function ProjectsToolbar(props: {
   readonly bar: HTMLElement | null;
-  readonly onNewTask?: (() => void) | undefined;
+  readonly canFileTask: boolean;
 }): ReactElement {
   const control = (
     <button
       className="btn btn--secondary btn--sm"
       type="button"
       data-projects-new-task
-      disabled={props.onNewTask === undefined}
+      data-new-task={props.canFileTask ? '' : undefined}
+      data-new-task-label={props.canFileTask ? 'Projects' : undefined}
+      disabled={!props.canFileTask}
       title={
-        props.onNewTask === undefined
-          ? 'The shared task draft is unavailable here.'
-          : 'Open the shared new task draft'
+        props.canFileTask
+          ? 'Open the shared new task draft'
+          : 'The shared task draft is unavailable here.'
       }
-      onClick={props.onNewTask}
     >
       <Icon name="plus" size="xs" /> New task
     </button>

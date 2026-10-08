@@ -125,7 +125,7 @@ interface SubtaskListProps {
   readonly showFinished: boolean;
   readonly onShowFinished: (value: boolean) => void;
   readonly onChanged: () => void;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
 }
 
 export function SubtaskList(props: SubtaskListProps): ReactElement {
@@ -192,7 +192,7 @@ interface TeamSubtasksProps {
   readonly onChanged: () => void;
   readonly onTimer?: ((running: string | null) => void) | undefined;
   readonly onOpenPanel: PanelOpener | undefined;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** False inside the dock task panel, where the edit already happens. */
   readonly doors?: boolean;
 }

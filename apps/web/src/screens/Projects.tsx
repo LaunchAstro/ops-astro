@@ -38,7 +38,7 @@ import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-addres
 import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
 
 export interface ProjectsProps {
-  readonly onNewTask?: () => void;
+  readonly canFileTask?: boolean;
   readonly client: OperationsClient;
   readonly grantKey: string;
   /** Goes to an address inside the application. */
@@ -59,6 +59,7 @@ type ProjectsTab = 'board' | 'worklog';
 
 export function Projects(props: ProjectsProps): ReactElement {
   const bar = usePageToolbar();
+  const { canFileTask = false, inPanel } = props;
   // The tab is its address's: a panel's own place, never the page's fragment,
   // or the page's. A chosen tab holds while that address does; a new address
   // opens on its own tab, and the Work log, once drawn, stays drawn.
@@ -81,7 +82,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   return (
     <div className="stack">
       {tab === 'board' ? (
-        <ProjectsToolbar bar={props.inPanel === true ? null : bar} onNewTask={props.onNewTask} />
+        <ProjectsToolbar bar={inPanel === true ? null : bar} canFileTask={canFileTask} />
       ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>

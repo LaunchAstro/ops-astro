@@ -177,3 +177,32 @@ it('a truly empty task page opens the real first-step action and focuses its pan
   expect(document.activeElement).toBe(app.view.find('[data-task-panel] [data-step-add]'));
   expect(app.sent.filter((sent) => sent.path === '/task/create')).toHaveLength(0);
 });
+
+it.each(['pointer', 'Enter'])(
+  'closing a child opened by %s returns focus to its exact page title',
+  async (gesture) => {
+    const app = await nestedApp(nestedTab());
+    await tick();
+    const origin = app.view.host.querySelector<HTMLAnchorElement>('main a.sb__step-title');
+    expect(origin).not.toBeNull();
+    await act(() => origin?.focus());
+    if (gesture === 'pointer') await app.view.click('main a.sb__step-title');
+    else
+      await act(() => {
+        origin?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+      });
+    await tick();
+    expect(panelTask(app.view)).toBe(CHILD);
+    await app.view.click('.dpanel[data-panel-id="task"] [data-act="close"]');
+    await tick();
+    expect(app.view.find('[data-task-panel]')).toBeNull();
+    expect(document.activeElement).toBe(origin);
+    expect(
+      app.sent.filter((sent) =>
+        ['/task/create', '/task/complete', '/task/reopen'].includes(sent.path),
+      ),
+    ).toEqual([]);
+  },
+);

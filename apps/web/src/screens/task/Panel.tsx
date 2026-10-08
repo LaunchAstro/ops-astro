@@ -85,7 +85,7 @@ export interface TaskPanelProps extends ClientSeams {
   readonly docked?: boolean;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
   readonly onNewTask?: (scope: DraftScope) => void;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
 }

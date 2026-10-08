@@ -14,7 +14,7 @@ const archivedOn = (at: string): string =>
 /** A step waiting at its gate: decided there, so no tick here (DT-04). */
 function GateStepRow(props: {
   readonly step: StepView;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
 }): ReactElement {
   const { step } = props;
   return (
@@ -33,7 +33,7 @@ export function StepRow(props: {
   readonly step: StepView;
   readonly busy: boolean;
   readonly onTick: (step: StepView) => void;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
 }): ReactElement {
   const { step } = props;
   const press = (): void => {
@@ -85,7 +85,7 @@ export function StepCount(props: { readonly value: string | null }): ReactElemen
 
 function StepTitle(props: {
   readonly step: StepView;
-  readonly onOpenTask?: ((key: string) => void) | undefined;
+  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
 }): ReactElement {
   const open = (event: MouseEvent<HTMLAnchorElement>): void => {
     if (
@@ -98,7 +98,7 @@ function StepTitle(props: {
     )
       return;
     event.preventDefault();
-    props.onOpenTask(props.step.key);
+    props.onOpenTask(props.step.key, event.currentTarget);
   };
   const key = (event: KeyboardEvent<HTMLAnchorElement>): void => {
     if (
@@ -111,7 +111,7 @@ function StepTitle(props: {
     )
       return;
     event.preventDefault();
-    props.onOpenTask(props.step.key);
+    props.onOpenTask(props.step.key, event.currentTarget);
   };
   return (
     <a

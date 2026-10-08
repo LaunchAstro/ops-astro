@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
-import { expect, it } from 'vitest';
+import { act } from 'react';
+import { beforeEach, expect, it } from 'vitest';
 import { readDraft, dropOtherDrafts } from '../../apps/web/src/screens/task/task-draft.ts';
 import { mount } from '../surfaces/mount.tsx';
 import { draftApp, commands, PERSON, tick } from './projects-draft-app-support.tsx';
+
+beforeEach(() => window.history.replaceState(null, '', '/projects/'));
 
 it('Projects New task opens the shared untimed draft and restores its kept fields after owner reload', async () => {
   const app = await draftApp();
@@ -74,4 +77,40 @@ it('Projects withdraws New task on Work log and exposes no door when signed out'
   app.storage.removeItem('ops-astro.session');
   const signedOut = await draftApp({ storage: app.storage });
   expect(signedOut.view.host.querySelector('[data-projects-new-task]')).toBeNull();
+});
+
+it.each([false, true])(
+  'Projects New task follows the dock gesture law for Shift %s',
+  async (shiftKey) => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1700 });
+    const app = await draftApp();
+    await app.view.click('.dock__tab[data-panel="todos"]');
+    expect(app.view.find('.dpanel[data-panel-id="todos"]')).not.toBeNull();
+    const door = app.view.find('main [data-projects-new-task]');
+    expect(door).not.toBeNull();
+    await act(() => {
+      door?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey }));
+    });
+    expect(app.view.find('.dpanel[data-panel-id="task"] [data-draft-panel]')).not.toBeNull();
+    expect(app.view.find('.dpanel[data-panel-id="todos"]') !== null).toBe(shiftKey);
+    expect(commands(app.sent)).toEqual([]);
+  },
+);
+
+it('the existing task-filing gesture keeps an open panel beside a Shift draft', async () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1700 });
+  const app = await draftApp();
+  await app.view.click('.dock__tab[data-panel="todos"]');
+  const door = document.createElement('button');
+  door.dataset['newTask'] = '';
+  door.dataset['newTaskLabel'] = 'Projects';
+  app.view.find('main')?.append(door);
+  await act(() => {
+    door.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }),
+    );
+  });
+  expect(app.view.find('.dpanel[data-panel-id="task"] [data-draft-panel]')).not.toBeNull();
+  expect(app.view.find('.dpanel[data-panel-id="todos"]')).not.toBeNull();
+  expect(commands(app.sent)).toEqual([]);
 });

@@ -85,9 +85,7 @@ export const SCREENS: {
         client={context.client}
         grantKey={context.grantKey}
         navigate={context.navigate}
-        {...(context.fileTask === null || context.fileTask === undefined
-          ? {}
-          : { onNewTask: () => context.fileTask?.({ from: 'Projects', clientId: null }) })}
+        canFileTask={context.fileTask !== null && context.fileTask !== undefined}
         {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
         {...(context.address === undefined ? {} : { address: context.address })}
         inPanel={context.inPanel === true}
@@ -182,7 +180,8 @@ export const SCREENS: {
             onOpenPanel: (door: PanelDoor, tab?: ConversationTab) => {
               context.taskPanel?.open(context.params.key, door, tab);
             },
-            onOpenTask: (key: string) => context.taskPanel?.open(key, 'open'),
+            onOpenTask: (key: string, origin?: HTMLElement) =>
+              context.taskPanel?.open(key, 'open', undefined, false, origin),
             changes: context.taskPanel.changes,
           })}
     />
