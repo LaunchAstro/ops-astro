@@ -155,3 +155,40 @@ it('a task read without time authority cannot declare the known clock idle', asy
   await timer.read('Timer-A', () => true);
   expect(timer.snapshot().binding?.running?.entryId).toBe('entry-a');
 });
+
+it('Stop freezes the running entry operand before transport and preserves it on retry', async () => {
+  const writes: Record<string, unknown>[] = [];
+  const timer = controller((url, init) => {
+    if (String(url).endsWith('/read')) return Promise.resolve(found('entry-new'));
+    writes.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    if (String(url).endsWith('/start')) return Promise.resolve(started());
+    return Promise.reject(new Error('request lost before registration'));
+  });
+  timer.start(ref);
+  await flush();
+  timer.stop();
+  await flush();
+  expect(timer.snapshot().attempt?.payload).toEqual({ taskId: ID, expectedEntryId: 'entry-a' });
+  expect(Object.isFrozen(timer.snapshot().attempt?.payload)).toBe(true);
+  await timer.read('Timer-A', () => true);
+  timer.retry();
+  await flush();
+  expect(writes[1]).toEqual(writes[2]);
+  expect(writes[2]?.['expectedEntryId']).toBe('entry-a');
+  expect(timer.snapshot().binding?.running?.entryId).toBe('entry-new');
+});
+
+it('a Start receipt without entry identity cannot dispatch a new task-only Stop', async () => {
+  const writes: string[] = [];
+  const timer = controller((url) => {
+    writes.push(String(url));
+    return Promise.resolve(json({ recordId: null, revision: null, detail: {} }));
+  });
+  timer.start(ref);
+  await flush();
+  expect(timer.snapshot().binding?.running).toBeNull();
+  timer.stop();
+  await flush();
+  expect(writes).toHaveLength(1);
+  expect(timer.snapshot().attempt).toBeNull();
+});

@@ -129,12 +129,17 @@ export async function stopTime(
   tx: TenantQuery,
   context: TimeContext,
   taskId: string,
+  expectedEntryId?: string,
 ): Promise<HandlerOutcome> {
   // A person's own running timer stops even on a task they can no longer read
   // (ORCH57): losing access does not end it, and the answer is the entry's
   // own fields, nothing of the task. Without one, the task is still not found.
   const unreadable = await refuseUnreadable(tx, context, taskId);
-  const stopped = await stopTimer(tx, { taskId, ...person(context) });
+  const stopped = await stopTimer(tx, {
+    taskId,
+    ...person(context),
+    ...(expectedEntryId === undefined ? {} : { expectedEntryId }),
+  });
   if (stopped.kind === 'none') {
     return (
       unreadable ??

@@ -14,9 +14,9 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { countTokens } from '../support/token-count.ts';
 import { cliWorld, idOf, type Caller, type CliWorld } from './api-3-world.ts';
 import { createVerbCli, VERB_TABLE } from '../../apps/cli/verbs.ts';
-import type { Transport } from '../../apps/cli/client.ts';
+import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { COMMAND_SURFACE, DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
-import { shareWithClient, type Member } from '../commands/fixture.ts';
+import { grantTo, shareWithClient, type Member } from '../commands/fixture.ts';
 import { tokenFor } from '../api/fixture.ts';
 import { connect, lockAccess } from '../../packages/core-records/src/index.ts';
 
@@ -99,6 +99,54 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
   }, 180_000);
 
   afterAll(async () => await w?.drop());
+
+  it('a guarded Stop reaches the owning handler through the CLI and API without ending a replacement', async () => {
+    await w.db.app.withBusiness(w.business, async (tx) => {
+      await grantTo(tx, lead, 'write', { kind: 'business', id: null }, false, 'time');
+    });
+    const taskId = await create(cli, 'guarded CLI stop');
+    const started = await w.as(lead, { command: 'time.start', taskId });
+    expect(started).not.toHaveProperty('refused');
+    const entryA = 'detail' in started ? String(started.detail['entryId']) : '';
+    await w.as(lead, { command: 'time.stop', taskId });
+    const next = await w.as(lead, { command: 'time.start', taskId });
+    expect(next).not.toHaveProperty('refused');
+    const entryB = 'detail' in next ? String(next.detail['entryId']) : '';
+    const sent: Record<string, unknown>[] = [];
+    const caller = createCli({
+      businessKey: w.key,
+      credential: await tokenFor(lead.presented.subject),
+      transport: async (path, body, bearer) => {
+        sent.push(JSON.parse(body) as Record<string, unknown>);
+        return await w.api.fetch(
+          new Request(`http://api.test${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
+            body,
+          }),
+        );
+      },
+    });
+    const envelope = { taskId, expectedEntryId: entryA, operationId: randomUUID() };
+    const refused = await caller.run('time.stop', envelope);
+    expect(refused.status).toBe(404);
+    expect(refused.body).toMatchObject({ refused: true, code: 'NOT_FOUND', names: ['timer'] });
+    expect(sent).toEqual([envelope]);
+    const live = await w.db.admin.execute<{
+      readonly running: boolean;
+      readonly minutes: number | null;
+    }>(`select ended_at is null as running, minutes from public.time_entries where id = $1`, [
+      entryB,
+    ]);
+    expect(live).toEqual([{ running: true, minutes: null }]);
+    const kept = await caller.run('time.stop', {
+      taskId,
+      expectedEntryId: entryB,
+      operationId: randomUUID(),
+    });
+    expect(kept.status).toBe(200);
+    expect(kept.body).toMatchObject({ detail: { entryId: entryB } });
+  });
 
   it('API-3 each verb dispatches to the owning command; the CLI holds no rule of its own', async () => {
     const owned = new Set(COMMAND_SURFACE.map((row) => row.name as string));

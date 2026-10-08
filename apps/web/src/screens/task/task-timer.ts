@@ -15,7 +15,7 @@ export interface TimerBinding {
 interface Attempt {
   readonly command: 'time.start' | 'time.stop';
   readonly task: TimerTask;
-  readonly payload: Readonly<{ taskId: string }>;
+  readonly payload: Readonly<{ taskId: string; expectedEntryId?: string }>;
   readonly operationId: string;
   readonly status: 'pending' | 'unknown' | 'refused';
   readonly because: string | null;
@@ -86,7 +86,8 @@ export class TaskTimer {
     const binding = this.state.binding;
     if (!this.ownerOn() || this.state.attempt !== null || binding === null) return;
     if (taskId !== undefined && taskId !== binding.task.id) return;
-    this.begin('time.stop', binding.task);
+    if (binding.running === null) return;
+    this.begin('time.stop', binding.task, binding.running.entryId);
   };
   readonly retry = (): void => {
     const attempt = this.state.attempt;
@@ -96,12 +97,14 @@ export class TaskTimer {
   readonly dismiss = (): void => {
     if (this.state.attempt?.status === 'refused') this.put({ ...this.state, attempt: null });
   };
-  private begin(command: Attempt['command'], task: TimerTask): void {
+  private begin(command: Attempt['command'], task: TimerTask, expectedEntryId?: string): void {
     this.version += 1;
     this.dispatch({
       command,
       task: Object.freeze({ ...task }),
-      payload: Object.freeze({ taskId: task.id }),
+      payload: Object.freeze(
+        expectedEntryId === undefined ? { taskId: task.id } : { taskId: task.id, expectedEntryId },
+      ),
       operationId: this.client.newOperationId(),
       status: 'pending',
       because: null,

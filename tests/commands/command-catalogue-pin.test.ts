@@ -517,7 +517,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'time.log': ['taskId'],
   'time.set_note': ['entryId'],
   'time.start': ['taskId'],
-  'time.stop': ['taskId'],
+  'time.stop': ['taskId', 'expectedEntryId'],
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
@@ -978,7 +978,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'run.delegate_child', operationId: 'op' },
   { command: 'run.child_handback', operationId: 'op' },
   { command: 'time.start', operationId: 'op', taskId: 't-start' },
-  { command: 'time.stop', operationId: 'op', taskId: 't-stop' },
+  { command: 'time.stop', operationId: 'op', taskId: 't-stop', expectedEntryId: 'e-stop' },
   { command: 'time.log', operationId: 'op', taskId: 't-log', duration: '1h', note: 'n-log' },
   { command: 'time.set_note', operationId: 'op', entryId: 'e-note', note: 'n-note' },
   { command: 'time.delete', operationId: 'op', entryId: 'e-delete' },
@@ -1152,7 +1152,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'run.child_handback': ['refuseChildWorkAsPerson', 'request'],
   'run.delegate_child': ['refuseChildWorkAsPerson', 'request'],
   'time.start': ['startTime', 't-start'],
-  'time.stop': ['stopTime', 't-stop'],
+  'time.stop': ['stopTime', 't-stop', 'e-stop'],
   'time.log': ['logTimeEntry', 't-log', '1h', 'n-log'],
   'time.set_note': ['setEntryNote', 'e-note', 'n-note'],
   'time.delete': ['deleteEntry', 'e-delete'],
