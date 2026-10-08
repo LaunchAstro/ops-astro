@@ -5,6 +5,7 @@
 
 import type { ReactElement } from 'react';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
+import { ScoresCustodyProvider } from './screens/task/scores-custody-context.tsx';
 import { timerFrame } from './screens/task/task-timer-context.tsx';
 import { gateOf } from './route-gate.ts';
 import type { RouteMatch } from './routes.ts';
@@ -52,7 +53,7 @@ export function drawContent(props: {
   }
 }
 
-/** Both command custodians outlive page, panel and ordinary authorised rereads. */
+/** The command custodians outlive page, panel and ordinary authorised rereads. */
 export function frameCustody(
   owner: Parameters<typeof timerFrame>[0],
   active: boolean,
@@ -68,7 +69,13 @@ export function frameCustody(
       grantKey={owner.grantKey}
       storage={owner.storage ?? null}
     >
-      {children}
+      <ScoresCustodyProvider
+        client={owner.client}
+        grantKey={owner.grantKey}
+        storage={owner.storage ?? null}
+      >
+        {children}
+      </ScoresCustodyProvider>
     </CommentCustodyProvider>,
   );
 }

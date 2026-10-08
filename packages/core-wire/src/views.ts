@@ -27,6 +27,8 @@ import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView } from './views-client.ts';
+import type { RankView, TaskScoreFacts } from './views-rank.ts';
+export type { RankView, TaskScores } from './views-rank.ts';
 
 export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
@@ -333,20 +335,6 @@ export type BoardCrumb =
   | { readonly readable: false };
 
 /**
- * A task's derived rank as its reader is shown it (R70, MP-4-9).
- *
- * `number` is the task's place among the open tasks this reader may read, or
- * null when the task is not ranked; `score` is null exactly then. `calc` is the
- * line drawn under the rank, worked out on the server so every surface shows the
- * same words, and it names nothing but this task's own marks and modifiers.
- */
-export interface RankView {
-  readonly number: number | null;
-  readonly score: number | null;
-  readonly calc: string;
-}
-
-/**
  * What a reader outside the business is shown of one task (minimum contract
  * 8.1 R4, 8.2 case 7): its identifier, the task fields the catalogue marks
  * `shared`, the client comments in their shared fields, and the record's
@@ -590,7 +578,7 @@ export interface SessionCapabilities {
  * an agent's detail carries the shared projection instead and stays a
  * `TaskDetail`.
  */
-export interface InternalTaskDetail extends TaskDetail {
+export interface InternalTaskDetail extends TaskDetail, TaskScoreFacts {
   readonly comments: readonly InternalCommentView[];
   /**
    * The client the task is under, by id (C32), or null for none (MP-4-8). Its

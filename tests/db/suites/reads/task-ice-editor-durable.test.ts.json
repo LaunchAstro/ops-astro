@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Owning ICE score writes and minimal internal-person projection, durable reconnect/readback and refusal/non-disclosure using normal fresh synthetic databases"
+}
