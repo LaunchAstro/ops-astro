@@ -8,8 +8,8 @@
 // note edits inline by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
+import { TaskTimerButton } from './task-timer-context.tsx';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
-import { Icon } from '@launchastro/ui';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import { useSignedInName } from '../../app-state.ts';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -207,27 +207,6 @@ function Totals(props: { readonly total: number; readonly estimate: number | nul
   );
 }
 
-function TimerButton(props: {
-  readonly running: boolean;
-  readonly busy: boolean;
-  readonly onPress: () => void;
-}): ReactElement {
-  return (
-    <button
-      type="button"
-      className="btn"
-      data-timer
-      data-running={props.running}
-      aria-pressed={props.running}
-      disabled={props.busy}
-      onClick={props.onPress}
-    >
-      {props.running ? null : <Icon name="play" size="sm" />}
-      {props.running ? '■ Stop' : 'Start timer'}
-    </button>
-  );
-}
-
 /** The latest three, then every entry on request (CS-4.31); nothing to fold at three or fewer. */
 function Fold(props: {
   readonly count: number;
@@ -248,15 +227,28 @@ function Fold(props: {
   );
 }
 
+function timerTask(props: {
+  readonly taskId: string;
+  readonly taskKey?: string;
+  readonly taskTitle?: string | null;
+}) {
+  return {
+    id: props.taskId,
+    ...(props.taskKey === undefined ? {} : { key: props.taskKey }),
+    ...(props.taskTitle === undefined ? {} : { title: props.taskTitle }),
+  };
+}
+
 export function TimeLog(props: {
   readonly client: OperationsClient;
   readonly taskId: string;
+  readonly taskKey?: string;
+  readonly taskTitle?: string | null;
   readonly time: TaskTimeView;
   readonly estimateMinutes: number | null;
   readonly showAll: boolean;
   readonly onShowAll: (value: boolean) => void;
   readonly onChanged: () => void;
-  readonly onTimer?: ((running: string | null) => void) | undefined;
 }): ReactElement {
   const { client, taskId, time } = props;
   const { busy, because, run } = useCommand();
@@ -264,17 +256,12 @@ export function TimeLog(props: {
     done?.(settlement.kind);
     if (settlement.kind === 'ok') props.onChanged();
   };
-  const timer = (): void => {
-    const start = time.running === null;
-    const said = (kind: string) => kind === 'ok' && props.onTimer?.(start ? taskId : null);
-    run(() => client.mutate(start ? 'time.start' : 'time.stop', { taskId }), after(said));
-  };
   const log = (duration: string, operationId: string, done: (kind: string) => void): void =>
     run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
   const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
   return (
     <div className="sb__steplist" data-time-log-section>
-      <TimerButton running={time.running !== null} busy={busy} onPress={timer} />
+      <TaskTimerButton task={timerTask(props)} busy={busy} />
       <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />
       <ul className="sb__steps">

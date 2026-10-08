@@ -20,6 +20,7 @@
 
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import type { TaskTimer } from './task/task-timer.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import { settle, type Settlement } from '../records/use-command.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
@@ -63,6 +64,7 @@ export function rowActions(options: {
   readonly client: OperationsClient;
   /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
   readonly people: readonly PersonView[] | null;
+  readonly timer?: TaskTimer | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
   /** Each write's outcome: what the board says about it, or null once one lands. */
@@ -93,11 +95,16 @@ export function rowActions(options: {
     },
     ...openers(options),
     // No revision: a time entry is its own record, not a change to the task.
-    onStartTimer: (row) => {
-      send(client.mutate('time.start', { taskId: row.id }));
-    },
+    ...timerAction(options.timer),
     ...cellActions(client, options.people, send),
   };
+}
+
+function timerAction(timer: TaskTimer | null | undefined): RowActions {
+  const state = timer?.snapshot();
+  if (timer === null || timer === undefined || state?.attempt !== null || state.binding !== null)
+    return {};
+  return { onStartTimer: (row) => timer.start({ id: row.id, key: row.key, title: row.name }) };
 }
 
 /** Settled or not, the board re-reads: a refusal redraws the stored truth, and is said as well. */
