@@ -11,21 +11,17 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { act, useState, type ReactElement } from 'react';
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskTimeView, TimeEntryView } from '../../packages/core-wire/src/index.ts';
-import { burnOf, minutesText, TimeLog } from '../../apps/web/src/screens/task/Time.tsx';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { burnOf, minutesText } from '../../apps/web/src/screens/task/Time.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { TASK_ID, found as foundTask, page, tick } from './task-page-stub.tsx';
-import { json, mount, press, unmountAll } from './perspective-support.tsx';
+import { press, unmountAll } from './perspective-support.tsx';
+
+import { section } from './time-section-support.tsx';
 
 afterEach(unmountAll);
-
-interface Sent {
-  readonly command: string;
-  readonly body: Readonly<Record<string, unknown>>;
-}
 
 const entry = (id: string, minutes: number | null, note = ''): TimeEntryView => ({
   id,
@@ -43,50 +39,6 @@ const timeWith = (entries: readonly TimeEntryView[], over: Partial<TaskTimeView>
   totalMinutes: entries.reduce((sum, each) => sum + (each.minutes ?? 0), 0),
   ...over,
 });
-
-/** Records each command; answers every one as applied. */
-function commands() {
-  const sent: Sent[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
-    const at = String(url);
-    const command = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
-    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
-    sent.push({ command, body });
-    return Promise.resolve(json({ ok: true, recordId: null, revision: null, detail: {} }));
-  }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
-  return { client, sent };
-}
-
-/** The section under a parent that rereads on change, redrawing the server's next time. */
-async function section(
-  time: TaskTimeView,
-  next: TaskTimeView = time,
-  estimate: number | null = null,
-) {
-  const { client, sent } = commands();
-  const counter = { rereads: 0 };
-  function Parent(): ReactElement {
-    const [shown, setShown] = useState(time);
-    const [all, setAll] = useState(false);
-    return (
-      <TimeLog
-        client={client}
-        taskId={TASK_ID}
-        time={shown}
-        estimateMinutes={estimate}
-        showAll={all}
-        onShowAll={setAll}
-        onChanged={() => {
-          counter.rereads += 1;
-          setShown(next);
-        }}
-      />
-    );
-  }
-  const view = await mount(<Parent />);
-  return { view, sent, rereads: () => counter.rereads };
-}
 
 const find = <T extends HTMLElement = HTMLElement>(view: Mounted, selector: string): T => {
   const found = view.host.querySelector<T>(selector);

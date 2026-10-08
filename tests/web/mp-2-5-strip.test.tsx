@@ -49,11 +49,13 @@ function rooted(address: string): Promise<Mounted> {
 }
 
 /** Wait for jsdom's history traversal to fire its popstate and React to draw it. */
-async function traversed(): Promise<void> {
+async function traversed(move: () => void): Promise<void> {
   await act(async () => {
-    await new Promise((done) => {
+    const arrived = new Promise((done) => {
       window.addEventListener('popstate', done, { once: true });
     });
+    move();
+    await arrived;
   });
 }
 
@@ -67,18 +69,16 @@ describe('MP-2-5 CS-2.3 step back and forward through the pages visited in this 
     expect(window.location.pathname).toBe('/settings');
     expect(button(view, 'Back')?.disabled).toBe(false);
 
-    await act(() => {
+    await traversed(() => {
       button(view, 'Back')?.click();
     });
-    await traversed();
     expect(window.location.pathname).toBe('/projects/');
     expect(view.find('h1')?.textContent).toBe('Projects');
     expect(button(view, 'Forward')?.disabled).toBe(false);
 
-    await act(() => {
+    await traversed(() => {
       button(view, 'Forward')?.click();
     });
-    await traversed();
     expect(window.location.pathname).toBe('/settings');
     expect(view.find('h1')?.textContent).toBe('Settings');
     await view.unmount();
@@ -101,10 +101,9 @@ describe('MP-2-5 forward is disabled when there is no later history entry (TR-S-
     expect(button(view, 'Forward')?.disabled).toBe(true);
     expect(button(view, 'Back')?.disabled).toBe(true);
     await follow(view, '.rail__item[href="/settings"]');
-    await act(() => {
+    await traversed(() => {
       button(view, 'Back')?.click();
     });
-    await traversed();
     expect(button(view, 'Forward')?.disabled).toBe(false);
     await follow(view, '.rail__item[href="/clients/"]');
     expect(button(view, 'Forward')?.disabled).toBe(true);
@@ -128,20 +127,21 @@ describe('MP-2-5 the client identity shows on client pages', () => {
   });
 });
 
-describe('MP-2-5 search and Start timer ship disabled with a tooltip on the agency side; the portal hides search (R29)', () => {
-  // C1 builds search in this slice, so the application's search is live; the
-  // strip still draws it disabled, naming the feature, wherever no search is
-  // wired, and the timer stays disabled until MP-4-6.
-  it('draws search disabled with a tooltip where none is wired, and the timer disabled', async () => {
+describe('MP-2-5 unwired controls stay disabled; App offers task selection and the portal hides timer/search', () => {
+  // The UI kit names unwired features; App supplies its authorised task timer.
+  it('draws unwired controls disabled, and App’s timer opens task selection', async () => {
     const strip = await mount(<AppStrip face="agency" client={null} />);
     const search = strip.find('.appbar__search');
     expect(search?.getAttribute('aria-disabled')).toBe('true');
     expect(search?.getAttribute('title')).toBe('Search is not built yet');
+    expect((strip.find('.appbar__timer') as HTMLButtonElement | null)?.disabled).toBe(true);
     await strip.unmount();
     const { view } = await open('/projects/');
     const timer = view.find('.appbar .appbar__timer') as HTMLButtonElement | null;
-    expect(timer?.disabled).toBe(true);
-    expect(timer?.getAttribute('title')).toBe('Time tracking is not built yet');
+    expect(timer?.disabled).toBe(false);
+    expect(timer?.textContent).toBe('Select task to time');
+    await view.click('.appbar__timer');
+    expect(view.find('[role="dialog"][aria-label="Search"]')).not.toBeNull();
     await view.unmount();
   });
 

@@ -85,6 +85,38 @@ export async function readTaskComments(
   return rows.map((row) => storedFrom(row));
 }
 
+/** Only the evidence needed to derive client reply signals, for admitted tasks. */
+export async function readTaskCommentEvidence(
+  tx: TenantQuery,
+  commentTypeId: string,
+  taskIds: readonly string[],
+): Promise<
+  readonly Pick<StoredComment, 'id' | 'taskId' | 'audience' | 'parentId' | 'fromOutside'>[]
+> {
+  if (taskIds.length === 0) return [];
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly task: string;
+    readonly audience: CommentAudience;
+    readonly parent: string | null;
+    readonly from_outside: boolean;
+  }>(
+    `select r.id, r.data ->> 'task' as task, r.data ->> 'audience' as audience,
+            r.data ->> 'parent' as parent, ${FROM_OUTSIDE}
+       from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and r.data ->> 'task' = any($3::text[])`,
+    [tx.businessId, commentTypeId, taskIds],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    taskId: row.task,
+    audience: row.audience,
+    parentId: row.parent,
+    fromOutside: row.from_outside,
+  }));
+}
+
 /**
  * One live comment on one task, locked for the rest of the transaction, or
  * nothing. The task is part of the filter: a comment is reached through the
@@ -165,7 +197,7 @@ export type CommentSignal = 'answered' | 'owed' | 'not_acknowledged';
  * carry no signal.
  */
 export function commentSignals(
-  comments: readonly StoredComment[],
+  comments: readonly Pick<StoredComment, 'id' | 'audience' | 'parentId' | 'fromOutside'>[],
 ): ReadonlyMap<string, CommentSignal> {
   const signals = new Map<string, CommentSignal>();
   for (const message of comments) {

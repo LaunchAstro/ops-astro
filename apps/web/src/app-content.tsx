@@ -4,6 +4,8 @@
 // public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
+import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
+import { timerFrame } from './screens/task/task-timer-context.tsx';
 import { gateOf } from './route-gate.ts';
 import type { RouteMatch } from './routes.ts';
 import type { PageMatch } from './manifest.ts';
@@ -48,4 +50,25 @@ export function drawContent(props: {
     case 'screen':
       return drawScreen(gate.match, props.screen);
   }
+}
+
+/** Both command custodians outlive page, panel and ordinary authorised rereads. */
+export function frameCustody(
+  owner: Parameters<typeof timerFrame>[0],
+  active: boolean,
+  select: (() => void) | null,
+  children: ReactElement,
+): ReactElement {
+  return timerFrame(
+    owner,
+    active,
+    select,
+    <CommentCustodyProvider
+      client={owner.client}
+      grantKey={owner.grantKey}
+      storage={owner.storage ?? null}
+    >
+      {children}
+    </CommentCustodyProvider>,
+  );
 }

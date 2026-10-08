@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An absent visible register is not evidence that an in-flight Start failed. Exact retries must wait on the normal operation lock, replay once after commit or execute once after rollback, and fresh Start must obey current task-read authority."
+}

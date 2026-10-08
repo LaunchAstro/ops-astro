@@ -4,6 +4,7 @@
 // client's identity and the face switch (MP-2-4), search (C1) and the person
 // menu (C23).
 
+import { TaskTimerStrip } from './screens/task/task-timer-context.tsx';
 import type { ReactElement, Ref } from 'react';
 import { AppStrip, PersonMenu, type StripClient, type StripSteps } from '@launchastro/ui';
 import { pathTo } from './routes.ts';
@@ -25,6 +26,11 @@ export function FrameStrip(props: {
   const { clientSlug, navigate, session } = props;
   return (
     <AppStrip
+      timer={
+        session !== null && props.face === 'agency' && props.onSearch !== null ? (
+          <TaskTimerStrip onSelect={props.onSearch} />
+        ) : undefined
+      }
       face={props.face}
       client={props.identity}
       {...(props.steps === undefined ? {} : { steps: props.steps })}

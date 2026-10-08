@@ -180,6 +180,8 @@ interface TeamSubtasksProps {
   readonly client: OperationsClient;
   readonly task: {
     readonly id: string;
+    readonly key?: string;
+    readonly title?: string | null;
     readonly steps: readonly StepView[];
     readonly time: TaskTimeView | null;
     readonly estimateMinutes: number | null;
@@ -190,7 +192,6 @@ interface TeamSubtasksProps {
   readonly showFinished?: boolean | null;
   readonly onShowFinished?: (value: boolean | null) => void;
   readonly onChanged: () => void;
-  readonly onTimer?: ((running: string | null) => void) | undefined;
   readonly onOpenPanel: PanelOpener | undefined;
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** False inside the dock task panel, where the edit already happens. */
@@ -230,12 +231,13 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
           <TimeLog
             client={props.client}
             taskId={task.id}
+            {...(task.key === undefined ? {} : { taskKey: task.key })}
+            {...(task.title === undefined ? {} : { taskTitle: task.title })}
             time={task.time}
             estimateMinutes={task.estimateMinutes}
             showAll={props.showAllTime}
             onShowAll={props.onShowAllTime}
             onChanged={props.onChanged}
-            onTimer={props.onTimer}
           />
         )
       }

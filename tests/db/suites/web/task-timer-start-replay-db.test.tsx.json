@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The actual App and fresh controller realm must replay the original Start under current time-write authority, keep denied task metadata hidden and bind Stop to that original entry rather than a replacement timer."
+}

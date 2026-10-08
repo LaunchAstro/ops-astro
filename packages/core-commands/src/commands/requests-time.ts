@@ -6,7 +6,12 @@
 // what to write.
 
 export type TimeRequest<Envelope> =
-  | ({ readonly command: 'time.start' | 'time.stop'; readonly taskId: string } & Envelope)
+  | ({ readonly command: 'time.start'; readonly taskId: string } & Envelope)
+  | ({
+      readonly command: 'time.stop';
+      readonly taskId: string;
+      readonly expectedEntryId?: string;
+    } & Envelope)
   | ({
       readonly command: 'time.log';
       readonly taskId: string;

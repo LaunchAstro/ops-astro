@@ -20,16 +20,11 @@
 // gates and leases `task.read`'s proposals answer, asked only of the rows
 // served.
 
-import { commentSignals, readTaskComments, tagsOfTask } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { TodoView } from '../../../core-wire/src/index.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import { SELECT, summaryOf, type TaskRowRead } from './tasks.ts';
-
-/** Whose open tasks: one person's (the reader's own, or a teammate's), or a client's. */
-export type TodoScope =
-  | { readonly person: string; readonly client?: string }
-  | { readonly client: string; readonly person?: string };
+import { extrasForTasks, movesOf, OPEN_TODO_SQL, type TodoScope } from './todo-evidence.ts';
 
 /** The scope's open tasks, soonest due first, then oldest. */
 export async function readTodos(
@@ -44,8 +39,7 @@ export async function readTodos(
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and ($3::uuid is null or r.uuid_2 = $3::uuid)
         and ($4::uuid is null or r.uuid_7 = $4::uuid)
-        and coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
-        and not (r.data ? 'archived_at')
+        and ${OPEN_TODO_SQL}
       order by r.ts_1 nulls last, r.created_at, r.id`,
     [tx.businessId, spine.taskTypeId, person, client],
   );
@@ -53,75 +47,19 @@ export async function readTodos(
     tx,
     rows.map((row) => row.id),
   );
+  const extras = await extrasForTasks(
+    tx,
+    spine,
+    rows.map((row) => row.id),
+  );
   const todos: TodoView[] = [];
   for (const row of rows) {
     todos.push({
       ...summaryOf(row),
-      // eslint-disable-next-line no-await-in-loop -- one task's tags and thread at a time, in order
-      ...(await extrasOf(tx, spine, row.id)),
+      ...(extras.get(row.id) ?? { tags: [], waitingComments: 0 }),
       category: row.category,
       whoseMove: moves.get(row.id) ?? 'Team',
     });
   }
   return todos;
-}
-
-/**
- * Whose move each served task is, by the task page's rule (DP-14): Review
- * while a gate on one of its versions is pending and not expired, Agent while
- * a reservation on one of its runs holds a live lease; a task with neither is
- * absent, so Team.
- */
-async function movesOf(
-  tx: TenantQuery,
-  taskIds: readonly string[],
-): Promise<ReadonlyMap<string, TodoView['whoseMove']>> {
-  if (taskIds.length === 0) return new Map();
-  const rows = await tx.query<{
-    readonly task_id: string;
-    readonly gated: boolean;
-    readonly leased: boolean;
-  }>(
-    `select lin.task_id::text as task_id,
-            bool_or(exists (
-              select 1 from public.proposal_versions ver
-                join public.gates g on g.business_id = ver.business_id and g.version_id = ver.id
-               where ver.business_id = lin.business_id and ver.lineage_id = lin.id
-                 and g.state = 'pending' and g.expires_at > now())) as gated,
-            bool_or(exists (
-              select 1 from public.planned_runs run
-                join public.reservations res
-                  on res.business_id = run.business_id and res.run_id = run.id
-                join public.leases lease
-                  on lease.business_id = res.business_id and lease.id = res.lease_id
-               where run.business_id = lin.business_id and run.lineage_id = lin.id
-                 and lease.state = 'live')) as leased
-       from public.proposal_lineages lin
-      where lin.business_id = $1 and lin.task_id = any($2::uuid[])
-      group by lin.task_id`,
-    [tx.businessId, taskIds],
-  );
-  const moves = new Map<string, TodoView['whoseMove']>();
-  for (const row of rows) {
-    if (row.gated) moves.set(row.task_id, 'Review');
-    else if (row.leased) moves.set(row.task_id, 'Agent');
-  }
-  return moves;
-}
-
-/** One task's tags and the client messages owed a reply by the team. */
-async function extrasOf(
-  tx: TenantQuery,
-  spine: TaskSpine,
-  taskId: string,
-): Promise<Pick<TodoView, 'tags' | 'waitingComments'>> {
-  const comments =
-    spine.taskCommentTypeId === undefined
-      ? []
-      : await readTaskComments(tx, spine.taskCommentTypeId, taskId);
-  let waitingComments = 0;
-  for (const signal of commentSignals(comments).values()) {
-    if (signal === 'owed') waitingComments += 1;
-  }
-  return { tags: await tagsOfTask(tx, taskId), waitingComments };
 }

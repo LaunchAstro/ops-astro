@@ -133,18 +133,21 @@ export async function startTimer(
 /** Stop this person's running timer on this task, logging its minutes. */
 export async function stopTimer(
   tx: TenantQuery,
-  input: Person & { readonly taskId: string },
+  input: Person & { readonly taskId: string; readonly expectedEntryId?: string },
 ): Promise<
   | { readonly kind: 'stopped'; readonly entryId: string; readonly minutes: number }
   | { readonly kind: 'none' }
 > {
   if (!isUuid(input.taskId)) return { kind: 'none' };
+  if (input.expectedEntryId !== undefined && !isUuid(input.expectedEntryId))
+    return { kind: 'none' };
   const rows = await tx.query<{ readonly id: string; readonly minutes: number }>(
     `update public.time_entries set ended_at = now(), minutes = ${ELAPSED_MINUTES}
       where business_id = $2 and task_id = $3::uuid and person_id = $4
         and ended_at is null and deleted_at is null
+        and ($5::uuid is null or id = $5::uuid)
       returning id, minutes`,
-    [MAX_MINUTES, tx.businessId, input.taskId, input.personId],
+    [MAX_MINUTES, tx.businessId, input.taskId, input.personId, input.expectedEntryId ?? null],
   );
   const row = rows[0];
   return row === undefined
