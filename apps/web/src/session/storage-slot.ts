@@ -73,6 +73,26 @@ export function tabStorage(): Storage | null {
   }
 }
 
+/** A pre-send recovery copy is kept only when storage returns those exact bytes. */
+export function verifiedJsonWrite(
+  storage: StorageLike | null,
+  key: string,
+  value: unknown,
+): boolean {
+  if (storage === null) return false;
+  try {
+    const raw = JSON.stringify(value);
+    try {
+      storage.setItem(key, raw);
+    } catch {
+      /* A retained exact copy can still satisfy recovery. */
+    }
+    return storage.getItem(key) === raw;
+  } catch {
+    return false;
+  }
+}
+
 /** Any JSON object. What a slot guard starts from. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

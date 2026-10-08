@@ -5,6 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import './public-history-batch-cases.mjs';
 import { exportCandidate } from '../../scripts/candidate-snapshot.mjs';
 import { addressRules } from '../../scripts/public-content-check.mjs';
 

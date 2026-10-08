@@ -3,6 +3,7 @@ import { act } from 'react';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from '../surfaces/mount.tsx';
 import { person, clientId, row } from './typed-todo-scope-support.tsx';
+type RefreshTodo = Omit<ReturnType<typeof row>, 'tags'> & { tags: { id: string; name: string }[] };
 function changingClient({
   people,
   clients,
@@ -10,13 +11,15 @@ function changingClient({
   denyTasks,
   takeHeld,
   reads,
+  healthy,
 }: {
   readonly people: () => readonly { personId: string; name: string }[];
   readonly clients: () => readonly { clientId: string; name: string }[];
-  readonly todos: () => readonly ReturnType<typeof row>[];
+  readonly todos: () => readonly RefreshTodo[];
   readonly denyTasks: () => boolean;
   readonly takeHeld: () => Promise<Response> | undefined;
   readonly reads: unknown[];
+  readonly healthy: () => boolean;
 }) {
   return new OperationsClient({
     origin: '',
@@ -24,6 +27,10 @@ function changingClient({
     signedIn: true,
     fetch: (input, init) => {
       const path = String(input);
+      if (path.includes('/live?') && healthy())
+        return Promise.resolve(
+          new Response(new ReadableStream(), { headers: { 'content-type': 'text/event-stream' } }),
+        );
       if (path.endsWith('/person/list')) {
         const held = takeHeld();
         return held ?? responseOf({ ok: true, persons: people() });
@@ -44,12 +51,13 @@ export function changing() {
 class ChangingScope {
   people = [{ personId: person, name: 'Noah Lee' }];
   clients = [{ clientId, name: 'Acme Physio' }];
-  todos = [
+  todos: RefreshTodo[] = [
     { ...row('Review', 'Review work', 'Review'), waitingComments: 2 },
     { ...row('Team', 'Team work'), waitingComments: 5 },
   ];
   readonly reads: unknown[] = [];
   denyTasks = false;
+  healthy = false;
   heldPeople: Promise<Response> | undefined;
   readonly client = changingClient({
     people: () => this.people,
@@ -62,6 +70,7 @@ class ChangingScope {
       return held;
     },
     reads: this.reads,
+    healthy: () => this.healthy,
   });
   rename() {
     this.people = [{ personId: person, name: 'Current permitted name' }];
@@ -118,8 +127,9 @@ export async function key(
   });
 }
 export async function refresh() {
-  await act(() => {
+  await act(async () => {
     window.dispatchEvent(new Event('online'));
+    await Promise.resolve();
   });
   await settle();
 }

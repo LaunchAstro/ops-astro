@@ -63,6 +63,8 @@ export interface BoardMachineProps<Row> {
   readonly nothing?: ReactNode;
   /** The address's query the board opens on (B-06, C6). */
   readonly address?: string;
+  /** An admitted row to reveal once, retaining sort, widths and view history. */
+  readonly reveal?: string;
   /** Told the new query whenever the view changes. */
   readonly onAddress?: (address: string) => void;
   /** The card's width in pixels; measured when absent. */
@@ -80,5 +82,15 @@ export interface BoardMachineProps<Row> {
   /** The page's title-row slot the command bar is drawn into (MP-5-7, B-04). */
   readonly bar?: HTMLElement | null;
   /** Another panel is showing: the board and its bar are withdrawn (D-03). */
+  readonly hidden?: boolean;
+}
+
+export interface BoardFollow {
+  readonly reveal?: string;
+  /** Told the new query whenever the view changes. */
+  readonly onAddress?: (address: string) => void;
+  /** Told the widths to keep whenever they change. */
+  readonly onWidths?: (widths: ColumnWidths | null) => void;
+  /** Another panel is showing (D-03): the address and the undo keys stand down. */
   readonly hidden?: boolean;
 }

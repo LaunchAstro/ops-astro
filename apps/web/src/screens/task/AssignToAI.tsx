@@ -11,8 +11,8 @@
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
-import { useCommand } from '../../records/use-command.ts';
-import { submitEdit } from '../../records/submit.ts';
+import { useTaskAssignment } from './assignment-context.tsx';
+import { AssignmentRecovery } from './AssignmentRecovery.tsx';
 
 export interface AssignToAIProps {
   readonly client: OperationsClient;
@@ -22,27 +22,22 @@ export interface AssignToAIProps {
   readonly onChanged: () => void;
   /** The page's lock: a write in flight or an unsaved edit. */
   readonly disabled?: boolean;
+  readonly grantKey?: string;
+  readonly recovery?: boolean;
 }
 
 export function AssignToAI(props: AssignToAIProps): ReactElement | null {
   const { task } = props;
-  const { busy, because, run } = useCommand();
+  const assignment = useTaskAssignment(props.client, props.grantKey, task.id, props.onChanged);
   const assign = (agent: string): void => {
-    run(
-      () =>
-        submitEdit(props.client, {
-          command: 'task.assign',
-          recordId: task.id,
-          expectedRevision: task.revision,
-          fields: { agent },
-        }),
-      (settlement) => {
-        if (settlement.kind === 'ok') props.onChanged();
-      },
-    );
+    void assignment.custody.choose(task.id, task.revision, { agent });
   };
+  const recovery =
+    props.recovery === false ? null : (
+      <AssignmentRecovery custody={assignment.custody} hold={assignment.hold} recordId={task.id} />
+    );
   const held = task.agent;
-  if (held === null && task.myAgents.length === 0) return null;
+  if (held === null && task.myAgents.length === 0) return recovery;
   const id = `${props.scope}-assign-ai`;
   return (
     <div className="field" data-assign-ai>
@@ -52,13 +47,14 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
         </p>
       )}
       {task.myAgents.length === 0 ? null : (
-        <AgentSelect id={id} task={task} busy={busy || props.disabled === true} onAssign={assign} />
+        <AgentSelect
+          id={id}
+          task={task}
+          busy={assignment.locked || props.disabled === true}
+          onAssign={assign}
+        />
       )}
-      {because === null ? null : (
-        <p className="field__error" role="alert">
-          {because}
-        </p>
-      )}
+      {recovery}
     </div>
   );
 }

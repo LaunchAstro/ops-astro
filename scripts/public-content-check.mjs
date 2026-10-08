@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkCandidate, indexFiles, options } from './candidate-snapshot.mjs';
+import { historyReader } from './history-objects.mjs';
 
 // This small public-foundation policy supplements the existing contamination
 // and secret scanners. Hashes avoid publishing excluded names and identities.
@@ -195,14 +195,7 @@ export function scanPublicFiles(entries) {
 }
 
 export function publicHistory(repository, range) {
-  const git = (args) =>
-    execFileSync('git', ['--no-replace-objects', '-C', repository, ...args], {
-      stdio: 'pipe',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  if (git(['rev-parse', '--is-shallow-repository']).toString().trim() !== 'false') {
-    throw new Error('history policy requires a complete Git checkout');
-  }
+  const { git, objects } = historyReader(repository);
   let selection;
   if (range === undefined) selection = ['--branches', '--not', '--remotes'];
   else {
@@ -228,7 +221,9 @@ export function publicHistory(repository, range) {
     .trim()
     .split('\n')
     .filter(Boolean);
+  const metadata = objects(commits, 'commit');
   const files = [];
+  const references = [];
   const blobs = new Map();
   const seen = new Set();
   const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -237,7 +232,7 @@ export function publicHistory(repository, range) {
     // Reporting uses the object ID only, never metadata or matched values.
     files.push({
       path: `commit-${sha}-metadata`,
-      bytes: git(['cat-file', 'commit', sha]),
+      bytes: metadata.get(sha),
       scope: 'commit',
     });
     const tree = decoder.decode(git(['ls-tree', '-rz', '--full-tree', sha]));
@@ -251,10 +246,14 @@ export function publicHistory(repository, range) {
       const pair = `${oid}\0${path}`;
       if (seen.has(pair)) continue;
       seen.add(pair);
-      if (!blobs.has(oid)) blobs.set(oid, git(['cat-file', 'blob', oid]));
-      files.push({ path, bytes: blobs.get(oid) });
+      if (!blobs.has(oid)) blobs.set(oid, undefined);
+      const file = { path, bytes: undefined };
+      files.push(file);
+      references.push({ file, oid });
     }
   }
+  const content = objects([...blobs.keys()], 'blob');
+  for (const { file, oid } of references) file.bytes = content.get(oid);
   return { files, commits: commits.length, blobPaths: seen.size };
 }
 

@@ -64,6 +64,10 @@ export function reduceBoard<Row>(
   context: BoardContext<Row>,
 ): MachineState {
   switch (action.type) {
+    case 'reveal':
+      return state.view.ids.length === 0 && state.view.text.length === 0 && state.view.mode === null
+        ? state
+        : record(state, 'show target', { ...state.view, ids: [], text: [], mode: null });
     case 'press':
     case 'take':
       return pressStep(state, action, context);

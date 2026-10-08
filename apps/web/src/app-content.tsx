@@ -4,6 +4,7 @@
 // public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
+import { AssignmentProvider } from './screens/task/assignment-context.tsx';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
 import { ScoresCustodyProvider } from './screens/task/scores-custody-context.tsx';
 import { timerFrame } from './screens/task/task-timer-context.tsx';
@@ -64,18 +65,24 @@ export function frameCustody(
     owner,
     active,
     select,
-    <CommentCustodyProvider
+    <AssignmentProvider
       client={owner.client}
       grantKey={owner.grantKey}
       storage={owner.storage ?? null}
     >
-      <ScoresCustodyProvider
+      <CommentCustodyProvider
         client={owner.client}
         grantKey={owner.grantKey}
         storage={owner.storage ?? null}
       >
-        {children}
-      </ScoresCustodyProvider>
-    </CommentCustodyProvider>,
+        <ScoresCustodyProvider
+          client={owner.client}
+          grantKey={owner.grantKey}
+          storage={owner.storage ?? null}
+        >
+          {children}
+        </ScoresCustodyProvider>
+      </CommentCustodyProvider>
+    </AssignmentProvider>,
   );
 }

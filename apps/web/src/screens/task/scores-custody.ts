@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { OperationsClient } from '../../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../../records/use-command.ts';
+import { verifiedJsonWrite } from '../../session/storage-slot.ts';
 import { tabOwnerGeneration, type StorageLike } from '../../session/token.ts';
 import {
+  SCORE_KEY,
   scoresSlot,
   type ScoreAttempt,
   type ScoreEnvelope,
@@ -33,6 +35,7 @@ export class ScoresCustody {
   #client: OperationsClient;
   readonly #owner: string;
   readonly #generation = tabOwnerGeneration();
+  readonly #storage: StorageLike | null;
   readonly #slot: ReturnType<typeof scoresSlot>;
   readonly #holds = new Map<string, ScoreHold>();
   readonly #listeners = new Set<() => void>();
@@ -42,6 +45,7 @@ export class ScoresCustody {
   constructor(client: OperationsClient, owner: string, storage: StorageLike | null) {
     this.#client = client;
     this.#owner = owner;
+    this.#storage = storage;
     this.#slot = scoresSlot(storage);
     const kept = this.#slot.read();
     if (kept?.owner === owner) {
@@ -71,8 +75,10 @@ export class ScoresCustody {
       ),
     );
     const envelope: ScoreEnvelope = { version: 1, owner: this.#owner, tasks };
-    this.#slot.write(envelope);
-    return JSON.stringify(this.#slot.read()) === JSON.stringify(envelope);
+    return (
+      verifiedJsonWrite(this.#storage, SCORE_KEY, envelope) &&
+      JSON.stringify(this.#slot.read()) === JSON.stringify(envelope)
+    );
   }
   activate(): void {
     this.#alive = true;

@@ -32,6 +32,8 @@ import { RecordState } from '../../views/record-state.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
+import { useTaskAssignment } from './assignment-context.tsx';
+import { AssignmentRecovery } from './AssignmentRecovery.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
 import { ProjectField } from './ProjectField.tsx';
 import { StatusField } from './StatusField.tsx';
@@ -49,7 +51,7 @@ export interface PanelFieldsProps extends ClientSeams {
   readonly onChanged: () => void;
 }
 
-type FieldCommand = 'task.update' | 'task.assign' | 'task.set_stage';
+type FieldCommand = 'task.update' | 'task.set_stage';
 
 /** One field write at the read revision, or the one an edit started from; a landed one is counted. */
 function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
@@ -133,14 +135,27 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
 
 export function PanelFields(props: PanelFieldsProps): ReactElement {
   const field = useFieldWrite(props);
+  const assignment = useTaskAssignment(
+    props.client,
+    props.grantKey,
+    props.task.id,
+    props.onChanged,
+  );
   return (
     <div className="dtp__fields">
-      <AssigneeField {...props} {...field} />
+      <AssigneeField {...props} {...field} assignment={assignment} />
       <AssignToAI
         client={props.client}
         task={props.task}
         scope="panel"
+        grantKey={props.grantKey}
+        recovery={false}
         onChanged={props.onChanged}
+      />
+      <AssignmentRecovery
+        custody={assignment.custody}
+        hold={assignment.hold}
+        recordId={props.task.id}
       />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
@@ -170,7 +185,9 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
 type FieldProps = PanelFieldsProps & ReturnType<typeof useFieldWrite>;
 
 /** A person or nobody, from the people this business can be assigned work. */
-function AssigneeField(props: FieldProps): ReactElement {
+function AssigneeField(
+  props: FieldProps & { readonly assignment: ReturnType<typeof useTaskAssignment> },
+): ReactElement {
   const { client, task } = props;
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
@@ -187,10 +204,10 @@ function AssigneeField(props: FieldProps): ReactElement {
           <select
             id="panel-field-assignee"
             className="input"
-            disabled={props.busy}
+            disabled={props.busy || props.assignment.locked}
             value={task.assignee?.personId ?? ''}
             onChange={(event) =>
-              props.write('task.assign', {
+              void props.assignment.custody.choose(task.id, task.revision, {
                 assignee: event.target.value === '' ? null : event.target.value,
               })
             }

@@ -5,8 +5,8 @@
 // one event stream (C4, `<person prefix><business>/live?topic=board`), never a
 // stream per task or per panel; every board frame is labelled `board`. An `invalidate` re-reads the board and an
 // `inbox` signal re-reads the inbox and its owed count, with no refresh.
-// While the stream is down, the 30-second floor re-reads them; while it is
-// up, nothing polls.
+// The inbox floor runs only while the stream is down. Board row evidence
+// retains its 30-second floor even on a healthy unchanged stream.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -111,7 +111,7 @@ describe('INB-1f the board moves live on the page', () => {
     await view.unmount();
   });
 
-  it('INB-1 the 30-second floor: the board and the owed count re-read every 30 seconds only while the channel is down', async () => {
+  it('INB-1 the floor refreshes board evidence while healthy and refreshes the inbox only while down', async () => {
     vi.useFakeTimers();
     const down = server({ down: true });
     const view = await mount(
@@ -133,7 +133,7 @@ describe('INB-1f the board moves live on the page', () => {
     expect(up.joins).toHaveLength(1);
     const settled = { ...up.asked };
     await vi.advanceTimersByTimeAsync(FLOOR_MS * 3);
-    expect(up.asked).toStrictEqual(settled);
+    expect(up.asked).toStrictEqual({ ...settled, board: settled.board + 3 });
     await live.unmount();
   });
 });

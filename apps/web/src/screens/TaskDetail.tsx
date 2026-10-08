@@ -84,6 +84,9 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
+import { useAssignments } from './task/assignment-context.tsx';
+import { PageAssignment } from './task/PageAssignment.tsx';
+import { useRereadOn } from './task/reread-on.ts';
 import { useHeld } from './task/held-state.ts';
 import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
@@ -111,7 +114,6 @@ import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
 import { statesOf, withPageDefaults } from './task/read-defaults.ts';
-import { AssignToAI } from './task/AssignToAI.tsx';
 import {
   PanelDoorButton,
   perspectiveCounts,
@@ -136,7 +138,7 @@ import { DetailsForm } from './task/DetailsForm.tsx';
 import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
-import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
+import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
 
@@ -197,6 +199,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const timerRead = useTimerRead(client, props.taskKey);
+  const assignments = useAssignments(client, props.grantKey);
   const [draft, setDraft] = useState<Draft | null>(null);
   // Lost writes' operation ids, kept above the read for this task and grant (#461).
   const operations = useRef<Held>({});
@@ -211,6 +214,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   });
   const timerRefresh = useTimerRefresh(timerRead.changed, state.outcome, reload);
   useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
+  useRereadOn(assignments.state.changed, refresh);
   useFreshOnPage(state, hub);
 
   // Drafts outlive ordinary rereads; live and timer rereads also preserve mounted
@@ -424,7 +428,6 @@ interface TaskWrites {
   readonly conflict: WireRefusal | null;
   readonly fields: RefObject<HTMLFormElement | null>;
   readonly lifecycle: (command: LifecycleCommand) => void;
-  readonly onAssign: (personId: string) => void;
   readonly onFields: (event: FormEvent<HTMLFormElement>) => void;
 }
 
@@ -547,18 +550,7 @@ function useTaskWrites(
     submitFields();
   };
 
-  const onAssign = (personId: string): void => {
-    run(() =>
-      submitEdit(client, {
-        command: 'task.assign',
-        recordId: task.id,
-        expectedRevision: task.revision,
-        fields: { assignee: personId === '' ? null : personId },
-      }),
-    );
-  };
-
-  return { busy, because, conflict, fields, lifecycle, onAssign, onFields };
+  return { busy, because, conflict, fields, lifecycle, onFields };
 }
 
 interface LoadedProps {
@@ -809,18 +801,11 @@ function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElem
     <>
       <TaskStateControls props={props} writes={writes} form={form} />
 
-      <Assignee
-        people={people.state}
-        onRetry={people.reload}
-        assignee={task.assignee}
-        disabled={locked}
-        onAssign={writes.onAssign}
-      />
-
-      <AssignToAI
+      <PageAssignment
         client={client}
         task={task}
-        scope="page"
+        grantKey={props.grantKey}
+        people={people}
         disabled={locked}
         onChanged={props.onChanged}
       />
