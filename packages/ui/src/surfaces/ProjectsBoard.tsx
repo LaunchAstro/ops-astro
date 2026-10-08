@@ -12,6 +12,7 @@
 
 import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
+import type { BoardMachineProps } from './board-props.ts';
 import { projectCell, type CellContext } from './ProjectCell.tsx';
 import {
   groupReason,
@@ -151,6 +152,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       groups={{ order: statuses, of: (row) => row.status, reason: groupReason }}
       rowKey={(row) => row.id}
       cell={(row, key) => projectCell(row, key, cells)}
+      {...rowOpeners(props.actions)}
       hay={(row) => `${row.name} ${row.client ?? ''} ${row.assignee?.name ?? ''}`}
       name={(row) => row.name}
       noun="task"
@@ -158,14 +160,36 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       {...(props.nothing === undefined ? {} : { nothing: props.nothing })}
       address={opening}
       {...(target === undefined ? {} : { reveal: target.id })}
-      onAddress={(next) => {
-        setAddress(next);
-        props.onAddress?.(next);
-      }}
+      onAddress={boardAddressChanged(setAddress, props.onAddress)}
       changedAt={props.changedAt ?? null}
       now={now}
       {...(props.width === undefined ? {} : { width: props.width })}
       {...(props.viewport === undefined ? {} : { viewport: props.viewport })}
     />
   );
+}
+
+function rowOpeners(
+  actions: RowActions | undefined,
+): Pick<BoardMachineProps<ProjectRow>, 'onActivate' | 'rowDoor'> {
+  return {
+    onActivate:
+      actions?.onOpen === undefined
+        ? undefined
+        : (row, beside) => actions.onOpen?.(row, beside, 'row'),
+    rowDoor: (row) =>
+      actions?.opened?.origin === 'row' && actions.opened.id === row.id
+        ? actions.opened.door
+        : undefined,
+  };
+}
+
+function boardAddressChanged(
+  setAddress: (next: string) => void,
+  onAddress: ProjectsBoardProps['onAddress'],
+): (next: string) => void {
+  return (next) => {
+    setAddress(next);
+    onAddress?.(next);
+  };
 }

@@ -42,6 +42,7 @@ import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
 import type { TaskPanelHost } from './screens/task/panel-host.ts';
+import type { PageContext } from './screens/task/task-prefill.ts';
 
 export type { TaskPanelHost };
 
@@ -56,6 +57,7 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   readonly storage: Storage | null;
   /** Absent where no panel can open, and then a door cannot be pressed. */
   readonly taskPanel?: TaskPanelHost;
+  readonly fileTask?: ((page: PageContext) => void) | null;
   /** Goes to an address inside the application. */
   readonly navigate: (path: string) => void;
   /** The whole address the screen is drawn at, query included: the page's, or a panel's place. */
@@ -83,6 +85,7 @@ export const SCREENS: {
         client={context.client}
         grantKey={context.grantKey}
         navigate={context.navigate}
+        canFileTask={context.fileTask !== null && context.fileTask !== undefined}
         {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
         {...(context.address === undefined ? {} : { address: context.address })}
         inPanel={context.inPanel === true}
@@ -177,6 +180,8 @@ export const SCREENS: {
             onOpenPanel: (door: PanelDoor, tab?: ConversationTab) => {
               context.taskPanel?.open(context.params.key, door, tab);
             },
+            onOpenTask: (key: string, origin?: HTMLElement) =>
+              context.taskPanel?.open(key, 'open', undefined, false, origin),
             changes: context.taskPanel.changes,
           })}
     />

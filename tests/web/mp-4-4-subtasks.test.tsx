@@ -213,7 +213,7 @@ describe('MP-4-4 archived shows why', () => {
     const { client } = commands();
     const { view } = await list(client, [COPY, ARCHIVED]);
     expect(view.find('[data-step-count]')?.textContent).toBe('0 of 1 done · 0%');
-    await click(view, '[data-steps-finished]');
+    expect(view.find('[data-steps-finished]')).toBeNull();
     const row = view.find('[data-step="44"]');
     expect(row?.textContent).toContain('Archived 30 Sept 2026');
     expect(row?.textContent).toContain('The parent task was completed');

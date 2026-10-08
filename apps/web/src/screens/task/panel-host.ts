@@ -48,6 +48,7 @@ export interface TaskPanelHost {
     door: PanelDoor,
     tab?: ConversationTab,
     beside?: boolean,
+    origin?: HTMLElement,
   ) => void;
   /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
   readonly changes: number;
@@ -186,18 +187,30 @@ function useLeave() {
   return { leave, leaving };
 }
 
+function focusOrigin(held: HTMLElement | null, door: PanelDoor | undefined): void {
+  if (door === undefined) return;
+  const origin = held?.isConnected
+    ? held
+    : document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`);
+  // Row focus reveals a hover door through the board's focus-within rule.
+  origin?.closest<HTMLElement>('tr[data-row]')?.focus();
+  origin?.focus();
+}
+
 export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   const [opening, setOpening] = useKeptOpening(owner);
   const [draft, setDraft] = useState<DraftScope | null>(null);
   const [draftKey, setDraftKey] = useState(0);
   const { creating, hold } = useOwner(owner, setOpening, setDraft);
   const [beside, setBeside] = useState(false);
+  const returnTo = useRef<HTMLElement | null>(null);
   const [changes, setChanges] = useState(0);
   const { leave, leaving } = useLeave();
   const open = useCallback(
-    (taskKey: string, door: PanelDoor, tab?: ConversationTab, by = false) => {
+    (taskKey: string, door: PanelDoor, tab?: ConversationTab, by = false, origin?: HTMLElement) => {
       if (creating.current !== null) return;
       if (taskKey !== opening?.taskKey) leave();
+      returnTo.current = origin ?? null;
       setDraft(null);
       setBeside(by);
       setOpening({ taskKey, door, tab: tab ?? null });
@@ -208,6 +221,7 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     (scope: DraftScope) => {
       if (creating.current !== null) return;
       leave();
+      returnTo.current = null;
       setOpening(null);
       setBeside(false);
       setDraft(scope);
@@ -221,12 +235,11 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   const close = useCallback((): boolean => {
     if (creating.current !== null) return false;
     leave();
-    const door = opening?.door;
+    const origin = returnTo.current;
     setOpening(null);
     setDraft(null);
-    if (door !== undefined) {
-      document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`)?.focus();
-    }
+    returnTo.current = null;
+    focusOrigin(origin, opening?.door);
     return true;
   }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);

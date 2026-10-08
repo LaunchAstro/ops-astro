@@ -23,10 +23,8 @@
 // field but the identity, so a retry carrying a newer revision after a reread
 // would be refused `OPERATION_ID_REUSED` rather than replayed. If the first
 // attempt was never stored, that old revision is the server's `VERSION_STALE`,
-// which the stale path below handles. Changing the text, the audience, the
-// kind or the message replied to is a different comment and gets a new one.
-// Choosing a reply, a tab or Cancel keeps the attempt, so going back to the
-// same reply and posting the unchanged box is still that attempt.
+// which the stale path below handles. While the outcome is unknown the words,
+// recipients, audience and reply stay locked; Post retries that exact attempt.
 //
 // **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
 // Client with their counts, and All activity with none. It opens on Internal
@@ -53,7 +51,7 @@
 // the ×, and the signals are drawn by `Thread.tsx`; an edit or a delete goes
 // out through its own command and the task is read again, as a post is.
 
-import { useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
@@ -61,8 +59,17 @@ import { useCommand } from '../../records/use-command.ts';
 import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
 import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
 import { useRowActions } from './row-actions.ts';
+import {
+  InternalTaskMentions,
+  useInternalTaskMentions,
+  unavailableMentions,
+  sameMentionsOwner,
+  type InternalTaskMentionsOwner,
+} from './internal-task-mentions.tsx';
 
 export interface CommentsProps {
+  /** Optional authority identity for hosts that reuse a client across grants. */
+  readonly grantKey?: string;
   readonly client: OperationsClient;
   /**
    * An internal reader's comments, every field present. The shared projection
@@ -93,6 +100,9 @@ export interface CommentsProps {
 
 /** An unsent comment: the words, the attempt whose outcome is unknown, and a stale refusal. */
 export interface CommentDraft {
+  readonly mentions?: readonly string[];
+  /** Bound when edited here, so a new owner cannot inherit a held draft. */
+  readonly owner?: InternalTaskMentionsOwner;
   readonly body: string;
   /** The tab showing, which is also the audience a post goes to. */
   readonly tab: ConversationTab;
@@ -121,6 +131,7 @@ const POSTS: Readonly<Record<'internal' | 'client', { audience: string; kind: st
 
 /** A comment whose outcome is not known, held so the retry is the same attempt. */
 export interface PendingComment {
+  readonly mentions?: readonly string[];
   readonly operationId: string;
   /** The revision the attempt was sent at, resent with it so the register replays. */
   readonly revision: number;
@@ -131,6 +142,41 @@ export interface PendingComment {
 }
 
 export function Comments(props: CommentsProps): ReactElement {
+  const nextOwner: InternalTaskMentionsOwner = {
+    client: props.client,
+    recordId: props.recordId,
+    ...(props.grantKey === undefined ? {} : { grantKey: props.grantKey }),
+  };
+  const [held, setHeld] = useState<{
+    owner: InternalTaskMentionsOwner;
+    generation: number;
+    discarded: CommentDraft | null;
+  }>(() => ({ owner: nextOwner, generation: 0, discarded: null }));
+  if (!sameMentionsOwner(held.owner, nextOwner)) {
+    setHeld({ owner: nextOwner, generation: held.generation + 1, discarded: props.draft });
+  }
+  const draft = props.draft;
+  const own =
+    draft !== held.discarded &&
+    (draft?.owner === undefined || sameMentionsOwner(draft.owner, nextOwner));
+  return (
+    <OwnedComments
+      {...props}
+      key={held.generation}
+      draft={own ? draft : null}
+      onDraft={(next) => props.onDraft(next === null ? null : { ...next, owner: nextOwner })}
+    />
+  );
+}
+
+function OwnedComments(props: CommentsProps): ReactElement {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const scoped = (id: string): string => (props.scope === undefined ? id : `${props.scope}-${id}`);
   const current = props.draft ?? EMPTY;
   const { body, tab, pending } = current;
@@ -143,16 +189,19 @@ export function Comments(props: CommentsProps): ReactElement {
       (tab === 'all' || comment.audience === tab),
   );
   const parentId = parent?.id ?? null;
-  const { audience, kind } = POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
+  const { audience, kind } =
+    pending ?? POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
   const put = (next: Partial<CommentDraft>): void => {
+    if (pending !== null) return;
     props.onDraft({ ...current, ...next });
   };
-  const same = (attempt: PendingComment | null): attempt is PendingComment =>
-    attempt !== null &&
-    attempt.body === body &&
-    attempt.audience === audience &&
-    attempt.kind === kind &&
-    attempt.parentId === parentId;
+  const mentions = audience === 'internal' ? (current.mentions ?? []) : [];
+  const people = useInternalTaskMentions({
+    client: props.client,
+    recordId: props.recordId,
+    ...(props.grantKey === undefined ? {} : { grantKey: props.grantKey }),
+  });
+  const needsPeople = pending === null && unavailableMentions(people, mentions);
   // `closed` is set when the server has said this reader may not comment. It
   // disables the control rather than merely reporting, so the same refusal is
   // not fetched again on the next press. Only an authority refusal closes the
@@ -163,8 +212,9 @@ export function Comments(props: CommentsProps): ReactElement {
   const closed = command.closed || props.refusal !== null;
   // On All nobody has said who may read a post, so there is nothing to post,
   // unless it is a reply, which goes where its message is.
-  const picking = tab === 'all' && parentId === null;
+  const picking = pending === null && tab === 'all' && parentId === null;
   const locked = busy || closed || picking;
+  const cannotPost = locked || needsPeople;
   const rows = useRowActions(props, (commentId) => {
     put({ replyTo: commentId });
   });
@@ -173,18 +223,17 @@ export function Comments(props: CommentsProps): ReactElement {
   const form = useRef<HTMLFormElement>(null);
 
   const post = (): void => {
-    if (locked) return;
+    if (cannotPost) return;
     if (form.current?.reportValidity() === false) return;
-    const attempt = same(pending)
-      ? pending
-      : {
-          operationId: props.client.newOperationId(),
-          revision: props.revision,
-          body,
-          audience,
-          kind,
-          parentId,
-        };
+    const attempt = pending ?? {
+      operationId: props.client.newOperationId(),
+      revision: props.revision,
+      body,
+      audience,
+      kind,
+      parentId,
+      ...(mentions.length === 0 ? {} : { mentions: [...mentions] }),
+    };
     put({ pending: attempt, stale: null });
     run(
       () =>
@@ -192,19 +241,21 @@ export function Comments(props: CommentsProps): ReactElement {
           'task.comment',
           {
             recordId: props.recordId,
-            body,
-            audience,
-            commentType: kind,
-            ...(parentId === null ? {} : { parentId }),
+            body: attempt.body,
+            audience: attempt.audience,
+            commentType: attempt.kind,
+            ...(attempt.parentId === null ? {} : { parentId: attempt.parentId }),
+            ...(attempt.mentions === undefined || attempt.mentions.length === 0
+              ? {}
+              : { mentions: attempt.mentions }),
           },
           { expectedRevision: attempt.revision, operationId: attempt.operationId },
         ),
       (settlement) => {
-        // An unknown outcome keeps the attempt; any answer from the server ends it.
+        if (!alive.current) return;
         if (settlement.kind === 'unknown') return;
         if (settlement.kind === 'closed') props.onRefused(settlement.because);
         if (settlement.kind === 'stale') {
-          // The task moved on. Keep the words, read the task again, and say why.
           props.onDraft({ ...current, pending: null, stale: settlement.because });
           props.onPosted();
           return;
@@ -238,7 +289,7 @@ export function Comments(props: CommentsProps): ReactElement {
       />
       <RowRefusal because={rows.because} />
 
-      <PostNotices because={because} stale={current.stale} unresolved={!busy && same(pending)} />
+      <PostNotices because={because} stale={current.stale} unresolved={!busy && pending !== null} />
 
       <form
         id={scoped('task-comment')}
@@ -260,12 +311,33 @@ export function Comments(props: CommentsProps): ReactElement {
         <CommentBody
           id={scoped('comment-body')}
           body={body}
-          locked={locked}
+          locked={locked || pending !== null}
           onPut={put}
           onSend={post}
         />
+        {audience === 'internal' && !picking ? (
+          <InternalTaskMentions
+            people={people}
+            id={scoped('comment-mentions')}
+            selected={mentions}
+            locked={locked || pending !== null}
+            clearLocked={busy || pending !== null}
+            onChange={(ids) => put({ mentions: ids })}
+          />
+        ) : null}
+        {needsPeople ? (
+          <p className="card__sub" role="status">
+            Selected mentions are unavailable. Wait for the people read or clear mentions before
+            posting.
+          </p>
+        ) : null}
         {picking ? <PickNote /> : null}
-        <button className="btn btn--primary" type="submit" data-comment="post" disabled={locked}>
+        <button
+          className="btn btn--primary"
+          type="submit"
+          data-comment="post"
+          disabled={cannotPost}
+        >
           {busy ? 'Posting…' : 'Post comment'}
         </button>
         {closed ? <ClosedNote /> : null}

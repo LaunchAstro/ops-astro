@@ -683,3 +683,20 @@
   margin: 0;
   padding: var(--s-4) var(--s-5);
 }
+
+/* Child doors, owner and retirement reason share the page and panel layout. */
+[data-step-list] .sb__step {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-step-list] .sb__step-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-step-list] [data-step-archived] {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}

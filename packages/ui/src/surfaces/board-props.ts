@@ -47,6 +47,8 @@ export interface BoardMachineProps<Row> {
   };
   readonly rowKey: (row: Row) => string;
   readonly cell: (row: Row, key: string) => ReactNode;
+  readonly onActivate?: ((row: Row, beside: boolean) => void) | undefined;
+  readonly rowDoor?: ((row: Row) => string | undefined) | undefined;
   /** What a free word is matched against. */
   readonly hay: (row: Row) => string;
   /** The row's name, as the typeahead suggests it. */

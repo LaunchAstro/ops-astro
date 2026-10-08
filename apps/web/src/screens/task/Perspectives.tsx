@@ -134,24 +134,27 @@ export function Perspectives(props: {
 export function TeamWork(props: {
   readonly steps: readonly StepMark[];
   readonly list?: ReactNode;
+  readonly progress?: ReactNode;
   readonly time?: ReactNode;
   readonly onOpenPanel: PanelOpener | undefined;
   /** False inside the panel itself, where the edit already happens. */
   readonly doors?: boolean;
 }): ReactElement {
-  const live = props.steps.filter((step) => !step.retired);
   const doors = props.doors ?? true;
   return (
     <>
       <section className="sb__sect" data-steps>
         <div className="sb__sh">
           <span className="sb__k">Subtasks</span>
+          {props.progress}
         </div>
         {props.list}
-        {live.length === 0 ? <p className="card__sub">No subtasks on this one yet.</p> : null}
+        {props.steps.length === 0 ? (
+          <p className="card__sub">No subtasks on this one yet.</p>
+        ) : null}
         {doors ? (
           <PanelDoorButton
-            door={live.length === 0 ? 'add-first' : 'tick'}
+            door={props.steps.length === 0 ? 'add-first' : 'tick'}
             onOpenPanel={props.onOpenPanel}
           />
         ) : null}
