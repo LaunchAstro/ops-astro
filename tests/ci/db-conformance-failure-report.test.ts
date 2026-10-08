@@ -47,10 +47,30 @@ syncBuiltinESMExports();
   return preload;
 }
 
+function counterReadDelayPreload(directory: string): string {
+  const preload = join(directory, 'delay-counter-read.mjs');
+  writeFileSync(
+    preload,
+    `
+import pg from 'pg';
+const query = pg.Client.prototype.query;
+let reads = 0;
+pg.Client.prototype.query = function (statement, ...args) {
+  if (typeof statement === 'string' && statement.includes('from pg_stat_database') && ++reads === 3) {
+    return new Promise((resolve) => setTimeout(resolve, 1100)).then(() => query.call(this, statement, ...args));
+  }
+  return query.call(this, statement, ...args);
+};
+`,
+  );
+  return preload;
+}
+
 async function withSuite(
   source: string,
   check: (run: ReturnType<typeof spawnSync>) => void,
   removeReport = false,
+  delayCounterRead = false,
 ): Promise<void> {
   const database = await createEmptyDatabase({ part: 'report' });
   try {
@@ -63,7 +83,7 @@ async function withSuite(
     );
     // Close setup before the child calibrates and reads this database's counter.
     await database.admin.close();
-    runFixture(source, check, database.appUrl, removeReport);
+    runFixture(source, check, database.appUrl, removeReport, delayCounterRead);
   } finally {
     await database.drop();
   }
@@ -74,6 +94,7 @@ function runFixture(
   check: (run: ReturnType<typeof spawnSync>) => void,
   fixtureUrl: string,
   removeReport: boolean,
+  delayCounterRead: boolean,
 ): void {
   const directory = mkdtempSync(join(root, 'tests/ci/tmp-db-report-'));
   const scratch = mkdtempSync(join(tmpdir(), 'db-report-output-'));
@@ -83,6 +104,7 @@ function runFixture(
     const manifest = join(directory, 'manifest.json');
     writeFileSync(manifest, JSON.stringify({ invariant: [relative(root, suite)] }));
     const args = ['scripts/db-conformance.mjs', '--manifest', manifest];
+    if (delayCounterRead) args.unshift('--import', counterReadDelayPreload(directory));
     if (removeReport) {
       const preload = reportRemovalPreload(directory);
       args.unshift('--import', preload);
@@ -209,8 +231,36 @@ async function refusesNoSql(): Promise<void> {
     (run) => {
       expect(run.status).toBe(1);
       expect(run.stdout).toContain('1 test(s): 1 passed, 0 failed, 0 skipped');
-      expect(run.stderr).toContain('without the database recording a single transaction');
+      expect(run.stderr).toContain(
+        'transaction movement above measurement cost and a new client session',
+      );
     },
+  );
+}
+
+async function separatesDelayedReaderCost(): Promise<void> {
+  await withSuite(
+    reachesDatabase,
+    (run) => {
+      expect(run.error).toBeUndefined();
+      expect(run.status).toBe(0);
+      expect(run.stdout).toContain('1 test(s): 1 passed, 0 failed, 0 skipped');
+    },
+    false,
+    true,
+  );
+  await withSuite(
+    "import { expect, test } from 'vitest';\ntest('no SQL', () => expect(1 + 1).toBe(2));\n",
+    (run) => {
+      expect(run.error).toBeUndefined();
+      expect(run.status).toBe(1);
+      expect(run.stdout).toContain('1 test(s): 1 passed, 0 failed, 0 skipped');
+      expect(run.stderr).toContain(
+        'transaction movement above measurement cost and a new client session',
+      );
+    },
+    false,
+    true,
   );
 }
 
@@ -230,4 +280,9 @@ describe.skipIf(databaseUrl === '')('database conformance failure reporting', ()
   it('refuses a skipped assertion beside a passing SQL assertion', refusesSkip, 120_000);
   it('refuses a missing JSON report after a real SQL assertion', refusesMissingReport, 120_000);
   it('refuses a passing assertion that executes no SQL', refusesNoSql, 120_000);
+  it(
+    'counts delayed runner reads as measurement cost while still admitting real SQL',
+    separatesDelayedReaderCost,
+    120_000,
+  );
 });

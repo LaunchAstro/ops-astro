@@ -366,7 +366,10 @@ test('a suite that passes without touching the database fails', (t) => {
       (m) => {
         const run = cruise(m, url);
         assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
-        assert.match(run.stderr, /without the database recording a single transaction/u);
+        assert.match(
+          run.stderr,
+          /transaction movement above measurement cost and a new client session/u,
+        );
       },
     ),
   );
@@ -430,10 +433,18 @@ test('a suite that reaches the database does not cover its sibling', (t) => {
       (m) => {
         const run = cruise(m, url);
         assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
-        assert.match(run.stderr, /without the database recording a single transaction/u);
+        assert.match(
+          run.stderr,
+          /transaction movement above measurement cost and a new client session/u,
+        );
         // The failure names the suite, not the run.
         assert.match(run.stderr, /beside\.test\.ts/u);
-        assert.doesNotMatch(run.stderr.split('single transaction')[1] ?? '', /reaches\.test\.ts/u);
+        assert.doesNotMatch(
+          run.stderr.split(
+            'transaction movement above measurement cost and a new client session',
+          )[1] ?? '',
+          /reaches\.test\.ts/u,
+        );
       },
     ),
   );
@@ -471,7 +482,10 @@ test('a named suite runs alone, not with a sibling its name prefixes', (t) => {
       (m) => {
         const run = cruise(m, url);
         assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
-        assert.match(run.stderr, /without the database recording a single transaction/u);
+        assert.match(
+          run.stderr,
+          /transaction movement above measurement cost and a new client session/u,
+        );
       },
     ),
   );

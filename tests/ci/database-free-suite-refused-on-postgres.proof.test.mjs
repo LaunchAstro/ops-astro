@@ -38,7 +38,10 @@ test('setup cannot give a database-free suite a conformance pass when configured
     console.log(run.stdout);
     console.log(run.stderr);
     assert.equal(run.status, 1, 'a suite with no database calls must be refused by rule 7');
-    assert.match(run.stderr, /without the database recording a single transaction/);
+    assert.match(
+      run.stderr,
+      /transaction movement above measurement cost and a new client session/,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
