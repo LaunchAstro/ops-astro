@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// The application: which address is open, who is signed in, and nothing else.
-//
-// **There is no demonstration state and no way to ask for one.** A `?state=`
-// parameter selecting a seeded corpus is how a mockup demonstrates itself,
-// not how a product reports.
-// Every screen below reads through the real client, and a read that fails draws
-// the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
-// — the words and tones a state may print — and not as a source of rows.
+// The application owns routing, sign-in and the task timer across screen lifetimes.
+// Every screen reads through its admitted client; failed reads draw their failure.
+// There is no demonstration state or seeded-corpus URL selector. The UI corpus
+// supplies vocabulary, never authorised rows or timer facts.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
@@ -36,6 +31,7 @@ import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 import { AssistantView } from './views/assistant.tsx';
+import { timerFrame } from './screens/task/task-timer-context.tsx';
 import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
@@ -238,7 +234,7 @@ export function App(props: AppProps): ReactElement {
         entry={null}
       />
     );
-  return (
+  const framed = (
     <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
       <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
         <SignedInName value={personName}>
@@ -297,4 +293,5 @@ export function App(props: AppProps): ReactElement {
       </TaskPinsProvider>
     </StepUpProviders>
   );
+  return timerFrame(screen, session !== null, searchable ? search.open : null, framed);
 }

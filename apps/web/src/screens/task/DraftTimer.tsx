@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// The timer on a new-task draft (MP-4-13, DN-05). The draft has no task yet,
-// so its timer is the draft's own: Start keeps when it started with the
-// draft, so a reload or Back keeps it running; Stop adds the time it ran to
-// what the draft has timed. The minutes are rounded once, as `time.stop`
-// rounds the task timer: up, never fewer than one, at most a day. Create stops a running timer and logs the timed
-// minutes on the new task through `time.log` (`draft-parts.ts`), beside the
-// time spent typed on the draft. The app
-// strip's timer (MP-3-1) is drawn disabled until it is built.
+// A recovered draft may retain elapsed time and Stop. Fresh timing requires a filed task.
 
 import type { ReactElement } from 'react';
+import { useTaskTimerSelection } from './task-timer-selection.tsx';
 import { stopTimer, timedMinutes, type TaskDraft } from './task-draft.ts';
 import { minutesText } from './Time.tsx';
 
@@ -27,19 +20,26 @@ function DraftTimer(props: {
 }): ReactElement {
   const { draft, put } = props;
   const running = draft.timerFrom !== null;
+  const select = useTaskTimerSelection();
   return (
     <div className="field">
       <button
         className="btn"
         type="button"
         data-draft="timer"
-        disabled={props.locked}
+        disabled={props.locked || (!running && select === null)}
         onClick={() => {
-          put(running ? stopTimer(draft, Date.now()) : { timerFrom: new Date().toISOString() });
+          if (running) put(stopTimer(draft, Date.now()));
+          else select?.();
         }}
       >
-        {running ? 'Stop timer' : 'Start timer'}
+        {running ? 'Stop timer' : 'Select task to time'}
       </button>
+      {running ? null : (
+        <p className="card__sub">
+          Select an existing task, or Create this task first, then start its timer.
+        </p>
+      )}
       {draft.timerFrom === null ? null : (
         <span className="card__sub" data-draft-timer-running>
           {' '}

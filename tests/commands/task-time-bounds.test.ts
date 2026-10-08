@@ -105,7 +105,11 @@ describe.skipIf(serverUrl === undefined)(
       // The task itself is still not the person's to time.
       const again = await run(w.clientA, { command: 'time.log', taskId: task, duration: '5' });
       expect(outcomeOf(again)).toStrictEqual(NOT_FOUND);
-      const stopped = await run(w.clientA, { command: 'time.stop', taskId: task });
+      const stopped = await run(w.clientA, {
+        command: 'time.stop',
+        taskId: task,
+        expectedEntryId: entryId,
+      });
       expect(outcomeOf(stopped)).toStrictEqual({ applied: true });
       expect(Object.keys(detailOf(stopped)).toSorted()).toStrictEqual(['entryId', 'minutes']);
       expect(JSON.stringify(stopped)).not.toContain(CANARY);

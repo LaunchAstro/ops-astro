@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MP-4-13 DN-05: the timer works on the draft. Start and Stop time the draft,
-// a running timer is kept with the draft across a reload, and Create stops it
-// and logs the timed minutes on the new task through `time.log`.
+// Recovered draft timers retain Stop, rounding and Create/retry recovery.
+// Fresh timing requires an existing or newly created task.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { typeInto, unmountAll } from './perspective-support.tsx';
-import { NEW_ID, create, draft, server, store } from './draft-support.tsx';
+import { emptyDraft, keepDraft } from '../../apps/web/src/screens/task/task-draft.ts';
+import { ADA, NEW_ID, create, draft, server, store } from './draft-support.tsx';
 
 const START = new Date('2026-10-07T01:00:00Z');
 const at = (minutes: number): void => {
@@ -30,25 +30,34 @@ afterEach(() => {
 const timed = (view: Awaited<ReturnType<typeof draft>>['view']): string | null =>
   view.find('[data-draft-timer]')?.textContent ?? null;
 
+function recovered(timedMs = 0): Storage {
+  const storage = store();
+  keepDraft(storage, ADA, { ...emptyDraft(null), timerFrom: START.toISOString(), timedMs });
+  return storage;
+}
+
 describe('MP-4-13 DN-05 the timer works on the draft', () => {
-  it('Start times the draft and Stop adds the minutes to it', async () => {
-    const { view } = await draft();
+  it('a fresh draft offers selection/Create first and never starts an unfiled clock', async () => {
+    const { client, sent } = server();
+    const { view } = await draft({ client });
+    expect(view.find('[data-draft="timer"]')?.textContent).toBe('Select task to time');
     await view.click('[data-draft="timer"]');
-    expect(view.find('[data-draft="timer"]')?.textContent).toBe('Stop timer');
+    expect(view.find('[data-draft-timer-running]')).toBeNull();
+    expect(sent.filter((one) => ['/time/start', '/time/stop'].includes(one.to))).toEqual([]);
+    expect(view.text()).toContain('Create this task first');
+  });
+
+  it('legacy Stop adds recovered elapsed time without offering fresh taskless Start', async () => {
+    const { view } = await draft({ storage: recovered(8 * 60_000) });
     at(12);
     await view.click('[data-draft="timer"]');
-    expect(view.find('[data-draft="timer"]')?.textContent).toBe('Start timer');
-    expect(timed(view)).toBe('Timed on this draft: 12m');
-    await view.click('[data-draft="timer"]');
-    at(20);
-    await view.click('[data-draft="timer"]');
     expect(timed(view)).toBe('Timed on this draft: 20m');
+    expect(view.find('[data-draft="timer"]')?.textContent).toBe('Select task to time');
   });
 
   it('a running timer is kept with the draft across a reload', async () => {
-    const storage = store();
+    const storage = recovered();
     const first = await draft({ storage });
-    await first.view.click('[data-draft="timer"]');
     await first.view.unmount();
     at(5);
     const { view } = await draft({ storage });
@@ -62,9 +71,8 @@ describe('MP-4-13 DN-05 the timer works on the draft', () => {
 describe('MP-4-13 DN-05 Create logs the draft’s timed minutes', () => {
   it('Create stops a running timer and logs its minutes on the new task', async () => {
     const { client, sent } = server();
-    const { view } = await draft({ client });
+    const { view } = await draft({ client, storage: recovered() });
     await typeInto(view, '#panel-draft-name', 'Timed brief');
-    await view.click('[data-draft="timer"]');
     at(25);
     await create(view);
     expect(sent.map((one) => one.to)).toStrictEqual(['/task/create', '/time/log']);
@@ -73,9 +81,8 @@ describe('MP-4-13 DN-05 Create logs the draft’s timed minutes', () => {
 
   it('a timer started and stopped at once logs nothing', async () => {
     const { client, sent } = server();
-    const { view } = await draft({ client });
+    const { view } = await draft({ client, storage: recovered() });
     await typeInto(view, '#panel-draft-name', 'Quick one');
-    await view.click('[data-draft="timer"]');
     await view.click('[data-draft="timer"]');
     await create(view);
     expect(sent.map((one) => one.to)).toStrictEqual(['/task/create']);
@@ -83,18 +90,12 @@ describe('MP-4-13 DN-05 Create logs the draft’s timed minutes', () => {
 });
 
 describe('MP-4-13 DN-05 the draft’s minutes round as the task timer’s do', () => {
-  it('stretches add up before rounding, and a part minute rounds up', async () => {
+  it('recovered stretches add up before rounding, and a part minute rounds up', async () => {
     const { client, sent } = server();
-    const { view } = await draft({ client });
+    const { view } = await draft({ client, storage: recovered(9 * 59_000) });
     await typeInto(view, '#panel-draft-name', 'Short stretches');
-    for (let stretch = 0; stretch < 10; stretch += 1) {
-      atSeconds(stretch * 100);
-      // eslint-disable-next-line no-await-in-loop -- one press at a time
-      await view.click('[data-draft="timer"]');
-      atSeconds(stretch * 100 + 59);
-      // eslint-disable-next-line no-await-in-loop -- one press at a time
-      await view.click('[data-draft="timer"]');
-    }
+    atSeconds(59);
+    await view.click('[data-draft="timer"]');
     expect(timed(view)).toBe('Timed on this draft: 10m');
     await create(view);
     expect(sent.find((one) => one.to === '/time/log')?.body).toMatchObject({ duration: '10m' });
@@ -102,9 +103,8 @@ describe('MP-4-13 DN-05 the draft’s minutes round as the task timer’s do', (
 
   it('a draft timed past a day logs a day, as the task timer does', async () => {
     const { client, sent } = server();
-    const { view } = await draft({ client });
+    const { view } = await draft({ client, storage: recovered() });
     await typeInto(view, '#panel-draft-name', 'Overnight');
-    await view.click('[data-draft="timer"]');
     at(26 * 60);
     await create(view);
     expect(sent.find((one) => one.to === '/time/log')?.body).toMatchObject({ duration: '1440m' });
@@ -112,9 +112,8 @@ describe('MP-4-13 DN-05 the draft’s minutes round as the task timer’s do', (
 
   it('a Create retried after no answer logs the same minutes once', async () => {
     const { client, sent } = server([], 1);
-    const { view } = await draft({ client });
+    const { view } = await draft({ client, storage: recovered() });
     await typeInto(view, '#panel-draft-name', 'Retried');
-    await view.click('[data-draft="timer"]');
     at(25);
     await create(view);
     at(40);

@@ -40,11 +40,9 @@
 // which this page would draw as somebody else's change. A keystroke is a new
 // generation and so a new attempt.
 //
-// **What was typed in the comment box and the propose form is held here too.**
-// Every reread remounts them, and a comment refused `VERSION_STALE` has only a
-// reread as its way forward. Neither write moves the revision or overlaps a
-// field on the page, so holding the words across a reread merges nothing, and
-// unlike the title and due date they do not stop a refresh.
+// Comment and proposal drafts survive ordinary rereads through their held state.
+// Live and timer rereads also preserve mounted inputs, focus and caret. A stale
+// comment rereads its revision; these drafts do not prevent that refresh.
 //
 // **Nothing is editable while its own request is in flight.** The inputs are
 // disabled for the length of a save, and a settlement clears only the exact
@@ -86,6 +84,7 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
+import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { CallResult, OperationsClient, WireRefusal } from '../operations/client.ts';
@@ -188,33 +187,30 @@ interface SaveAttempt {
  * under it. The key is the route's identity, never anything from an answer.
  */
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
-  return <TaskPage key={`${props.grantKey}\u0000${props.taskKey}`} {...props} />;
+  return timerScreen(props, <TaskPage {...props} />);
 }
 
 function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
+  const timerRead = useTimerRead(client, props.taskKey);
   const [draft, setDraft] = useState<Draft | null>(null);
   // Lost writes' operation ids, kept above the read for this task and grant (#461).
   const operations = useRef<Held>({});
   const { state, reload, live } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
-    run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
+    run: timerRead.run,
     deps: [props.taskKey, props.changes ?? 0],
     live: {
       hub,
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  const timerRefresh = useTimerRefresh(timerRead.changed, state.outcome, reload);
   useFreshOnPage(state, hub);
 
-  // **The draft lives above the read.** A re-read under a draft or from the live
-  // channel keeps `Loaded` mounted (C4 live-sync 4: the edit is never read over;
-  // MP-6-3: the map keeps its graph and selected card), and any other re-read
-  // unmounts it, so the draft has to outlive that to be settled at all. It is
-  // still dropped where it always was: a different task, a different grant, or a
-  // read the server denied. A draft that outlived its authority would be stale
-  // authorised data left on the screen, which must not happen.
+  // Drafts outlive ordinary rereads; live and timer rereads also preserve mounted
+  // inputs. A different task, grant or denied read still drops the prior authority.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
   const denied = state.outcome === 'denied';
   if (draft !== null && (draft.identity !== identity || denied)) setDraft(null);
@@ -251,7 +247,12 @@ function TaskPage(props: TaskDetailProps): ReactElement {
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
         <HeldOperations value={operations.current}>
-          <RecordState state={state} subject="task" onRetry={reload} keep={keep || live}>
+          <RecordState
+            state={state}
+            subject="task"
+            onRetry={reload}
+            keep={keep || live || timerRefresh}
+          >
             {(value) =>
               'sharedTask' in value ? (
                 <SharedTaskDetail task={value.sharedTask} />

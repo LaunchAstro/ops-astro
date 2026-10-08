@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { useTimerState } from './task/task-timer-context.tsx';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   Empty,
@@ -109,6 +110,7 @@ function ProjectBoard(
 ): ReactElement {
   const client = props.client;
   const pins = useSharedTaskPins();
+  const { timer, state: timerState } = useTimerState();
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
@@ -121,8 +123,9 @@ function ProjectBoard(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
-  // A grant's drawn board stays drawn through an empty reread, so a filter on stays removable
-  // (#902); with none on, the board draws the empty state. Another grant's first read is its own.
+  useRereadOn(timerState.changed, reload);
+  // Keep this grant's drawn board through empty rereads, including timer settlements,
+  // so its filter stays removable; a new grant starts with its own read.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
     if (state.outcome === 'ready') setDrew(state.grantKey);
@@ -130,9 +133,8 @@ function ProjectBoard(
   }, [state]);
   const board: ReadState<TaskBoardResult> =
     state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;
-  // The last board write's refusal or unknown outcome, in the server's words.
-  // It belongs to the grant the write was sent under: another business's
-  // board never draws it, a late answer included.
+  // Non-timer board outcomes belong to this grant; the shared strip retains timer outcomes.
+  // Another grant never draws an old board refusal, including a late answer.
   const [refused, setRefused] = useState<{ grant: string; text: string | null } | null>(null);
   const grantKey = props.grantKey;
   const said = refused?.grant === grantKey ? refused.text : null;
@@ -187,10 +189,7 @@ function ProjectBoard(
           {() => null}
         </RecordState>
       ) : null}
-      {/*
-        Kept drawn while it reads again: a re-read after an edit or a live
-        change leaves the filters, an open editor and focus where they were.
-      */}
+      {/* Board edits and timer settlements keep the filters, open editor and focus. */}
       <RecordState state={board} subject="board" onRetry={reload} keep empty={NO_TASKS}>
         {(value) =>
           // At a client filter the board waits for the names, so its filter holds.
@@ -213,6 +212,7 @@ function ProjectBoard(
               actions={rowActions({
                 client,
                 people: persons,
+                timer,
                 href: (key) => pathTo('agency:task-detail', { key }),
                 reload,
                 onSettled: (text) => {

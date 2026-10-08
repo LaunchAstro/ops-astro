@@ -744,8 +744,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
-  // asked of the business, and the handler then asks `task:read` on the task
-  // the entry is against, so a person times only a task they may read. Each
+  // asked of the business. Start and log also require `task:read`; Stop can
+  // still finish the caller's own entry after task-read access is lost. Each
   // reaches only the caller's own entries. The key catalogue lets an agent
   // hold `time:write` inside its delegation; the agent path does not serve
   // these yet, so it is `never` here until it does.
@@ -753,7 +753,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     declare(name, 'write', {
       collection: TIME_COLLECTION,
       targetsExistingRecord: false,
-      untargetedIdentifiers: ['taskId'],
+      untargetedIdentifiers: name === 'time.stop' ? ['taskId', 'expectedEntryId'] : ['taskId'],
     }),
   ),
   ...(['time.set_note', 'time.delete'] as const).map((name) =>

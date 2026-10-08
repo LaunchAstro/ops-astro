@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The canonical operation register and scoped SQL update must keep a retained Stop from ending a newer timer, while committed Stop replay remains unchanged."
+}

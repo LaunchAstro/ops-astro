@@ -42,6 +42,7 @@ export function AppStrip(props: {
   /** Where focus returns when search closes. */
   readonly searchRef?: Ref<HTMLButtonElement>;
   readonly children?: ReactNode;
+  readonly timer?: ReactNode;
 }): ReactElement {
   const agency = props.face === 'agency';
   return (
@@ -62,21 +63,20 @@ export function AppStrip(props: {
         <span className="appbar__preview">Viewing as the client</span>
       )}
       {props.onFace ? <FaceSwitch face={props.face} onFace={props.onFace} /> : null}
-      {agency ? (
-        <button
-          className="appbar__timer"
-          type="button"
-          disabled
-          title="Time tracking is not built yet"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
-            <path d="M5 3.5v9l7-4.5z" fill="currentColor" />
-          </svg>
-          <span className="appbar__label">Start timer</span>
-        </button>
-      ) : null}
+      {agency ? (props.timer ?? <TimerPlaceholder />) : null}
       {props.children}
     </header>
+  );
+}
+
+function TimerPlaceholder(): ReactElement {
+  return (
+    <button className="appbar__timer" type="button" disabled title="Time tracking is not built yet">
+      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
+        <path d="M5 3.5v9l7-4.5z" fill="currentColor" />
+      </svg>
+      <span className="appbar__label">Start timer</span>
+    </button>
   );
 }
 

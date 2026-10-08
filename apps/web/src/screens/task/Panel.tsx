@@ -30,7 +30,8 @@
 // **Escape closes the panel, never a control's Escape.** A key that started in
 // a field, a select or a text box is that control's (TR-A3-3).
 
-import { useEffect, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { TaskTimerBoundary, useTimerRead, useTimerState } from './task-timer-context.tsx';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
@@ -94,16 +95,24 @@ const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 type Body = TaskPanelProps & {
   readonly fold: ReturnType<typeof useShowTrail>;
   readonly conversation: ReturnType<typeof useConversationHeld>;
-  readonly onTimer: (running: string | null) => void;
 };
 
 export function TaskPanel(props: TaskPanelProps): ReactElement {
+  return (
+    <TaskTimerBoundary client={props.client} grantKey={props.grantKey}>
+      <TimerPanel {...props} />
+    </TaskTimerBoundary>
+  );
+}
+
+function TimerPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
   const fold = useShowTrail(client);
+  const timerRead = useTimerRead(client, opening.taskKey);
   const conversation = useConversationHeld(opening.tab);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
-    run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
+    run: timerRead.run,
     deps: [opening.taskKey],
     // The task's topic on the tab's one live stream (C4), as the task page reads it.
     live: {
@@ -112,8 +121,9 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
     },
   });
   useRereadOn(props.changes ?? 0, reload);
-  const onTimer = useTimerStop(props, state.outcome === 'ready' ? state.value : null);
-  const body = { ...props, fold, conversation, onTimer };
+  useRereadOn(timerRead.changed, reload);
+  useTimerStop(props, state.outcome === 'ready' ? state.value : null);
+  const body = { ...props, fold, conversation };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -196,26 +206,25 @@ type SideProps = Body & { readonly task: Task };
  * that arrived and from a start or stop once answered (the setter handed
  * back), so neither a reread still out nor one that failed drops the stop.
  */
-function useTimerStop(props: TaskPanelProps, read: TaskReadResult | null) {
-  const { client, onLeaving, onChanged } = props;
-  const [running, setRunning] = useState<string | null>(null);
+function useTimerStop(props: TaskPanelProps, read: TaskReadResult | null): void {
+  const admitted = useRef({ key: props.opening.taskKey, id: null as string | null });
+  if (admitted.current.key !== props.opening.taskKey)
+    admitted.current = { key: props.opening.taskKey, id: null };
+  if (read !== null && 'task' in read) admitted.current.id = read.task.id;
+  const { timer, state } = useTimerState();
+  const binding = state.binding;
+  const taskId =
+    binding !== null &&
+    (binding.task.id === admitted.current.id ||
+      [binding.task.id, binding.task.key].includes(props.opening.taskKey))
+      ? binding.task.id
+      : null;
   useEffect(() => {
-    if (read === null || !('task' in read)) return;
-    setRunning((read.task.time?.running ?? null) === null ? null : read.task.id);
-  }, [read]);
-  useEffect(() => {
-    onLeaving?.(
-      running === null
-        ? null
-        : () => {
-            void client.mutate('time.stop', { taskId: running }).then(onChanged);
-          },
-    );
+    props.onLeaving?.(taskId === null ? null : () => timer?.stop(taskId));
     return () => {
-      onLeaving?.(null);
+      props.onLeaving?.(null);
     };
-  }, [client, running, onLeaving, onChanged]);
-  return setRunning;
+  }, [timer, taskId, props.onLeaving]);
 }
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
@@ -228,7 +237,6 @@ function PanelWork(props: SideProps): ReactElement {
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
       onChanged={props.onChanged}
-      onTimer={props.onTimer}
       onOpenPanel={undefined}
       onOpenTask={props.onOpenTask}
       doors={false}
