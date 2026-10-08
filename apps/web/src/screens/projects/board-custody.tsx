@@ -8,13 +8,14 @@ export function BoardCustody(props: {
   readonly clear: boolean;
   readonly children: ReactNode;
 }) {
-  const [container] = useState(() => document.createElement('div'));
+  const container = useMountedContainer();
   const host = useRef<HTMLDivElement>(null);
   const held = useRef<ReactNode>(null);
   const focus = useRef<HTMLElement | null>(null);
   if (props.clear) held.current = null;
   else if (props.drawn) held.current = props.children;
   useLayoutEffect(() => {
+    if (container === null) return;
     if (props.drawn) {
       host.current?.append(container);
       if (focus.current?.isConnected && document.activeElement === document.body)
@@ -41,10 +42,21 @@ export function BoardCustody(props: {
   return (
     <>
       <div ref={host} />
-      {createPortal(
-        <Activity mode={props.drawn ? 'visible' : 'hidden'}>{held.current}</Activity>,
-        container,
-      )}
+      {container === null
+        ? null
+        : createPortal(
+            <Activity mode={props.drawn ? 'visible' : 'hidden'}>{held.current}</Activity>,
+            container,
+          )}
     </>
   );
+}
+
+/** Keep server and first-client markup equal; the portal belongs to the mounted owner. */
+function useMountedContainer(): HTMLDivElement | null {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    setContainer(document.createElement('div'));
+  }, []);
+  return container;
 }

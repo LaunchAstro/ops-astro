@@ -138,8 +138,7 @@ function ProjectBoardRead(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
-  // A grant's drawn board stays drawn through an empty reread, so a filter on stays removable
-  // (#902); with none on, the board draws the empty state. Another grant's first read is its own.
+  // Same-grant empty rereads retain filters (#902); a new reader opens its own empty state.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
     if (state.outcome === 'ready') setDrew(state.grantKey);
@@ -204,6 +203,9 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
+  const empty = scopedView ? <></> : NO_TASKS;
+  const drawn =
+    admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
 
   return (
     <div className="stack" ref={wrap}>
@@ -235,14 +237,11 @@ function ProjectBoardRead(
           {() => null}
         </RecordState>
       ) : null}
-      {/*
-        Kept drawn while it reads again: a re-read after an edit or a live
-        change leaves the filters, an open editor and focus where they were.
-      */}
-      <RecordState state={board} subject="board" onRetry={reload} keep empty={<></>}>
+      {/* Checked custody withdraws the board while preserving its unsent editor and focus. */}
+      <RecordState state={board} subject="board" onRetry={reload} keep empty={empty}>
         {() => null}
       </RecordState>
-      <BoardCustody drawn={admitted && (!named || clients !== null)} clear={denied}>
+      <BoardCustody drawn={drawn} clear={denied}>
         {answer === null ? null : (
           <ProjectsBoard
             // A new place is a new view: the board opens on it afresh.
