@@ -44,42 +44,36 @@ export class BoardDestinations {
     });
     const tasks: string[] = [];
     for (const board of [boardA, boardB, null]) {
-      // eslint-disable-next-line no-await-in-loop -- each task's revisioned commands finish before the next task.
-      const id = await this.command({
-        command: 'task.create',
-        fields: { title: 'Aggregate admitted work' },
-        ...(board === null ? {} : { board }),
-      });
-      // eslint-disable-next-line no-await-in-loop -- party precedes assignment.
-      let expectedRevision = await this.revision(id);
-      // eslint-disable-next-line no-await-in-loop -- the owning operation uses its freshly read revision.
-      await this.command({
-        command: 'task.set_party',
-        recordId: id,
-        expectedRevision,
-        fields: { client: this.w.clientA },
-      });
-      // eslint-disable-next-line no-await-in-loop -- assignment follows party.
-      expectedRevision = await this.revision(id);
-      // eslint-disable-next-line no-await-in-loop -- each operation retains revision custody.
-      await this.command({
-        command: 'task.assign',
-        recordId: id,
-        expectedRevision,
-        fields: { assignee: this.w.teammate.personId },
-      });
-      // eslint-disable-next-line no-await-in-loop -- scores follow assignment.
-      expectedRevision = await this.revision(id);
-      // eslint-disable-next-line no-await-in-loop -- canonical scores are written by their owning operation.
-      await this.command({
-        command: 'task.set_scores',
-        recordId: id,
-        expectedRevision,
-        fields: { impact: tasks.length + 2, confidence: 8, ease: 7 },
-      });
-      tasks.push(id);
+      // eslint-disable-next-line no-await-in-loop -- finish one task's revisioned writes before the next.
+      tasks.push(await this.assigned(board, tasks.length + 2));
     }
     return { boardA, boardB, tasks };
+  }
+  async assigned(board: string | null, impact: number): Promise<string> {
+    const id = await this.command({
+      command: 'task.create',
+      fields: { title: 'Aggregate admitted work' },
+      ...(board === null ? {} : { board }),
+    });
+    await this.command({
+      command: 'task.set_party',
+      recordId: id,
+      expectedRevision: await this.revision(id),
+      fields: { client: this.w.clientA },
+    });
+    await this.command({
+      command: 'task.assign',
+      recordId: id,
+      expectedRevision: await this.revision(id),
+      fields: { assignee: this.w.teammate.personId },
+    });
+    await this.command({
+      command: 'task.set_scores',
+      recordId: id,
+      expectedRevision: await this.revision(id),
+      fields: { impact, confidence: 8, ease: 7 },
+    });
+    return id;
   }
   async archived(): Promise<string> {
     const parent = await this.command({

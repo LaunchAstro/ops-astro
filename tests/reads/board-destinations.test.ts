@@ -9,7 +9,9 @@ import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import { readAuthenticationAttempts } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 const serverUrl = databaseUrlFromEnvironment();
-let w: ScopeWorld, d: BoardDestinations, pool: Awaited<ReturnType<BoardDestinations['seed']>>;
+let w: ScopeWorld;
+let d: BoardDestinations;
+let pool: Awaited<ReturnType<BoardDestinations['seed']>>;
 beforeAll(async () => {
   if (serverUrl !== undefined) {
     w = await scopeWorld();
@@ -53,9 +55,8 @@ live(
 );
 live('two boards and unboarded identity intersections retain scored canonical ranks', async () => {
   const ordinary = await d.read({ board: null });
-  expect(ordinary.tasks.find((t) => t.id === pool.tasks[2])?.rank.number).toEqual(
-    expect.any(Number),
-  );
+  const unboardedId = pool.tasks[2];
+  expect(ordinary.tasks.find((t) => t.id === unboardedId)?.rank.number).toEqual(expect.any(Number));
   for (const identity of [
     { person: w.teammate.personId },
     { client: w.clientA },
@@ -64,8 +65,8 @@ live('two boards and unboarded identity intersections retain scored canonical ra
     // eslint-disable-next-line no-await-in-loop -- compare each semantic scope to the same reader pool.
     const answer = await d.read({ mode: 'aggregate', ...identity });
     expect(pool.tasks.every((id) => answer.tasks.some((t) => t.id === id))).toBe(true);
-    expect(answer.tasks.find((t) => t.id === pool.tasks[2])?.rank).toEqual(
-      ordinary.tasks.find((t) => t.id === pool.tasks[2])?.rank,
+    expect(answer.tasks.find((t) => t.id === unboardedId)?.rank).toEqual(
+      ordinary.tasks.find((t) => t.id === unboardedId)?.rank,
     );
   }
   expect((await d.read({ board: pool.boardA })).tasks.map((t) => t.id)).toEqual([pool.tasks[0]]);
@@ -143,9 +144,9 @@ live(
     const events = () => w.db.app.withBusiness(w.business, (tx) => readAuditEvents(tx));
     const attempts = () =>
       w.db.app.withBusiness(w.business, (tx) => readAuthenticationAttempts(tx, w.owner.presented));
-    const beforeRecords = await records(),
-      before = await events(),
-      authBefore = await attempts();
+    const beforeRecords = await records();
+    const before = await events();
+    const authBefore = await attempts();
     await d.read({ mode: 'aggregate', person: w.teammate.personId, client: w.clientA });
     expect(await records()).toEqual(beforeRecords);
     expect((await events()).slice(before.length)).toMatchObject([

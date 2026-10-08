@@ -428,6 +428,53 @@ export async function readBoard(
   return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
 }
 
+function readBoardRows(
+  tx: TenantQuery,
+  taskTypeId: string,
+  board: string | null | TodoScope,
+  readable: readonly string[] | null,
+  identities: { readonly person?: string | undefined; readonly client?: string | undefined },
+): Promise<readonly TaskRowRead[]> {
+  const aggregate = typeof board === 'object' && board !== null;
+  const narrowed = aggregate ? board : identities;
+  return tx.query<TaskRowRead>(
+    `${SELECT}
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and ($5::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
+        and ($4::uuid[] is null or r.id = any($4::uuid[]))
+        and ($6::uuid is null or r.uuid_2 = $6::uuid)
+        and ($7::uuid is null or r.uuid_7 = $7::uuid)
+        and (not $5::boolean or (${OPEN_TODO_SQL}))
+      order by r.num_2 nulls last, r.created_at`,
+    [
+      tx.businessId,
+      taskTypeId,
+      aggregate ? null : board,
+      readable,
+      aggregate,
+      narrowed.person ?? null,
+      narrowed.client ?? null,
+    ],
+  );
+}
+
+async function withTodoEvidence(
+  tx: TenantQuery,
+  spine: TaskSpine,
+  tasks: readonly BoardRead[],
+): Promise<readonly BoardRead[]> {
+  const served = tasks.map((task) => task.id);
+  const moves = await movesOf(tx, served);
+  const extras = await extrasForTasks(tx, spine, served);
+  return tasks.map((task): BoardRead => ({
+    ...task,
+    todo: {
+      ...(extras.get(task.id) ?? { tags: [], waitingComments: 0 }),
+      whoseMove: moves.get(task.id) ?? 'Team',
+    },
+  }));
+}
+
 /**
  * The board's tasks, each with what its cells draw (MP-5-8), and when the
  * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
@@ -451,27 +498,7 @@ export async function readBoardStamped(
   identities: { readonly person?: string | undefined; readonly client?: string | undefined } = {},
   spine?: TaskSpine,
 ): Promise<{ readonly tasks: readonly BoardRead[]; readonly changedAt: string | null }> {
-  const aggregate = typeof board === 'object' && board !== null;
-  const narrowed = aggregate ? board : identities;
-  const rows = await tx.query<TaskRowRead>(
-    `${SELECT}
-      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and ($5::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
-        and ($4::uuid[] is null or r.id = any($4::uuid[]))
-        and ($6::uuid is null or r.uuid_2 = $6::uuid)
-        and ($7::uuid is null or r.uuid_7 = $7::uuid)
-        and (not $5::boolean or (${OPEN_TODO_SQL}))
-      order by r.num_2 nulls last, r.created_at`,
-    [
-      tx.businessId,
-      taskTypeId,
-      aggregate ? null : board,
-      readable,
-      aggregate,
-      narrowed.person ?? null,
-      narrowed.client ?? null,
-    ],
-  );
+  const rows = await readBoardRows(tx, taskTypeId, board, readable, identities);
   let newest: Date | null = null;
   for (const row of rows) {
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
@@ -500,22 +527,8 @@ export async function readBoardStamped(
       comments: comments.get(row.id) ?? NO_COMMENTS,
     }),
   );
-  if (spine !== undefined) {
-    const moves = await movesOf(tx, served);
-    const extras = await extrasForTasks(tx, spine, served);
-    const projected = [];
-    for (const task of tasks) {
-      projected.push({
-        ...task,
-        todo: {
-          ...(extras.get(task.id) ?? { tags: [], waitingComments: 0 }),
-          whoseMove: moves.get(task.id) ?? ('Team' as const),
-        },
-      });
-    }
-    return { tasks: projected, changedAt: newest?.toISOString() ?? null };
-  }
-  return { tasks, changedAt: newest?.toISOString() ?? null };
+  const projected = spine === undefined ? tasks : await withTodoEvidence(tx, spine, tasks);
+  return { tasks: projected, changedAt: newest?.toISOString() ?? null };
 }
 
 /**
