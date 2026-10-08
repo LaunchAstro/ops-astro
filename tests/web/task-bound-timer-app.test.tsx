@@ -185,3 +185,49 @@ for (const inPanel of [false, true]) {
     }
   });
 }
+
+for (const latestFirst of [false, true]) {
+  it(`page and panel keep both unsent comment editors after concurrent authorised timer rereads, latest first ${latestFirst}`, async () => {
+    const world = timerWorld();
+    let holding = false;
+    const releases: (() => void)[] = [];
+    const records: unknown[] = [];
+    const fetch: typeof globalThis.fetch = (url, init) => {
+      const answer = world.fetch(url, init);
+      if (!holding || !String(url).endsWith('/task/read')) return answer;
+      records.push((JSON.parse(String(init?.body)) as Record<string, unknown>)['recordId']);
+      return new Promise<Response>((resolve) => {
+        releases.push(() => {
+          void answer.then(resolve);
+        });
+      });
+    };
+    const { view } = await timerApp({ ...world, fetch });
+    await view.click('[data-time-log-section] [data-timer]');
+    await tick();
+    await view.click('main [data-panel-door="open"]');
+    await tick();
+    await view.type('main #comment-body', 'Unsent page words');
+    await view.type('.dpanel #panel-comment-body', 'Unsent panel words');
+    const page = view.find('main #comment-body') as HTMLTextAreaElement;
+    const panel = view.find('.dpanel #panel-comment-body') as HTMLTextAreaElement;
+    page.focus();
+    page.setSelectionRange(2, 8);
+    holding = true;
+    await view.click('[data-task-timer-strip] [data-timer]');
+    await tick();
+    expect(records).toEqual(['Timer-A', 'Timer-A']);
+    holding = false;
+    await act(() => releases[latestFirst ? 1 : 0]?.());
+    await tick();
+    await act(() => releases[latestFirst ? 0 : 1]?.());
+    await tick();
+    expect(view.find('main #comment-body')).toBe(page);
+    expect(view.find('.dpanel #panel-comment-body')).toBe(panel);
+    expect(page.value).toBe('Unsent page words');
+    expect(panel.value).toBe('Unsent panel words');
+    expect(document.activeElement).toBe(page);
+    expect([page.selectionStart, page.selectionEnd]).toEqual([2, 8]);
+    expect(world.finished).toEqual([A]);
+  });
+}

@@ -28,6 +28,11 @@ interface Attempt {
   readonly uncertain: boolean;
   readonly entryId: string | null;
 }
+interface ReadFlight {
+  readonly ticket: number;
+  readonly keys: Set<string>;
+  answer: Promise<CallResult<TaskReadResult>> | null;
+}
 export interface TimerState {
   readonly binding: TimerBinding | null;
   readonly attempt: Attempt | null;
@@ -49,7 +54,8 @@ export class TaskTimer {
   private version = 0;
   private dispatchVersion = 0;
   private readVersion = 0;
-  private readonly readFloors = new Map<string, number>();
+  private readonly readers = new Set<Set<string>>();
+  private readonly readFloors = new Map<string, ReadFlight>();
   private readonly listeners = new Set<() => void>();
   private client: OperationsClient;
   private readonly ownerOn: () => boolean;
@@ -193,24 +199,60 @@ export class TaskTimer {
     return { task: attempt.task, running };
   }
   /** Captured before transport: a pre-Start idle answer cannot erase a newer binding. */
-  async read(key: string, current: () => boolean): Promise<CallResult<TaskReadResult>> {
+  read(key: string, current: () => boolean): Promise<CallResult<TaskReadResult>> {
+    const keys = new Set([key]);
+    this.readers.add(keys);
+    return this.readTask(key, current, keys).finally(() => {
+      this.readers.delete(keys);
+      for (const flight of this.readFloors.values())
+        if (![...this.readers].some((reader) => [...flight.keys].some((id) => reader.has(id))))
+          flight.answer = null;
+    });
+  }
+  private async readTask(
+    key: string,
+    current: () => boolean,
+    keys: Set<string>,
+  ): Promise<CallResult<TaskReadResult>> {
     const version = this.version;
     const ticket = ++this.readVersion;
     const known = [this.state.binding?.task, this.state.attempt?.task].find(
       (task) => task?.id === key || task?.key === key,
     );
-    const keys = known === undefined ? [key] : [key, known.id, known.key ?? known.id];
-    for (const identity of keys) this.readFloors.set(identity, ticket);
-    const result = await this.client.read<TaskReadResult>('task.read', { recordId: key });
-    // A page key and panel UUID share authority when the answer identifies the task.
-    if ('ok' in result && 'task' in result.value)
-      keys.push(result.value.task.id, result.value.task.key);
-    const latest = keys.every((identity) => (this.readFloors.get(identity) ?? ticket) <= ticket);
-    // The caller owns a projection too: an older read cannot publish revoked labels.
-    if (!latest) return { unavailable: true, because: 'A newer task read superseded this answer.' };
-    if (this.ownerOn() && current() && version === this.version && latest)
-      this.observe(key, result);
+    if (known !== undefined) for (const id of [known.id, known.key ?? known.id]) keys.add(id);
+    const latest: ReadFlight = {
+      ticket,
+      keys,
+      answer: this.client.read<TaskReadResult>('task.read', { recordId: key }),
+    };
+    for (const identity of keys) this.readFloors.set(identity, latest);
+    const result = await this.readLatest(keys, latest);
+    if (!this.ownerOn() || !current() || version !== this.version)
+      return {
+        unavailable: true,
+        because: 'The task read owner changed before its answer arrived.',
+      };
+    this.observe(key, result);
     return result;
+  }
+  /** Join a newer checked answer, including its denial or withheld projections; never re-request. */
+  private async readLatest(
+    keys: Set<string>,
+    flight: ReadFlight,
+  ): Promise<CallResult<TaskReadResult>> {
+    if (flight.answer === null)
+      return { unavailable: true, because: 'A newer task read superseded this answer.' };
+    const result = await flight.answer;
+    if ('ok' in result && 'task' in result.value)
+      for (const id of [result.value.task.id, result.value.task.key]) {
+        keys.add(id);
+        flight.keys.add(id);
+      }
+    const newer = [...keys].reduce((latest, identity) => {
+      const next = this.readFloors.get(identity);
+      return next !== undefined && next.ticket > latest.ticket ? next : latest;
+    }, flight);
+    return newer === flight ? result : this.readLatest(keys, newer);
   }
   private observe(key: string, result: CallResult<TaskReadResult>): void {
     const binding = this.state.binding;
