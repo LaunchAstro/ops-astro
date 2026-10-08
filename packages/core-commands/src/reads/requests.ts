@@ -93,7 +93,10 @@ export type {
 export interface ReadOperands {
   readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null } & Paging;
+  readonly 'task.board': ({ readonly board: string | null } | { readonly mode: 'aggregate' }) & {
+    readonly person?: string;
+    readonly client?: string;
+  } & Paging;
   /**
    * The activity ledger's page: the newest days with events before `before`
    * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is

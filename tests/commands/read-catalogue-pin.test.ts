@@ -55,7 +55,7 @@ const PINNED_IDENTIFIERS = {
   'session.person': [],
   'settings.read': [],
   'tag.list': [],
-  'task.board': ['board'],
+  'task.board': ['board', 'person', 'client'],
   'task.execution': ['recordId'],
   'task.ledger': [],
   'task.queue': [],

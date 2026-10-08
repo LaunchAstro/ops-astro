@@ -16,7 +16,6 @@
 
 import {
   clientsReached,
-  checkAuthority,
   planPresetSync,
   isUuid,
   listTags,
@@ -34,9 +33,10 @@ import {
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
-import { boardAdmission, boardOf, liveTask } from './board-admission.ts';
+import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
+import { admitTodoScope, parseTodoScope } from './todo-admission.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
@@ -76,7 +76,7 @@ export type {
   ReadRow,
   SpineRow,
 } from './read-row.ts';
-import type { Parsed, ReadName, ReadRow } from './read-row.ts';
+import type { ReadName, ReadRow } from './read-row.ts';
 
 /**
  * An array of field maps. That is all a read checks of a preset's fields: the
@@ -142,28 +142,6 @@ const NO_GRANT_AT_ALL = refuseCommand(
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
-
-/**
- * `task.todos`'s scope (MP-7-2): none, a teammate, a client or their intersection, each a
- * well-formed identifier. A malformed one is refused rather than read as no
- * scope, which would answer the reader's own list to a question about someone
- * else's.
- */
-function parseTodoScope({
-  person,
-  client,
-}: Readonly<Record<string, unknown>>): Parsed<'task.todos'> {
-  if (person !== undefined && !(typeof person === 'string' && isUuid(person))) {
-    return rejected('person', 'Send person as a teammate’s person identifier.');
-  }
-  if (client !== undefined && !(typeof client === 'string' && isUuid(client))) {
-    return rejected('client', 'Send client as the client’s identifier.');
-  }
-  return parsed({
-    ...(typeof person === 'string' ? { person: person.toLowerCase() } : {}),
-    ...(typeof client === 'string' ? { client: client.toLowerCase() } : {}),
-  });
-}
 
 /** A live task that is not a map is named as one; anything else is not there. */
 async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
@@ -333,18 +311,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     },
   },
   'task.board': {
-    identifiers: ['board'],
-    // `null` is a real board: the list of tasks on none. An absent key is
-    // not, and answering it with that list gave a body that asked nothing
-    // the answer to a question it never put. A string is
-    // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    parse: (body) =>
-      typeof body['board'] === 'string' || body['board'] === null
-        ? withPaging(body, { board: body['board'] })
-        : rejected(
-            'board',
-            'Send board as a board task’s identifier, or null for tasks on no board.',
-          ),
+    identifiers: ['board', 'person', 'client'],
+    parse: parseBoardScope,
     spine: true,
     authority: 'declared-within',
     outsiderNotFound: true,
@@ -353,19 +321,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // shared view through `task.read`. Asked here, so `admitRead` refuses too.
     admits: async (_tx, session) => await Promise.resolve(isInternalReader(session.roleKey)),
     listRefusal: async (tx, session, operands, { spine }) => {
-      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      const admitted = await boardAdmission(tx, session, operands, spine);
       return 'refusal' in admitted ? admitted.refusal : undefined;
     },
     async serve(tx, session, operands, { spine }) {
-      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      const admitted = await boardAdmission(tx, session, operands, spine);
       if ('refusal' in admitted) return admitted.refusal;
       const { scope } = admitted;
       const { tasks, changedAt } = await boardOf(
         tx,
         session,
         spine.taskTypeId,
-        operands.board,
+        operands,
         scope,
+        spine,
       );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
@@ -375,7 +344,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
       // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
-      const { board: _board, ...paging } = operands;
+      const { detail, limit, page: cursor } = operands;
+      const paging = {
+        ...(detail === undefined ? {} : { detail }),
+        ...(limit === undefined ? {} : { limit }),
+        ...(cursor === undefined ? {} : { page: cursor }),
+      };
       const page = boardPage(tasks, paging);
       if (page !== undefined) return page;
       const viewer = session.personId;
@@ -477,34 +451,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     async serve(tx, session, { person, client }, { spine }) {
-      // A teammate is an active member here, the people `person.list` offers.
-      // Another business's person, a former member and a made-up id are one
-      // answer, and nothing is listed.
-      if (person !== undefined) {
-        const vocabulary = await checkAuthority(tx, subjectsOf(session), {
-          collection: 'person',
-          action: 'read',
-          scope: { kind: 'business', id: null },
-        });
-        if (!vocabulary.ok) return vocabulary.refusal;
-        if (!(await listPeople(tx)).some((each) => each.personId === person))
-          return refuseNotFound();
-      }
-      // A client is one of this business's; another business's and a made-up
-      // id are one NOT_FOUND, never an empty list (minimum contract 8.2).
-      if (
-        client !== undefined &&
-        !(await clientsReached(tx, subjectsOf(session)))?.some((each) => each.clientId === client)
-      )
-        return refuseNotFound();
-      const scope =
-        client === undefined
-          ? { person: person ?? session.personId }
-          : {
-              client,
-              ...(person === undefined ? {} : { person }),
-            };
-      return { ok: true, todos: await readTodos(tx, spine, scope) };
+      const admitted = await admitTodoScope(tx, session, { person, client });
+      if ('refusal' in admitted) return admitted.refusal;
+      return { ok: true, todos: await readTodos(tx, spine, admitted.scope) };
     },
   },
   // The Team panel (MP-7-10) is staff only: a client holding `person:read`

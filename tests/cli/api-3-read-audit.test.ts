@@ -12,6 +12,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, idOf, type Caller, type CliWorld } from './api-3-world.ts';
+import { grantTo } from '../commands/fixture.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Member } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -26,6 +28,9 @@ describe.skipIf(serverUrl === undefined)('API-3 reads and the audit chain', () =
   beforeAll(async () => {
     w = await cliWorld('api3audit', 'api3audit');
     lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide']);
+    await w.db.app.withBusiness(w.business, (tx) =>
+      grantTo(tx, lead, 'read', undefined, false, 'person'),
+    );
     cli = await w.person(lead);
     map = idOf(await cli.run('task', 'create', '--title', 'audited map', '--type', 'map'));
     ticket = idOf(
@@ -77,5 +82,44 @@ describe.skipIf(serverUrl === undefined)('API-3 reads and the audit chain', () =
         [read, 'refused'],
       ]);
     }
+  });
+  it('the shipped CLI preserves aggregate and selected identity scopes through the real API', async () => {
+    for (const destination of [{ mode: 'aggregate' }, { board: map }, { board: null }] as const) {
+      const argv =
+        'mode' in destination
+          ? ['--mode', destination.mode]
+          : destination.board === null
+            ? []
+            : ['--board', destination.board];
+      // eslint-disable-next-line no-await-in-loop -- each CLI read is compared to the same canonical dispatcher.
+      const answer = await cli.run('task', 'list', ...argv, '--person', lead.personId, '--json');
+      expect(answer.exit, answer.out).toBe(0);
+      // eslint-disable-next-line no-await-in-loop -- compare identical declared read operands.
+      const direct = await executeRead(w.db.app, w.business, lead.presented, {
+        read: 'task.board',
+        ...destination,
+        person: lead.personId,
+        detail: 'standard',
+      });
+      if (!('page' in direct))
+        throw new Error(`Expected canonical board page ${JSON.stringify(direct)}`);
+      expect(JSON.parse(answer.out)).toEqual({
+        items: direct.page,
+        ...(direct.next === null ? {} : { next: direct.next }),
+      });
+    }
+    const answer = await cli.run(
+      'task',
+      'list',
+      '--mode',
+      'aggregate',
+      '--board',
+      map,
+      '--person',
+      lead.personId,
+      '--json',
+    );
+    expect(answer.exit).toBe(1);
+    expect(answer.out).toContain('FIELD_VALUE_INVALID');
   });
 });
