@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The board and dependent task/list reads follow BOARD on the tab's existing
 // stream. Inbox-only changes refresh registered inbox panels alone.
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { TaskReadResult } from '../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from './authorised-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { hubOf, type LiveChange } from './live.ts';
+import { useRead, type UseReadOptions } from './use-read.ts';
+import { tabRollupFloor } from './rollup-floor.ts';
 
 export const BOARD = 'board';
 export type FollowInbox = (reload: () => void) => () => void;
@@ -72,14 +74,14 @@ export function useTaskDependencies(
 export function useBoardLive(
   client: OperationsClient,
   grantKey: string,
-  reloadBoard: () => void,
+  reloadBoard?: () => void,
 ): FollowInbox {
   const panels = useRef(new Set<() => void>());
   useBoardChanges(
     client,
     grantKey,
     (change) => {
-      if (change !== 'inbox') reloadBoard();
+      if (change !== 'inbox') reloadBoard?.();
       for (const reload of panels.current) reload();
     },
     true,
@@ -90,4 +92,81 @@ export function useBoardLive(
       panels.current.delete(reload);
     };
   }, []);
+}
+
+/** A dependent projection follows the existing board channel and its fallback. */
+export function useBoardDependency(
+  client: OperationsClient,
+  grantKey: string,
+  reload: () => void,
+): void {
+  useBoardLive(client, grantKey, reload);
+}
+
+function boardProjectionSource() {
+  let pending: { readonly run: () => void; readonly board: boolean } | null = null;
+  const schedule = (run: () => void, board: boolean): void => {
+    if (pending !== null) {
+      if (board) pending = { run, board };
+      return;
+    }
+    pending = { run, board };
+    queueMicrotask(() => {
+      const next = pending;
+      pending = null;
+      next?.run();
+    });
+  };
+  return {
+    floor: {
+      follow: (run: () => void) =>
+        tabRollupFloor().follow(() => {
+          schedule(run, false);
+        }),
+    },
+    board: (run: () => void) => {
+      schedule(run, true);
+    },
+    withdraw: () => {
+      if (pending?.board === true) pending = null;
+    },
+    stop: () => {
+      pending = null;
+    },
+  };
+}
+
+/** Row and vocabulary dependencies retain their floor, coalesced with board changes. */
+export function useBoardProjectionRead<T>(
+  client: OperationsClient,
+  options: UseReadOptions<T>,
+  subscription: 'board' | 'floor-only' = 'board',
+) {
+  const source = useMemo(boardProjectionSource, [client, options.grantKey]);
+  // Retire queued callbacks during the render that changes the owner, before passive cleanup.
+  const current = useRef(source);
+  if (current.current !== source) {
+    current.current.stop();
+    current.current = source;
+  }
+  const read = useRead({ ...options, rollup: source.floor });
+  if (!read.own || read.state.outcome === 'denied') source.withdraw();
+  const refresh = useCallback(() => {
+    source.board(read.refresh);
+  }, [source, read.refresh]);
+  useBoardChanges(
+    client,
+    options.grantKey,
+    (change) => {
+      if (change !== 'inbox') source.board(read.reload);
+    },
+    subscription === 'board',
+  );
+  useEffect(
+    () => () => {
+      source.stop();
+    },
+    [source],
+  );
+  return { ...read, refresh };
 }

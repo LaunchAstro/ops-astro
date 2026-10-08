@@ -73,9 +73,17 @@ export function serving(
   held?: Promise<void>,
 ) {
   const sent: Sent[] = [];
+  const joins: string[] = [];
   const moved = new Set<unknown>();
   const fetch = (async (url: string | URL, init?: RequestInit) => {
-    const to = String(url).replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
+    const at = String(url);
+    if (at.endsWith('/live?topic=board')) {
+      joins.push(at);
+      return new Response(new ReadableStream(), {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    const to = at.replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to, body });
     const reread = sent.filter((one) => one.to === '/task/todos').length > 1;
@@ -103,6 +111,7 @@ export function serving(
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
+    joins,
   };
 }
 

@@ -10,6 +10,9 @@ type State = {
   streams: Map<ReadableStreamDefaultController<Uint8Array>, readonly string[]>;
   held: (() => void)[];
   hold: boolean;
+  holdPeople: boolean;
+  permitPerson: boolean;
+  peopleOutage: boolean;
   fail: 'denied' | 'outage' | null;
   rank: number;
   waiting: number;
@@ -66,7 +69,13 @@ function liveReply(state: State, url: URL, signal: AbortSignal | null | undefine
   );
 }
 function ordinaryReply(state: State, path: string): Response {
-  if (path === '/person/list') return Response.json({ ok: true, persons: [] });
+  if (path === '/person/list') {
+    if (state.peopleOutage) throw new TypeError('The permitted vocabulary is unavailable');
+    return Response.json({
+      ok: true,
+      persons: state.permitPerson ? [{ personId: 'p-ada', name: 'Ada' }] : [],
+    });
+  }
   if (path === '/client/list')
     return Response.json({ ok: true, clients: [{ clientId: 'c-alpha', name: 'Alpha' }] });
   if (path === '/task/board') return Response.json({ ok: true, tasks: [] });
@@ -91,6 +100,18 @@ function reply(
   const path = url.pathname.replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
   const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
   state.sent.push({ path, body });
+  if (path === '/person/list' && state.holdPeople) {
+    state.holdPeople = false;
+    return new Promise<Response>((resolve, reject) => {
+      state.held.push(() => {
+        try {
+          resolve(ordinaryReply(state, path));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  }
   if (path !== '/task/read' && path !== '/task/todos') return ordinaryReply(state, path);
   if (!state.hold) return checkedReply(state, path);
   state.hold = false;
@@ -108,12 +129,15 @@ function frame(state: State, name: string, topic: string): void {
       controller.enqueue(new TextEncoder().encode(`event: ${name}\ndata: ${topic}\n\n`));
   }
 }
-export function dependentServer() {
-  const state: State = {
+function freshState(): State {
+  return {
     sent: [],
     streams: new Map(),
     held: [],
     hold: false,
+    holdPeople: false,
+    permitPerson: false,
+    peopleOutage: false,
     fail: null,
     rank: 4,
     waiting: 2,
@@ -121,6 +145,10 @@ export function dependentServer() {
     loseCreate: false,
     member: true,
   };
+}
+
+export function dependentServer() {
+  const state = freshState();
   const fetch: typeof globalThis.fetch = (input, init) =>
     Promise.resolve().then(() => reply(state, input, init));
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
@@ -140,6 +168,15 @@ export function dependentServer() {
     },
     fail: (next: State['fail']) => {
       state.fail = next;
+    },
+    permitPerson: () => {
+      state.permitPerson = true;
+    },
+    peopleOutage: (failed: boolean) => {
+      state.peopleOutage = failed;
+    },
+    holdPeople: () => {
+      state.holdPeople = true;
     },
     hold: () => {
       state.hold = true;

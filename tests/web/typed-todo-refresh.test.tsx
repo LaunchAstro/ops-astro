@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { TodosScreen } from '../../apps/web/src/screens/todos/Todos.tsx';
 import { mount, settle } from '../surfaces/mount.tsx';
@@ -141,3 +141,28 @@ it.each(['waiting then route', 'route then waiting'])(
     expect(view.host.querySelector<HTMLInputElement>('#todos-waiting')?.checked).toBe(true);
   },
 );
+
+it('a healthy unchanged stream retains the compact row evidence floor for tag membership and waiting counts', async () => {
+  vi.useFakeTimers();
+  try {
+    const t = changing();
+    t.healthy = true;
+    for (const todo of t.todos) todo.tags = [{ id: 'legal', name: 'Legal' }];
+    const view = await mount(<TodosScreen client={t.client} grantKey="synthetic:owner" />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await view.type('#todos-search', 'client:"Acme Physio" tag:legal');
+    expect(view.all('[data-todo-row]')).toHaveLength(2);
+    expect(view.find('[data-todos-waiting-count]')?.textContent).toContain('7 messages');
+    t.todos[0]!.tags = [];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(view.all('[data-todo-row]')).toHaveLength(1);
+    expect(view.find('[data-todos-waiting-count]')?.textContent).toContain('5 messages');
+    await view.unmount();
+  } finally {
+    vi.useRealTimers();
+  }
+});
