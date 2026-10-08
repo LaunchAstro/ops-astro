@@ -49,11 +49,13 @@ function rooted(address: string): Promise<Mounted> {
 }
 
 /** Wait for jsdom's history traversal to fire its popstate and React to draw it. */
-async function traversed(): Promise<void> {
+async function traversed(move: () => void): Promise<void> {
   await act(async () => {
-    await new Promise((done) => {
+    const arrived = new Promise((done) => {
       window.addEventListener('popstate', done, { once: true });
     });
+    move();
+    await arrived;
   });
 }
 
@@ -67,18 +69,16 @@ describe('MP-2-5 CS-2.3 step back and forward through the pages visited in this 
     expect(window.location.pathname).toBe('/settings');
     expect(button(view, 'Back')?.disabled).toBe(false);
 
-    await act(() => {
+    await traversed(() => {
       button(view, 'Back')?.click();
     });
-    await traversed();
     expect(window.location.pathname).toBe('/projects/');
     expect(view.find('h1')?.textContent).toBe('Projects');
     expect(button(view, 'Forward')?.disabled).toBe(false);
 
-    await act(() => {
+    await traversed(() => {
       button(view, 'Forward')?.click();
     });
-    await traversed();
     expect(window.location.pathname).toBe('/settings');
     expect(view.find('h1')?.textContent).toBe('Settings');
     await view.unmount();
@@ -101,10 +101,9 @@ describe('MP-2-5 forward is disabled when there is no later history entry (TR-S-
     expect(button(view, 'Forward')?.disabled).toBe(true);
     expect(button(view, 'Back')?.disabled).toBe(true);
     await follow(view, '.rail__item[href="/settings"]');
-    await act(() => {
+    await traversed(() => {
       button(view, 'Back')?.click();
     });
-    await traversed();
     expect(button(view, 'Forward')?.disabled).toBe(false);
     await follow(view, '.rail__item[href="/clients/"]');
     expect(button(view, 'Forward')?.disabled).toBe(true);

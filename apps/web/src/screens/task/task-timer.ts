@@ -12,6 +12,12 @@ export interface TimerBinding {
   readonly task: TimerTask;
   readonly running: TaskTimeView['running'];
 }
+export type TimerHold = Pick<TimerState, 'binding' | 'attempt'>;
+export type TimerDurability = 'none' | 'kept' | 'memory-only';
+export interface TimerCustody {
+  readonly restored: TimerHold | null;
+  readonly write: (hold: TimerHold) => TimerDurability;
+}
 interface Attempt {
   readonly command: 'time.start' | 'time.stop';
   readonly task: TimerTask;
@@ -27,12 +33,14 @@ export interface TimerState {
   readonly attempt: Attempt | null;
   readonly changed: number;
   readonly unavailable: boolean;
+  readonly durability: TimerDurability;
 }
 const initial = (): TimerState => ({
   binding: null,
   attempt: null,
   changed: 0,
   unavailable: false,
+  durability: 'none',
 });
 
 /** One owner's known clock and one exact write envelope; reads cannot settle a lost write. */
@@ -45,18 +53,29 @@ export class TaskTimer {
   private readonly listeners = new Set<() => void>();
   private client: OperationsClient;
   private readonly ownerOn: () => boolean;
-  constructor(client: OperationsClient, ownerOn: () => boolean) {
+  private readonly custody: TimerCustody | undefined;
+  constructor(client: OperationsClient, ownerOn: () => boolean, custody?: TimerCustody) {
     this.client = client;
     this.ownerOn = ownerOn;
+    this.custody = custody;
+    if (custody?.restored !== null && custody?.restored !== undefined)
+      this.state = { ...initial(), ...custody.restored, unavailable: true };
+    if (this.ownerOn()) this.state = this.keep(this.state);
+  }
+  private keep(next: TimerState): TimerState {
+    const durability =
+      this.custody?.write(next) ??
+      (next.binding === null && next.attempt === null ? 'none' : 'memory-only');
+    return { ...next, durability };
   }
   /** Same owner, new admitted bearer. Old transport replies have no authority here. */
   rebind(client: OperationsClient): void {
-    if (this.client === client) return;
+    if (!this.ownerOn() || this.client === client) return;
     this.client = client;
     this.version += 1;
     const attempt = this.state.attempt;
     if (attempt?.status === 'pending')
-      this.state = {
+      this.state = this.keep({
         ...this.state,
         attempt: {
           ...attempt,
@@ -64,7 +83,7 @@ export class TaskTimer {
           uncertain: true,
           because: 'The sign-in changed before the timer answer arrived.',
         },
-      };
+      });
   }
   readonly snapshot = (): TimerState => this.state;
   readonly subscribe = (notify: () => void): (() => void) => {
@@ -75,7 +94,7 @@ export class TaskTimer {
   };
   private put(next: TimerState): void {
     if (!this.ownerOn()) return;
-    this.state = next;
+    this.state = this.keep(next);
     for (const notify of this.listeners) notify();
   }
   readonly start = (task: TimerTask): void => {
@@ -184,6 +203,8 @@ export class TaskTimer {
     if ('ok' in result && 'task' in result.value)
       keys.push(result.value.task.id, result.value.task.key);
     const latest = keys.every((identity) => (this.readFloors.get(identity) ?? ticket) <= ticket);
+    // The caller owns a projection too: an older read cannot publish revoked labels.
+    if (!latest) return { unavailable: true, because: 'A newer task read superseded this answer.' };
     if (this.ownerOn() && current() && version === this.version && latest)
       this.observe(key, result);
     return result;

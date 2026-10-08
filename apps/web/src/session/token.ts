@@ -36,6 +36,9 @@ export interface Session {
 
 const KEY = 'ops-astro.session';
 
+/** Exact timer custody belongs to this tab's admitted owner, and ends on departure. */
+export const taskTimerKey = 'ops-astro.task-timer';
+
 /**
  * Where `/settings` keeps the last write this session had confirmed, per
  * business. It is named here because sign-out removes it: the tab outlives the
@@ -51,7 +54,7 @@ export const dockKey = (businessKey: string): string => `ops-astro.dock.${busine
 export const layoutKey = (businessKey: string): string => `ops-astro.layout.${businessKey}`;
 
 /**
- * How many times a session has ended in this tab: the session generation.
+ * How many times a session has ended or its owner departed in this tab.
  *
  * A request can be answered after the session that sent it has gone. What it
  * would leave in the tab must then be left out, or it outlives the sign-out
@@ -204,7 +207,12 @@ export class SessionStore {
       forgetBusiness(this.#storage, leaving.businessKey);
     }
     if (leaving?.businessKey !== session.businessKey || leaving.email !== session.email) {
+      if (leaving !== null) {
+        endings += 1;
+        this.#endings.write(endings);
+      }
       owners += 1;
+      jsonSlot(this.#storage, taskTimerKey, isRecord).remove();
     }
     const held = businessesIn(this.#held.read() ?? []);
     if (!held.includes(session.businessKey)) this.#held.write([...held, session.businessKey]);
@@ -217,6 +225,7 @@ export class SessionStore {
     endings += 1;
     this.#endings.write(endings);
     owners += 1;
+    jsonSlot(this.#storage, taskTimerKey, isRecord).remove();
     this.#session = null;
     this.#forgetInterruption();
     this.#kept.remove();

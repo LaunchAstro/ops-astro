@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useRereadOn } from './reread-on.ts';
+import { timerCustody } from './task-timer-custody.ts';
+import type { StorageLike } from '../../session/storage-slot.ts';
 import {
   Fragment,
   createContext,
@@ -23,6 +25,7 @@ export const useTaskTimer = (): TaskTimer | null => useContext(Context);
 export function TaskTimerProvider(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  readonly storage?: StorageLike | null;
   readonly active?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
@@ -31,10 +34,26 @@ export function TaskTimerProvider(props: {
   const owner = useMemo(() => ({ active: true }), [props.grantKey, tab]);
   latest.current = props.active === false ? null : owner;
   const timer = useMemo(
-    () => new TaskTimer(props.client, () => owner.active && latest.current === owner),
+    () =>
+      new TaskTimer(
+        props.client,
+        () => owner.active && latest.current === owner && tabOwnerGeneration() === tab,
+        props.storage === undefined ? undefined : timerCustody(props.storage, props.grantKey),
+      ),
     [owner],
   );
   timer.rebind(props.client);
+  useEffect(() => {
+    const held = timer.snapshot();
+    if (!held.unavailable) return;
+    const taskId = held.attempt?.task.id ?? held.binding?.task.id;
+    if (taskId !== undefined)
+      void timer
+        .read(taskId, () => owner.active && latest.current === owner)
+        .catch(() => {
+          // A failed recovery read leaves ID-only custody unavailable, never idle.
+        });
+  }, [timer, props.client, owner]);
   useEffect(() => {
     owner.active = true;
     return () => {
@@ -70,7 +89,11 @@ export function timerScreen(
 }
 
 export function timerFrame(
-  owner: { readonly client: OperationsClient; readonly grantKey: string },
+  owner: {
+    readonly client: OperationsClient;
+    readonly grantKey: string;
+    readonly storage?: StorageLike | null;
+  },
   active: boolean,
   select: (() => void) | null,
   children: ReactNode,
@@ -85,7 +108,13 @@ export function timerFrame(
 export function useTimerState() {
   const timer = useTaskTimer();
   const empty = useMemo(
-    () => ({ binding: null, attempt: null, changed: 0, unavailable: false }),
+    () => ({
+      binding: null,
+      attempt: null,
+      changed: 0,
+      unavailable: false,
+      durability: 'none' as const,
+    }),
     [],
   );
   const state = useSyncExternalStore(
@@ -176,7 +205,9 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
       )}
       {state.unavailable ? (
         <span role="status">
-          Task time could not be refreshed. Stop still files your known timer.
+          {binding !== null && state.attempt === null
+            ? 'Task time could not be refreshed. Stop still files your known timer.'
+            : 'Task time could not be refreshed.'}
         </span>
       ) : null}
       <TaskTimerNotice />
@@ -187,22 +218,36 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
 export function TaskTimerNotice(): ReactElement | null {
   const { timer, state } = useTimerState();
   const attempt = state.attempt;
-  if (attempt === null) return null;
+  if (attempt === null && state.durability !== 'memory-only') return null;
   return (
     <span role="status" data-task-timer-notice>
-      {attempt.status === 'pending'
-        ? 'Saving timer…'
-        : `${attempt.status === 'unknown' ? 'Timer outcome unknown' : 'Timer change refused'}: ${attempt.because ?? ''}`}
-      {attempt.status === 'pending' ? null : (
-        <button className="btn" type="button" data-task-timer-retry onClick={() => timer?.retry()}>
-          Retry
-        </button>
-      )}
-      {attempt.status === 'refused' ? (
-        <button className="btn" type="button" onClick={() => timer?.dismiss()}>
-          Dismiss refusal
-        </button>
+      {state.durability === 'memory-only' ? (
+        <span data-timer-custody>
+          Timer recovery is only in this tab. Reload may show an older recovery.
+        </span>
       ) : null}
+      {attempt === null ? null : (
+        <>
+          {attempt.status === 'pending'
+            ? 'Saving timer…'
+            : `${attempt.status === 'unknown' ? 'Timer outcome unknown' : 'Timer change refused'}: ${attempt.because ?? ''}`}
+          {attempt.status === 'pending' ? null : (
+            <button
+              className="btn"
+              type="button"
+              data-task-timer-retry
+              onClick={() => timer?.retry()}
+            >
+              Retry
+            </button>
+          )}
+          {attempt.status === 'refused' ? (
+            <button className="btn" type="button" onClick={() => timer?.dismiss()}>
+              Dismiss refusal
+            </button>
+          ) : null}
+        </>
+      )}
     </span>
   );
 }

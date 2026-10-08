@@ -35,7 +35,7 @@ function read(model: Model, id: string): Response {
         entries: model.finished.includes(id)
           ? [
               {
-                id: 'entry-a',
+                id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                 minutes: 1,
                 startedAt: START,
                 endedAt: START,
@@ -45,7 +45,10 @@ function read(model: Model, id: string): Response {
               },
             ]
           : [],
-        running: model.running === id ? { entryId: 'entry-a', startedAt: START } : null,
+        running:
+          model.running === id
+            ? { entryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', startedAt: START }
+            : null,
         totalMinutes: model.finished.includes(id) ? 1 : 0,
       },
     }),
@@ -70,8 +73,8 @@ function command(model: Model, request: Sent): Promise<Response> {
     revision: null,
     detail:
       request.path === '/time/start'
-        ? { entryId: 'entry-a', startedAt: START }
-        : { entryId: 'entry-a', minutes: 1 },
+        ? { entryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', startedAt: START }
+        : { entryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', minutes: 1 },
   };
   model.replies.set(operation, answer);
   if (request.path === '/time/stop' && model.lostStops-- > 0)
