@@ -5,8 +5,7 @@
 // to a teammate (picked from `person.list`, real), to a client, to a client's
 // waiting comments, or to a client's route family. The clients are the
 // business's own from `client.list` (C32), real and never mock-marked; a
-// client's route family has no source yet, so it is made-up and drawn under
-// the one shared mock label. The read each sends is the real `task.todos` scope. Each scope replaces the one
+// client's route family is the task page's actual whoseMove rule. The read each sends is the real `task.todos` scope. Each scope replaces the one
 // before, and a door opens the panel already scoped. What a scope may read
 // is the server's (`tests/commands/task-todos-scope*.test.ts`).
 
@@ -133,15 +132,17 @@ describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or 
     expect(view.find('[data-todos-waiting-count]')?.textContent).toContain(String(landed));
   });
 
-  it('a client’s route family: drawn under the mock label, read as the client, said in words', async () => {
+  it('a client’s route family: actual whoseMove filters the client read and is said in words', async () => {
     const { view, choose, last } = await panel();
-    expect(view.find('#todos-family')?.closest('.is-mock')).not.toBeNull();
+    expect(view.find('#todos-family')?.closest('.is-mock')).toBeNull();
     await choose('#todos-client', ACME.id);
     expect(options(view, '#todos-family')).toStrictEqual(['', ...ROUTE_FAMILIES]);
     const family = ROUTE_FAMILIES[0] ?? '';
     await choose('#todos-family', family);
     expect(last()).toStrictEqual({ client: ACME.id });
     expect(view.find('[data-todos-scope]')?.textContent).toContain(family);
+    expect(keysOf(view)).toStrictEqual(['Proj-Bravo']);
+    expect(view.find('[data-todos-waiting-count]')).toBeNull();
   });
 });
 

@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Review proofs for S0-2 at ce25f42. These tests intentionally fail on that head.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import {
@@ -81,18 +90,26 @@ it('the watcher plan carries effects and next steps for its alerts', () => {
   }
 });
 
+function productionUnder(directory: string): string {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const file = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        return ['node_modules', 'dist'].includes(entry.name) ? [] : [productionUnder(file)];
+      }
+      return entry.isFile() &&
+        /\.(?:ts|tsx|mjs|js)$/u.test(file) &&
+        !file.endsWith('/apps/api/alerts/detect.ts')
+        ? [readFileSync(file, 'utf8')]
+        : [];
+    })
+    .join('\n');
+}
+
 it('every security detection has a production signal source', () => {
-  const sourceFiles = ['apps', 'packages', 'scripts'].flatMap((directory) =>
-    readdirSync(resolve(ROOT, directory), { recursive: true })
-      .map((relative) => resolve(ROOT, directory, String(relative)))
-      .filter(
-        (file) =>
-          /\.(?:ts|tsx|mjs|js)$/u.test(file) &&
-          !file.endsWith('/apps/api/alerts/detect.ts') &&
-          statSync(file).isFile(),
-      ),
-  );
-  const production = sourceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+  const production = ['apps', 'packages', 'scripts']
+    .map((directory) => productionUnder(resolve(ROOT, directory)))
+    .join('\n');
   // Narrowed by the builder, disputed for Sol to rule (review 1 reply): no webhook
   // receiver exists on this base, so a webhook signature failure has no source to
   // wire; the ticket that adds the receiver calls observe with that signal.
@@ -100,6 +117,24 @@ it('every security detection has a production signal source', () => {
     (kind) => !production.includes(`kind: '${kind}'`),
   );
   expect(missing).toEqual([]);
+});
+
+it('generated caches cannot supply a missing production signal', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'security-source-census-'));
+  try {
+    const cache = resolve(root, 'apps/web/node_modules/.vite-reload-test/deps');
+    const dist = resolve(root, 'packages/core/dist');
+    mkdirSync(cache, { recursive: true });
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(resolve(root, 'apps/signal.ts'), "kind: 'secret-scan-failed'");
+    writeFileSync(resolve(cache, 'react-dom.js'), "kind: 'export'");
+    writeFileSync(resolve(dist, 'bundle.js'), "kind: 'export'");
+    symlinkSync(resolve(root, 'vanished-cache.js'), resolve(cache, 'vanished.js'));
+    expect(productionUnder(root)).toContain("kind: 'secret-scan-failed'");
+    expect(productionUnder(root)).not.toContain("kind: 'export'");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 it('repeated agent cross-business refusals raise a burst alert', async () => {

@@ -178,12 +178,14 @@ const firstLine = (value) =>
     .split('\n')[0]
     .trim();
 
-/** The database's committed and rolled-back transaction count. */
+/** The database's transaction and normal client-session counts. */
 const readCounter = async (client) => {
+  // Flush this backend's pending reads so calibration and suite reads cost the same.
+  await client.query('select pg_stat_force_next_flush()');
   const { rows } = await client.query(
-    'select xact_commit + xact_rollback as n from pg_stat_database where datname = current_database()',
+    'select xact_commit + xact_rollback as n, sessions from pg_stat_database where datname = current_database()',
   );
-  return Number(rows[0]?.n ?? 0);
+  return { transactions: Number(rows[0]?.n ?? 0), sessions: Number(rows[0]?.sessions ?? 0) };
 };
 
 const client = new pg.Client({ connectionString: url });
@@ -206,7 +208,7 @@ try {
   // same pair of reads brackets each suite, so the cost is the same one.
   const first = await readCounter(client);
   const second = await readCounter(client);
-  selfCost = Math.max(1, second - first);
+  selfCost = Math.max(1, second.transactions - first.transactions);
 } catch (error) {
   console.error(
     'db-conformance: the database named by DATABASE_URL did not answer, or its migrated template was not built.',
@@ -323,7 +325,7 @@ const runSuite = async (suite, part) => {
   // zero for a failed pre-suite read turned the cumulative counter into a
   // movement, and a suite that never touched the database passed rule 7.
   // Either read failing leaves the suite unmeasured, and that fails the run.
-  let before = 0;
+  let before = { transactions: 0, sessions: 0 };
   let readError;
   try {
     before = await readCounter(client);
@@ -356,7 +358,14 @@ const runSuite = async (suite, part) => {
     }
   }
   const report = readReport(reportPath, suite, part);
-  return { suite, run, report, moved: after - before, readError };
+  return {
+    suite,
+    run,
+    report,
+    moved: after.transactions - before.transactions,
+    clientSessions: after.sessions - before.sessions,
+    readError,
+  };
 };
 
 const results = [];
@@ -540,20 +549,21 @@ await client.end().catch(() => {});
 // 7. Did each named suite actually reach the database? The counter is read
 // either side of each suite's own run, so a suite that passes beside the
 // database is named here even when a sibling moved the number.
-const beside = results.filter((r) => r.moved <= selfCost);
+// Each suite starts a fresh process. Reader and autovacuum transactions are not its SQL.
+const beside = results.filter((r) => r.moved <= selfCost || r.clientSessions <= 0);
 if (failures.length === 0 && beside.length > 0) {
   failures.push(
-    `${String(beside.length)} named suite(s) passed without the database ` +
-      'recording a single transaction:\n' +
+    `${String(beside.length)} named suite(s) did not show both ` +
+      'transaction movement above measurement cost and a new client session:\n' +
       beside
         .map(
           (r) =>
             `          ${r.item}\n            pg_stat_database moved by ` +
-            `${String(r.moved)} while it ran.`,
+            `${String(r.moved)} while it ran, with ${String(r.clientSessions)} new client session(s).`,
         )
         .join('\n') +
-      `\n        A read of the counter costs ${String(selfCost)} on this database, so\n` +
-      '        nothing in these suites reached it. A suite that passes beside the\n' +
+      `\n        A read of the counter costs ${String(selfCost)} on this database.\n` +
+      '        Each suite must also establish a client session. A suite that passes beside the\n' +
       "        database is not a conformance proof, and a sibling's transactions\n" +
       '        are not its own.',
   );

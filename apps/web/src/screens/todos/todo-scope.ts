@@ -11,9 +11,8 @@
 // waiting comments keeps, of that same answer, the tasks with messages owed,
 // so the count a door shows and the rows that land are one derivation.
 //
-// **The clients are the business's own** (`client.list`, C32). A client's
-// route family has no source yet, so the families are made-up and the panel
-// draws them under the one shared mock label; the read they send is the real one.
+// Client names come from current client.list reach. Route families use the
+// same runtime whose-move evidence as the board; neither name nor route grants access.
 
 import type { TodoView } from '../../../../../packages/core-wire/src/index.ts';
 
@@ -32,7 +31,7 @@ export type TodoScope =
 
 export const MINE: TodoScope = { kind: 'mine' };
 
-/** A client's route families (its work board's Agent, Review and Team routes): made-up, no source yet. */
+// Route families use task.todos' runtime whose-move evidence.
 export const ROUTE_FAMILIES: readonly string[] = ['Agent', 'Review', 'Team'];
 
 /** The `task.todos` body a scope sends. */
@@ -56,14 +55,14 @@ export function wordsOf(scope: TodoScope): string | null {
   ].join(', ');
 }
 
-/**
- * The rows a scope keeps of its read's answer. A route family does not narrow
- * yet: no task carries one on this base (the work board's routes), so it is
- * the client's list, said in words, until one does.
- */
+/** Waiting and route scope intersect within the server's admitted client answer. */
 export const narrowed = (todos: readonly TodoView[], scope: TodoScope): readonly TodoView[] =>
-  scope.kind === 'client' && scope.waiting === true
-    ? todos.filter((todo) => todo.waitingComments > 0)
+  scope.kind === 'client'
+    ? todos.filter(
+        (todo) =>
+          (scope.waiting !== true || todo.waitingComments > 0) &&
+          (scope.family === undefined || todo.whoseMove === scope.family),
+      )
     : todos;
 
 /** The client messages owed a reply across these rows: the count a door shows. */
