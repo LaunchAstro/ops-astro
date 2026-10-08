@@ -16,6 +16,7 @@ export {
   commentSignals,
   lockComment,
   readTaskComments,
+  readTaskCommentEvidence,
   removeComment,
   rewriteComment,
   type CommentSignal,
@@ -39,5 +40,6 @@ export {
   TAG_NAME_LIMIT,
   tagNameOf,
   tagsOfTask,
+  tagsOfTasks,
   type Tag,
 } from './tags.ts';

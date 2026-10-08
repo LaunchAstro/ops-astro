@@ -73,11 +73,17 @@ export const VERB_TABLE: readonly VerbRow[] = [
   {
     verb: 'task list',
     command: 'task.board',
-    usage: '[--board <id>] [--limit n] [--page <next>] [--detail ...] [--fields a,b] [--json]',
+    usage:
+      '[--board <id> | --mode aggregate] [--person <id>] [--client <id>] [--limit n] [--page <next>] [--detail ...] [--fields a,b] [--json]',
     body: (_id, flags) => {
       const limit = maybe(flags, 'limit');
+      const mode = maybe(flags, 'mode');
       return {
-        board: maybe(flags, 'board') ?? null,
+        ...(mode === undefined
+          ? { board: maybe(flags, 'board') ?? null }
+          : { mode, ...optional('board', maybe(flags, 'board')) }),
+        ...optional('person', maybe(flags, 'person')),
+        ...optional('client', maybe(flags, 'client')),
         detail: detail(flags),
         ...(limit === undefined ? {} : { limit: Number(limit) }),
         ...optional('page', maybe(flags, 'page')),

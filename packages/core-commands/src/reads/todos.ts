@@ -20,11 +20,17 @@
 // gates and leases `task.read`'s proposals answer, asked only of the rows
 // served.
 
-import { commentSignals, readTaskComments, tagsOfTask } from '../../../core-records/src/index.ts';
+import {
+  commentSignals,
+  readTaskCommentEvidence,
+  tagsOfTasks,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { TodoView } from '../../../core-wire/src/index.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import { SELECT, summaryOf, type TaskRowRead } from './tasks.ts';
+
+export const OPEN_TODO_SQL = `coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled') and not (r.data ? 'archived_at')`;
 
 /** Whose open tasks: one person's (the reader's own, or a teammate's), or a client's. */
 export type TodoScope =
@@ -44,8 +50,7 @@ export async function readTodos(
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and ($3::uuid is null or r.uuid_2 = $3::uuid)
         and ($4::uuid is null or r.uuid_7 = $4::uuid)
-        and coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
-        and not (r.data ? 'archived_at')
+        and ${OPEN_TODO_SQL}
       order by r.ts_1 nulls last, r.created_at, r.id`,
     [tx.businessId, spine.taskTypeId, person, client],
   );
@@ -53,12 +58,16 @@ export async function readTodos(
     tx,
     rows.map((row) => row.id),
   );
+  const extras = await extrasForTasks(
+    tx,
+    spine,
+    rows.map((row) => row.id),
+  );
   const todos: TodoView[] = [];
   for (const row of rows) {
     todos.push({
       ...summaryOf(row),
-      // eslint-disable-next-line no-await-in-loop -- one task's tags and thread at a time, in order
-      ...(await extrasOf(tx, spine, row.id)),
+      ...(extras.get(row.id) ?? { tags: [], waitingComments: 0 }),
       category: row.category,
       whoseMove: moves.get(row.id) ?? 'Team',
     });
@@ -72,7 +81,7 @@ export async function readTodos(
  * a reservation on one of its runs holds a live lease; a task with neither is
  * absent, so Team.
  */
-async function movesOf(
+export async function movesOf(
   tx: TenantQuery,
   taskIds: readonly string[],
 ): Promise<ReadonlyMap<string, TodoView['whoseMove']>> {
@@ -109,19 +118,32 @@ async function movesOf(
   return moves;
 }
 
-/** One task's tags and the client messages owed a reply by the team. */
-async function extrasOf(
+/** Batched tags and canonical client reply signals for the admitted rows. */
+export async function extrasForTasks(
   tx: TenantQuery,
   spine: TaskSpine,
-  taskId: string,
-): Promise<Pick<TodoView, 'tags' | 'waitingComments'>> {
+  taskIds: readonly string[],
+): Promise<ReadonlyMap<string, Pick<TodoView, 'tags' | 'waitingComments'>>> {
   const comments =
     spine.taskCommentTypeId === undefined
       ? []
-      : await readTaskComments(tx, spine.taskCommentTypeId, taskId);
-  let waitingComments = 0;
-  for (const signal of commentSignals(comments).values()) {
-    if (signal === 'owed') waitingComments += 1;
+      : await readTaskCommentEvidence(tx, spine.taskCommentTypeId, taskIds);
+  const tags = await tagsOfTasks(tx, taskIds);
+  const threads = new Map<string, (typeof comments)[number][]>();
+  for (const comment of comments) {
+    const thread = threads.get(comment.taskId) ?? [];
+    thread.push(comment);
+    threads.set(comment.taskId, thread);
   }
-  return { tags: await tagsOfTask(tx, taskId), waitingComments };
+  return new Map(
+    taskIds.map((id) => [
+      id,
+      {
+        tags: tags.get(id) ?? [],
+        waitingComments: [...commentSignals(threads.get(id) ?? []).values()].filter(
+          (signal) => signal === 'owed',
+        ).length,
+      },
+    ]),
+  );
 }

@@ -78,6 +78,28 @@ export async function tagsOfTask(tx: TenantQuery, taskId: string): Promise<reado
   );
 }
 
+/** Tags carried by the admitted tasks, in each task's canonical name order. */
+export async function tagsOfTasks(
+  tx: TenantQuery,
+  taskIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly Tag[]>> {
+  if (taskIds.length === 0) return new Map();
+  const rows = await tx.query<Tag & { readonly task_id: string }>(
+    `select t.task_id::text, g.id, g.name from public.task_tags t
+       join public.tags g on g.business_id = t.business_id and g.id = t.tag_id
+      where t.business_id = $1 and t.task_id = any($2::uuid[])
+      order by lower(g.name), g.id`,
+    [tx.businessId, taskIds],
+  );
+  const tasks = new Map<string, Tag[]>();
+  for (const row of rows) {
+    const tags = tasks.get(row.task_id) ?? [];
+    tags.push({ id: row.id, name: row.name });
+    tasks.set(row.task_id, tags);
+  }
+  return tasks;
+}
+
 /**
  * A live task of this business carrying the id, and a tag of its vocabulary.
  *

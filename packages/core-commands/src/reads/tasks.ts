@@ -19,6 +19,9 @@
 // NOT_FOUND -- the same answer, in the same shape, as an identifier that was
 // never real.
 
+import type { TaskSpine } from '../commands/context.ts';
+import { extrasForTasks, movesOf, OPEN_TODO_SQL, type TodoScope } from './todos.ts';
+
 import {
   commentSignals,
   externalCommentProjection,
@@ -419,7 +422,7 @@ function slotColumn(slot: string): string {
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
-  board: string | null,
+  board: string | null | TodoScope,
   readable: readonly string[] | null,
 ): Promise<readonly TaskSummary[]> {
   return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
@@ -441,18 +444,33 @@ export async function readBoard(
 export async function readBoardStamped(
   tx: TenantQuery,
   taskTypeId: string,
-  board: string | null,
+  board: string | null | TodoScope,
   readable: readonly string[] | null,
   decidable: DecideReach | null = null,
   reader: string | null = null,
+  identities: { readonly person?: string | undefined; readonly client?: string | undefined } = {},
+  spine?: TaskSpine,
 ): Promise<{ readonly tasks: readonly BoardRead[]; readonly changedAt: string | null }> {
+  const aggregate = typeof board === 'object' && board !== null;
+  const narrowed = aggregate ? board : identities;
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid)
+        and ($5::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
         and ($4::uuid[] is null or r.id = any($4::uuid[]))
+        and ($6::uuid is null or r.uuid_2 = $6::uuid)
+        and ($7::uuid is null or r.uuid_7 = $7::uuid)
+        and (not $5::boolean or (${OPEN_TODO_SQL}))
       order by r.num_2 nulls last, r.created_at`,
-    [tx.businessId, taskTypeId, board, readable],
+    [
+      tx.businessId,
+      taskTypeId,
+      aggregate ? null : board,
+      readable,
+      aggregate,
+      narrowed.person ?? null,
+      narrowed.client ?? null,
+    ],
   );
   let newest: Date | null = null;
   for (const row of rows) {
@@ -482,6 +500,21 @@ export async function readBoardStamped(
       comments: comments.get(row.id) ?? NO_COMMENTS,
     }),
   );
+  if (spine !== undefined) {
+    const moves = await movesOf(tx, served);
+    const extras = await extrasForTasks(tx, spine, served);
+    const projected = [];
+    for (const task of tasks) {
+      projected.push({
+        ...task,
+        todo: {
+          ...(extras.get(task.id) ?? { tags: [], waitingComments: 0 }),
+          whoseMove: moves.get(task.id) ?? ('Team' as const),
+        },
+      });
+    }
+    return { tasks: projected, changedAt: newest?.toISOString() ?? null };
+  }
   return { tasks, changedAt: newest?.toISOString() ?? null };
 }
 
