@@ -8,10 +8,14 @@
 // answer releases its key only while the key still holds its own id.
 
 import { createContext, use, useRef } from 'react';
+import type { CommentCustody } from './comment-custody.ts';
 
 export type Held = Record<string, string | undefined>;
 
 export const HeldOperations = createContext<Held | null>(null);
+
+/** Exact post/reply custody is App-owned, above the page's local held-ID provider. */
+export const HeldComments = createContext<CommentCustody | null>(null);
 
 /** The page's held ids where it holds them, else this box's own. */
 export function useHeldOperations(): Held {

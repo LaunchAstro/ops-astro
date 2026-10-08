@@ -77,3 +77,10 @@ export function tabStorage(): Storage | null {
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu;
+
+/** A stored UUID's shape, without granting visibility or authority over its row. */
+export function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID.test(value);
+}

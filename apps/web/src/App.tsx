@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The application: which address is open, who is signed in, and nothing else.
-//
-// **There is no demonstration state and no way to ask for one.** A `?state=`
-// parameter selecting a seeded corpus is how a mockup demonstrates itself,
-// not how a product reports.
-// Every screen below reads through the real client, and a read that fails draws
-// the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
-// — the words and tones a state may print — and not as a source of rows.
+// The application: admitted owner, address and shared screen custody.
+// Screens read through the real client; failed reads draw their failure.
+// The packages/ui vocabulary supplies no rows or demonstration state.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
@@ -25,6 +20,7 @@ import { shellDock, useDockShell } from './dock/dock-props.tsx';
 import { useAskOpensAgent } from './dock/agent-dock.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { TaskPinsProvider } from './screens/task/task-pins-context.tsx';
+import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
 import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
@@ -240,61 +236,65 @@ export function App(props: AppProps): ReactElement {
     );
   return (
     <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
-      <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
-        <SignedInName value={personName}>
-          <PageFreshnessProvider>
-            <PagePresenceProvider>
-              <Shell
-                face={face}
-                build={buildStamp()}
-                rail={rail}
-                here={bare}
-                strip={
-                  <FrameStrip
-                    face={face}
-                    identity={identity}
-                    clientSlug={at?.client ?? null}
-                    steps={props.steps}
-                    onSearch={searchable ? search.open : null}
-                    searchRef={search.box}
-                    session={session}
-                    personName={personName}
-                    navigate={navigate}
-                    onSignOut={onSignOut}
-                  />
-                }
-                tabs={tabs}
-                nav={{ open: navOpen, onToggle: setNavOpen }}
-                onNavigate={navigate}
-                meta={
-                  <>
-                    <StripFreshness
-                      fallback={
-                        offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                      }
+      <CommentCustodyProvider client={client} grantKey={grantKey} storage={props.storage}>
+        <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
+          <SignedInName value={personName}>
+            <PageFreshnessProvider>
+              <PagePresenceProvider>
+                <Shell
+                  face={face}
+                  build={buildStamp()}
+                  rail={rail}
+                  here={bare}
+                  strip={
+                    <FrameStrip
+                      face={face}
+                      identity={identity}
+                      clientSlug={at?.client ?? null}
+                      steps={props.steps}
+                      onSearch={searchable ? search.open : null}
+                      searchRef={search.box}
+                      session={session}
+                      personName={personName}
+                      navigate={navigate}
+                      onSignOut={onSignOut}
                     />
-                    {session === null ? null : <StripPresence />}
-                  </>
-                }
-                title={title}
-                {...shellDock(docked, dockScreen, agent)}
-              >
-                <FaceProvider face={face}>{content}</FaceProvider>
-              </Shell>
-              {search.showing && searchable ? (
-                <SearchPalette
-                  client={client}
-                  onOpen={(address) => {
-                    search.dismiss();
-                    navigate(address);
-                  }}
-                  onClose={search.close}
-                />
-              ) : null}
-            </PagePresenceProvider>
-          </PageFreshnessProvider>
-        </SignedInName>
-      </TaskPinsProvider>
+                  }
+                  tabs={tabs}
+                  nav={{ open: navOpen, onToggle: setNavOpen }}
+                  onNavigate={navigate}
+                  meta={
+                    <>
+                      <StripFreshness
+                        fallback={
+                          offlineSince === null
+                            ? null
+                            : { state: 'offline', lastRead: offlineSince }
+                        }
+                      />
+                      {session === null ? null : <StripPresence />}
+                    </>
+                  }
+                  title={title}
+                  {...shellDock(docked, dockScreen, agent)}
+                >
+                  <FaceProvider face={face}>{content}</FaceProvider>
+                </Shell>
+                {search.showing && searchable ? (
+                  <SearchPalette
+                    client={client}
+                    onOpen={(address) => {
+                      search.dismiss();
+                      navigate(address);
+                    }}
+                    onClose={search.close}
+                  />
+                ) : null}
+              </PagePresenceProvider>
+            </PageFreshnessProvider>
+          </SignedInName>
+        </TaskPinsProvider>
+      </CommentCustodyProvider>
     </StepUpProviders>
   );
 }
