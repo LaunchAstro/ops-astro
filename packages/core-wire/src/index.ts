@@ -93,6 +93,7 @@ export type {
   ClientPrivacyView,
   ClientView,
   TaskClientSummary,
+  TaskClientFacts,
   CommentView,
   DecisionLink,
   EvidenceView,

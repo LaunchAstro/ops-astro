@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ReactElement } from 'react';
 import type { PersonListResult } from '../../../../../packages/core-wire/src/index.ts';
-import type { LoadedProps } from '../TaskDetail.tsx';
+import type { LoadedProps } from './loaded-props.ts';
 import { AgentSection } from '../../views/agent-pane.tsx';
 import { Proposals } from '../../views/proposals.tsx';
 import { RunProgressRead } from '../../views/run-progress.tsx';
