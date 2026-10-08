@@ -8,41 +8,17 @@
 // where one can help.
 
 import { describe, expect, it } from 'vitest';
-import { Projects } from '../../apps/web/src/screens/Projects.tsx';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { clientNamesOf } from '../../apps/web/src/screens/projects/client-names.ts';
 import type { ClientListResult } from '../../packages/core-wire/src/index.ts';
 import { facetId } from '../../packages/ui/src/board/project-facets.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import { SUMMIT_TASK, panel, clientFor } from './projects-board-destination-support.tsx';
 import { json, refused, tick } from './work-log-stand-in.tsx';
 
 const SUMMIT = { clientId: 'c-summit', name: 'Summit Allied' };
 /** A client the reader reaches with no task on the board. */
 const QUIET = { clientId: 'c-quiet', name: 'Quiet Clinic' };
 const QUIET_BOARD = `/projects/?${new URLSearchParams({ f: facetId('client', QUIET.name) }).toString()}`;
-
-const SUMMIT_TASK = {
-  id: '00000000-0000-4000-8000-000000000001',
-  key: 'T-1',
-  title: 'Summit intake form',
-  state: { id: 's-1', key: 'active', label: 'Active', machineCategory: 'started' },
-  assignee: null,
-  due: null,
-  priority: null,
-  completedAt: null,
-  revision: 1,
-  rank: { number: null, score: null, calc: 'not ranked' },
-  stage: null,
-  clientSet: true,
-  client: SUMMIT,
-  actualMinutes: 0,
-  estimateMinutes: null,
-  category: null,
-  pageLink: null,
-  statePosition: 1,
-  waitReason: null,
-  awaitingDecision: false,
-};
 
 /** The board with Summit's one task; `client.list` answers each read with the next answer. */
 function server(clients: (Response | Promise<Response>)[]) {
@@ -63,14 +39,6 @@ function server(clients: (Response | Promise<Response>)[]) {
   }) as unknown as typeof globalThis.fetch;
   return { fetch, listed: () => listed };
 }
-
-/** A dock panel's Projects at `address`; one client across renders, so a re-render walks the same instance. */
-const panel = (client: OperationsClient, address: string) => (
-  <Projects client={client} grantKey="alpha:owner" navigate={() => {}} address={address} inPanel />
-);
-
-const clientFor = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 async function board(fetch: typeof globalThis.fetch): Promise<Mounted> {
   const view = await mount(panel(clientFor(fetch), QUIET_BOARD));

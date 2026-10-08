@@ -7,9 +7,11 @@
 // re-reads the inbox alone. While the stream is down the hub's 30-second floor
 // re-reads both; while it is up, nothing polls.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { OperationsClient } from '../operations/client.ts';
 import { hubOf } from './live.ts';
+import { useRead, type UseReadOptions } from './use-read.ts';
+import { tabRollupFloor } from './rollup-floor.ts';
 
 /** The board's topic on the tab's one stream (C4). */
 export const BOARD = 'board';
@@ -21,7 +23,7 @@ export type FollowInbox = (reload: () => void) => () => void;
 export function useBoardLive(
   client: OperationsClient,
   grantKey: string,
-  reloadBoard: () => void,
+  reloadBoard?: () => void,
 ): FollowInbox {
   const boardRef = useRef(reloadBoard);
   boardRef.current = reloadBoard;
@@ -29,7 +31,7 @@ export function useBoardLive(
   useEffect(
     () =>
       hubOf(client).follow(BOARD, (change) => {
-        if (change !== 'inbox') boardRef.current();
+        if (change !== 'inbox') boardRef.current?.();
         for (const reload of panels.current) reload();
       }),
     [client, grantKey],
@@ -40,4 +42,57 @@ export function useBoardLive(
       panels.current.delete(reload);
     };
   }, []);
+}
+
+/** A dependent projection follows the existing board channel and its fallback. */
+export function useBoardDependency(
+  client: OperationsClient,
+  grantKey: string,
+  reload: () => void,
+): void {
+  useBoardLive(client, grantKey, reload);
+}
+
+/** Row and vocabulary dependencies retain their floor, coalesced with board changes. */
+export function useBoardProjectionRead<T>(client: OperationsClient, options: UseReadOptions<T>) {
+  const source = useMemo(() => {
+    let pending: (() => void) | null = null;
+    const schedule = (run: () => void, board: boolean): void => {
+      if (pending !== null) {
+        if (board) pending = run;
+        return;
+      }
+      pending = run;
+      queueMicrotask(() => {
+        const next = pending;
+        pending = null;
+        next?.();
+      });
+    };
+    return {
+      floor: {
+        follow: (run: () => void) =>
+          tabRollupFloor().follow(() => {
+            schedule(run, false);
+          }),
+      },
+      board: (run: () => void) => {
+        schedule(run, true);
+      },
+      stop: () => {
+        pending = null;
+      },
+    };
+  }, [client, options.grantKey]);
+  const read = useRead({ ...options, rollup: source.floor });
+  useEffect(() => {
+    const stop = hubOf(client).follow(BOARD, (change) => {
+      if (change !== 'inbox') source.board(read.reload);
+    });
+    return () => {
+      stop();
+      source.stop();
+    };
+  }, [client, source, read.reload]);
+  return read;
 }

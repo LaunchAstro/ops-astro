@@ -22,8 +22,13 @@ import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import { settle, type Settlement } from '../records/use-command.ts';
+import { titleOf } from '../views/task-title.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
-import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_STAGES,
+  TASK_CATEGORIES,
+  isInProductLink,
+} from '../../../../packages/core-wire/src/index.ts';
 
 /**
  * What the board needs of the dock task panel's host (the application's
@@ -230,4 +235,52 @@ export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['d
   const day = iso.slice(0, 10);
   if (day < today) return 'past';
   return day === today ? 'today' : 'later';
+}
+
+/** One task from the read as a Projects board row (MP-5-8). */
+export function rowOf(task: BoardTask): ProjectRow {
+  // A read from a server that predates Assign to AI, the category or the
+  // comment counts carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments' | 'client'>> =
+    task;
+  const agent = read.agent ?? null;
+  const category = read.category ?? null;
+  return {
+    id: task.id,
+    key: task.key,
+    name: titleOf(task.title),
+    revision: task.revision,
+    rank: { number: task.rank.number, calc: task.rank.calc },
+    starred: false,
+    // The client by name where the reader reaches it (C32's rule); a server
+    // that predates it, or a client out of reach, sends none.
+    client: read.client?.name ?? null,
+    assignee: assigneeOf(task, agent),
+    // The reader's own agents for the task; the read sends no one else's.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
+    // The tick sends the reader's agent's work to review unless it is there.
+    toReview:
+      agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
+    due: task.due,
+    completed: task.completedAt !== null,
+    stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),
+    status: task.state?.label ?? 'No state',
+    statusPosition: task.statePosition,
+    // A run awaiting approval is the one wait the read carries; the banner
+    // prints the mockup's word for it (B-21).
+    waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
+    // The stored category by its label (TASK_CATEGORIES); a value outside
+    // the list draws as stored, and none offers no chip (P-13).
+    category: category === null ? null : TASK_CATEGORIES.labelOf(category),
+    awaitingDecision: task.awaitingDecision,
+    estimate:
+      task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },
+    // The time logged on the task (MP-4-6); none logged draws a dash.
+    actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
+    // A stored link that is not an address inside the product is never a
+    // door (MP-4-12); the door is then the task's own page.
+    ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
+    // The reader's own waiting client signals and mentions (MP-5-8).
+    comments: read.comments ?? { client: 0, mentions: 0, latest: null },
+  };
 }
