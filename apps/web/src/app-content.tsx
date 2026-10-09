@@ -8,6 +8,7 @@ import { BoardEditProvider } from './screens/projects/board-edit-context.tsx';
 import { CreateProvider } from './screens/task/create-context.tsx';
 import { AssignmentProvider } from './screens/task/assignment-context.tsx';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
+import { ScoresCustodyProvider } from './screens/task/scores-custody-context.tsx';
 import { timerFrame } from './screens/task/task-timer-context.tsx';
 import { gateOf } from './route-gate.ts';
 import type { RouteMatch } from './routes.ts';
@@ -81,13 +82,19 @@ export function frameCustody(
           grantKey={owner.grantKey}
           storage={owner.storage ?? null}
         >
-          <BoardEditProvider
+          <ScoresCustodyProvider
             client={owner.client}
             grantKey={owner.grantKey}
             storage={owner.storage ?? null}
           >
-            {children}
-          </BoardEditProvider>
+            <BoardEditProvider
+              client={owner.client}
+              grantKey={owner.grantKey}
+              storage={owner.storage ?? null}
+            >
+              {children}
+            </BoardEditProvider>
+          </ScoresCustodyProvider>
         </CommentCustodyProvider>
       </CreateProvider>
     </AssignmentProvider>,

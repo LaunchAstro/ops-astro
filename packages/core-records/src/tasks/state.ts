@@ -51,6 +51,8 @@ export async function readTaskStates(
 
 /**
  * Point a task at a state, and set or clear the completion stamp with it.
+ * The first started state also stamps the R70 start date in this write.
+ * Later transitions retain it; a normal task.update may correct or clear it.
  *
  * One statement, so the stamp and the state cannot be observed apart. The
  * stamp is written into `data` because a slot is never written directly — the
@@ -90,10 +92,21 @@ export async function setTaskState(
               when $4::timestamptz is null
                 then (data - 'completed_at') || jsonb_build_object('state', $3::text)
               else data || jsonb_build_object('state', $3::text, 'completed_at', $4::text)
+            end || case
+              when $5::boolean and data ->> 'started_at' is null
+                then jsonb_build_object('started_at', coalesce($6::timestamptz, now())::text)
+              else '{}'::jsonb
             end
       where business_id = $1 and id = $2 and deleted_at is null
       returning id`,
-    [tx.businessId, options.taskId, options.stateId, completedAt],
+    [
+      tx.businessId,
+      options.taskId,
+      options.stateId,
+      completedAt,
+      state.machineCategory === 'started',
+      options.now ?? null,
+    ],
   );
   if (updated.length === 0) {
     return refuse('NOT_FOUND', ['task'], ['No live task carries that identifier here.']);

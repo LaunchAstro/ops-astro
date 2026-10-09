@@ -40,6 +40,7 @@ import { StatusField } from './StatusField.tsx';
 import { ClientField } from './ClientField.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { CategoryField } from './CategoryField.tsx';
+import { ScoreFields } from './ScoreFields.tsx';
 
 export interface PanelFieldsProps extends ClientSeams {
   readonly client: OperationsClient;
@@ -160,6 +161,7 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       <EstimateField {...props} {...field} />
       <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
       <StageField {...props} {...field} />
+      <ScoreFields {...props} scope="panel" disabled={field.busy} />
       <StatusField
         client={props.client}
         task={props.task}

@@ -197,6 +197,18 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
+    // R70 (MP-4-9): the actual task start date, not a time-entry clock.
+    // The lifecycle stamps its first start; task.update can correct a date.
+    key: 'started_at',
+    label: 'Started at',
+    valueType: 'timestamptz',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+    visibilityClass: 'internal',
+  },
+  {
     key: 'due',
     label: 'Due',
     valueType: 'timestamptz',
