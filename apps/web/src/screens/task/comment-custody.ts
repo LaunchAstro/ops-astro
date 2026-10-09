@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { OperationsClient } from '../../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../../records/use-command.ts';
-import { isRecord, isUuid, type StorageLike } from '../../session/storage-slot.ts';
+import {
+  isRecord,
+  isUuid,
+  verifiedJsonWrite,
+  type StorageLike,
+} from '../../session/storage-slot.ts';
 import { tabOwnerGeneration } from '../../session/token.ts';
 
 /** The complete original task.comment envelope, without a transport or credential. */
@@ -150,13 +155,7 @@ export class CommentCustody {
         .filter(([, hold]) => hold.pending !== null)
         .map(([id, hold]) => [id, hold.pending]),
     );
-    const raw = JSON.stringify({ version: 1, owner: this.#owner, tasks });
-    try {
-      this.#storage.setItem(KEY, raw);
-      return this.#storage.getItem(KEY) === raw;
-    } catch {
-      return false;
-    }
+    return verifiedJsonWrite(this.#storage, KEY, { version: 1, owner: this.#owner, tasks });
   }
 
   rebind(client: OperationsClient): void {

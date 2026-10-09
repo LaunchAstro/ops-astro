@@ -77,3 +77,13 @@ export function PageLink(props: PageLinkProps): ReactElement {
     </div>
   );
 }
+
+/** The head's go-to, drawn only when the task links to a page inside the product. */
+export function GoTo(props: { readonly task: Task }): ReactElement | null {
+  const door = pageLinkDoor(props.task);
+  return door === null ? null : (
+    <a className="btn" data-panel-head="goto" href={door} title={door}>
+      Go to its page link
+    </a>
+  );
+}

@@ -20,9 +20,10 @@
 
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import type { AssignmentCustody, AssignmentFields } from './task/assignment-custody.ts';
 import type { TaskTimer } from './task/task-timer.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
-import { settle, type Settlement } from '../records/use-command.ts';
+import { assignmentSender, sender } from './projects/board-settlement.ts';
 import { titleOf } from '../views/task-title.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
 import {
@@ -72,6 +73,7 @@ export function rowActions(options: {
   readonly client: OperationsClient;
   /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
   readonly people: readonly PersonView[] | null;
+  readonly assignment?: AssignmentCustody;
   readonly timer?: TaskTimer | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
@@ -86,6 +88,7 @@ export function rowActions(options: {
 }): RowActions {
   const { client } = options;
   const send = sender(options.onSettled, options.reload);
+  const assign = assignmentSender(options);
   return {
     onTick: (row, done) => {
       send(
@@ -104,7 +107,7 @@ export function rowActions(options: {
     ...openers(options),
     // No revision: a time entry is its own record, not a change to the task.
     ...timerAction(options.timer),
-    ...cellActions(client, options.people, send),
+    ...cellActions(client, options.people, send, assign),
   };
 }
 
@@ -115,29 +118,12 @@ function timerAction(timer: TaskTimer | null | undefined): RowActions {
   return { onStartTimer: (row) => timer.start({ id: row.id, key: row.key, title: row.name }) };
 }
 
-/** Settled or not, the board re-reads: a refusal redraws the stored truth, and is said as well. */
-function sender(
-  onSettled: (refused: string | null) => void,
-  reload: () => void,
-): (sent: Promise<CallResult<unknown>>) => void {
-  const settleOne = async (sent: Promise<CallResult<unknown>>): Promise<void> => {
-    try {
-      onSettled(refusalOf(settle(await sent)));
-    } catch {
-      onSettled(refusalOf({ kind: 'unknown', because: 'No answer came back.' }));
-    }
-    reload();
-  };
-  return (sent) => {
-    void settleOne(sent);
-  };
-}
-
 /** The cell editors' commands (MP-5-10): assignee, due date, stage and estimate, each at the board's revision. */
 function cellActions(
   client: OperationsClient,
   people: readonly PersonView[] | null,
   send: (sent: Promise<CallResult<unknown>>) => void,
+  assign: (row: ProjectRow, fields: AssignmentFields) => void,
 ): RowActions {
   return {
     ...(people === null
@@ -145,11 +131,11 @@ function cellActions(
       : {
           people: people.map((person) => ({ id: person.personId, name: person.name })),
           onAssign: (row, assignee) => {
-            send(client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row)));
+            assign(row, { assignee });
           },
           // Assign to AI: one of the reader's own agents the row offers.
           onAssignAgent: (row, agent) => {
-            send(client.mutate('task.assign', { recordId: row.id, fields: { agent } }, at(row)));
+            assign(row, { agent });
           },
         }),
     onDue: (row, due) => {
@@ -217,15 +203,6 @@ function openers(options: {
     },
     ...(panel.opened === null ? {} : { opened: panel.opened }),
   };
-}
-
-/** What the board says about a write: nothing when it landed, else the server's words. */
-function refusalOf(settled: Settlement): string | null {
-  if (settled.kind === 'ok') return null;
-  if (settled.kind === 'unknown') {
-    return `The change may not have been stored: ${settled.because} Check the row before trying again.`;
-  }
-  return `The change was not made: ${settled.because}`;
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0');
