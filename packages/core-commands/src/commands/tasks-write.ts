@@ -218,9 +218,22 @@ export async function createTask(
   };
 
   const rows = await tx.query<{ readonly revision: string; readonly key: string }>(
-    `insert into records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)
+    // A started create stamps its first date in this insert, on the transaction clock.
+    // A validated explicit date is retained; other categories gain no fabricated history.
+    `insert into records (business_id, id, record_type_id, data)
+     values ($1, $2, $3, $4::jsonb || case
+       when $5::boolean and $4::jsonb ->> 'started_at' is null
+         then jsonb_build_object('started_at', now()::text)
+       else '{}'::jsonb
+     end)
      returning revision::text as revision, data ->> 'key' as key`,
-    [tx.businessId, id, context.spine.taskTypeId, data],
+    [
+      tx.businessId,
+      id,
+      context.spine.taskTypeId,
+      data,
+      context.spine.states.find((state) => state.id === stateId)?.machineCategory === 'started',
+    ],
   );
   const written = rows[0];
   if (written === undefined) throw new Error('createTask: the insert returned no row');

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Administrative slot identity across business-owned task types and real within-type duplicate detection with exact synthetic transaction rollback on a normal fresh database"
+}

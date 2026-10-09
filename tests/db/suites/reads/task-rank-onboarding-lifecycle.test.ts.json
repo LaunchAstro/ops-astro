@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "P09 actual canonical lifecycle writer preserves first-start metadata and current authoritative reads"
+}

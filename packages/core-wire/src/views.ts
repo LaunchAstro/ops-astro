@@ -27,6 +27,11 @@ import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView } from './views-client.ts';
+import type { RankView, TaskScoreFacts } from './views-rank.ts';
+import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+
+export type { RankView, TaskScores } from './views-rank.ts';
+export type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
 
 export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
@@ -86,19 +91,6 @@ export type {
   UnattendedView,
 } from './views-operations.ts';
 
-/** The task state a task points at. The machine category is what a board groups on. */
-export interface TaskStateView {
-  readonly id: string;
-  readonly key: string;
-  readonly label: string;
-  readonly machineCategory: string;
-}
-
-export interface PersonView {
-  readonly personId: string;
-  readonly name: string;
-}
-
 export interface HistoryEntry {
   readonly at: string;
   readonly actorId: string;
@@ -120,19 +112,6 @@ export interface HistoryEntry {
    * from, for a reader who holds read on that task now; null for anyone else.
    */
   readonly duplicatedFrom?: string | null;
-}
-
-/** A task in a list. Everything the detail has except the long text and the history. */
-export interface TaskSummary {
-  readonly id: string;
-  readonly key: string;
-  readonly title: string | null;
-  readonly state: TaskStateView | null;
-  readonly assignee: PersonView | null;
-  readonly due: string | null;
-  readonly priority: number | null;
-  readonly completedAt: string | null;
-  readonly revision: number;
 }
 
 /**
@@ -331,20 +310,6 @@ export interface TaskEnvelope {
 export type BoardCrumb =
   | { readonly readable: true; readonly id: string; readonly title: string | null }
   | { readonly readable: false };
-
-/**
- * A task's derived rank as its reader is shown it (R70, MP-4-9).
- *
- * `number` is the task's place among the open tasks this reader may read, or
- * null when the task is not ranked; `score` is null exactly then. `calc` is the
- * line drawn under the rank, worked out on the server so every surface shows the
- * same words, and it names nothing but this task's own marks and modifiers.
- */
-export interface RankView {
-  readonly number: number | null;
-  readonly score: number | null;
-  readonly calc: string;
-}
 
 /**
  * What a reader outside the business is shown of one task (minimum contract
@@ -590,7 +555,7 @@ export interface SessionCapabilities {
  * an agent's detail carries the shared projection instead and stays a
  * `TaskDetail`.
  */
-export interface InternalTaskDetail extends TaskDetail {
+export interface InternalTaskDetail extends TaskDetail, TaskScoreFacts {
   readonly comments: readonly InternalCommentView[];
   /**
    * The client the task is under, by id (C32), or null for none (MP-4-8). Its
