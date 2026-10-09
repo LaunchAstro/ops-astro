@@ -83,7 +83,21 @@ function draftServer() {
       logs += 1;
       if (logs === 1) return Promise.reject(new TypeError('network down'));
     }
-    return Promise.resolve(json({ recordId: 's-1', revision: 2, detail: {} }));
+    if (to === '/time/log')
+      return Promise.resolve(
+        json({
+          recordId: null,
+          revision: null,
+          detail: { entryId: '77777777-7777-4777-8777-777777777777', minutes: 30 },
+        }),
+      );
+    return Promise.resolve(
+      json({
+        recordId: '66666666-6666-4666-8666-666666666666',
+        revision: 1,
+        detail: { key: 'Proj-Call-Client' },
+      }),
+    );
   }) as unknown as typeof globalThis.fetch;
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),

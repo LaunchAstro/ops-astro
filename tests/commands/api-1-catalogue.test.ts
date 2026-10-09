@@ -167,7 +167,9 @@ const CREATE_UI = [
   'agency:projects-board (screens/task/create-custody.ts)',
   'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
+  'app shell (screens/task/draft-command.ts)',
   'app shell (screens/task/draft-parts.ts)',
+  'app shell (screens/task/draft-receipts.ts)',
 ];
 const START_UI = [
   'agency:task-detail (screens/task/History.tsx)',
