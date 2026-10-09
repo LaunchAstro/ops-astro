@@ -205,10 +205,24 @@ it('an archive consumer error ends the store psql without waiting for its next q
   let called = false;
   let settled = false;
   let refusal: unknown;
-  const refused = psqlOn(captured.network)(url, 'select 1;\nselect pg_sleep(30);\n', () => {
-    called = true;
-    throw new Error('archive part rejected');
-  }).then(
+  const marker = `backup-route-ready-${suffix}`;
+  let markReady: (line: string) => void;
+  const ready = new Promise<string>((resolve) => {
+    markReady = resolve;
+  });
+  const refused = psqlOn(captured.network)(
+    url,
+    [`select '${marker}';\n`, 'select 1;\nselect pg_sleep(30);\n'],
+    (line: string) => {
+      if (line === marker) {
+        markReady(line);
+        return;
+      }
+      expect(line).toBe('1');
+      called = true;
+      throw new Error('archive part rejected');
+    },
+  ).then(
     () => {
       settled = true;
     },
@@ -218,6 +232,10 @@ it('an archive consumer error ends the store psql without waiting for its next q
     },
   );
   try {
+    expect(
+      await Promise.race([ready, refused]),
+      'psql must finish setup before its row timer',
+    ).toBe(marker);
     for (let attempt = 0; attempt < 50 && !called; attempt += 1) await delay(20);
     expect(called, 'psql must deliver a row before the consumer rejects it').toBe(true);
     await delay(750);
