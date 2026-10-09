@@ -7,6 +7,8 @@ import { SETTLED_AUD_GRAPH } from './run-graph-fixture.ts';
 
 export const EXECUTION = {
   execution: {
+    taskId: '33333333-3333-4333-8333-333333333333',
+    sourceRevision: 1,
     outcome: 'ready',
     runs: [
       {

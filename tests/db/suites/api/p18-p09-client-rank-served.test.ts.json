@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "One real served API composition case joins canonical client metadata and ICE marks, exact stored effects/read security audits, and current client-grant withdrawal without hidden identity leakage."
+}

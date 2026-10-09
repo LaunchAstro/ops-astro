@@ -89,6 +89,21 @@ export function server(answers: Answers): OperationsClient {
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/execution'))
+      return Promise.resolve(
+        json({
+          ok: true,
+          execution: {
+            taskId: TASK_ID,
+            outcome: 'no-run',
+            sourceRevision: 0,
+            complete: true,
+            next: null,
+            runs: [],
+            events: [],
+          },
+        }),
+      );
     if (!at.endsWith('/task/read')) throw new Error(`unrouted ${at}`);
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
       recordId?: unknown;

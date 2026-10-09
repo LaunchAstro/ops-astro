@@ -12,13 +12,14 @@ import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, type Session, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
-import { store } from './draft-support.tsx';
+import { store, type Sent } from './draft-support.tsx';
 afterEach(() => {
   unmountAll();
   sent.length = 0;
   vi.restoreAllMocks();
 });
 const KEY = 'Proj-Verity-Pacing';
+const CREATED_ID = '99999999-9999-4999-8999-999999999999';
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
 const TASK = '.dpanel[data-panel-id="task"]';
 const TAB = '.dock__tab[data-panel="task"]';
@@ -42,12 +43,11 @@ const fetch = ((url: string | URL, init?: RequestInit) => {
   const where = String(url);
   const write = /\/(task\/(create|set_party|set_category|assign))$/u.exec(where)?.[1];
   if (write !== undefined) {
-    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<
-      string,
-      unknown
-    >;
+    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to: write, body });
-    return Promise.resolve(json({ recordId: 'r-new', revision: 1, detail: { key: 'Proj-New' } }));
+    const revision = write === 'task/create' ? 1 : Number(body['expectedRevision']) + 1;
+    const detail = write === 'task/create' ? { key: 'Proj-New' } : {};
+    return Promise.resolve(json({ recordId: CREATED_ID, revision, detail }));
   }
   if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
   if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients: [] }));
@@ -197,14 +197,17 @@ const doorFor = (
 describe('MP-4-13 each door files its own draft', () => {
   it('a second door replaces an untouched draft’s guesses, client included', async () => {
     const view = await app(store());
-    const first = doorFor(view, 'A thing', { newTaskChannel: 'search', newTaskClient: 'c-a' });
+    const first = doorFor(view, 'A thing', {
+      newTaskChannel: 'search',
+      newTaskClient: '22222222-2222-4222-8222-222222222222',
+    });
     first.click();
     await tick();
     first.remove();
     const second = doorFor(view, 'B thing', {
       newTaskChannel: 'ads',
       newTaskLabel: 'Ads',
-      newTaskClient: 'c-b',
+      newTaskClient: '33333333-3333-4333-8333-333333333333',
     });
     second.click();
     await tick();
@@ -221,7 +224,7 @@ describe('MP-4-13 each door files its own draft', () => {
       await tick();
     }
     expect(sent.find((one) => one.to === 'task/set_party')?.body).toMatchObject({
-      fields: { client: 'c-b' },
+      fields: { client: '33333333-3333-4333-8333-333333333333' },
     });
   });
 
@@ -290,9 +293,8 @@ describe('MP-4-13 the open task comes back with the dock the person left', () =>
     await tick();
     expect(again.find(`${TASK} [data-task-panel]`)).not.toBeNull();
     expect(again.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
-    const kept = JSON.parse(storage.getItem('ops-astro.dock.alpha') ?? '{}') as {
-      open?: unknown;
-    };
+    const raw = storage.getItem('ops-astro.dock.alpha') ?? '{}';
+    const kept = JSON.parse(raw) as { open?: unknown };
     expect(kept.open).toEqual(expect.arrayContaining(['task', 'notifs']));
   });
 });

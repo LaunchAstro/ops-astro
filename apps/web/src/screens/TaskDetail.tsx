@@ -93,21 +93,18 @@ import { useRef, useState, type FormEvent, type ReactElement, type RefObject } f
 import type { Dispatch, SetStateAction } from 'react';
 import type { CallResult, OperationsClient, WireRefusal } from '../operations/client.ts';
 import type {
-  InternalTaskDetail as Task,
   PersonListResult,
   QueueResult,
   TaskReadResult,
-  TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead, type UseReadResult } from '../data/use-read.ts';
-import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { taskDependencyAdmission, useTaskDependencies } from '../data/board-live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
-import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import type { DecisionNote } from '../views/proposals.tsx';
 import { keepsClosure } from '../views/gate-controls.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
@@ -126,21 +123,24 @@ import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
 import { HeldOperations, type Held } from './task/held-operations.ts';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
-import { RunProgress } from '../views/run-progress.tsx';
+import { useTaskExecution } from '../views/task-execution.ts';
+import { AgentSide } from './task/AgentSide.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
-import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import type { RowEdit } from './task/Thread.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
-import { BriefSection, DescriptionSection } from './task/Writing.tsx';
+import { DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
+
+import type { Draft, DraftBase, LoadedProps } from './task/loaded-props.ts';
+export type { LoadedProps } from './task/loaded-props.ts';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -151,36 +151,6 @@ export interface TaskDetailProps {
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
   readonly changes?: number;
-}
-
-/** Where an unsaved edit began: the revision, and the values as they stood. */
-interface DraftBase {
-  readonly revision: number;
-  readonly title: string;
-  readonly due: string;
-  /** The task as the edit began: what changed since is told against it. */
-  readonly task: Task;
-}
-
-/** An unsaved title and due date, and everything needed to settle it safely. */
-interface Draft {
-  /** Capability and task together: a draft belongs to one task under one grant. */
-  readonly identity: string;
-  /**
-   * Bumped by every keystroke. A save settles the generation it submitted and
-   * no other, so a response that arrives after further typing clears nothing.
-   */
-  readonly generation: number;
-  readonly base: DraftBase;
-  readonly title: string;
-  readonly due: string;
-  /** A save whose outcome is unknown: its `operationId` and the generation it sent. */
-  readonly attempt: SaveAttempt | null;
-}
-
-interface SaveAttempt {
-  readonly operationId: string;
-  readonly generation: number;
 }
 
 /**
@@ -554,61 +524,6 @@ function useTaskWrites(
   return { busy, because, conflict, fields, lifecycle, onFields };
 }
 
-interface LoadedProps {
-  readonly client: OperationsClient;
-  readonly grantKey: string;
-  readonly task: Task;
-  readonly taskRead: Task;
-  /** The business's task states `task.read` sent, the Status select's choices. */
-  readonly states: readonly TaskStateView[];
-  /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
-  readonly draft: Draft | null;
-  /** What the server said about the last decision, or nothing. */
-  readonly note: DecisionNote | null;
-  readonly onDecided: (note: DecisionNote | null) => void;
-  /** This reader's refused comment, held above the read so a reread keeps it. */
-  readonly commentRefusal: string | null;
-  readonly onCommentRefused: (because: string) => void;
-  /** This reader's refused proposal, held the same way. */
-  readonly proposeRefusal: string | null;
-  readonly onProposeRefused: (because: string) => void;
-  /** The last stale lifecycle or assignee press, quoted across its reread. */
-  readonly moved: string | null;
-  readonly onMoved: (because: string | null) => void;
-  /** The unsent comment and proposal, held so a reread keeps what was typed. */
-  readonly commentDraft: CommentDraft | null;
-  readonly onCommentDraft: (next: CommentDraft | null) => void;
-  /** The edit open on one of the reader's comments, held so a stale reread keeps it. */
-  readonly commentEdit: RowEdit | null;
-  readonly onCommentEdit: (next: RowEdit | null) => void;
-  readonly proposeDraft: ProposeDraft | null;
-  readonly onProposeDraft: (next: ProposeDraft | null) => void;
-  /** The last top-up's answer, held so a reread keeps it (T2e). */
-  readonly topUpNote: TopUpNote | null;
-  readonly onTopUpNote: (note: TopUpNote | null) => void;
-  /** Which side of the task this reading shows, held above the read (MP-4-3). */
-  readonly perspective: Perspective;
-  readonly onPerspective: (next: Perspective) => void;
-  /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
-  readonly showFinished: boolean | null;
-  readonly onShowFinished: (next: boolean | null) => void;
-  /** The subtask add box's unsent name, held above the read so a reread keeps it. */
-  readonly stepTitle: string | null;
-  readonly onStepTitle: (next: string | null) => void;
-  /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
-  readonly showAllTime: boolean;
-  readonly onShowAllTime: (next: boolean) => void;
-  readonly onOpenPanel: PanelOpener | undefined;
-  readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
-  /** Record, or forget, the draft save whose outcome is unknown. */
-  readonly onAttempt: (attempt: SaveAttempt | null) => void;
-  readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
-  readonly onSaved: (generation: number) => void;
-  readonly onDiscard: () => void;
-  readonly onChanged: () => void;
-  readonly onStepUp: (open: true | null) => void;
-}
-
 /** The names this reader may list, by person. */
 function namesOf(people: { readonly state: ReadState<PersonListResult> }): Map<string, string> {
   const { state } = people;
@@ -636,6 +551,13 @@ function editorOf(
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
+  const execution = useTaskExecution({
+    client,
+    grantKey: props.grantKey,
+    taskKey: task.key,
+    taskId: task.id,
+    readOf: props.taskRead,
+  });
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
   // The form shows the draft, else the task as last read: with no draft, a
   // live re-read that keeps this mounted still shows the newest value.
@@ -685,7 +607,7 @@ function Loaded(props: LoadedProps): ReactElement {
 
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
-      <TaskHeader task={task} />
+      <TaskHeader task={task} execution={execution} />
       <TaskFacts task={task} />
       <TaskPresence seen={presence.seen} />
 
@@ -720,6 +642,7 @@ function Loaded(props: LoadedProps): ReactElement {
         }
         agent={
           <AgentSide
+            execution={execution}
             props={props}
             persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
             outages={<Outages state={outages.state} taskId={task.id} />}
@@ -885,94 +808,5 @@ function EditNotices(props: {
         onDiscard={props.onDiscard}
       />
     </>
-  );
-}
-
-/** The agent section (MP-6-1): the run's pane, full width above the Agent side's columns. */
-function AgentHead({
-  props,
-  persons,
-}: {
-  readonly props: LoadedProps;
-  readonly persons: PersonListResult['persons'];
-}): ReactElement {
-  const { client, task } = props;
-  return (
-    <AgentSection
-      client={client}
-      grantKey={props.grantKey}
-      recordId={task.id}
-      title={task.title === null || task.title === '' ? task.key : task.title}
-      clientId={task.client}
-      clientUnseen={task.clientSet && task.client === null}
-      taskKey={task.key}
-      readOf={props.taskRead}
-      proposals={task.proposals}
-      people={persons}
-      ledger={task.ledger}
-      onChanged={props.onChanged}
-      note={props.note}
-      onDecided={props.onDecided}
-      onStepUp={props.onStepUp}
-    />
-  );
-}
-
-/**
- * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
- * their gates with the top-up (T2e), and the run as it goes (T2a progress,
- * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
- * its gate in the main column, the standing facts about the task's run (its
- * alerts, the team's outages) beside. The agent section (MP-6-1) sits above
- * them, full width, as batch 3a drew it.
- */
-function AgentSide({
-  props,
-  persons,
-  outages,
-}: {
-  readonly props: LoadedProps;
-  readonly persons: PersonListResult['persons'];
-  readonly outages: ReactElement;
-}): ReactElement {
-  const { client, task } = props;
-  return (
-    <div className="stack">
-      <AgentHead props={props} persons={persons} />
-      <div className="tpg">
-        <div className="tpg__main">
-          <BriefSection brief={task.agentBrief} />
-          <RunProgress
-            client={client}
-            grantKey={props.grantKey}
-            proposals={task.proposals}
-            readOf={props.taskRead}
-            taskKey={task.key}
-          />
-          <Proposals
-            capCurrency={task.capCurrency}
-            client={client}
-            note={props.note}
-            onChanged={props.onChanged}
-            onDecided={props.onDecided}
-            onProposeRefused={props.onProposeRefused}
-            proposeRefusal={props.proposeRefusal}
-            proposeDraft={props.proposeDraft}
-            onProposeDraft={props.onProposeDraft}
-            persons={persons}
-            proposals={task.proposals}
-            envelope={task.envelope ?? null}
-            topUpNote={props.topUpNote}
-            onTopUpNote={props.onTopUpNote}
-            recordId={task.id}
-            revision={task.revision}
-          />
-        </div>
-        <aside className="tpg__side">
-          <Alerts alerts={task.alerts} />
-          {outages}
-        </aside>
-      </div>
-    </div>
   );
 }

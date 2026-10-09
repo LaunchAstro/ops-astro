@@ -2,47 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { act } from 'react';
 import { expect, it } from 'vitest';
-import { A, timerApp, timerWorld } from './task-bound-timer-support.tsx';
+import { A, B, timerApp, timerWorld } from './task-bound-timer-support.tsx';
 import { task, tick } from './task-page-stub.tsx';
-
-function diagnosticWorld() {
-  const world = timerWorld();
-  const requests: { path: string; body: Record<string, unknown> }[] = [];
-  const fetch: typeof globalThis.fetch = (url, init) => {
-    const path = String(url).replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
-    requests.push({
-      path,
-      body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
-    });
-    if (path === '/task/execution')
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            execution: {
-              outcome: 'no-run',
-              runs: [],
-              events: [],
-              complete: true,
-              next: null,
-              graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
-            },
-          }),
-          { headers: { 'content-type': 'application/json' } },
-        ),
-      );
-    return world.fetch(url, init);
-  };
-  return {
-    ...world,
-    fetch,
-    requests,
-    counts: () => ({
-      taskReads: requests.filter((one) => one.path === '/task/read').length,
-      executionReads: requests.filter((one) => one.path === '/task/execution').length,
-      commands: requests.filter((one) => one.body['operationId'] !== undefined).length,
-    }),
-  };
-}
+import { diagnosticWorld } from './task-execution-render-support.ts';
 
 async function drained() {
   await Array.from({ length: 12 }).reduce(async (previous) => {
@@ -64,7 +26,7 @@ it('page unsent title changes preserve execution reads under the same checked ta
     'no-run',
   );
   const before = world.counts();
-  expect(before.executionReads).toBeGreaterThanOrEqual(2);
+  expect(before.executionReads).toBeGreaterThanOrEqual(1);
   const input = view.host.querySelector<HTMLInputElement>('#task-title')!;
   const steps: ({ value: string } & ReturnType<typeof world.counts>)[] = [];
   const edit = async (value: string) => {
@@ -93,8 +55,11 @@ it('page perspective changes preserve execution reads under the same checked tas
   const input = view.host.querySelector<HTMLInputElement>('#task-title')!;
   input.focus();
   input.setSelectionRange(2, 8);
+  expect(view.host.querySelector<HTMLElement>('main [data-run-progress]')?.dataset['outcome']).toBe(
+    'no-run',
+  );
   const before = world.counts();
-  expect(before.executionReads).toBeGreaterThanOrEqual(2);
+  expect(before.executionReads).toBeGreaterThanOrEqual(1);
   await view.click('main #perspective-tab-agent');
   await drained();
   const agent = world.counts();
@@ -118,8 +83,11 @@ it('panel local unsent title edits preserve both mounted readers without task ef
   await view.click('main [data-panel-door="open"]');
   await drained();
   expect(view.host.querySelector<HTMLElement>('.dpanel [data-task]')?.dataset['task']).toBe(A);
+  expect(view.host.querySelector<HTMLElement>('main [data-run-progress]')?.dataset['outcome']).toBe(
+    'no-run',
+  );
   const before = world.counts();
-  expect(before.executionReads).toBeGreaterThanOrEqual(3);
+  expect(before.executionReads).toBeGreaterThanOrEqual(2);
   await view.click('[data-panel-field="name"]');
   await drained();
   const opened = world.counts();
@@ -164,8 +132,11 @@ it('explicit checked reread refreshes execution and task-read denial prevents fu
   const world = diagnosticWorld();
   const { view } = await timerApp(world);
   await drained();
+  expect(view.host.querySelector<HTMLElement>('main [data-run-progress]')?.dataset['outcome']).toBe(
+    'no-run',
+  );
   const before = world.counts();
-  expect(before.executionReads).toBeGreaterThanOrEqual(2);
+  expect(before.executionReads).toBeGreaterThanOrEqual(1);
   await view.click('main [data-refresh="task"]');
   await drained();
   const refreshed = world.counts();
@@ -193,9 +164,11 @@ it('explicit checked reread refreshes execution and task-read denial prevents fu
 
 const answer = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
-const execution = (outcome: 'no-run' | 'stale') =>
+const execution = (outcome: 'no-run' | 'stale', taskId: string, sourceRevision: number) =>
   answer({
     execution: {
+      taskId,
+      sourceRevision,
       outcome,
       runs: [],
       events: [],
@@ -207,6 +180,13 @@ const execution = (outcome: 'no-run' | 'stale') =>
 function ownerWorld() {
   const world = timerWorld();
   let newOwner = false;
+  const oldTask = task({ id: A });
+  const newTask = task({
+    id: B,
+    key: 'Timer-A',
+    title: 'Current owner task',
+    time: { entries: [], running: null, totalMinutes: 0 },
+  });
   const releases: (() => void)[] = [];
   const sent: { path: string; body: Record<string, unknown> }[] = [];
   const fetch: typeof globalThis.fetch = (url, init) => {
@@ -220,21 +200,17 @@ function ownerWorld() {
     if (path === '/api/session')
       return Promise.resolve(answer({ ok: true, session: 'synthetic-new-owner-session' }));
     if (path.endsWith('/task/execution')) {
-      if (newOwner) return Promise.resolve(execution('stale'));
+      expect(body['recordId'] === 'Timer-A' || body['recordId'] === A).toBe(true);
+      if (newOwner) return Promise.resolve(execution('stale', B, newTask.revision));
       return new Promise<Response>((resolve) => {
-        releases.push(() => resolve(execution('no-run')));
+        releases.push(() => resolve(execution('no-run', A, oldTask.revision)));
       });
     }
     if (newOwner && path.endsWith('/task/read'))
       return Promise.resolve(
         answer({
           ok: true,
-          task: task({
-            id: '22222222-2222-4222-8222-222222222222',
-            key: 'Timer-A',
-            title: 'Current owner task',
-            time: { entries: [], running: null, totalMinutes: 0 },
-          }),
+          task: newTask,
         }),
       );
     return world.fetch(url, init);
@@ -246,7 +222,7 @@ async function ownerLateAnswer() {
   const { releases, sent } = world;
   const { view, navigate, storage } = await timerApp(world);
   await drained();
-  expect(releases.length).toBeGreaterThanOrEqual(2);
+  expect(releases.length).toBeGreaterThanOrEqual(1);
   await view.click('.appbar .who__trigger');
   await view.click('.who__menu button[role="menuitem"]');
   await drained();

@@ -7,6 +7,7 @@
 // "A client you cannot see". Three crossings, each with its own side served:
 // another business, another client in the same business, a live delegation.
 
+import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -132,20 +133,36 @@ async function crossBusiness({ clientA, taskA }: Scene): Promise<void> {
 async function crossClient({ decider, clientA, clientB, taskA }: Scene): Promise<void> {
   const heldToB = await enrol(world.db.app, world.business, 'held-to-b');
   const heldToA = await enrol(world.db.app, world.business, 'held-to-a');
-  await world.db.app.withBusiness(world.business, async (tx) => {
+  const permitted = await world.db.app.withBusiness(world.business, async (tx) => {
     await grantTo(tx, heldToB, 'read', { kind: 'party', id: clientB });
     await grantTo(tx, heldToB, 'read', { kind: 'record', id: taskA });
-    await grantTo(tx, heldToA, 'read', { kind: 'party', id: clientA });
+    const clientGrant = await grantTo(tx, heldToA, 'read', { kind: 'party', id: clientA });
     await grantTo(tx, heldToA, 'read', { kind: 'record', id: taskA });
+    return clientGrant;
   });
+  const [client] = await world.db.admin.execute<{ readonly name: string }>(
+    'select name from public.clients where id = $1',
+    [clientA],
+  );
+  const name = client?.name;
+  if (name === undefined) throw new Error('client fixture missing');
   const fromB = await readAs(world.business, heldToB, taskA);
   expect(fromB.code).toBe('ok');
   expect(fromB.task?.['client']).toBeNull();
   expect(fromB.task?.['clientSet']).toBe(true);
+  expect(fromB.task?.['clientSummary']).toStrictEqual({ kind: 'withheld' });
   expect(fromB.body).not.toContain(clientA);
+  expect(fromB.body).not.toContain(name);
   const fromA = await readAs(world.business, heldToA, taskA);
   expect([fromA.code, fromA.task?.['client']]).toStrictEqual(['ok', clientA]);
+  expect(fromA.task?.['clientSummary']).toStrictEqual({ kind: 'readable', name });
   expect((await readAs(world.business, decider, taskA)).task?.['client']).toBe(clientA);
+  await world.db.app.withBusiness(world.business, (tx) => revokeGrant(tx, permitted));
+  const revoked = await readAs(world.business, heldToA, taskA);
+  expect(revoked.code).toBe('ok');
+  expect(revoked.task?.['clientSummary']).toStrictEqual({ kind: 'withheld' });
+  expect(revoked.body).not.toContain(name);
+  expect(revoked.body).not.toContain(clientA);
 }
 
 /** A live delegation: the agent reads its own task without client facts, and not A's task. */
@@ -159,6 +176,7 @@ async function crossDelegation({ decider, clientA, taskA }: Scene): Promise<void
   const ownTask = detailOf(own)['task'] as Body;
   expect('client' in ownTask).toBe(false);
   expect('hasContent' in ownTask).toBe(false);
+  expect('clientSummary' in ownTask).toBe(false);
   const other = await world.asAgent(
     { command: 'task.read', operationId: randomUUID(), recordId: taskA },
     picked.credential,

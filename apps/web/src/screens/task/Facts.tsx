@@ -159,11 +159,24 @@ function estimateOf(task: InternalTaskDetail): string | undefined {
   return minutes === null ? undefined : estimateWords(minutes);
 }
 
+function clientWords(task: InternalTaskDetail): string {
+  const summary = task.clientSummary;
+  if (summary === undefined) return 'Client details unavailable';
+  switch (summary.kind) {
+    case 'none':
+      return NOT_SET;
+    case 'withheld':
+      return 'A client you cannot see';
+    case 'readable':
+      return summary.name?.trim() || 'Client without a name';
+  }
+}
+
 export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactElement {
   const { task } = props;
   const band: readonly (readonly [string, string, ReactElement | string])[] = [
     ['assignee', 'Assignee', orNotSet(task.assignee?.name)],
-    ['client', 'Client', task.clientSet ? 'On file' : NOT_SET],
+    ['client', 'Client', clientWords(task)],
     ['due', 'Due date', orNotSet(task.due?.slice(0, 10))],
     ['estimate', 'Estimate', orNotSet(estimateOf(task))],
     ['project', 'Project', projectOf(task)],

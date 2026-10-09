@@ -81,14 +81,14 @@ it('resuming a draft before its first create response arrives logs time only onc
   const attempt = newAttempt(randomUUID());
   keepDraft(storage, person, draft, attempt);
   const save = (next: typeof attempt): void => saveAttempt(storage, person, attempt.id, next);
-  const first = createFromDraft(client, draft, attempt, save);
+  const first = createFromDraft(client, draft, attempt, save, false);
   let resumed;
   try {
     await committed.promise;
     const restored = readAttempt(storage, person);
     expect(restored).not.toBeNull();
     if (restored === null) throw new Error('The pending attempt was not stored.');
-    resumed = await createFromDraft(client, draft, restored, save);
+    resumed = await createFromDraft(client, draft, restored, save, true);
   } finally {
     gate.release();
     await first;
@@ -129,8 +129,10 @@ it('a lost tag-create response replays the same tag operation when tag.list is r
   const save = (next: typeof attempt): void => {
     attempt = next;
   };
-  expect(await createFromDraft(client, draft, attempt, save)).toMatchObject({ kind: 'unknown' });
-  const retry = await createFromDraft(client, draft, attempt, save);
+  expect(await createFromDraft(client, draft, attempt, save, false)).toMatchObject({
+    kind: 'unknown',
+  });
+  const retry = await createFromDraft(client, draft, attempt, save, true);
   expect(retry, `tag.create ids: ${JSON.stringify(tagIds)}`).toMatchObject({
     kind: 'created',
     missed: [],

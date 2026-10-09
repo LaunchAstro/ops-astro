@@ -24,49 +24,17 @@
 // kept with it; Create stops a running one first, so its minutes go with the
 // task as a new request, and they are written with the time typed here.
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactElement,
-} from 'react';
+import { useLayoutEffect, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
-import type { Prefill } from './task-prefill.ts';
-import {
-  draftProblem,
-  dropDraft,
-  emptyDraft,
-  keepDraft,
-  newAttempt,
-  prefilledDraft,
-  stopTimer,
-  readAttempt,
-  readDraft,
-  saveAttempt,
-  type Attempt,
-  type TaskDraft,
-} from './task-draft.ts';
+import { useKeptDraft, type DraftEditorProps } from './draft-editor.ts';
+export type { DraftScope } from './draft-editor.ts';
+import { draftProblem, dropDraft, newAttempt, stopTimer, type Attempt } from './task-draft.ts';
 import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
-/** Where the draft was filed from: the page's client, if it has one, and its name for the admission line. */
-export interface DraftScope {
-  readonly clientId: string | null;
-  readonly from: string;
-  /** The page's guesses for a fresh draft (DN-02); a kept draft comes back as left. */
-  readonly prefill?: Prefill;
-}
-
-export interface DraftPanelProps {
+export interface DraftPanelProps extends DraftEditorProps {
   readonly client: OperationsClient;
-  readonly storage: Storage | null;
-  /** The draft's owner, `business:person`: the storage key, never shared. */
-  readonly person: string;
-  readonly scope: DraftScope;
   readonly onCreated: (key: string) => void;
-  readonly onClose: () => void;
   /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
   readonly docked?: boolean;
   /** Hold the host while Create is out; the release says whether the session is still the same. */
@@ -181,56 +149,6 @@ function DraftHead(props: {
   );
 }
 
-/** The draft as kept for the person: read once, and written on every change (DN-04). */
-function useKeptDraft(props: DraftPanelProps) {
-  const { storage, person } = props;
-  const [draft, setDraft] = useState<TaskDraft>(
-    () =>
-      readDraft(storage, person) ?? {
-        ...(props.scope.prefill === undefined
-          ? emptyDraft(props.scope.clientId)
-          : prefilledDraft(props.scope.prefill)),
-        from: props.scope.from,
-      },
-  );
-  // The create's identity, kept across an unknown outcome and a remount, and
-  // dropped by any edit.
-  const [attempt, setAttempt] = useState<Attempt | null>(() => readAttempt(storage, person));
-  const name = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    name.current?.focus();
-  }, []);
-  const put = (next: Partial<TaskDraft>): void => {
-    const merged = { ...draft, ...next };
-    setDraft(merged);
-    setAttempt(null);
-    keepDraft(storage, person, merged);
-  };
-  // Stored before Create goes out, with each part's id and count as it goes;
-  // cleared once its outcome is known.
-  const begin = (next: Attempt, sent: TaskDraft = draft): void => {
-    setAttempt(next);
-    keepDraft(storage, person, sent, next);
-  };
-  const progress = (next: Attempt): void => {
-    setAttempt((held) => (held?.id === next.id ? next : held));
-    saveAttempt(storage, person, next.id, next);
-  };
-  const settled = (id: string): void => {
-    setAttempt(null);
-    saveAttempt(storage, person, id, null);
-  };
-  const cancel = (): void => {
-    dropDraft(storage, person);
-    props.onClose();
-  };
-  // A Create another mount sent has answered: its identity is as it left it.
-  const reread = (): void => {
-    setAttempt(readAttempt(storage, person));
-  };
-  return { draft, put, name, attempt, begin, progress, settled, cancel, reread };
-}
-
 /** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
 function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
   if (outcome.kind !== 'unknown') kept.settled(at.id);
@@ -288,7 +206,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
-      outcome = await createFromDraft(props.client, sent, attempt, kept.progress);
+      outcome = await createFromDraft(props.client, sent, attempt, kept.progress, held !== null);
     } finally {
       // The session changed while it was out: the draft and the panel went with it.
       if (!release()) outcome = null;
