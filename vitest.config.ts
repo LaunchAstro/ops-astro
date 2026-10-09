@@ -111,6 +111,7 @@ const config: ViteUserConfig = defineConfig({
       ...(database
         ? []
         : [
+            'tests/api/p18-p09-client-rank-served.test.ts',
             'tests/reads/task-ice-editor-durable.test.ts',
             'tests/reads/task-rank-agent-lifecycle.test.ts',
             'tests/reads/task-rank-core-agent-durable.test.ts',

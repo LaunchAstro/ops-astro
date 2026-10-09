@@ -196,7 +196,11 @@ export class TaskTimer {
         : binding;
     }
     if (binding !== null && binding.running?.entryId !== running?.entryId) return binding;
-    return { task: attempt.task, running };
+    // Same-entry replay must not replace a checked label with ID-only recovery.
+    return {
+      task: binding?.task.id === attempt.task.id ? binding.task : attempt.task,
+      running,
+    };
   }
   /** Captured before transport: a pre-Start idle answer cannot erase a newer binding. */
   read(key: string, current: () => boolean): Promise<CallResult<TaskReadResult>> {

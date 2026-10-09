@@ -26,14 +26,20 @@ import type {
 import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
-import type { ClientPrivacyView, ClientView } from './views-client.ts';
+import type { ClientPrivacyView, ClientView, TaskClientFacts } from './views-client.ts';
 import type { RankView, TaskScoreFacts } from './views-rank.ts';
 import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
 
 export type { RankView, TaskScores } from './views-rank.ts';
 export type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
 
-export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
+export type {
+  ClientListResult,
+  ClientPrivacyView,
+  ClientView,
+  TaskClientSummary,
+  TaskClientFacts,
+} from './views-client.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -555,16 +561,8 @@ export interface SessionCapabilities {
  * an agent's detail carries the shared projection instead and stays a
  * `TaskDetail`.
  */
-export interface InternalTaskDetail extends TaskDetail, TaskScoreFacts {
+export interface InternalTaskDetail extends TaskDetail, TaskClientFacts, TaskScoreFacts {
   readonly comments: readonly InternalCommentView[];
-  /**
-   * The client the task is under, by id (C32), or null for none (MP-4-8). Its
-   * name is `client.list`'s. A client the reader's grants do not reach is sent
-   * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
-   */
-  readonly client: string | null;
-  /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
-  readonly hasContent: boolean;
 }
 
 /** `task.read` on the person prefix: the whole detail, for a reader inside the business. */

@@ -20,29 +20,21 @@
 // refused or failed read draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
-import {
-  AgentPane,
-  type GateDecision,
-  type RecordedOutcome,
-  type RunActivity,
-} from '@launchastro/ui';
+import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
 import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
-  ExecutionEvent,
   PersonView,
   ProposalView,
-  TaskExecutionResult,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../data/use-read.ts';
 import { pathTo } from '../routes.ts';
 import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { closedNote, refusesRecipient, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
-import { wholeExecution } from './run-progress.tsx';
+import { activityOf, useTaskExecution, type TaskExecutionRead } from './task-execution.ts';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
@@ -67,6 +59,8 @@ export interface AgentSectionProps {
   readonly taskKey: string;
   /** The task read's latest answer: each new one re-reads the log. */
   readonly readOf: unknown;
+  /** The task page shares its one admitted execution answer with this log. */
+  readonly execution?: TaskExecutionRead;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -230,13 +224,30 @@ function unknownControls(
 }
 
 export function AgentSection(props: AgentSectionProps): ReactElement {
+  return props.execution === undefined ? (
+    <ReadAgentSection {...props} />
+  ) : (
+    <AgentSectionBody {...props} execution={props.execution} />
+  );
+}
+
+function ReadAgentSection(props: AgentSectionProps): ReactElement {
+  const execution = useTaskExecution({ ...props, taskId: props.recordId });
+  return <AgentSectionBody {...props} execution={execution} />;
+}
+
+function AgentSectionBody(
+  props: AgentSectionProps & {
+    readonly execution: TaskExecutionRead;
+  },
+): ReactElement {
   const controls = useAgentControls(props);
   const { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting } = controls;
   // The person's own choice for this view. It is saved through the one
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
-  const activity = useActivity(props);
+  const activity = activityOf(props.execution);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -275,25 +286,3 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
     </section>
   );
 }
-
-/**
- * The log's rows: the execution read's events, each placed in the plan its run
- * was proposed under, and those plans, once read. A read without placements
- * draws no log rather than rows placed against nothing.
- */
-function useActivity(props: AgentSectionProps): RunActivity | undefined {
-  const { state } = useRead<TaskExecutionResult>({
-    grantKey: props.grantKey,
-    run: async () => await wholeExecution(props.client, props.taskKey),
-    deps: [props.taskKey, props.readOf],
-  });
-  if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
-  const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
-  if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
-  if (!execution.events.every(placed)) return undefined;
-  return { plans: execution.plans, events: execution.events };
-}
-
-type Placed = ExecutionEvent & { readonly placement: NonNullable<ExecutionEvent['placement']> };
-
-const placed = (event: ExecutionEvent): event is Placed => event.placement !== undefined;

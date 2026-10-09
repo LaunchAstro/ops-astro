@@ -15,7 +15,7 @@ import { found, page, proposalWith } from './task-page-stub.tsx';
 import { unheld } from './task-look.ts';
 
 const withFacts = async (over: Readonly<Record<string, unknown>> = {}) =>
-  await page('Proj-Verity-Pacing', found(over));
+  await page('Proj-Verity-Pacing', found({ clientSummary: { kind: 'none' }, ...over }));
 
 const text = (view: Mounted, selector: string): string =>
   view.host.querySelector(selector)?.textContent?.trim() ?? '';
@@ -121,6 +121,7 @@ describe('MP-4-2 ten-field band', () => {
       due: '2026-08-01T00:00:00.000Z',
       stage: 'Awareness',
       clientSet: true,
+      clientSummary: { kind: 'readable', name: 'Verity' },
       steps: [],
     });
     const labels = view.all('[data-band] dt').map((label) => label.textContent);
@@ -137,7 +138,7 @@ describe('MP-4-2 ten-field band', () => {
       'Handling',
     ]);
     expect(text(view, '[data-field="assignee"] dd')).toBe('Callum Brierley');
-    expect(text(view, '[data-field="client"] dd')).toBe('On file');
+    expect(text(view, '[data-field="client"] dd')).toBe('Verity');
     expect(text(view, '[data-field="due"] dd')).toBe('2026-08-01');
     expect(text(view, '[data-field="project"] dd')).toBe('Website Projects');
     expect(text(view, '[data-field="stage"] dd')).toBe('Awareness');

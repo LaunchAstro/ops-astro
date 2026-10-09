@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Served production API over real PostgreSQL; own-side positive controls and cross-business/person/task/client or delegated/shared DTO refusal and leakage assertions."
+}
