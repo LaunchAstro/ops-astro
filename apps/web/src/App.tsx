@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The application owns routing, sign-in and the task timer across screen lifetimes.
-// Every screen reads through its admitted client; failed reads draw their failure.
-// There is no demonstration state or seeded-corpus URL selector. The UI corpus
-// supplies vocabulary, never authorised rows or timer facts.
+//
+// The application: admitted owner, address and shared screen custody.
+// Screens read through the real client; failed reads draw their failure.
+// The packages/ui vocabulary supplies no rows or demonstration state.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
@@ -11,7 +11,7 @@ import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
-import { drawContent } from './app-content.tsx';
+import { drawContent, frameCustody } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
@@ -31,7 +31,6 @@ import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 import { AssistantView } from './views/assistant.tsx';
-import { timerFrame } from './screens/task/task-timer-context.tsx';
 import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
@@ -293,5 +292,5 @@ export function App(props: AppProps): ReactElement {
       </TaskPinsProvider>
     </StepUpProviders>
   );
-  return timerFrame(screen, session !== null, searchable ? search.open : null, framed);
+  return frameCustody(screen, session !== null, searchable ? search.open : null, framed);
 }
