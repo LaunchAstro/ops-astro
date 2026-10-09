@@ -85,6 +85,13 @@ class LiteralHistoryCases(unittest.TestCase):
     def test_exact_historical_match(self):
         self.assertIn("1 approved historical match(es)", self.scan(0))
 
+    def test_cli_does_not_write_bytecode(self):
+        self.scan(0)
+        self.assertFalse(
+            (self.repo / "scripts/gate/__pycache__").exists(),
+            "gate CLI generated untracked bytecode",
+        )
+
     def test_default_refusal(self):
         self.scan(1, receipt=False)
 

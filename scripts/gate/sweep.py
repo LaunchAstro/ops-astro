@@ -56,6 +56,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+# The CLI must leave the repository unchanged when it imports its local helper.
+sys.dont_write_bytecode = True
 from literal_history import HistoricalLiterals
 
 HERE = Path(__file__).resolve().parent
