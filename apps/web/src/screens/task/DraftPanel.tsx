@@ -36,6 +36,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
 import type { Prefill } from './task-prefill.ts';
 import {
+  draftProblem,
   dropDraft,
   emptyDraft,
   keepDraft,
@@ -242,7 +243,14 @@ function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: At
   return { refusal: null, missed: null };
 }
 
-/** Create: the refusal for an empty name, the one identity per attempt, and the parts not written. */
+function createRefusal(props: DraftPanelProps, kept: Kept): string | null {
+  const problem = draftProblem(props.storage, props.person);
+  if (problem !== null) return problem;
+  if (kept.draft.title.trim() !== '') return null;
+  kept.name.current?.focus();
+  return 'Name the new task first.';
+}
+
 function useCreate(props: DraftPanelProps, kept: Kept) {
   const [view, setView] = useState<Settled & { readonly busy: boolean }>(() => ({
     busy: flights.get(props.hold)?.person === props.person,
@@ -263,9 +271,9 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
   }, []);
   const create = async (): Promise<void> => {
     if (view.busy) return;
-    if (kept.draft.title.trim() === '') {
-      setView((last) => ({ ...last, refusal: 'Name the new task first.' }));
-      kept.name.current?.focus();
+    const refusal = createRefusal(props, kept);
+    if (refusal !== null) {
+      setView((last) => ({ ...last, refusal }));
       return;
     }
     // A running timer stops at Create: its minutes go with the task (DN-05), a new request.

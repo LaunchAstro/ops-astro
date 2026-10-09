@@ -104,3 +104,8 @@ const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu;
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
 }
+
+/** Canonical command identity; entity and editor identifiers remain UUIDs. */
+export function isOperationId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/u.test(value);
+}
