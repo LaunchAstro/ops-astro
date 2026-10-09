@@ -120,6 +120,7 @@ export function useTimerState() {
   const state = useSyncExternalStore(
     timer?.subscribe ?? (() => () => {}),
     timer?.snapshot ?? (() => empty),
+    () => empty,
   );
   return { timer, state };
 }
