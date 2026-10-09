@@ -56,6 +56,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from literal_history import HistoricalLiterals
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 
@@ -704,15 +706,24 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
     if not terms:
         die("the clear-text list is empty")
     commits = outgoing_commits(revs)
-    pairs: dict[tuple[str, str], str] = {}
+    try:
+        history = HistoricalLiterals.load(REPO, HERE / "literal-history-approvals.sha256", revs)
+        refused_tips = history.refused_tips()
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        raise GateBroken("invalid or unreadable historical literal approval") from None
+    pairs: dict[tuple[str, str], set[str]] = {}
     for commit in commits:
         for path, sha in commit_blobs(commit):
-            pairs.setdefault((path, sha), commit[:9])
-    violations: list[Violation] = []
+            pairs.setdefault((path, sha), set()).add(commit)
+    violations: list[Violation] = [
+        (f"{tip[:9]}:{path}", "historical literal at candidate tip", "approved historical blob retained", "approved historical blob retained")
+        for tip, path in refused_tips
+    ]
     violations += path_violations(
-        [(f"{where}:{path}", path) for (path, _s), where in pairs.items()], patterns
+        [(f"{min(occurrences)[:9]}:{path}", path) for (path, _s), occurrences in pairs.items()], patterns
     )
-    for (path, sha), where in pairs.items():
+    for (path, sha), occurrences in pairs.items():
+        where = min(occurrences)[:9]
         data = cat_blob(sha)
         text = decode(data) if data is not None else None
         if text is None:
@@ -724,13 +735,18 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
         for term in terms:
             needle = " ".join(normalise(term))
             if needle and needle in haystack:
+                try:
+                    if history.permits(path, sha, needle, occurrences):
+                        continue
+                except (OSError, ValueError, subprocess.TimeoutExpired):
+                    raise GateBroken("cannot verify historical literal approval") from None
                 violations.append(
                     (f"{where}:{path}", "denied term, literal", fingerprint(term), term)
                 )
     return report(
         violations,
         reveal,
-        f"literal, {len(pairs)} blob(s) in {len(commits)} outgoing commit(s), {len(terms)} term(s)",
+        f"literal, {len(pairs)} blob(s) in {len(commits)} outgoing commit(s), {len(terms)} term(s), {history.allowed} approved historical match(es)",
     )
 
 
