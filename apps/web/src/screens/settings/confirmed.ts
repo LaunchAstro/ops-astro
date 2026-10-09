@@ -23,10 +23,10 @@ import {
 // under the line limit; use-settings.ts re-exports the two types.
 
 /** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
-export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention';
+export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention' | 'priority';
 
 /** What a person can propose. `null` is the band off, and it is a real value. */
-export type Draft = number | boolean | null;
+export type Draft = number | boolean | null | readonly string[];
 
 const isThreshold = (value: unknown): value is number | null =>
   value === null || typeof value === 'number';
@@ -128,4 +128,11 @@ export function sessionMemory(
       if (denied()) slot.remove();
     },
   };
+}
+
+/** The session's memory as this screen holds it, and which session it is. */
+export interface Held {
+  readonly grantKey: string;
+  readonly confirmed: Confirmed;
+  readonly denied: boolean;
 }

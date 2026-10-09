@@ -51,4 +51,9 @@ export interface SettingsModel {
   readonly complain: (text: string) => void;
   /** Read the settings again, as a write elsewhere on the page asks. */
   readonly reload: () => void;
+  /** Only owner/generation changes remount the priority editor. */
+  readonly priorityOwnerKey: string;
+  readonly priorityEditable: boolean;
+  readonly priorityPending: boolean;
+  readonly priorityUnknown: boolean;
 }
