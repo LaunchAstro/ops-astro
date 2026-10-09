@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R70 installed-business start-date metadata upgrade through the normal migration prefix/installer, preserved rows and fields, and actual task write/read rank equality"
+}

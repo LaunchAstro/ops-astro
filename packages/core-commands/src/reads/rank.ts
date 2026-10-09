@@ -140,7 +140,7 @@ export function numberPool(
 export type RankPool =
   { readonly kind: 'grants'; readonly subjects: readonly Subject[] } | { readonly kind: 'task' };
 
-interface PoolRow {
+export interface RankPoolRow {
   readonly id: string;
   readonly key: string | null;
   readonly position: string | null;
@@ -148,12 +148,13 @@ interface PoolRow {
   readonly confidence: string | null;
   readonly ease: string | null;
   readonly open: boolean;
+  readonly started_at: Date | null;
   readonly now: Date;
 }
 
 const markOf = (value: string | null): number | null => (value === null ? null : Number(value));
 
-function inputOf(row: PoolRow): RankInput {
+export function rankInputOf(row: RankPoolRow): RankInput {
   return {
     id: row.id,
     key: row.key ?? '',
@@ -163,13 +164,11 @@ function inputOf(row: PoolRow): RankInput {
       confidence: markOf(row.confidence),
       ease: markOf(row.ease),
     },
-    // No business names its priority stages yet, and a task carries no start
-    // date: both arrive with the journey stages (MP-5-13) and the task's
-    // dates. Until then every task takes a weight of 1 and no age boost, and
-    // the calc line says so with its ×1.
+    // R70 priority stages still need an authoritative business-owned contract.
+    // MP-5-13 supplies client-board scope, not that configuration.
     priorityStage: false,
     open: row.open,
-    startedAt: null,
+    startedAt: row.started_at,
   };
 }
 
@@ -194,12 +193,12 @@ export async function readTaskRank(
           action: 'read',
           recordTypeId: taskTypeId,
         });
-  const rows = await tx.query<PoolRow>(
+  const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
             r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
             coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
               and not (r.data ? 'archived_at') as open,
-            now() as now
+            (r.data ->> 'started_at')::timestamptz as started_at, now() as now
        from public.records r
        left join public.records s
          on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
@@ -211,10 +210,10 @@ export async function readTaskRank(
   if (own === undefined) return { number: null, score: null, calc: '' };
   const now = own.now;
   const numbers = numberPool(
-    rows.filter((row) => row.open).map((row) => inputOf(row)),
+    rows.filter((row) => row.open).map((row) => rankInputOf(row)),
     now,
   );
-  const scored = scoreTask(inputOf(own), now);
+  const scored = scoreTask(rankInputOf(own), now);
   return {
     number: numbers.get(recordId) ?? null,
     score: scored.score,

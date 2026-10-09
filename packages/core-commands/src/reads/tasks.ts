@@ -70,6 +70,7 @@ export interface TaskRowRead {
   readonly due: Date | null;
   readonly priority: string | null;
   readonly completed_at: Date | null;
+  readonly started_at: Date | null;
   readonly description: string | null;
   readonly agent_brief: string | null;
   readonly page_link: string | null;
@@ -107,6 +108,7 @@ export const SELECT: string = `
          r.ts_1  as due,
          r.num_1::text as priority,
          r.ts_2  as completed_at,
+         (r.data ->> 'started_at')::timestamptz as started_at,
          r.data ->> 'description' as description,
          r.data ->> 'agent_brief' as agent_brief,
          r.data ->> 'page_link' as page_link,
@@ -148,6 +150,7 @@ export function summaryOf(row: TaskRowRead): TaskSummary {
     due: row.due === null ? null : row.due.toISOString(),
     priority: row.priority === null ? null : Number(row.priority),
     completedAt: row.completed_at === null ? null : row.completed_at.toISOString(),
+    startedAt: row.started_at === null ? null : row.started_at.toISOString(),
     revision: Number(row.revision),
   };
 }
