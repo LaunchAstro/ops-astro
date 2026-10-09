@@ -82,7 +82,11 @@ export function verifiedJsonWrite(
   if (storage === null) return false;
   try {
     const raw = JSON.stringify(value);
-    storage.setItem(key, raw);
+    try {
+      storage.setItem(key, raw);
+    } catch {
+      /* A retained exact copy can still satisfy recovery. */
+    }
     return storage.getItem(key) === raw;
   } catch {
     return false;
