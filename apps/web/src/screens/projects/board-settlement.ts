@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Board command outcomes share one report; App-owned assignments reread through custody.
 import type { ProjectRow } from '@launchastro/ui';
-import type { CallResult, OperationsClient } from '../../operations/client.ts';
-import { settle, type Settlement } from '../../records/use-command.ts';
+import type { OperationsClient } from '../../operations/client.ts';
+import type { Settlement } from '../../records/use-command.ts';
+import { BoardEditCustody } from './board-edit-custody.ts';
+import type { BoardEditIntent } from './board-edit-attempt.ts';
 import { AssignmentCustody, type AssignmentFields } from '../task/assignment-custody.ts';
 
 export function assignmentSender(options: {
@@ -26,22 +28,20 @@ export function assignmentSender(options: {
   return assign;
 }
 
-/** Settled or not, the board re-reads: a refusal redraws the stored truth, and is said as well. */
-export function sender(
-  onSettled: (refused: string | null) => void,
-  reload: () => void,
-): (sent: Promise<CallResult<unknown>>) => void {
-  const settleOne = async (sent: Promise<CallResult<unknown>>): Promise<void> => {
-    try {
-      onSettled(refusalOf(settle(await sent)));
-    } catch {
-      onSettled(refusalOf({ kind: 'unknown', because: 'No answer came back.' }));
-    }
-    reload();
-  };
-  return (sent) => {
-    void settleOne(sent);
-  };
+export function boardEditSender(options: {
+  readonly client: OperationsClient;
+  readonly edits?: BoardEditCustody;
+  readonly onSettled: (refused: string | null) => void;
+  readonly reload: () => void;
+}): (row: ProjectRow, intent: BoardEditIntent) => boolean {
+  const custody =
+    options.edits ?? new BoardEditCustody(options.client, options.client.businessKey, null, true);
+  if (options.edits === undefined)
+    custody.settled((_entry, answer) => {
+      options.onSettled(refusalOf(answer));
+      options.reload();
+    });
+  return (row, intent) => custody.choose(intent, row.revision);
 }
 
 /** What the board says about a write: nothing when it landed, else the server's words. */

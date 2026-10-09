@@ -186,7 +186,7 @@ function dueEditor(row: ProjectRow, drawn: ReactNode, actions: RowActions): Reac
       label={change('due date', row)}
       editor={{ kind: 'date', current: row.due?.slice(0, 10) ?? '' }}
       onChoose={(value) => {
-        onDue(row, value === '' ? null : value);
+        return onDue(row, value === '' ? null : value);
       }}
     >
       {drawn}
@@ -211,7 +211,7 @@ function stageEditor(
         current: row.stage ?? '',
       }}
       onChoose={(value) => {
-        onStage(row, value);
+        return onStage(row, value);
       }}
     >
       {drawn}
@@ -243,7 +243,7 @@ function estimateEditor(row: ProjectRow, drawn: ReactNode, actions: RowActions):
         current: current === null ? '' : String(current),
       }}
       onChoose={(value) => {
-        onEstimate(row, value === '' ? null : Number(value));
+        return onEstimate(row, value === '' ? null : Number(value));
       }}
     >
       {drawn}

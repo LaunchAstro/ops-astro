@@ -29,35 +29,9 @@
 // refused once the task exists is named back to the person, never retried as
 // a second task.
 
+import { draftStored, type Attempt, type TaskDraft } from './draft-storage.ts';
+export type { Attempt, TaskDraft } from './draft-storage.ts';
 import type { Prefill } from './task-prefill.ts';
-
-export interface TaskDraft {
-  readonly title: string;
-  /** A day, `YYYY-MM-DD`, or null. */
-  readonly due: string | null;
-  readonly estimate: number | null;
-  /** Tag names as typed; matched to the vocabulary whatever the case at Create. */
-  readonly tags: readonly string[];
-  /** Subtask names, in order. */
-  readonly steps: readonly string[];
-  /** Time spent, as the log box takes it (`30m`, `1h 15m`), or empty. */
-  readonly time: string;
-  readonly note: string;
-  /** The client from the page's scope, or null: never a fixed client. */
-  readonly clientId: string | null;
-  /** A category id (`TASK_CATEGORIES`), guessed from the page or chosen, or null. */
-  readonly category: string | null;
-  /** The owner the page named, or null: Create assigns nobody. */
-  readonly owner: { readonly id: string; readonly name: string } | null;
-  /** The sentence admitting what the page's guesses came from (DN-02), or null. */
-  readonly why: string | null;
-  /** The page it was filed from, kept with it so a reopened draft still names its own. */
-  readonly from: string | null;
-  /** When the draft's running timer started, ISO, or null (DN-05). */
-  readonly timerFrom: string | null;
-  /** Milliseconds the draft's timer has run; rounded once, at Create (`timedMinutes`). */
-  readonly timedMs: number;
-}
 
 export const emptyDraft = (clientId: string | null): TaskDraft => ({
   title: '',
@@ -112,13 +86,6 @@ const PREFIX = 'ops-astro.task-draft.';
 const keyOf = (person: string): string => `${PREFIX}${person}`;
 
 /** A Create not yet settled: its ids, the parts answered, the revision after, those refused. */
-export interface Attempt {
-  readonly id: string;
-  readonly parts: readonly string[];
-  readonly done: number;
-  readonly revision: number | null;
-  readonly missed: readonly string[];
-}
 
 export const newAttempt = (id: string): Attempt => ({
   id,
@@ -139,7 +106,9 @@ function readStored(storage: Storage | null, person: string): Stored | null {
   if (fallback !== undefined) return fallback;
   try {
     const held = storage?.getItem(keyOf(person)) ?? null;
-    return held === null ? null : (JSON.parse(held) as Stored);
+    if (held === null) return null;
+    const parsed: unknown = JSON.parse(held);
+    return draftStored(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -166,6 +135,7 @@ export function keepDraft(
   draft: TaskDraft,
   attempt: Attempt | null = null,
 ): void {
+  if (draftProblem(storage, person) !== null) return;
   const stored: Stored = attempt === null ? draft : { ...draft, attempt };
   unstored.set(person, stored);
   try {
@@ -191,6 +161,7 @@ export function saveAttempt(
 }
 
 export function dropDraft(storage: Storage | null, person: string): void {
+  if (draftProblem(storage, person) !== null) return;
   unstored.delete(person);
   try {
     storage?.removeItem(keyOf(person));
@@ -217,4 +188,21 @@ export function dropOtherDrafts(storage: Storage | null, person: string | null):
   } catch {
     // Browser storage is unavailable; other owners' fallbacks have been cleared.
   }
+}
+
+/** A known malformed copy stays untouched; ordinary unavailable storage keeps its existing fallback. */
+export function draftProblem(storage: Storage | null, person: string): string | null {
+  let raw: string | null;
+  try {
+    raw = storage?.getItem(keyOf(person)) ?? null;
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  try {
+    if (draftStored(JSON.parse(raw) as unknown)) return null;
+  } catch {
+    /* Hold the raw copy. */
+  }
+  return 'The saved draft could not be recovered. Its original copy is held; No recovery request was sent.';
 }

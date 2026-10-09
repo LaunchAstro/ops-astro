@@ -21,9 +21,11 @@
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { AssignmentCustody, AssignmentFields } from './task/assignment-custody.ts';
+import type { BoardEditCustody } from './projects/board-edit-custody.ts';
+import type { BoardEditIntent } from './projects/board-edit-attempt.ts';
 import type { TaskTimer } from './task/task-timer.ts';
-import type { CallResult, OperationsClient } from '../operations/client.ts';
-import { assignmentSender, sender } from './projects/board-settlement.ts';
+import type { OperationsClient } from '../operations/client.ts';
+import { assignmentSender, boardEditSender } from './projects/board-settlement.ts';
 import { titleOf } from '../views/task-title.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
 import {
@@ -65,15 +67,12 @@ export function assigneeOf(task: BoardTask, agent: BoardTask['agent']): ProjectR
     : { id: task.assignee.personId, name: task.assignee.name, agent: false };
 }
 
-/** The revision the row was read at, which an edit made on it is sent against. */
-const at = (row: ProjectRow): { readonly expectedRevision?: number } =>
-  row.revision === undefined ? {} : { expectedRevision: row.revision };
-
 export function rowActions(options: {
   readonly client: OperationsClient;
   /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
   readonly people: readonly PersonView[] | null;
   readonly assignment?: AssignmentCustody;
+  readonly edits?: BoardEditCustody;
   readonly timer?: TaskTimer | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
@@ -86,28 +85,25 @@ export function rowActions(options: {
     readonly setOpened: (opened: RowOpened) => void;
   };
 }): RowActions {
-  const { client } = options;
-  const send = sender(options.onSettled, options.reload);
+  const send = boardEditSender(options);
   const assign = assignmentSender(options);
   return {
-    onTick: (row, done) => {
+    onTick: (row, done) =>
       send(
+        row,
         done
-          ? client.mutate('task.complete', { recordId: row.id }, at(row))
-          : client.mutate(
-              'task.reopen',
-              { recordId: row.id, reason: 'Reopened from the Projects board' },
-              at(row),
-            ),
-      );
-    },
-    onRename: (row, title) => {
-      send(client.mutate('task.update', { recordId: row.id, fields: { title } }, at(row)));
-    },
+          ? { command: 'task.complete', body: { recordId: row.id } }
+          : {
+              command: 'task.reopen',
+              body: { recordId: row.id, reason: 'Reopened from the Projects board' },
+            },
+      ),
+    onRename: (row, title) =>
+      send(row, { command: 'task.update', body: { recordId: row.id, fields: { title } } }),
     ...openers(options),
     // No revision: a time entry is its own record, not a change to the task.
     ...timerAction(options.timer),
-    ...cellActions(client, options.people, send, assign),
+    ...cellActions(options.people, send, assign),
   };
 }
 
@@ -120,9 +116,8 @@ function timerAction(timer: TaskTimer | null | undefined): RowActions {
 
 /** The cell editors' commands (MP-5-10): assignee, due date, stage and estimate, each at the board's revision. */
 function cellActions(
-  client: OperationsClient,
   people: readonly PersonView[] | null,
-  send: (sent: Promise<CallResult<unknown>>) => void,
+  send: (row: ProjectRow, intent: BoardEditIntent) => boolean,
   assign: (row: ProjectRow, fields: AssignmentFields) => void,
 ): RowActions {
   return {
@@ -138,28 +133,21 @@ function cellActions(
             assign(row, { agent });
           },
         }),
-    onDue: (row, due) => {
-      send(client.mutate('task.update', { recordId: row.id, fields: { due } }, at(row)));
-    },
+    onDue: (row, due) =>
+      send(row, { command: 'task.update', body: { recordId: row.id, fields: { due } } }),
     onStage: (row, stage) => {
       // The board draws labels; the task stores the stage's id.
-      send(
-        client.mutate(
-          'task.set_stage',
-          { recordId: row.id, fields: { stage: TASK_STAGES.idOf(stage) } },
-          at(row),
-        ),
-      );
+      return send(row, {
+        command: 'task.set_stage',
+        body: { recordId: row.id, fields: { stage: TASK_STAGES.idOf(stage) } },
+      });
     },
     estimates: ESTIMATE_CHOICES,
     onEstimate: (row, minutes) => {
-      send(
-        client.mutate(
-          'task.update',
-          { recordId: row.id, fields: { estimated_minutes: minutes } },
-          at(row),
-        ),
-      );
+      return send(row, {
+        command: 'task.update',
+        body: { recordId: row.id, fields: { estimated_minutes: minutes } },
+      });
     },
   };
 }

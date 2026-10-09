@@ -42,7 +42,7 @@ export interface EditableCellProps {
   readonly label: string;
   readonly editor: CellEditorSpec;
   /** Called with a changed value only. */
-  readonly onChoose: (value: string) => void;
+  readonly onChoose: (value: string) => void | boolean;
   /** The cell as drawn at rest. */
   readonly children: ReactNode;
 }
@@ -99,8 +99,8 @@ function OpenCell(
     };
   }, [onClose]);
   const choose = (value: string, focusBack: boolean): void => {
+    if (value !== props.editor.current && props.onChoose(value) === false) return;
     onClose(focusBack);
-    if (value !== props.editor.current) props.onChoose(value);
   };
   return (
     <div className="cbd__cell is-editing" ref={cell}>

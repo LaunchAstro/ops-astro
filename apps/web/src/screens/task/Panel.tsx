@@ -67,6 +67,7 @@ import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
 import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
+import { PanelBoardDoor } from './board-door.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -286,6 +287,7 @@ function PanelHead(props: SideProps): ReactElement {
       >
         Open its page
       </a>
+      <PanelBoardDoor task={task} />
       <GoTo task={task} />
       <TaskPinsNotice />
       {props.docked === true ? null : (
