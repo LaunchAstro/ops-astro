@@ -14,11 +14,13 @@
 // rows while permission is rechecked; completion keeps its current answer
 // while reading back. Sorting lasts for this mounted screen's session.
 
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
-import { useBoardProjectionRead } from '../../data/board-live.ts';
+import { dependencyAdmission } from '../../data/board-live.ts';
+import { useTodoDependencies, type TodoDependency } from './todo-dependencies.ts';
+import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
@@ -65,6 +67,7 @@ function useTodoFilters(props: TodosScreenProps) {
   const currentChips = admittedChips(chips, vocabulary);
   const filters = [...currentChips, ...typedScope(query, vocabulary)];
   const read = scopedBody(scope, filters, vocabulary);
+  const intent = JSON.stringify([scope, query, chips]);
   const interpretation = scopedWords(admittedWords(scope, vocabulary), filters, focus);
   const boardAddress = compactBoardAddress(read, scope, filters, focus);
   const tools = {
@@ -90,6 +93,7 @@ function useTodoFilters(props: TodosScreenProps) {
     scope,
     setScope,
     vocabulary,
+    intent,
     filters,
     read,
     by,
@@ -108,6 +112,7 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
     scope,
     setScope,
     vocabulary,
+    intent,
     filters,
     read,
     by,
@@ -117,6 +122,7 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
     setChips,
     setQuery,
   } = useTodoFilters(props);
+  const onDependency = useTodoDependencies(props, read, vocabulary, intent);
   return (
     <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
       <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
@@ -132,9 +138,10 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
         <p data-todos-empty>No to-dos here. Resolve the scope to read matching work.</p>
       ) : (
         <ScopedTodos
-          key={JSON.stringify(read.body)}
+          key={`${JSON.stringify(read.body)}:${String(vocabulary.version)}`}
           {...props}
           scope={scope}
+          onDependency={onDependency}
           body={read.body}
           filters={filters}
           by={by}
@@ -174,21 +181,23 @@ function IdentityChoices(props: {
     </>
   );
 }
-function ScopedTodos(
-  props: TodosScreenProps & {
-    readonly scope: TodoScope;
-    readonly body: Readonly<Record<string, string>>;
-    readonly filters: readonly Chip[];
-    readonly by: SortKey;
-    readonly focus: string | null;
-    readonly onFocus: (key: string | null) => void;
-  },
-): ReactElement {
-  const { state, reload } = useBoardProjectionRead<TaskTodosResult>(props.client, {
+type ScopedTodosProps = TodosScreenProps & {
+  readonly scope: TodoScope;
+  readonly body: Readonly<Record<string, string>>;
+  readonly filters: readonly Chip[];
+  readonly by: SortKey;
+  readonly focus: string | null;
+  readonly onFocus: (key: string | null) => void;
+  readonly onDependency: TodoDependency;
+};
+function ScopedTodos(props: ScopedTodosProps): ReactElement {
+  const { state, reload, own } = useRead<TaskTodosResult>({
     grantKey: props.grantKey,
     run: () => props.client.read<TaskTodosResult>('task.todos', props.body),
-    deps: [],
+    deps: [props.client],
   });
+  const admission = own ? dependencyAdmission(state, true) : 'recovering';
+  useEffect(() => props.onDependency(admission), [props.onDependency, admission]);
   const { because, tick } = useTick(props.client, reload);
   const today = todayOn((props.now ?? realTime)());
   return (

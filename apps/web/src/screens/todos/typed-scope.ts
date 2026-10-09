@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { useCallback, useRef } from 'react';
 import type {
   ClientView,
   TodoView,
@@ -20,25 +21,64 @@ export function useTodoVocabulary(
   client: OperationsClient,
   grantKey: string,
   changes = 0,
-): Vocabulary {
-  const people = useBoardProjectionRead<PersonListResult>(client, {
-    grantKey,
-    run: () => client.read('person.list', {}),
-    deps: [],
-  });
-  const clients = useBoardProjectionRead<ClientListResult>(client, {
-    grantKey,
-    run: () => client.read('client.list', {}),
-    deps: [],
-  });
+): Vocabulary & {
+  readonly refresh: () => void;
+  readonly version: number;
+  readonly recovering: boolean;
+  readonly withdrawn: boolean;
+} {
+  const people = useBoardProjectionRead<PersonListResult>(
+    client,
+    {
+      grantKey,
+      run: () => client.read('person.list', {}),
+      deps: [client],
+    },
+    'floor-only',
+  );
+  const clients = useBoardProjectionRead<ClientListResult>(
+    client,
+    {
+      grantKey,
+      run: () => client.read('client.list', {}),
+      deps: [client],
+    },
+    'floor-only',
+  );
   useRereadOn(changes, people.reload);
   useRereadOn(changes, clients.reload);
+  return useVocabularyPair(people, clients);
+}
+
+function useVocabularyPair(
+  people: ReturnType<typeof useBoardProjectionRead<PersonListResult>>,
+  clients: ReturnType<typeof useBoardProjectionRead<ClientListResult>>,
+) {
+  const pair = useRef({ people: people.state, clients: clients.state, version: 0 });
+  if (pair.current.people !== people.state || pair.current.clients !== clients.state)
+    pair.current = {
+      people: people.state,
+      clients: clients.state,
+      version: pair.current.version + 1,
+    };
+  const refresh = useCallback(() => {
+    people.refresh();
+    clients.refresh();
+  }, [people.refresh, clients.refresh]);
   const pending =
     !people.own ||
     !clients.own ||
     people.state.outcome === 'loading' ||
     clients.state.outcome === 'loading';
   return {
+    refresh,
+    version: pair.current.version,
+    recovering:
+      people.state.outcome === 'loading' ||
+      people.state.outcome === 'unavailable' ||
+      clients.state.outcome === 'loading' ||
+      clients.state.outcome === 'unavailable',
+    withdrawn: people.state.outcome === 'denied' || clients.state.outcome === 'denied',
     pending,
     people: !pending && people.state.outcome === 'ready' ? people.state.value.persons : [],
     clients: !pending && clients.state.outcome === 'ready' ? clients.state.value.clients : [],

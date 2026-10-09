@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { act, useState, type ReactElement } from 'react';
+import { act, useMemo, useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount } from '../surfaces/mount.tsx';
@@ -60,13 +60,12 @@ export function draftReply(request: Sent): Response {
       );
   }
 }
-export async function draftApp(
-  input: {
-    readonly storage?: Storage;
-    readonly path?: string;
-    readonly reply?: (sent: Sent) => Promise<Response> | undefined;
-  } = {},
-) {
+interface DraftAppInput {
+  readonly storage?: Storage;
+  readonly path?: string;
+  readonly reply?: (sent: Sent) => Promise<Response> | undefined;
+}
+export async function draftApp(input: DraftAppInput = {}) {
   const storage = input.storage ?? draftTab();
   const sent: Sent[] = [];
   const fetch: typeof globalThis.fetch = (url, init) => {
@@ -82,8 +81,15 @@ export async function draftApp(
     if (reply !== undefined) return reply;
     return Promise.resolve(draftReply(request));
   };
+  let changeTransport: (() => void) | undefined;
   function Entry(): ReactElement {
     const [path, navigate] = useState(input.path ?? '/projects/');
+    const [transport, setTransport] = useState(0);
+    changeTransport = () => setTransport((current) => current + 1);
+    const currentFetch = useMemo<typeof globalThis.fetch>(
+      () => (transport === 0 ? fetch : (url, init) => fetch(url, init)),
+      [transport],
+    );
     return (
       <App
         path={path}
@@ -91,7 +97,7 @@ export async function draftApp(
         sessions={new SessionStore(storage)}
         gotrueUrl="http://gotrue.test"
         apiOrigin=""
-        fetch={fetch}
+        fetch={currentFetch}
         storage={storage}
         panels={{
           todos: { label: 'Projects', ariaLabel: 'Projects', route: 'agency:projects-board' },
@@ -101,7 +107,13 @@ export async function draftApp(
   }
   const element = <Entry />;
   const view = await mount(element);
-  return { view, storage, sent, element };
+  const rebindTransport = async (): Promise<void> => {
+    if (changeTransport === undefined) throw new Error('App transport was not mounted');
+    await act(() => {
+      changeTransport?.();
+    });
+  };
+  return { view, storage, sent, element, rebindTransport };
 }
 export async function tick(): Promise<void> {
   await act(async () => {

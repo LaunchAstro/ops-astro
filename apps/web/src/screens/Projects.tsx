@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { useTimerState } from './task/task-timer-context.tsx';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Empty, usePageToolbar, ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { rowOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
+import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import type {
   ClientListResult,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive, useBoardProjectionRead } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -126,6 +126,7 @@ function ProjectBoardRead(
 ): ReactElement {
   const client = props.client;
   const pins = useSharedTaskPins();
+  const { timer, state: timerState } = useTimerState();
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
@@ -138,6 +139,7 @@ function ProjectBoardRead(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
+  useRereadOn(timerState.changed, reload);
   // Same-grant empty rereads retain filters (#902); a new reader opens its own empty state.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
@@ -253,7 +255,7 @@ function ProjectBoardRead(
             )}
             withheld={admitted ? (answer.withheld ?? 0) : 0}
             changedAt={admitted ? (answer.changedAt ?? null) : null}
-            stages={STAGE_LABELS}
+            stages={STAGES}
             viewer={admitted ? (answer.viewer ?? null) : null}
             viewerOn={
               !scopedView &&
@@ -266,6 +268,7 @@ function ProjectBoardRead(
             actions={rowActions({
               client,
               people: persons,
+              timer,
               href: (key) => pathTo('agency:task-detail', { key }),
               reload,
               onSettled: (text) => {
@@ -292,6 +295,3 @@ const NO_TASKS = (
     hint="Create one with the form above."
   />
 );
-
-/** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
-const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);

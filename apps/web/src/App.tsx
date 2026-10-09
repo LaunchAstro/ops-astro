@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The application: which address is open, who is signed in, and nothing else.
-//
-// **There is no demonstration state and no way to ask for one.** A `?state=`
-// parameter selecting a seeded corpus is how a mockup demonstrates itself,
-// not how a product reports.
-// Every screen below reads through the real client, and a read that fails draws
-// the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
-// — the words and tones a state may print — and not as a source of rows.
+// The application: admitted owner, address and shared screen custody.
+// Screens read through the real client; failed reads draw their failure.
+// The packages/ui vocabulary supplies no rows or demonstration state.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
@@ -16,7 +11,7 @@ import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
-import { drawContent } from './app-content.tsx';
+import { drawContent, frameCustody } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
@@ -238,7 +233,7 @@ export function App(props: AppProps): ReactElement {
         entry={null}
       />
     );
-  return (
+  const framed = (
     <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
       <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
         <SignedInName value={personName}>
@@ -297,4 +292,5 @@ export function App(props: AppProps): ReactElement {
       </TaskPinsProvider>
     </StepUpProviders>
   );
+  return frameCustody(screen, session !== null, searchable ? search.open : null, framed);
 }

@@ -155,6 +155,20 @@
   gap: var(--s-6);
 }
 
+/* Timer recovery uses the strip's on-dark ink and the existing secondary control. */
+[data-task-timer-strip],
+[data-task-timer-strip] [data-task-timer-notice] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+[data-task-timer-strip] [data-task-timer-notice] {
+  --text: var(--on-dark);
+  --btn-outline: var(--on-dark);
+  --bg: var(--app-chrome);
+}
+
 .btnrow {
   display: flex;
   flex-wrap: wrap;
