@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { OperationsClient } from '../../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../../records/use-command.ts';
-import { isUuid, verifiedJsonWrite, type StorageLike } from '../../session/storage-slot.ts';
+import {
+  isOperationId,
+  isUuid,
+  verifiedJsonWrite,
+  type StorageLike,
+} from '../../session/storage-slot.ts';
 import { tabOwnerGeneration } from '../../session/token.ts';
 import {
   CREATE_KEY,
@@ -150,7 +155,12 @@ export class CreateCustody {
     )
       return null;
     const id = this.#client.newOperationId();
-    if (!isUuid(id) || !isUuid(editor.id) || this.#state.holds.has(id) || title.trim() === '')
+    if (
+      !isOperationId(id) ||
+      !isUuid(editor.id) ||
+      this.#state.holds.has(id) ||
+      title.trim() === ''
+    )
       return null;
     this.#put(id, {
       entry: submittedCreate(id, title.trim(), editor),

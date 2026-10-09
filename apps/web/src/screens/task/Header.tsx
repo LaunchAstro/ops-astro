@@ -30,6 +30,7 @@ import { runLineOf } from './run-line.ts';
 import type { TaskExecutionRead } from '../../views/task-execution.ts';
 export { runLineOf, type RunShape } from './run-line.ts';
 import { titleOf } from '../../views/task-title.ts';
+import { owningBoardAddress } from './board-door.tsx';
 
 /** How long the tick stays after a copy that worked (TP-05). */
 export const COPIED_FOR_MS = 1200;
@@ -40,12 +41,19 @@ export function TaskHeader(props: {
 }): ReactElement {
   const { task } = props;
   const run = runLineOf(task.proposals, props.execution, task.id);
+  const boardAddress = owningBoardAddress(task);
   return (
     <header className="tpr">
       <nav className="tpr__crumb" aria-label="Where this task sits">
-        <a className="sb__addr" data-crumb="projects" href={pathTo('agency:projects-board')}>
-          Projects →
-        </a>
+        {boardAddress === null ? (
+          <span className="sb__addr" data-crumb="projects">
+            Projects →
+          </span>
+        ) : (
+          <a className="sb__addr" data-crumb="projects" href={boardAddress}>
+            Projects →
+          </a>
+        )}
         <span data-crumb="board">{boardWords(task.board)}</span>
         <CategoryCrumb category={task.category ?? null} />
         <span aria-hidden="true">·</span>

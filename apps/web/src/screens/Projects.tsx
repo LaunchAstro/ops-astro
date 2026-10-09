@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { NoTasks } from './projects/NoTasks.tsx';
+import { BoardEditRecoveries, useBoardEditRead } from './projects/board-edit-context.tsx';
 import { useAssignments } from './task/assignment-context.tsx';
 import { AssignmentRecoveries } from './task/AssignmentRecovery.tsx';
 import { useTimerState } from './task/task-timer-context.tsx';
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { usePageToolbar, ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from './projects-row.ts';
@@ -153,16 +154,10 @@ function ProjectBoardRead(
   }, [state]);
   const board: ReadState<TaskBoardResult> =
     state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;
-  // The last board write's refusal or unknown outcome, in the server's words.
-  // It belongs to the grant the write was sent under: another business's
-  // board never draws it, a late answer included.
-  const [refused, setRefused] = useState<{ grant: string; text: string | null } | null>(null);
   const grantKey = props.grantKey;
-  const said = refused?.grant === grantKey ? refused.text : null;
-  const live = useRef(grantKey);
-  useEffect(() => {
-    live.current = grantKey;
-  }, [grantKey]);
+  const edits = useBoardEditRead(client, grantKey, refresh);
+  const [refused, setRefused] = useState<string | null>(null);
+  const said = refused ?? edits.said;
 
   // The people the assignee editor offers (MP-5-10); until they answer, the
   // assignee cell draws no editor.
@@ -252,6 +247,7 @@ function ProjectBoardRead(
         {answer === null ? null : (
           <>
             <AssignmentRecoveries custody={assignments.custody} tasks={admitted ? rows : []} />
+            <BoardEditRecoveries custody={edits.custody} tasks={admitted ? rows : []} />
             <ProjectsBoard
               // A new place is a new view: the board opens on it afresh.
               hidden={props.hidden}
@@ -275,13 +271,12 @@ function ProjectBoardRead(
               actions={rowActions({
                 client,
                 assignment: assignments.custody,
+                edits: edits.custody,
                 people: persons,
                 timer,
                 href: (key) => pathTo('agency:task-detail', { key }),
                 reload,
-                onSettled: (text) => {
-                  if (live.current === grantKey) setRefused({ grant: grantKey, text });
-                },
+                onSettled: setRefused,
                 ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
               })}
               address={boardQuery}

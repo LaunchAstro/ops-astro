@@ -73,7 +73,9 @@ describe('MP-4-1 CS-4.38 doors', () => {
   it('the crumb goes to the board; the missing states offer it', async () => {
     const board = pathTo('agency:projects-board');
     const view = await page('Proj-Verity-Pacing', found());
-    expect(view.find('[data-crumb="projects"]')?.getAttribute('href')).toBe(board);
+    expect(view.find('[data-crumb="projects"]')?.getAttribute('href')).toBe(
+      '/projects/?board=44444444-4444-4444-8444-444444444444&target=Proj-Verity-Pacing',
+    );
     await view.unmount();
     const unknown = await page('x', { x: { body: NOT_FOUND, status: 404 } });
     expect(unknown.find('[data-absent] a')?.getAttribute('href')).toBe(board);
