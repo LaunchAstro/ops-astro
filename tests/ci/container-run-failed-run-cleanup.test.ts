@@ -5,25 +5,15 @@
 // its name or id, holding the login it was given; `rm` removes that file,
 // and can be told to fail a number of times first.
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { standIn, type Run } from './container-run-cleanup-fixture.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'container-run-failed-'));
 const calls = join(bin, 'calls');
 const containers = join(bin, 'containers');
-const failures = join(bin, 'rm-failures');
-const oks = join(bin, 'rm-oks');
 const ID = 'b'.repeat(64);
 // The stand-in answers every docker call of the file, the cleanup's after the run included.
 const path = process.env['PATH'];
@@ -34,45 +24,6 @@ afterAll(() => {
   process.env['PATH'] = path;
   rmSync(bin, { recursive: true, force: true });
 });
-
-type Run = {
-  child: { spawnargs: string[]; kill: (signal: string) => boolean };
-  exited: Promise<boolean>;
-  stop: () => Promise<void>;
-};
-
-/**
- * A stand-in docker whose `run` does `create`. Its `rm` removes, except that
- * after the first `okFirst` it refuses `rmFailures` times with `refusal`.
- */
-function standIn(
-  create: string[],
-  rmFailures = 0,
-  { okFirst = 0, refusal = 'Error response from daemon: transient' } = {},
-): void {
-  writeFileSync(calls, '');
-  writeFileSync(failures, String(rmFailures));
-  writeFileSync(oks, String(okFirst));
-  rmSync(containers, { recursive: true, force: true });
-  mkdirSync(containers);
-  writeFileSync(
-    join(bin, 'docker'),
-    [
-      '#!/bin/sh',
-      `if [ "$1" = rm ]; then echo "$*" >> "${calls}"; for last; do :; done`,
-      `  ok=$(cat "${oks}"); if [ "$ok" -gt 0 ]; then echo $((ok - 1)) > "${oks}"; rm -f "${containers}/$last"; exit 0; fi`,
-      `  left=$(cat "${failures}"); if [ "$left" -gt 0 ]; then echo $((left - 1)) > "${failures}"`,
-      `    echo '${refusal}' >&2; exit 1; fi`,
-      `  rm -f "${containers}/$last"; exit 0; fi`,
-      `if [ "$1" = kill ]; then echo "$*" >> "${calls}"; exit 0; fi`,
-      'for arg in "$@"; do case $arg in --cidfile=*) cid="${arg#--cidfile=}" ;; --name=*) name="${arg#--name=}" ;; esac; done',
-      ': > "$cid"',
-      ...create,
-      '',
-    ].join('\n'),
-  );
-  chmodSync(join(bin, 'docker'), 0o755);
-}
 
 async function started(): Promise<{ run: Run; arg: (prefix: string) => string }> {
   const module = '../../scripts/ops/container-run.mjs';
@@ -90,7 +41,7 @@ async function started(): Promise<{ run: Run; arg: (prefix: string) => string }>
 
 /** Once docker has written the id, the client dies by a signal and every removal is refused with `refusal`. */
 async function killedAfterIdRefused(refusal: string) {
-  standIn([`echo ${ID} > "$cid"`, 'exec /bin/sleep 30'], 99, { refusal });
+  standIn(bin, [`echo ${ID} > "$cid"`, 'exec /bin/sleep 30'], 99, { refusal });
   const { run } = await started();
   const cidfile = run.child.spawnargs.find((a) => a.startsWith('--cidfile='))?.slice(10) ?? '';
   for (let tries = 0; tries < 200 && !existsSync(cidfile); tries += 1) {
@@ -106,22 +57,32 @@ async function killedAfterIdRefused(refusal: string) {
   return { run };
 }
 
-/** Waits until the stand-in docker has written the id to `cidfile`. */
-async function idWritten(cidfile: string) {
+/** Waits for the id and, when requested, the stand-in's simulated container. */
+async function idWritten(cidfile: string, container = false): Promise<void> {
   for (let tries = 0; tries < 200; tries += 1) {
-    if (existsSync(cidfile) && readFileSync(cidfile, 'utf8').trim() === ID) break;
-    // oxlint-disable-next-line no-await-in-loop -- wait for the stand-in to write the id
+    if (
+      existsSync(cidfile) &&
+      readFileSync(cidfile, 'utf8').trim() === ID &&
+      (!container || existsSync(join(containers, ID)))
+    )
+      return;
+    // oxlint-disable-next-line no-await-in-loop -- wait for the stand-in's requested readiness
     await new Promise((resolve) => {
       setTimeout(resolve, 20);
     });
   }
+  throw new Error('The stand-in did not publish the requested container readiness');
 }
 
 /** Once docker has written the id, the client dies by a signal. */
-async function killedAfterId(rmFailures: number) {
+async function killedAfterId(rmFailures: number, deferCreate = false) {
+  const release = join(bin, 'create-release');
+  rmSync(release, { force: true });
   standIn(
+    bin,
     [
       `echo ${ID} > "$cid"`,
+      ...(deferCreate ? [`while [ ! -f "${release}" ]; do /bin/sleep 0.01; done`] : []),
       `printf 'Running PGPASSWORD=%s\\n' "$PGPASSWORD" > "${containers}/${ID}"`,
       'exec /bin/sleep 30',
     ],
@@ -129,14 +90,26 @@ async function killedAfterId(rmFailures: number) {
   );
   const { run, arg } = await started();
   const cidfile = arg('--cidfile=');
-  await idWritten(cidfile);
+  if (deferCreate) {
+    await idWritten(cidfile);
+    // The old id-only wait kills the child before this event-loop turn releases creation.
+    setImmediate(() => writeFileSync(release, 'ready'));
+  }
+  try {
+    await idWritten(cidfile, true);
+  } catch (error) {
+    run.child.kill('SIGKILL');
+    await run.exited.catch(() => {});
+    rmSync(join(cidfile, '..'), { recursive: true, force: true });
+    throw error;
+  }
   run.child.kill('SIGKILL');
   return { run, cidfile };
 }
 
 it("a create that fails after its id file is gone removes the container by the run's own name", async () => {
   // The daemon made the container, its answer was lost: docker deletes the empty file and exits 125.
-  standIn([
+  standIn(bin, [
     `printf 'Created PGPASSWORD=%s\\n' "$PGPASSWORD" > "${containers}/$name"`,
     'rm -f "$cid"',
     'exit 125',
@@ -161,14 +134,29 @@ it('a removal that fails once is tried again, and the container goes', async () 
 
 it('a removal that keeps failing fails the run, names the container and keeps its id file', async () => {
   const { run, cidfile } = await killedAfterId(99);
-  await expect(run.exited).rejects.toThrow(ID);
-  expect(readdirSync(containers)).toEqual([ID]);
-  expect(readFileSync(cidfile, 'utf8').trim()).toBe(ID);
-  rmSync(join(cidfile, '..'), { recursive: true, force: true });
+  try {
+    await expect(run.exited).rejects.toThrow(ID);
+    expect(readdirSync(containers)).toEqual([ID]);
+    expect(readFileSync(cidfile, 'utf8').trim()).toBe(ID);
+  } finally {
+    rmSync(join(cidfile, '..'), { recursive: true, force: true });
+  }
+}, 15_000);
+
+it('a client waits for simulated creation after the id is published before it is killed', async () => {
+  const { run, cidfile } = await killedAfterId(99, true);
+  try {
+    await expect(run.exited).rejects.toThrow(ID);
+    expect(readFileSync(calls, 'utf8')).toBe(`rm --force --volumes ${ID}\n`.repeat(3));
+    expect(readdirSync(containers)).toEqual([ID]);
+    expect(readFileSync(cidfile, 'utf8').trim()).toBe(ID);
+  } finally {
+    rmSync(join(cidfile, '..'), { recursive: true, force: true });
+  }
 }, 15_000);
 
 it('a dump whose container docker will not remove fails with that reason', async () => {
-  standIn([`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
+  standIn(bin, [`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
   const module = '../../scripts/ops/backup-dump.mjs';
   const { pgDump } = (await import(
     /* @vite-ignore */
@@ -206,7 +194,7 @@ it('with no docker at all, a run fails without claiming a container was left', a
 
 it("a stop whose late removal by the run's name is refused fails, naming the run", async () => {
   // A create under way when the stop comes, which ends with no id.
-  standIn(['/bin/sleep 0.3', 'rm -f "$cid"', 'exit 125'], 99, {
+  standIn(bin, ['/bin/sleep 0.3', 'rm -f "$cid"', 'exit 125'], 99, {
     okFirst: 1,
   });
   const { run, arg } = await started();
@@ -243,7 +231,7 @@ it('a backup whose dump container docker will not remove still answers one faile
 });
 
 it('a backup whose dump fails before any output and keeps its container records stage container', async () => {
-  standIn([`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
+  standIn(bin, [`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
   const [{ pgDump }, { runBackup }] = (await Promise.all(
     ['../../scripts/ops/backup-dump.mjs', '../../scripts/ops/backup.mjs'].map(
       (module) => import(module),
@@ -270,6 +258,7 @@ it('a backup whose dump fails before any output and keeps its container records 
 /** A run whose client closes cleanly when stopped, once docker has written the id; `rmFailures` refusals. */
 async function closesCleanlyAfterId(rmFailures: number) {
   standIn(
+    bin,
     [
       `echo ${ID} > "$cid"`,
       `: > "${containers}/${ID}"`,
