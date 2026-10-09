@@ -55,7 +55,9 @@ describe('the create form, refused on authority', () => {
     await settle();
 
     expect(api.creates).toHaveLength(1);
-    expect(view.find('[data-voice="input-wrong"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+    expect(view.find('.projects__create [role="alert"]')?.textContent).toContain(
+      'SCOPE_NOT_GRANTED',
+    );
     expect((view.find('#create-title') as HTMLInputElement).disabled).toBe(true);
     expect((view.find('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true);
 

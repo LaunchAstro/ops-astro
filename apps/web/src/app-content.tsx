@@ -4,6 +4,7 @@
 // public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
+import { BoardEditProvider } from './screens/projects/board-edit-context.tsx';
 import { CreateProvider } from './screens/task/create-context.tsx';
 import { AssignmentProvider } from './screens/task/assignment-context.tsx';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
@@ -80,7 +81,13 @@ export function frameCustody(
           grantKey={owner.grantKey}
           storage={owner.storage ?? null}
         >
-          {children}
+          <BoardEditProvider
+            client={owner.client}
+            grantKey={owner.grantKey}
+            storage={owner.storage ?? null}
+          >
+            {children}
+          </BoardEditProvider>
         </CommentCustodyProvider>
       </CreateProvider>
     </AssignmentProvider>,

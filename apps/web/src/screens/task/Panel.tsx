@@ -54,7 +54,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, GoTo } from './PageLink.tsx';
-import { AskDoor, PanelAgent } from './PanelAgent.tsx';
+import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
@@ -67,6 +67,7 @@ import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
 import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
+import { PanelBoardDoor } from './board-door.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -145,7 +146,12 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...body} task={withPageDefaults(value.task)} states={statesOf(value)} />
+            <PanelBody
+              {...body}
+              task={withPageDefaults(value.task)}
+              taskRead={value.task}
+              states={statesOf(value)}
+            />
           )
         }
       </RecordState>
@@ -154,7 +160,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
 }
 
 function PanelBody(
-  props: Body & { readonly task: Task; readonly states: readonly TaskStateView[] },
+  props: Body & AgentSideProps & { readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
@@ -281,6 +287,7 @@ function PanelHead(props: SideProps): ReactElement {
       >
         Open its page
       </a>
+      <PanelBoardDoor task={task} />
       <GoTo task={task} />
       <TaskPinsNotice />
       {props.docked === true ? null : (

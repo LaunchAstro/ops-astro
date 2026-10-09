@@ -65,7 +65,7 @@ export interface RowActions {
   /** The tick: `true` completes, `false` reopens, through the one completion transition. */
   readonly onTick?: (row: ProjectRow, done: boolean) => void;
   /** A rename in place, already trimmed, changed and not blank. */
-  readonly onRename?: (row: ProjectRow, title: string) => void;
+  readonly onRename?: (row: ProjectRow, title: string) => void | boolean;
   /** Open the task beside the board (a plain click, after the double-click window). */
   readonly onOpen?: (row: ProjectRow, beside?: boolean, origin?: 'row') => void;
   readonly onAddSubtask?: (row: ProjectRow, beside?: boolean) => void;
@@ -90,13 +90,13 @@ export interface RowActions {
   /** One of the row's `agents` chosen in place (Assign to AI), by its delegation id. */
   readonly onAssignAgent?: (row: ProjectRow, delegation: string) => void;
   /** The due date chosen in place, as a calendar day (`YYYY-MM-DD`), or null to clear it. */
-  readonly onDue?: (row: ProjectRow, due: string | null) => void;
+  readonly onDue?: (row: ProjectRow, due: string | null) => void | boolean;
   /** The stage chosen in place. */
-  readonly onStage?: (row: ProjectRow, stage: string) => void;
+  readonly onStage?: (row: ProjectRow, stage: string) => void | boolean;
   /** The estimates the estimate editor offers, in minutes (MP-4-8's choices); none, no estimate editor. */
   readonly estimates?: readonly number[];
   /** The estimate chosen in place, in whole minutes, or null to clear it. */
-  readonly onEstimate?: (row: ProjectRow, minutes: number | null) => void;
+  readonly onEstimate?: (row: ProjectRow, minutes: number | null) => void | boolean;
 }
 
 /** One person the assignee editor offers. */

@@ -21,7 +21,7 @@ import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wir
 import { dependencyAdmission } from '../../data/board-live.ts';
 import { useTodoDependencies, type TodoDependency } from './todo-dependencies.ts';
 import { useRead } from '../../data/use-read.ts';
-import { useCommand } from '../../records/use-command.ts';
+import { BoardEditRecoveries, useBoardEdits } from '../projects/board-edit-context.tsx';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
 import { readingOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
@@ -198,7 +198,8 @@ function ScopedTodos(props: ScopedTodosProps): ReactElement {
   });
   const admission = own ? dependencyAdmission(state, true) : 'recovering';
   useEffect(() => props.onDependency(admission), [props.onDependency, admission]);
-  const { because, tick } = useTick(props.client, reload);
+  const edits = useBoardEdits(props.client, props.grantKey);
+  const { because, tick } = useTick(edits, reload);
   const today = todayOn((props.now ?? realTime)());
   return (
     <RecordState state={state} subject="to-dos" onRetry={reload} keep>
@@ -209,6 +210,7 @@ function ScopedTodos(props: ScopedTodosProps): ReactElement {
         );
         return (
           <>
+            <BoardEditRecoveries custody={edits.custody} tasks={rows} />
             <WaitingCount client={props.body['client'] !== undefined} waiting={waitingOf(rows)} />
             {because === null ? null : (
               <p className="field__error" role="alert" data-todos-refusal>
@@ -250,21 +252,27 @@ const realTime = (): Date => new Date();
  * again. The completed row stays drawn while that reread is in flight, so its
  * revision is spent: a second tick on it sends nothing.
  */
-function useTick(client: OperationsClient, reload: () => void) {
-  const { because, run } = useCommand();
+function useTick(edits: ReturnType<typeof useBoardEdits>, reload: () => void) {
+  const [because, setBecause] = useState<string | null>(null);
   const [spent, setSpent] = useState<ReadonlySet<string>>(() => new Set());
-  const tick = (todo: TodoView): void => {
-    const at = `${todo.id}@${String(todo.revision)}`;
-    if (spent.has(at)) return;
-    run(
-      () =>
-        client.mutate('task.complete', { recordId: todo.id }, { expectedRevision: todo.revision }),
-      (settlement) => {
-        if (settlement.kind !== 'ok') return;
-        setSpent((was) => new Set(was).add(at));
+  useEffect(
+    () =>
+      edits.custody.settled((entry, answer) => {
+        setBecause(answer.kind === 'ok' ? null : answer.because);
+        if (answer.kind !== 'ok') return;
         reload();
-      },
-    );
+        if (entry.attempt.command === 'task.complete')
+          setSpent((was) =>
+            new Set(was).add(
+              `${entry.attempt.body.recordId}@${String(entry.attempt.expectedRevision)}`,
+            ),
+          );
+      }),
+    [edits.custody, reload],
+  );
+  const tick = (todo: TodoView): void => {
+    if (spent.has(`${todo.id}@${String(todo.revision)}`)) return;
+    edits.custody.choose({ command: 'task.complete', body: { recordId: todo.id } }, todo.revision);
   };
   return { because, tick };
 }

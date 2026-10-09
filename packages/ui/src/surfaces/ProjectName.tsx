@@ -80,8 +80,9 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
       <Rename
         row={renaming}
         onDone={(title) => {
+          if (title !== null && actions?.onRename?.(renaming, title) === false) return false;
           setRenaming(null);
-          if (title !== null) actions?.onRename?.(renaming, title);
+          return true;
         }}
       />
     );
@@ -120,7 +121,7 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
  */
 function Rename(props: {
   readonly row: ProjectRow;
-  readonly onDone: (title: string | null) => void;
+  readonly onDone: (title: string | null) => void | boolean;
 }): ReactElement {
   const [draft, setDraft] = useState(props.row.name);
   // Set once the edit is settled, so the blur that follows Enter or Escape
@@ -128,9 +129,9 @@ function Rename(props: {
   const settled = useRef(false);
   const finish = (save: boolean): void => {
     if (settled.current) return;
-    settled.current = true;
     const title = draft.trim();
-    props.onDone(save && title !== '' && title !== props.row.name ? title : null);
+    if (props.onDone(save && title !== '' && title !== props.row.name ? title : null) !== false)
+      settled.current = true;
   };
   return (
     <input

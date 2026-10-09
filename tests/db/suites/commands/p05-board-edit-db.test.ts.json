@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Closed board-edit custody through the existing canonical authenticated transaction and operation register; lost delivery, authority replay, rollback and later lifecycle truth. One explicitly granted serial fixture database; no runtime has been run for this preparation."
+}
