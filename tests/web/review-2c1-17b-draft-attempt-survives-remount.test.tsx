@@ -39,6 +39,14 @@ function server(first: 'pending' | 'unknown') {
       }
       return Promise.resolve(json({ recordId: NEW_ID, revision: 1, detail: { key: NEW_KEY } }));
     }
+    if (to === '/time/log')
+      return Promise.resolve(
+        json({
+          recordId: null,
+          revision: null,
+          detail: { entryId: '77777777-7777-4777-8777-777777777777', minutes: 30 },
+        }),
+      );
     return Promise.resolve(json({ recordId: NEW_ID, revision: 2, detail: {} }));
   }) as unknown as typeof globalThis.fetch;
   return {
