@@ -13,38 +13,7 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { RankView } from '../../../core-wire/src/index.ts';
-import { calcLine, numberPool, scoreTask, type RankInput } from './rank.ts';
-
-interface PoolRow {
-  readonly id: string;
-  readonly key: string | null;
-  readonly position: string | null;
-  readonly impact: string | null;
-  readonly confidence: string | null;
-  readonly ease: string | null;
-  readonly open: boolean;
-  readonly now: Date;
-}
-
-const markOf = (value: string | null): number | null => (value === null ? null : Number(value));
-
-// As `rank.ts` reads a task: no business names priority stages yet and a
-// task carries no start date, so every weight and age boost is 1.
-function inputOf(row: PoolRow): RankInput {
-  return {
-    id: row.id,
-    key: row.key ?? '',
-    position: row.position === null ? null : Number(row.position),
-    marks: {
-      impact: markOf(row.impact),
-      confidence: markOf(row.confidence),
-      ease: markOf(row.ease),
-    },
-    priorityStage: false,
-    open: row.open,
-    startedAt: null,
-  };
-}
+import { calcLine, numberPool, scoreTask, rankInputOf, type RankPoolRow } from './rank.ts';
 
 /**
  * Each task's rank in the pool `readable` names. `readable` is the caller's
@@ -58,12 +27,12 @@ export async function readRanks(
   taskTypeId: string,
   readable: readonly string[] | null,
 ): Promise<ReadonlyMap<string, RankView>> {
-  const rows = await tx.query<PoolRow>(
+  const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
             r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
             coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
               and not (r.data ? 'archived_at') as open,
-            now() as now
+            (r.data ->> 'started_at')::timestamptz as started_at, now() as now
        from public.records r
        left join public.records s
          on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
@@ -73,12 +42,12 @@ export async function readRanks(
   );
   const now = rows[0]?.now ?? new Date();
   const numbers = numberPool(
-    rows.filter((row) => row.open).map((row) => inputOf(row)),
+    rows.filter((row) => row.open).map((row) => rankInputOf(row)),
     now,
   );
   return new Map(
     rows.map((row): [string, RankView] => {
-      const scored = scoreTask(inputOf(row), now);
+      const scored = scoreTask(rankInputOf(row), now);
       return [
         row.id,
         { number: numbers.get(row.id) ?? null, score: scored.score, calc: calcLine(scored) },

@@ -28,7 +28,10 @@ import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-r
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView } from './views-client.ts';
 import type { RankView, TaskScoreFacts } from './views-rank.ts';
+import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+
 export type { RankView, TaskScores } from './views-rank.ts';
+export type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
 
 export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
@@ -88,19 +91,6 @@ export type {
   UnattendedView,
 } from './views-operations.ts';
 
-/** The task state a task points at. The machine category is what a board groups on. */
-export interface TaskStateView {
-  readonly id: string;
-  readonly key: string;
-  readonly label: string;
-  readonly machineCategory: string;
-}
-
-export interface PersonView {
-  readonly personId: string;
-  readonly name: string;
-}
-
 export interface HistoryEntry {
   readonly at: string;
   readonly actorId: string;
@@ -122,19 +112,6 @@ export interface HistoryEntry {
    * from, for a reader who holds read on that task now; null for anyone else.
    */
   readonly duplicatedFrom?: string | null;
-}
-
-/** A task in a list. Everything the detail has except the long text and the history. */
-export interface TaskSummary {
-  readonly id: string;
-  readonly key: string;
-  readonly title: string | null;
-  readonly state: TaskStateView | null;
-  readonly assignee: PersonView | null;
-  readonly due: string | null;
-  readonly priority: number | null;
-  readonly completedAt: string | null;
-  readonly revision: number;
 }
 
 /**
