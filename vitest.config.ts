@@ -111,6 +111,18 @@ const config: ViteUserConfig = defineConfig({
       ...(database
         ? []
         : [
+            'tests/reads/task-ice-editor-durable.test.ts',
+            'tests/reads/task-rank-agent-lifecycle.test.ts',
+            'tests/reads/task-rank-core-agent-durable.test.ts',
+            'tests/reads/task-rank-core-conformance-durable.test.ts',
+            'tests/reads/task-rank-core-durable.test.ts',
+            'tests/reads/task-rank-core-upgrade-durable.test.ts',
+            'tests/reads/task-rank-created-started.test.ts',
+            'tests/reads/task-rank-lifecycle-writers.test.ts',
+            'tests/reads/task-rank-occurrence-lifecycle.test.ts',
+            'tests/reads/task-rank-onboarding-lifecycle.test.ts',
+            'tests/reads/task-rank-wayfinder-lifecycle.test.ts',
+            'tests/reads/task-score-rank-pool.test.ts',
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/api/server-entry-hosted-sign-in-key.test.ts',
             'tests/review/forwarder-replay-time-order.test.ts',
