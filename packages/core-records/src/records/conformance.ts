@@ -38,6 +38,8 @@ import { readSlotColumns, readSlotTable, SLOT_SQL_TYPE } from './slots.ts';
 type Read = AdminConnection['execute'];
 
 interface FieldRow {
+  readonly business_id: string;
+  readonly record_type_id: string;
   readonly record_type_key: string;
   readonly key: string;
   readonly value_type: string;
@@ -59,7 +61,8 @@ interface ConstraintRow {
  */
 async function fields(read: Read): Promise<readonly FieldRow[]> {
   return await read<FieldRow>(
-    `select t.key as record_type_key, f.key, f.value_type, f.slot, f.origin,
+    `select f.business_id, f.record_type_id, t.key as record_type_key,
+            f.key, f.value_type, f.slot, f.origin,
             f.write_mode, f.owning_operation, f.visibility_class
        from public.field_defs f
        join public.record_types t
@@ -226,7 +229,7 @@ export async function domainModelConformance(read: Read): Promise<readonly Findi
         detail: `${row.slot} has no index`,
       });
     }
-    const key = `${row.record_type_key}:${row.slot}`;
+    const key = `${row.business_id}:${row.record_type_id}:${row.slot}`;
     const holder = seen.get(key);
     if (holder !== undefined) {
       findings.push({

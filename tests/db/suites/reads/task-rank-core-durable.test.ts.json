@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R70 actual task date writes, scoped durable rank reads, field model and protected task type conformance on the unit-owned synthetic server"
+}

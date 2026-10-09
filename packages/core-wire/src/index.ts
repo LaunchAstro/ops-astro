@@ -129,6 +129,7 @@ export type {
   QueuedWork,
   QueueResult,
   RankView,
+  TaskScores,
   ReceiptResult,
   ReservationView,
   EnvelopeView,
