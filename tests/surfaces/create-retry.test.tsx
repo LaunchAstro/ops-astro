@@ -29,6 +29,7 @@ interface AppliedEntry {
 interface Outcome {
   readonly recordId: string;
   readonly revision: number;
+  readonly detail: { readonly key: string };
 }
 
 /**
@@ -60,7 +61,11 @@ function server(options: { readonly drop?: boolean } = {}) {
       const outcome =
         replayed ??
         (() => {
-          const made = { recordId: `r${String(tasks.length + 1)}`, revision: 1 };
+          const made = {
+            recordId: `11111111-1111-4111-8111-${String(tasks.length + 1).padStart(12, '0')}`,
+            revision: 1,
+            detail: { key: `TSK-${String(tasks.length + 1)}` },
+          };
           tasks.push({ id: made.recordId, key: `TSK-${String(tasks.length + 1)}`, title });
           applied.push({ operationId, title });
           register.set(operationId, made);
@@ -80,18 +85,7 @@ function server(options: { readonly drop?: boolean } = {}) {
     if (at.endsWith('/task/board')) {
       return json({
         ok: true,
-        tasks: tasks.map((task) => ({
-          ...task,
-          state: null,
-          assignee: null,
-          due: null,
-          priority: null,
-          completedAt: null,
-          revision: 1,
-          rank: { number: null, score: null, calc: '' },
-          stage: null,
-          clientSet: false,
-        })),
+        tasks: tasks.map((task) => boardTask(task)),
       });
     }
     throw new Error(`unrouted ${at}`);
@@ -114,6 +108,21 @@ function server(options: { readonly drop?: boolean } = {}) {
   };
 }
 
+function boardTask(task: { readonly id: string; readonly key: string; readonly title: string }) {
+  return {
+    ...task,
+    state: null,
+    assignee: null,
+    due: null,
+    priority: null,
+    completedAt: null,
+    revision: 1,
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
+  };
+}
+
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -129,7 +138,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
     fetch,
     newOperationId: () => {
       minted += 1;
-      return `op-${String(minted)}`;
+      return `22222222-2222-4222-8222-${String(minted).padStart(12, '0')}`;
     },
   });
 }

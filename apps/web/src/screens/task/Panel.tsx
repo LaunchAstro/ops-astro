@@ -54,7 +54,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, GoTo } from './PageLink.tsx';
-import { AskDoor, PanelAgent } from './PanelAgent.tsx';
+import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
@@ -145,7 +145,12 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...body} task={withPageDefaults(value.task)} states={statesOf(value)} />
+            <PanelBody
+              {...body}
+              task={withPageDefaults(value.task)}
+              taskRead={value.task}
+              states={statesOf(value)}
+            />
           )
         }
       </RecordState>
@@ -154,7 +159,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
 }
 
 function PanelBody(
-  props: Body & { readonly task: Task; readonly states: readonly TaskStateView[] },
+  props: Body & AgentSideProps & { readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');

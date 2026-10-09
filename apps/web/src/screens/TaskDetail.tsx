@@ -268,6 +268,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
                   client={client}
                   grantKey={props.grantKey}
                   task={withPageDefaults(value.task)}
+                  taskRead={value.task}
                   states={statesOf(value)}
                   draft={held}
                   note={note}
@@ -556,6 +557,7 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  readonly taskRead: Task;
   /** The business's task states `task.read` sent, the Status select's choices. */
   readonly states: readonly TaskStateView[];
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
@@ -887,7 +889,7 @@ function AgentHead({
       clientId={task.client}
       clientUnseen={task.clientSet && task.client === null}
       taskKey={task.key}
-      readOf={task}
+      readOf={props.taskRead}
       proposals={task.proposals}
       people={persons}
       ledger={task.ledger}
@@ -927,7 +929,7 @@ function AgentSide({
             client={client}
             grantKey={props.grantKey}
             proposals={task.proposals}
-            readOf={task}
+            readOf={props.taskRead}
             taskKey={task.key}
           />
           <Proposals
