@@ -16,7 +16,14 @@ DECISION = re.compile(r"[A-Z][A-Z0-9_-]{1,79}")
 
 
 def checked_git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, timeout=10, env=dict(os.environ, LC_ALL="C"))
+    env = dict(os.environ, LC_ALL="C")
+    local = subprocess.run(["git", "rev-parse", "--local-env-vars"], cwd=repo, capture_output=True, timeout=10, env=env)
+    if local.returncode != 0:
+        raise ValueError("cannot determine Git local environment")
+    # Hooks export repository selectors; this probe must discover its own cwd.
+    for name in local.stdout.decode("ascii").splitlines():
+        env.pop(name, None)
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, timeout=10, env=env)
 
 
 class HistoricalLiterals:

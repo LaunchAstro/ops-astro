@@ -68,7 +68,7 @@ class LiteralHistoryCases(unittest.TestCase):
         digest = hashlib.sha256(self.receipt.read_bytes()).hexdigest()
         self.write("scripts/gate/literal-history-approvals.sha256", f"{digest} {self.anchor} SYNTHETIC_TEST_ONLY\n")
 
-    def scan(self, expected, receipt=True, terms=True, rev="HEAD"):
+    def scan(self, expected, receipt=True, terms=True, rev="HEAD", git_env=None):
         env = dict(os.environ)
         env.pop("HUB_GATE_LITERAL_HISTORY_RECEIPT", None)
         env.pop("HUB_GATE_TERMS", None)
@@ -76,6 +76,7 @@ class LiteralHistoryCases(unittest.TestCase):
             env["HUB_GATE_LITERAL_HISTORY_RECEIPT"] = str(self.receipt)
         if terms:
             env["HUB_GATE_TERMS"] = str(self.terms)
+        env.update(git_env or {})
         p = subprocess.run([sys.executable, "scripts/gate/sweep.py", "--literal", rev], cwd=self.repo, env=env, text=True, capture_output=True, timeout=20)
         self.assertEqual(p.returncode, expected, p.stdout + p.stderr)
         self.assertNotIn("qovu", p.stdout + p.stderr)
@@ -84,6 +85,34 @@ class LiteralHistoryCases(unittest.TestCase):
 
     def test_exact_historical_match(self):
         self.assertIn("1 approved historical match(es)", self.scan(0))
+
+    def linked_hook_env(self):
+        linked = self.root / "linked"
+        self.git("worktree", "add", "-q", "-b", "linked", str(linked))
+        registry = "scripts/gate/literal-history-approvals.sha256"
+        shutil.copyfile(self.repo / registry, linked / registry)
+        self.repo = linked
+        return {
+            "GIT_DIR": self.git("rev-parse", "--absolute-git-dir"),
+            "GIT_COMMON_DIR": self.git("rev-parse", "--path-format=absolute", "--git-common-dir"),
+            "GIT_WORK_TREE": str(linked),
+            "GIT_INDEX_FILE": self.git("rev-parse", "--path-format=absolute", "--git-path", "index"),
+        }
+
+    def test_linked_worktree_hook_environment(self):
+        hook_env = self.linked_hook_env()
+        self.assertIn("1 approved historical match(es)", self.scan(0, git_env=hook_env))
+
+    def test_linked_worktree_hook_environment_other_git_receipt_refused(self):
+        hook_env = self.linked_hook_env()
+        other = self.root / "other"
+        other.mkdir()
+        created = subprocess.run(["git", "init", "-q", str(other)], capture_output=True, timeout=10)
+        self.assertEqual(created.returncode, 0)
+        copied = other / self.receipt.name
+        shutil.copyfile(self.receipt, copied)
+        self.receipt = copied
+        self.scan(3, git_env=hook_env)
 
     def test_cli_does_not_write_bytecode(self):
         self.scan(0)
