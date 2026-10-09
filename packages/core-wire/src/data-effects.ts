@@ -150,6 +150,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_money_step_up': SETTINGS,
   'settings.set_conversation_window': SETTINGS,
   'settings.set_retention_window': SETTINGS,
+  'settings.set_priority_stages': SETTINGS,
   ...LIVE_CORRECTION_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,

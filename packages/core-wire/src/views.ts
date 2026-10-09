@@ -507,8 +507,8 @@ export interface QueuedWork {
  */
 export interface SettingView {
   readonly key: string;
-  readonly value: number | boolean | string | null;
-  /** `numeric`, `boolean` or `text`, as the row declares it. */
+  readonly value: number | boolean | string | readonly string[] | null;
+  /** The scalar or stage-ID array type the row declares. */
   readonly valueType: SettingValueType;
   readonly updatedAt: string;
   /** Null until a command has written it. Nobody owns a shipped default. */
