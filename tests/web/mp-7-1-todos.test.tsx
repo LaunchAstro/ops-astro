@@ -26,9 +26,11 @@ describe('MP-7-1 the Projects dock panel', () => {
     expect(matchRoute(pathTo('agency:todos'))?.id).toBe('agency:todos');
   });
 
-  it('The board door goes to /projects/', async () => {
+  it('The board door preserves aggregate own scope', async () => {
     const { view } = await todos();
-    expect(view.find('[data-todos="board"]')?.getAttribute('href')).toBe('/projects/');
+    expect(view.find('[data-todos="board"]')?.getAttribute('href')).toBe(
+      '/projects/?pool=aggregate&scope=own',
+    );
   });
 });
 

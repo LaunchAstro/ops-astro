@@ -146,6 +146,7 @@ export type BoardAction =
   | { readonly type: 'dropText'; readonly text: string }
   | { readonly type: 'dropLast' }
   | { readonly type: 'clear' }
+  | { readonly type: 'reveal' }
   | { readonly type: 'commit'; readonly raw: string }
   /** A suggested row name: its words become free words, never facets. */
   | { readonly type: 'phrase'; readonly text: string }

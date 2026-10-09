@@ -550,3 +550,21 @@ the start sequence runs are outside it.
   does not stand in for one.
 - **Local checks prove local behaviour only.** Nothing here is evidence about a
   hosted deployment, hosted enforcement, or another machine.
+
+## Compact lists and board destinations
+
+The compact list's Board door carries its admitted person/client intersection,
+route, filters and focused comments into an aggregate Projects view. Aggregate
+includes open tasks across boards and unboarded work; a selected board and
+the unboarded destination remain narrower pools. Reading labels and waiting
+counts describe the admitted rows, while ranks remain the reader's canonical
+ranks. A task target can drop ordinary board search, presets and Review mode
+to reveal its row, while retaining the destination's identity and compact
+filters. Unknown or out-of-scope targets do not widen the view.
+
+A same-owner refresh withdraws scoped names, rows and counts until authority
+is admitted again. Pending reads and transient outages retain unsent editors
+and board controls; actual denial clears that custody. The existing refresh
+floor covers vocabulary authority and task-tag evidence even while the shared
+BOARD stream is healthy. This UI capability is a separate cut from the
+backend aggregate read contract.
