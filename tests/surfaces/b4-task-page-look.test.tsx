@@ -58,6 +58,7 @@ const TASK = {
   key: 'TSK-41',
   title: 'A task drawn as the mockup draws it',
   description: null,
+  clientSummary: { kind: 'none' },
   state: { id: 's1', key: 'active', label: 'Active', machineCategory: 'started' },
   assignee: { personId: 'p-1', name: 'Ada' },
   due: '2026-10-07T00:00:00.000Z',
