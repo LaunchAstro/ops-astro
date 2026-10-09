@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Partial score writes change the one canonical caller-wide rank pool, retain untouched task revision and produce one audit effect; canonical reads append only their own audit rows and preserve the score operation effects."
+}

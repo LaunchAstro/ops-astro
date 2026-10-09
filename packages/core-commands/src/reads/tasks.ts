@@ -37,7 +37,11 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
-import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
+import type {
+  BoardTask,
+  InternalCommentView,
+  InternalTaskDetail,
+} from '../../../core-wire/src/index.ts';
 
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
@@ -69,6 +73,9 @@ export interface TaskRowRead {
   readonly title: string | null;
   readonly due: Date | null;
   readonly priority: string | null;
+  readonly impact: number | null;
+  readonly confidence: number | null;
+  readonly ease: number | null;
   readonly completed_at: Date | null;
   readonly description: string | null;
   readonly agent_brief: string | null;
@@ -106,6 +113,9 @@ export const SELECT: string = `
          r.txt_4 as title,
          r.ts_1  as due,
          r.num_1::text as priority,
+         r.num_3::integer as impact,
+         r.num_4::integer as confidence,
+         r.num_5::integer as ease,
          r.ts_2  as completed_at,
          r.data ->> 'description' as description,
          r.data ->> 'agent_brief' as agent_brief,
@@ -272,6 +282,11 @@ function unslottedOf(
   };
 }
 
+/** Nullable marks from the canonical slots, admitted only on the internal read. */
+function scoresOf(row: TaskRowRead): Pick<InternalTaskDetail, 'scores'> {
+  return { scores: { impact: row.impact, confidence: row.confidence, ease: row.ease } };
+}
+
 /** One task with its history, or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
@@ -281,7 +296,7 @@ export async function readTaskDetail(
   rankPool: RankPool,
   /** The person whose own time is sent (RS-VAULT-9); null sends none, as to an agent. */
   timeReader: string | null,
-): Promise<TaskDetail | undefined> {
+): Promise<(TaskDetail & Pick<InternalTaskDetail, 'scores'>) | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
   // answer a caller can learn from, which is one more than they should get.
@@ -299,6 +314,7 @@ export async function readTaskDetail(
     description: row.description,
     agentBrief: row.agent_brief,
     ...unslottedOf(row),
+    ...(comments.internal ? scoresOf(row) : {}),
     history: await historyOf(tx, row.id, comments.internal, rankPool),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,

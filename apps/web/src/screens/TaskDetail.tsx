@@ -140,6 +140,7 @@ import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
+import { ScoreFields } from './task/ScoreFields.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -764,8 +765,12 @@ function TeamSide(side: TeamSideProps): ReactElement {
   );
 }
 
-/** The lifecycle, status, assignee, AI hand-off and details form, held while busy or dirty. */
-function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
+/** Task state and marks share the page's current revision and unsaved-edit lock. */
+function TaskStateControls({
+  props,
+  writes,
+  form,
+}: Pick<TeamSideProps, 'props' | 'writes' | 'form'>): ReactElement {
   const { client, task } = props;
   const locked = writes.busy || form.dirty;
   return (
@@ -776,6 +781,7 @@ function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElem
         onLifecycle={writes.lifecycle}
       />
 
+      <ScoreFields task={task} scope="page" disabled={locked} onChanged={props.onChanged} />
       <PageStatus
         client={client}
         task={task}
@@ -783,6 +789,17 @@ function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElem
         onChanged={props.onChanged}
         disabled={locked}
       />
+    </>
+  );
+}
+
+/** The lifecycle, status, assignee, AI hand-off and details form, held while busy or dirty. */
+function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
+  const { client, task } = props;
+  const locked = writes.busy || form.dirty;
+  return (
+    <>
+      <TaskStateControls props={props} writes={writes} form={form} />
 
       <PageAssignment
         client={client}
