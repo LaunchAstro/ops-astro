@@ -164,7 +164,7 @@ function commandsTheAppCalls(): Set<string> {
 
 /** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
 const CREATE_UI = [
-  'agency:projects-board (screens/projects/CreateTask.tsx)',
+  'agency:projects-board (screens/task/create-custody.ts)',
   'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
   'app shell (screens/task/draft-parts.ts)',
