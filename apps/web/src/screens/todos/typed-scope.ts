@@ -6,8 +6,7 @@ import type {
   ClientListResult,
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
-import { useRead } from '../../data/use-read.ts';
-import { tabRollupFloor } from '../../data/rollup-floor.ts';
+import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { useRereadOn } from '../task/reread-on.ts';
 import { scopeOf, type Chip, type IdentityChip } from './todo-list.ts';
 import { bodyOf, wordsOf, type TodoScope } from './todo-scope.ts';
@@ -22,17 +21,15 @@ export function useTodoVocabulary(
   grantKey: string,
   changes = 0,
 ): Vocabulary {
-  const people = useRead<PersonListResult>({
+  const people = useBoardProjectionRead<PersonListResult>(client, {
     grantKey,
     run: () => client.read('person.list', {}),
     deps: [],
-    rollup: tabRollupFloor(),
   });
-  const clients = useRead<ClientListResult>({
+  const clients = useBoardProjectionRead<ClientListResult>(client, {
     grantKey,
     run: () => client.read('client.list', {}),
     deps: [],
-    rollup: tabRollupFloor(),
   });
   useRereadOn(changes, people.reload);
   useRereadOn(changes, clients.reload);

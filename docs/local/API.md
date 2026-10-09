@@ -219,8 +219,8 @@ checks and before the grant check, so a refused read writes its audit row like
 any other.
 `tests/api/operand-refusals.test.ts` holds the first five over HTTP, absent and
 mistyped, and that a well-formed request still succeeds on each. `task.board`
-joined them later. A body with no `board` used to be answered the unboarded
-list, and is now `FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
+joined them later. A body with neither `board` nor aggregate `mode` is
+`FIELD_VALUE_INVALID` 422 naming `board`, as is any `board`
 that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 `task.update` and `task.reparent` joined after final review round 1
 (`tests/commands/placement-operands.test.ts`). A `parentId` string that is not an
@@ -2800,7 +2800,7 @@ lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId`,
-`chat.messages` takes `conversationId` and `task.board` takes `board`; `task.todos` takes `person`, `client`, or both as an intersection;
+`chat.messages` takes `conversationId`; `task.board` takes `board`, or `mode: "aggregate"`, with optional `person` and `client`; `task.todos` takes `person`, `client`, or both as an intersection;
 `task.queue`, `task.ledger`, `task.search`, `person.list`, `team.list`,
 `tag.list`, `preset.plan`, `settings.read`, `session.capabilities` and
 `access.read` take none. Any other identifier field, a `recordId` on any of
@@ -3957,3 +3957,21 @@ business by foreign key. A grant's client label is the client's name as
 | Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------- | -------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, grants: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label \| null } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], grantCounts: { live, ranOut, takenBack, liveExec }, tripwires: [{ id, what, rule, watching, state, blockedReason, firedCount, lastFiredAt, filedItem, filedNothing, note }], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite: { kind, ref, label } \| null }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |
+
+### Aggregate board reads
+
+`task.board` accepts either `{ "board": null }` for unboarded tasks,
+`{ "board": "<task UUID>" }` for one board, or `{ "mode": "aggregate" }`
+for open tasks across every board and unboarded tasks. Do not combine `board`
+and `mode`. Optional `person` and `client` UUIDs intersect the chosen pool.
+Aggregate requires business-wide `task:read`; explicit people also require
+business-wide `person:read` and current membership. Clients must be currently
+reached. Refused identities disclose no rows or counts. Aggregate excludes
+completed, cancelled and parent-archived tasks; selected and unboarded reads
+retain their existing state rules. Rank remains the reader's canonical rank.
+
+Without `detail`, `limit` or `page`, the established `tasks`, `viewer`, `owed`
+and permitted `withheld` response remains. Paging uses those three operands
+only. Todo evidence is batched over admitted tasks, with team-owed reply counts
+kept separate from reader-specific inbox counts. Reads write their normal I13
+audit event and authentication attempt, and change no task record.

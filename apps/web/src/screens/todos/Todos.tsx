@@ -18,14 +18,14 @@ import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../../data/use-read.ts';
-import { tabRollupFloor } from '../../data/rollup-floor.ts';
+import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
 import { readingOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
+import { compactBoardAddress } from '../projects/scoped-board.ts';
 import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
 import {
   admittedChips,
@@ -66,7 +66,9 @@ function useTodoFilters(props: TodosScreenProps) {
   const filters = [...currentChips, ...typedScope(query, vocabulary)];
   const read = scopedBody(scope, filters, vocabulary);
   const interpretation = scopedWords(admittedWords(scope, vocabulary), filters, focus);
+  const boardAddress = compactBoardAddress(read, scope, filters, focus);
   const tools = {
+    ...(boardAddress === undefined ? {} : { boardAddress }),
     query,
     onQuery: setQuery,
     chips: currentChips,
@@ -182,11 +184,10 @@ function ScopedTodos(
     readonly onFocus: (key: string | null) => void;
   },
 ): ReactElement {
-  const { state, reload } = useRead<TaskTodosResult>({
+  const { state, reload } = useBoardProjectionRead<TaskTodosResult>(props.client, {
     grantKey: props.grantKey,
     run: () => props.client.read<TaskTodosResult>('task.todos', props.body),
     deps: [],
-    rollup: tabRollupFloor(),
   });
   const { because, tick } = useTick(props.client, reload);
   const today = todayOn((props.now ?? realTime)());

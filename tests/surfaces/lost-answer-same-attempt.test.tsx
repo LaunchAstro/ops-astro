@@ -168,7 +168,9 @@ function server(options: ServerOptions = {}) {
 
   const idsOf = (operation: string): readonly unknown[] =>
     (sent[operation] ?? []).map((body) => body['operationId']);
-  return { client, idsOf };
+  const requestsOf = (operation: string): readonly Record<string, unknown>[] =>
+    sent[operation] ?? [];
+  return { client, idsOf, requestsOf };
 }
 
 // A failed assertion skips the test's own unmount, and a page left behind
@@ -243,37 +245,59 @@ describe('a lost answer is retried as the same attempt', () => {
   });
 
   for (const reply of ['lost', 'dropped'] as const) {
-    it(`comment (${reply}): an unchanged box resends its operationId, and an edited one mints another`, async () => {
-      const { client, idsOf } = server({ comment: [reply, reply, 'ok'] });
+    it(`comment (${reply}): holds the exact unknown attempt, then permits a new comment after settlement`, async () => {
+      const { client, requestsOf } = server({ comment: [reply, reply, 'ok'] });
       const page = await open(client);
 
       await typeComment(page, 'Sent to the client once, whatever the network does.');
       await page.click('#conversation-tab-client');
       await press(page, '[data-comment="post"]');
       expect(page.find('[data-comment="refusal"]')).not.toBeNull();
+      expect((page.find('#comment-body') as HTMLTextAreaElement).disabled).toBe(true);
 
       await press(page, '[data-comment="post"]');
-      const [first, second] = idsOf('task/comment');
-      expect(second).toBe(first);
+      const [first, second] = requestsOf('task/comment');
+      expect(second).toEqual(first);
       expect(page.find('[data-comment="unresolved"]')).not.toBeNull();
+
+      // Even a synthetic input that bypasses the disabled DOM control cannot replace custody.
+      await typeComment(page, 'A different comment altogether.');
+      await press(page, '[data-comment="post"]');
+      expect(requestsOf('task/comment')[2]).toEqual(first);
+      expect(page.find('[data-comment="unresolved"]')).toBeNull();
+      expect((page.find('#comment-body') as HTMLTextAreaElement).disabled).toBe(false);
 
       await typeComment(page, 'A different comment altogether.');
       await press(page, '[data-comment="post"]');
-      expect(idsOf('task/comment')[2]).not.toBe(first);
+      const fresh = requestsOf('task/comment')[3];
+      expect(fresh?.['operationId']).not.toBe(first?.['operationId']);
+      expect(fresh?.['body']).toBe('A different comment altogether.');
+      expect(fresh?.['audience']).toBe('client');
     });
   }
 
-  it('comment: changing only the audience is a different comment', async () => {
-    const { client, idsOf } = server({ comment: ['lost', 'ok'] });
+  it('comment: holds its audience while unknown, then permits a new audience after settlement', async () => {
+    const { client, requestsOf } = server({ comment: ['lost', 'ok'] });
     const page = await open(client);
 
     await typeComment(page, 'Who reads this matters.');
     await press(page, '[data-comment="post"]');
     await page.click('#conversation-tab-client');
+    expect(page.find('#conversation-tab-internal')?.getAttribute('aria-selected')).toBe('true');
     await press(page, '[data-comment="post"]');
 
-    const [first, second] = idsOf('task/comment');
-    expect(second).not.toBe(first);
+    const [first, second] = requestsOf('task/comment');
+    expect(second).toEqual(first);
+    expect(first?.['audience']).toBe('internal');
+    expect(page.find('[data-comment="unresolved"]')).toBeNull();
+
+    await page.click('#conversation-tab-client');
+    await typeComment(page, 'Who reads this matters.');
+    await press(page, '[data-comment="post"]');
+    const fresh = requestsOf('task/comment')[2];
+    expect(fresh?.['operationId']).not.toBe(first?.['operationId']);
+    expect(fresh?.['audience']).toBe('client');
+    expect(fresh?.['commentType']).toBe('client');
   });
 });
 

@@ -114,3 +114,27 @@ it('the existing task-filing gesture keeps an open panel beside a Shift draft', 
   expect(app.view.find('.dpanel[data-panel-id="todos"]')).not.toBeNull();
   expect(commands(app.sent)).toEqual([]);
 });
+
+it('an aggregate board in the actual App keeps its external toolbar through Work log and opens one shared untimed draft', async () => {
+  const path = '/projects/?pool=aggregate&scope=own';
+  window.history.replaceState(null, '', path);
+  const app = await draftApp({ path });
+  await tick();
+  const reads = () => app.sent.filter((sent) => sent.path === '/task/board');
+  expect(reads().length).toBeGreaterThan(0);
+  for (const sent of reads()) expect(sent.body).toEqual({ mode: 'aggregate' });
+  expect(app.view.all('.topbar__bar [data-projects-new-task]')).toHaveLength(1);
+  await app.view.click('[role="tab"][id$="worklog"]');
+  await tick();
+  expect(app.view.all('[data-projects-new-task]')).toHaveLength(0);
+  await app.view.click('[role="tab"][id$="board"]');
+  await tick();
+  expect(app.view.all('.topbar__bar [data-projects-new-task]')).toHaveLength(1);
+  expect(window.location.search).toBe('?pool=aggregate&scope=own');
+  for (const sent of reads()) expect(sent.body).toEqual({ mode: 'aggregate' });
+  await app.view.click('.topbar__bar [data-projects-new-task]');
+  expect(app.view.all('[data-draft-panel]')).toHaveLength(1);
+  expect(document.activeElement).toBe(app.view.find('#panel-draft-name'));
+  expect(commands(app.sent)).toEqual([]);
+  expect(readDraft(app.storage, PERSON)).toBeNull();
+});

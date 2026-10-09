@@ -630,6 +630,8 @@ export type TaskReadResult = InternalTaskRead | SharedTaskRead;
  * same task. The rank is worked out at read in the reader's own pool.
  */
 export interface BoardTask extends TaskSummary {
+  /** Canonical compact-list filter evidence, derived only for admitted board rows. */
+  readonly todo?: Pick<TodoView, 'tags' | 'waitingComments' | 'whoseMove'>;
   readonly rank: RankView;
   /** The stage as `task.set_stage` stored it; null for none. */
   readonly stage: string | null;
