@@ -53,13 +53,14 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PageLink, pageLinkDoor } from './PageLink.tsx';
-import { AskDoor, PanelAgent } from './PanelAgent.tsx';
+import { PageLink, GoTo } from './PageLink.tsx';
+import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
+import { useAssignments } from './assignment-context.tsx';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { useSubtaskDoor } from './subtask-door.ts';
@@ -110,6 +111,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
   const fold = useShowTrail(client);
   const timerRead = useTimerRead(client, opening.taskKey);
+  const assignments = useAssignments(client, props.grantKey);
   const conversation = useConversationHeld(opening.tab);
   const { state, reload, refresh, own } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
@@ -124,6 +126,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
   useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useRereadOn(props.changes ?? 0, reload);
   useRereadOn(timerRead.changed, reload);
+  useRereadOn(assignments.state.changed, refresh);
   useTimerStop(props, state.outcome === 'ready' ? state.value : null);
   const body = { ...props, fold, conversation };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
@@ -142,7 +145,12 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...body} task={withPageDefaults(value.task)} states={statesOf(value)} />
+            <PanelBody
+              {...body}
+              task={withPageDefaults(value.task)}
+              taskRead={value.task}
+              states={statesOf(value)}
+            />
           )
         }
       </RecordState>
@@ -151,7 +159,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
 }
 
 function PanelBody(
-  props: Body & { readonly task: Task; readonly states: readonly TaskStateView[] },
+  props: Body & AgentSideProps & { readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
@@ -286,15 +294,5 @@ function PanelHead(props: SideProps): ReactElement {
         </button>
       )}
     </div>
-  );
-}
-
-/** The head's go-to, drawn only when the task links to a page inside the product. */
-function GoTo(props: { readonly task: Task }): ReactElement | null {
-  const door = pageLinkDoor(props.task);
-  return door === null ? null : (
-    <a className="btn" data-panel-head="goto" href={door} title={door}>
-      Go to its page link
-    </a>
   );
 }

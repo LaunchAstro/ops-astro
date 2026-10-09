@@ -67,7 +67,9 @@ it.each(owners)(
   '%s the last reader’s refusal neither locks nor speaks on the next form',
   async (_boundary, business, grant) => {
     view = await submitAsAda(refused);
-    expect(view.find('[data-voice="input-wrong"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+    expect(view.find('.projects__create [role="alert"]')?.textContent).toContain(
+      'SCOPE_NOT_GRANTED',
+    );
     expect((view.find('#create-title') as HTMLInputElement).disabled).toBe(true);
 
     await view.render(
@@ -75,7 +77,7 @@ it.each(owners)(
     );
     await settle();
     expect(
-      view.find('[data-voice="input-wrong"]'),
+      view.find('.projects__create [role="alert"]'),
       'the last reader’s refusal is drawn',
     ).toBeNull();
     expect((view.find('#create-title') as HTMLInputElement).disabled).toBe(false);

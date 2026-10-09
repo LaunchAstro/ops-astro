@@ -4,6 +4,8 @@
 // public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
+import { CreateProvider } from './screens/task/create-context.tsx';
+import { AssignmentProvider } from './screens/task/assignment-context.tsx';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
 import { timerFrame } from './screens/task/task-timer-context.tsx';
 import { gateOf } from './route-gate.ts';
@@ -52,7 +54,7 @@ export function drawContent(props: {
   }
 }
 
-/** Both command custodians outlive page, panel and ordinary authorised rereads. */
+/** The command custodians outlive page, panel and ordinary authorised rereads. */
 export function frameCustody(
   owner: Parameters<typeof timerFrame>[0],
   active: boolean,
@@ -63,12 +65,24 @@ export function frameCustody(
     owner,
     active,
     select,
-    <CommentCustodyProvider
+    <AssignmentProvider
       client={owner.client}
       grantKey={owner.grantKey}
       storage={owner.storage ?? null}
     >
-      {children}
-    </CommentCustodyProvider>,
+      <CreateProvider
+        client={owner.client}
+        grantKey={owner.grantKey}
+        storage={owner.storage ?? null}
+      >
+        <CommentCustodyProvider
+          client={owner.client}
+          grantKey={owner.grantKey}
+          storage={owner.storage ?? null}
+        >
+          {children}
+        </CommentCustodyProvider>
+      </CreateProvider>
+    </AssignmentProvider>,
   );
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { NoTasks } from './projects/NoTasks.tsx';
+import { useAssignments } from './task/assignment-context.tsx';
+import { AssignmentRecoveries } from './task/AssignmentRecovery.tsx';
 import { useTimerState } from './task/task-timer-context.tsx';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Empty, usePageToolbar, ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
+import { usePageToolbar, ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import type {
@@ -127,11 +130,12 @@ function ProjectBoardRead(
   const client = props.client;
   const pins = useSharedTaskPins();
   const { timer, state: timerState } = useTimerState();
+  const assignments = useAssignments(client, props.grantKey);
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
 
-  const { state, reload } = useBoardProjectionRead<TaskBoardResult>(client, {
+  const { state, reload, refresh } = useBoardProjectionRead<TaskBoardResult>(client, {
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', boardBody(props.scope)),
     isEmpty: (value) => value.tasks.length === 0,
@@ -140,6 +144,7 @@ function ProjectBoardRead(
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
   useRereadOn(timerState.changed, reload);
+  useRereadOn(assignments.state.changed, refresh);
   // Same-grant empty rereads retain filters (#902); a new reader opens its own empty state.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
@@ -205,7 +210,7 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  const empty = scopedView ? <></> : NO_TASKS;
+  const empty = scopedView ? <></> : <NoTasks />;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
 
@@ -245,53 +250,49 @@ function ProjectBoardRead(
       </RecordState>
       <BoardCustody drawn={drawn} clear={denied}>
         {answer === null ? null : (
-          <ProjectsBoard
-            // A new place is a new view: the board opens on it afresh.
-            hidden={props.hidden}
-            rows={rows.map((task) =>
-              Object.assign(rowOf(task), {
-                starred: pins?.pinnedIds.includes(task.id) ?? false,
-              }),
-            )}
-            withheld={admitted ? (answer.withheld ?? 0) : 0}
-            changedAt={admitted ? (answer.changedAt ?? null) : null}
-            stages={STAGES}
-            viewer={admitted ? (answer.viewer ?? null) : null}
-            viewerOn={
-              !scopedView &&
-              !rows.some(
-                (task) => task.id === props.scope.target || task.key === props.scope.target,
-              )
-            }
-            {...(answer.owed === undefined ? {} : { owed: admitted ? answer.owed : 0 })}
-            href={(row) => pathTo('agency:task-detail', { key: row.key })}
-            actions={rowActions({
-              client,
-              people: persons,
-              timer,
-              href: (key) => pathTo('agency:task-detail', { key }),
-              reload,
-              onSettled: (text) => {
-                if (live.current === grantKey) setRefused({ grant: grantKey, text });
-              },
-              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
-            })}
-            address={boardQuery}
-            {...(props.scope.target === undefined ? {} : { target: props.scope.target })}
-            clients={clients ?? NO_CLIENTS}
-            nothing={NO_TASKS}
-            onAddress={(next) => props.place.write(retainBoardScope(query, next))}
-          />
+          <>
+            <AssignmentRecoveries custody={assignments.custody} tasks={admitted ? rows : []} />
+            <ProjectsBoard
+              // A new place is a new view: the board opens on it afresh.
+              hidden={props.hidden}
+              rows={rows.map((task) =>
+                Object.assign(rowOf(task), {
+                  starred: pins?.pinnedIds.includes(task.id) ?? false,
+                }),
+              )}
+              withheld={admitted ? (answer.withheld ?? 0) : 0}
+              changedAt={admitted ? (answer.changedAt ?? null) : null}
+              stages={STAGES}
+              viewer={admitted ? (answer.viewer ?? null) : null}
+              viewerOn={
+                !scopedView &&
+                !rows.some(
+                  (task) => task.id === props.scope.target || task.key === props.scope.target,
+                )
+              }
+              {...(answer.owed === undefined ? {} : { owed: admitted ? answer.owed : 0 })}
+              href={(row) => pathTo('agency:task-detail', { key: row.key })}
+              actions={rowActions({
+                client,
+                assignment: assignments.custody,
+                people: persons,
+                timer,
+                href: (key) => pathTo('agency:task-detail', { key }),
+                reload,
+                onSettled: (text) => {
+                  if (live.current === grantKey) setRefused({ grant: grantKey, text });
+                },
+                ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+              })}
+              address={boardQuery}
+              {...(props.scope.target === undefined ? {} : { target: props.scope.target })}
+              clients={clients ?? NO_CLIENTS}
+              nothing={<NoTasks />}
+              onAddress={(next) => props.place.write(retainBoardScope(query, next))}
+            />
+          </>
         )}
       </BoardCustody>
     </div>
   );
 }
-
-const NO_TASKS = (
-  <Empty
-    title="No tasks on this board yet."
-    description="You are permitted to see it and it has nothing in it."
-    hint="Create one with the form above."
-  />
-);

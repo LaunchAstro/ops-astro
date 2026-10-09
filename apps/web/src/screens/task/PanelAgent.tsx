@@ -29,10 +29,11 @@ import { AgentSection } from '../../views/agent-pane.tsx';
 import type { DecisionNote } from '../../views/gate-controls.tsx';
 import { BriefField } from './Writing.tsx';
 
-interface AgentSideProps {
+export interface AgentSideProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  readonly taskRead: Task;
   readonly onChanged: () => void;
 }
 
@@ -73,7 +74,7 @@ export function PanelAgent(props: AgentSideProps): ReactElement {
         clientId={task.client}
         clientUnseen={task.clientSet && task.client === null}
         taskKey={task.key}
-        readOf={task}
+        readOf={props.taskRead}
         proposals={task.proposals}
         people={people.state.outcome === 'ready' ? people.state.value.persons : []}
         ledger={task.ledger}

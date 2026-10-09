@@ -193,7 +193,11 @@ describe('the six read outcomes, in the mounted app', () => {
       // The first board read.
       json({ ok: true, tasks: [TASK] }),
       // The create that triggers the reread.
-      json({ recordId: '22222222-2222-4222-8222-222222222222', revision: 1 }),
+      json({
+        recordId: '22222222-2222-4222-8222-222222222222',
+        revision: 1,
+        detail: { key: 'TSK-2' },
+      }),
       // And the reread, which does not arrive.
       () => Promise.reject(new Error('the API went away')),
     ]);
