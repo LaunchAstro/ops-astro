@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { isUuid } from '../../session/storage-slot.ts';
+import { isOperationId, isUuid } from '../../session/storage-slot.ts';
 
 export const CREATE_KEY = 'ops-astro.create-attempts';
 export interface CreateEditor {
@@ -67,7 +67,7 @@ function attempt(value: unknown): value is CreateAttempt {
     !record(value) ||
     !keys(value, ['origin', 'operationId', 'editor', 'body', 'knowledge']) ||
     value['origin'] !== 'inline' ||
-    !isUuid(value['operationId']) ||
+    !isOperationId(value['operationId']) ||
     !record(value['editor']) ||
     !keys(value['editor'], ['id', 'generation']) ||
     !isUuid(value['editor']['id']) ||

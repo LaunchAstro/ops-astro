@@ -44,10 +44,10 @@ function corruptCopy(value: unknown, id: string, corruption: string): string {
         ...document,
         entries: { [id]: { ...entry, arbitraryCommand: 'task.complete' } },
       });
-    case 'derived-id':
+    case 'mismatched-id':
       return JSON.stringify({
         ...document,
-        entries: { [`${id}.0`]: { ...entry, operationId: `${id}.0` } },
+        entries: { [`${id}.0`]: entry },
       });
     case 'impossible-receipt':
       return JSON.stringify({
@@ -68,7 +68,7 @@ it.each([
   'array',
   'foreign-owner',
   'extra-field',
-  'derived-id',
+  'mismatched-id',
   'impossible-receipt',
 ] as const)(
   'hydration withholds %s custody and never reconstructs or sends it',
