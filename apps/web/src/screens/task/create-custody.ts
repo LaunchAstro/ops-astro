@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import {
+  EMPTY,
+  readCreateJournal,
+  createJournal,
+  type CreateState,
+  type CreateHold,
+} from './create-journal.ts';
+export type { CreateHold } from './create-journal.ts';
 import type { OperationsClient } from '../../operations/client.ts';
-import { settle, type Failure, type Settlement } from '../../records/use-command.ts';
+import { settle, type Settlement } from '../../records/use-command.ts';
 import {
   isOperationId,
   isUuid,
@@ -11,7 +19,6 @@ import { tabOwnerGeneration } from '../../session/token.ts';
 import {
   CREATE_KEY,
   record,
-  createDocument,
   createReceipt,
   submittedCreate,
   type CreateAttempt,
@@ -19,18 +26,6 @@ import {
   type CreateReceipt,
 } from './create-attempt.ts';
 
-export interface CreateHold {
-  readonly entry: CreateAttempt;
-  readonly busy: boolean;
-  readonly failure: Failure | null;
-  readonly kept: boolean;
-}
-interface CreateState {
-  readonly holds: ReadonlyMap<string, CreateHold>;
-  readonly problem: string | null;
-}
-const EMPTY: CreateState = { holds: new Map(), problem: null };
-const RECOVERY = 'The saved task creation could not be recovered. No stored attempt was sent.';
 const STORAGE =
   'The recovery copy could not be kept. No new task was sent. Retry keeps the same attempt.';
 
@@ -56,29 +51,7 @@ export class CreateCustody {
     this.#owner = owner;
     this.#storage = storage;
     this.#memoryOnly = memoryOnly;
-    this.#hydrate();
-  }
-  #hydrate(): void {
-    try {
-      const raw = this.#storage?.getItem(CREATE_KEY) ?? null;
-      if (raw === null) return;
-      const document = createDocument(JSON.parse(raw) as unknown, this.#owner);
-      if (document === null) {
-        this.#state = { holds: new Map(), problem: RECOVERY };
-        return;
-      }
-      this.#state = {
-        holds: new Map(
-          Object.entries(document.entries).map(([id, entry]) => [
-            id,
-            { entry, busy: false, failure: null, kept: true },
-          ]),
-        ),
-        problem: null,
-      };
-    } catch {
-      this.#state = { holds: new Map(), problem: RECOVERY };
-    }
+    this.#state = readCreateJournal(storage, owner);
   }
   snapshot = (): CreateState => this.#state;
   serverSnapshot = (): CreateState => EMPTY;
@@ -130,15 +103,11 @@ export class CreateCustody {
   #save(): boolean {
     if (!this.#current() || this.#state.problem !== null) return false;
     if (this.#memoryOnly) return true;
-    return verifiedJsonWrite(this.#storage, CREATE_KEY, {
-      version: 1,
-      owner: this.#owner,
-      entries: Object.fromEntries(
-        [...this.#state.holds]
-          .filter(([, hold]) => hold.entry.knowledge.kind !== 'prepared')
-          .map(([id, hold]) => [id, hold.entry]),
-      ),
-    });
+    return verifiedJsonWrite(
+      this.#storage,
+      CREATE_KEY,
+      createJournal(this.#owner, this.#state.holds),
+    );
   }
   rebind(client: OperationsClient): void {
     if (client === this.#client) return;
