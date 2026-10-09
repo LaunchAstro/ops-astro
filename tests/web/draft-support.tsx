@@ -7,6 +7,7 @@
 // A harness, not a suite: nothing here runs on its own.
 
 import { useEffect, type ReactElement } from 'react';
+import { parseDuration } from '../../packages/core-records/src/tasks/time.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { DraftPanel, type DraftScope } from '../../apps/web/src/screens/task/DraftPanel.tsx';
 import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
@@ -24,6 +25,39 @@ export interface Sent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
+function partReceipt(to: string, body: Sent['body']): Response {
+  if (to === '/tag/create')
+    return json({
+      recordId: null,
+      revision: null,
+      detail: { tagId: '55555555-5555-4555-8555-555555555555', name: body['name'] },
+    });
+  if (to === '/task/add_tag')
+    return json({ recordId: NEW_ID, revision: null, detail: { tagId: body['tagId'] } });
+  if (to === '/task/comment')
+    return json({
+      recordId: NEW_ID,
+      revision: body['expectedRevision'],
+      detail: { commentId: '88888888-8888-4888-8888-888888888888' },
+    });
+  if (to === '/time/log')
+    return json({
+      recordId: null,
+      revision: null,
+      detail: {
+        entryId: '77777777-7777-4777-8777-777777777777',
+        minutes: parseDuration(String(body['duration'])),
+      },
+    });
+  if (to === '/task/create')
+    return json({
+      recordId: '66666666-6666-4666-8666-666666666666',
+      revision: 1,
+      detail: { key: 'Proj-Call-Client' },
+    });
+  return json({ recordId: NEW_ID, revision: Number(body['expectedRevision']) + 1, detail: {} });
+}
+
 /** A server that answers a create with a new task, and refuses the paths in `refuse`. */
 export function server(refuse: readonly string[] = [], unknownCreates = 0) {
   const sent: Sent[] = [];
@@ -33,7 +67,9 @@ export function server(refuse: readonly string[] = [], unknownCreates = 0) {
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to, body });
     if (to === '/tag/list') {
-      return Promise.resolve(json({ ok: true, tags: [{ id: 'g-legal', name: 'Legal' }] }));
+      return Promise.resolve(
+        json({ ok: true, tags: [{ id: '44444444-4444-4444-8444-444444444444', name: 'Legal' }] }),
+      );
     }
     if (refuse.includes(to)) {
       return Promise.resolve(
@@ -47,8 +83,7 @@ export function server(refuse: readonly string[] = [], unknownCreates = 0) {
       }
       return Promise.resolve(json({ recordId: NEW_ID, revision: 1, detail: { key: NEW_KEY } }));
     }
-    const detail = to === '/tag/create' ? { tagId: 'g-new', name: body['name'] } : {};
-    return Promise.resolve(json({ recordId: NEW_ID, revision: 2, detail }));
+    return Promise.resolve(partReceipt(to, body));
   }) as unknown as typeof globalThis.fetch;
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),

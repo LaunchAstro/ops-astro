@@ -29,6 +29,7 @@
 // refused once the task exists is named back to the person, never retried as
 // a second task.
 
+import { currentDraft, sessionGeneration } from './draft-storage.ts';
 import { draftStored, type Attempt, type TaskDraft } from './draft-storage.ts';
 export type { Attempt, TaskDraft } from './draft-storage.ts';
 import type { Prefill } from './task-prefill.ts';
@@ -96,19 +97,22 @@ export const newAttempt = (id: string): Attempt => ({
 });
 
 /** The draft as stored: its fields and the Create still unsettled. */
-type Stored = Partial<TaskDraft> & { readonly attempt?: Partial<Attempt> };
+type Stored = Partial<TaskDraft> & {
+  readonly attempt?: Partial<Attempt>;
+  readonly sessionGeneration?: number;
+};
 
 /** Writes browser storage could not keep, cleared by the same owner cleanup. */
 const unstored = new Map<string, Stored>();
 
 function readStored(storage: Storage | null, person: string): Stored | null {
   const fallback = unstored.get(person);
-  if (fallback !== undefined) return fallback;
+  if (fallback !== undefined) return currentDraft(fallback) ? fallback : null;
   try {
     const held = storage?.getItem(keyOf(person)) ?? null;
     if (held === null) return null;
     const parsed: unknown = JSON.parse(held);
-    return draftStored(parsed) ? parsed : null;
+    return draftStored(parsed) && currentDraft(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -118,7 +122,7 @@ function readStored(storage: Storage | null, person: string): Stored | null {
 export function readDraft(storage: Storage | null, person: string): TaskDraft | null {
   const stored = readStored(storage, person);
   if (stored === null) return null;
-  const { attempt: _attempt, ...parsed } = stored;
+  const { attempt: _attempt, sessionGeneration: _generation, ...parsed } = stored;
   return { ...emptyDraft(null), ...parsed };
 }
 
@@ -136,7 +140,11 @@ export function keepDraft(
   attempt: Attempt | null = null,
 ): void {
   if (draftProblem(storage, person) !== null) return;
-  const stored: Stored = attempt === null ? draft : { ...draft, attempt };
+  const stored: Stored = {
+    ...draft,
+    sessionGeneration: sessionGeneration(),
+    ...(attempt === null ? {} : { attempt }),
+  };
   unstored.set(person, stored);
   try {
     if (storage === null) return;

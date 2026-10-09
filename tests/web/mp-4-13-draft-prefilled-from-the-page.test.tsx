@@ -14,18 +14,26 @@ import { NEW_ID, create, draft, server, store, valueOf } from './draft-support.t
 
 afterEach(unmountAll);
 
+const OWNER_ID = 'b1111111-1111-4111-8111-111111111111';
 const NOW = new Date('2026-10-06T22:00:00Z');
 const prefill = prefillOf(
   {
     from: 'Site health',
     subject: 'Checkout down',
     category: 'seo',
-    clientId: 'c-client-a',
-    owner: { id: 'p-len', name: 'Len' },
+    clientId: 'a1111111-1111-4111-8111-111111111111',
+    owner: { id: OWNER_ID, name: 'Len' },
   },
   NOW,
 );
 const DOOR: DraftScope = { clientId: prefill.clientId, from: 'Site health', prefill };
+
+async function guessedDraft() {
+  const { client, sent } = server();
+  const { view } = await draft({ client, scope: DOOR });
+  await typeInto(view, '#panel-draft-name', 'Fix checkout');
+  return { view, sent };
+}
 
 describe('MP-4-13 a draft filed from a door opens with the page’s guesses', () => {
   it('the guessed category, estimate, due and owner are on the draft, with the admission sentence', async () => {
@@ -42,9 +50,7 @@ describe('MP-4-13 a draft filed from a door opens with the page’s guesses', ()
 
 describe('MP-4-13 CS-4.37 Create writes the page’s guesses', () => {
   it('Create writes the guessed client, category and owner, each by its own command', async () => {
-    const { client, sent } = server();
-    const { view } = await draft({ client, scope: DOOR });
-    await typeInto(view, '#panel-draft-name', 'Fix checkout');
+    const { view, sent } = await guessedDraft();
     await create(view);
     expect(sent.map((one) => one.to)).toStrictEqual([
       '/task/create',
@@ -56,13 +62,14 @@ describe('MP-4-13 CS-4.37 Create writes the page’s guesses', () => {
       fields: { title: 'Fix checkout', due: '2026-10-14', estimated_minutes: 240 },
     });
     expect(sent[2]?.body).toMatchObject({ recordId: NEW_ID, fields: { category: 'seo' } });
-    expect(sent[3]?.body).toMatchObject({ recordId: NEW_ID, fields: { assignee: 'p-len' } });
+    expect(sent[3]?.body).toMatchObject({
+      recordId: NEW_ID,
+      fields: { assignee: OWNER_ID },
+    });
   });
 
   it('a category changed and the owner cleared on the draft are what Create writes', async () => {
-    const { client, sent } = server();
-    const { view } = await draft({ client, scope: DOOR });
-    await typeInto(view, '#panel-draft-name', 'Fix checkout');
+    const { view, sent } = await guessedDraft();
     await view.choose('#panel-draft-category', 'content');
     await view.click('[data-draft="clear-owner"]');
     await create(view);

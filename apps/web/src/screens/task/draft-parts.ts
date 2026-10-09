@@ -1,176 +1,147 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// Create for a new-task draft (MP-4-13): `task.create`, then the parts it
-// writes after the task (DN-05), each by its own command so each is checked against its
-// own permission and audited under its own name: the client, the category,
-// the owner, the note, the tags, the subtasks and the logged time.
-
+import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
+import { settle, type Settlement } from '../../records/use-command.ts';
+import { isUuid } from '../../session/storage-slot.ts';
 import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type CommandOutcome,
-  type OperationsClient,
-} from '../../operations/client.ts';
-import { settle } from '../../records/use-command.ts';
-import { timedMinutes, type Attempt, type TaskDraft } from './task-draft.ts';
-
-type Result = CallResult<CommandOutcome>;
-
-interface Part {
-  readonly what: string;
-  readonly run: (operationId: string) => Promise<Result>;
-}
-
+  draftBody,
+  draftRecipe,
+  draftPart,
+  isDraftBody,
+  operationIds,
+  partLabel,
+  type DraftPart,
+} from './draft-recipe.ts';
+import { command, phaseCommand } from './draft-command.ts';
+import { commandAnswer, type DraftReceipt, type DraftCommand } from './draft-receipts.ts';
+import type { Attempt, TaskDraft } from './task-draft.ts';
 export type CreateOutcome =
   | { readonly kind: 'created'; readonly key: string; readonly missed: readonly string[] }
   | { readonly kind: 'refused' | 'unknown'; readonly because: string };
-
-/**
- * Create the task, then each part the draft holds not yet answered under
- * `attempt`; `save` keeps each part's id before it goes out, and the count
- * once it answers.
- */
+/** Command-specific answers preserve the parent's cursor; this remains the legacy mutable retry caller. */
+function prepareDraft(draft: TaskDraft, attempt: Attempt) {
+  const ids = [...attempt.parts];
+  const recipe = draftRecipe((index, tagCreate) => {
+    const id = ids[index] ?? `${attempt.id}.${String(index)}`;
+    ids[index] = id;
+    return tagCreate ? `${id}.tag` : id;
+  }, draft);
+  const body = draftBody(draft);
+  const identities = [attempt.id, ...recipe.flatMap((part) => operationIds(part))];
+  if (
+    !isDraftBody(body) ||
+    !recipe.every((part) => draftPart(part)) ||
+    new Set(identities).size !== identities.length
+  )
+    return null;
+  return { ids, recipe, body };
+}
 export async function createFromDraft(
   client: OperationsClient,
   draft: TaskDraft,
   attempt: Attempt,
   save: (next: Attempt) => void,
+  recovering: boolean,
 ): Promise<CreateOutcome> {
-  const fields: Record<string, unknown> = { title: draft.title.trim() };
-  if (draft.due !== null) fields['due'] = draft.due;
-  if (draft.estimate !== null) fields['estimated_minutes'] = draft.estimate;
-  const created = settle(
-    await client.mutate('task.create', { fields, board: null }, { operationId: attempt.id }),
-  );
-  if (created.kind === 'unknown') return { kind: 'unknown', because: created.because };
-  if (created.kind !== 'ok') return { kind: 'refused', because: created.because };
-  const { recordId } = created.value;
-  const at = { revision: attempt.revision ?? created.value.revision };
-  const ids = [...attempt.parts];
-  const missed = [...attempt.missed];
+  const prepared = prepareDraft(draft, attempt);
+  if (prepared === null)
+    return {
+      kind: recovering ? 'unknown' : 'refused',
+      because: recovering
+        ? 'The draft operands are invalid. No recovery request was sent. The original create may already have applied.'
+        : 'The draft operands are invalid. No creation request was sent.',
+    };
+  const { body } = prepared;
+  const initial = command('task.create', attempt.id, body);
+  const created = await write(client, initial, null);
+  if (created.answer.kind !== 'ok')
+    return {
+      kind: created.answer.kind === 'unknown' ? 'unknown' : 'refused',
+      because: created.answer.because,
+    };
+  return finishDraft(client, attempt, save, prepared, created.receipt!);
+}
+async function finishDraft(
+  client: OperationsClient,
+  attempt: Attempt,
+  save: (next: Attempt) => void,
+  prepared: NonNullable<ReturnType<typeof prepareDraft>>,
+  base: DraftReceipt,
+): Promise<CreateOutcome> {
+  const { ids, recipe } = prepared;
+  let parent = { ...base, revision: attempt.revision ?? base.revision };
   let done = attempt.done;
-  const now = (): Attempt => ({ ...attempt, parts: [...ids], done, revision: at.revision, missed });
-  for (const [index, part] of partsOf(client, draft, recordId, at).entries()) {
+  const missed = [...attempt.missed];
+  let tags: Map<string, string> | null = null;
+  const now = (): Attempt => ({
+    ...attempt,
+    parts: [...ids],
+    done,
+    revision: parent.revision,
+    missed: [...missed],
+  });
+  for (const [index, part] of recipe.entries()) {
     if (index < done) continue;
-    const operationId = ids[index] ?? `${attempt.id}.${String(index)}`;
-    ids[index] = operationId;
     save(now());
-    // eslint-disable-next-line no-await-in-loop -- in order: each part writes after the task, at its revision
-    const result = settle(await part.run(operationId));
-    if (result.kind === 'unknown') {
-      return { kind: 'unknown', because: `No answer for ${part.what}; Create again to finish.` };
-    }
-    if (result.kind === 'ok') at.revision = result.value.revision;
-    else missed.push(part.what);
+    let result: Written;
+    if (part.kind === 'tag') {
+      // eslint-disable-next-line no-await-in-loop -- Resolve the tag branch before its ordered write.
+      tags ??= await vocabulary(client);
+      // eslint-disable-next-line no-await-in-loop -- Each phase depends on the preceding receipt.
+      result = await tagWrite(client, part, parent, tags);
+      // eslint-disable-next-line no-await-in-loop -- Each phase depends on the preceding receipt.
+    } else result = await write(client, phaseCommand(part, parent), parent);
+    if (result.answer.kind === 'unknown')
+      return {
+        kind: 'unknown',
+        because: `No answer for ${partLabel(part)}; Create again to finish.`,
+      };
+    if (result.answer.kind !== 'ok') missed.push(partLabel(part));
+    else if (part.kind === 'party' || part.kind === 'category' || part.kind === 'assignment')
+      parent = { ...result.receipt!, key: base.key };
     done = index + 1;
     save(now());
   }
-  const key = created.value.detail?.['key'];
-  return { kind: 'created', key: typeof key === 'string' ? key : recordId, missed };
+  return { kind: 'created', key: base.key ?? base.recordId!, missed };
 }
-
-/** A part only when the draft holds it. */
-const when = (held: boolean, part: Part): readonly Part[] => (held ? [part] : []);
-
-type Revision = (operationId: string) => { expectedRevision: number; operationId: string };
-
-/** Each part the draft holds, in the order Create writes them; `at` is the task's latest revision. */
-export function partsOf(
+interface Written {
+  readonly answer: Settlement;
+  readonly receipt: DraftReceipt | null;
+}
+async function write(
   client: OperationsClient,
-  draft: TaskDraft,
-  recordId: string,
-  at: { revision: number },
-): readonly Part[] {
-  const note = draft.note.trim();
-  // The vocabulary is read once, at the first tag.
-  let held: Promise<Map<string, string>> | null = null;
-  const tags = (): Promise<Map<string, string>> => (held ??= vocabulary(client));
-  const revision: Revision = (operationId) => ({ expectedRevision: at.revision, operationId });
-  return [
-    ...when(draft.clientId !== null, {
-      what: 'the client',
-      run: (operationId) =>
-        client.mutate(
-          'task.set_party',
-          { recordId, fields: { client: draft.clientId } },
-          revision(operationId),
-        ),
+  current: DraftCommand,
+  parent: DraftReceipt | null,
+): Promise<Written> {
+  const answer = settle(
+    await client.mutate(current.command, current.body, {
+      operationId: current.operationId,
+      ...(current.expectedRevision === null ? {} : { expectedRevision: current.expectedRevision }),
     }),
-    ...guessParts(client, draft, recordId, revision),
-    ...when(note !== '', {
-      what: 'the note',
-      run: (operationId) =>
-        client.mutate(
-          'task.comment',
-          { recordId, body: note, audience: 'internal', commentType: 'note' },
-          revision(operationId),
-        ),
-    }),
-    ...draft.tags.map((name) => ({
-      what: `the tag ${name}`,
-      run: async (id: string) => addTag(client, { recordId, name, operationId: id }, await tags()),
-    })),
-    ...draft.steps.map((title) => ({
-      what: `the subtask ${title}`,
-      run: (operationId: string) =>
-        client.mutate('task.create', { fields: { title }, parentId: recordId }, { operationId }),
-    })),
-    ...timeParts(client, draft, recordId),
-  ];
+  );
+  const known = commandAnswer(answer, current, parent);
+  return {
+    answer:
+      answer.kind !== 'unknown' && known === null
+        ? { kind: 'unknown', because: 'The API did not return a valid creation phase answer.' }
+        : answer,
+    receipt: known?.receipt ?? null,
+  };
 }
-
-/** The category and the owner the draft holds, each by its own command. */
-function guessParts(
+async function tagWrite(
   client: OperationsClient,
-  draft: TaskDraft,
-  recordId: string,
-  revision: Revision,
-): readonly Part[] {
-  return [
-    ...when(draft.category !== null, {
-      what: 'the category',
-      run: (operationId) =>
-        client.mutate(
-          'task.set_category',
-          { recordId, fields: { category: draft.category } },
-          revision(operationId),
-        ),
-    }),
-    ...when(draft.owner !== null, {
-      what: 'the owner',
-      run: (operationId) =>
-        client.mutate(
-          'task.assign',
-          { recordId, fields: { assignee: draft.owner?.id } },
-          revision(operationId),
-        ),
-    }),
-  ];
+  part: Extract<DraftPart, { kind: 'tag' }>,
+  parent: DraftReceipt,
+  tags: ReadonlyMap<string, string>,
+): Promise<Written> {
+  let tagId = tags.get(part.name.toLowerCase()) ?? null;
+  if (tagId === null) {
+    const made = await write(client, phaseCommand(part, parent), parent);
+    if (made.answer.kind !== 'ok') return made;
+    tagId = made.receipt!.identifier;
+  }
+  return write(client, phaseCommand(part, parent, tagId), parent);
 }
-
-/** The time typed on the draft and the minutes its timer timed (DN-05), each through `time.log`. */
-function timeParts(client: OperationsClient, draft: TaskDraft, recordId: string): readonly Part[] {
-  const time = draft.time.trim();
-  return [
-    ...when(time !== '', {
-      what: 'the time',
-      run: (operationId) =>
-        client.mutate('time.log', { taskId: recordId, duration: time }, { operationId }),
-    }),
-    ...when(timedMinutes(draft) > 0, {
-      what: 'the timed time',
-      run: (operationId) =>
-        client.mutate(
-          'time.log',
-          { taskId: recordId, duration: `${String(timedMinutes(draft))}m` },
-          { operationId },
-        ),
-    }),
-  ];
-}
-
-/** The business's tags by lower-cased name; empty when the read is refused (each tag then is new). */
+/** Refused vocabulary retains typed tag creation under canonical command authority. */
 async function vocabulary(client: OperationsClient): Promise<Map<string, string>> {
   const read = await client.read<{ readonly tags: readonly { id: string; name: string }[] }>(
     'tag.list',
@@ -178,24 +149,6 @@ async function vocabulary(client: OperationsClient): Promise<Map<string, string>
   );
   const held = new Map<string, string>();
   if (isRefusal(read) || isUnavailable(read)) return held;
-  for (const tag of read.value.tags) held.set(tag.name.toLowerCase(), tag.id);
+  for (const tag of read.value.tags) if (isUuid(tag.id)) held.set(tag.name.toLowerCase(), tag.id);
   return held;
-}
-
-/** Add a tag by name: the vocabulary's own, or a new one created first. */
-async function addTag(
-  client: OperationsClient,
-  tag: { readonly recordId: string; readonly name: string; readonly operationId: string },
-  held: ReadonlyMap<string, string>,
-): Promise<Result> {
-  const { recordId, name, operationId } = tag;
-  let tagId = held.get(name.toLowerCase());
-  if (tagId === undefined) {
-    const made = await client.mutate('tag.create', { name }, { operationId: `${operationId}.tag` });
-    if (isRefusal(made) || isUnavailable(made)) return made;
-    const id = made.value.detail?.['tagId'];
-    if (typeof id !== 'string') return { unavailable: true, because: 'No tag came back.' };
-    tagId = id;
-  }
-  return client.mutate('task.add_tag', { recordId, tagId }, { operationId });
 }

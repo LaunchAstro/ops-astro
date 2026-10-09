@@ -30,6 +30,8 @@ const TASK = '.dpanel[data-panel-id="task"]';
 const TAB = '.dock__tab[data-panel="task"]';
 const DOOR = '#perspective-panel-team [data-panel-door="log"]';
 const NEW_KEY = 'Proj-New-Brief';
+const CREATED_ID = '99999999-9999-4999-8999-999999999999';
+const CREATED = { recordId: CREATED_ID, revision: 1, detail: { key: NEW_KEY } };
 
 function storage(seed: Record<string, string>): StorageLike {
   const held = new Map(Object.entries(seed));
@@ -71,7 +73,7 @@ function server() {
       creates.push(String(body['operationId']));
       return new Promise<Response>((done) => {
         land = () => {
-          done(json({ recordId: 'r-new', revision: 1, detail: { key: NEW_KEY } }));
+          done(json(CREATED));
         };
       });
     }

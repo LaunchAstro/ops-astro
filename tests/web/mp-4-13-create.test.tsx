@@ -11,9 +11,60 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TASK_ID, tick } from './task-page-stub.tsx';
 import { mount, press, typeInto, unmountAll } from './perspective-support.tsx';
 import { panel, serving } from './panel-fields-support.tsx';
-import { Host, NEW_ID, NEW_KEY, create, draft, fill, server, store } from './draft-support.tsx';
+import {
+  Host,
+  NEW_ID,
+  NEW_KEY,
+  create,
+  draft,
+  fill,
+  server,
+  store,
+  type Sent,
+} from './draft-support.tsx';
 
 afterEach(unmountAll);
+
+function expectParts(sent: readonly Sent[]): void {
+  expect(sent.map((one) => one.to)).toStrictEqual([
+    '/task/create',
+    '/task/set_party',
+    '/task/comment',
+    '/tag/list',
+    '/task/add_tag',
+    '/tag/create',
+    '/task/add_tag',
+    '/task/create',
+    '/time/log',
+  ]);
+  expect(sent[0]?.body).toMatchObject({
+    fields: { title: 'New brief', due: '2026-10-09', estimated_minutes: 60 },
+    board: null,
+  });
+  expect(sent[1]?.body).toMatchObject({
+    recordId: NEW_ID,
+    fields: { client: '11111111-1111-4111-8111-111111111111' },
+    expectedRevision: 1,
+  });
+  expect(sent[2]?.body).toMatchObject({
+    recordId: NEW_ID,
+    body: 'From the kickoff call.',
+    audience: 'internal',
+    commentType: 'note',
+    expectedRevision: 2,
+  });
+  expect(sent[4]?.body).toMatchObject({
+    recordId: NEW_ID,
+    tagId: '44444444-4444-4444-8444-444444444444',
+  });
+  expect(sent[5]?.body).toMatchObject({ name: 'Launch' });
+  expect(sent[6]?.body).toMatchObject({
+    recordId: NEW_ID,
+    tagId: '55555555-5555-4555-8555-555555555555',
+  });
+  expect(sent[7]?.body).toMatchObject({ fields: { title: 'Call the client' }, parentId: NEW_ID });
+  expect(sent[8]?.body).toMatchObject({ taskId: NEW_ID, duration: '30m' });
+}
 
 describe('MP-4-13 CS-4.37 Create writes a real task', () => {
   it('the task first, then every field and part chosen on the draft, each by its own command', async () => {
@@ -22,42 +73,11 @@ describe('MP-4-13 CS-4.37 Create writes a real task', () => {
     const { view, outcome } = await draft({
       client,
       storage,
-      scope: { clientId: 'c-client-a', from: 'Client A' },
+      scope: { clientId: '11111111-1111-4111-8111-111111111111', from: 'Client A' },
     });
     await fill(view);
     await create(view);
-    expect(sent.map((one) => one.to)).toStrictEqual([
-      '/task/create',
-      '/task/set_party',
-      '/task/comment',
-      '/tag/list',
-      '/task/add_tag',
-      '/tag/create',
-      '/task/add_tag',
-      '/task/create',
-      '/time/log',
-    ]);
-    expect(sent[0]?.body).toMatchObject({
-      fields: { title: 'New brief', due: '2026-10-09', estimated_minutes: 60 },
-      board: null,
-    });
-    expect(sent[1]?.body).toMatchObject({
-      recordId: NEW_ID,
-      fields: { client: 'c-client-a' },
-      expectedRevision: 1,
-    });
-    expect(sent[2]?.body).toMatchObject({
-      recordId: NEW_ID,
-      body: 'From the kickoff call.',
-      audience: 'internal',
-      commentType: 'note',
-      expectedRevision: 2,
-    });
-    expect(sent[4]?.body).toMatchObject({ recordId: NEW_ID, tagId: 'g-legal' });
-    expect(sent[5]?.body).toMatchObject({ name: 'Launch' });
-    expect(sent[6]?.body).toMatchObject({ recordId: NEW_ID, tagId: 'g-new' });
-    expect(sent[7]?.body).toMatchObject({ fields: { title: 'Call the client' }, parentId: NEW_ID });
-    expect(sent[8]?.body).toMatchObject({ taskId: NEW_ID, duration: '30m' });
+    expectParts(sent);
     expect(outcome.created).toBe(NEW_KEY);
     expect(storage.length).toBe(0);
   });

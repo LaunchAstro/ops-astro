@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { sessionGeneration } from '../../session/token.ts';
 import { isOperationId } from '../../session/storage-slot.ts';
 
 export interface TaskDraft {
@@ -60,9 +61,10 @@ function attempt(value: unknown): value is Attempt {
 const TEXT = new Set(['title', 'time', 'note']);
 const NULLABLE_TEXT = new Set(['due', 'clientId', 'category', 'why', 'from', 'timerFrom']);
 /** The unsent editor's representation, not a command envelope or proof of an old effect. */
-export function draftStored(
-  value: unknown,
-): value is Partial<TaskDraft> & { readonly attempt?: Attempt } {
+export function draftStored(value: unknown): value is Partial<TaskDraft> & {
+  readonly attempt?: Attempt;
+  readonly sessionGeneration?: number;
+} {
   if (!object(value)) return false;
   for (const [key, field] of Object.entries(value)) {
     if (TEXT.has(key)) {
@@ -84,9 +86,17 @@ export function draftStored(
           typeof field['name'] !== 'string')
       )
         return false;
+    } else if (key === 'sessionGeneration') {
+      if (!count(field)) return false;
     } else if (key === 'attempt') {
       if (!attempt(field)) return false;
     } else return false;
   }
   return true;
+}
+
+/** Existing session endings fence newly kept drafts even when physical cleanup is refused. */
+export { sessionGeneration } from '../../session/token.ts';
+export function currentDraft(value: { readonly sessionGeneration?: number }): boolean {
+  return value.sessionGeneration === undefined || value.sessionGeneration === sessionGeneration();
 }
