@@ -22,6 +22,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { BudgetRequest } from './requests-budget.ts';
+import type { SettingsRequest } from './requests-settings.ts';
 import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
@@ -213,34 +214,7 @@ export type CommandRequest =
   // here only so the refusal of a body that still sends one is reachable, for
   // the reason `expectedRevision` is optional above.
   | ({ readonly command: 'task.purge'; readonly olderThanDays?: unknown } & Envelope)
-  // The two operation-classified business settings. `value` is the whole
-  // payload: the key is the command, not a field, so a caller cannot reach a
-  // setting the model classified `generic` through the operation that owns a
-  // different one. Each carries the optional `expectedRevision` its handler
-  // compares against the settings row, which `Envelope` does not: a stale
-  // write is refused `VERSION_STALE`, and naming no revision still applies.
-  | ({
-      readonly command: 'settings.set_four_eyes_threshold';
-      /** Null is a real value: the band is off, which the accepted rule permits. */
-      readonly value: number | null;
-      readonly expectedRevision?: number;
-    } & Envelope)
-  | ({
-      readonly command: 'settings.set_client_sign_off';
-      readonly value: boolean;
-      readonly expectedRevision?: number;
-    } & Envelope)
-  | ({
-      readonly command: 'settings.set_money_step_up';
-      readonly value: boolean;
-      readonly expectedRevision?: number;
-    } & Envelope)
-  // MP-2-11: whole days (C122-1).
-  | ({
-      readonly command: 'settings.set_conversation_window' | 'settings.set_retention_window';
-      readonly value: number;
-      readonly expectedRevision?: number;
-    } & Envelope)
+  | SettingsRequest<Envelope>
   // C32, C55, C58, C81, API-2 and S0-5, in their own file.
   | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the

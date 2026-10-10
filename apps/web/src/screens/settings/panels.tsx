@@ -14,6 +14,7 @@
 // second vocabulary, and the first time the server grows a code this one would
 // be confidently wrong about it.
 
+import { TASK_STAGES } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReactElement } from 'react';
 import { Banner, Empty } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
@@ -24,9 +25,20 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import { SETTINGS_MANAGE, SPEND_DECIDE, holds, inWords, scopeName } from './reads.ts';
 import type { Conflict, Draft, Which } from './use-settings.ts';
+import type { SettingsModel } from './settings-model.ts';
 
 export const draftInWords = (draft: Draft): string =>
-  draft === null ? 'off' : typeof draft === 'boolean' ? (draft ? 'on' : 'off') : String(draft);
+  draft === null
+    ? 'off'
+    : typeof draft === 'object'
+      ? draft.length === 0
+        ? 'none'
+        : draft.map((id) => TASK_STAGES.labelOf(id)).join(', ')
+      : typeof draft === 'boolean'
+        ? draft
+          ? 'on'
+          : 'off'
+        : String(draft);
 
 /** What the settings read is, in its own words: DS-PRIM-28, the one empty state. */
 export function ReadBanner(props: {
@@ -229,5 +241,31 @@ export function ConflictBlock(props: {
         Write {asked} over it
       </button>
     </div>
+  );
+}
+
+/** Session fallback only, never an authoritative setting value. */
+export function ConfirmedLine(props: {
+  readonly model: SettingsModel;
+  readonly which: Which;
+}): ReactElement | null {
+  const { model, which } = props;
+  if (!model.fallback) return null;
+  const held =
+    which === 'four-eyes'
+      ? model.confirmed.fourEyes === undefined
+        ? 'not known'
+        : model.confirmed.fourEyes === null
+          ? 'off'
+          : String(model.confirmed.fourEyes)
+      : model.confirmed.signOff === undefined
+        ? 'not known'
+        : model.confirmed.signOff
+          ? 'on'
+          : 'off';
+  return (
+    <p className="setrow__meta" data-settings={`${which}-known`}>
+      Last confirmed by this browser: {held}
+    </p>
   );
 }

@@ -89,3 +89,16 @@ export const TASK_STAGES = {
   /** The id a label names; a label outside the list is its own value. */
   idOf: (label: string): string => ALL.find((stage) => stage.label === label)?.id ?? label,
 };
+
+/** Validate priority eligibility against exact journey IDs, never the Ops fallback. */
+export function priorityStageIds(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length > JOURNEY.length) return undefined;
+  const selected = new Set<string>();
+  for (const id of value) {
+    if (typeof id !== 'string' || selected.has(id) || !JOURNEY.some((stage) => stage.id === id)) {
+      return undefined;
+    }
+    selected.add(id);
+  }
+  return JOURNEY.filter((stage) => selected.has(stage.id)).map((stage) => stage.id);
+}

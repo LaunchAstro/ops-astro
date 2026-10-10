@@ -35,7 +35,7 @@ export { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 export { minorDigits } from './currency.ts';
 // What a task's page link may hold, for the server's check and the web's door.
 export { PAGE_LINK_LIMIT, isInProductLink } from './page-link.ts';
-export { TASK_STAGES, type TaskStage } from './task-stages.ts';
+export { TASK_STAGES, priorityStageIds, type TaskStage } from './task-stages.ts';
 export { TASK_CATEGORIES, type TaskCategory } from './task-categories.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';

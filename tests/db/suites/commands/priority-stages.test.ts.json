@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "P10 priority stages use real canonical setting commands and durable tenant/grant-filtered rank reads in an owned fresh database."
+}

@@ -41,6 +41,7 @@ import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import {
+  ConfirmedLine,
   CapabilityBanner,
   ConflictBlock,
   Held,
@@ -54,6 +55,7 @@ import { useSettings, type StorageLike, type Which } from './settings/use-settin
 import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
+import { PriorityStagesRow } from './settings/priority-stages-row.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -88,28 +90,6 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       return;
     }
     model.save('four-eyes', value);
-  };
-
-  /** The fallback line: this browser's own last confirmed write, named as that. */
-  const confirmedLine = (which: Which): ReactElement | null => {
-    if (!model.fallback) return null;
-    const held =
-      which === 'four-eyes'
-        ? model.confirmed.fourEyes === undefined
-          ? 'not known'
-          : model.confirmed.fourEyes === null
-            ? 'off'
-            : String(model.confirmed.fourEyes)
-        : model.confirmed.signOff === undefined
-          ? 'not known'
-          : model.confirmed.signOff
-            ? 'on'
-            : 'off';
-    return (
-      <p className="setrow__meta" data-settings={`${which}-known`}>
-        Last confirmed by this browser: {held}
-      </p>
-    );
   };
 
   const conflictFor = (which: Which): ReactElement | null =>
@@ -183,7 +163,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
               {model.answered ? (
                 <Written which="four-eyes" row={model.rowFor('four-eyes')} />
               ) : null}
-              {confirmedLine('four-eyes')}
+              {<ConfirmedLine model={model} which="four-eyes" />}
             </div>
             <div className="setrow__ctl">
               <div className="setrow__line">
@@ -239,7 +219,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
                 </span>
               </p>
               {model.answered ? <Written which="sign-off" row={model.rowFor('sign-off')} /> : null}
-              {confirmedLine('sign-off')}
+              {<ConfirmedLine model={model} which="sign-off" />}
             </div>
             <div className="setrow__ctl">
               <OnOff
@@ -266,6 +246,11 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             {conflictFor('sign-off')}
           </div>
 
+          <PriorityStagesRow
+            key={model.priorityOwnerKey}
+            model={model}
+            conflict={conflictFor('priority')}
+          />
           <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>
