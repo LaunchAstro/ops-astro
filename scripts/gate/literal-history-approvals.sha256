@@ -1,0 +1,3 @@
+# Exact external receipt SHA-256, historical anchor commit, recorded decision ID.
+# Never publish the private receipt or the short term digest.
+f6147b9ff59ce741592cfa6a902a85915dc21b3eb562a679e199ec75e439318e 6b415ddb6f30e04e37d0b26436f0ddf72abea6e7 NATHAN-HISTORICAL-SYNTHETIC-20261010

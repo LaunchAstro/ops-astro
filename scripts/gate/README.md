@@ -147,3 +147,34 @@ self-test fails if any rule has no example that fires.
 
 So it is a net under a rule, not the rule itself. The rule is that no client
 material is copied into this repository, ever, by anyone, for any reason.
+
+## Historical synthetic collisions
+
+This mechanism requires a recorded maintainer decision that the exact historical
+fixture is synthetic and contains no client material. It cannot authorise private
+or client material. Existing fix-forward review does not approve retained history.
+
+The literal scanner defaults to refusal. An approved decision may commit one
+receipt SHA-256, a full immutable historical anchor and a decision ID to
+`literal-history-approvals.sha256`. The corresponding receipt stays outside every
+Git repository and is supplied through `HUB_GATE_LITERAL_HISTORY_RECEIPT`.
+The receipt includes a randomly generated 256-bit nonce, version 1, that exact
+anchor and exact path/blob/full normalised-term SHA-256 tuples. Generate the nonce
+on the maintainer machine. Never publish the receipt or a short-term hash. The
+nonce prevents guessing a short private term from the public receipt commitment.
+
+Only one approved receipt is supported, with at most two blobs for one path and
+one normalised term. Every actual selected candidate tip must not contain either approved
+blob. Approved selections require explicit commits or two-dot ranges, whose
+endpoints resolve to commits. Implicit or ambiguous selections fail closed. A tuple applies only when every inspected occurrence commit is an ancestor of the
+approved anchor. Later reuse of identical bytes, a new path, changed bytes or
+another term still fails. Path rules, unreadable content refusal, hashed/shape
+checks and full first-push history inspection remain unchanged. Invalid supplied
+approval data exits 3. An absent receipt enables no exception. Diagnostics count
+approved historical matches without printing the private receipt or term.
+
+The single approved decision is recorded in `docs/current-decisions.md`.
+The registry binds its exact salted receipt; the synthetic negative controls
+cover reintroduction and changes outside that scope. If the historical material is private, keep publication held
+and seek a separate maintainer remediation decision. This mechanism cannot undo
+disclosure or justify a range/transport workaround.

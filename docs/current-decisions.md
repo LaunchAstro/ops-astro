@@ -140,3 +140,23 @@ No external engineer review, legal opinion, security assessment, hosted enforcem
 mailbox delivery, or service deployment is certified here. A public technical
 evidence digest with adjudicated verdicts remains outstanding. The
 [plan index](plan/README.md) distinguishes that work from the private archive.
+
+## Historical synthetic literal decision, 10 October 2026
+
+Decision `NATHAN-HISTORICAL-SYNTHETIC-20261010`. Nathan confirmed that the two
+historical versions of `tests/web/mp-4-13-prefill-from-the-page.test.ts`
+listed below contain synthetic, non-client fixtures and approved the scoped
+exception. The affected blobs are `db23f253db62a8e7c457a17ef759ba7d2ae62387`
+and `94a6774cc918c1020d92c2b4476dc0715b897d04`, bounded by historical main
+`6b415ddb6f30e04e37d0b26436f0ddf72abea6e7`. PR #1095 already corrected the
+current file. This decision permits only the exact path, blob and normalised
+term tuples committed through the salted external receipt in
+`scripts/gate/literal-history-approvals.sha256`.
+
+Every inspected occurrence must be an ancestor of the fixed anchor. Every
+selected outgoing tip must exclude both historical blobs. Reintroduction, a
+different path, changed bytes or another term remains refused. The private
+receipt and term digest stay outside Git. The full first-push range, normal
+hooks, hashed and shape scans, public-content checks and merge requirements
+remain in force. This decision neither permits client material nor treats
+the earlier retained matches as clean history.
