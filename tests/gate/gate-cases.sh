@@ -327,6 +327,12 @@ else
     "$(printf '%s' "$never_out" | tail -3 | tr '\n' ' ')"
 fi
 
+if python3 "$REPO_ROOT/tests/gate/literal-history-cases.py" "$GATE_DIR"; then
+  pass "exact historical literal decisions retain refusal boundaries"
+else
+  fail "exact historical literal decisions retain refusal boundaries" "synthetic literal controls failed"
+fi
+
 echo
 echo "gate cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
