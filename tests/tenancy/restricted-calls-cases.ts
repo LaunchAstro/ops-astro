@@ -111,7 +111,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'enrolment_tokens invitation_delivery_attempts'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
   // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
   // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],
@@ -190,8 +190,6 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  // 20261011102109 (Launch from the task): a launch is opened and moved on, never deleted.
-  ['siu', 'task_launches'],
   ...MANDATE_GROUPS,
 ];
 
