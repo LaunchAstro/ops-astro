@@ -143,14 +143,18 @@ export function readAttempt(storage: Storage | null, person: string): Attempt | 
   return typeof attempt?.id === 'string' ? { ...newAttempt(attempt.id), ...attempt } : null;
 }
 
-/** Keep the draft; with no `attempt`, an edit's write, any earlier attempt goes. */
+/**
+ * Keep the draft; with no `attempt`, an edit's write, any earlier attempt goes.
+ * False when storage a reload can read does not hold this copy, so an older one
+ * may come back instead; absent or blocked storage brings nothing back.
+ */
 export function keepDraft(
   storage: Storage | null,
   person: string,
   draft: TaskDraft,
   attempt: Attempt | null = null,
-): void {
-  if (draftProblem(storage, person) !== null) return;
+): boolean {
+  if (draftProblem(storage, person) !== null) return false;
   const stored: Stored = {
     ...draft,
     sessionGeneration: sessionGeneration(),
@@ -158,12 +162,21 @@ export function keepDraft(
   };
   unstored.set(person, stored);
   try {
-    if (storage === null) return;
+    if (storage === null) return true;
     const serialised = JSON.stringify(stored);
     storage.setItem(keyOf(person), serialised);
-    if (storage.getItem(keyOf(person)) === serialised) unstored.delete(person);
+    if (storage.getItem(keyOf(person)) === serialised) {
+      unstored.delete(person);
+      return true;
+    }
   } catch {
     // Keep the fallback across remounts when browser storage cannot write.
+  }
+  try {
+    storage?.getItem(keyOf(person));
+    return false;
+  } catch {
+    return true;
   }
 }
 

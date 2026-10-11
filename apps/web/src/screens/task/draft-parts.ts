@@ -54,11 +54,18 @@ export async function createFromDraft(
   const { body } = prepared;
   const initial = command('task.create', attempt.id, body);
   const created = await write(client, initial, null);
+  // A refused replay proves nothing about the first send: the server withholds
+  // a stored success from authority it no longer allows, so the attempt is kept.
   if (created.answer.kind !== 'ok')
-    return {
-      kind: created.answer.kind === 'unknown' ? 'unknown' : 'refused',
-      because: created.answer.because,
-    };
+    return created.answer.kind !== 'unknown' && !recovering
+      ? { kind: 'refused', because: created.answer.because }
+      : {
+          kind: 'unknown',
+          because:
+            created.answer.kind === 'unknown'
+              ? created.answer.because
+              : `${created.answer.because} The task may already exist: check the board before you retry.`,
+        };
   return finishDraft(client, attempt, save, prepared, created.receipt!);
 }
 async function finishDraft(

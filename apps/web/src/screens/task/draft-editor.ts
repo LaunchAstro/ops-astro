@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useRef, useState } from 'react';
+import { adoptFormerCreate } from './former-create.ts';
 import type { Prefill } from './task-prefill.ts';
 import {
   dropDraft,
@@ -28,6 +29,7 @@ export interface DraftEditorProps {
 }
 /** The kept draft as left, given the door's typed name if it has none; else a fresh one. */
 function openedDraft(props: DraftEditorProps, typed: string): TaskDraft {
+  adoptFormerCreate(props.storage, props.person);
   const kept = readDraft(props.storage, props.person);
   if (kept !== null)
     return kept.title.trim() === '' && typed !== '' ? { ...kept, title: typed } : kept;
@@ -62,10 +64,13 @@ export function useKeptDraft(props: DraftEditorProps) {
     keepDraft(storage, person, merged);
   };
   // Stored before Create goes out, with each part's id and count as it goes;
-  // cleared once its outcome is known.
-  const begin = (next: Attempt, sent: TaskDraft = draft): void => {
-    setAttempt(next);
-    keepDraft(storage, person, sent, next);
+  // cleared once its outcome is known. A new attempt storage would not keep is
+  // not taken up, so a reload cannot bring back the draft without it.
+  const begin = (next: Attempt, sent: TaskDraft = draft): boolean => {
+    const taken = keepDraft(storage, person, sent, next) || attempt !== null;
+    if (taken) setAttempt(next);
+    else keepDraft(storage, person, sent);
+    return taken;
   };
   const progress = (next: Attempt): void => {
     setAttempt((held) => (held?.id === next.id ? next : held));

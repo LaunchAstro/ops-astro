@@ -13,7 +13,8 @@
 // create's identity for the retry, so the server's replay answers it rather
 // than a second task. Until it is settled the fields are read-only, so no
 // edit can start a second create beside it; Cancel still discards it. The identity is stored with the draft before Create goes out, so
-// a reload or Back while it is out reopens the draft with it. While Create is
+// a reload or Back while it is out reopens the draft with it; a new Create
+// the browser cannot store is not sent. While Create is
 // out, the fields, Close, Cancel, Escape and the host's doors wait for it, so
 // the draft is never changed under it, reopened or created again; a Create
 // that lands after the session changed opens nothing. A close the dock refused
@@ -188,6 +189,9 @@ function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: At
   return { refusal: null, missed: null };
 }
 
+const UNSAVED =
+  'The draft could not be saved in this browser, so Create was not sent. Free some browser storage, then press Create again.';
+
 function createRefusal(props: DraftPanelProps, kept: Kept): string | null {
   const problem = draftProblem(props.storage, props.person);
   if (problem !== null) return problem;
@@ -202,9 +206,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     refusal: null,
     missed: null,
   }));
-  const show = (settled: Settled): void => {
-    setView({ busy: false, ...settled });
-  };
+  const show = (settled: Settled): void => setView({ busy: false, ...settled });
   // A Create another mount sent is still out: its answer is shown here.
   useLayoutEffect(() => {
     const out = flights.get(props.hold);
@@ -227,7 +229,10 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     const sent = held === null ? stopTimer(kept.draft, Date.now()) : kept.draft;
     if (sent !== kept.draft) kept.put(sent);
     const attempt = held ?? newAttempt(props.client.newOperationId());
-    kept.begin(attempt, sent);
+    if (!kept.begin(attempt, sent)) {
+      setView((last) => ({ ...last, refusal: UNSAVED }));
+      return;
+    }
     const release = props.hold();
     const flight = { person: props.person, show };
     flights.set(props.hold, flight);
