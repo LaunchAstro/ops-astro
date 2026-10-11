@@ -172,6 +172,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     unknowns: [],
     revised_by_actor_id: randomUUID(),
   },
+  // The journey launches nothing (Launch from the task).
+  'public.task_launches': {
+    task_id: randomUUID(),
+    agent_actor_id: randomUUID(),
+    delegation_id: randomUUID(),
+    launched_by_actor_id: randomUUID(),
+  },
   'public.run_checks': {
     task_id: randomUUID(),
     run_id: randomUUID(),

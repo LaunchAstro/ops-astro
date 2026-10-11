@@ -129,6 +129,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
+  // The journey launches nothing (Launch from the task): one waiting launch
+  // whose ids key nothing.
+  'public.task_launches': `insert into public.task_launches
+       (business_id, id, task_id, agent_actor_id, delegation_id, launched_by_actor_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
+             gen_random_uuid())
+     returning 1`,
   'public.run_checks': `insert into public.run_checks
        (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
         fence, name, outcome)

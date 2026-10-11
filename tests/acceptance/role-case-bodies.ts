@@ -122,8 +122,11 @@ export interface BodyContext {
   brokenConnection?(): Promise<string>;
   /** MP-14-10a: a new client with one `ready` graduation row, owner-written. */
   readyClass?(): Promise<{ readonly clientId: string; readonly classId: string }>;
-  /** A fresh agent the positive caller owns, for `task.launch` (Launch from the task). */
-  ownAgent?(): Promise<string>;
+  /**
+   * A fresh task held by a fresh agent `author` owns (the admin when absent),
+   * for `task.launch` (Launch from the task); the hold is seeded, not assigned.
+   */
+  launchableTask?(author?: unknown): Promise<Task>;
 }
 
 export const batchOf = (answer: Answer): string =>

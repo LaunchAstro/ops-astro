@@ -105,7 +105,7 @@ export function createPositiveBody(
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.launch':
-        return await launchBody(context);
+        return await launchBody(context, author);
       case 'task.triage':
         return { body: { ...(await target()), fields: { intake_state: 'accepted' } } };
       case 'task.set_stage':
