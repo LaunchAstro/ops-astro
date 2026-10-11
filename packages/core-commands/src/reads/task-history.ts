@@ -44,12 +44,14 @@ const shownOf = (row: HistoryRow, internal: boolean): readonly string[] | undefi
 
 /**
  * The field writers that are an act of their own, whatever fields they wrote:
- * a cancel or a restart writes no task field (P21), and a reorder writes only
- * the rank, which no history names though the reader sees the board's order
- * change. Every other command that records its field changes is those changes
- * and nothing more.
+ * a cancel or a restart writes no task field (P21), and a placement (a move, a
+ * reparent or a reorder) can change only the rank, which no history names
+ * though the reader sees the board's order change. Every other command that
+ * records its field changes is those changes and nothing more.
  */
 const ACTS: ReadonlySet<string> = new Set([
+  'task.move',
+  'task.reparent',
   'task.rank',
   'task.start',
   'task.complete',

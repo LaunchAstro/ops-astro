@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1206 (Sol proof): a top-level task.reparent that changes only board_rank reorders the board and keeps its history transition and its lookup"
+}

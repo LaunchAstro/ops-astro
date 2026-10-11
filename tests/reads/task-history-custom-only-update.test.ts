@@ -38,7 +38,7 @@ async function readAsAgent(picked: PickedUp, historyEventId?: string) {
   return task;
 }
 
-describe.skipIf(!configured)('PR 1214 hidden field edits', () => {
+describe.skipIf(!configured)('a hidden field edit is not in an agent’s history', () => {
   beforeAll(async () => {
     world = await agentWorld('sol1214_fields', 'sol1214-fields');
     staff = await world.decider('proof-staff');
