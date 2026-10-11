@@ -165,6 +165,20 @@ export function Select(props: SelectProps): ReactElement {
   );
 }
 
+/** Keeps the active option in view by scrolling the open menu alone, never the page. */
+function useActiveInView(id: string, open: boolean, active: number): void {
+  useEffect(() => {
+    // eslint-disable-next-line unicorn/prefer-query-selector -- opaque React ids need no CSS escaping here.
+    const option = open ? document.getElementById(`${id}-opt-${String(active)}`) : null;
+    const menu = option?.parentElement;
+    if (!option || !menu) return;
+    const shown = menu.getBoundingClientRect();
+    const at = option.getBoundingClientRect();
+    if (at.top < shown.top) menu.scrollTop -= shown.top - at.top;
+    else if (at.bottom > shown.bottom) menu.scrollTop += at.bottom - shown.bottom;
+  }, [id, open, active]);
+}
+
 /** The same menu without a second label, for inline forms and drawer fields. */
 export function SelectControl(
   props: SelectProps & { readonly id: string; readonly leading?: ReactNode },
@@ -172,13 +186,7 @@ export function SelectControl(
   const { id } = props;
   const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
   const current = props.options.find((o) => o.value === props.value);
-  useEffect(() => {
-    if (open)
-      document
-        // eslint-disable-next-line unicorn/prefer-query-selector -- opaque React ids need no CSS escaping here.
-        .getElementById(`${id}-opt-${String(active)}`)
-        ?.scrollIntoView?.({ block: 'nearest' });
-  }, [id, open, active]);
+  useActiveInView(id, open, active);
   return (
     <div className={`sel${open ? ' is-open' : ''}`}>
       <button
