@@ -213,10 +213,10 @@ describe.skipIf(serverUrl === undefined)('audit origin: on a database migrated f
       `select a.origin_conversation_id::text as origin, a.hash,
               public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
                 a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-                a.payload_digest, a.attempted, a.origin_conversation_id) as with_origin,
+                a.payload_digest, a.attempted, a.origin_conversation_id, a.field_changes) as with_origin,
               public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
                 a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-                a.payload_digest, a.attempted, null) as without
+                a.payload_digest, a.attempted, null, a.field_changes) as without
          from public.audit_events a where a.business_id = $1 and a.seq = $2`,
       [mine.business, written.seq],
     );

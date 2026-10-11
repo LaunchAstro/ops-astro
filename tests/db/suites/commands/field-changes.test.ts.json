@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "P20: task.update records the names of the fields it actually changed on its applied audit event, for a person and a delegated agent; no-op, clear, refusal and stored-value cases, and the column's shape constraint"
+}

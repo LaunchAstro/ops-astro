@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "P20 isolation: two businesses, two clients, one grant each; field names are recorded only for an allowed write, only in the writer's business, and a refused write records none and names nothing of the task"
+}
