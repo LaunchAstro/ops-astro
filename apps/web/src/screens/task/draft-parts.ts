@@ -66,7 +66,7 @@ export async function createFromDraft(
               ? created.answer.because
               : `${created.answer.because} The task may already exist: check the board before you retry.`,
         };
-  return finishDraft(client, attempt, save, prepared, created.receipt!);
+  return finishDraft(client, attempt, save, prepared, created.receipt!, recovering);
 }
 async function finishDraft(
   client: OperationsClient,
@@ -74,6 +74,7 @@ async function finishDraft(
   save: (next: Attempt) => void,
   prepared: NonNullable<ReturnType<typeof prepareDraft>>,
   base: DraftReceipt,
+  recovering: boolean,
 ): Promise<CreateOutcome> {
   const { ids, recipe } = prepared;
   let parent = { ...base, revision: attempt.revision ?? base.revision };
@@ -98,11 +99,8 @@ async function finishDraft(
       result = await tagWrite(client, part, parent, tags);
       // eslint-disable-next-line no-await-in-loop -- Each phase depends on the preceding receipt.
     } else result = await write(client, phaseCommand(part, parent), parent);
-    if (result.answer.kind === 'unknown')
-      return {
-        kind: 'unknown',
-        because: `No answer yet for ${partLabel(part)}. Retry to finish.`,
-      };
+    const held = heldAnswer(result.answer, part, recovering && index === attempt.done);
+    if (held !== null) return held;
     if (result.answer.kind === 'ok') {
       if (REVISES.has(part.kind)) parent = { ...result.receipt!, key: base.key };
     } else if (scopePart(part)) {
@@ -116,6 +114,18 @@ async function finishDraft(
     save(now());
   }
   return { kind: 'created', key: base.key ?? base.recordId!, missed };
+}
+/** A part's answer that holds the draft for Retry: none yet, or a refused replay. */
+function heldAnswer(answer: Settlement, part: DraftPart, replay: boolean): CreateOutcome | null {
+  if (answer.kind === 'unknown')
+    return { kind: 'unknown', because: `No answer yet for ${partLabel(part)}. Retry to finish.` };
+  // The part whose answer was lost is a replay: its refusal proves nothing about the first send.
+  if (answer.kind !== 'ok' && replay)
+    return {
+      kind: 'unknown',
+      because: `${answer.because} The task may already have ${partLabel(part)}: check it before you retry.`,
+    };
+  return null;
 }
 /** The parts whose answer is the task's next revision. */
 const REVISES = new Set<DraftPart['kind']>([

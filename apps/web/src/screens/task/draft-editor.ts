@@ -27,12 +27,23 @@ export interface DraftEditorProps {
   readonly scope: DraftScope;
   readonly onClose: () => void;
 }
+/** An unnamed kept draft given the door's name goes where the door is: its client and project. */
+function namedAtDoor(kept: TaskDraft, door: Prefill, from: string): TaskDraft {
+  const { title, clientId, boardId } = door;
+  if (kept.clientId === clientId && kept.boardId === boardId) return { ...kept, title };
+  // Its guesses were made on another page, so they are not claimed for this one.
+  return { ...kept, title, clientId, boardId, from, why: null };
+}
+
 /** The kept draft as left, given the door's typed name if it has none; else a fresh one. */
-function openedDraft(props: DraftEditorProps, typed: string): TaskDraft {
+function openedDraft(props: DraftEditorProps): TaskDraft {
   adoptFormerCreate(props.storage, props.person);
   const kept = readDraft(props.storage, props.person);
+  const door = props.scope.prefill;
   if (kept !== null)
-    return kept.title.trim() === '' && typed !== '' ? { ...kept, title: typed } : kept;
+    return kept.title.trim() === '' && door !== undefined && door.title !== ''
+      ? namedAtDoor(kept, door, props.scope.from)
+      : kept;
   const fresh =
     props.scope.prefill === undefined
       ? emptyDraft(props.scope.clientId)
@@ -44,7 +55,7 @@ function openedDraft(props: DraftEditorProps, typed: string): TaskDraft {
 export function useKeptDraft(props: DraftEditorProps) {
   const { storage, person } = props;
   const typed = props.scope.prefill?.title ?? '';
-  const [draft, setDraft] = useState<TaskDraft>(() => openedDraft(props, typed));
+  const [draft, setDraft] = useState<TaskDraft>(() => openedDraft(props));
   // The create's identity, kept across an unknown outcome and a remount until
   // its own retry settles it or Cancel drops the draft.
   const [attempt, setAttempt] = useState<Attempt | null>(() => readAttempt(storage, person));
