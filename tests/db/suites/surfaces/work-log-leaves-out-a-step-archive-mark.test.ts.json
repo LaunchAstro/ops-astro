@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A parent's completion or reopening carries an archive mark to its unfinished steps; the work log does not label those steps Completed or Reopened"
+}

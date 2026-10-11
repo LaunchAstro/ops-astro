@@ -27,6 +27,18 @@ export const PARENT_COMPLETED = 'The parent task was completed.';
 
 export type StepMove = 'archive' | 'restore';
 
+/**
+ * The keys of a step's archive mark, the only ones its parent's completion or
+ * reopening writes on it. An applied event that recorded these and nothing
+ * else is that mark, carried to the step, and not the step's own transition:
+ * neither its history nor the work log calls it Completed or Reopened.
+ */
+export const ARCHIVE_MARK: readonly string[] = ['archived_at', 'archived_why'];
+
+/** Whether an event's recorded keys are a step's archive mark and nothing else. */
+export const isArchiveMark = (keys: readonly string[]): boolean =>
+  keys.length > 0 && keys.every((key) => ARCHIVE_MARK.includes(key));
+
 const WHICH: Readonly<Record<StepMove, string>> = {
   // Unfinished: not completed or cancelled, and not already archived.
   archive: `not (r.data ? 'archived_at')

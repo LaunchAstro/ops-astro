@@ -17,6 +17,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { LedgerDayView, LedgerEventView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
+import { ARCHIVE_MARK } from '../commands/tasks-steps.ts';
 
 /** Days to a page (R49: "Load earlier days" pages by whole days). */
 export const LEDGER_DAYS_PER_PAGE = 7;
@@ -51,7 +52,11 @@ export interface LedgerPage {
  * The page's query: the applied writes to live tasks (only those in `$8` when
  * it is not null), the newest days with any before `$5` (all of them when it
  * is null) in the zone `$3`, and how many days were found, so one day past the
- * page says whether there are earlier ones.
+ * page says whether there are earlier ones. An event that recorded only a
+ * step's archive mark (`$9`) is left out, as the task's history leaves it
+ * (`isArchiveMark`): the mark is what the step's parent's completion or
+ * reopening carried to it, not the step's own transition, and the event
+ * stays in the audit chain.
  */
 const LEDGER_PAGE = `with changes as (
      select e.id, e.seq, e.occurred_at, e.command, e.actor_id,
@@ -66,6 +71,8 @@ const LEDGER_PAGE = `with changes as (
         and r.deleted_at is null
         and e.outcome = 'applied'
         and e.command <> all($4::text[])
+        and not coalesce((select bool_and(k = any($9::text[]))
+                            from jsonb_array_elements_text(e.field_changes -> 'keys') k), false)
         and ($5::date is null
              or e.occurred_at < ($5::date)::timestamp at time zone $3::text)
         and ($8::uuid[] is null or r.id = any($8::uuid[]))
@@ -130,6 +137,7 @@ export async function readLedger(
     LEDGER_DAYS_PER_PAGE + 1,
     LEDGER_DAYS_PER_PAGE,
     page.taskIds,
+    ARCHIVE_MARK,
   ]);
   return { days: groupByDay(rows), earlier: (rows[0]?.days_found ?? 0) > LEDGER_DAYS_PER_PAGE };
 }

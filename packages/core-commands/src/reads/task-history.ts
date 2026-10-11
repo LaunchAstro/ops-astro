@@ -10,6 +10,7 @@ import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { HISTORY_FIELDS, HISTORY_OPERATIONS } from '../../../core-wire/src/index.ts';
 import { invalid } from '../commands/operands.ts';
 import type { FieldChanges } from '../commands/outcome.ts';
+import { isArchiveMark } from '../commands/tasks-steps.ts';
 import type { CommandRefusal } from '../commands/refusal.ts';
 import type { Detail } from './detail.ts';
 import type { HistoryEntry, TaskDetail } from './requests.ts';
@@ -45,9 +46,9 @@ const shownOf = (row: HistoryRow, internal: boolean): readonly string[] | undefi
 /**
  * The field writers that are an act of their own, whatever fields they wrote:
  * a cancel or a restart writes no task field (P21), and a restore may write
- * none though the task came back from the bin. One whose recorded keys name
- * no history field is not that act on this record: it is a step's archive
- * mark, which its parent's completion or reopening carries to the step.
+ * none though the task came back from the bin. One that recorded only a
+ * step's archive mark is not that act on this record: the mark is what its
+ * parent's completion or reopening carried to the step (`isArchiveMark`).
  */
 const ACTS: ReadonlySet<string> = new Set([
   'task.start',
@@ -76,7 +77,7 @@ function isChange(row: HistoryRow, internal: boolean): boolean {
   // command's to an outside reader.
   if (keys === undefined) return internal || row.command !== 'task.set_scores';
   if (PLACEMENTS.has(row.command)) return keys.length > 0;
-  if (ACTS.has(row.command)) return keys.length === 0 || shownOf(row, true)?.length !== 0;
+  if (ACTS.has(row.command)) return !isArchiveMark(keys);
   // A field command's one effect is its data write, so one that changed no
   // field this reader is sent did not happen to the task for them: a repeat of
   // the stored value, a custom field's edit, or, to an outside reader, a
