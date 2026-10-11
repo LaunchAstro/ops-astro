@@ -172,7 +172,7 @@
 .dpanel__name {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--s-2);
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -227,7 +227,7 @@
   flex: none;
   width: 1px;
   height: 1.1em;
-  margin: 0 0.25rem;
+  margin: 0 var(--s-1);
   background: var(--border);
 }
 .dpanel__body {

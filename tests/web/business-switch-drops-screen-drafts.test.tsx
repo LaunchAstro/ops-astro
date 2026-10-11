@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { PANELS } from '../../apps/web/src/panels.ts';
 import { App } from '../../apps/web/src/App.tsx';
-import { SessionStore } from '../../apps/web/src/session/token.ts';
+import { dockKey, SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 
 const views: Mounted[] = [];
@@ -76,7 +76,7 @@ async function signedInToAlphaHolding(
   return { view, sessions };
 }
 
-it('business to business, a threshold typed on Settings under one business is not there after the switch', async () => {
+it('business to business, a threshold typed in the restored Settings dock stays with its business', async () => {
   const bravoThresholds: unknown[] = [];
   const { view, sessions } = await signedInToAlphaHolding('/projects/', (at, init) => {
     if (at.endsWith('/b/bravo/settings/set_four_eyes_threshold')) {
@@ -90,12 +90,15 @@ it('business to business, a threshold typed on Settings under one business is no
   expect(view.find('[data-screen="settings"][data-business="alpha"]')).not.toBeNull();
   await view.type('#settings-four-eyes', '9000');
   expect((view.find('#settings-four-eyes') as HTMLInputElement).value).toBe('9000');
+  // Exercise restoration using this test's explicit Settings registration.
+  window.sessionStorage.setItem(
+    dockKey('bravo'),
+    window.sessionStorage.getItem(dockKey('alpha')) ?? '',
+  );
   await view.click('[data-switch="held-address"]');
   await settle();
 
   expect(sessions.session?.businessKey).toBe('bravo');
-  await view.click('.dock__tab[data-panel="settings"]');
-  await settle();
   expect(view.find('[data-screen="settings"][data-business="bravo"]')).not.toBeNull();
   expect((view.find('#settings-four-eyes') as HTMLInputElement).value).toBe('');
   await view.click('[data-settings="save-four-eyes"]');

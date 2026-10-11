@@ -9,7 +9,7 @@
 /* -- The task page record header (S2; TASK-PAGE S5, DS-TASK-11) --------- */
 .tpr {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--s-3);
   margin-bottom: var(--s-4);
 }
 .content .readstate[data-outcome='ready']:has(> [data-task]) {
@@ -212,7 +212,7 @@
 .mstrip__c {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--s-1);
   min-width: 0;
 }
 .mstrip__k {
@@ -596,7 +596,7 @@
    the × revealed on hover or keyboard focus, and at rest below 900px where
    there is no hover (DT-17); the client message signal a label (DT-19). */
 .msg__replies {
-  margin: var(--s-2) 0 0 var(--s-4);
+  margin: var(--s-3) 0 0;
   padding-left: var(--s-3);
   border-left: 1px solid var(--border);
 }
@@ -606,7 +606,10 @@
 }
 .msg__acts {
   display: flex;
-  gap: var(--s-2);
+  position: absolute;
+  top: calc(var(--s-1) * -1);
+  right: 0;
+  gap: 0.2rem;
 }
 .msg__acts [data-comment-act='edit'],
 .msg__acts [data-comment-act='delete'] {
@@ -680,4 +683,94 @@
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
   line-height: 1.35;
+}
+
+/* Shared conversation rows for the full task page and drawer (R20261012). */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+.msg {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s-2);
+  position: relative;
+}
+.msg__avatar .av {
+  width: 22px;
+  height: 22px;
+  font: inherit;
+}
+.msg--deleted {
+  display: block;
+}
+.msg__avatar {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font: var(--type-badge);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  font-size: 9px;
+}
+.msg__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.msg__body > .card__body {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--type-body);
+  overflow-wrap: anywhere;
+
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  line-height: 1.45;
+}
+.msg__meta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font: var(--type-small);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1rem;
+}
+.msg__meta b {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  color: var(--text);
+  font-weight: 500;
+}
+.msg__at {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font-size: 12px;
+}
+.msg__audience {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-data);
+  font-size: 9px;
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.msg__acts .btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.2rem;
+  min-height: 20px;
+  height: 20px;
+  font-size: 11px;
+  background: var(--paper);
 }

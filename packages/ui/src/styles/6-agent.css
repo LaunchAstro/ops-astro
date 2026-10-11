@@ -154,7 +154,7 @@
 }
 .sout__d {
   display: grid;
-  gap: 0.25rem;
+  gap: var(--s-1);
   padding-left: var(--s-3);
   border-left: 2px solid var(--border);
 }
@@ -181,7 +181,7 @@
 }
 .sout__ad {
   display: grid;
-  gap: 0.25rem;
+  gap: var(--s-1);
 }
 .sout__adname {
   font: var(--type-small);
@@ -630,7 +630,7 @@
 }
 .tokpanel .tt__bar {
   height: 4px;
-  margin: 0.25rem 0 0.15rem;
+  margin: var(--s-1) 0 0.15rem;
   background: color-mix(in oklch, var(--ink) 12%, transparent);
 }
 .tt__fill {
@@ -659,7 +659,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.25rem 0.55rem;
+  gap: var(--s-1) 0.55rem;
   padding: 0.38rem 0;
   border-top: 1px solid var(--rule-faint);
 }
@@ -697,7 +697,7 @@
 .tokrun__io {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.25rem;
+  gap: var(--s-1);
   margin-left: auto;
 }
 .tokrun__k,

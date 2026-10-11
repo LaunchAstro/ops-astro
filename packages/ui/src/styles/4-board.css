@@ -29,7 +29,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.2rem 0.5rem;
+  padding: 0.2rem var(--s-2);
   border: 1px solid var(--accent);
   background: var(--surface);
   color: var(--text);
@@ -107,7 +107,7 @@
   text-overflow: ellipsis;
 }
 .cbd__tbl td {
-  padding: 0.5rem var(--s-3);
+  padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--border);
   color: var(--text);
   vertical-align: middle;
@@ -123,7 +123,7 @@
    every row shouts says nothing. A rule on the cell parts it from the group
    above; the first group sits tight under the heads with none (DS-COMP-17). */
 .cbd__grp > td {
-  padding: 0.85rem 0.5rem 0.35rem;
+  padding: 0.85rem var(--s-2) 0.35rem;
   border-top: 1px solid var(--border);
   border-bottom: 0;
   background: var(--paper);
@@ -192,7 +192,7 @@ a.cbd__nm:hover {
 /* Stage and state: the board's outline cell chip. */
 .cbd__chips {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--s-1);
   min-width: 0;
 }
 .cbd__chip {

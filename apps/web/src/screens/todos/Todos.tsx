@@ -272,7 +272,7 @@ function ScopeFilter(
 ): ReactElement {
   const { scope, setScope, vocabulary } = props;
   const compact = usePanelToolbar() !== null;
-  const label = compact ? 'Search projects' : 'Project filters';
+  const label = compact ? 'Choose project scope' : 'Project filters';
   return (
     <details className={`field-callout ${compact ? 'todos__searchdrop' : 'todos__filters'}`}>
       <summary className={compact ? 'dpanel__btn' : undefined} aria-label={label} title={label}>

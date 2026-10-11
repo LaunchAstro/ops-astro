@@ -128,7 +128,7 @@
   display: inline-grid;
   place-items: center;
   margin-right: 0.1rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  padding: 0.35rem var(--s-2) 0.35rem 0.35rem;
   color: var(--text-muted);
   font: var(--type-badge);
   letter-spacing: var(--type-badge-tracking);

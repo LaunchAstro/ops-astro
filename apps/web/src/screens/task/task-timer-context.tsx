@@ -207,7 +207,10 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
             Start timer
           </>
         ) : (
-          `■ Stop · ${binding.task.title ?? binding.task.key ?? 'Task unavailable'}`
+          <>
+            <Icon name="stop" size="xs" />
+            Stop · {binding.task.title ?? binding.task.key ?? 'Task unavailable'}
+          </>
         )}
       </button>
       {binding?.running === null || binding === null ? null : (

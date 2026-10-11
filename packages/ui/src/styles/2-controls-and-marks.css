@@ -667,7 +667,7 @@
   display: none;
   width: max-content;
   max-width: 260px;
-  padding: 0.5rem 0.7rem;
+  padding: var(--s-2) 0.7rem;
   background: var(--void);
   color: var(--on-dark);
   font: var(--type-caption);

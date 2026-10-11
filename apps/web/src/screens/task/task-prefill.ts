@@ -160,7 +160,6 @@ export function doorContext(door: HTMLElement): PageContext {
     clientId: read('newTaskClient') ?? null,
     clientName: read('newTaskClientName'),
     owner: ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
-    ...optional('title', read('newTaskTitle')),
     ...optional('boardId', read('newTaskBoard')),
     ...optional('stage', read('newTaskStage')),
     ...optional('priority', priorityOf(Number(read('newTaskPriority')))),

@@ -28,3 +28,13 @@ The person-list contract supplies only names and identifiers. Two people with
 the same display name therefore have identical mention labels; their selected
 occurrences still bind distinct identifiers. Useful profile disambiguation
 requires additional admitted identity context, rather than invented metadata.
+
+The shared icon tokens now follow the live reference: extra-small inline
+icons are 13px and small controls are 16px. The small name aliases the existing
+16px medium token for API compatibility, with one maintained numeric value;
+large icons retain their existing size. The affected RailParts, Notifications,
+control toggles, treatments, assistant history/tabs, ProjectName and task pins
+were inspected alongside the gallery and dock control sweep. This is a shared
+reference update under R20261012, rather than a second feature-local icon scale.
+Measured spacing uses existing shared steps wherever the values coincide.
+Conversation row styles live together in 5-task.css for both task presentations.

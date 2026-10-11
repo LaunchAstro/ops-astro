@@ -274,7 +274,7 @@
   /* -- Icon sizes (DS-TOK-102 to DS-TOK-106). A door mark is sized from
         its host's text. ------------------------------------------------------ */
   --icon-xs: 13px;
-  --icon-sm: 16px;
+  --icon-sm: var(--icon-md);
   --icon-md: 16px;
   --icon-lg: 24px;
   --icon-door: 0.85em;

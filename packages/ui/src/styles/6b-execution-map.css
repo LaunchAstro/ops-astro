@@ -126,7 +126,7 @@
 .tg__ntop {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--s-2);
   padding: 0 0.55rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
@@ -148,7 +148,7 @@
   display: grid;
   grid-template-rows: 2.4rem 1.15rem minmax(0, 1fr);
   min-height: 0;
-  padding: 0.5rem 0.55rem 0;
+  padding: var(--s-2) 0.55rem 0;
 }
 .tg__nt {
   /* type-exception R20261012: measured reference node titles use 600 weight and 1.2 leading. */

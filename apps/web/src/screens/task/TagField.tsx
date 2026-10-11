@@ -209,7 +209,7 @@ function TagChips(props: {
   return (
     <>
       {props.tags.map((tag) => (
-        <span key={tag.id} className="chip" data-tag-chip={tag.id}>
+        <span key={tag.id} className="chip chip--soft" data-tag-chip={tag.id}>
           {tag.name}
           <button
             className="chip__x"
