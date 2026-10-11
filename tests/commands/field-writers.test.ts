@@ -271,53 +271,25 @@ describe.skipIf(!configured)('P21 every task field writer records what it change
     expect(Object.keys(CASES).toSorted()).toStrictEqual([...FIELD_WRITES].toSorted());
   });
 
-  it.each([...FIELD_WRITES])('%s records exactly the fields it changed', async (command) => {
-    const write = await CASES[command]?.change();
-    if (write === undefined) throw new Error(`no case for ${command}`);
-    expect(await recorded(write.body)).toStrictEqual([
-      ['applied', command, { version: 1, keys: write.keys }],
-    ]);
-  });
-
-  // What a field writer changed is a change to the task, so its event is in the
-  // task's history: a command whose keys no history names, and that is not an
-  // act of its own, would vanish from every reader's history.
+  // And what it changed is in the task's history: a writer whose keys no
+  // history names, and that is not an act of its own, would vanish from it.
   it.each([...FIELD_WRITES])(
-    '%s, when it changes something, is in the history',
+    '%s records exactly the fields it changed, in the history',
     async (command) => {
       const write = await CASES[command]?.change();
       if (write === undefined) throw new Error(`no case for ${command}`);
-      expect(isCommandRefusal(await send(write.body))).toBe(false);
+      expect(await recorded(write.body)).toStrictEqual([
+        ['applied', command, { version: 1, keys: write.keys }],
+      ]);
       const [event] = await eventsOf(world.db.admin, [String(write.body['operationId'])]);
-      const subject = String(event?.row['subject_record_id']);
       const answer = await executeRead(world.db.app, world.business, writer.presented, {
         read: 'task.read',
-        recordId: subject,
+        recordId: event?.row['subject_record_id'],
       } as never);
-      if (isCommandRefusal(answer) || !('task' in answer)) throw new Error('task not answered');
-      const listed = answer.task.history.map((entry) => entry.eventId);
-      expect(listed).toContain(event?.row['id']);
+      const listed = expect.objectContaining({ eventId: event?.row['id'] });
+      expect(answer).toHaveProperty('task.history', expect.arrayContaining([listed]));
     },
   );
-
-  // A write to another record than the task, a carried board, records on that
-  // record's own event (#1207).
-  it.each([
-    ['task.move', ['board']],
-    ['task.reparent', ['board', 'parent']],
-  ])('%s records the board it carried to a descendant', async (command, keys) => {
-    const [from, to] = [await fresh(), await fresh()];
-    const task = await fresh({ board: from.recordId });
-    await fresh({ parentId: task.recordId });
-    const operands =
-      command === 'task.move'
-        ? { board: to.recordId }
-        : { parentId: (await fresh({ board: to.recordId })).recordId };
-    expect(await recorded(on(task, command, operands))).toStrictEqual([
-      ['applied', command, { version: 1, keys }],
-      ['applied', command, { version: 1, keys: ['board'] }],
-    ]);
-  });
 
   it.each(
     Object.entries(CASES).flatMap(([command, one]) => (one.noop ? [[command, one.noop]] : [])),

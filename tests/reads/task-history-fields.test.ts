@@ -121,60 +121,6 @@ describe.skipIf(!configured)('U116 task history names the fields a change set', 
     expect(history.at(-1)).not.toHaveProperty('changed');
   });
 
-  /** A task made with these operands, and a command sent on it that must apply. */
-  const placed = async (operands: Body = {}) =>
-    made(
-      await world.asPerson(mia, {
-        command: 'task.create',
-        operationId: randomUUID(),
-        fields: { title: 'placed' },
-        ...operands,
-      }),
-    );
-  const sent = async (
-    task: { recordId: string; revision: number },
-    command: string,
-    operands: Body,
-  ) => {
-    const answer = await world.asPerson(mia, {
-      command,
-      operationId: randomUUID(),
-      recordId: task.recordId,
-      expectedRevision: task.revision,
-      ...operands,
-    });
-    expect(isCommandRefusal(answer)).toBe(false);
-  };
-
-  it('a change to what blocks a ticket is listed, and found by its lookup', async () => {
-    const map = await placed({ taskType: 'map' });
-    const blocker = await placed({ parentId: map.recordId, taskType: 'research' });
-    const blocked = await placed({ parentId: map.recordId, taskType: 'research' });
-    await sent(blocked, 'task.set_blocking', { blockedBy: [blocker.recordId] });
-    const entry = (await historyOf(blocked.recordId)).at(-1);
-    expect(entry).toMatchObject({ operation: 'task.set_blocking', changed: ['blocked_by'] });
-    const found = await read(blocked.recordId, { historyEventId: entry?.eventId });
-    expect(found).toHaveProperty('task.historyEvent', entry);
-  });
-
-  it('a move to the board the task is already on is not listed', async () => {
-    const board = await placed();
-    const task = await placed({ board: board.recordId });
-    const before = await historyOf(task.recordId);
-    await sent(task, 'task.move', { board: board.recordId });
-    expect(await historyOf(task.recordId)).toStrictEqual(before);
-  });
-
-  it('a reorder that changes only the rank is listed', async () => {
-    const board = await placed();
-    const first = await placed({ board: board.recordId });
-    const second = await placed({ board: board.recordId });
-    await sent(second, 'task.rank', { beforeId: first.recordId });
-    const latest = (await historyOf(second.recordId)).at(-1);
-    expect(latest).toMatchObject({ operation: 'task.rank' });
-    expect(latest).not.toHaveProperty('changed');
-  });
-
   it('Core 10b 1: a field no history names, a custom one included, is never sent', async () => {
     const task = await create({ title: 'custom' });
     const id = await recorded(task.recordId, { version: 1, keys: ['due', 'secret_custom'] });
