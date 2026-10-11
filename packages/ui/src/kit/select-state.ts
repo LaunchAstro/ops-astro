@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
-import type { SelectProps } from './controls-fields.tsx';
+
+/** What a select's keys and menu read: its options, its value and how a choice is reported. */
+interface Choices {
+  readonly options: readonly {
+    readonly value: string;
+    readonly label: string;
+    readonly disabled?: boolean | undefined;
+  }[];
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly disabled?: boolean | undefined;
+  readonly defaultOpen?: boolean | undefined;
+}
 
 /** Where the select's value sits among its options, or the first option. */
-const valueIndex = (props: SelectProps): number =>
+const valueIndex = (props: Choices): number =>
   Math.max(
     0,
     props.options.findIndex((o) => o.value === props.value),
@@ -15,7 +27,7 @@ const valueIndex = (props: SelectProps): number =>
  * disabled select draws no menu.
  */
 // eslint-disable-next-line max-lines-per-function -- one controller owns keyboard navigation, focus and dismissal together.
-export function useSelect(props: SelectProps): {
+export function useSelect(props: Choices): {
   readonly open: boolean;
   readonly toggle: () => void;
   readonly active: number;
