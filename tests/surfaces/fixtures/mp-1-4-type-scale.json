@@ -245,6 +245,10 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".topbar .t-title",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".cbd__tbl",
       "ruling": "R20261012"
     },
@@ -293,27 +297,11 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".dtp__fields :is(select.input, [data-panel-field='due'], .dtp__link, .input)",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".dtp__fields [data-panel-field='due']",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".dtp .tf__tag-chips .chip",
-      "ruling": "R20261012"
-    },
-    {
       "selector": ".dtp .sb__k",
       "ruling": "R20261012"
     },
     {
       "selector": ".dtp .tf__ta",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".ttime__log > input",
       "ruling": "R20261012"
     },
     {
@@ -325,7 +313,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": "[data-comments='section'] .taskform :is(textarea, [data-comment='post'])",
+      "selector": "[data-comments='section'] .taskform textarea",
       "ruling": "R20261012"
     },
     {
@@ -333,7 +321,35 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".comment-editor .tf__tagvalue .btn, .comment-editor__clear",
+      "selector": ".comment-editor__clear",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tpr__crumb .sb__addr, .empty__action .sb__addr, .tpr__facts .sb__addr",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tpr__title",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tpr__calc",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tph__n",
+      "ruling": "DR-6"
+    },
+    {
+      "selector": ".tt__prose",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .sel__btn",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".sb__step-title",
       "ruling": "R20261012"
     },
     {
@@ -365,35 +381,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".comment-editor__clear",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".dtp .sb__step",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".tpr__crumb .sb__addr",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".tpr__title",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".tph__n",
-      "ruling": "DR-6"
-    },
-    {
-      "selector": ".tt__prose",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".dtp .sel__btn",
-      "ruling": "R20261012"
-    },
-    {
-      "selector": ".sb__step-title",
+      "selector": ".sb__step",
       "ruling": "R20261012"
     },
     {
