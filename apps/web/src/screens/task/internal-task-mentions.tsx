@@ -4,6 +4,7 @@ import type { PersonListResult } from '../../../../../packages/core-wire/src/ind
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead, type UseReadLive } from '../../data/use-read.ts';
 import { tabRollupFloor } from '../../data/rollup-floor.ts';
+import { editedMentions, seedMentions, type MentionBinding } from './mention-bindings.ts';
 import { RecordState } from '../../views/record-state.tsx';
 
 /** In-memory draft ownership, never a claim sent to the server. */
@@ -80,29 +81,31 @@ function useMentionEditor(props: MentionsProps) {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const people = props.people;
-  // Names already chosen belong to this in-memory draft, including during a
-  // vocabulary refresh. They never create recipients from unselected text.
-  const names = useRef(new Map<string, string>());
-  if (people.own && people.state.outcome === 'ready') {
-    for (const person of people.state.value.persons) {
-      if (props.selected.includes(person.personId) && !names.current.has(person.personId))
-        names.current.set(person.personId, person.name);
-    }
-  }
-  const recipientsIn = (body: string): readonly string[] =>
-    props.selected.filter((id) => {
-      const name = names.current.get(id);
-      if (name === undefined) return /(?:^|\s)@/u.test(body);
-      const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      return new RegExp(`(?:^|\\s)@${escaped}(?=$|\\s|[.,!?;:])`, 'u').test(body);
-    });
-  const match = /(?:^|\s)@([^@\n]{0,40})$/u.exec(props.body.slice(0, caret));
+  const vocabulary =
+    people.own && people.state.outcome === 'ready' ? people.state.value.persons : [];
+  const names = vocabulary.map((person) => person.name);
+  const bindings = useRef<readonly MentionBinding[] | null>(null);
+  if (bindings.current === null && vocabulary.length > 0)
+    bindings.current = seedMentions(props.body, props.selected, vocabulary);
+  const recipientsIn = (body: string, at: number): readonly string[] => {
+    bindings.current = editedMentions(props.body, body, bindings.current ?? [], names, at);
+    return props.selected.filter((id) =>
+      vocabulary.some((person) => person.personId === id)
+        ? bindings.current?.some((binding) => binding.id === id)
+        : /(?:^|[^\p{L}\p{N}_@])@/u.test(body),
+    );
+  };
+  const match = /(?:^|[^\p{L}\p{N}_@])@([^@\n]{0,40})$/u.exec(props.body.slice(0, caret));
   const typedQuery = match?.[1] ?? null;
-  const query =
-    typedQuery !== null &&
-    [...names.current.values()].some((name) => typedQuery.startsWith(`${name} `))
-      ? null
-      : typedQuery;
+  const tokenStart = typedQuery === null ? -1 : caret - typedQuery.length - 1;
+  const completed = bindings.current?.some(
+    (binding) =>
+      binding.start === tokenStart &&
+      props.selected.includes(binding.id) &&
+      caret > binding.end &&
+      !names.some((name) => name.startsWith(typedQuery ?? '')),
+  );
+  const query = completed ? null : typedQuery;
   const candidates =
     people.own && people.state.outcome === 'ready' && query !== null
       ? people.state.value.persons.filter(
@@ -118,7 +121,10 @@ function useMentionEditor(props: MentionsProps) {
     const start = caret - query.length - 1;
     const prefix = props.body.slice(0, start) + '@' + person.name + ' ';
     const next = prefix + props.body.slice(caret);
-    names.current.set(person.personId, person.name);
+    bindings.current = [
+      ...editedMentions(props.body, next, bindings.current ?? [], names),
+      { id: person.personId, name: person.name, start, end: prefix.length - 1 },
+    ];
     props.onChange([...props.selected, person.personId], next);
     setCaret(prefix.length);
     setDismissed(next);
@@ -187,7 +193,10 @@ function MentionInput(
       onKeyDown={onKey}
       onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
       onChange={(event) => {
-        props.onChange(props.editor.recipientsIn(event.target.value), event.target.value);
+        props.onChange(
+          props.editor.recipientsIn(event.target.value, event.target.selectionStart),
+          event.target.value,
+        );
         setCaret(event.target.selectionStart);
         setActive(0);
         setDismissed(null);

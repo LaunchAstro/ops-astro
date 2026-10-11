@@ -245,12 +245,24 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".cbd__tbl",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".cbd__grpb",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".cbd__chip",
       "ruling": "DS-COMP-17"
     },
     {
       "selector": ".tl__due.is-bad",
       "ruling": "DS-COMP-17"
+    },
+    {
+      "selector": ".cbdm__search",
+      "ruling": "R20261012"
     },
     {
       "selector": ".cbd__preset, .cbd__mode",
@@ -361,7 +373,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".tpr__crumb .sb__addr, .empty__action .sb__addr",
+      "selector": ".tpr__crumb .sb__addr",
       "ruling": "R20261012"
     },
     {

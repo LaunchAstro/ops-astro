@@ -11,16 +11,22 @@
   flex-wrap: wrap;
 }
 .cbdm__search {
+  /* type-exception R20261012: the reference search uses 14px at 1.55. */
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.45rem;
   flex: 1 1 16rem;
+  min-height: 34px;
   min-width: 8rem;
-  padding: 0.4rem 0.65rem;
+  padding: 0.3rem 0.55rem;
   border: 1px solid var(--border);
   color: var(--text-muted);
   background: var(--paper);
+  font: var(--type-body);
+  line-height: 1.55;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .cbdm__search:focus-within {
   border-color: var(--accent);

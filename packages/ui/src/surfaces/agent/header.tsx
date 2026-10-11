@@ -121,8 +121,19 @@ export function Summary(props: {
           </div>
         </details>
       </div>
-      {compact ? null : <HeroStats story={story} />}
+      <RunStatistics story={story} compact={compact} />
     </div>
+  );
+}
+
+function RunStatistics(props: { readonly story: RunStory; readonly compact: boolean }) {
+  return props.compact ? (
+    <details className="trs__details">
+      <summary>Run statistics</summary>
+      <HeroStats story={props.story} />
+    </details>
+  ) : (
+    <HeroStats story={props.story} />
   );
 }
 

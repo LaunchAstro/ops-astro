@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
 // date (`PanelDue.tsx`), the estimate and the stage; the project is
@@ -18,6 +17,7 @@ import { StyledSelect } from '@launchastro/ui';
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
 
+import { StyledSelect } from '@launchastro/ui';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import {
@@ -252,7 +252,6 @@ function StageField(props: FieldProps): ReactElement {
 function FilingFields(props: PanelFieldsProps & { readonly stage: ReactElement }): ReactElement {
   return (
     <>
-      {' '}
       <div className="tf__row">
         <ProjectField
           client={props.client}

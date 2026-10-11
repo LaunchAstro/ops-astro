@@ -765,7 +765,7 @@
   gap: var(--s-4);
   flex-wrap: wrap;
   min-height: 2.9rem;
-  padding: 0.625rem var(--s-6);
+  padding: 0.75rem var(--s-6);
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -803,6 +803,7 @@
 }
 @media (width <= 900px) {
   .topbar__bar {
+    flex-basis: 100%;
     flex-wrap: wrap;
   }
   .topbar__bar .cbdm__search {

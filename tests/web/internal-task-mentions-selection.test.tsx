@@ -31,3 +31,63 @@ it('keyboard person selection sends structured internal mentions without writing
   ]);
   expect(view.find('[data-mention-person]')).toBeNull();
 });
+
+it('punctuation around a chosen occurrence preserves its recipient', async () => {
+  const server = transport();
+  const view = await open({ client: server.client });
+  await mentionAda(view);
+  await view.type('#comment-body', '(@Ada Synthetic ');
+  await view.type('#comment-body', "(@Ada Synthetic)'s note");
+  await view.click('[data-comment="post"]');
+  expect(server.posts()[0]?.body).toMatchObject({ mentions: [ADA] });
+});
+
+it('extending a prefix name requires choosing the longer person', async () => {
+  const server = transport();
+  server.answers.people = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          persons: [
+            { personId: ADA, name: 'Ann' },
+            { personId: '00000000-0000-4000-8000-000000000012', name: 'Ann Lee' },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    );
+  const view = await open({ client: server.client });
+  await view.type('#comment-body', '@Ann');
+  await view.click('[role="option"]');
+  await view.type('#comment-body', '@Ann Lee');
+  expect(view.find('[role="option"]')?.textContent).toBe('@Ann Lee');
+  await view.click('[data-comment="post"]');
+  expect(server.posts()[0]?.body).not.toHaveProperty('mentions');
+});
+
+it('two identical display names bind separate occurrences, and deleting one removes only its id', async () => {
+  const server = transport();
+  const second = '00000000-0000-4000-8000-000000000012';
+  server.answers.people = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          persons: [
+            { personId: ADA, name: 'Sam Lee' },
+            { personId: second, name: 'Sam Lee' },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    );
+  const view = await open({ client: server.client });
+  await view.type('#comment-body', '@Sam');
+  await view.click('[role="option"]');
+  await view.type('#comment-body', '@Sam Lee @Sam');
+  await view.click('[role="option"]');
+  await view.type('#comment-body', '@Sam Lee ');
+  await view.click('[data-comment="post"]');
+  expect(server.posts()[0]?.body).toMatchObject({ mentions: [ADA] });
+});

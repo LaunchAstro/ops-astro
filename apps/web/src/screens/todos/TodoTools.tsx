@@ -99,7 +99,7 @@ function SearchBox(props: TodoToolsProps): ReactElement {
   );
 }
 
-const PLACEHOLDER = 'Search — a client, “today”, a priority, any words';
+const PLACEHOLDER = 'Search: a client, “today”, a priority, any words';
 
 function ChipTag(props: { readonly chip: Chip; readonly onRemove: () => void }): ReactElement {
   const words = wordsOfChip(props.chip);

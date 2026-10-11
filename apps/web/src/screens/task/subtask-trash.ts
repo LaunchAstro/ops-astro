@@ -34,6 +34,7 @@ export function useSubtaskTrash(client: OperationsClient, parentId: string) {
       };
     },
     () => store.receipts,
+    () => store.receipts,
   );
   const put = (next: readonly SubtaskTrashReceipt[]): void => {
     store.receipts = next;

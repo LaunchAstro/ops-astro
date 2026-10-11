@@ -92,13 +92,14 @@
   max-width: 100%;
 }
 .cbd__tbl {
+  /* type-exception R20261012: the reference table uses 14px at 1.55. */
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font: var(--type-small);
-
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
+  font: var(--type-body);
+  line-height: 1.55;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .cbd__thl {
   display: block;
@@ -133,10 +134,13 @@
 }
 /* The heading and its wait reasons are two sizes on one line: baselines. */
 .cbd__grpb {
+  /* type-exception R20261012: the reference group heading is 16.8px at 1.55. */
   display: inline-flex;
   align-items: baseline;
   gap: 0.4rem;
   font: var(--type-subheading);
+  font-size: 1.05rem;
+  line-height: 1.55;
   letter-spacing: var(--type-subheading-tracking);
   text-transform: var(--type-subheading-case);
   color: var(--text);
@@ -162,9 +166,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   /* One name weight on every board, the Projects board's 400 (DR-48). */
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   color: var(--text);
   text-decoration: none;
 }

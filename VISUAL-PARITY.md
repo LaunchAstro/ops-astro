@@ -13,3 +13,7 @@ The subtask removal control uses the existing task.trash operation at the child'
 The execution map is rendered immediately below the agent run summary, from the admitted execution read. The old lower rendering is suppressed in the composed Agent view. Refusals, loading and permissions remain real states.
 
 `node tests/visual/projects-task-states.ts --out <directory>` captures interaction states and inventories their control geometry using isolated synthetic reads. It intercepts every API write, so the visual sweep changes no application records. Screenshots distinguish those refused writes from successful production actions. Final delivery must include exact-head checks and independent review. The director and orchestrator own integration and merging.
+
+Preview and verification resolve `@launchastro/ui` to this checkout's source. The Vitest alias prevents a shared dependency symlink from silently testing another checkout. Vite also permits the resolved dependency directory so bundled fonts load when node_modules is shared; the existing secret, .local and Git deny rules remain active.
+
+The production board intentionally omits the reference SWOT catalogue (Phase 6), Sync (replaced by live rereads), and agency-wide Agency/Client switch (rule R17 limits it to client-scoped pages). These are functional scope differences confirmed by the orchestrator, not missing decorative controls.

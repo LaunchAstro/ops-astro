@@ -35,7 +35,7 @@
 // the reader may see and nothing of a client they do not reach.
 
 import { useState, type ReactElement } from 'react';
-import { Count, Icon, clientFacetId } from '@launchastro/ui';
+import { Count, Icon, MockRegion, clientFacetId } from '@launchastro/ui';
 import type { ClientListResult } from '../../../../packages/core-wire/src/index.ts';
 import { MADE_UP_BOOK, type BookClient, type ClientBook } from '../data/clients-book.ts';
 import { useRead } from '../data/use-read.ts';
@@ -189,7 +189,7 @@ export function ClientsScreen(props: ClientsProps): ReactElement {
   return (
     <div className="clbook">
       {opened(props)}
-      <>
+      <MockRegion word>
         <details className="clbook__note field-callout">
           <summary aria-label="About these sample clients">Sample data</summary>
           <div className="field-callout__body">
@@ -225,7 +225,7 @@ export function ClientsScreen(props: ClientsProps): ReactElement {
             ))}
           </ul>
         )}
-      </>
+      </MockRegion>
     </div>
   );
 }

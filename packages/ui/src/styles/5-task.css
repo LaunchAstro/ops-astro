@@ -35,14 +35,15 @@
    and the same door out of a gate or an empty page. */
 .tpr__crumb .sb__addr,
 .empty__action .sb__addr {
-  /* type-exception R20261012: the reference breadcrumb door is 13px mono. */
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
-  font-size: 13px;
-  line-height: 1.55;
   color: var(--text);
   text-decoration: none;
+}
+.tpr__crumb .sb__addr {
+  /* type-exception R20261012: the reference task breadcrumb door is 13px mono. */
+  font-size: 13px;
 }
 .tpr__crumb .sb__addr:hover,
 .tpr__crumb .sb__addr:focus-visible,

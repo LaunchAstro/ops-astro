@@ -103,11 +103,10 @@ export const GALLERY_LOOK: LookScreen = {
       { path: '/client-portal/contact/', selector: '.form .sel__btn' },
       at('DS-PRIM-5', 'Closed', '.sel__btn'),
       [...TYPE, 'padding-left', 'box.height', 'border-top-color', 'background-color'],
-      // The portal draws 14.4 on surface-2: the canonical body is 14
-      // (DS-TOK-117, R53) and the field ground is paper on both faces (DR-25).
+      // R20261012 restores the measured 14.4px select. Its ground remains paper (DR-25).
       {
         ruled: [
-          ...themed('font-size', '14px', 'DS-TOK-117 14'),
+          ...themed('font-size', '14.4px', 'R20261012'),
           { at: 'background-color@light', want: 'rgba(255,255,255,255)', why: 'DR-25' },
           { at: 'background-color@dark', want: 'rgba(10,10,13,255)', why: 'DR-25' },
         ],

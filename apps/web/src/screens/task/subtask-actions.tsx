@@ -34,11 +34,11 @@ export function useSubtaskActions(props: SubtaskOwner) {
         }),
       (settlement) => {
         hold.settle(settlement.kind);
-        if (!current() || settlement.kind !== 'ok') return;
+        if (settlement.kind !== 'ok') return;
         const detail = settlement.value.detail;
         if (typeof detail?.['batchId'] === 'string' && typeof detail['trashed'] === 'number')
           trash.keep({ batchId: detail['batchId'], count: detail['trashed'] });
-        props.onChanged();
+        if (current()) props.onChanged();
       },
     );
   };
@@ -49,9 +49,9 @@ export function useSubtaskActions(props: SubtaskOwner) {
       () => client.mutate('task.restore', body, { operationId: hold.id }),
       (settlement) => {
         hold.settle(settlement.kind);
-        if (!current() || settlement.kind !== 'ok') return;
+        if (settlement.kind !== 'ok') return;
         trash.restored(batchId);
-        props.onChanged();
+        if (current()) props.onChanged();
       },
     );
   };

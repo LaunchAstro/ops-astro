@@ -85,7 +85,7 @@ describe('Clients panel made-up book', () => {
   it('draws every client in the book A to Z inside the mock mark, and says the book is made up', async () => {
     const page = await book();
     expect(names(page)).toEqual(MADE_UP_BOOK.clients.map((each) => each.name).toSorted());
-    const region = page.find('.clbook');
+    const region = page.find('.clbook [data-provenance="mock"]');
     expect(region?.querySelector('.clbook__note summary')?.textContent).toBe('Sample data');
     expect(region?.querySelectorAll('.clbook__row')).toHaveLength(MADE_UP_BOOK.clients.length);
     expect(page.find('.clbook__note')?.textContent).toMatch(/made up/iu);
