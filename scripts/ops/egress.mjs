@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Staging's one way out (ticket S0-1 containment; ORCH40's egress ruling): the
-// worker, its forwarder and the backup dump reach exactly four places, each
+// worker, its forwarder and the backup dump reach exactly five places, each
 // named by a setting, and nothing else.
 //
 //   node scripts/ops/egress.mjs relay | out
 //
 // Two hops, so no name loops back: `relay` sits on the internal staging
-// network and answers there for the four host names (its network aliases); it
+// network and answers there for the five host names (its network aliases); it
 // takes the name a client asked for from the TLS hello's server name (port
 // 443) or from the pooler's own port, and hands the bytes to `out` over an
 // internal link, prefixed with that name and port. `out` alone is on a network
@@ -17,12 +17,13 @@
 //
 // Settings: STAGING_WEB_URL, the very address the worker is given for the API,
 // whose host is the API's place (one source, so no setting can swap it);
-// OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST (https, port 443),
+// OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST and OPS_EGRESS_AUTH_HOST (the
+// sign-in service the worker renews its login at; https, port 443),
 // OPS_EGRESS_POOLER_HOST and OPS_EGRESS_POOLER_PORT (the Supabase pooler). The
 // relay also takes OPS_EGRESS_API_ALIAS, the name it answers to for the API,
 // and refuses to start unless it is that host. The worker unit and the dump
 // check their own addresses against the same host settings when they start
-// (`offEgress`, apps/worker/heartbeat.ts), so the four are what they need.
+// (`offEgress`, apps/worker/heartbeat.ts), so the five are what they need.
 // Exit 1 names a bad setting, never its value.
 
 import { connect, createServer } from 'node:net';
@@ -42,7 +43,7 @@ function apiHost(env) {
   return url.hostname;
 }
 
-/** The allow-list: exactly four destinations, each from its setting. */
+/** The allow-list: exactly five destinations, each from its setting. */
 export function allowList(env) {
   const host = (name) => {
     const value = env[name] ?? '';
@@ -58,6 +59,7 @@ export function allowList(env) {
     [host('OPS_EGRESS_POOLER_HOST'), port],
     [host('OPS_EGRESS_HEARTBEAT_HOST'), 443],
     [host('OPS_EGRESS_SINK_HOST'), 443],
+    [host('OPS_EGRESS_AUTH_HOST'), 443],
   ];
 }
 

@@ -33,14 +33,19 @@ it('S0-2 heartbeats: the worker and its forwarder are one unit, and the stop nam
     "const SERVICES = ['ops-astro-worker', 'ops-astro-forwarder'];",
   );
   // The worker holds no database; the forwarder holds its own login alone.
+  // Its own login, never a bearer: it signs in and renews that itself.
   expect(names(worker)).toEqual([
     'OPS_ASTRO_API_URL',
     'OPS_ASTRO_BUSINESS',
     'OPS_ASTRO_DELEGATION',
-    'OPS_ASTRO_TOKEN',
+    'OPS_ASTRO_EMAIL',
+    'OPS_ASTRO_GOTRUE_URL',
+    'OPS_ASTRO_PASSWORD',
+    'OPS_EGRESS_AUTH_HOST',
     'OPS_EGRESS_HEARTBEAT_HOST',
     'OPS_HEARTBEAT_EVERY_MS',
     'OPS_WORKER_HEARTBEAT_URL',
+    'SUPABASE_PUBLISHABLE_KEY',
   ]);
   expect(names(forwarder)).toEqual([
     'DATABASE_FORWARDER_URL',

@@ -91,6 +91,14 @@ export async function statusOnlyRedirect(response: Response): Promise<Response> 
   return new Response(null, { status: response.status });
 }
 
+/**
+ * Fetch that never follows a redirect: a followed 307 resends the password
+ * (#780). The redirect answers by its status alone. The command line's
+ * `login` and the worker's sign-in (`apps/worker/sign-in.ts`) both use it.
+ */
+export const unredirected: typeof globalThis.fetch = async (input, init) =>
+  await statusOnlyRedirect(await globalThis.fetch(input, { ...init, redirect: 'manual' }));
+
 export interface CliOptions {
   readonly transport: Transport;
   /**

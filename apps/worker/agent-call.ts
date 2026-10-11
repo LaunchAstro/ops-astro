@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
+import type { Bearer } from './sign-in.ts';
 
 export interface Answered {
   readonly body: Record<string, unknown>;
@@ -23,25 +24,37 @@ export type Call = (verb: string, body: object) => Promise<Answered | Unanswered
 export interface AgentLogin {
   readonly transport: Transport;
   readonly businessKey: string;
-  readonly credential: string;
+  /** The agent's own login: a bearer it renews (`sign-in.ts`), or one as handed, never renewed. */
+  readonly credential: Bearer | string;
 }
 
 /**
  * One agent call, under `delegation` when there is one. Every call carries an
  * operation id, reads included (`agent-envelope.ts`), and an answer lost in
- * transit is asked for once more under the same id, so it replays.
+ * transit is asked for once more under the same id, so it replays. A bearer
+ * the API answers `AUTH_SESSION_EXPIRED` is renewed once and the same call,
+ * the same id, sent again: the door refused it before the register saw it.
  */
 export function agentCall(login: AgentLogin, delegation?: string): Call {
-  const cli = createCli({
-    entry: 'agent',
-    businessKey: encodeURIComponent(login.businessKey),
-    credential: login.credential,
-    ...(delegation === undefined ? {} : { delegation }),
-    transport: login.transport,
-  });
+  const { credential } = login;
+  const send = async (presented: string, verb: string, sent: Readonly<Record<string, unknown>>) => {
+    const cli = createCli({
+      entry: 'agent',
+      businessKey: encodeURIComponent(login.businessKey),
+      credential: presented,
+      ...(delegation === undefined ? {} : { delegation }),
+      transport: login.transport,
+    });
+    return await cli.run(verb, sent).catch(async () => await cli.run(verb, sent));
+  };
   return async (verb, body) => {
     const sent = { operationId: randomUUID(), ...body };
-    return settle(await cli.run(verb, sent).catch(async () => await cli.run(verb, sent)));
+    const fixed = typeof credential === 'string';
+    const first = settle(await send(fixed ? credential : await credential.current(), verb, sent));
+    const expired = 'refused' in first && first.refused.code === 'AUTH_SESSION_EXPIRED';
+    if (fixed || !expired) return first;
+    const renewed = await credential.renew();
+    return renewed === undefined ? first : settle(await send(renewed, verb, sent));
   };
 }
 

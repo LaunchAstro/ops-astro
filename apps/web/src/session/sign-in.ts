@@ -16,6 +16,7 @@
 // anybody into bravo — it gets them `AUTH_NO_MEMBERSHIP`.
 
 import { isRefusal, OperationsClient } from '../operations/client.ts';
+import { signIn, type SignInRequest } from './password-grant.ts';
 import {
   CSRF_HEADER,
   PREFIX,
@@ -23,15 +24,7 @@ import {
   SESSION_PATH,
 } from '../../../../packages/core-wire/src/index.ts';
 
-export interface SignInRequest {
-  readonly gotrueUrl: string;
-  readonly email: string;
-  readonly password: string;
-  readonly fetch: typeof globalThis.fetch;
-}
-
-export type SignInResult =
-  { readonly ok: true; readonly token: string } | { readonly ok: false; readonly because: string };
+export { signIn, type SignInRequest, type SignInResult } from './password-grant.ts';
 
 /** Where the API is served from: empty for the page's own origin. */
 export interface ApiRoute {
@@ -134,35 +127,6 @@ export async function endCookie(route: ApiRoute, sessionId: string): Promise<voi
   await toApi(route, `${SESSION_PATH}/end`, { [SESSION_HEADER]: sessionId });
 }
 
-export async function signIn(request: SignInRequest): Promise<SignInResult> {
-  const url = `${request.gotrueUrl.replace(/\/$/u, '')}/token?grant_type=password`;
-  let response: Response;
-  try {
-    response = await request.fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: request.email, password: request.password }),
-    });
-  } catch {
-    return { ok: false, because: 'The sign-in service did not answer.' };
-  }
-
-  const parsed: unknown = await response.json().catch(() => {});
-  if (!response.ok) {
-    // GoTrue's own words where it gave some, and the status where it did not.
-    // No attempt to guess whether the email or the password was the wrong one:
-    // that distinction is an account-enumeration channel.
-    return {
-      ok: false,
-      because: messageOf(parsed) ?? `Sign-in failed (${String(response.status)}).`,
-    };
-  }
-  const token = tokenOf(parsed);
-  return token === null
-    ? { ok: false, because: 'Sign-in succeeded and returned no access token.' }
-    : { ok: true, token };
-}
-
 /**
  * Sign this tab out. First its sign-in ends for every business, at the API and
  * the provider (C58), on the person prefix: the only path its cookie is sent
@@ -222,21 +186,4 @@ async function toApi(
   } catch {
     return undefined;
   }
-}
-
-function tokenOf(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const body = value as Record<string, unknown>;
-  const token = body['access_token'];
-  return typeof token === 'string' && token !== '' ? token : null;
-}
-
-function messageOf(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const body = value as Record<string, unknown>;
-  for (const key of ['error_description', 'msg', 'message', 'error']) {
-    const said = body[key];
-    if (typeof said === 'string' && said !== '') return said;
-  }
-  return null;
 }

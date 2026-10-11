@@ -42,12 +42,16 @@ useBrokerWorld('aw12auth');
 const workerSettings = (work: Work): Record<string, string> => {
   const given: Record<WorkerSetting, string> = {
     OPS_ASTRO_BUSINESS: s.business,
-    OPS_ASTRO_TOKEN: `agent-bearer-${s.agentActorId}`,
+    OPS_ASTRO_EMAIL: `agent-${s.agentActorId}@example.test`,
+    OPS_ASTRO_PASSWORD: `agent-password-${s.agentActorId}`,
+    OPS_ASTRO_GOTRUE_URL: 'http://127.0.0.1:54391',
+    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example-test-only',
     OPS_ASTRO_DELEGATION: String(work.picked['credential']),
     OPS_ASTRO_API_URL: 'http://127.0.0.1:8790',
     OPS_ASTRO_WORKER_INTERVAL_MS: '5000',
     OPS_WORKER_HEARTBEAT_URL: 'https://beat.example.com/ping',
     OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.com',
+    OPS_EGRESS_AUTH_HOST: 'auth.example.com',
     OPS_HEARTBEAT_EVERY_MS: '240000',
   };
   return Object.fromEntries(WORKER_SETTINGS.map((name) => [name, given[name]]));
