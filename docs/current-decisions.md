@@ -14,6 +14,20 @@ public baseline; ADRs explain its trade-offs and tickets define executable
 scope. New decisions must be recorded here before a ticket relies on them.
 Private conversation history cannot be an implementation dependency.
 
+## Projects and Tasks visual reference, 12 October 2026
+
+Decision `R20261012`. Nathan makes the running Hub mockup the canonical
+layout and typography reference for Projects, Tasks, their Team and Agent
+views, and the Notifications, Agent, Clients and Projects dock panels. Data
+and licensed icon shapes may differ. Match the reference's intentional font
+sizes, weights, line heights and spacing using the existing measured-type
+exception mechanism; the older snapped scale does not override this ruling.
+Use shared styles and controls, custom dropdowns, inline `@` suggestions and
+hover or focus callouts. Remove Settings from the shipped dock registration;
+its full page and frozen stored identifier remain. Retain real operation,
+ownership and authority behaviour. The director owns integration and merging.
+Implementation and verification details are in [visual parity](../VISUAL-PARITY.md).
+
 ## Selected foundation
 
 | Area                   | Decision                                                      | Proof still required                                             |

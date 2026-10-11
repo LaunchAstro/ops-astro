@@ -127,7 +127,7 @@ export interface AvatarProps {
   readonly here?: boolean | undefined;
 }
 
-const initials = (name: string): string =>
+export const initials = (name: string): string =>
   name
     .split(/\s+/u)
     .filter((part) => part !== '')

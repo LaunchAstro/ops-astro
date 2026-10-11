@@ -58,16 +58,22 @@ function RunSection(props: RunProgressProps): ReactElement {
   return <RunProgressRead {...props} state={state} />;
 }
 
+/** A refused, failed or unknown execution is never treated as readable. */
+function readableExecution(state: TaskExecutionRead) {
+  const value =
+    state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
+  return value !== null && isReadable(value) ? value : null;
+}
+
 export function RunProgressRead(
   props: RunProgressProps & {
     readonly state: TaskExecutionRead;
   },
 ): ReactElement {
   const { client, state } = props;
-  const value =
-    state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
+  const value = readableExecution(state);
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
-  const readable = value !== null && isReadable(value);
+  const readable = value !== null;
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
   return (
     <>
@@ -106,12 +112,7 @@ export function ExecutionMap(
     readonly state: TaskExecutionRead;
   },
 ): ReactElement {
-  const value =
-    props.state.outcome === 'ready' || props.state.outcome === 'empty'
-      ? props.state.value.execution
-      : null;
-  const graph =
-    value !== null && value !== undefined && isReadable(value) ? value.graph : undefined;
+  const graph = readableExecution(props.state)?.graph;
   return (
     <RunMap
       graph={graph}

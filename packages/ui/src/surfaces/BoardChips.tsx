@@ -9,6 +9,7 @@ import type { ReactElement, RefObject } from 'react';
 import { presetCount } from '../board/filters.ts';
 import type { BoardAction, BoardView, Facet, Preset } from '../board/types.ts';
 import { MockRegion } from '../kit/blocks.tsx';
+import { initials } from '../kit/marks.tsx';
 import { Icon } from '../primitives/Icon.tsx';
 import { BOARD_ICONS, STACK_TIP, type BoardMode } from './board-props.ts';
 
@@ -145,11 +146,7 @@ function PresetChip(props: {
     >
       <span className="cbd__presi" data-icon={props.preset.icon} aria-hidden="true">
         {props.preset.variant === 'viewer' ? (
-          props.preset.label
-            .split(' ')
-            .map((word) => word[0])
-            .join('')
-            .slice(0, 2)
+          initials(props.preset.label)
         ) : (
           <Icon name={BOARD_ICONS[props.preset.icon ?? ''] ?? 'document'} size="xs" />
         )}

@@ -95,13 +95,7 @@ function LinkValue({
           {task.pageLink ?? 'nothing yet'}
         </span>
       ) : (
-        <a
-          className="t-link"
-          data-page-link="value"
-          data-panel-head="goto"
-          href={door}
-          title={door}
-        >
+        <a className="t-link" data-page-link="value" href={door} title={door}>
           {door}
         </a>
       )}

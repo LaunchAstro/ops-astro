@@ -73,6 +73,7 @@
 }
 .dtp .mstrip {
   margin: var(--s-4) 0;
+  gap: var(--s-3) var(--s-6);
 }
 .dtp .tpr__strip {
   display: contents;
@@ -91,9 +92,6 @@
   line-height: 1.4;
   font-weight: 300;
   letter-spacing: 0.04em;
-}
-.dtp .mstrip {
-  gap: var(--s-3) var(--s-6);
 }
 .dtp .tpr__fact {
   gap: 0.35rem;
@@ -584,21 +582,6 @@
   background: var(--surface-2);
   color: var(--accent);
 }
-.comment-editor .tf__tagvalue {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
-}
-.comment-editor .tf__tagvalue .btn,
-.comment-editor__clear {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
-  min-height: 0;
-  padding: 0;
-  font-size: 11px;
-  color: var(--text-muted);
-}
 .thread {
   display: flex;
   flex-direction: column;
@@ -700,6 +683,8 @@
 
 .comment-editor__clear {
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  min-height: 0;
+  padding: 0;
   border: 0;
   background: none;
   font: var(--type-caption);

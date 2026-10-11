@@ -51,6 +51,7 @@ export function transport(businessKey = 'alpha') {
 }
 
 export interface HarnessProps {
+  readonly initialDraft?: CommentDraft;
   readonly client: OperationsClient;
   readonly recordId?: string;
   readonly grantKey?: string;
@@ -60,7 +61,7 @@ export interface HarnessProps {
   readonly refused?: (because: string) => void;
 }
 export function Harness(props: HarnessProps) {
-  const [draft, onDraft] = useState<CommentDraft | null>(null);
+  const [draft, onDraft] = useState<CommentDraft | null>(props.initialDraft ?? null);
   const [closed, onRefused] = useState<string | null>(null);
   return (
     <Comments

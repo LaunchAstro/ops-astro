@@ -52,13 +52,14 @@ export function useInternalTaskMentions(
 export function unavailableMentions(
   people: UseReadLive<PersonListResult>,
   selected: readonly string[],
+  body: string,
 ): boolean {
   if (selected.length === 0) return false;
   const state = people.state;
   return (
     !people.own ||
     state.outcome !== 'ready' ||
-    selected.some((id) => !state.value.persons.some((person) => person.personId === id))
+    seedMentions(body, selected, state.value.persons).length !== selected.length
   );
 }
 
@@ -88,9 +89,16 @@ function useMentionEditor(props: MentionsProps) {
   if (bindings.current === null && vocabulary.length > 0)
     bindings.current = seedMentions(props.body, props.selected, vocabulary);
   const recipientsIn = (body: string, at: number): readonly string[] => {
-    bindings.current = editedMentions(props.body, body, bindings.current ?? [], names, at);
+    const known = new Set([
+      ...vocabulary.map((person) => person.personId),
+      ...(bindings.current ?? []).map((binding) => binding.id),
+    ]);
+    // An unavailable vocabulary cannot seed a kept draft. Leave it unseeded
+    // until the admitted names arrive, while still translating known tokens.
+    if (bindings.current !== null)
+      bindings.current = editedMentions(props.body, body, bindings.current, names, at);
     return props.selected.filter((id) =>
-      vocabulary.some((person) => person.personId === id)
+      known.has(id)
         ? bindings.current?.some((binding) => binding.id === id)
         : /(?:^|[^\p{L}\p{N}_@])@/u.test(body),
     );
@@ -107,13 +115,13 @@ function useMentionEditor(props: MentionsProps) {
   );
   const query = completed ? null : typedQuery;
   const candidates =
-    people.own && people.state.outcome === 'ready' && query !== null
-      ? people.state.value.persons.filter(
+    query === null
+      ? []
+      : vocabulary.filter(
           (person) =>
             !props.selected.includes(person.personId) &&
             person.name.toLowerCase().includes(query.toLowerCase()),
-        )
-      : [];
+        );
   const open = props.enabled && query !== null && dismissed !== props.body && !props.locked;
   const choose = (index: number): void => {
     const person = candidates[index];
@@ -121,11 +129,12 @@ function useMentionEditor(props: MentionsProps) {
     const start = caret - query.length - 1;
     const prefix = props.body.slice(0, start) + '@' + person.name + ' ';
     const next = prefix + props.body.slice(caret);
+    const kept = recipientsIn(next, prefix.length);
     bindings.current = [
-      ...editedMentions(props.body, next, bindings.current ?? [], names),
+      ...(bindings.current ?? []),
       { id: person.personId, name: person.name, start, end: prefix.length - 1 },
     ];
-    props.onChange([...props.selected, person.personId], next);
+    props.onChange([...kept, person.personId], next);
     setCaret(prefix.length);
     setDismissed(next);
     requestAnimationFrame(() => {
@@ -255,7 +264,7 @@ function MentionRecovery(props: MentionsProps & { readonly open: boolean }) {
           {() => null}
         </RecordState>
       ) : null}
-      {!props.enabled || !unavailableMentions(people, props.selected) ? null : (
+      {!props.enabled || !unavailableMentions(people, props.selected, props.body) ? null : (
         <>
           <button
             className="comment-editor__clear"

@@ -18,7 +18,6 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { holding, useHeldOperations } from './held-operations.ts';
 
-export { minutesText, burnOf } from './time-format.ts';
 const loggedOn = (at: string): string =>
   new Date(at).toLocaleDateString('en-AU', {
     day: 'numeric',

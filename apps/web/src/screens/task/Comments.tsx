@@ -24,7 +24,7 @@
 // would be refused `OPERATION_ID_REUSED` rather than replayed. If the first
 // attempt was never stored, that old revision is the server's `VERSION_STALE`,
 // which the stale path below handles. While the outcome is unknown the words,
-// recipients, audience and reply stay locked; Post retries that exact attempt.
+// recipients, audience and reply stay locked; Send retries that exact attempt.
 //
 // **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
 // Client with their counts, and All activity with none. It opens on Internal
@@ -406,7 +406,7 @@ function useCommentDraft(props: CommentsProps, held: PendingComment | null) {
     recordId: props.recordId,
     ...(props.grantKey === undefined ? {} : { grantKey: props.grantKey }),
   });
-  const needsPeople = pending === null && unavailableMentions(people, mentions);
+  const needsPeople = pending === null && unavailableMentions(people, mentions, current.body);
   return { current, intent, parent, put, onTab, mentions, people, needsPeople };
 }
 

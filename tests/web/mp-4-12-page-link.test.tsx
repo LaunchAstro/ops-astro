@@ -56,14 +56,14 @@ describe('MP-4-12 link here captures path and hash', () => {
 describe('MP-4-12 the head’s go-to appears only when linked', () => {
   it('with no link there is no go-to and no link drawn', async () => {
     const view = await panel(serving().client);
-    expect(view.find('[data-panel-head="goto"]')).toBeNull();
+    expect(view.find('[data-page-link="value"][href]')).toBeNull();
     expect(view.find('a[data-page-link="value"]')).toBeNull();
     await view.unmount();
   });
 
   it('linked, the go-to and the value both lead to the address, the full address in its title', async () => {
     const view = await panel(serving({ pageLink: '/boards/website#row-4' }).client);
-    expect(view.find('[data-panel-head="goto"]')?.getAttribute('href')).toBe(
+    expect(view.find('[data-page-link="value"][href]')?.getAttribute('href')).toBe(
       '/boards/website#row-4',
     );
     const value = view.find('a[data-page-link="value"]');
@@ -78,7 +78,7 @@ describe('MP-4-12 the head’s go-to appears only when linked', () => {
     'a stored %s is drawn as words, never as a door',
     async (link) => {
       const view = await panel(serving({ pageLink: link }).client);
-      expect(view.find('[data-panel-head="goto"]')).toBeNull();
+      expect(view.find('[data-page-link="value"][href]')).toBeNull();
       expect(view.find('a[data-page-link="value"]')).toBeNull();
       expect(view.find('[data-page-link="value"]')?.textContent).toBe(link);
       await view.unmount();

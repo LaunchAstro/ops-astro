@@ -234,13 +234,21 @@ try {
     surfaces: focus === undefined ? surfaces : surfaces.filter(([name]) => focus.includes(name)),
   });
   if (focus === undefined) {
-    await page.goto(new URL('/projects/', served.app).href);
-    await click('[data-projects-new-task]');
-    for (const width of [1440, 1024, 390]) {
+    for (const width of [1440, 1024, 900, 390]) {
       await page.setViewportSize({ width, height: 1038 });
+      await page.goto(new URL('/projects/', served.app).href);
+      await click('[data-projects-new-task]');
       await capture(`task-draft-${width}`);
       await page.goto(new URL('/projects/', served.app).href);
       await capture(`board-${width}`);
+      await click('[data-funnel]');
+      await capture(`board-funnel-${width}`);
+      const inside = await page.locator('.cbd__menu').evaluate((menu) => {
+        const rect = menu.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth;
+      });
+      if (!inside) throw new Error(`Filter menu is outside the viewport at ${String(width)}`);
+      await page.keyboard.press('Escape');
       await openDrawer();
       await capture(`task-team-${width}`);
       await page
