@@ -72,7 +72,9 @@ export async function shownInbox(
  * runs and their events, and what its board row derives from other rows: the
  * state and assignee it names, its Actual total (`readActualMinutes`) and the
  * gates it waits at (`awaitingApproval`), as of now, so a deadline passing
- * moves it with no write. Of the state and the assignee it takes only what the
+ * moves it with no write. The business's priority stages revision is in it
+ * too while any task is read, since every rank derives from that setting (P11);
+ * a reader with no task is told nothing of it. Of the state and the assignee it takes only what the
  * row shows, so a write to the rest of their rows (a second factor verified on
  * the person) tells a reader of the board nothing. Any change the reader can
  * see moves it, and so does a task revoked, trashed or moved to another
@@ -116,6 +118,10 @@ const SEEN = `${REACH},
                 where r.business_id = $1 and r.deleted_at is null
                   and (r.id in (select id from seen)
                        or r.data ->> 'task' in (select id::text from seen))
+               union all
+               select 'priority:' || priority.revision::text from public.business_settings priority
+                where priority.business_id = $1 and priority.key = 'priority_stages'
+                  and exists (select 1 from seen)
                union all
                select 's' || s.id::text || ':' || jsonb_build_array(s.data ->> 'key',
                         s.data ->> 'label', s.data ->> 'machine_category', s.data ->> 'position')::text

@@ -15,6 +15,9 @@
 // every board of its business is handed it, to say to a current member alone
 // (`live-board.ts`). A task and a conversation are both records, so their ids
 // share one key space and a subscriber is filed by business and id alone.
+//
+// P11: `business:settings:priority_stages` (migration 20261011120000) goes to
+// every board of its business, since every task's rank derives from it.
 
 import type { Listener } from '../../packages/core-records/src/index.ts';
 
@@ -32,11 +35,12 @@ export const CONVERSATION_TOPIC: RegExp =
 
 type Send = (signal: LiveSignal) => void;
 
-/** What a board stream hears: a task or a conversation named, its own inbox, or a resync. */
+/** What a board stream hears: a task or a conversation named, its own inbox, the priority stages moving, or a resync. */
 export type BoardSignal =
   | { readonly kind: 'task'; readonly taskId: string }
   | { readonly kind: 'conversation'; readonly conversationId: string }
   | { readonly kind: 'inbox' }
+  | { readonly kind: 'priority' }
   | { readonly kind: 'resync' };
 
 interface Board {
@@ -164,6 +168,9 @@ function hand(
     const signal: BoardSignal =
       kind === 'task' ? { kind, taskId: topic } : { kind, conversationId: topic };
     for (const board of boards.get(business) ?? []) board.send(signal);
+  } else if (kind === 'settings' && topic === 'priority_stages') {
+    // Every rank derives from it (P11); each board's own digest decides whether to say so.
+    for (const board of boards.get(business) ?? []) board.send({ kind: 'priority' });
   } else if (kind === 'inbox') {
     for (const board of boards.get(business) ?? []) {
       if (board.personId === topic) board.send({ kind: 'inbox' });
