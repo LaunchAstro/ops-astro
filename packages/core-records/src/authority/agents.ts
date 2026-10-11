@@ -31,8 +31,15 @@ export interface AgentChoice {
   readonly name: string;
 }
 
-/** Whether the subjects hold `agent:assign` over the whole business right now. */
-async function directsEveryAgent(tx: TenantQuery, subjects: readonly Subject[]): Promise<boolean> {
+/**
+ * Whether the subjects hold `agent:assign` over the whole business right now.
+ * Expiry is judged as this statement runs (`EFFECTIVE`), so a caller that
+ * asks again after its last wait sees a grant that lapsed meanwhile.
+ */
+export async function directsEveryAgent(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<boolean> {
   const held = await effectiveGrants(tx, subjects, {
     ...AGENT_ASSIGN,
     scope: { kind: 'business', id: null },
@@ -72,18 +79,20 @@ export async function directableAgents(
 }
 
 /**
- * Whether this person may hand work to the agent: `missing` when it is not an
- * active agent of this business, `not-yours` when it is and they may not
- * direct it. The row is held `for share`, so a rename or a deactivation of it
- * waits for the caller's transaction, and a grant's revocation waits on the
- * access lock the command envelope holds.
+ * Whether this person may hand work to the agent: `own` when it is theirs,
+ * `granted` when they hold `agent:assign` over the business, `missing` when it
+ * is not an active agent of this business, `not-yours` when it is and they may
+ * not direct it. The row is held `for share`, so a rename or a deactivation of
+ * it waits for the caller's transaction, and a grant's revocation waits on the
+ * access lock the command envelope holds. A grant's expiry does not wait: a
+ * caller that waits after this asks `directsEveryAgent` again past its waits.
  */
 export async function mayDirectAgent(
   tx: TenantQuery,
   personId: string,
   subjects: readonly Subject[],
   agentId: string,
-): Promise<'yes' | 'missing' | 'not-yours'> {
+): Promise<'own' | 'granted' | 'missing' | 'not-yours'> {
   const rows = await tx.query<{ readonly owner: string | null }>(
     `select a.owner_person_id::text as owner from public.actors a
       where a.business_id = $1 and a.id = $2 and a.kind = 'agent' and a.active
@@ -92,8 +101,8 @@ export async function mayDirectAgent(
   );
   const found = rows[0];
   if (found === undefined) return 'missing';
-  if (found.owner === personId.toLowerCase()) return 'yes';
-  return (await directsEveryAgent(tx, subjects)) ? 'yes' : 'not-yours';
+  if (found.owner === personId.toLowerCase()) return 'own';
+  return (await directsEveryAgent(tx, subjects)) ? 'granted' : 'not-yours';
 }
 
 /** The longest an agent's name may be, as the actors table holds it. */

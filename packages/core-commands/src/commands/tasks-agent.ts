@@ -9,15 +9,25 @@
 // agent: own it, or hold `agent:assign` over the business
 // (`authority/agents.ts`). An agent of another business, or a deactivated
 // one, is `NOT_FOUND` naming `agent`; one of this business the assigner may
-// not direct is `SCOPE_NOT_GRANTED` naming `agent`.
+// not direct is `SCOPE_NOT_GRANTED` naming `agent`. Directing one through
+// `agent:assign` is asked again once the task is written, after the
+// business's audit-chain lock (its key `business_id::text`, lower case), the
+// last wait: a grant that expired while the command waited refuses it, and the
+// handler's savepoint takes the write back.
 //
 // **The assignment stays.** No delegation is asked for or checked, so no
 // revocation or expiry takes the task back; a person's next `task.assign`
 // changes it. Assigning starts nothing: a run asks for its own delegation.
 
-import { mayDirectAgent, subjectsOf, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  directsEveryAgent,
+  mayDirectAgent,
+  subjectsOf,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { refused, type HandlerOutcome } from './outcome.ts';
+import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { FieldValues } from './requests.ts';
 import { writeOwnedFields } from './tasks-state.ts';
@@ -70,13 +80,17 @@ export async function assignTask(
       ),
     );
   }
-  const refusal = await refuseAgent(tx, context, agent.toLowerCase());
-  if (refusal !== undefined) return refused(refusal);
-  return await writeOwnedFields(tx, context, 'task.assign', {
+  const directing = await directingOf(tx, context, agent.toLowerCase());
+  if (typeof directing !== 'string') return refused(directing);
+  const written = await writeOwnedFields(tx, context, 'task.assign', {
     ...fields,
     agent: agent.toLowerCase(),
     assignee: null,
   });
+  if (directing === 'own' || isRefused(written)) return written;
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  const still = await directsEveryAgent(tx, subjectsOf(context.session));
+  return still ? written : refused(notYours());
 }
 
 /**
@@ -88,11 +102,12 @@ export function oneKind(context: Pick<CommandContext, 'target'>, fields: FieldVa
   return held && 'assignee' in fields && !('agent' in fields) ? { ...fields, agent: null } : fields;
 }
 
-async function refuseAgent(
+/** How the assigner directs the agent, or the refusal when they may not. */
+async function directingOf(
   tx: TenantQuery,
   context: CommandContext,
   agentId: string,
-): Promise<CommandRefusal | undefined> {
+): Promise<'own' | 'granted' | CommandRefusal> {
   const { session } = context;
   const may = await mayDirectAgent(tx, session.personId, subjectsOf(session), agentId);
   if (may === 'missing') {
@@ -105,15 +120,16 @@ async function refuseAgent(
       ],
     );
   }
-  if (may === 'not-yours') {
-    return refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      ['agent'],
-      [
-        "That agent belongs to someone else, and you may not direct other people's agents.",
-        'Choose one of your own agents, or ask its owner to hand the task over.',
-      ],
-    );
-  }
-  return undefined;
+  return may === 'not-yours' ? notYours() : may;
+}
+
+function notYours(): CommandRefusal {
+  return refuseCommand(
+    'SCOPE_NOT_GRANTED',
+    ['agent'],
+    [
+      "That agent belongs to someone else, and you may not direct other people's agents.",
+      'Choose one of your own agents, or ask its owner to hand the task over.',
+    ],
+  );
 }
