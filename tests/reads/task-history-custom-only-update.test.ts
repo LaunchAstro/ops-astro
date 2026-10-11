@@ -2,15 +2,43 @@
 // Criterion 1: inclusion must use the keys the history projection actually sends.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { agentWorld, detailOf, type AgentWorld, type Decider } from '../commands/agent-fixture.ts';
+import {
+  agentWorld,
+  detailOf,
+  type AgentWorld,
+  type Decider,
+  type PickedUp,
+} from '../commands/agent-fixture.ts';
 import { eventsOf, taskRow, update } from '../commands/field-changes-world.ts';
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+
+const configured = databaseUrlFromEnvironment() !== undefined;
 
 let world: AgentWorld;
 let staff: Decider;
 
-describe('PR 1214 hidden field edits', () => {
+/** The task as the agent reads it, with one history entry looked up when given. */
+async function readAsAgent(picked: PickedUp, historyEventId?: string) {
+  const answer = await world.asAgent(
+    {
+      command: 'task.read',
+      operationId: randomUUID(),
+      recordId: picked.taskId,
+      ...(historyEventId === undefined ? {} : { historyEventId }),
+    },
+    picked.credential,
+  );
+  expect(isCommandRefusal(answer)).toBe(false);
+  const task = detailOf(answer)['task'];
+  if (typeof task !== 'object' || task === null || !('history' in task)) {
+    throw new Error('task history missing');
+  }
+  return task;
+}
+
+describe.skipIf(!configured)('PR 1214 hidden field edits', () => {
   beforeAll(async () => {
     world = await agentWorld('sol1214_fields', 'sol1214-fields');
     staff = await world.decider('proof-staff');
@@ -28,25 +56,9 @@ describe('PR 1214 hidden field edits', () => {
     await world?.drop();
   });
 
-  it('Sol proof, criterion 1: a custom-only update with no projected keys is omitted from history and lookup', async () => {
+  it('a custom-only update with no projected keys is omitted from history and lookup', async () => {
     const picked = await world.pickUp(staff, 'hidden fields proof');
-    const read = async (historyEventId?: string) => {
-      const answer = await world.asAgent(
-        {
-          command: 'task.read',
-          operationId: randomUUID(),
-          recordId: picked.taskId,
-          ...(historyEventId === undefined ? {} : { historyEventId }),
-        },
-        picked.credential,
-      );
-      expect(isCommandRefusal(answer)).toBe(false);
-      const task = detailOf(answer)['task'];
-      if (typeof task !== 'object' || task === null || !('history' in task)) {
-        throw new Error('task history missing');
-      }
-      return task;
-    };
+    const read = async (historyEventId?: string) => await readAsAgent(picked, historyEventId);
     const before = await read();
     const row = await taskRow(world.db.admin, picked.taskId);
     const keys = ['private_meta'];
