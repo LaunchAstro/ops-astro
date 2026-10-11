@@ -85,6 +85,7 @@ await context.route('**/api/b/*/task/read', async (route) => {
 const page = await context.newPage();
 const errors: string[] = [];
 const states: unknown[] = [];
+let failure: string | null = null;
 page.on('pageerror', (error) => errors.push(error.message));
 async function capture(name: string) {
   await page.evaluate(() => document.fonts.ready);
@@ -259,6 +260,8 @@ try {
       await capture(`task-agent-${width}`);
       await page.locator('[data-act=door]').last().click();
       await page.locator('#perspective-tab-team').waitFor();
+      if (await page.locator('.dock[data-mode=floating][data-open="1"]').count())
+        await click('.dock [data-act=close]');
       await capture(`task-page-team-${width}`);
       await page.getByLabel('Edit task details', { exact: true }).click();
       await capture(`task-page-editor-${width}`);
@@ -275,6 +278,7 @@ try {
     }
   }
 } catch (error) {
+  failure = String(error);
   await capture('failure');
   writeFileSync(
     `${out}/failure.txt`,
@@ -282,7 +286,7 @@ try {
   );
   throw error;
 } finally {
-  writeFileSync(`${out}/report.json`, JSON.stringify({ states, errors }, null, 2));
+  writeFileSync(`${out}/report.json`, JSON.stringify({ states, errors, failure }, null, 2));
   await browser.close();
   await served.close();
 }
