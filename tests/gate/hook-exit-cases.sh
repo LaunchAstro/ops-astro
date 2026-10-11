@@ -103,11 +103,12 @@ make_repo "$NO_MAIN"
 make_repo "$WITH_MAIN"
 git -C "$WITH_MAIN" update-ref refs/remotes/origin/main HEAD
 MAIN_SHA="$(git -C "$WITH_MAIN" rev-parse HEAD)"
-# The hook asks origin for its main, so this origin holds this one's.
+# A first push to GitHub asks GitHub for its main. HUB_PUBLISHED_URL stands a
+# bare repository in for GitHub, so no case reaches the network.
+GITHUB_URL=https://github.com/LaunchAstro/ops-astro.git
 WITH_MAIN_URL="$SCRATCH/with-main.git"
 git init -q --bare "$WITH_MAIN_URL"
 git -C "$WITH_MAIN" push -q "$WITH_MAIN_URL" HEAD:refs/heads/main
-git -C "$WITH_MAIN" remote add origin "$WITH_MAIN_URL"
 
 # label stdin-line expected-text [repo] [push-url]
 stdin_case() {
@@ -123,7 +124,8 @@ STUB
   chmod +x "$dir/gate-stub"
   out="$(
     cd "$repo" || exit 99
-    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin "$url" 2>&1
+    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" \
+      HUB_PUBLISHED_URL="$WITH_MAIN_URL" sh -e "$HOOK" origin "$url" 2>&1
   )"
   rm -rf "$dir"
   if printf '%s' "$out" | grep -q -- "$expect_scan"; then
@@ -134,18 +136,17 @@ STUB
 }
 
 ZERO=0000000000000000000000000000000000000000
-# A first push scans only what main does not already have: commits on main
-# were swept when they reached it. Without a local origin/main there is no
-# such base, so everything reachable is scanned, as before.
-stdin_case "a first push scans only the commits not already on origin/main" \
+# A first push to GitHub scans only what GitHub's main does not already have.
+# Anywhere else, everything reachable is scanned.
+stdin_case "a first push to GitHub scans only the commits not already on its main" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
-  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN" "$WITH_MAIN_URL"
-stdin_case "a first push with no origin/main scans everything reachable" \
+  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN" "$GITHUB_URL"
+stdin_case "a first push elsewhere scans everything reachable" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
   "publish: aaaaaaa1$" "$NO_MAIN"
 
 # Issue #1210. The real public-content checker, not a stub: origin/main holds
-# a private path, and only a push to a repository that already holds it may
+# a private path, and only a push to GitHub, whose main already holds it, may
 # skip it. Only the hashed gate is stubbed.
 DIRTY="$SCRATCH/dirty"
 git init -q "$DIRTY"
@@ -162,14 +163,14 @@ git -C "$DIRTY" remote add secondary "$SCRATCH/public.git"
 git -C "$DIRTY" update-ref refs/remotes/origin/main HEAD
 DIRTY_SHA="$(git -C "$DIRTY" rev-parse HEAD)"
 
-# label remote url expected-exit
+# label remote url expected-exit [stand-in for GitHub]
 real_checker_case() {
   local label="$1" out actual
   out="$(
     cd "$DIRTY" || exit 99
     printf 'refs/heads/main %s refs/heads/main %s\n' "$DIRTY_SHA" "$ZERO" \
       | HUB_GATE_CMD=true HUB_PUBLIC_CONTENT_CMD="node $REPO_ROOT/scripts/public-content-check.mjs" \
-        sh -e "$HOOK" "$2" "$3" 2>&1
+        HUB_PUBLISHED_URL="${5:-$SCRATCH/public.git}" sh -e "$HOOK" "$2" "$3" 2>&1
     echo "HOOK_EXIT=$?"
   )"
   actual="$(printf '%s\n' "$out" | grep '^HOOK_EXIT=' | tail -1)"
@@ -185,16 +186,19 @@ real_checker_case "a first push to a bare URL scans what origin/main holds" \
   "$SCRATCH/public.git" "$SCRATCH/public.git" 1
 real_checker_case "a first push to origin by another push URL scans what origin/main holds" \
   origin "$SCRATCH/public.git" 1
-real_checker_case "a first push to origin still skips what origin/main holds" \
-  origin "$SCRATCH/private.git" 0
-git -C "$DIRTY" config url."$SCRATCH/private.git".pushInsteadOf sol-review://private
-real_checker_case "a first push to origin with a URL rewrite configured scans what origin/main holds" \
-  origin "$SCRATCH/private.git" 1
-git -C "$DIRTY" config --unset url."$SCRATCH/private.git".pushInsteadOf
+real_checker_case "a first push to origin at GitHub still skips what GitHub's main holds" \
+  origin "ssh://git@${GITHUB_URL#https://}/" 0 "$SCRATCH/private.git"
+real_checker_case "a first push to a URL that only starts like GitHub's scans everything" \
+  origin https://github.com/LaunchAstro/ops-astro-fork.git 1 "$SCRATCH/private.git"
+git -C "$DIRTY" config url."$SCRATCH/private.git".insteadOf "$SCRATCH/public.git"
+real_checker_case "a first push to GitHub asks GitHub, whatever URL rewrites say" \
+  origin "$GITHUB_URL" 1
+git -C "$DIRTY" config --unset url."$SCRATCH/private.git".insteadOf
 
 # Sol's proofs on #1212, kept byte for byte. A remote whose URL changed keeps
 # the old repository's tracking refs, which say nothing about the new one; a
-# rewritten push URL, asked again, can lead to another repository.
+# rewritten push URL, or a relative one that names a remote, asked again,
+# can lead to another repository.
 sol_proof_case() {
   if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/$1.proof.test.mjs" >/dev/null 2>&1; then
     pass "$2"
@@ -206,6 +210,8 @@ sol_proof_case sol-criterion-2-remote-url \
   "a first push after a remote's URL changes scans what its old main held"
 sol_proof_case sol-criterion-2-double-url-rewrite \
   "a first push through a URL rewrite scans everything reachable"
+sol_proof_case sol-criterion-2-url-remote-name \
+  "a first push to a relative URL that names another remote scans everything reachable"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
@@ -231,7 +237,8 @@ STUB
   chmod +x "$dir/gate-stub"
   out="$(
     cd "$repo" || exit 99
-    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin "$url" 2>&1
+    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" \
+      HUB_PUBLISHED_URL="$WITH_MAIN_URL" sh -e "$HOOK" origin "$url" 2>&1
   )"
   rm -rf "$dir"
   range_args="$(printf '%s\n' "$out" | grep '^stub gate: --range' | sed 's/^stub gate: --range//' | tr -s ' ')"
@@ -250,7 +257,7 @@ STUB
 
 ZERO2=0000000000000000000000000000000000000000
 same_refs_case "all three scanners get the same refs on a first push" \
-  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN" "$WITH_MAIN_URL"
+  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN" "$GITHUB_URL"
 same_refs_case "all three scanners get the same refs on a first push with no origin/main" \
   "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$NO_MAIN"
 same_refs_case "all three scanners get the same refs on a later push" \

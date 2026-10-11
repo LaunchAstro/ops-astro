@@ -16,10 +16,13 @@
 #   3  the gate is broken           -> refuse the push, always
 #
 # HUB_GATE_CMD exists so tests/gate/hook-exit-cases.sh can substitute a stub
-# scanner and prove all four codes are handled. Leave it unset in real use.
+# scanner and prove all four codes are handled. HUB_PUBLISHED_URL lets the
+# same cases stand a local repository in for GitHub. Leave both unset in real
+# use.
 
 GATE=${HUB_GATE_CMD:-"python3 scripts/gate/sweep.py"}
 PUBLIC_CONTENT=${HUB_PUBLIC_CONTENT_CMD:-"node scripts/public-content-check.mjs"}
+PUBLISHED=${HUB_PUBLISHED_URL:-https://github.com/LaunchAstro/ops-astro.git}
 
 # Runs the gate and puts its exit code in $status. The `if` is what keeps
 # `sh -e` from ending the hook on a non-zero exit, and it leaves the gate's
@@ -55,25 +58,29 @@ fi
 #    kept before a history rewrite is the obvious case.
 #
 #    An all-zero remote sha means the remote has no such branch yet: the
-#    first-push case, and the one that matters most. Only a push to origin,
-#    at the push URL origin is configured with and with no insteadOf or
-#    pushInsteadOf rewrite anywhere in the config, may skip anything: the
-#    hook then asks that URL for its main, and when it answers with a commit
-#    this clone has, the range is every commit not already on it. The
-#    destination holds those already, so this push publishes none of them,
+#    first-push case, and the one that matters most. Only a push to this
+#    repository on GitHub may skip anything: Git's push URL in $2, less one
+#    trailing slash and .git, must be one of its exact https or ssh forms.
+#    The hook then asks GitHub's public URL for its main, from outside this
+#    repository and with no system or user config, so no remote name,
+#    relative path or URL rewrite can send the question elsewhere. When the
+#    answer is a commit this clone has, the range is every commit not
+#    already on it: GitHub holds those, so this push publishes none of them,
 #    and a file added and deleted in the new commits is still read. Every
-#    other destination, and any doubt, scans everything reachable from the
-#    local ref. A remote-tracking ref may have come from another repository,
-#    and a rewritten URL asked again may lead to one (#1210).
+#    other push scans everything reachable from the local ref (#1210).
 first_push_base=""
-if [ "$1" = origin ] &&
-  [ "$(git config --get-all remote.origin.pushurl || git config --get-all remote.origin.url)" = "$2" ] &&
-  ! git config --get-regexp '^url\..*\.(push)?insteadof$' >/dev/null; then
-  dest_main=$(GIT_TERMINAL_PROMPT=0 git ls-remote -- "$2" refs/heads/main 2>/dev/null | cut -f1)
-  if [ -n "$dest_main" ] && main_sha=$(git rev-parse --verify -q "$dest_main^{commit}"); then
-    first_push_base="$main_sha.."
-  fi
-fi
+dest=${2%/}
+repo=github.com/LaunchAstro/ops-astro
+case "${dest%.git}" in
+  "https://$repo" | "git@${repo%%/*}:${repo#*/}" | "ssh://git@$repo")
+    dest_main=$(cd / && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT \
+      GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
+      git ls-remote -- "$PUBLISHED" refs/heads/main 2>/dev/null | cut -f1)
+    if [ -n "$dest_main" ] && main_sha=$(git rev-parse --verify -q "$dest_main^{commit}"); then
+      first_push_base="$main_sha.."
+    fi
+    ;;
+esac
 ranges=""
 had_input=0
 while read -r local_ref local_sha remote_ref remote_sha; do
