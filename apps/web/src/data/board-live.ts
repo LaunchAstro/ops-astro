@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The board and dependent task/list reads follow BOARD on the tab's existing
-// stream. Inbox-only changes refresh registered inbox panels alone.
+// stream. Inbox-only changes leave them alone.
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { TaskReadResult } from '../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from './authorised-read.ts';
@@ -10,7 +10,6 @@ import { useRead, type UseReadOptions } from './use-read.ts';
 import { tabRollupFloor } from './rollup-floor.ts';
 
 export const BOARD = 'board';
-export type FollowInbox = (reload: () => void) => () => void;
 
 function useBoardChanges(
   client: OperationsClient,
@@ -71,36 +70,20 @@ export function useTaskDependencies(
   );
 }
 
-export function useBoardLive(
-  client: OperationsClient,
-  grantKey: string,
-  reloadBoard?: () => void,
-): FollowInbox {
-  const panels = useRef(new Set<() => void>());
-  useBoardChanges(
-    client,
-    grantKey,
-    (change) => {
-      if (change !== 'inbox') reloadBoard?.();
-      for (const reload of panels.current) reload();
-    },
-    true,
-  );
-  return useCallback((reload) => {
-    panels.current.add(reload);
-    return () => {
-      panels.current.delete(reload);
-    };
-  }, []);
-}
-
 /** A dependent projection follows the existing board channel and its fallback. */
 export function useBoardDependency(
   client: OperationsClient,
   grantKey: string,
   reload: () => void,
 ): void {
-  useBoardLive(client, grantKey, reload);
+  useBoardChanges(
+    client,
+    grantKey,
+    (change) => {
+      if (change !== 'inbox') reload();
+    },
+    true,
+  );
 }
 
 function boardProjectionSource() {

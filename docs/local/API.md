@@ -2612,8 +2612,9 @@ members alone, whatever task grants they hold, in the list, the count, `inbox.se
 and `inbox.unattended` (listed only to a viewer in the conversation); a readable
 one carries `conversation`, `{ conversationId, kind, name }` (`name` a group's,
 null on a direct one), in place of `task`, asked again in the statement
-that reads the name, so one whose access ends mid-read is named nothing. The board screen
-draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
+that reads the name, so one whose access ends mid-read is named nothing. The dock's
+Notifications panel and `/inbox/` draw both reads (`apps/web/src/screens/Inbox.tsx`,
+MP-7-3); the Projects board draws neither.
 
 The board's stream (INB-1f) is `GET <person prefix><business>/live` naming no
 `topic`, or the same stream as the topic `board` on C4's one stream per tab

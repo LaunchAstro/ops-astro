@@ -7,9 +7,9 @@
 // the deciding transaction"; and "The inbox read and count exist on the
 // browser, the API and the command-line process").
 //
-// One served API process (`apps/api/server.ts` on its own port). The working
-// minimum is the board screen's mounted inbox panel (`views/inbox.tsx`), its
-// count read off the page, and the web's own client module beside it, both
+// One served API process (`apps/api/server.ts` on its own port). The browser
+// surface is the mounted Inbox screen (the dock's Notifications panel and
+// `/inbox/`), its count read off the page, and the web's own client module beside it, both
 // pointed at that process; the command line is `apps/cli/main.ts` run
 // once per call; the API is a plain HTTP post. A no-response item (a finished
 // run) sits in the inbox the whole time and is never counted. No worker runs.
@@ -19,7 +19,7 @@ import { createElement } from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { Inbox } from '../../apps/web/src/views/inbox.tsx';
+import { InboxScreen } from '../../apps/web/src/screens/Inbox.tsx';
 import { mount, settle } from './mount.tsx';
 import type { InboxCountResult, InboxReadResult } from '../../packages/core-wire/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
@@ -53,18 +53,18 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
       fetch: asBrowser(token, async (url, init) => await globalThis.fetch(url, init)),
     });
 
-  /** The owed count the mounted inbox panel shows, read off the page. */
+  /** The owed count the mounted Inbox screen shows, read off the page. */
   const mountedCount = async (token: string): Promise<number> => {
-    const view = await mount(createElement(Inbox, { client: web(token), grantKey: 'alpha:ada' }));
+    const view = await mount(
+      createElement(InboxScreen, { client: web(token), grantKey: 'alpha:ada', navigate: () => {} }),
+    );
     try {
       return await vi.waitFor(
         async () => {
           await settle();
-          const shown = (view.find('[data-inbox-count]') as HTMLElement | null)?.dataset[
-            'inboxCount'
-          ];
-          if (shown === undefined) throw new Error('the inbox count is not on the page yet');
-          return Number(shown);
+          if (view.find('.nt') === null) throw new Error('the inbox is not on the page yet');
+          // The page draws no figure when nothing is owed, never a zero.
+          return Number(view.find('.nt__sum b')?.textContent ?? 0);
         },
         { timeout: 10_000 },
       );
@@ -104,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
   }, 60_000);
 
   // eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
-  it('INB-1 only owed items are counted: the count is equal on the working minimum, the API and the command line, and drops on the deciding commit', async () => {
+  it('INB-1 only owed items are counted: the count is equal on the Inbox screen, the API and the command line, and drops on the deciding commit', async () => {
     const created = await post('/task/create', world.mia.token, {
       operationId: randomUUID(),
       fields: { title: 'three surfaces' },

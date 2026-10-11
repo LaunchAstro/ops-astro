@@ -13,11 +13,10 @@ import type {
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
-import { useBoardLive, useBoardProjectionRead } from '../../data/board-live.ts';
+import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { useRereadOn } from '../task/reread-on.ts';
 import { pathTo } from '../../routes.ts';
-import { Inbox } from '../../views/inbox.tsx';
 import { CreateTask } from './CreateTask.tsx';
 import { useSharedTaskPins, TaskPinsNotice } from '../task/task-pins-context.tsx';
 import {
@@ -144,7 +143,6 @@ function ProjectBoardRead(
     [reached.own, reached.state, query],
   );
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
-  const followInbox = useBoardLive(client, props.grantKey);
   useRereadOn(panel?.changes ?? 0, people.reload);
   useRereadOn(panel?.changes ?? 0, reached.reload);
   const { scopedView, personRequired, chips, answer, denied, admitted } = boardAdmission(
@@ -174,8 +172,6 @@ function ProjectBoardRead(
           {waiting} {waiting === 1 ? 'message' : 'messages'} waiting on us
         </p>
       )}
-      {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
-      <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       {/* The quick-add opens the one kept draft with the typed name. */}
       <CreateTask address={query} canFileTask={props.canFileTask === true} />
       <TaskPinsNotice />

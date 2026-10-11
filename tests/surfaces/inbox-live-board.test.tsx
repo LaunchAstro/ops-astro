@@ -3,10 +3,11 @@
 //
 // INB-1f on the page: the board screen follows the `board` topic on the tab's
 // one event stream (C4, `<person prefix><business>/live?topic=board`), never a
-// stream per task or per panel; every board frame is labelled `board`. An `invalidate` re-reads the board and an
-// `inbox` signal re-reads the inbox and its owed count, with no refresh.
-// The inbox floor runs only while the stream is down. Board row evidence
-// retains its 30-second floor even on a healthy unchanged stream.
+// stream per task or per panel; every board frame is labelled `board`. An
+// `invalidate` re-reads the board and an `inbox` signal does not: the board
+// draws no inbox (the dock's Notifications panel does) and never reads one.
+// Board row evidence retains its 30-second floor even on a healthy unchanged
+// stream.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -80,16 +81,16 @@ afterEach(() => {
 
 // eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe('INB-1f the board moves live on the page', () => {
-  it('INB-1 board live (page): one stream per tab; an invalidate re-reads the board and an inbox signal the inbox and its count', async () => {
+  it('INB-1 board live (page): one stream per tab; an invalidate re-reads the board and an inbox signal reads nothing', async () => {
     const api = server();
     const view = await mount(
       <Projects client={api.client} grantKey="alpha:mia" navigate={() => {}} />,
     );
     const deadline = Date.now() + 2_000;
     await until('the tab joined', () => api.joins.length > 0, deadline);
-    await until('the first reads', () => api.asked.board > 0 && api.asked.count > 0, deadline);
+    await until('the first read', () => api.asked.board > 0, deadline);
     await settle();
-    // One stream for the tab: the board, the inbox list and its count share it.
+    // One stream for the tab.
     expect(api.joins).toHaveLength(1);
     expect(api.joins[0]).toMatch(/\/api\/b\/alpha\/live\?topic=board$/u);
 
@@ -99,19 +100,14 @@ describe('INB-1f the board moves live on the page', () => {
 
     const board = api.asked.board;
     api.send('inbox', 'board');
-    await until(
-      'the inbox and its count re-read',
-      () => api.asked.inbox > before.inbox && api.asked.count > before.count,
-      deadline,
-    );
     // The inbox signal is the inbox's: the board is not asked again for it.
     await settle();
-    expect(api.asked.board).toBe(board);
+    expect(api.asked).toStrictEqual({ board, inbox: 0, count: 0 });
     expect(api.joins).toHaveLength(1);
     await view.unmount();
   });
 
-  it('INB-1 the floor refreshes board evidence while healthy and refreshes the inbox only while down', async () => {
+  it('INB-1 the floor refreshes board evidence while healthy and while down, and never reads an inbox', async () => {
     vi.useFakeTimers();
     const down = server({ down: true });
     const view = await mount(
@@ -122,7 +118,7 @@ describe('INB-1f the board moves live on the page', () => {
     expect(first.board).toBeGreaterThan(0);
     await vi.advanceTimersByTimeAsync(FLOOR_MS);
     expect(down.asked.board).toBeGreaterThan(first.board);
-    expect(down.asked.count).toBeGreaterThan(first.count);
+    expect([down.asked.inbox, down.asked.count]).toStrictEqual([0, 0]);
     await view.unmount();
 
     const up = server();

@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C4 notifications live on the page: the board's stream (INB-1f) is the
-// `board` topic on the tab's one hub, so the board, its inbox panels, the
-// Inbox screen and any task page share one connection. The board topic's
+// `board` topic on the tab's one hub, so the board, the Inbox screen and any
+// task page share one connection. The board topic's
 // `inbox` signal reaches its pages as `inbox`, and its invalidate as `changed`;
 // a new notification and the owed count appear without a reload.
 
 import { act, type ReactElement } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { createLiveHub, hubOf, type LiveChange } from '../../apps/web/src/data/live.ts';
-import { useBoardLive } from '../../apps/web/src/data/board-live.ts';
+import { useBoardDependency } from '../../apps/web/src/data/board-live.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { InboxScreen } from '../../apps/web/src/screens/Inbox.tsx';
 import { mount, settle, type Mounted } from './mount.tsx';
@@ -152,15 +152,12 @@ it('C4 notifications live (page): the Inbox screen follows the board topic and s
   expect(api.joins).toHaveLength(1);
 });
 
-it('C4 notifications live (board): the board and a task page share the tab’s one stream; an inbox signal re-reads the panels and not the board', async () => {
+it('C4 notifications live (board): the board and a task page share the tab’s one stream; an inbox signal does not re-read the board', async () => {
   const api = server();
-  const heard = { board: 0, panel: 0 };
+  const heard = { board: 0 };
   function Board(): ReactElement | null {
-    const follow = useBoardLive(api.client, 'alpha:ada', () => {
+    useBoardDependency(api.client, 'alpha:ada', () => {
       heard.board += 1;
-    });
-    follow(() => {
-      heard.panel += 1;
     });
     return null;
   }
@@ -173,10 +170,10 @@ it('C4 notifications live (board): the board and a task page share the tab’s o
 
   api.send('inbox', 'board');
   await pause();
-  expect(heard).toEqual({ board: 0, panel: 1 });
+  expect(heard).toEqual({ board: 0 });
   api.send('invalidate', 'board');
   await pause();
-  expect(heard).toEqual({ board: 1, panel: 2 });
+  expect(heard).toEqual({ board: 1 });
   stop();
 });
 
