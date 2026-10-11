@@ -204,6 +204,7 @@ export {
   agentNameOf,
   createAgent,
   directableAgents,
+  directsEveryAgent,
   mayDirectAgent,
   ownAgents,
   personSubjects,

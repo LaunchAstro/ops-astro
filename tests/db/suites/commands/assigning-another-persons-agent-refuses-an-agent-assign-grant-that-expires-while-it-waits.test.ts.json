@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1224: assigning another person's agent refuses an agent:assign grant that expires while it waits for the audit-chain lock; the owner needs no grant"
+}
