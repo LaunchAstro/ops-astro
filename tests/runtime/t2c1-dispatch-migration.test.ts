@@ -56,10 +56,13 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // And 20261004040200's pickup path: that runtime takes its lease through `take_lease`.
 // None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
+// And the agent record's columns (20261011090000): that runtime's inbox raise
+// asks who the task is assigned to, joining an agent's owner.
 const SEEDED = (version: string): boolean =>
   THROUGH_0032(version) ||
   ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4)) ||
-  version.startsWith('20261004040200');
+  version.startsWith('20261004040200') ||
+  version.startsWith('20261011090000');
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(
