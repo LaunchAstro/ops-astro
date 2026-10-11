@@ -5,6 +5,9 @@ import { isUuid } from '../../session/storage-slot.ts';
 export type DraftCommandName =
   | 'task.create'
   | 'task.set_party'
+  | 'task.move'
+  | 'task.set_stage'
+  | 'task.update'
   | 'task.set_category'
   | 'task.assign'
   | 'task.comment'

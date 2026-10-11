@@ -35,8 +35,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dropOtherDrafts } from './task-draft.ts';
-import { prefillOf, type PageContext } from './task-prefill.ts';
+import { prefillOf, taskContext, type PageContext } from './task-prefill.ts';
 import type { DraftScope } from './DraftPanel.tsx';
+import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
+export type { DraftScope } from './DraftPanel.tsx';
 import type { PanelOpening } from './Panel.tsx';
 import type { ConversationTab, PanelDoor } from './Perspectives.tsx';
 
@@ -159,6 +161,9 @@ export function scopeOf(page: PageContext): DraftScope {
   const prefill = prefillOf(page, new Date());
   return { clientId: prefill.clientId, from: page.from, prefill };
 }
+
+/** A draft filed from a task: on its client, project and stage (U112). */
+export const taskScope = (task: InternalTaskDetail): DraftScope => scopeOf(taskContext(task));
 
 /** The panel's open task, kept for its owner across a reload; the session's end clears it with the panel. */
 function useKeptOpening(owner: PanelOwner) {

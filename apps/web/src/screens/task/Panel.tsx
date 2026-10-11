@@ -56,7 +56,7 @@ import {
 import { PageLink, GoTo } from './PageLink.tsx';
 import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
-import type { DraftScope } from './DraftPanel.tsx';
+import { taskScope, type DraftScope } from './panel-host.ts';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
@@ -274,7 +274,7 @@ function PanelHead(props: SideProps): ReactElement {
         data-panel-head="new"
         disabled={onNewTask === undefined}
         onClick={() => {
-          onNewTask?.({ clientId: null, from: task.title ?? task.key });
+          onNewTask?.(taskScope(task));
         }}
       >
         New task
