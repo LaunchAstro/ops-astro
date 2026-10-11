@@ -1142,6 +1142,7 @@ try {
     ['stale range', body.replace(`${base}..${head}`, `${base}..${base}`), ['needs-second-model', 'unreviewed'], 'DOMAINFIRST20261008', 1],
     ['contradiction', `${body}\n\nVerdict: approve`, ['needs-second-model', 'unreviewed'], 'DOMAINFIRST20261008', 1],
   ];
+  const route = (scenario, events, variants) => {
   for (const [name, payload] of Object.entries(events)) {
     writeFileSync(eventPath, JSON.stringify(payload));
     for (const [label, value, labels, epoch, expected] of variants) {
@@ -1156,11 +1157,32 @@ try {
       });
       const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
       if (run.status !== expected || (expected === 0 && !output.includes('REVIEW DEFERRED INTERNAL STAGE1'))) {
-        throw new Error(`${name}/${label}: expected ${expected}, got ${run.status}\n${output}`);
+        throw new Error(`${scenario}${name}/${label}: expected ${expected}, got ${run.status}\n${output}`);
       }
-      console.log(`  PASS  domain first adapter: ${name}/${label}`);
+      console.log(`  PASS  domain first adapter: ${scenario}${name}/${label}`);
     }
   }
+  };
+  route('', events, variants);
+  // Owner, 11 October: main moves after the pull request forks. The marker may
+  // name the merge base of main and the head, or main's tip; nothing else.
+  const moved = git('commit-tree', tree, '-p', base, '-m', 'Another pull request lands');
+  const stray = git('commit-tree', tree, '-p', base, '-m', 'Not on main');
+  const movedGroup = git('commit-tree', tree, '-p', moved, '-p', head, '-m', 'Merge pull request #1 from fixture/work');
+  git('update-ref', 'refs/heads/main', moved);
+  const ok = ['needs-second-model', 'unreviewed'];
+  const range = (from) => body.replace(`${base}..${head}`, `${from}..${head}`);
+  route('main moved/', {
+    pull_request: { pull_request: { number: 1, head: { sha: head }, base: { sha: moved, ref: 'main' } } },
+    merge_group: { merge_group: { head_sha: movedGroup, base_ref: 'refs/heads/main',
+      head_ref: `refs/heads/gh-readonly-queue/main/pr-1-${head}` } },
+  }, [
+    ['merge base', body, ok, 'DOMAINFIRST20261008', 0],
+    ['main tip', range(moved), ok, 'DOMAINFIRST20261008', 0],
+    ['commit off main', range(stray), ok, 'DOMAINFIRST20261008', 1],
+    ['head itself', range(head), ok, 'DOMAINFIRST20261008', 1],
+    ['merge base, absent epoch', body, ok, '', 1],
+  ]);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

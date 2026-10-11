@@ -12,7 +12,9 @@
 //
 // 4. The trusted internal Stage 1 owner epoch permits an explicit unreviewed,
 //    full-range debt marker to defer model and human review outcomes/records.
-//    Checkpoints and every non-review check remain required.
+//    Its range ends at HEAD_SHA and starts at BASE_SHA or at the merge base of
+//    BASE_SHA and HEAD_SHA (owner, 11 October), so main moving does not stale
+//    it. Checkpoints and every non-review check remain required.
 //
 // It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
 // runs in continuous integration and in its own tests. It reads no reviewer
@@ -210,10 +212,27 @@ if (deferrals.length > 0 && !deferring) {
 }
 if (deferring) {
   const mark = deferrals.length === 1 ? DEFERRAL_FORM.exec(deferrals[0].line) : null;
-  if (mark === null || mark.groups.base !== base || mark.groups.head !== head) {
+  const forkPoint = () => {
+    try {
+      return execFileSync('git', ['merge-base', base, head], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return '';
+    }
+  };
+  const from = mark?.groups.base;
+  if (
+    mark === null ||
+    mark.groups.head !== head ||
+    base === '' ||
+    (from !== base && from !== forkPoint())
+  ) {
     failures.push(
       'review deferral must be one exact top-level marker for internal-stage1, ' +
-        'the current full BASE_SHA..HEAD_SHA range and stage1/SOL-OWED.md.',
+        'the full range to HEAD_SHA from BASE_SHA or from the merge base of ' +
+        'BASE_SHA and HEAD_SHA, and stage1/SOL-OWED.md.',
     );
   }
   if (
