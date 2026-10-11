@@ -55,11 +55,11 @@ describe.skipIf(!configured)('U116 task history names the fields a change set', 
     made(await world.asPerson(mia, { command: 'task.create', operationId: randomUUID(), fields }));
 
   /** An applied event written as the envelope writes one, with the field names given or none. */
-  const recorded = async (recordId: string, fieldChanges?: FieldChanges) =>
+  const recorded = async (recordId: string, fieldChanges?: FieldChanges, command = 'task.update') =>
     await world.db.app.withBusiness(world.business, async (tx) => {
       const written = await writeAuditEvent(tx, {
         actorId: mia.actorId,
-        command: 'task.update',
+        command,
         operationId: randomUUID(),
         outcome: 'applied',
         subjectRecordId: recordId,
@@ -107,6 +107,18 @@ describe.skipIf(!configured)('U116 task history names the fields a change set', 
     );
     await historyOf(task.recordId);
     expect(await historyOf(task.recordId)).toStrictEqual(before);
+  });
+
+  it('a cancel and a restart, which write no task field, are each their own change', async () => {
+    const task = await create({ title: 'stopped and started' });
+    const cancel = await recorded(task.recordId, { version: 1, keys: [] }, 'task.cancel');
+    const restart = await recorded(task.recordId, { version: 1, keys: [] }, 'task.restart');
+    const history = await historyOf(task.recordId);
+    expect(history.slice(-2)).toMatchObject([
+      { eventId: cancel, operation: 'task.cancel', actorName: 'Mia' },
+      { eventId: restart, operation: 'task.restart', actorName: 'Mia' },
+    ]);
+    expect(history.at(-1)).not.toHaveProperty('changed');
   });
 
   it('Core 10b 1: a field no history names, a custom one included, is never sent', async () => {

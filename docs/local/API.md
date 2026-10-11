@@ -2845,7 +2845,8 @@ audit event's id. Where the event recorded the fields it changed
 (`audit_events.field_changes`, P20), `changed` lists their keys, only those in
 `HISTORY_FIELDS` and the reader may see; an event recorded before that, or
 naming none of them, has no `changed` and reads by its command ("Details
-changed"). An event that recorded its fields and changed none is left out.
+changed"). A `task.update` that changed no field is left out; any other
+command stays, as a cancel or a restart writes no task field.
 Each history entry names who made the change (MP-4-16): `actorKind`
 (`person`, `agent` or `worker`) and, for a person's actor, `personId` and
 `actorName`, the person's display name, joined inside the business; the page

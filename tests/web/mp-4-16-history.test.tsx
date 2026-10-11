@@ -239,6 +239,22 @@ describe('U116 the change names the fields it set', () => {
     expect(head(view)).toBe('5 minutes ago · Mia · Description, due date and title changed');
   });
 
+  it('a cancel and a restart read as what they did, with who did it', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({
+        history: [
+          { ...change(6), operation: 'task.cancel' },
+          { ...change(5), operation: 'task.restart' },
+        ],
+      }),
+    );
+    expect(rows(view)).toStrictEqual([
+      '6 minutes ago · MiaCancelled',
+      '5 minutes ago · MiaRestarted',
+    ]);
+  });
+
   it('a change by someone who is not current staff names nobody', async () => {
     const view = await page(
       'Proj-Verity-Pacing',

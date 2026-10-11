@@ -104,8 +104,12 @@ export async function historyOf(
     OPERATIONS,
     INTERNAL_ROLE_KEYS,
   ]);
-  // A change that recorded its fields and changed none did not happen to the task.
-  const changes = rows.filter((row) => row.field_changes?.keys.length !== 0);
+  // An update's one effect is its data write, so one that changed no field did
+  // not happen to the task. Any other command with no field changed is still
+  // its own change: a cancel or a restart writes no task field (P21).
+  const changes = rows.filter(
+    (row) => row.command !== 'task.update' || row.field_changes?.keys.length !== 0,
+  );
   const history = await Promise.all(
     changes.map(async (row) => await entryOf(tx, viewer, internal, row)),
   );
