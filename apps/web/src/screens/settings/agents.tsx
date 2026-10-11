@@ -5,12 +5,14 @@
 // one made with `agent.create`. An agent made here can be handed a task from
 // the task page or the board, and keeps it until a person changes it; making
 // or naming one starts no work. After each write the list is read again, and a
-// refusal is shown in the server's words.
+// refusal is shown in the server's words. Make my agent holds one operation id
+// for the name typed until an answer arrives, so a retry after a lost answer
+// replays the first create instead of making a second agent.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import type { AgentMineResult } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
-import type { OperationsClient } from '../../operations/client.ts';
+import { isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
 
@@ -72,12 +74,27 @@ function Outcome(props: { readonly text: string; readonly refused: boolean }): R
   );
 }
 
+/** Make my agent: one operation id per name typed, held until an answer arrives. */
+function useMake(client: OperationsClient, send: Send): (name: string) => void {
+  const making = useRef<{ readonly name: string; readonly id: string } | null>(null);
+  return (name) => {
+    if (making.current?.name !== name) making.current = { name, id: client.newOperationId() };
+    const operationId = making.current.id;
+    send(async () => {
+      const answer = await client.mutate('agent.create', { name }, { operationId });
+      if (!isUnavailable(answer)) making.current = null;
+      return answer;
+    }, `Made your agent ${name}.`);
+  };
+}
+
 /** Each agent with its rename, then the form that makes a new one. */
 function AgentRows(props: {
   readonly client: OperationsClient;
   readonly agents: AgentMineResult['agents'];
   readonly busy: boolean;
   readonly send: Send;
+  readonly make: (name: string) => void;
 }): ReactElement {
   const { client, send } = props;
   return (
@@ -107,9 +124,7 @@ function AgentRows(props: {
           button="Make my agent"
           initial=""
           busy={props.busy}
-          onSave={(name) =>
-            send(() => client.mutate('agent.create', { name }), `Made your agent ${name}.`)
-          }
+          onSave={props.make}
         />
       </div>
     </div>
@@ -137,6 +152,7 @@ export function AgentsGroup(props: {
       if (failure === null) reload();
     })();
   };
+  const make = useMake(client, send);
   return (
     <section data-pref="agents" aria-label="Your AI agents">
       <div className="card set__card">
@@ -148,7 +164,13 @@ export function AgentsGroup(props: {
         {outcome === null ? null : <Outcome {...outcome} />}
         <RecordState state={state} subject="list of your agents" onRetry={reload}>
           {(result) => (
-            <AgentRows client={client} agents={agentsOf(result)} busy={busy} send={send} />
+            <AgentRows
+              client={client}
+              agents={agentsOf(result)}
+              busy={busy}
+              send={send}
+              make={make}
+            />
           )}
         </RecordState>
       </div>

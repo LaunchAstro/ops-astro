@@ -109,3 +109,55 @@ it('a refusal is shown in the server’s words, and the list stays', async () =>
   );
   expect(mounted.find('#agent-name-a-penny')).not.toBeNull();
 });
+
+it('a retry after a lost answer resends the same operation id and makes one agent', async () => {
+  const api = server();
+  const made = new Set<unknown>();
+  const losing = ((url: string | URL, init?: RequestInit) => {
+    if (!String(url).endsWith('/agent/create')) return api.fetch(url, init);
+    const operationId = (JSON.parse(String(init?.body)) as Record<string, unknown>)['operationId'];
+    if (made.has(operationId)) {
+      api.sent.push({ at: String(url), body: { operationId } });
+      return Promise.resolve(json({ ok: true, recordId: null, detail: { agentId: 'a-new' } }));
+    }
+    made.add(operationId);
+    return api.fetch(url, init).then(() => {
+      throw new TypeError('connection reset');
+    });
+  }) as typeof globalThis.fetch;
+  mounted = await mount(group(losing));
+  await tick();
+  await mounted.type('#agent-new-name', 'Reply drafter');
+  await mounted.click('[data-agent-new] button');
+  await tick();
+  expect(mounted.find('[data-agents-outcome="refused"]')).not.toBeNull();
+  await mounted.click('[data-agent-new] button');
+  await tick();
+  const ids = writes(api).map((call) => call.body['operationId']);
+  expect(ids).toHaveLength(2);
+  expect(new Set(ids).size).toBe(1);
+  expect(mounted.all('[data-agent]').map((row) => (row as HTMLElement).dataset['agent'])).toEqual([
+    'a-penny',
+    'a-new',
+  ]);
+});
+
+it('a changed name after a lost answer is a new attempt with a new operation id', async () => {
+  const api = server();
+  const ids: unknown[] = [];
+  const losing = ((url: string | URL, init?: RequestInit) => {
+    if (!String(url).endsWith('/agent/create')) return api.fetch(url, init);
+    ids.push((JSON.parse(String(init?.body)) as Record<string, unknown>)['operationId']);
+    return Promise.reject(new TypeError('connection reset'));
+  }) as typeof globalThis.fetch;
+  mounted = await mount(group(losing));
+  await tick();
+  await mounted.type('#agent-new-name', 'Reply drafter');
+  await mounted.click('[data-agent-new] button');
+  await tick();
+  await mounted.type('#agent-new-name', 'Invoice chaser');
+  await mounted.click('[data-agent-new] button');
+  await tick();
+  expect(ids).toHaveLength(2);
+  expect(new Set(ids).size).toBe(2);
+});

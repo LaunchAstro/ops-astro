@@ -4,9 +4,9 @@
 // that sends `task.launch`, or the open run's state once it is launched.
 // Assigning started nothing; this click does. A client's task says why it
 // cannot go to an AI agent instead of offering a click that is refused. A
-// refusal shows its own words. One operation id per click, reused if the
-// answer was lost and the person tries again, so a retry never opens a
-// second run.
+// refusal shows its own words. One operation id per click, reused with the
+// revision it was first sent at if the answer was lost and the person tries
+// again, so a retry replays the first launch and never opens a second run.
 
 import { useRef, useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -29,17 +29,25 @@ function useLaunch(props: LaunchRunProps): {
   const { task } = props;
   const [sending, setSending] = useState(false);
   const [words, setWords] = useState<string | null>(null);
-  const operation = useRef<{ readonly taskId: string; readonly id: string } | null>(null);
+  const operation = useRef<{
+    readonly taskId: string;
+    readonly id: string;
+    readonly revision: number;
+  } | null>(null);
   const launch = async (): Promise<void> => {
     if (operation.current?.taskId !== task.id) {
-      operation.current = { taskId: task.id, id: props.client.newOperationId() };
+      operation.current = {
+        taskId: task.id,
+        id: props.client.newOperationId(),
+        revision: task.revision,
+      };
     }
     setSending(true);
     setWords(null);
     const answer = await props.client.mutate(
       'task.launch',
       { recordId: task.id },
-      { expectedRevision: task.revision, operationId: operation.current.id },
+      { expectedRevision: operation.current.revision, operationId: operation.current.id },
     );
     setSending(false);
     if (isUnavailable(answer)) {
