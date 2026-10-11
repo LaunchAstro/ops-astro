@@ -485,20 +485,20 @@ async function attempt(
     const outcome = await attemptWork(tx, session, entryPoint, request, declaration);
     const answer = await answerOf(tx, session, request, digest, declaration, outcome);
     // The handler and the audit chain can wait on locks after the door let the
-    // call in, and the session can end in that wait. Writes re-check at commit
-    // (OWNER-3 A): after the last wait, a session ended by then keeps nothing,
-    // and its refusal holds no operation id, so signing in again can retry it.
+    // call in, and the caller's standing can end in that wait: the session
+    // signed out, or the access ended (C58), which a person's own write holds
+    // no access lock against. Writes re-check at commit (OWNER-3 A): after the
+    // last wait, a caller the door would now refuse keeps nothing, and the
+    // refusal holds no operation id, so a caller let back in can retry it. An
+    // act that ended the caller's own access is not asked: that loss is the act.
+    const keepsWrites = isRefused(outcome)
+      ? outcome.retains === true
+      : outcome.endsOwnAccess !== true;
     const standing =
-      presented === undefined || (isRefused(outcome) && outcome.retains !== true)
+      presented === undefined || !keepsWrites
         ? undefined
         : await standingOf(tx, presented, 'required');
-    if (
-      standing === undefined ||
-      !('refused' in standing) ||
-      standing.code !== 'AUTH_SESSION_EXPIRED'
-    ) {
-      return answer;
-    }
+    if (standing === undefined || !('refused' in standing)) return answer;
     await tx.query('rollback to savepoint command_attempt');
     return await settle(tx, session, request, digest, standing, 'none');
   } catch (cause) {
