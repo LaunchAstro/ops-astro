@@ -67,10 +67,16 @@ const INBOX_SELF: ReadonlySet<string> = new Set([
 
 /**
  * The team conversation rows that ask the caller's own membership first: the
- * read marker (C71-D) and a group's rename, members and leave (C71-G). Each
- * with where its refusals are proved.
+ * read marker (C71-D) and a group's rename, members and leave (C71-G); and an
+ * agent's rename (Assign to AI), asked of the caller's own agent. Each with
+ * where its refusals are proved.
  */
 const CHAT_SELF: ReadonlyMap<string, string> = new Map([
+  [
+    'agent.rename',
+    'not applicable: renames only the caller’s own agent, before any grant; another ' +
+      'person’s or business’s is NOT_FOUND in tests/commands/agent-make.test.ts',
+  ],
   [
     'chat.mark_read',
     'not applicable: the reader’s own read marker; a conversation they are not ' +

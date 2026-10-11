@@ -419,6 +419,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
+    byAda('agent.rename', 'agentId', f.agentId, (agentId) => ({ agentId, name: 'Away' }));
     byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
       connectionId,
     }));
@@ -644,7 +645,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       .toSorted();
     expect(
       names.toSorted(),
-      'every declaration outside the forty-five target-free ones',
+      'every declaration outside the sixty target-free ones',
     ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {

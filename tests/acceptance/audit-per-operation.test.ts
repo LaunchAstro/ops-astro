@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 171 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 174 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 171; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 174; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -400,10 +400,24 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return personCell(w.h.world.noah, name, body, 'NOT_FOUND');
   }
 
+  /** Assign to AI: noah's own agents ask no grant, so each is refused for what it names. */
+  function refusedOwnAgent(name: CommandName): Cell | undefined {
+    const noah = w.h.world.noah;
+    if (name === 'agent.create')
+      return personCell(noah, name, { name: ' ' }, 'FIELD_VALUE_INVALID');
+    if (name === 'agent.rename') {
+      return personCell(noah, name, { agentId: randomUUID(), name: 'his' }, 'NOT_FOUND');
+    }
+    if (name === 'agent.mine') {
+      return personCell(noah, name, { recordId: w.h.alphaTask.id }, 'COMMAND_BODY_INVALID');
+    }
+    return undefined;
+  }
+
   async function refused(declaration: CommandDeclaration): Promise<Cell> {
     const { name } = declaration;
     const noah = w.h.world.noah;
-    const own = refusedOwn(name) ?? refusedOwnGroup(name);
+    const own = refusedOwn(name) ?? refusedOwnGroup(name) ?? refusedOwnAgent(name);
     if (own !== undefined) return own;
     switch (name) {
       // R2 against work that exists and would admit its owner, so the refusal
@@ -547,12 +561,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 171 exported operations both ways', () => {
+  it('covered all 174 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(171);
+    expect(names).toHaveLength(174);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 171.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 174.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
