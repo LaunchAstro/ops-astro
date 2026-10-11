@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The worker as its own process against a served API over real PostgreSQL, its bearer expiring every few seconds: it signs in again, resends the same call and keeps being answered."
+}

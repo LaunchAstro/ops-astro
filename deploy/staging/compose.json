@@ -66,11 +66,15 @@
       "environment": {
         "OPS_ASTRO_API_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
         "OPS_ASTRO_BUSINESS": "${STAGING_WORKER_BUSINESS:?set from the staging runbook}",
-        "OPS_ASTRO_TOKEN": "${STAGING_WORKER_TOKEN:?set from the staging runbook}",
+        "OPS_ASTRO_EMAIL": "${STAGING_WORKER_EMAIL:?set from the staging runbook}",
+        "OPS_ASTRO_PASSWORD": "${STAGING_WORKER_PASSWORD:?set from the staging runbook}",
+        "OPS_ASTRO_GOTRUE_URL": "${STAGING_GOTRUE_URL:?set from the staging runbook}",
+        "SUPABASE_PUBLISHABLE_KEY": "${STAGING_PUBLISHABLE_KEY:?set from the staging runbook}",
         "OPS_ASTRO_DELEGATION": "${STAGING_WORKER_DELEGATION:?set from the staging runbook}",
         "OPS_WORKER_HEARTBEAT_URL": "${STAGING_WORKER_HEARTBEAT_URL:?set from the staging runbook}",
         "OPS_HEARTBEAT_EVERY_MS": "${STAGING_HEARTBEAT_EVERY_MS:?set from the staging runbook}",
-        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}"
+        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_AUTH_HOST": "${STAGING_EGRESS_AUTH_HOST:?set from the staging runbook}"
       },
       "volumes": ["ops-astro-staging-app:/app:ro"],
       "networks": ["staging"],
@@ -147,6 +151,7 @@
         "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
         "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_AUTH_HOST": "${STAGING_EGRESS_AUTH_HOST:?set from the staging runbook}",
         "OPS_EGRESS_OUT": "egress-out"
       },
       "volumes": ["ops-astro-staging-app:/app:ro"],
@@ -173,7 +178,8 @@
             "${STAGING_EGRESS_API_HOST:?set from the staging runbook}",
             "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
             "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
-            "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}"
+            "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}",
+            "${STAGING_EGRESS_AUTH_HOST:?set from the staging runbook}"
           ]
         },
         "egress-link": {}
@@ -189,7 +195,8 @@
         "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
-        "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}"
+        "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_AUTH_HOST": "${STAGING_EGRESS_AUTH_HOST:?set from the staging runbook}"
       },
       "volumes": ["ops-astro-staging-app:/app:ro"],
       "restart": "unless-stopped",

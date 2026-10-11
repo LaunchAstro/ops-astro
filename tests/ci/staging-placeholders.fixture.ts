@@ -8,7 +8,10 @@ const [POOLER, SINK] = ['pooler.example.test', 'sink.example.test'];
 export const WORKER_UNIT: Readonly<Record<string, string>> = {
   STAGING_WEB_URL: 'https://api.example.test',
   STAGING_WORKER_BUSINESS: 'unused',
-  STAGING_WORKER_TOKEN: 'unused',
+  STAGING_WORKER_EMAIL: 'agent@example.test',
+  STAGING_WORKER_PASSWORD: 'unused',
+  STAGING_GOTRUE_URL: 'https://auth.example.test/auth/v1',
+  STAGING_PUBLISHABLE_KEY: 'sb_publishable_example-test-only',
   STAGING_WORKER_DELEGATION: 'unused',
   STAGING_WORKER_HEARTBEAT_URL: 'https://beat.example.test/w',
   STAGING_FORWARDER_DATABASE_URL: `postgres://${POOLER}:6543/unused`,
@@ -22,4 +25,5 @@ export const WORKER_UNIT: Readonly<Record<string, string>> = {
   STAGING_EGRESS_POOLER_PORT: '6543',
   STAGING_EGRESS_HEARTBEAT_HOST: 'beat.example.test',
   STAGING_EGRESS_SINK_HOST: SINK,
+  STAGING_EGRESS_AUTH_HOST: 'auth.example.test',
 };

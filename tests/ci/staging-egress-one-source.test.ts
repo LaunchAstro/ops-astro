@@ -30,6 +30,12 @@ const LIST = {
   OPS_EGRESS_POOLER_PORT: '6543',
   OPS_EGRESS_HEARTBEAT_HOST: BEAT,
   OPS_EGRESS_SINK_HOST: 'sink.example.test',
+  OPS_EGRESS_AUTH_HOST: 'auth.example.test',
+};
+const SIGN_IN = {
+  OPS_ASTRO_EMAIL: 'agent@example.test',
+  OPS_ASTRO_PASSWORD: 'unused',
+  OPS_ASTRO_GOTRUE_URL: 'http://127.0.0.1:1',
 };
 
 const start = (script: string, args: string[], env: Record<string, string>) =>
@@ -44,6 +50,7 @@ describe('S0-1 egress allow-list: one source for each place', () => {
   relayCases();
   helperCase();
   consumerCases();
+  signInCase();
   missingSettingCases();
 });
 
@@ -117,7 +124,7 @@ function consumerCases() {
     const run = start('apps/worker/main.ts', ['--once'], {
       OPS_ASTRO_API_URL: 'http://127.0.0.1:1',
       OPS_ASTRO_BUSINESS: 'alpha',
-      OPS_ASTRO_TOKEN: 'unused',
+      ...SIGN_IN,
       OPS_ASTRO_DELEGATION: 'unused',
       OPS_WORKER_HEARTBEAT_URL: `https://${ELSEWHERE}/${CANARY}`,
       OPS_EGRESS_HEARTBEAT_HOST: BEAT,
@@ -155,12 +162,27 @@ function consumerCases() {
   });
 }
 
+function signInCase() {
+  it('the worker refuses to start when its sign-in would leave by another host than the listed one', () => {
+    const run = start('apps/worker/main.ts', ['--once'], {
+      OPS_ASTRO_BUSINESS: 'alpha',
+      ...SIGN_IN,
+      OPS_ASTRO_GOTRUE_URL: `https://${ELSEWHERE}/${CANARY}`,
+      OPS_ASTRO_DELEGATION: 'unused',
+      OPS_EGRESS_AUTH_HOST: 'auth.example.test',
+    });
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('OPS_ASTRO_GOTRUE_URL does not leave by OPS_EGRESS_AUTH_HOST');
+    expect(run.stderr.includes(CANARY)).toBe(false);
+  });
+}
+
 function missingSettingCases() {
   it('the worker and the forwarder refuse to start when their egress setting is missing', () => {
     const worker = start('apps/worker/main.ts', ['--once'], {
       OPS_ASTRO_API_URL: 'http://127.0.0.1:1',
       OPS_ASTRO_BUSINESS: 'alpha',
-      OPS_ASTRO_TOKEN: 'unused',
+      ...SIGN_IN,
       OPS_ASTRO_DELEGATION: 'unused',
       OPS_WORKER_HEARTBEAT_URL: `https://${BEAT}/${CANARY}`,
     });

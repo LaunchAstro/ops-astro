@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { identityDefects, migrationHead, type IdentityEvidence } from '../../apps/api/identity.ts';
 import { main as workerMain } from '../../apps/worker/main.ts';
+import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
 import { streamText } from '../support/console-text.ts';
 
 describe('T2b served identity', () => {
@@ -67,11 +68,12 @@ describe('T2b credential output', () => {
     }) as typeof process.stderr.write;
     try {
       expect(
-        await workerMain(['--once'], {
-          OPS_ASTRO_BUSINESS: 'alpha',
-          OPS_ASTRO_TOKEN: token,
-          OPS_ASTRO_DELEGATION: delegation,
-        }),
+        await workerMain(
+          ['--once'],
+          { OPS_ASTRO_BUSINESS: 'alpha', ...SIGN_IN_SETTINGS, OPS_ASTRO_DELEGATION: delegation },
+          undefined,
+          signedInReach(token),
+        ),
       ).toBe(4);
     } finally {
       globalThis.fetch = originalFetch;

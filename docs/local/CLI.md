@@ -47,6 +47,7 @@ sends any request. It prints
 | `--email <address>`  | `OPS_ASTRO_EMAIL`           | `login` only.                                                                                   |
 |                      | `OPS_ASTRO_PASSWORD`        | `login` only. When unset, the first line of piped stdin; at a terminal, a prompt with echo off. |
 | `--gotrue <url>`     | `OPS_ASTRO_GOTRUE_URL`      | `login` only. Default `http://127.0.0.1:54391`.                                                 |
+|                      | `SUPABASE_PUBLISHABLE_KEY`  | `login` only. The hosted sign-in service's publishable key, sent as `apikey` to it alone.       |
 | `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                             |
 |                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.             |
 |                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).       |
@@ -83,7 +84,11 @@ the same body again with that id derives the credential again.
 
 **Person.** `login` does the same GoTrue password grant the web sign-in does
 (`apps/web/src/session/sign-in.ts`, imported rather than copied) and saves the
-access token. Calls go to `/api/b/<business>/...` with that bearer.
+access token. Calls go to `/api/b/<business>/...` with that bearer. A hosted
+sign-in service refuses a grant without the project's publishable key
+(`No API key found in request`): set `SUPABASE_PUBLISHABLE_KEY` and `login`
+sends it as `apikey` to that service alone, never to the API, as the web does
+(`withProviderKey`, `apps/web/src/session/provider-key.ts`).
 
 **Agent.** An agent signs in with its own login, never a person's. The seed's
 agent logins are GoTrue passwords like a person's (`scripts/local-seed.mjs`,
