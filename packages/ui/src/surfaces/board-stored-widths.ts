@@ -4,13 +4,15 @@
 // keeps them. A drag, an arrow step, a reset or an undo is told out through
 // `onWidths`. A stored value that is not the board's own last change, a read
 // that answers late or the stored widths back after a refused save, is drawn
-// at once, outside the undo history. The store handing back what the board
+// at once, outside the undo history; each held step that still had the
+// widths it replaces takes it too, so undoing a sort or filter made before it
+// never brings the replaced widths back. The store handing back what the board
 // just told it is neither drawn again nor told again, so a change made while
 // an earlier one is still coming back is never undone by it.
 
 import { useEffect, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { sameWidths } from '../board/widths.ts';
-import type { ColumnWidths, MachineState } from '../board/types.ts';
+import type { BoardView, ColumnWidths, MachineState } from '../board/types.ts';
 
 export function useStoredWidths(
   setMachine: Dispatch<SetStateAction<MachineState>>,
@@ -24,9 +26,17 @@ export function useStoredWidths(
   tell.current = onWidths;
   useLayoutEffect(() => {
     // A change on the board not told yet is newer than any stored value.
-    if (sameWidths(agreed.current, stored) || !sameWidths(agreed.current, drawn)) return;
+    const replaced = agreed.current;
+    if (sameWidths(replaced, stored) || !sameWidths(replaced, drawn)) return;
     agreed.current = stored;
-    setMachine((current) => ({ ...current, view: { ...current.view, widths: stored } }));
+    const take = (view: BoardView): BoardView =>
+      sameWidths(view.widths, replaced) ? { ...view, widths: stored } : view;
+    const held = (steps: MachineState['history']['past']) =>
+      steps.map((step) => ({ ...step, view: take(step.view) }));
+    setMachine((current) => ({
+      view: { ...current.view, widths: stored },
+      history: { past: held(current.history.past), future: held(current.history.future) },
+    }));
   }, [stored, drawn, setMachine]);
   useEffect(() => {
     if (sameWidths(agreed.current, drawn)) return;

@@ -165,14 +165,15 @@ it('Core06-3 a resize made before the read answers is kept over the older stored
   await settle();
   await resize(view);
   const chosen = layout(view);
-  expect(api.saves).toHaveLength(1);
-  expect(api.saves[0]?.['value']).not.toStrictEqual(stored['columns.widths']);
+  // Held until the read answers, so it is saved onto what the read brings.
+  expect(api.saves).toStrictEqual([]);
   await act(() => {
     for (const answer of api.reads.splice(0)) answer();
   });
   await settle();
   expect(layout(view)).toEqual(chosen);
   expect(api.saves).toHaveLength(1);
+  expect(api.saves[0]?.['value']).not.toStrictEqual(stored['columns.widths']);
 });
 
 it('Core06-3 a refused resize is said, and the stored widths are drawn again', async () => {
@@ -252,4 +253,48 @@ it('Core06-3 widths that answer late leave an open rename editor and its focus a
   expect(input.value).toBe('An unsent local name');
   expect(document.activeElement).toBe(input);
   expect(api.saves).toStrictEqual([]);
+});
+
+it('Core06-3 a resize made before the read answers keeps every other board’s stored widths', async () => {
+  const reference = server({ 'columns.widths': { 'other.name': 401 } });
+  const drawn = await mount(page(reference.client));
+  await settle();
+  await resize(drawn);
+  await drawn.unmount();
+  const expected = reference.persisted()['columns.widths'];
+
+  const api = server({ 'columns.widths': { 'other.name': 401 } }, true);
+  const view = await mount(page(api.client));
+  await settle();
+  await resize(view);
+  await act(() => {
+    for (const answer of api.reads.splice(0)) answer();
+  });
+  await settle();
+  expect(api.persisted()['columns.widths']).toStrictEqual(expected);
+  expect(expected).toMatchObject({ 'other.name': 401 });
+});
+
+it('Core06-3 undoing a sort made before the read answers keeps the stored widths', async () => {
+  const stored = await resizedWidths();
+  const reference = server(stored);
+  const drawn = await mount(page(reference.client));
+  await settle();
+  const storedLayout = layout(drawn);
+  await drawn.unmount();
+
+  const api = server(stored, true);
+  const view = await mount(page(api.client));
+  await settle();
+  await view.click('th[data-key="name"] button.cbd__th');
+  await act(() => {
+    for (const answer of api.reads.splice(0)) answer();
+  });
+  await settle();
+  expect(layout(view)).toEqual(storedLayout);
+  await view.click('[data-undo]');
+  await settle();
+  expect(view.find('th[data-key="name"]')?.getAttribute('aria-sort')).toBe('none');
+  expect(api.persisted()).toStrictEqual(stored);
+  expect(layout(view)).toEqual(storedLayout);
 });
