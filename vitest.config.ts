@@ -98,7 +98,7 @@ const config: ViteUserConfig = defineConfig({
     // skip, as do Sol's three template lock and clone catalogue proofs and the
     // cases written beside them, C31's Sol proof files, the Keys panel's DB
     // proofs, and Sol's two ending-claim proofs and agent-login proof (SOLOW-D
-    // D3), the two shared-login factor suites, and Sol's five Launch authority
+    // D3), the two shared-login factor suites, and Sol's six Launch authority
     // proofs (#1236); without a database they
     // are left out here, and the manifests run them where there is one. C31's
     // corrupted audit chain fails by design: only the proof that spawns it from
@@ -132,6 +132,7 @@ const config: ViteUserConfig = defineConfig({
             'tests/reads/priority-digest-ignores-unscored-task-weight.test.ts',
             'tests/commands/launch-authority-actor-grants-and-lineage.test.ts',
             'tests/commands/comment-change-waits-for-actor-grant-revoke.test.ts',
+            'tests/commands/upgrade-links-pending-launch-proposals.test.ts',
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/api/server-entry-hosted-sign-in-key.test.ts',
             'tests/review/forwarder-replay-time-order.test.ts',
