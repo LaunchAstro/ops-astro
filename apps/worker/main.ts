@@ -71,6 +71,8 @@ const SETTING_REFUSED: Readonly<Record<string, string>> = {
     'the API no longer accepts its sign-in; check OPS_ASTRO_EMAIL and OPS_ASTRO_PASSWORD',
   AUTH_UNKNOWN_LOGIN:
     'the API does not know its login; check OPS_ASTRO_EMAIL and OPS_ASTRO_PASSWORD',
+  AUTH_NO_AGENT_IDENTITY:
+    "the API finds no active agent for its login; check the agent's login and actor are active",
   DELEGATION_NOT_LIVE: 'its delegation is no longer live; OPS_ASTRO_DELEGATION needs a new one',
 };
 
