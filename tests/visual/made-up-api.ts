@@ -14,6 +14,7 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AgentMineResult,
   AllowanceResult,
   CapabilitiesResult,
   ClientListResult,
@@ -88,6 +89,11 @@ const READS = {
     ok: true,
     preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
   },
+  // The person's own agents (Assign to AI): one, so Settings draws a row to rename.
+  'agent.mine': {
+    ok: true,
+    agents: [{ agentId: 'a-agent', name: 'Drafting helper' }],
+  } satisfies AgentMineResult,
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
