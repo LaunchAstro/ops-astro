@@ -55,19 +55,24 @@ fi
 #    kept before a history rewrite is the obvious case.
 #
 #    An all-zero remote sha means the remote has no such branch yet: the
-#    first-push case, and the one that matters most. Git gives the
-#    destination's URL in $2, and the hook asks that repository for its
-#    main. When it answers with a commit this clone has, the range is every
-#    commit not already on it: the destination holds those already, so this
-#    push publishes none of them, and a file added and deleted in the new
-#    commits is still read. No answer, no main there, or a commit not here
-#    scans everything reachable from the local ref. Remote-tracking refs are
-#    not trusted: one may have come from another repository, as after a
-#    remote's URL changes (#1210).
+#    first-push case, and the one that matters most. Only a push to origin,
+#    at the push URL origin is configured with and with no insteadOf or
+#    pushInsteadOf rewrite anywhere in the config, may skip anything: the
+#    hook then asks that URL for its main, and when it answers with a commit
+#    this clone has, the range is every commit not already on it. The
+#    destination holds those already, so this push publishes none of them,
+#    and a file added and deleted in the new commits is still read. Every
+#    other destination, and any doubt, scans everything reachable from the
+#    local ref. A remote-tracking ref may have come from another repository,
+#    and a rewritten URL asked again may lead to one (#1210).
 first_push_base=""
-dest_main=$(GIT_TERMINAL_PROMPT=0 git ls-remote -- "$2" refs/heads/main 2>/dev/null | cut -f1)
-if [ -n "$dest_main" ] && main_sha=$(git rev-parse --verify -q "$dest_main^{commit}"); then
-  first_push_base="$main_sha.."
+if [ "$1" = origin ] &&
+  [ "$(git config --get-all remote.origin.pushurl || git config --get-all remote.origin.url)" = "$2" ] &&
+  ! git config --get-regexp '^url\..*\.(push)?insteadof$' >/dev/null; then
+  dest_main=$(GIT_TERMINAL_PROMPT=0 git ls-remote -- "$2" refs/heads/main 2>/dev/null | cut -f1)
+  if [ -n "$dest_main" ] && main_sha=$(git rev-parse --verify -q "$dest_main^{commit}"); then
+    first_push_base="$main_sha.."
+  fi
 fi
 ranges=""
 had_input=0

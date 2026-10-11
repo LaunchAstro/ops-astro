@@ -103,15 +103,16 @@ make_repo "$NO_MAIN"
 make_repo "$WITH_MAIN"
 git -C "$WITH_MAIN" update-ref refs/remotes/origin/main HEAD
 MAIN_SHA="$(git -C "$WITH_MAIN" rev-parse HEAD)"
-# The hook asks the destination for its main, so the URL the cases push to
-# leads to a repository that holds this one's.
-git init -q --bare "$SCRATCH/with-main.git"
-git -C "$WITH_MAIN" push -q "$SCRATCH/with-main.git" HEAD:refs/heads/main
-git -C "$WITH_MAIN" config url."$SCRATCH/with-main.git".insteadOf git@example.invalid:none.git
+# The hook asks origin for its main, so this origin holds this one's.
+WITH_MAIN_URL="$SCRATCH/with-main.git"
+git init -q --bare "$WITH_MAIN_URL"
+git -C "$WITH_MAIN" push -q "$WITH_MAIN_URL" HEAD:refs/heads/main
+git -C "$WITH_MAIN" remote add origin "$WITH_MAIN_URL"
 
-# label stdin-line expected-text [repo]
+# label stdin-line expected-text [repo] [push-url]
 stdin_case() {
   local label="$1" line="$2" expect_scan="$3" repo="${4:-$REPO_ROOT}"
+  local url="${5:-git@example.invalid:none.git}"
   local dir out
   dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
@@ -122,7 +123,7 @@ STUB
   chmod +x "$dir/gate-stub"
   out="$(
     cd "$repo" || exit 99
-    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin git@example.invalid:none.git 2>&1
+    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin "$url" 2>&1
   )"
   rm -rf "$dir"
   if printf '%s' "$out" | grep -q -- "$expect_scan"; then
@@ -138,7 +139,7 @@ ZERO=0000000000000000000000000000000000000000
 # such base, so everything reachable is scanned, as before.
 stdin_case "a first push scans only the commits not already on origin/main" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
-  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN"
+  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN" "$WITH_MAIN_URL"
 stdin_case "a first push with no origin/main scans everything reachable" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
   "publish: aaaaaaa1$" "$NO_MAIN"
@@ -186,15 +187,25 @@ real_checker_case "a first push to origin by another push URL scans what origin/
   origin "$SCRATCH/public.git" 1
 real_checker_case "a first push to origin still skips what origin/main holds" \
   origin "$SCRATCH/private.git" 0
+git -C "$DIRTY" config url."$SCRATCH/private.git".pushInsteadOf sol-review://private
+real_checker_case "a first push to origin with a URL rewrite configured scans what origin/main holds" \
+  origin "$SCRATCH/private.git" 1
+git -C "$DIRTY" config --unset url."$SCRATCH/private.git".pushInsteadOf
 
-# Sol's proof on #1212, kept byte for byte: a remote whose URL changed keeps
-# the old repository's tracking refs, which say nothing about the new one.
-if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/sol-criterion-2-remote-url.proof.test.mjs" >/dev/null 2>&1; then
-  pass "a first push after a remote's URL changes scans what its old main held"
-else
-  fail "a first push after a remote's URL changes scans what its old main held" \
-    "node --test tests/gate/sol-criterion-2-remote-url.proof.test.mjs failed"
-fi
+# Sol's proofs on #1212, kept byte for byte. A remote whose URL changed keeps
+# the old repository's tracking refs, which say nothing about the new one; a
+# rewritten push URL, asked again, can lead to another repository.
+sol_proof_case() {
+  if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/$1.proof.test.mjs" >/dev/null 2>&1; then
+    pass "$2"
+  else
+    fail "$2" "node --test tests/gate/$1.proof.test.mjs failed"
+  fi
+}
+sol_proof_case sol-criterion-2-remote-url \
+  "a first push after a remote's URL changes scans what its old main held"
+sol_proof_case sol-criterion-2-double-url-rewrite \
+  "a first push through a URL rewrite scans everything reachable"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
@@ -209,7 +220,7 @@ stdin_case "a branch deletion scans nothing, and does not fall back" \
 # a contaminated backup branch could block a clean push of main, and the two
 # scanners could disagree about what was being published.
 same_refs_case() {
-  local label="$1" line="$2" repo="${3:-$REPO_ROOT}"
+  local label="$1" line="$2" repo="${3:-$REPO_ROOT}" url="${4:-git@example.invalid:none.git}"
   local dir out range_args literal_args public_args
   dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
@@ -220,7 +231,7 @@ STUB
   chmod +x "$dir/gate-stub"
   out="$(
     cd "$repo" || exit 99
-    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin git@example.invalid:none.git 2>&1
+    printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin "$url" 2>&1
   )"
   rm -rf "$dir"
   range_args="$(printf '%s\n' "$out" | grep '^stub gate: --range' | sed 's/^stub gate: --range//' | tr -s ' ')"
@@ -239,7 +250,7 @@ STUB
 
 ZERO2=0000000000000000000000000000000000000000
 same_refs_case "all three scanners get the same refs on a first push" \
-  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN"
+  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN" "$WITH_MAIN_URL"
 same_refs_case "all three scanners get the same refs on a first push with no origin/main" \
   "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$NO_MAIN"
 same_refs_case "all three scanners get the same refs on a later push" \

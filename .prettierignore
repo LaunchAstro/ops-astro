@@ -177,6 +177,7 @@ tests/authority/endings-once-exit-and-settings-proof.test.ts
 tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts
 tests/identity/login-subject-fixed-during-ban-proof.test.ts
 
-# Sol's proof on #1212, byte-for-byte as the review held it, run by
+# Sol's proofs on #1212, byte-for-byte as the review held them, run by
 # tests/gate/hook-exit-cases.sh.
 tests/gate/sol-criterion-2-remote-url.proof.test.mjs
+tests/gate/sol-criterion-2-double-url-rewrite.proof.test.mjs
