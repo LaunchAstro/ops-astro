@@ -101,6 +101,7 @@ NO_MAIN="$SCRATCH/no-main"
 WITH_MAIN="$SCRATCH/with-main"
 make_repo "$NO_MAIN"
 make_repo "$WITH_MAIN"
+git -C "$WITH_MAIN" remote add origin git@example.invalid:none.git
 git -C "$WITH_MAIN" update-ref refs/remotes/origin/main HEAD
 MAIN_SHA="$(git -C "$WITH_MAIN" rev-parse HEAD)"
 
@@ -137,6 +138,48 @@ stdin_case "a first push scans only the commits not already on origin/main" \
 stdin_case "a first push with no origin/main scans everything reachable" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
   "publish: aaaaaaa1$" "$NO_MAIN"
+
+# Issue #1210. The real public-content checker, not a stub: origin/main holds
+# a private path that was never swept, and only a push to the remote that
+# origin/main came from may skip it. Only the hashed gate is stubbed.
+DIRTY="$SCRATCH/dirty"
+git init -q "$DIRTY"
+# Built at run time, so this file never holds the path the gate refuses.
+printf '/%s/synthetic-person/Documents/private-note\n' Users > "$DIRTY/note.txt"
+git -C "$DIRTY" add note.txt
+git -C "$DIRTY" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
+  commit -q -m note
+git -C "$DIRTY" remote add origin git@example.invalid:private.git
+git -C "$DIRTY" remote add secondary git@example.invalid:public.git
+git -C "$DIRTY" update-ref refs/remotes/origin/main HEAD
+DIRTY_SHA="$(git -C "$DIRTY" rev-parse HEAD)"
+
+# label remote url expected-exit
+real_checker_case() {
+  local label="$1" out actual
+  out="$(
+    cd "$DIRTY" || exit 99
+    printf 'refs/heads/main %s refs/heads/main %s\n' "$DIRTY_SHA" "$ZERO" \
+      | HUB_GATE_CMD=true HUB_PUBLIC_CONTENT_CMD="node $REPO_ROOT/scripts/public-content-check.mjs" \
+        sh -e "$HOOK" "$2" "$3" 2>&1
+    echo "HOOK_EXIT=$?"
+  )"
+  actual="$(printf '%s\n' "$out" | grep '^HOOK_EXIT=' | tail -1)"
+  if [ "${actual#HOOK_EXIT=}" = "$4" ]; then
+    pass "$label"
+  else
+    fail "$label" "expected hook exit $4. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  fi
+}
+real_checker_case "a first push to another remote scans what origin/main holds" \
+  secondary git@example.invalid:public.git 1
+real_checker_case "a first push to a bare URL scans what origin/main holds" \
+  git@example.invalid:public.git git@example.invalid:public.git 1
+real_checker_case "a first push to origin by another push URL scans what origin/main holds" \
+  origin git@example.invalid:public.git 1
+real_checker_case "a first push to origin still skips what origin/main holds" \
+  origin git@example.invalid:private.git 0
+
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
   "publish: bbbbbbb1..aaaaaaa2"
