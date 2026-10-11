@@ -25,11 +25,12 @@ export function declare(
     readonly authority?: readonly string[];
     readonly rule?: string;
     readonly audited?: boolean;
+    readonly operands?: CommandDeclaration['operands'];
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
   return {
-    operands: WRITE_OPERANDS[name] ?? {},
+    operands: options.operands ?? WRITE_OPERANDS[name] ?? {},
     ...(options.untargetedIdentifiers === undefined
       ? {}
       : { untargetedIdentifiers: options.untargetedIdentifiers }),

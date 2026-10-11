@@ -233,8 +233,7 @@ export type CommandName =
   | 'task.add_tag'
   | 'task.remove_tag'
   | 'tag.list'
-  // A person's own agents (Assign to AI): made, renamed and listed by their
-  // owner, a member of the business. No grant is asked and no agent reaches them.
+  // A person's own agents (Assign to AI): their owner's; no grant asked, no agent reaches them.
   | 'agent.create'
   | 'agent.rename'
   | 'agent.mine'
