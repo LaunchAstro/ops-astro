@@ -143,6 +143,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
+  // Launch from the task: a person who directs the task's agent opens a run
+  // for it (`tasks-launch.ts`). Never an agent's.
+  declare('task.launch', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {

@@ -111,7 +111,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'enrolment_tokens invitation_delivery_attempts'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
   // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
   // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],

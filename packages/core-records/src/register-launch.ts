@@ -23,4 +23,30 @@ export const LAUNCH_ROWS = [
     source: 'AW-08',
     runtime: true,
   },
+  // Launch from the task: a person opens a run for the task's agent
+  // (`authority/launches.ts`). Each refusal writes nothing.
+  {
+    code: 'LAUNCH_NO_AGENT',
+    status: 409,
+    meaning: 'This task is not assigned to an AI agent, so there is nothing to launch',
+    source: 'Launch from the task',
+  },
+  {
+    code: 'LAUNCH_CLIENT_TASK',
+    status: 409,
+    meaning: 'Only internal tasks go to an AI agent for now, and this task belongs to a client',
+    source: 'Launch from the task, owner ruling 11 Oct',
+  },
+  {
+    code: 'AGENT_NOT_ACTIVE',
+    status: 409,
+    meaning: 'The agent holding this task has been switched off',
+    source: 'Launch from the task',
+  },
+  {
+    code: 'RUN_ALREADY_OPEN',
+    status: 409,
+    meaning: 'A run of this task is already open',
+    source: 'Launch from the task',
+  },
 ] as const;

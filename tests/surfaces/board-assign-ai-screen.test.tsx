@@ -54,13 +54,13 @@ const task = (id: string, key: string, over: Readonly<Record<string, unknown>>) 
 const TASKS = [
   task(OFFERED, 'TSK-1', { myAgents: [AGENT], revision: 7 }),
   task(HELD, 'TSK-2', {
-    agent: { ...AGENT, owner: ADA, live: true },
+    agent: { ...AGENT, owner: ADA, live: true, run: null },
     myAgents: [AGENT],
   }),
   task(IN_REVIEW, 'TSK-3', {
     state: { id: 's-0', key: 'needs_review', label: 'Needs review', machineCategory: 'unstarted' },
     statePosition: 1000,
-    agent: { ...AGENT, owner: ADA, live: true },
+    agent: { ...AGENT, owner: ADA, live: true, run: null },
   }),
 ];
 

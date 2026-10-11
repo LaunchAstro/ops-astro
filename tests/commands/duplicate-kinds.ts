@@ -137,6 +137,7 @@ export const DECLARED: Readonly<
   'task.propose': { carry: 'not carried', plant: 'needs a budget cap and a runtime world' },
   'task.decide': { carry: 'not carried', plant: 'needs a proposal' },
   'task.pickup': { carry: 'not carried', plant: 'needs an approved reservation' },
+  'task.launch': { carry: 'not carried', plant: 'a run of its agent, not task content' },
   'task.handback': { carry: 'not carried', plant: 'needs a lease' },
   'task.heartbeat': { carry: 'not carried', plant: 'needs a lease' },
   'task.dispatch': { carry: 'not carried', plant: 'needs a lease' },

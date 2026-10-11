@@ -25,7 +25,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
-import { enrol } from '../commands/fixture.ts';
+import { agentOwnedBy, enrol } from '../commands/fixture.ts';
 import { enrolCaller, type Caller } from './cast.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
@@ -262,6 +262,17 @@ export async function createHarness(part: string): Promise<Harness> {
       brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
       readyClass: async () =>
         await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),
+      launchableTask: async (author) => {
+        const task = await freshTask('a task its agent is launched on');
+        const owner = (author as { personId?: string } | undefined)?.personId ?? world.ada.personId;
+        const agent = await agentOwnedBy(world.db.app, world.alpha, owner as string);
+        const [row] = await world.db.admin.execute<{ readonly revision: string }>(
+          `update public.records set data = data || jsonb_build_object('agent', $2::text)
+            where id = $1 returning revision::text as revision`,
+          [task.id, agent],
+        );
+        return { ...task, revision: Number(row?.revision ?? task.revision) };
+      },
     }),
     approvedReservation,
     reserve,

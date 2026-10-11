@@ -64,6 +64,8 @@
 // The sixteenth is C52-A's `activation.adopt`, `activation.roll_back`,
 // `activation.turn_off` and `approval.revoke`: untargeted person writes no
 // agent reaches, one row each in the same three tables and the handler map.
+// Launch from the task adds `task.launch`: a targeted person write no agent
+// reaches, a row in the request and handler maps.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -154,6 +156,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (origi
   moveTask: recorder('moveTask'),
   rankTask: recorder('rankTask'),
   reparentTask: recorder('reparentTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-launch.ts', async (original) => ({
+  ...(await original<object>()),
+  launchTask: recorder('launchTask'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (original) => ({
   ...(await original<object>()),
@@ -783,6 +789,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.move', operationId: 'op', recordId: 'r', board: 'b', boardSection: 's' },
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
   { command: 'task.trash', operationId: 'op', recordId: 'r' },
+  { command: 'task.launch', operationId: 'op', recordId: 'r' },
   { command: 'task.restore', operationId: 'op', batchId: 'batch' },
   { command: 'task.purge', operationId: 'op', olderThanDays: 9 },
   {
@@ -1058,6 +1065,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],
   'task.trash': ['trashTask'],
+  'task.launch': ['launchTask'],
   'task.restore': ['restoreTasks', 'batch'],
   'task.purge': ['purgeTasks', 9],
   'settings.set_four_eyes_threshold': [

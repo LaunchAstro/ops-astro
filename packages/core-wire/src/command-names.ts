@@ -23,6 +23,8 @@ export type CommandName =
   | 'task.set_state'
   | 'task.duplicate'
   | 'task.assign'
+  // Launch from the task: a person opens a run for the task's agent.
+  | 'task.launch'
   | 'task.triage'
   | 'task.set_stage'
   | 'task.set_party'

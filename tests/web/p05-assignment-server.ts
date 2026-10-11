@@ -80,7 +80,10 @@ class AssignmentServer {
       title: TITLE,
       revision: this.#revision,
       assignee: this.#assignee,
-      agent: this.#agent === null ? null : { ...this.#agent, owner: FIRST_PERSON, live: true },
+      agent:
+        this.#agent === null
+          ? null
+          : { ...this.#agent, owner: FIRST_PERSON, live: true, run: null },
       myAgents: this.#vocabularyDenied ? [] : [OWN_AGENT],
       state: { id: 's1', key: 'todo', label: 'To do', machineCategory: 'unstarted' },
       board: null,

@@ -24,6 +24,7 @@ const HELD = {
     name: 'Reply drafter',
     owner: { personId: 'p-ada', name: 'Ada' },
     live: true,
+    run: null,
   },
 };
 

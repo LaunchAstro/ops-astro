@@ -250,6 +250,14 @@ export interface AgentAssigneeView {
   readonly owner: PersonView | null;
   /** Whether a run of this agent is in progress on the task, apart from who holds it. */
   readonly live: boolean;
+  /** The run a person launched for this agent on the task, while it is open; else null. */
+  readonly run: TaskRunView | null;
+}
+
+/** An open run of the task's agent: `waiting` until the runner takes it. */
+export interface TaskRunView {
+  readonly state: 'waiting' | 'started';
+  readonly launchedAt: string;
 }
 
 /** One agent the Assign to AI control offers the reader. */

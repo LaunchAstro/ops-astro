@@ -104,6 +104,7 @@ describe('MP-4-8 category leaves agent scope', () => {
         name: 'draft_replies',
         owner: { personId: 'p-ada', name: 'Ada' },
         live: true,
+        run: null,
       },
       myAgents: [{ agentId: 'd-mine-1', name: 'draft_replies' }],
     };

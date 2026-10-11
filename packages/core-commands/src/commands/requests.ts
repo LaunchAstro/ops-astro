@@ -79,7 +79,7 @@ export type CommandRequest =
     } & Envelope)
   | WayfinderRequest
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
-  | ({ readonly command: 'task.complete' } & Targeted)
+  | ({ readonly command: 'task.complete' | 'task.launch' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
