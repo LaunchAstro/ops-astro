@@ -196,6 +196,30 @@ export function scoped(
 
 export type SortKey = 'due' | 'task' | 'priority';
 
+/** The list's sort (PJ-05, CS-7.24): a column and its direction, kept as `todos.sort`. */
+export interface TodoSort {
+  readonly key: SortKey;
+  readonly direction: 'asc' | 'desc';
+}
+
+/** Due, earliest first: the sort with nothing stored. */
+const FIRST_SORT: TodoSort = { key: 'due', direction: 'asc' };
+
+/** The stored `todos.sort` as the list draws it; anything it cannot read is the default. */
+export function sortOf(stored: unknown): TodoSort {
+  if (typeof stored !== 'object' || stored === null) return FIRST_SORT;
+  const { key, direction } = stored as Readonly<Record<string, unknown>>;
+  const column = (['due', 'task', 'priority'] as const).find((one) => one === key);
+  if (column === undefined || (direction !== 'asc' && direction !== 'desc')) return FIRST_SORT;
+  return { key: column, direction };
+}
+
+/** A column head pressed: that column ascending, or reversed when it is already the sort. */
+export const nextSort = (current: TodoSort, key: SortKey): TodoSort => ({
+  key,
+  direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+});
+
 /** Nulls last, then the given order. */
 const nullsLast = <T>(a: T | null, b: T | null, order: (x: T, y: T) => number): number => {
   if (a === null || b === null) return (a === null ? 1 : 0) - (b === null ? 1 : 0);
@@ -206,15 +230,17 @@ const byDue = (a: TodoView, b: TodoView): number =>
   nullsLast(a.due, b.due, (x, y) => x.localeCompare(y));
 const byName = (a: TodoView, b: TodoView): number =>
   (a.title ?? a.key).localeCompare(b.title ?? b.key, 'en-AU');
-// Priority is a severity: P1 before P2, and a task with none after them all.
-const byPriority = (a: TodoView, b: TodoView): number =>
-  nullsLast(a.priority, b.priority, (x, y) => x - y) || byDue(a, b);
 
-const ORDERS: Readonly<Record<SortKey, (a: TodoView, b: TodoView) => number>> = {
-  due: (a, b) => byDue(a, b) || byName(a, b),
-  task: byName,
-  priority: byPriority,
+// Either way round, a task with no due or no priority stays last. Priority is
+// a severity: ascending is P1 before P2.
+const ORDERS: Readonly<Record<SortKey, (a: TodoView, b: TodoView, sign: number) => number>> = {
+  due: (a, b, sign) => nullsLast(a.due, b.due, (x, y) => sign * x.localeCompare(y)) || byName(a, b),
+  task: (a, b, sign) => sign * byName(a, b),
+  priority: (a, b, sign) =>
+    nullsLast(a.priority, b.priority, (x, y) => sign * (x - y)) || byDue(a, b),
 };
 
-export const sorted = (todos: readonly TodoView[], by: SortKey): readonly TodoView[] =>
-  todos.toSorted(ORDERS[by]);
+export function sorted(todos: readonly TodoView[], sort: TodoSort): readonly TodoView[] {
+  const sign = sort.direction === 'asc' ? 1 : -1;
+  return todos.toSorted((a, b) => ORDERS[sort.key](a, b, sign));
+}

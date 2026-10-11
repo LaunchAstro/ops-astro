@@ -92,6 +92,9 @@ export function serving(
     // The scope switch's teammates and clients (MP-7-2).
     if (to === '/person/list') return json({ ok: true, persons: [] });
     if (to === '/client/list') return json({ ok: true, clients: [] });
+    // The person's own sort (`todos.sort`): none stored, and a save is kept.
+    if (to === '/preference/read') return json({ preferences: {} });
+    if (to === '/preference/save') return json({ recordId: null, revision: null });
     if (refuse.includes(to)) {
       const refusal = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] };
       return json(refusal, 403);

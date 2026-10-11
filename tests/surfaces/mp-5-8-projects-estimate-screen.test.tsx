@@ -157,7 +157,12 @@ describe('MP-5-10 the estimate edits in place', () => {
     await choose(board, 'Not set');
     await settle();
     const commands = sent
-      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
+      .filter(
+        (each) =>
+          !each.url.includes('board') &&
+          !each.url.endsWith('person/list') &&
+          !each.url.endsWith('preference/read'),
+      )
       .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
     const at = { operationId: 'operation-1', expectedRevision: 7 };
     expect(commands).toStrictEqual([

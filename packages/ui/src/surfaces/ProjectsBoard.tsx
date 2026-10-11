@@ -60,6 +60,9 @@ export interface ProjectsBoardProps {
   readonly clients?: readonly string[];
   /** The page's empty state, drawn while there is no row and nothing narrows the view. */
   readonly nothing?: ReactNode;
+  /** The person's stored column widths (MP-5-6); null or absent is the defaults. */
+  readonly widths?: BoardMachineProps<ProjectRow>['widths'];
+  readonly onWidths?: BoardMachineProps<ProjectRow>['onWidths'];
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
@@ -143,6 +146,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   return (
     <BoardMachine<ProjectRow>
       hidden={props.hidden === true}
+      {...passedOn(props)}
       rows={rows}
       withheld={props.withheld ?? 0}
       columns={columns}
@@ -163,10 +167,18 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       onAddress={boardAddressChanged(setAddress, props.onAddress)}
       changedAt={props.changedAt ?? null}
       now={now}
-      {...(props.width === undefined ? {} : { width: props.width })}
-      {...(props.viewport === undefined ? {} : { viewport: props.viewport })}
     />
   );
+}
+
+/** What goes straight on to the machine: the sizes, and the person's widths to keep. */
+function passedOn(props: ProjectsBoardProps) {
+  return {
+    widths: props.widths ?? null,
+    ...(props.onWidths === undefined ? {} : { onWidths: props.onWidths }),
+    ...(props.width === undefined ? {} : { width: props.width }),
+    ...(props.viewport === undefined ? {} : { viewport: props.viewport }),
+  };
 }
 
 function rowOpeners(

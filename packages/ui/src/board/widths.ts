@@ -30,6 +30,13 @@ export function isWidth(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= MOST;
 }
 
+/** Whether two width sets hold the same width for every column, whatever their order. */
+export function sameWidths(a: ColumnWidths | null, b: ColumnWidths | null): boolean {
+  if (a === null || b === null) return a === b;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
 /**
  * Move `dx` pixels onto the column at `index` from the columns to its right.
  * Wider: each column to the right gives in proportion to its slack above its

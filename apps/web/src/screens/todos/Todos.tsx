@@ -8,11 +8,12 @@
 // teammate or a client by the switch or by the door that opened it
 // (`todo-scope.ts`, `TodoScopeSwitch.tsx`).
 //
-// Typed identities send authorised reads; local filters and sorting remain
-// view state. Only the tick sends a mutation. These choices are
-// kept above the checked read. A scope or vocabulary refresh hides the old
-// rows while permission is rechecked; completion keeps its current answer
-// while reading back. Sorting lasts for this mounted screen's session.
+// Typed identities send authorised reads; local filters remain view state.
+// The sort, chosen by the column heads, is the person's own `todos.sort`
+// preference (CS-7.24, not audited), so it is the same after a reload. Only
+// the tick sends a task mutation. These choices are kept above the checked
+// read. A scope or vocabulary refresh hides the old rows while permission is
+// rechecked; completion keeps its current answer while reading back.
 
 import { useEffect, useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
@@ -24,7 +25,8 @@ import { useRead } from '../../data/use-read.ts';
 import { BoardEditRecoveries, useBoardEdits } from '../projects/board-edit-context.tsx';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
-import { readingOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
+import { readingOf, scoped, sorted, type Chip } from './todo-list.ts';
+import { TodoHead, useTodoSort, type TodoOrder } from './TodoHead.tsx';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
 import { compactBoardAddress } from '../projects/scoped-board.ts';
@@ -61,7 +63,6 @@ function useTodoFilters(props: TodosScreenProps) {
   const [scope, setScope] = useState<TodoScope>(props.scope ?? MINE);
   const [query, setQuery] = useState('');
   const [chips, setChips] = useState<readonly Chip[]>([]);
-  const [by, setBy] = useState<SortKey>('due');
   const [focus, setFocus] = useState<string | null>(null);
   const vocabulary = useTodoVocabulary(props.client, props.grantKey, props.changes ?? 0);
   const currentChips = admittedChips(chips, vocabulary);
@@ -80,8 +81,6 @@ function useTodoFilters(props: TodosScreenProps) {
       setQuery('');
     },
     onRemove: (index: number) => setChips(chips.filter((_, at) => at !== index)),
-    by,
-    onSort: setBy,
     reading: interpretation || null,
     onClear: () => {
       setQuery('');
@@ -96,7 +95,6 @@ function useTodoFilters(props: TodosScreenProps) {
     intent,
     filters,
     read,
-    by,
     focus,
     setFocus,
     tools,
@@ -115,13 +113,13 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
     intent,
     filters,
     read,
-    by,
     focus,
     setFocus,
     tools,
     setChips,
     setQuery,
   } = useTodoFilters(props);
+  const order = useTodoSort(props.client, props.grantKey);
   const onDependency = useTodoDependencies(props, read, vocabulary, intent);
   return (
     <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
@@ -144,7 +142,7 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
           onDependency={onDependency}
           body={read.body}
           filters={filters}
-          by={by}
+          order={order}
           focus={focus}
           onFocus={setFocus}
         />
@@ -185,7 +183,7 @@ type ScopedTodosProps = TodosScreenProps & {
   readonly scope: TodoScope;
   readonly body: Readonly<Record<string, string>>;
   readonly filters: readonly Chip[];
-  readonly by: SortKey;
+  readonly order: TodoOrder;
   readonly focus: string | null;
   readonly onFocus: (key: string | null) => void;
   readonly onDependency: TodoDependency;
@@ -206,7 +204,7 @@ function ScopedTodos(props: ScopedTodosProps): ReactElement {
       {(value) => {
         const rows = sorted(
           scoped(narrowed(value.todos, props.scope), props.filters, props.focus, today),
-          props.by,
+          props.order.sort,
         );
         return (
           <>
@@ -219,6 +217,7 @@ function ScopedTodos(props: ScopedTodosProps): ReactElement {
             )}
             <div className="dp__list">
               <div className="tl">
+                <TodoHead order={props.order} />
                 <TodoRows
                   rows={rows}
                   today={today}
