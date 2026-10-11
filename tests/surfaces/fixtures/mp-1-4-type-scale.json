@@ -277,7 +277,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".dtp__fields .tf__k, .dtp .field > .tf__k, .tpr__facts .tf__k, .agent .tf__k",
+      "selector": ".dtp__fields .tf__k, .dtp .field > .tf__k, .tpr__facts .tf__k, .agent .tf__k, .sout .tf__k",
       "ruling": "R20261012"
     },
     {
@@ -290,6 +290,10 @@
     },
     {
       "selector": ".dtp .tf__tag-chips .chip",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .sb__k",
       "ruling": "R20261012"
     },
     {

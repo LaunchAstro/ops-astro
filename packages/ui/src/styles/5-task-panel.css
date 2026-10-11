@@ -100,16 +100,18 @@
 }
 .dtp .mstrip__rank {
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
-  font: var(--type-small);
+  font: var(--type-data);
 
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  font-size: 13px;
   line-height: 1.35;
 }
 .dtp__fields .tf__k,
 .dtp .field > .tf__k,
 .tpr__facts .tf__k,
-.agent .tf__k {
+.agent .tf__k,
+.sout .tf__k {
   /* type-exception R20261012: measured Hub field labels use regular mono at 12px. */
   font: var(--type-data);
   letter-spacing: 0.02em;
@@ -289,6 +291,15 @@
   font: var(--type-data);
   text-transform: var(--type-data-case);
   letter-spacing: var(--type-data-tracking);
+}
+.dtp__link > a {
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.dtp .sb__k {
+  /* type-exception R20261012: reference task section tracking. */
+  letter-spacing: 0.02em;
 }
 .dtp .cmtabs {
   border: 0;

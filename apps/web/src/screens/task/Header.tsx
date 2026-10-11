@@ -57,7 +57,13 @@ export function TaskHeader(props: {
             Projects →
           </a>
         )}
-        <span data-crumb="board">{boardWords(task.board)}</span>
+        {boardAddress !== null && task.board?.readable ? (
+          <a className="tpr__board" data-crumb="board" href={boardAddress}>
+            {boardWords(task.board)}
+          </a>
+        ) : (
+          <span data-crumb="board">{boardWords(task.board)}</span>
+        )}
         <CategoryCrumb category={task.category ?? null} />
         <span aria-hidden="true">·</span>
         <span className="sbact__meta" data-crumb="key">
