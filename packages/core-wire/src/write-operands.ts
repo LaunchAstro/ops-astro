@@ -125,6 +125,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
   'settings.set_conversation_window': { value: 'any', expectedRevision: 'any' },
   'settings.set_retention_window': { value: 'any', expectedRevision: 'any' },
+  'settings.set_priority_stages': { value: 'any', expectedRevision: 'any' },
   'privacy.record_incident': {
     whatHappened: 'any',
     foundAt: 'any',

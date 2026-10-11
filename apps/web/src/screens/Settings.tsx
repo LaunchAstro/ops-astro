@@ -54,6 +54,7 @@ import { useSettings, type StorageLike, type Which } from './settings/use-settin
 import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
+import { PriorityStagesRow } from './settings/priority-stages-row.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -266,6 +267,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             {conflictFor('sign-off')}
           </div>
 
+          <PriorityStagesRow model={model} conflict={conflictFor('priority')} />
           <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>

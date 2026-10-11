@@ -190,6 +190,7 @@ export const DECLARED: Readonly<
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },
   'settings.set_conversation_window': { carry: 'not carried', plant: 'a business setting' },
   'settings.set_retention_window': { carry: 'not carried', plant: 'a business setting' },
+  'settings.set_priority_stages': { carry: 'not carried', plant: 'a business setting' },
   'privacy.record_incident': { carry: 'not carried', plant: 'the privacy register, not a task' },
   'privacy.set_overseas_service': { carry: 'not carried', plant: 'the privacy register' },
   'privacy.set_data_class': { carry: 'not carried', plant: 'the privacy register' },

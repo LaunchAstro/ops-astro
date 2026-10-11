@@ -26,7 +26,7 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
-import { setNotificationChannel } from './settings-write.ts';
+import { setNotificationChannel } from './settings-notification.ts';
 import { setting } from './handlers-setting.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
@@ -147,6 +147,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_money_step_up': setting,
   'settings.set_conversation_window': setting,
   'settings.set_retention_window': setting,
+  'settings.set_priority_stages': setting,
 
   'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
   'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),

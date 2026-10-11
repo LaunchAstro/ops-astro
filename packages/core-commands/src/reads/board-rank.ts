@@ -29,13 +29,17 @@ export async function readRanks(
 ): Promise<ReadonlyMap<string, RankView>> {
   const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
-            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
+            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease, r.txt_5 as stage,
+            priority.value as priority_stages,
             coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
               and not (r.data ? 'archived_at') as open,
             (r.data ->> 'started_at')::timestamptz as started_at, now() as now
        from public.records r
        left join public.records s
          on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
+       left join public.business_settings priority
+         on priority.business_id = r.business_id and priority.key = 'priority_stages'
+        and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and ($3::uuid[] is null or r.id = any($3::uuid[]))`,
     [tx.businessId, taskTypeId, readable],

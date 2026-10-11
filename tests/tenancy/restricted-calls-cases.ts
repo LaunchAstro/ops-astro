@@ -251,6 +251,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
   ...MANDATE_EXECUTES,
+  'public.priority_stage_ids_valid',
 ];
 
 /** What the server said, reduced to what a contract can name. */
