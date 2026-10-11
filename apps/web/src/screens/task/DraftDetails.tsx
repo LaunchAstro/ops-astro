@@ -15,17 +15,13 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { TASK_STAGES, type TaskBoardResult } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import type { TaskDraft } from './task-draft.ts';
+import { Select, type Choice } from './DraftSelect.tsx';
 
 interface Props {
   readonly client: OperationsClient;
   readonly draft: TaskDraft;
   readonly put: (next: Partial<TaskDraft>) => void;
   readonly locked: boolean;
-}
-
-interface Choice {
-  readonly id: string;
-  readonly title: string;
 }
 
 const STAGES: readonly Choice[] = TASK_STAGES.list().map((stage) => ({
@@ -65,42 +61,6 @@ export function DraftDetails(props: Props): ReactElement {
       <Words id="panel-draft-description" label="Description" {...props} field="description" />
       <Words id="panel-draft-brief" label="Agent brief" {...props} field="agentBrief" />
     </>
-  );
-}
-
-function Select(props: {
-  readonly id: string;
-  readonly label: string;
-  readonly locked: boolean;
-  readonly value: string | null;
-  readonly choices: readonly Choice[];
-  readonly none?: string;
-  readonly onChoose: (value: string | null) => void;
-  readonly onFocus?: () => void;
-}): ReactElement {
-  return (
-    <div className="field">
-      <label className="tf__k" htmlFor={props.id}>
-        {props.label}
-      </label>
-      <select
-        id={props.id}
-        className="input"
-        disabled={props.locked}
-        value={props.value ?? ''}
-        onFocus={props.onFocus}
-        onChange={(event) => {
-          props.onChoose(event.target.value === '' ? null : event.target.value);
-        }}
-      >
-        <option value="">{props.none ?? 'Not set'}</option>
-        {props.choices.map((choice) => (
-          <option key={choice.id} value={choice.id}>
-            {choice.title}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }
 

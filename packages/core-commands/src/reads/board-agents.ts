@@ -23,6 +23,16 @@ export interface RowAgents {
 
 export const NO_AGENTS: RowAgents = { agent: null, myAgents: [] };
 
+/** The agents the reader may hand a task to, whatever rows are served; none for an agent reader (null). */
+export async function readerAgents(
+  tx: TenantQuery,
+  reader: string | null,
+): Promise<readonly AgentOfferView[]> {
+  return reader === null
+    ? []
+    : await directableAgents(tx, reader, await personSubjects(tx, reader));
+}
+
 /** Each served row's agent and the reader's choices for it; none for an agent reader (null). */
 export async function readBoardAgents(
   tx: TenantQuery,
@@ -31,7 +41,7 @@ export async function readBoardAgents(
 ): Promise<ReadonlyMap<string, RowAgents>> {
   const found = new Map<string, RowAgents>();
   if (reader === null || taskIds.length === 0) return found;
-  const myAgents = await directableAgents(tx, reader, await personSubjects(tx, reader));
+  const myAgents = await readerAgents(tx, reader);
   for (const taskId of taskIds) found.set(taskId, { agent: null, myAgents });
   for (const [taskId, agent] of await heldAgents(tx, taskIds)) {
     found.set(taskId, { agent, myAgents });

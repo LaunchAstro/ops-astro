@@ -48,6 +48,7 @@ import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
 import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
+import { readerAgents } from './board-agents.ts';
 import { parseNoCostOperands, readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
@@ -348,7 +349,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
-      // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
+      // narrows to (MP-5-12), `owed` their own count as `inbox.count` gives it,
+      // and `myAgents` the agents they may hand a task to (the new-task draft's offers).
       const { detail, limit, page: cursor } = operands;
       const paging = {
         ...(detail === undefined ? {} : { detail }),
@@ -359,9 +361,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (page !== undefined) return page;
       const viewer = session.personId;
       const owed = await countOwed(tx, viewer, subjectsOf(session));
+      const myAgents = await readerAgents(tx, viewer);
       return scope.business
-        ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
-        : { ok: true, tasks, changedAt, viewer, owed };
+        ? { ok: true, tasks, changedAt, viewer, owed, myAgents, withheld: 0 }
+        : { ok: true, tasks, changedAt, viewer, owed, myAgents };
     },
   },
   // The grant is asked by the search, not here: a record-scoped reader is

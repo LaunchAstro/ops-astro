@@ -118,6 +118,7 @@ const REVISES = new Set<DraftPart['kind']>([
   'details',
   'category',
   'assignment',
+  'agent',
 ]);
 interface Written {
   readonly answer: Settlement;

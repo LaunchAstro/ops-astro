@@ -710,6 +710,8 @@ export interface TaskBoardResult {
   readonly viewer: string;
   /** The caller's owed count, INB-1's one count, as `inbox.count` gives it: Review's count (MP-5-12). */
   readonly owed: number;
+  /** The agents the caller may hand a task to, whatever rows are served: the new-task draft's offers (U112); absent on a paged answer. */
+  readonly myAgents?: readonly AgentOfferView[];
 }
 
 /**

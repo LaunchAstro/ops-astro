@@ -9,6 +9,7 @@ export type DraftPart =
   | { readonly kind: 'details'; readonly operationId: string; readonly fields: DraftDetails }
   | { readonly kind: 'category'; readonly operationId: string; readonly category: string }
   | { readonly kind: 'assignment'; readonly operationId: string; readonly assigneeId: string }
+  | { readonly kind: 'agent'; readonly operationId: string; readonly agentId: string }
   | { readonly kind: 'note'; readonly operationId: string; readonly body: string }
   | {
       readonly kind: 'tag';
@@ -65,7 +66,9 @@ export function draftRecipe(
     parts.push({ kind: 'details', operationId: id(), fields: details });
   if (draft.category !== null)
     parts.push({ kind: 'category', operationId: id(), category: draft.category });
-  if (draft.owner !== null)
+  if (draft.owner?.agent === true)
+    parts.push({ kind: 'agent', operationId: id(), agentId: draft.owner.id });
+  else if (draft.owner !== null)
     parts.push({ kind: 'assignment', operationId: id(), assigneeId: draft.owner.id });
   if (draft.note.trim() !== '')
     parts.push({ kind: 'note', operationId: id(), body: draft.note.trim() });
@@ -120,6 +123,8 @@ export function partLabel(part: DraftPart): string {
       return 'the category';
     case 'assignment':
       return 'the owner';
+    case 'agent':
+      return 'the AI owner';
     case 'note':
       return 'the note';
     case 'tag':
@@ -152,10 +157,13 @@ const OPERAND: Readonly<Record<string, string>> = {
   stage: 'stage',
   category: 'category',
   assignment: 'assigneeId',
+  agent: 'agentId',
   note: 'body',
   child: 'title',
   time: 'duration',
 };
+/** The parts whose operand is an identifier. */
+const UUID_OPERANDS = new Set<unknown>(['party', 'board', 'assignment', 'agent']);
 export function draftPart(value: unknown): value is DraftPart {
   if (!record(value)) return false;
   const kind = value['kind'];
@@ -180,8 +188,7 @@ export function draftPart(value: unknown): value is DraftPart {
     !text(value[operand])
   )
     return false;
-  if ((kind === 'party' || kind === 'board' || kind === 'assignment') && !isUuid(value[operand]))
-    return false;
+  if (UUID_OPERANDS.has(kind) && !isUuid(value[operand])) return false;
   return kind !== 'time' || value['source'] === 'typed' || value['source'] === 'timer';
 }
 export function isDraftBody(value: unknown): value is DraftBody {

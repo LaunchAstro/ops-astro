@@ -37,6 +37,8 @@ export function phaseCommand(
       return owned('task.set_category', part.operationId, { category: part.category });
     case 'assignment':
       return owned('task.assign', part.operationId, { assignee: part.assigneeId });
+    case 'agent':
+      return owned('task.assign', part.operationId, { agent: part.agentId });
     case 'note':
       return command(
         'task.comment',
