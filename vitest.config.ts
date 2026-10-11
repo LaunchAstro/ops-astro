@@ -127,6 +127,7 @@ const config: ViteUserConfig = defineConfig({
             'tests/commands/priority-stages.test.ts',
             'tests/reads/priority-stage-rank.test.ts',
             'tests/reads/priority-stage-snapshot.test.ts',
+            'tests/reads/priority-stages-live-digest.test.ts',
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/api/server-entry-hosted-sign-in-key.test.ts',
             'tests/review/forwarder-replay-time-order.test.ts',
