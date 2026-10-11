@@ -40,7 +40,11 @@ export type LaunchResult =
 export const launchPurpose = (taskId: string): string =>
   `launch_${taskId.toLowerCase().replaceAll('-', '')}`;
 
-export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promise<LaunchResult> {
+/**
+ * The task's open launch, under its row lock: a refusal while its delegation
+ * stands, else ended here so a fresh one may open. None, undefined.
+ */
+async function closeLapsed(tx: TenantQuery, taskId: string): Promise<CommandRefusal | undefined> {
   const open = await tx.query<{ readonly id: string; readonly live: boolean }>(
     `select l.id, (d.revoked_at is null and d.settled_at is null
                    and d.expires_at > clock_timestamp()) as live
@@ -48,29 +52,31 @@ export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promis
        join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
       where l.business_id = $1 and l.task_id = $2 and l.state <> 'ended'
       for update of l`,
-    [tx.businessId, request.taskId],
+    [tx.businessId, taskId],
   );
   const held = open[0];
-  if (held?.live === true) {
-    return {
-      ok: false,
-      refusal: refuseCommand(
-        'RUN_ALREADY_OPEN',
-        [],
-        [
-          'A run of this task is already open, so it was not launched again.',
-          'Wait for it to finish, or stop it, then launch again.',
-        ],
-      ),
-    };
-  }
-  if (held !== undefined) {
-    await tx.query(
-      `update public.task_launches set state = 'ended', ended_at = clock_timestamp()
-        where business_id = $1 and id = $2`,
-      [tx.businessId, held.id],
+  if (held === undefined) return undefined;
+  if (held.live) {
+    return refuseCommand(
+      'RUN_ALREADY_OPEN',
+      [],
+      [
+        'A run of this task is already open, so it was not launched again.',
+        'Wait for it to finish, or stop it, then launch again.',
+      ],
     );
   }
+  await tx.query(
+    `update public.task_launches set state = 'ended', ended_at = clock_timestamp()
+      where business_id = $1 and id = $2`,
+    [tx.businessId, held.id],
+  );
+  return undefined;
+}
+
+export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promise<LaunchResult> {
+  const open = await closeLapsed(tx, request.taskId);
+  if (open !== undefined) return { ok: false, refusal: open };
   const minted = await mintDelegation(tx, {
     agentActorId: request.agentActorId,
     delegatePersonId: request.personId,

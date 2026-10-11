@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Launch from the task: a person who directs the task's agent opens one waiting run under a task-scoped delegation; a task with no agent, a client's task, a switched-off agent, a caller who may not direct it, an agent caller and a second Launch are refused writing nothing; two Launches at once open one run"
+}

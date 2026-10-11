@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Launch from the task isolation: the delegation one Launch mints acts on its own task only, refused on another task, a client's task, by another agent and in another business, and a person of another business cannot launch the task; a canary title never reaches an answer"
+}

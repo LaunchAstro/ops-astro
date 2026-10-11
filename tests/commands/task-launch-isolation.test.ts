@@ -155,7 +155,12 @@ describe.skipIf(serverUrl === undefined)(
       expect(JSON.stringify(answer)).not.toContain(CANARY);
       expect(await commentsOn(other)).toBe(0);
     });
+  },
+);
 
+describe.skipIf(serverUrl === undefined)(
+  'Launch isolation: other clients, agents and businesses',
+  () => {
     it("cannot act on a client's task", async () => {
       const task = await launched('Internal launched');
       const theirs = await created(w, w.p, `Client ${CANARY}`);
@@ -177,37 +182,39 @@ describe.skipIf(serverUrl === undefined)(
       expect(codeOf(answer)).not.toBe(APPLIED);
       expect(await commentsOn(task)).toBe(0);
     });
-
-    it('cannot act in another business, and a person there cannot launch here', async () => {
-      const task = await launched(`Home ${CANARY}`);
-      const credential = await credentialFor(task);
-      const bravo = await insertBusiness(w.world.db.app, `launch-b-${randomUUID().slice(0, 8)}`);
-      await installSpine(w.world.db.app, bravo);
-      const there = await enrol(w.world.db.app, bravo, 'there');
-      await w.world.db.app.withBusiness(bravo, async (tx) => {
-        for (const action of ['read', 'write', 'comment', 'assign'] as const) {
-          // oxlint-disable-next-line no-await-in-loop -- four grants
-          await grantTo(tx, there, action);
-        }
-        await grantTo(tx, there, 'assign', undefined, false, 'agent');
-      });
-      const fromThere = await executeCommand(w.world.db.app, bravo, there.presented, 'api', {
-        command: 'task.launch',
-        operationId: randomUUID(),
-        recordId: task,
-        expectedRevision: await revisionOf(w, task),
-      } as never);
-      expect(codeOf(fromThere)).toBe('NOT_FOUND');
-      expect(JSON.stringify(fromThere)).not.toContain(CANARY);
-      const made = await executeCommand(w.world.db.app, bravo, there.presented, 'api', {
-        command: 'task.create',
-        operationId: randomUUID(),
-        fields: { title: 'Bravo task' },
-      } as never);
-      const bravoTask = (made as { recordId?: string }).recordId ?? '';
-      const crossed = await commentAs(bravo, w.world.agentSubject(), bravoTask, credential);
-      expect(codeOf(crossed)).not.toBe(APPLIED);
-      expect(JSON.stringify(crossed)).not.toContain(CANARY);
-    });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('Launch isolation: business to business', () => {
+  it('cannot act in another business, and a person there cannot launch here', async () => {
+    const task = await launched(`Home ${CANARY}`);
+    const credential = await credentialFor(task);
+    const bravo = await insertBusiness(w.world.db.app, `launch-b-${randomUUID().slice(0, 8)}`);
+    await installSpine(w.world.db.app, bravo);
+    const there = await enrol(w.world.db.app, bravo, 'there');
+    await w.world.db.app.withBusiness(bravo, async (tx) => {
+      for (const action of ['read', 'write', 'comment', 'assign'] as const) {
+        // oxlint-disable-next-line no-await-in-loop -- four grants
+        await grantTo(tx, there, action);
+      }
+      await grantTo(tx, there, 'assign', undefined, false, 'agent');
+    });
+    const fromThere = await executeCommand(w.world.db.app, bravo, there.presented, 'api', {
+      command: 'task.launch',
+      operationId: randomUUID(),
+      recordId: task,
+      expectedRevision: await revisionOf(w, task),
+    } as never);
+    expect(codeOf(fromThere)).toBe('NOT_FOUND');
+    expect(JSON.stringify(fromThere)).not.toContain(CANARY);
+    const made = await executeCommand(w.world.db.app, bravo, there.presented, 'api', {
+      command: 'task.create',
+      operationId: randomUUID(),
+      fields: { title: 'Bravo task' },
+    } as never);
+    const bravoTask = (made as { recordId?: string }).recordId ?? '';
+    const crossed = await commentAs(bravo, w.world.agentSubject(), bravoTask, credential);
+    expect(codeOf(crossed)).not.toBe(APPLIED);
+    expect(JSON.stringify(crossed)).not.toContain(CANARY);
+  });
+});

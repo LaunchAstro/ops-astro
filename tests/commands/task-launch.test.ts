@@ -71,6 +71,26 @@ const heldTask = async (by: Decider, title: string): Promise<{ task: string; age
   return { task, agent };
 };
 
+/** The task's launches, each with its delegation's reach and lifetime. */
+const launchRows = async (task: string) =>
+  await w.world.db.admin.execute<{
+    readonly state: string;
+    readonly agent: string;
+    readonly scope: string;
+    readonly person: string;
+    readonly collections: readonly string[];
+    readonly actions: readonly string[];
+    readonly hours: number;
+  }>(
+    `select l.state, l.agent_actor_id::text as agent, d.purpose_scope_id::text as scope,
+            d.delegate_person_id::text as person, d.collections, d.actions,
+            round(extract(epoch from d.expires_at - d.granted_at) / 3600)::int as hours
+       from public.task_launches l
+       join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+      where l.business_id = $1 and l.task_id = $2`,
+    [w.world.business, task],
+  );
+
 const runOf = async (by: Decider, taskId: string): Promise<unknown> =>
   ((await heldAs(w, by, taskId)) as { run?: unknown } | null)?.run;
 
@@ -83,23 +103,7 @@ describe.skipIf(serverUrl === undefined)('Launch: the click opens a run for the 
     expect(codeOf(answer)).toBe(APPLIED);
     const body = JSON.stringify(answer);
     expect(body).not.toMatch(/credential|delegation/iu);
-    const runs = await w.world.db.admin.execute<{
-      readonly state: string;
-      readonly agent: string;
-      readonly scope: string;
-      readonly person: string;
-      readonly collections: readonly string[];
-      readonly actions: readonly string[];
-      readonly hours: number;
-    }>(
-      `select l.state, l.agent_actor_id::text as agent, d.purpose_scope_id::text as scope,
-              d.delegate_person_id::text as person, d.collections, d.actions,
-              round(extract(epoch from d.expires_at - d.granted_at) / 3600)::int as hours
-         from public.task_launches l
-         join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
-        where l.business_id = $1 and l.task_id = $2`,
-      [w.world.business, task],
-    );
+    const runs = await launchRows(task);
     expect(runs).toEqual([
       {
         state: 'waiting',
@@ -148,7 +152,9 @@ describe.skipIf(serverUrl === undefined)('Launch: refused in plain words, writin
     expect(JSON.stringify(answer)).toMatch(/internal/u);
     expect(await footprint()).toEqual(before);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Launch: refused for the agent and the caller', () => {
   it('a switched-off agent', async () => {
     const { task, agent } = await heldTask(w.p, 'Agent switched off');
     await w.world.db.admin.execute(
@@ -171,7 +177,9 @@ describe.skipIf(serverUrl === undefined)('Launch: refused in plain words, writin
     expect(codeOf(await launch(reader as Decider, task))).toBe('SCOPE_NOT_GRANTED');
     expect(await footprint()).toEqual(before);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Launch: refused while a run is open', () => {
   it('an agent caller', async () => {
     const { task } = await heldTask(w.p, 'Agents do not launch');
     const before = await footprint();
@@ -209,7 +217,9 @@ describe.skipIf(serverUrl === undefined)('Launch: refused in plain words, writin
   it('two Launches at once: one run opens, the other is refused', async () => {
     const { task } = await heldTask(w.p, 'Clicked twice');
     const answers = await Promise.all([launch(w.p, task), launch(w.p, task)]);
-    expect(answers.map(codeOf).toSorted()).toEqual(['RUN_ALREADY_OPEN', APPLIED].toSorted());
+    expect(answers.map((one) => codeOf(one)).toSorted()).toEqual(
+      ['RUN_ALREADY_OPEN', APPLIED].toSorted(),
+    );
     expect(
       await count(`select count(*)::text as n from public.task_launches where task_id = $1`, task),
     ).toBe(1);

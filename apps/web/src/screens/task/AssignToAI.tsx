@@ -3,7 +3,8 @@
 // Assign to AI on the task page and the dock task panel: the agent holding
 // the task, by name and owner, and a select of the agents the reader may hand
 // it to (`myAgents`). Choosing one sends `task.assign` with `agent` at the
-// read revision; a landed write asks for a reread. With no agent to offer, no
+// read revision; a landed write asks for a reread. Under the held agent,
+// Launch opens a run of it (`LaunchRun.tsx`). With no agent to offer, no
 // select is drawn. The page locks it as it locks the assignee: while a write
 // is in flight or an edit unsaved.
 
@@ -12,6 +13,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { useTaskAssignment } from './assignment-context.tsx';
 import { AssignmentRecovery } from './AssignmentRecovery.tsx';
+import { LaunchRun } from './LaunchRun.tsx';
 
 export interface AssignToAIProps {
   readonly client: OperationsClient;
@@ -46,6 +48,12 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
           {held.owner === null ? null : `, owned by ${held.owner.name}`}
         </p>
       )}
+      <LaunchRun
+        client={props.client}
+        task={task}
+        busy={assignment.locked || props.disabled === true}
+        onChanged={props.onChanged}
+      />
       {task.myAgents.length === 0 ? null : (
         <AgentSelect
           id={id}

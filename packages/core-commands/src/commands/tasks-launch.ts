@@ -21,6 +21,7 @@ import {
   launchRun,
   mayDirectAgent,
   subjectsOf,
+  type RefusalCode,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
@@ -28,87 +29,94 @@ import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 
+/** One refusal of this command, writing nothing. */
+const no = (
+  code: RefusalCode,
+  names: readonly string[],
+  fixes: readonly string[],
+): HandlerOutcome => refused(refuseCommand(code, names, fixes));
+
+/** Why this task cannot be launched by anyone: no agent holds it, or it is a client's. */
+function taskRefusal(data: Readonly<Record<string, unknown>>): HandlerOutcome | undefined {
+  if (typeof data['agent'] !== 'string') {
+    return no(
+      'LAUNCH_NO_AGENT',
+      ['agent'],
+      [
+        'This task is not assigned to an AI agent, so there is nothing to launch.',
+        'Assign it to one of your agents first.',
+      ],
+    );
+  }
+  if (typeof data['client'] === 'string' && data['client'] !== '') {
+    return no(
+      'LAUNCH_CLIENT_TASK',
+      ['client'],
+      [
+        'Only internal tasks go to an AI agent for now, and this task belongs to a client.',
+        'Do this one yourself, or make it an internal task.',
+      ],
+    );
+  }
+  return undefined;
+}
+
+/** Why this caller may not launch this task's agent now, or undefined. */
+async function refusalOf(
+  tx: TenantQuery,
+  context: CommandContext,
+  data: Readonly<Record<string, unknown>>,
+): Promise<HandlerOutcome | undefined> {
+  const { session } = context;
+  if (session.credentialScope !== undefined) {
+    return no('SCOPE_NOT_GRANTED', [], ['Only a person launches a run, signed in as themselves.']);
+  }
+  const unlaunchable = taskRefusal(data);
+  if (unlaunchable !== undefined) return unlaunchable;
+  const agent = String(data['agent']);
+  const may = await mayDirectAgent(tx, session.personId, subjectsOf(session), agent);
+  if (may === 'missing') {
+    return no(
+      'AGENT_NOT_ACTIVE',
+      ['agent'],
+      [
+        'The agent holding this task has been switched off.',
+        'Assign the task to an active agent, then launch it.',
+      ],
+    );
+  }
+  if (may === 'not-yours') {
+    return no(
+      'SCOPE_NOT_GRANTED',
+      ['agent'],
+      [
+        "That agent belongs to someone else, and you may not direct other people's agents.",
+        'Ask its owner to launch it.',
+      ],
+    );
+  }
+  if (delegationCredentialKeys().ok) return undefined;
+  return no(
+    'DEPENDENCY_NOT_LANDED',
+    ['task.launch'],
+    [
+      'This deployment has no usable delegation credential key.',
+      'It is not a permission problem and retrying will not change it.',
+    ],
+  );
+}
+
 export async function launchTask(
   tx: TenantQuery,
   context: CommandContext,
 ): Promise<HandlerOutcome> {
   const { session, target } = context;
   if (target === undefined) throw new Error('launchTask: the envelope read no target');
-  if (session.credentialScope !== undefined) {
-    return refused(
-      refuseCommand(
-        'SCOPE_NOT_GRANTED',
-        [],
-        ['Only a person launches a run, signed in as themselves.'],
-      ),
-    );
-  }
-  const agent = target.data['agent'];
-  if (typeof agent !== 'string') {
-    return refused(
-      refuseCommand(
-        'LAUNCH_NO_AGENT',
-        ['agent'],
-        [
-          'This task is not assigned to an AI agent, so there is nothing to launch.',
-          'Assign it to one of your agents first.',
-        ],
-      ),
-    );
-  }
-  const client = target.data['client'];
-  if (typeof client === 'string' && client !== '') {
-    return refused(
-      refuseCommand(
-        'LAUNCH_CLIENT_TASK',
-        ['client'],
-        [
-          'Only internal tasks go to an AI agent for now, and this task belongs to a client.',
-          'Do this one yourself, or make it an internal task.',
-        ],
-      ),
-    );
-  }
-  const may = await mayDirectAgent(tx, session.personId, subjectsOf(session), agent);
-  if (may === 'missing') {
-    return refused(
-      refuseCommand(
-        'AGENT_NOT_ACTIVE',
-        ['agent'],
-        [
-          'The agent holding this task has been switched off.',
-          'Assign the task to an active agent, then launch it.',
-        ],
-      ),
-    );
-  }
-  if (may === 'not-yours') {
-    return refused(
-      refuseCommand(
-        'SCOPE_NOT_GRANTED',
-        ['agent'],
-        [
-          "That agent belongs to someone else, and you may not direct other people's agents.",
-          'Ask its owner to launch it.',
-        ],
-      ),
-    );
-  }
-  if (!delegationCredentialKeys().ok) {
-    return refused(
-      refuseCommand(
-        'DEPENDENCY_NOT_LANDED',
-        ['task.launch'],
-        [
-          'This deployment has no usable delegation credential key.',
-          'It is not a permission problem and retrying will not change it.',
-        ],
-      ),
-    );
-  }
+  const refusal = await refusalOf(tx, context, target.data);
+  if (refusal !== undefined) return refusal;
   const launched = await launchRun(tx, {
     taskId: target.id,
-    agentActorId: agent,
+    agentActorId: String(target.data['agent']),
     personId: session.personId,
     actorId: session.actorId,
   });
