@@ -73,7 +73,7 @@ afterEach(async () => {
   page = undefined;
 });
 
-describe('#1230 the top bar spans the window while a side panel is open', () => {
+describe('the top bar spans the window while a side panel is open', () => {
   it('above 900 the strip is fixed from the rail to the window edge, on its dark ground', () => {
     const wide = wideBlocks();
     const strip = declarations(wide, '.appbar');

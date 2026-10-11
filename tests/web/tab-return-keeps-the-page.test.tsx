@@ -102,7 +102,7 @@ afterEach(async () => {
 const loadingLines = (page: Mounted): readonly string[] =>
   page.all('[data-outcome="loading"][role="status"]').map((each) => each.textContent);
 
-describe('#1229 coming back to the tab keeps the page as it was drawn', () => {
+describe('coming back to the tab keeps the page as it was drawn', () => {
   it('an empty Projects board re-reads in place: its empty voice stays drawn', async () => {
     const answers = server();
     const { view } = await open('/projects/', { fetch: answers.fetch });
