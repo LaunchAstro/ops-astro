@@ -86,6 +86,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(offered).not.toContain(w.q.personId);
       expect(await decide(w, a, gate)).toBe('FOUR_EYES_REQUIRED');
       expect(await decide(w, w.q, gate)).toBe('FOUR_EYES_REQUIRED');
+      expect(await awaitsOnBoard(a, task)).toBe(false);
     });
 
     it('the proposal keeps its launcher out after the launch ends and the owner launches again', async () => {
