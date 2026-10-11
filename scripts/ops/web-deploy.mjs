@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The staging web deploy's command (ticket S0-6). The decisions are in
-// `web-deploy.ts`; this file wires them to the person running it.
+// The web deploy's command (ticket S0-6), staging's unless `--production`.
+// The decisions are in `web-deploy.ts`; this file wires them to the person
+// running it.
 //
 // Usage (the runbook sets the environment, the operator runs it, signed in to
-// Vercel as themself; VERCEL_ORG_ID and VERCEL_PROJECT_ID name staging's
-// project):
-//   node scripts/ops/web-deploy.mjs --version <id> --artefacts <store>
-//   node scripts/ops/web-deploy.mjs --maintenance
+// Vercel as themself; VERCEL_ORG_ID and VERCEL_PROJECT_ID name the
+// environment's project):
+//   node scripts/ops/web-deploy.mjs --version <id> --artefacts <store> [--production]
+//   node scripts/ops/web-deploy.mjs --maintenance [--production]
+//
+// `--production` deploys to production (deploy/production/README.md): its
+// database and sign-in addresses must be production's project, never
+// staging's, and production's own preflight replaces made-up-only.
 //
 // `--maintenance` puts the maintenance page on the main address (`maintenance
 // recorded`); deploying a version again takes it off.
@@ -21,7 +26,7 @@
 // refused or failed, 2 when the arguments are unusable.
 
 import { parseArgs } from 'node:util';
-import { stagingSigns } from './deploy.ts';
+import { preflightFor } from './deploy.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { deployMaintenance, deployWeb } from './web-deploy.ts';
 
@@ -38,6 +43,7 @@ try {
       version: { type: 'string' },
       artefacts: { type: 'string' },
       maintenance: { type: 'boolean' },
+      production: { type: 'boolean' },
     },
   }));
 } catch (error) {
@@ -50,16 +56,17 @@ if (values.maintenance ? (values.version ?? values.artefacts) : !both) {
   process.exit(2);
 }
 
+const environment = values.production ? 'production' : 'staging';
 const outcome = values.maintenance
   ? await deployMaintenance({ env: process.env })
   : await deployWeb(
       { version: values.version, store: values.artefacts },
-      { env: process.env, preflight: stagingSigns },
+      { env: process.env, preflight: preflightFor(environment), environment },
     );
 if (outcome.kind !== 'deployed') {
   console.error(`web-deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
   process.exit(1);
 }
 const serves = values.maintenance ? 'the maintenance page' : outcome.record.version;
-console.log(`web-deploy: staging serves ${serves} at ${outcome.record.deployment}`);
+console.log(`web-deploy: ${environment} serves ${serves} at ${outcome.record.deployment}`);
 console.log(JSON.stringify(await recordDeployment(gate, outcome.record)));

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Staging's database logins (ticket S0-1, STAGING-PREP B3). Hosted staging has
-// no container that makes the product's logins (`scripts/local/db-up.sh` does
-// it locally), so a person makes them with `staging-logins.mjs`, run twice:
+// Staging's database logins (ticket S0-1, STAGING-PREP B3), and production's
+// with `--production`. A hosted project has no container that makes the
+// product's logins (`scripts/local/db-up.sh` does it locally), so a person
+// makes them with `staging-logins.mjs`, run twice:
 //
 // - `before-reset`: the group the migrations grant to (`ops_astro_app`) and the
 //   runtime login in it, which the reset and the Vercel function use;
@@ -14,9 +15,13 @@
 // jobs. A password leaves this process only in the address written to the
 // owner's folder; the database is sent its SCRAM verifier. The decisions are
 // here; `staging-logins.mjs` runs them. Nothing it prints carries a value.
+//
+// Production's run makes the same logins in the same groups. Each run acts on
+// its own project alone: staging's refuses production's project, and
+// production's refuses staging's, so production's needs both references.
 
 import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
-import { databaseProject, POOLER, Refusal } from './staging-reset.ts';
+import { databaseProject, POOLER, projectRefs, Refusal } from './staging-reset.ts';
 
 export type Step = 'before-reset' | 'after-reset';
 
@@ -78,7 +83,7 @@ export const LOGINS: readonly Login[] = [
 
 type Environment = Readonly<Record<string, string | undefined>>;
 const STEPS: ReadonlySet<string> = new Set(['before-reset', 'after-reset']);
-const REF = /^[a-z]{20}$/u;
+const PRODUCTION_FLAG = '--production';
 const TLS_MODES: ReadonlySet<string> = new Set(['require', 'verify-ca', 'verify-full']);
 
 function setting(environment: Environment, name: string): string {
@@ -87,25 +92,30 @@ function setting(environment: Environment, name: string): string {
   return value;
 }
 
+/** Production's run names `--production` after its step; staging's names the step alone. */
+function isProduction(args: readonly string[]): boolean {
+  return args.length === 2 && args[1] === PRODUCTION_FLAG;
+}
+
+/** The setting holding the project the run acts on. */
+export function projectRefSetting(args: readonly string[]): string {
+  return isProduction(args) ? 'PRODUCTION_PROJECT_REF' : 'STAGING_PROJECT_REF';
+}
+
 /** Every refusal made before connecting, named by setting and never by value. */
 export function loginsRefusal(
   environment: Environment,
   args: readonly string[],
 ): string | undefined {
   try {
-    if (args.length !== 1 || !STEPS.has(args[0] ?? ''))
+    const production = isProduction(args);
+    if ((args.length !== 1 && !production) || !STEPS.has(args[0] ?? ''))
       throw new Refusal('name one step: before-reset or after-reset');
-    const staging = setting(environment, 'STAGING_PROJECT_REF');
-    if (!REF.test(staging)) throw new Refusal('STAGING_PROJECT_REF is not a project reference');
-    const production = environment['PRODUCTION_PROJECT_REF'] ?? '';
-    if (production !== '' && !REF.test(production))
-      throw new Refusal('PRODUCTION_PROJECT_REF is not a project reference');
-    if (production === staging) throw new Refusal("STAGING_PROJECT_REF is production's");
+    const { own, other, ref, otherRef } = projectRefs(environment, production);
     const adminUrl = setting(environment, 'DATABASE_ADMIN_URL');
     const project = databaseProject('DATABASE_ADMIN_URL', adminUrl);
-    if (project === production)
-      throw new Refusal("DATABASE_ADMIN_URL reaches production's project");
-    if (project !== staging) throw new Refusal("DATABASE_ADMIN_URL is not staging's project");
+    if (project === otherRef) throw new Refusal(`DATABASE_ADMIN_URL reaches ${other}'s project`);
+    if (project !== ref) throw new Refusal(`DATABASE_ADMIN_URL is not ${own}'s project`);
     // The addresses made here are the pooler's, so the admin address must name it.
     if (!POOLER.test(new URL(adminUrl).hostname.toLowerCase()))
       throw new Refusal("DATABASE_ADMIN_URL is not Supabase's pooler in Sydney");
@@ -134,7 +144,7 @@ export interface LoginAddress {
 /** A fresh password for each of the step's logins, and its pooler address. */
 export function loginAddresses(
   adminUrl: string,
-  staging: string,
+  project: string,
   step: Step,
   password: () => string = () => randomBytes(24).toString('base64url'),
 ): LoginAddress[] {
@@ -142,7 +152,7 @@ export function loginAddresses(
   return LOGINS.filter((login) => login.step === step).map((login) => {
     const secret = password();
     const address = new URL(`postgresql://${admin.hostname}`);
-    address.username = `${login.role}.${staging}`;
+    address.username = `${login.role}.${project}`;
     address.password = secret;
     address.port = String(login.port);
     address.pathname = admin.pathname;

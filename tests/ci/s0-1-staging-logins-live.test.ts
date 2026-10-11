@@ -5,7 +5,9 @@
 // `<login>.<reference>` form, with the pooler's name sent to loopback
 // (`tests/support/pooler-at-loopback.mjs`), so nothing hosted is reached. The
 // pooler's own login mapping is not there, so each address is proved by its
-// bare login and password.
+// bare login and password. Production's run (`--production`) goes last, by the
+// same admin renamed onto production's project, in this file because the logins
+// are the server's, shared by every database on it.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -36,8 +38,12 @@ const POOLER = 'aws-0-ap-southeast-2.pooler.supabase.com';
 const STAGING = Array.from(randomBytes(20), (byte) => String.fromCodePoint(97 + (byte % 26))).join(
   '',
 );
+const PRODUCTION = Array.from(randomBytes(20), (byte) =>
+  String.fromCodePoint(97 + (byte % 26)),
+).join('');
 const OWN = `own_${randomBytes(4).toString('hex')}`;
 const ADMIN = `${OWN}.${STAGING}`;
+const PRODUCTION_ADMIN = `${OWN}.${PRODUCTION}`;
 const OWN_PASSWORD = `${TEST_ONLY_MARKER}-${randomBytes(18).toString('hex')}`;
 const LOGINS = [
   'ops_astro_api',
@@ -56,14 +62,17 @@ function run(
   step: string,
   folder: string,
   allowance: readonly string[] = [`--import=${PLAINTEXT_AT_LOOPBACK}`],
+  production?: { flag: boolean; url: string },
 ): { status: number; printed: string } {
   const preloads = [`--import=${POOLER_AT_LOOPBACK}`, ...allowance];
-  const result = spawnSync(process.execPath, [...preloads, COMMAND, step], {
+  const flag = production?.flag === true ? ['--production'] : [];
+  const result = spawnSync(process.execPath, [...preloads, COMMAND, step, ...flag], {
     encoding: 'utf8',
     env: {
       PATH: process.env['PATH'] ?? '',
       STAGING_PROJECT_REF: STAGING,
-      DATABASE_ADMIN_URL: adminUrl,
+      ...(production === undefined ? {} : { PRODUCTION_PROJECT_REF: PRODUCTION }),
+      DATABASE_ADMIN_URL: production?.url ?? adminUrl,
       OPS_LOGINS_DIR: folder,
     },
   });
@@ -132,7 +141,7 @@ afterAll(async () => {
   await db?.drop();
   const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
   try {
-    for (const role of [...LOGINS, ADMIN]) {
+    for (const role of [...LOGINS, ADMIN, PRODUCTION_ADMIN]) {
       // oxlint-disable-next-line no-await-in-loop -- one role at a time
       await server.execute(`drop role if exists "${role}"`);
     }
@@ -227,4 +236,62 @@ describeLive('S0-1 staging logins after the reset, run for real', () => {
     expect(printed).toContain('ops_astro_lookup_login already holds more than its one group');
     expect(existsSync(folder)).toBe(false);
   });
+});
+
+/** The same admin, its login now on production's project, as production's own would be. */
+async function onProduction(): Promise<string> {
+  const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
+  try {
+    await server.execute(`alter role "${ADMIN}" rename to "${PRODUCTION_ADMIN}"`);
+    await server.execute(`alter role "${PRODUCTION_ADMIN}" password '${OWN_PASSWORD}'`);
+  } finally {
+    await server.close();
+  }
+  await db!.admin.execute('revoke ops_astro_backup from ops_astro_lookup_login');
+  const url = new URL(adminUrl);
+  url.username = PRODUCTION_ADMIN;
+  return url.toString();
+}
+
+describeLive('production logins, run for real', () => {
+  let productionUrl = '';
+  beforeAll(async () => {
+    productionUrl = await onProduction();
+  });
+
+  it("each run refuses the other's project, and makes nothing", () => {
+    const refusals = [
+      [true, adminUrl, "refused: DATABASE_ADMIN_URL reaches staging's project"],
+      [false, productionUrl, "refused: DATABASE_ADMIN_URL reaches production's project"],
+    ] as const;
+    for (const [flag, url, said] of refusals) {
+      const folder = join(scratch, `refused-${String(flag)}`);
+      const { status, printed } = run('before-reset', folder, undefined, { flag, url });
+      expect([status, printed.includes(said), existsSync(folder)]).toEqual([1, true, false]);
+    }
+  });
+
+  it("makes the same logins in the same groups, each address on production's project", async () => {
+    const [before, after] = [join(scratch, 'prod-before'), join(scratch, 'prod-after')];
+    const production = { flag: true, url: productionUrl };
+    expect(run('before-reset', before, undefined, production).status).toBe(0);
+    const { status, printed } = run('after-reset', after, undefined, production);
+    expect(status, printed).toBe(0);
+    const made = [
+      ['DATABASE_URL', 'ops_astro_app', before],
+      ...AFTER_RESET.map(([setting, group]) => [setting, group, after] as const),
+    ] as const;
+    for (const [setting, group, folder] of made) {
+      const address = readFileSync(join(folder, setting), 'utf8');
+      const { username, password } = new URL(address);
+      expect(decodeURIComponent(username)).toMatch(new RegExp(`\\.${PRODUCTION}$`, 'u'));
+      expect(printed).not.toContain(password);
+      // oxlint-disable-next-line no-await-in-loop -- one login at a time
+      const [row] = await asLogin<{ member: boolean }>(
+        address,
+        `select pg_has_role('${group}', 'member') as member`,
+      );
+      expect(row).toEqual({ member: true });
+    }
+  }, 120_000);
 });
