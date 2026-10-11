@@ -32,3 +32,23 @@ export async function captureAgentDetails(
     element.scrollTop = 0;
   });
 }
+
+/** A closed editor must reveal an invalid field when the external Save is used. */
+export async function captureInvalidTitle(
+  page: Page,
+  capture: (name: string) => Promise<void>,
+): Promise<void> {
+  await page.getByLabel('Edit task details', { exact: true }).click();
+  await page.locator('#task-title').fill('');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-draft-resolve=save]').click();
+  const invalidShown = await page
+    .locator('#task-title')
+    .evaluate(
+      (input) => input.closest('details')?.open === true && document.activeElement === input,
+    );
+  if (!invalidShown) throw new Error('Closed editor hides invalid title validation');
+  await capture('task-page-invalid-title');
+  await page.locator('[data-draft-resolve=discard]').click();
+  await page.keyboard.press('Escape');
+}

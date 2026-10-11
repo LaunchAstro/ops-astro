@@ -21,6 +21,10 @@ async function taskPage(props: SurfaceProps, agent = false) {
   await props.page.locator('#perspective-tab-team').waitFor();
   if (agent) await props.page.locator('#perspective-tab-agent').click();
 }
+async function taskEditor(props: SurfaceProps) {
+  await taskPage(props);
+  await props.page.getByLabel('Edit task details', { exact: true }).click();
+}
 async function draft(props: SurfaceProps) {
   await board(props);
   await props.page.locator('[data-projects-new-task]').first().click();
@@ -35,13 +39,7 @@ export function taskControlSurfaces(props: SurfaceProps): Surface[] {
     ['board', () => board(props)],
     ['team', () => props.openDrawer()],
     ['page-team', () => taskPage(props)],
-    [
-      'page-team-controls',
-      async () => {
-        await taskPage(props);
-        await props.page.getByLabel('Edit task details', { exact: true }).click();
-      },
-    ],
+    ['page-team-controls', () => taskEditor(props)],
     [
       'agent',
       async () => {

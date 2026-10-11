@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchChromium } from '../support/chromium.ts';
 import { serveApp } from './app-pages.ts';
-import { captureAgentDetails } from './task-deep-states.ts';
+import { captureAgentDetails, captureInvalidTitle } from './task-deep-states.ts';
 import { taskControlSurfaces } from './task-control-surfaces.ts';
 import { sweepControls } from './control-sweep.ts';
 import { DETAIL, STATE } from './made-up-rows.ts';
@@ -206,19 +206,7 @@ try {
     await captureAgentDetails(page, '.dpanel__body', capture, 'task-agent');
     await page.locator('[data-act=door]').last().click();
     await capture('task-page');
-    await page.getByLabel('Edit task details', { exact: true }).click();
-    await page.locator('#task-title').fill('');
-    await page.keyboard.press('Escape');
-    await page.locator('[data-draft-resolve=save]').click();
-    const invalidShown = await page
-      .locator('#task-title')
-      .evaluate(
-        (input) => input.closest('details')?.open === true && document.activeElement === input,
-      );
-    if (!invalidShown) throw new Error('Closed editor hides invalid title validation');
-    await capture('task-page-invalid-title');
-    await page.locator('[data-draft-resolve=discard]').click();
-    await page.keyboard.press('Escape');
+    await captureInvalidTitle(page, capture);
     await page.locator('#perspective-tab-agent').waitFor();
     await page.locator('#perspective-tab-agent').click();
     await capture('task-page-agent');

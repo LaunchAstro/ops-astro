@@ -6,6 +6,7 @@
 
 import { useId, type ReactElement, type ReactNode } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
+import { ChipRemove } from './chip-remove.tsx';
 
 export type MarkTone = 'ok' | 'warn' | 'bad' | 'info' | 'idle';
 
@@ -76,24 +77,6 @@ export function Chip(props: ChipProps): ReactElement {
       {props.icon === undefined ? null : <Icon name={props.icon} size="xs" />}
       {props.children}
     </span>
-  );
-}
-
-function ChipRemove(props: {
-  readonly label: string;
-  readonly disabled?: boolean | undefined;
-  readonly onRemove: () => void;
-}): ReactElement {
-  return (
-    <button
-      type="button"
-      className="chip__x"
-      aria-label={props.label}
-      disabled={props.disabled}
-      onClick={props.onRemove}
-    >
-      <Icon name="cross-small" size="xs" />
-    </button>
   );
 }
 
