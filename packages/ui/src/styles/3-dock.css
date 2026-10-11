@@ -15,9 +15,9 @@
       thing. The sheet tiers are MP-3-3's. ----------------------------------- */
 .dock {
   position: fixed;
-  /* Beside the page the dock starts at the app strip's foot (.appbar, 45px),
+  /* Beside the page the dock starts at the app strip's foot (.appbar),
      and the rail centres on what is left of the edge (DS-SIDE-1, DS-SIDE-7). */
-  top: 45px;
+  top: var(--app-strip);
   right: 0;
   bottom: 0;
   z-index: 50;

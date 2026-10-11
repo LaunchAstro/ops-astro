@@ -21,6 +21,9 @@
    ============================================================================ */
 
 .shell {
+  /* The app strip's height, measured as the mockup's (45px): the chrome
+     reserves it and the dock starts below it. */
+  --app-strip: 45px;
   display: grid;
   grid-template-columns: var(--rail-w) 1fr;
   min-height: 100vh;
@@ -387,6 +390,17 @@
     position: sticky;
     top: 0;
     z-index: 30;
+    padding-top: var(--app-strip);
+  }
+  /* The strip is about the window, not the content column (#1230, the
+     mockup's "the top bar is fixed"): fixed from the rail's edge to the
+     window's, it stays full width and dark while a seated panel narrows the
+     column, and the panel opens below it. */
+  .appbar {
+    position: fixed;
+    top: 0;
+    left: var(--rail-w);
+    right: 0;
   }
   /* A menu open in the chrome lifts it over the dock (DS-TOK-99), which
      would otherwise cover the menu's lower items (OW-127). The lift lands
