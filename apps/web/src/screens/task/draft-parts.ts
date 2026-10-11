@@ -66,7 +66,7 @@ export async function createFromDraft(
               ? created.answer.because
               : `${created.answer.because} The task may already exist: check the board before you retry.`,
         };
-  return finishDraft(client, attempt, save, prepared, created.receipt!);
+  return finishDraft(client, attempt, save, prepared, created.receipt!, recovering);
 }
 async function finishDraft(
   client: OperationsClient,
@@ -74,6 +74,7 @@ async function finishDraft(
   save: (next: Attempt) => void,
   prepared: NonNullable<ReturnType<typeof prepareDraft>>,
   base: DraftReceipt,
+  recovering: boolean,
 ): Promise<CreateOutcome> {
   const { ids, recipe } = prepared;
   let parent = { ...base, revision: attempt.revision ?? base.revision };
@@ -102,6 +103,12 @@ async function finishDraft(
       return {
         kind: 'unknown',
         because: `No answer yet for ${partLabel(part)}. Retry to finish.`,
+      };
+    // The part whose answer was lost is a replay: its refusal proves nothing about the first send.
+    if (result.answer.kind !== 'ok' && recovering && index === attempt.done)
+      return {
+        kind: 'unknown',
+        because: `${result.answer.because} The task may already have ${partLabel(part)}: check it before you retry.`,
       };
     if (result.answer.kind === 'ok') {
       if (REVISES.has(part.kind)) parent = { ...result.receipt!, key: base.key };
