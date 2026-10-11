@@ -33,6 +33,36 @@ const OPERATIONS: readonly string[] = Object.keys(HISTORY_OPERATIONS);
 /** The marks only an internal reader is sent (`scoresOf`), so only they are told one changed. */
 const INTERNAL_FIELDS: ReadonlySet<string> = new Set(['impact', 'confidence', 'ease']);
 
+/**
+ * The changed fields this reader is sent: those a history names, less the
+ * rank marks for an outside reader. Undefined where the event recorded none.
+ */
+const shownOf = (row: HistoryRow, internal: boolean): readonly string[] | undefined =>
+  row.field_changes?.keys.filter(
+    (key) => Object.hasOwn(HISTORY_FIELDS, key) && (internal || !INTERNAL_FIELDS.has(key)),
+  );
+
+/**
+ * The field writers that are an act of their own, whatever fields they wrote:
+ * a cancel or a restart writes no task field (P21), and a placement (a move, a
+ * reparent or a reorder) can change only the rank, which no history names
+ * though the reader sees the board's order change. Every other command that
+ * records its field changes is those changes and nothing more.
+ */
+const ACTS: ReadonlySet<string> = new Set([
+  'task.move',
+  'task.reparent',
+  'task.rank',
+  'task.start',
+  'task.complete',
+  'task.reopen',
+  'task.cancel',
+  'task.restart',
+  'task.claim',
+  'task.resolve',
+  'task.close_out_of_scope',
+]);
+
 // The changes only, by the closed list in `HISTORY_OPERATIONS`. Reads are
 // audited (I13) and carry the record they looked at, and comments, time
 // and run checks carry the task too, but a history is what *happened to*
@@ -104,12 +134,17 @@ export async function historyOf(
     OPERATIONS,
     INTERNAL_ROLE_KEYS,
   ]);
-  // An update's one effect is its data write, so one that changed no field did
-  // not happen to the task. Any other command with no field changed is still
-  // its own change: a cancel or a restart writes no task field (P21).
-  const changes = rows.filter(
-    (row) => row.command !== 'task.update' || row.field_changes?.keys.length !== 0,
-  );
+  // A field command's one effect is its data write, so one that changed no
+  // field this reader is sent did not happen to the task for them: a repeat of
+  // the stored value, a custom field's edit, or, to an outside reader, a
+  // rank-mark edit. An act is its own change, and an event that recorded no
+  // keys is a change unnamed, except a rank-mark command's to an outside reader.
+  const changes = rows.filter((row) => {
+    if (ACTS.has(row.command)) return true;
+    const shown = shownOf(row, internal);
+    if (shown === undefined) return internal || row.command !== 'task.set_scores';
+    return shown.length > 0;
+  });
   const history = await Promise.all(
     changes.map(async (row) => await entryOf(tx, viewer, internal, row)),
   );
@@ -129,9 +164,7 @@ async function entryOf(
   internal: boolean,
   row: HistoryRow,
 ): Promise<HistoryEntry> {
-  const shown = row.field_changes?.keys.filter(
-    (key) => Object.hasOwn(HISTORY_FIELDS, key) && (internal || !INTERNAL_FIELDS.has(key)),
-  );
+  const shown = shownOf(row, internal);
   // An agent's change is always shown as an agent's, by its actor here: an
   // agent holds no person, so there is no one behind it to withhold. A former
   // member, a client's person or the system is not named; an outside reader

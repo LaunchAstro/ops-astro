@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1206 (Sol proof): a custom-only task.update with no projected keys is left out of an agent's history and its lookup is null"
+}

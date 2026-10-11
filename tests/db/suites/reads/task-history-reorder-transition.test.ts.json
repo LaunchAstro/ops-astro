@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1206 (Sol proof): a task.rank reorder, which writes only board_rank, keeps its history transition and its lookup"
+}

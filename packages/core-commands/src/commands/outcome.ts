@@ -55,6 +55,12 @@ export const FIELD_WRITES: readonly CommandName[] = [
   'task.close_out_of_scope',
 ];
 
+/** A record a command changed besides the one it names, and what changed. */
+export interface CarriedWrite {
+  readonly recordId: string;
+  readonly fieldChanges: FieldChanges;
+}
+
 export interface Applied {
   /** The record the command touched, or null where it touched no single one. */
   readonly recordId: string | null;
@@ -72,6 +78,12 @@ export interface Applied {
   readonly auditSubjectId?: string;
   /** Set only by a field writer: what its write changed (`appliedWrite`), or none (`appliedUnwritten`). */
   readonly fieldChanges?: FieldChanges;
+  /**
+   * The other records the write changed, each with what it changed: a moved
+   * task's descendants, which take its board. Each gets an applied audit event
+   * of its own, so its own history shows the change (#1207).
+   */
+  readonly carried?: readonly CarriedWrite[];
   /**
    * The act ended the caller's own access (C58, a manager ending their own),
    * so the envelope asks only whether the caller's session ended after it: the
