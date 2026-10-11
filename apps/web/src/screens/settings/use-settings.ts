@@ -132,8 +132,8 @@ export function useSettings(
   const closed = closedBy !== null && desk.owns(closedBy);
   const conflict = stale !== null && desk.owns(stale.tag) ? stale.is : null;
   const [said, setSaid] = useState<{ readonly tag: Tag; readonly text: string } | null>(null);
-  // Each row's confirmed saves, so a row's draft ends when one lands.
-  const [landed, setLanded] = useState<Partial<Record<Which, number>>>({});
+  // The revision each row's newest confirmed save wrote, so its draft ends once a read shows it.
+  const [wrote, setWrote] = useState<Partial<Record<Which, number>>>({});
   const complaint = said !== null && desk.owns(said.tag) ? said.text : null;
   const setComplaint = (text: string | null): void => {
     setSaid(text === null ? null : { tag: desk.save(), text });
@@ -207,7 +207,7 @@ export function useSettings(
     }
     if (settlement.kind !== 'ok') return;
     setConflict(null);
-    setLanded((was) => ({ ...was, [which]: (was[which] ?? 0) + 1 }));
+    setWrote((was) => ({ ...was, [which]: settlement.value.revision }));
     const kept = remember(which, settlement.value.detail?.['value'], value);
     // A session refused the read keeps nothing until a read answers it. The
     // hold is judged as it stands now, not as it stood when Save was pressed:
@@ -281,7 +281,8 @@ export function useSettings(
     stepUp: prompt,
     conflict,
     rowFor,
-    draftKey: (which) => `${businessKey}\n${grantKey}\n${String(landed[which] ?? 0)}`,
+    ownerKey: `${businessKey}\n${grantKey}`,
+    wrote: (which) => wrote[which],
     save,
     writeOver: () => {
       // Only over what the reread showed: never while it is in flight, and

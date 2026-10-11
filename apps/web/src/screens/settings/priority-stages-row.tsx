@@ -11,27 +11,44 @@ import type { SettingsModel } from './use-settings.ts';
 
 const JOURNEY = TASK_STAGES.list().filter((stage) => !stage.internal);
 
+interface Ticked {
+  readonly owner: string;
+  readonly since: number | undefined;
+  readonly ids: readonly string[];
+}
+
+/**
+ * What this owner has ticked, or the business's stages. A switch drops it, and
+ * so does a read showing a save confirmed after it was ticked; until that read
+ * answers, a pending or failed one included, it is what was saved (#1204).
+ */
+function usePriorityDraft(
+  model: SettingsModel,
+): readonly [readonly string[], (id: string, on: boolean) => void] {
+  const row = model.rowFor('priority');
+  const value = row?.value;
+  const held: readonly string[] = Array.isArray(value) ? value : [];
+  const owner = model.ownerKey;
+  const wrote = model.wrote('priority');
+  const shown = wrote !== undefined && row?.revision !== undefined && row.revision >= wrote;
+  const [ticked, setTicked] = useState<Ticked | null>(null);
+  const kept = ticked !== null && ticked.owner === owner && (ticked.since === wrote || !shown);
+  if (ticked !== null && !kept) setTicked(null);
+  const chosen = kept ? ticked.ids : held;
+  const toggle = (id: string, on: boolean): void => {
+    const ids = JOURNEY.filter((stage) => (stage.id === id ? on : chosen.includes(stage.id)));
+    setTicked({ owner, since: wrote, ids: ids.map((stage) => stage.id) });
+  };
+  return [chosen, toggle];
+}
+
 export function PriorityStagesRow(props: {
   readonly model: SettingsModel;
   readonly conflict: ReactElement | null;
 }): ReactElement {
   const { model } = props;
   const row = model.rowFor('priority');
-  const value = row?.value;
-  const held: readonly string[] = Array.isArray(value) ? value : [];
-  // What this owner has ticked since their last confirmed save, or the
-  // business's stages. A switch or a confirmed save drops it (#1186).
-  const key = model.draftKey('priority');
-  const [ticked, setTicked] = useState<{
-    readonly key: string;
-    readonly ids: readonly string[];
-  } | null>(null);
-  if (ticked !== null && ticked.key !== key) setTicked(null);
-  const chosen = ticked !== null && ticked.key === key ? ticked.ids : held;
-  const toggle = (id: string, on: boolean): void => {
-    const ids = JOURNEY.filter((stage) => (stage.id === id ? on : chosen.includes(stage.id)));
-    setTicked({ key, ids: ids.map((stage) => stage.id) });
-  };
+  const [chosen, toggle] = usePriorityDraft(model);
   const disabled = model.disabledFor('priority');
   return (
     <div className="setrow" data-set="priority">

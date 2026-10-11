@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "A task reader without settings access, whose only task is unscored, keeps the same live board digest when a priority stage write weights that task, because none of their visible ranks change, in an owned fresh database."
+}
