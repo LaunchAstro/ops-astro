@@ -2,8 +2,9 @@
 //
 // P11: a change to the business's priority stages reaches every open board
 // through the board's own live stream, at once, not on its 30-second recheck.
-// The digest (`boardReach`) takes the setting's revision while its reader
-// reads a task, and the write itself says so on the live channel.
+// The digest (`boardReach`) takes which of its reader's tasks the setting
+// weights, so a change that re-weights none of them says nothing, and the
+// write itself says so on the live channel.
 
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { followBoard } from '../../apps/api/live-board.ts';
@@ -80,14 +81,35 @@ it('another business, another setting and a reader with no task leave the digest
   await change(['sales'], w.foreign);
   priorityApplied(await rankCommand(w, { command: 'settings.set_retention_window', value: 31 }));
   expect(await reach()).toBe(owner);
-  await change(['sales']);
+  await change(['trust']);
   expect(await reach(empty)).toBe(nobody);
   expect(await reach()).not.toBe(owner);
 });
 
+it('a task-only reader is told nothing of a change that re-weights none of their tasks', async () => {
+  const w = here();
+  await change([]);
+  const theirs = await priorityTask(w, 'trust');
+  await priorityTask(w, 'sales');
+  const reader = await enrol(w.db.app, w.business, 'p11-task-only-reader');
+  await w.db.app.withBusiness(w.business, (tx) =>
+    grantTo(tx, reader, 'read', { kind: 'record', id: theirs.id }),
+  );
+  expect(await joinLiveBoard(w.db.app, w.business, reader.presented)).toStrictEqual({
+    personId: reader.personId,
+  });
+  const before = await reach(reader);
+  const owner = await reach();
+  await change(['sales']);
+  expect(await reach(reader)).toBe(before);
+  expect(await reach()).not.toBe(owner);
+  await change(['sales', 'trust']);
+  expect(await reach(reader)).not.toBe(before);
+});
+
 it('the write tells only its own business, and an open board says resync without its recheck', async () => {
   const w = here();
-  await priorityTask(w, 'trust');
+  await priorityTask(w, 'enquiries');
   const topics = await startLiveTopics(connectListener(w.db.appUrl));
   const ours: BoardSignal[] = [];
   const theirs: BoardSignal[] = [];
