@@ -30,8 +30,7 @@
 // **Escape closes the panel, never a control's Escape.** A key that started in
 // a field, a select or a text box is that control's (TR-A3-3).
 
-import { Icon, usePanelToolbar } from '@launchastro/ui';
-import { createPortal } from 'react-dom';
+import { Icon } from '@launchastro/ui';
 import { TaskTimerBoundary, useTimerRead, useTimerState } from './task-timer-context.tsx';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -43,7 +42,6 @@ import type {
 import { hubOf } from '../../data/live.ts';
 import { taskDependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
 import { useRead } from '../../data/use-read.ts';
-import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { TaskFactStrip } from './Facts.tsx';
 import { ScoreFields } from './ScoreFields.tsx';
@@ -56,20 +54,19 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
+import { PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
-import { taskContext, type PageContext } from './task-prefill.ts';
+import { type PageContext } from './task-prefill.ts';
 import type { ClientSeams } from './client-seam.ts';
-import { PanelFields, PanelName } from './PanelFields.tsx';
+import { PanelFields } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useAssignments } from './assignment-context.tsx';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
-import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
-import { PanelBoardDoor } from './board-door.tsx';
+import { PanelHead } from './PanelHead.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -179,21 +176,7 @@ function PanelBody(
         name="panel-perspective"
         before={
           <>
-            <div className="dtp__facts">
-              <TaskFactStrip
-                task={task}
-                handling={<HandlingTicks client={client} task={task} onChanged={props.onChanged} />}
-              />
-              <details className="field-callout dtp__scores">
-                <summary aria-label="Priority marks" title="Priority marks">
-                  <Icon name="settings-sliders" size="xs" />
-                </summary>
-                <div className="field-callout__body">
-                  <ScoreFields {...props} scope="panel" />
-                  {task.rank.calc === '' ? null : <p className="tpr__calc">{task.rank.calc}</p>}
-                </div>
-              </details>
-            </div>
+            <PanelFacts {...props} />
             <PanelFields {...props} />
           </>
         }
@@ -278,61 +261,24 @@ function PanelWork(props: SideProps): ReactElement {
  * it (DP-09), its own page, and close, which the dock draws instead where it
  * hosts the panel.
  */
-function PanelHead(props: SideProps): ReactElement {
-  const { task, onNewTask } = props;
-  const toolbar = usePanelToolbar();
+
+function PanelFacts(props: SideProps): ReactElement {
+  const { client, task } = props;
   return (
-    <div className="dtp__head">
-      <h2 className="t-title" data-panel-title>
-        <PanelName client={props.client} task={task} onChanged={props.onChanged} />
-      </h2>
-      <AskDoor grantKey={props.grantKey} task={task} />
-      <TaskPin taskId={task.id} />
-      {toolbar === null ? (
-        <div className="dtp__doors">
-          <button
-            className="btn"
-            type="button"
-            data-panel-head="new"
-            disabled={onNewTask === undefined}
-            onClick={() => onNewTask?.(taskContext(task))}
-          >
-            New task
-          </button>
-          <a
-            className="btn"
-            data-panel-head="page"
-            href={pathTo('agency:task-detail', { key: task.key })}
-          >
-            Open its page
-          </a>
-          <PanelBoardDoor task={task} />
+    <div className="dtp__facts">
+      <TaskFactStrip
+        task={task}
+        handling={<HandlingTicks client={client} task={task} onChanged={props.onChanged} />}
+      />
+      <details className="field-callout dtp__scores">
+        <summary aria-label="Priority marks" title="Priority marks">
+          <Icon name="settings-sliders" size="xs" />
+        </summary>
+        <div className="field-callout__body">
+          <ScoreFields {...props} scope="panel" />
+          {task.rank.calc === '' ? null : <p className="tpr__calc">{task.rank.calc}</p>}
         </div>
-      ) : (
-        createPortal(
-          <>
-            <button
-              className="dpanel__btn"
-              type="button"
-              data-panel-head="new"
-              aria-label="New task"
-              title="New task"
-              disabled={onNewTask === undefined}
-              onClick={() => onNewTask?.(taskContext(task))}
-            >
-              <Icon name="plus" />
-            </button>
-            <PanelBoardDoor task={task} compact />
-          </>,
-          toolbar,
-        )
-      )}
-      <TaskPinsNotice />
-      {props.docked === true ? null : (
-        <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
-          Close
-        </button>
-      )}
+      </details>
     </div>
   );
 }

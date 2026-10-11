@@ -21,7 +21,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react';
-import { StepRow, StepCount } from './SubtaskRows.tsx';
+import { SubtaskRows, StepCount } from './SubtaskRows.tsx';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useShowFinished } from './show-finished.ts';
@@ -144,13 +144,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
       },
     );
   };
-  const remove = (step: StepView): void =>
-    run(
-      () => client.mutate('task.trash', { recordId: step.id }, { expectedRevision: step.revision }),
-      (settlement) => {
-        if (current() && settlement.kind === 'ok') props.onChanged();
-      },
-    );
+  const remove = removeStepAction(props, run, current);
   const live = unfinished(steps);
   const archived = steps.filter((step) => step.archived !== null);
   const completed = steps.filter((step) => step.archived === null && step.done);
@@ -163,18 +157,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
         </span>
       )}
       <AddStep client={client} parentId={props.parentId} onChanged={props.onChanged} />
-      <ul className="sb__steps">
-        {shown.map((step) => (
-          <StepRow
-            key={step.id}
-            step={step}
-            busy={busy}
-            onTick={tick}
-            onRemove={remove}
-            onOpenTask={onOpenTask}
-          />
-        ))}
-      </ul>
+      <SubtaskRows steps={shown} busy={busy} tick={tick} remove={remove} onOpenTask={onOpenTask} />
       {live.length === 0 && completed.length > 0 ? (
         <p className="card__sub" data-steps-empty>
           Nothing left on this one.
@@ -283,4 +266,20 @@ function StepError(props: { readonly because: string | null }): ReactElement | n
       {props.because}
     </p>
   );
+}
+
+function removeStepAction(
+  props: SubtaskListProps,
+  run: ReturnType<typeof useCommand>['run'],
+  current: () => boolean,
+) {
+  const client = props.client;
+  const remove = (step: StepView): void =>
+    run(
+      () => client.mutate('task.trash', { recordId: step.id }, { expectedRevision: step.revision }),
+      (settlement) => {
+        if (current() && settlement.kind === 'ok') props.onChanged();
+      },
+    );
+  return remove;
 }

@@ -33,6 +33,7 @@
 import './styles/0-fonts.css';
 import './styles/1-tokens.css';
 import './styles/2-controls-and-marks.css';
+import './styles/2-select.css';
 import './styles/2-primitives.css';
 import './styles/2-empty.css';
 import './styles/2-forms.css';
@@ -42,6 +43,7 @@ import './styles/3-dock.css';
 import './styles/4-board.css';
 import './styles/4b-board-machine.css';
 import './styles/5-task.css';
+import './styles/5-task-panel.css';
 import './styles/6-agent.css';
 import './styles/6b-execution-map.css';
 import './styles/7-page-kit.css';

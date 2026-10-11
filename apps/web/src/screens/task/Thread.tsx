@@ -22,7 +22,8 @@
 // Reply owed, Not acknowledged or Answered, with a title saying what it means.
 // Seen waits on the portal's read receipt.
 
-import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
+import { EditBox } from './CommentEditBox.tsx';
 import { Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { editOf, parentOf, threadOf, type RowEdit } from './thread-shape.ts';
@@ -99,14 +100,7 @@ function Row(props: {
       data-comment-id={comment.id}
       data-audience={comment.audience}
     >
-      <span className="msg__avatar" aria-hidden="true">
-        {author
-          .trim()
-          .split(/\s+/u)
-          .map((part) => part[0])
-          .slice(0, 2)
-          .join('')}
-      </span>
+      <MessageAvatar author={author} />
       <div className="msg__body">
         <RowMeta comment={comment} author={author} />
         {edit === null ? (
@@ -235,57 +229,6 @@ function Act(props: {
  * keystroke up. It hands back the new words, or null when nothing is to be
  * stored: Esc, words the same as the stored ones (`saved`), or an emptied box.
  */
-function EditBox(props: {
-  readonly saved: string;
-  readonly body: string;
-  readonly busy: boolean;
-  readonly onText: (body: string) => void;
-  readonly onDone: (next: string | null) => void;
-}): ReactElement {
-  // Esc or a commit ends the edit once; the blur that can follow the box
-  // leaving the page must not end it a second time. A refusal reopens it.
-  const ended = useRef(false);
-  useEffect(() => {
-    if (!props.busy) ended.current = false;
-  }, [props.busy]);
-  const end = (next: string | null): void => {
-    if (ended.current || props.busy) return;
-    ended.current = true;
-    props.onDone(next === null || next.trim() === '' || next === props.saved ? null : next);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      end(null);
-      return;
-    }
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      end(props.body);
-    }
-  };
-  return (
-    <textarea
-      className="input"
-      aria-label="Edit your message"
-      data-comment-edit=""
-      rows={3}
-      readOnly={props.busy}
-      aria-busy={props.busy}
-      // oxlint-disable-next-line jsx-a11y/no-autofocus -- the pencil was pressed to write here
-      autoFocus
-      value={props.body}
-      onKeyDown={onKeyDown}
-      onBlur={() => {
-        end(props.body);
-      }}
-      onChange={(event) => {
-        props.onText(event.target.value);
-      }}
-    />
-  );
-}
-
 const SIGNALS: Readonly<Record<string, { word: string; title: string }>> = {
   owed: { word: 'Reply owed', title: 'The client is waiting on a reply from the team.' },
   not_acknowledged: {
@@ -314,4 +257,17 @@ function audienceWord(audience: string): string {
   // A word this build does not know is printed as it arrived. Inventing a
   // label for it would hide the fact that something new is being stored.
   return audience;
+}
+
+function MessageAvatar(props: { readonly author: string }): ReactElement {
+  return (
+    <span className="msg__avatar" aria-hidden="true">
+      {props.author
+        .trim()
+        .split(/\s+/u)
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join('')}
+    </span>
+  );
 }

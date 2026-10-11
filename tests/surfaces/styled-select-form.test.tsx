@@ -67,7 +67,7 @@ it('keyboard selection skips disabled options and Escape leaves the enclosing dr
   );
   const button = view.find('button');
   if (!(button instanceof HTMLButtonElement)) throw new Error('Missing trigger');
-  const key = async (name: string) =>
+  const key = (name: string) =>
     act(() => {
       button.dispatchEvent(
         new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }),

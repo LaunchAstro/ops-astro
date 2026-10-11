@@ -67,19 +67,7 @@ export function StepRow(props: {
       ) : null}
       <StepTitle step={step} onOpenTask={props.onOpenTask} />
       {step.assignee === null ? null : <Avatar name={step.assignee.name} />}
-      {step.archived !== null || props.onRemove === undefined ? null : (
-        <button
-          className="row-remove"
-          type="button"
-          data-step-remove={step.id}
-          aria-label={`Remove subtask ${title}`}
-          title="Remove subtask"
-          disabled={props.busy}
-          onClick={() => props.onRemove?.(step)}
-        >
-          ×
-        </button>
-      )}
+      <StepRemove step={step} busy={props.busy} onRemove={props.onRemove} />
       {step.archived === null ? null : (
         <span className="card__sub" data-step-archived>
           Archived {archivedOn(step.archived.at)} · {step.archived.why}
@@ -136,5 +124,52 @@ function StepTitle(props: {
     >
       {props.step.title ?? props.step.key}
     </a>
+  );
+}
+
+function StepRemove(props: {
+  readonly step: StepView;
+  readonly busy: boolean;
+  readonly onRemove?: ((step: StepView) => void) | undefined;
+}): ReactElement | null {
+  const { step } = props;
+  if (step.archived !== null || props.onRemove === undefined) return null;
+  return (
+    <button
+      className="row-remove"
+      type="button"
+      data-step-remove={step.id}
+      aria-label={`Remove subtask ${step.title ?? step.key}`}
+      title="Remove subtask"
+      disabled={props.busy}
+      onClick={() => props.onRemove?.(step)}
+    >
+      ×
+    </button>
+  );
+}
+
+export function SubtaskRows(props: {
+  readonly steps: readonly StepView[];
+  readonly busy: boolean;
+  readonly tick: (step: StepView) => void;
+  readonly remove: (step: StepView) => void;
+  readonly onOpenTask: ((key: string, origin?: HTMLElement) => void) | undefined;
+}): ReactElement {
+  const { busy, tick, remove, onOpenTask } = props;
+  const shown = props.steps;
+  return (
+    <ul className="sb__steps">
+      {shown.map((step) => (
+        <StepRow
+          key={step.id}
+          step={step}
+          busy={busy}
+          onTick={tick}
+          onRemove={remove}
+          onOpenTask={onOpenTask}
+        />
+      ))}
+    </ul>
   );
 }

@@ -233,6 +233,14 @@
       "ruling": "DS-COMP-28"
     },
     {
+      "selector": ".sel__btn",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".menu--select .menu__opt",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".cbd__chip",
       "ruling": "DS-COMP-17"
     },
@@ -241,8 +249,120 @@
       "ruling": "DS-COMP-17"
     },
     {
+      "selector": ".cbd__preset, .cbd__mode",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".cbd__mode",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".cbd__preset--viewer .cbd__presi",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .sb__name",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .mstrip__k, .dtp .tf__k, .dtp .sb__k",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .mstrip__rank",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp__fields :is(select.input, [data-panel-field='due'], .dtp__link, .input)",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp__fields [data-panel-field='due']",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .tf__tag-chips .chip",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .tf__ta",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".ttime__log > input",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".row-remove",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": "[data-time-entry] .sb__step-title",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": "[data-comments='section'] .taskform :is(textarea, [data-comment='post'])",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".mention-menu [role='option']",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".comment-editor .tf__tagvalue .btn, .comment-editor__clear",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__avatar",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__body > .card__body",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__meta",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__meta b",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__at",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__audience",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".msg__acts .btn",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".comment-editor__clear",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp .sb__step",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tpr__title",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".tph__n",
       "ruling": "DR-6"
+    },
+    {
+      "selector": ".dtp .sel__btn",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tph__stat .tf__k",
+      "ruling": "R20261012"
     }
   ]
 }

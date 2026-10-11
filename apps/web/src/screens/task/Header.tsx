@@ -69,24 +69,7 @@ export function TaskHeader(props: {
         <CopyAddress path={pathTo('agency:task-detail', { key: task.key })} />
       </nav>
       <h2 className="tpr__title">{titleOf(task.title)}</h2>
-      {run === null ? null : (
-        <p className="card__sub" data-run={run.shape}>
-          {run.words}
-          <span
-            className="tpr__revision"
-            title={task.completedAt === null ? 'Not completed' : `Completed ${task.completedAt}`}
-          >
-            {' '}
-            · Revision {task.revision}
-          </span>
-        </p>
-      )}
-      {run === null ? (
-        <div className="card__sub tpr__revision">
-          Revision {task.revision} ·{' '}
-          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-        </div>
-      ) : null}
+      <RunStatus task={task} run={run} />
     </header>
   );
 }
@@ -184,6 +167,36 @@ function CopyAddress(props: { readonly path: string }): ReactElement {
         <span className="field__error" role="alert" data-copy="failed">
           The link could not be copied. Copy it by hand: {address}
         </span>
+      ) : null}
+    </>
+  );
+}
+
+function RunStatus(props: {
+  readonly task: InternalTaskDetail;
+  readonly run: ReturnType<typeof runLineOf>;
+}): ReactElement {
+  const { task, run } = props;
+  return (
+    <>
+      {' '}
+      {run === null ? null : (
+        <p className="card__sub" data-run={run.shape}>
+          {run.words}
+          <span
+            className="tpr__revision"
+            title={task.completedAt === null ? 'Not completed' : `Completed ${task.completedAt}`}
+          >
+            {' '}
+            · Revision {task.revision}
+          </span>
+        </p>
+      )}
+      {run === null ? (
+        <div className="card__sub tpr__revision">
+          Revision {task.revision} ·{' '}
+          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
+        </div>
       ) : null}
     </>
   );

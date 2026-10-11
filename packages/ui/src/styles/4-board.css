@@ -92,11 +92,13 @@
   max-width: 100%;
 }
 .cbd__tbl {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font: 400 var(--text-sm)/var(--leading-normal) var(--font-sans);
+  font: var(--type-small);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .cbd__thl {
   display: block;

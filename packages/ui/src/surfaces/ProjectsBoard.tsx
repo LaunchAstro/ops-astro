@@ -123,6 +123,7 @@ function useCells(props: ProjectsBoardProps, now: Date): CellContext {
   };
 }
 
+// oxlint-disable-next-line max-lines-per-function -- the board composes its shared machine with the complete typed configuration.
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const viewer = props.viewer ?? null;
   const toolbar = usePageToolbar();

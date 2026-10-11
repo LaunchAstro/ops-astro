@@ -3,7 +3,7 @@
 // The Agent pane's top: the proposal header with its Reject and Cancel, the
 // summary grid, and the job list (DA-01, DA-02, TA-03).
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { usePanelToolbar } from '../PageToolbar.tsx';
 import type { Job, RunStory } from '../../state/agent-run.ts';
 import { words } from './format.ts';
@@ -81,7 +81,10 @@ function jobRow(job: Job): ReactElement {
   );
 }
 
-export function Summary(props: { readonly story: RunStory }): ReactElement {
+export function Summary(props: {
+  readonly story: RunStory;
+  readonly actions?: ReactNode;
+}): ReactElement {
   const { story } = props;
   const compact = usePanelToolbar() !== null;
   return (
@@ -100,17 +103,18 @@ export function Summary(props: { readonly story: RunStory }): ReactElement {
           </span>
         </div>
         <p className="trs__say">{story.sentence}</p>
+        <details className="trs__details" open={compact ? true : undefined}>
+          <summary>Run details</summary>
+          {props.actions}
+          <div className="trs__grid">
+            {summaryCell('Progress', story.progress, 'progress')}
+            {summaryCell('Current job', story.currentJob, 'current-job')}
+            {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
+            {summaryCell('Next action', story.nextAction, 'next-action')}
+          </div>
+        </details>
       </div>
       {compact ? null : <HeroStats story={story} />}
-      <details className="trs__details" open={compact ? true : undefined}>
-        <summary>Run details</summary>
-        <div className="trs__grid">
-          {summaryCell('Progress', story.progress, 'progress')}
-          {summaryCell('Current job', story.currentJob, 'current-job')}
-          {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
-          {summaryCell('Next action', story.nextAction, 'next-action')}
-        </div>
-      </details>
     </div>
   );
 }

@@ -60,14 +60,16 @@ export function PanelAgent(props: AgentSideProps): ReactElement {
   });
   return (
     <>
-      <BriefField
-        client={client}
-        recordId={task.id}
-        revision={task.revision}
-        value={task.agentBrief}
-        onSaved={props.onChanged}
-      />
       <AgentSection
+        brief={
+          <BriefField
+            client={client}
+            recordId={task.id}
+            revision={task.revision}
+            value={task.agentBrief}
+            onSaved={props.onChanged}
+          />
+        }
         client={client}
         grantKey={props.grantKey}
         recordId={task.id}

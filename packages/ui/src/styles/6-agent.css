@@ -232,9 +232,7 @@
     padding: var(--s-4);
   }
   .trs[data-summary-layout='full'] .trs__details {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--border);
-    padding: 0.25rem var(--s-4);
+    margin-top: var(--s-1);
   }
   .trs[data-summary-layout='full'] .tph__stats {
     gap: 0;
@@ -768,4 +766,20 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   white-space: pre-wrap;
+}
+
+.tph__stat .tf__k {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  font-size: 0.6875rem;
+  line-height: 1.55;
+}
+.trs[data-summary-layout='full'] .trs__top {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.trs[data-summary-layout='full'] .trs__top > .spill {
+  order: -1;
 }

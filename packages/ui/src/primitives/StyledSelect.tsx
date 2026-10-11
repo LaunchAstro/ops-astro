@@ -10,15 +10,12 @@ import {
 } from 'react';
 import { SelectControl, type Option } from '../kit/controls-fields.tsx';
 
-/** Keeps native form/change semantics while sharing the kit's custom option menu. */
-export function StyledSelect(
-  props: SelectHTMLAttributes<HTMLSelectElement> & {
-    readonly leading?: ReactNode;
-    readonly optionLeading?: (value: string) => ReactNode;
-  },
-): ReactElement {
-  const generated = useId();
-  const { leading, optionLeading, ...nativeProps } = props;
+type StyledSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  readonly leading?: ReactNode;
+  readonly optionLeading?: (value: string) => ReactNode;
+};
+
+function useNativeSelect(props: StyledSelectProps) {
   const native = useRef<HTMLSelectElement>(null);
   const [options, setOptions] = useState<readonly Option[]>([]);
   const [label, setLabel] = useState(props['aria-label'] ?? '');
@@ -29,7 +26,9 @@ export function StyledSelect(
     const next = [...element.options].map((option) => ({
       value: option.value,
       label: option.label,
-      disabled: option.disabled,
+      disabled:
+        option.disabled ||
+        (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled),
     }));
     setOptions((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
     setValue(element.value);
@@ -47,6 +46,14 @@ export function StyledSelect(
     native.current.dispatchEvent(new Event('change', { bubbles: true }));
     if (props.value === undefined) setValue(next);
   };
+  return { native, options, label, value, choose };
+}
+
+/** Keeps native form/change semantics while sharing the kit's custom option menu. */
+export function StyledSelect(props: StyledSelectProps): ReactElement {
+  const generated = useId();
+  const { leading, optionLeading, ...nativeProps } = props;
+  const { native, options, label, value, choose } = useNativeSelect(props);
   return (
     <div className="styled-select">
       <select

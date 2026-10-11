@@ -1,0 +1,716 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   Task drawer fields, comments and hover actions. */
+/* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
+   control pairs, two to a line, one below 641; a field that is more than a
+   pair (Assign to AI, the tags, a refusal) takes the whole line. */
+.dtp {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.dtp [data-task] {
+  flex: 1;
+  gap: 0;
+}
+.dtp__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: 0 0 var(--s-2);
+}
+.dtp__head .t-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.dtp__head .ask,
+.dtp__head .dtp__action {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
+.dtp__head .dtp__doors {
+  display: flex;
+  gap: var(--s-2);
+  flex-basis: 100%;
+}
+.dtp .sb__name {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  color: var(--text);
+  font: var(--type-subheading);
+  text-align: start;
+  cursor: text;
+
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+.dtp .sb__name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.dtp__facts {
+  position: relative;
+}
+.dtp .mstrip {
+  margin: var(--s-4) 0;
+}
+.dtp .tpr__strip {
+  display: contents;
+}
+.dtp .tpr__tick {
+  background: var(--paper);
+}
+.dtp .mstrip__k,
+.dtp .tf__k,
+.dtp .sb__k {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-eyebrow);
+
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  font-weight: 400;
+  font-size: var(--text-overline);
+  letter-spacing: 0;
+}
+.dtp .mstrip {
+  gap: var(--s-3) var(--s-6);
+}
+.dtp .tpr__fact {
+  gap: 0.35rem;
+}
+.dtp .mstrip__rank {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-small);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.35;
+}
+.dtp__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.4rem var(--s-3);
+}
+.dtp__fields > .tf__row {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+}
+.dtp__fields .readstate {
+  padding: 0;
+  min-width: 0;
+}
+.dtp__fields :is(select.input, [data-panel-field='due'], .dtp__link, .input) {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  box-sizing: border-box;
+  width: 100%;
+  height: 37px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--text);
+  font: var(--type-small);
+  text-align: left;
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.2;
+}
+.dtp__fields [data-panel-field='due'] {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  font: var(--type-small);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.2;
+}
+.dtp__fields > :is(.field, .field__error, p, [data-assignment-recovery]) {
+  grid-column: 1 / -1;
+}
+.dtp__fields .field__error {
+  grid-column: 1 / -1;
+}
+.dtp__client {
+  position: relative;
+  min-width: 0;
+}
+.dtp__client select {
+  padding-right: var(--s-6);
+}
+.dtp__client .field-callout {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.field-callout {
+  position: relative;
+}
+.field-callout > summary {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+  width: 18px;
+  height: 24px;
+}
+.field-callout > summary::-webkit-details-marker {
+  display: none;
+}
+.field-callout__body {
+  display: none;
+  position: absolute;
+  z-index: 45;
+  top: 100%;
+  right: 0;
+  width: min(280px, 70vw);
+  padding: var(--s-3);
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.field-callout:is([open], :hover, :focus-within) > .field-callout__body {
+  display: grid;
+  gap: var(--s-3);
+}
+.field-callout__body p {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.dtp__scores {
+  position: absolute;
+  right: -18px;
+  top: 0;
+}
+.dtp__scores > summary {
+  width: 16px;
+  height: 16px;
+}
+.dtp__scores .field-callout__body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dtp__scores .field-callout__body > :is(p, button) {
+  grid-column: 1 / -1;
+}
+.dtp__fields .tf__tags {
+  display: contents;
+}
+.dtp__fields .tf__tag-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.dtp__fields .tf__tags > .input {
+  grid-column: 2;
+  grid-row: 1;
+}
+.dtp__fields .tf__row--tags {
+  grid-auto-flow: row;
+}
+.dtp .tf__tag-chips .chip {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  flex: none;
+  font: var(--type-data);
+  font-size: 10px;
+  padding: 0.1rem 0.5rem;
+  letter-spacing: var(--type-data-tracking);
+  text-transform: uppercase;
+}
+.dtp__fields .dtp__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-right: 0.25rem;
+  color: var(--text-muted);
+}
+.dtp__link > :is(span, a) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--type-data);
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.dtp .cmtabs {
+  border: 0;
+  margin-bottom: 0;
+  padding: 0;
+}
+.dtp .tpr__perspectives {
+  gap: 0.5rem;
+}
+.dtp [data-tp-pane='team'] {
+  gap: 0.5rem;
+}
+.dtp .cmtab {
+  padding: 0.4rem 0 0.5rem;
+}
+.dtp [data-tp-pane] > .sb__sect {
+  padding: var(--s-3) 0 var(--s-2);
+  border: 0;
+}
+.dtp [data-tp-pane] > .sb__sect:last-child {
+  padding-bottom: 0;
+}
+.dtp .tf__ta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.5rem var(--s-3);
+  background: var(--paper);
+  min-height: 95px;
+  font-size: 13px;
+}
+.dtp .tf__ta--md {
+  min-height: 205px;
+}
+.dtp .field:has(.tf__ta) {
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.dtp .sb__steplist {
+  display: grid;
+  gap: 0.5rem;
+}
+.dtp .sb__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dtp .empty {
+  padding: 0.5rem 0;
+}
+.ttime__controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.ttime__timer,
+.ttime__logging {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ttime__label {
+  font: var(--type-data);
+  color: var(--text-muted);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.ttime__timer > .btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.ttime__log {
+  display: flex;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.ttime__log > input {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  font: var(--type-body);
+  font-size: 13px;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.ttime__log > .btn {
+  flex: none;
+}
+@media (width <= 400px) {
+  .ttime__controls {
+    grid-template-columns: 1fr;
+  }
+}
+.dtp [data-step-add] {
+  width: 100%;
+  height: 1.6rem;
+  min-height: 0;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.dtp [data-step-add]:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+@media (width <= 640px) {
+  .dtp__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+[data-task-status] select.input {
+  height: 37px;
+}
+
+.row-remove {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: var(--type-body);
+  cursor: pointer;
+  opacity: 0;
+
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  font-size: 16px;
+  line-height: 1;
+}
+.sb__step:hover .row-remove,
+.sb__step:focus-within .row-remove {
+  opacity: 1;
+}
+.row-remove:hover {
+  color: var(--danger);
+}
+.row-remove:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+@media (hover: none) {
+  .row-remove {
+    opacity: 1;
+  }
+}
+[data-time-log-section] {
+  position: relative;
+}
+.dtp [data-time-total] {
+  position: absolute;
+  right: 0;
+  top: -24px;
+  font: var(--type-data);
+  color: var(--text-muted);
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.ttime__controls :is(button, input) {
+  box-sizing: border-box;
+  height: 37px;
+}
+[data-time-entry] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+[data-time-entry] .sb__step-title {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  flex: none;
+  font: var(--type-data);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+[data-time-entry] [data-time-note] {
+  flex: 1;
+  cursor: text;
+}
+[data-comments='section'] > .taskform {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+[data-comments='section'] .taskform > p,
+[data-comment='replying'] {
+  grid-column: 1 / -1;
+}
+[data-comments='section'] .taskform :is(textarea, [data-comment='post']) {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  box-sizing: border-box;
+  min-height: 37px;
+  margin: 0;
+  padding: 0.6rem 0.65rem;
+  font: var(--type-small);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.3;
+}
+[data-comments='section'] .taskform textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  resize: vertical;
+}
+[data-comments='section'] .taskform [data-comment='post'] {
+  min-width: 52px;
+}
+[data-comments='section'] .taskform > .field:has(textarea) {
+  display: block;
+  margin: 0;
+}
+[data-comments='section'] [role='tabpanel'] {
+  min-height: 192px;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  background: var(--paper);
+}
+[data-comments='section'] [role='tabpanel'] > .empty {
+  display: flex;
+  align-items: end;
+  min-height: 168px;
+  padding: 0;
+  color: var(--text-muted);
+}
+.comment-editor {
+  position: relative;
+  min-width: 0;
+}
+.mention-menu {
+  position: absolute;
+  z-index: 50;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+}
+.mention-menu [role='option'] {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  padding: 0.55rem 0.65rem;
+  font: var(--type-small);
+  cursor: pointer;
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.3;
+}
+.mention-menu [aria-selected='true'] {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.comment-editor .tf__tagvalue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.comment-editor .tf__tagvalue .btn,
+.comment-editor__clear {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  min-height: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.msg {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 0.5rem;
+  position: relative;
+}
+.msg--deleted {
+  display: block;
+}
+.msg__avatar {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font: var(--type-badge);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  font-size: 9px;
+}
+.msg__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.msg__body > .card__body {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--type-body);
+  overflow-wrap: anywhere;
+
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  line-height: 1.45;
+}
+.msg__meta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font: var(--type-small);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1rem;
+}
+.msg__meta b {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  color: var(--text);
+  font-weight: 500;
+}
+.msg__at {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font-size: 12px;
+}
+.msg__audience {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-data);
+  font-size: 9px;
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.msg__acts {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  gap: 0.2rem;
+}
+.msg__acts .btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.2rem;
+  min-height: 20px;
+  height: 20px;
+  font-size: 11px;
+  background: var(--paper);
+}
+.msg__replies {
+  margin: 0.75rem 0 0;
+  padding-left: 0.75rem;
+}
+
+.comment-editor__clear {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  border: 0;
+  background: none;
+  font: var(--type-caption);
+  color: var(--text-muted);
+  cursor: pointer;
+
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.mention-menu > .readstate {
+  padding: 0;
+}
+.mention-menu .menu {
+  position: static;
+  border: 0;
+}
+
+.dtp .sb__step {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font: var(--type-small);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.4;
+}
+.dtp [data-step] .sb__step-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.dtp [data-step] .sb__step-title:hover {
+  color: var(--accent);
+}
+.dtp .sb__step .av {
+  width: 22px;
+  height: 22px;
+}
+.dtp__scores summary {
+  opacity: 0;
+}
+.dtp__facts:hover .dtp__scores summary,
+.dtp__scores:focus-within summary,
+.dtp__scores[open] summary {
+  opacity: 1;
+}
+
+.dtp [data-writing='description'] {
+  padding-bottom: 0;
+}
+.dtp [data-steps] {
+  padding-top: 0;
+}
+.dtp .sb__steps:empty {
+  display: none;
+}

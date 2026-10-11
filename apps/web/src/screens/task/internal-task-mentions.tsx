@@ -64,6 +64,18 @@ export function unavailableMentions(
 
 /** An at-sign starts a suggestion list; choosing binds the displayed name to its person id. */
 export function InternalTaskMentions(props: MentionsProps) {
+  const editor = useMentionEditor(props);
+  return (
+    <div className="comment-editor" data-internal-task-mentions={props.id}>
+      <MentionInput {...props} editor={editor} />
+      <MentionSuggestions {...props} editor={editor} />
+      <MentionRecovery {...props} open={editor.open} />
+    </div>
+  );
+}
+
+// oxlint-disable-next-line max-lines-per-function -- caret, keyboard selection and dismissal share one editor controller.
+function useMentionEditor(props: MentionsProps) {
   const [caret, setCaret] = useState(props.body.length);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -113,34 +125,61 @@ export function InternalTaskMentions(props: MentionsProps) {
       props.onSend();
     }
   };
+  return {
+    input,
+    open,
+    candidates,
+    active,
+    choose,
+    onKey,
+    setCaret,
+    setActive,
+    setDismissed,
+    people,
+  };
+}
+
+function MentionInput(
+  props: MentionsProps & { readonly editor: ReturnType<typeof useMentionEditor> },
+) {
+  const { input, open, candidates, active, onKey, setCaret, setActive, setDismissed } =
+    props.editor;
   return (
-    <div className="comment-editor" data-internal-task-mentions={props.id}>
-      <textarea
-        ref={input}
-        id={props.textboxId}
-        className="input"
-        rows={1}
-        required
-        aria-label="Say something"
-        placeholder={props.placeholder}
-        disabled={props.locked}
-        value={props.body}
-        aria-autocomplete={props.enabled ? 'list' : undefined}
-        aria-controls={open ? props.id : undefined}
-        aria-activedescendant={
-          open && candidates.length > 0
-            ? `${props.id}-${Math.min(active, candidates.length - 1)}`
-            : undefined
-        }
-        onKeyDown={onKey}
-        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-        onChange={(event) => {
-          props.onBody(event.target.value);
-          setCaret(event.target.selectionStart);
-          setActive(0);
-          setDismissed(null);
-        }}
-      />
+    <textarea
+      ref={input}
+      id={props.textboxId}
+      className="input"
+      rows={1}
+      required
+      aria-label="Say something"
+      placeholder={props.placeholder}
+      disabled={props.locked}
+      value={props.body}
+      aria-autocomplete={props.enabled ? 'list' : undefined}
+      aria-controls={open ? props.id : undefined}
+      aria-activedescendant={
+        open && candidates.length > 0
+          ? `${props.id}-${Math.min(active, candidates.length - 1)}`
+          : undefined
+      }
+      onKeyDown={onKey}
+      onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+      onChange={(event) => {
+        props.onBody(event.target.value);
+        setCaret(event.target.selectionStart);
+        setActive(0);
+        setDismissed(null);
+      }}
+    />
+  );
+}
+
+function MentionSuggestions(
+  props: MentionsProps & { readonly editor: ReturnType<typeof useMentionEditor> },
+) {
+  const { open, candidates, active, choose, people } = props.editor;
+  return (
+    <>
       {open ? (
         <div className="mention-menu">
           <RecordState state={people.state} subject="people" onRetry={people.reload}>
@@ -167,6 +206,15 @@ export function InternalTaskMentions(props: MentionsProps) {
           </RecordState>
         </div>
       ) : null}
+    </>
+  );
+}
+
+function MentionRecovery(props: MentionsProps & { readonly open: boolean }) {
+  const people = props.people;
+  const open = props.open;
+  return (
+    <>
       {props.enabled &&
       !open &&
       props.selected.length > 0 &&
@@ -195,7 +243,7 @@ export function InternalTaskMentions(props: MentionsProps) {
           </button>
         </>
       )}
-    </div>
+    </>
   );
 }
 

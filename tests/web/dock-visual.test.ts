@@ -23,9 +23,9 @@ import { onDockSides, type DockSide } from './dock-harness.ts';
 
 const WIDTHS = [1480, 900, 390];
 const REGIONS = ['rail', 'callout', 'closeall', 'head'];
-const TAB = '.dock__tab[data-panel="settings"]';
+const TAB = '.dock__tab[data-panel="todos"]';
 
-/** The rail and its callout at rest, then Close all and the panel head with Settings open. */
+/** The rail and its callout at rest, then Close all and the panel head with Projects open. */
 async function captureDock(at: DockSide): Promise<{ name: string; png: Buffer }[]> {
   const { side, packet, app, width, theme, mask } = at;
   const page = await load(
@@ -47,7 +47,7 @@ async function captureDock(at: DockSide): Promise<{ name: string; png: Buffer }[
       { closeall: '.dock__closeall', head: '.dpanel__head' },
       mask,
     );
-    expect(await page.locator('.dpanel__name').textContent()).toBe('Settings');
+    expect(await page.locator('.dpanel__name').textContent()).toBe('Projects');
     return [...rest, ...open];
   } finally {
     await page.close();

@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { serveApp } from './app-pages.ts';
+import { sweepControls } from './control-sweep.ts';
 import { answerMadeUp } from './made-up-api.ts';
 const args = process.argv.slice(2);
 const out = args[args.indexOf('--out') + 1] ?? '.local/visual-parity/states';
@@ -171,7 +172,6 @@ try {
   await page.goto(new URL('/projects/', served.app).href);
   await click('[data-projects-new-task]');
   await capture('task-draft');
-  const actions: unknown[] = [];
   const surfaces: readonly [string, () => Promise<void>][] = [
     [
       'board',
@@ -220,45 +220,7 @@ try {
         ] as [string, () => Promise<void>],
     ),
   ];
-  for (const [surface, prepare] of surfaces) {
-    await prepare();
-    await page.waitForTimeout(250);
-    const root = ['team', 'agent', 'draft', 'notifs', 'ai', 'clients', 'todos'].includes(surface)
-      ? '.dpanel'
-      : '.content';
-    const selectors = `${root} button,${root} a,${root} summary`;
-    const controls = await page.locator(selectors).evaluateAll((elements) =>
-      elements
-        .map((element, index) => ({
-          index,
-          name: element.getAttribute('aria-label') ?? element.textContent?.trim(),
-          visible: Boolean(
-            element.getBoundingClientRect().width && element.getBoundingClientRect().height,
-          ),
-          disabled: element.matches(':disabled'),
-          href: element.getAttribute('href'),
-        }))
-        .filter((control) => control.visible),
-    );
-    for (const control of controls) {
-      const action = { surface, ...control, outcome: 'disabled', screenshot: '' };
-      if (!control.disabled) {
-        await prepare();
-        const target = page.locator(selectors).nth(control.index);
-        try {
-          await target.click({ timeout: 4000 });
-          action.outcome = 'clicked';
-          const name = `control-${surface}-${control.index}`;
-          await capture(name);
-          action.screenshot = `${name}.png`;
-        } catch (error) {
-          action.outcome = String(error).split('\n')[0] ?? 'failed';
-        }
-      }
-      actions.push(action);
-      writeFileSync(`${out}/actions.json`, JSON.stringify(actions, null, 2));
-    }
-  }
+  await sweepControls({ page, out, capture, surfaces });
   await page.goto(new URL('/projects/', served.app).href);
   await click('[data-projects-new-task]');
   for (const width of [1440, 1024, 390]) {

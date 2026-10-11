@@ -59,21 +59,7 @@ export function PageLink(props: PageLinkProps): ReactElement {
     <>
       <span className="tf__k">Page link</span>
       <div className="dtp__link">
-        {door === null ? (
-          <span className="card__sub" data-page-link="value">
-            {task.pageLink ?? 'nothing yet'}
-          </span>
-        ) : (
-          <a
-            className="t-link"
-            data-page-link="value"
-            data-panel-head="goto"
-            href={door}
-            title={door}
-          >
-            {door}
-          </a>
-        )}
+        <LinkValue task={task} door={door} />
         <button
           className="dtp__action"
           aria-label={task.pageLink === null ? 'Link here' : 'Relink'}
@@ -91,6 +77,34 @@ export function PageLink(props: PageLinkProps): ReactElement {
           </p>
         )}
       </div>
+    </>
+  );
+}
+
+function LinkValue({
+  task,
+  door,
+}: {
+  readonly task: Task;
+  readonly door: string | null;
+}): ReactElement {
+  return (
+    <>
+      {door === null ? (
+        <span className="card__sub" data-page-link="value">
+          {task.pageLink ?? 'nothing yet'}
+        </span>
+      ) : (
+        <a
+          className="t-link"
+          data-page-link="value"
+          data-panel-head="goto"
+          href={door}
+          title={door}
+        >
+          {door}
+        </a>
+      )}
     </>
   );
 }

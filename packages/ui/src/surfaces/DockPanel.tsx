@@ -93,17 +93,7 @@ function DockPanelHead(props: {
       </h2>
       <div className="dpanel__acts">
         <span className="dpanel__extra" ref={props.setToolbar} />
-        {panel.onNew === undefined ? null : (
-          <button
-            className="dpanel__btn"
-            type="button"
-            data-act="new"
-            aria-label={panel.onNew.label}
-            onClick={panel.onNew.press}
-          >
-            <Icon name="plus" />
-          </button>
-        )}
+        <PanelNew action={panel.onNew} />
         <a
           className="dpanel__btn"
           data-act="door"
@@ -155,6 +145,21 @@ function HistoryButton(props: {
       }}
     >
       <Icon name={props.act === 'back' ? 'angle-small-left' : 'angle-small-right'} />
+    </button>
+  );
+}
+
+function PanelNew({ action }: { readonly action: DockPanel['onNew'] }): ReactElement | null {
+  if (action === undefined) return null;
+  return (
+    <button
+      className="dpanel__btn"
+      type="button"
+      data-act="new"
+      aria-label={action.label}
+      onClick={action.press}
+    >
+      <Icon name="plus" />
     </button>
   );
 }

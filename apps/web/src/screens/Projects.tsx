@@ -30,21 +30,7 @@ export function Projects(props: ProjectsProps): ReactElement {
         />
       ) : null}
       {toolbar !== null && inPanel !== true ? (
-        createPortal(
-          <details className="projects__views">
-            <summary aria-label="Project views" title="Project views">
-              <Icon name="calendar" size="xs" />
-            </summary>
-            <ProjectsTabs
-              label="Projects"
-              name="projects"
-              tabs={TABS}
-              selected={tab}
-              onSelect={select}
-            />
-          </details>,
-          toolbar,
-        )
+        createPortal(<ProjectViews tab={tab} select={select} />, toolbar)
       ) : (
         <ProjectsTabs
           label="Projects"
@@ -73,5 +59,20 @@ export function Projects(props: ProjectsProps): ReactElement {
         ) : null}
       </TabPanel>
     </div>
+  );
+}
+
+function ProjectViews(props: {
+  readonly tab: ReturnType<typeof useProjectsTab>['tab'];
+  readonly select: ReturnType<typeof useProjectsTab>['select'];
+}): ReactElement {
+  const { tab, select } = props;
+  return (
+    <details className="projects__views">
+      <summary aria-label="Project views" title="Project views">
+        <Icon name="calendar" size="xs" />
+      </summary>
+      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+    </details>
   );
 }

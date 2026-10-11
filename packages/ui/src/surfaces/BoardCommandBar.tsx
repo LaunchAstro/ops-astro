@@ -158,17 +158,7 @@ function FunnelList(props: FunnelProps): ReactElement {
           {menu.all ? 'Show fewer filters' : `Show all filters (${String(listing.more)} more)`}
         </button>
       ) : null}
-      <button
-        className="btn btn--primary btn--sm cbd__clear"
-        type="button"
-        disabled={!props.canClear}
-        title={props.canClear ? 'Drop every filter and search term' : 'Nothing to clear'}
-        onClick={() => {
-          props.dispatch({ type: 'clear' });
-        }}
-      >
-        Clear all
-      </button>
+      <ClearFilters {...props} />
     </div>
   );
 }
@@ -285,5 +275,21 @@ function Stamp(props: {
         {stamp.short}
       </span>
     </span>
+  );
+}
+
+function ClearFilters(props: FunnelProps): ReactElement {
+  return (
+    <button
+      className="btn btn--primary btn--sm cbd__clear"
+      type="button"
+      disabled={!props.canClear}
+      title={props.canClear ? 'Drop every filter and search term' : 'Nothing to clear'}
+      onClick={() => {
+        props.dispatch({ type: 'clear' });
+      }}
+    >
+      Clear all
+    </button>
   );
 }

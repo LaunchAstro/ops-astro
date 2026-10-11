@@ -75,8 +75,12 @@
   border-radius: 0;
   background: var(--paper);
   color: var(--text-2);
-  font: 400 13px/1.35 var(--font-sans);
+  font: var(--type-small);
   cursor: pointer;
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1.35;
 }
 .cbd__mode {
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
@@ -108,9 +112,14 @@
   width: 1.05rem;
   height: 1.05rem;
   border-radius: 50%;
-  font: 0.5rem var(--font-sans);
+  font: var(--type-caption);
   background: var(--surface-3);
   color: var(--text);
+
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  font-size: 0.5rem;
+  line-height: normal;
 }
 .cbd__preset--cat:first-of-type {
   margin-inline-start: var(--s-3);
@@ -637,6 +646,9 @@ td[data-tight] {
    its height; the hover box shows on row hover or focus, and at rest below
    900, where there is no hover. */
 .cbd__tick {
+  appearance: none;
+  display: grid;
+  place-items: center;
   flex: none;
   width: 18px;
   height: 18px;
@@ -821,4 +833,9 @@ tr:focus-within .cbd__routes--pop {
   gap: 0.35rem;
   padding: 0.15rem 2.9rem 0.15rem 0.15rem;
   border-radius: var(--radius-sm);
+}
+
+.cbd__tick:checked::after {
+  content: '✓';
+  color: var(--accent);
 }
