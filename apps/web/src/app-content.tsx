@@ -5,7 +5,6 @@
 
 import type { ReactElement } from 'react';
 import { BoardEditProvider } from './screens/projects/board-edit-context.tsx';
-import { CreateProvider } from './screens/task/create-context.tsx';
 import { AssignmentProvider } from './screens/task/assignment-context.tsx';
 import { CommentCustodyProvider } from './screens/task/comment-custody-context.tsx';
 import { ScoresCustodyProvider } from './screens/task/scores-custody-context.tsx';
@@ -72,31 +71,25 @@ export function frameCustody(
       grantKey={owner.grantKey}
       storage={owner.storage ?? null}
     >
-      <CreateProvider
+      <CommentCustodyProvider
         client={owner.client}
         grantKey={owner.grantKey}
         storage={owner.storage ?? null}
       >
-        <CommentCustodyProvider
+        <ScoresCustodyProvider
           client={owner.client}
           grantKey={owner.grantKey}
           storage={owner.storage ?? null}
         >
-          <ScoresCustodyProvider
+          <BoardEditProvider
             client={owner.client}
             grantKey={owner.grantKey}
             storage={owner.storage ?? null}
           >
-            <BoardEditProvider
-              client={owner.client}
-              grantKey={owner.grantKey}
-              storage={owner.storage ?? null}
-            >
-              {children}
-            </BoardEditProvider>
-          </ScoresCustodyProvider>
-        </CommentCustodyProvider>
-      </CreateProvider>
+            {children}
+          </BoardEditProvider>
+        </ScoresCustodyProvider>
+      </CommentCustodyProvider>
     </AssignmentProvider>,
   );
 }

@@ -39,9 +39,9 @@ it('invalid recovery operands retain an already applied unknown create identity'
   expect(JSON.parse(tab.getItem(DRAFT_KEY)!)['attempt']).toStrictEqual(attempt);
   expect(tab.getItem(DRAFT_KEY)).toBe(raw);
   const notice = next.view.find('[data-draft-refusal]')?.textContent;
-  expect(notice).toContain('No recovery request was sent');
-  expect(notice).toContain('The original create may already have applied');
-  expect(notice).not.toContain('No creation request was sent');
+  expect(notice).toContain('nothing was sent');
+  expect(notice).toContain('The task may already exist');
+  expect(notice).not.toContain('Cancel it and start again');
 });
 
 it('a fresh invalid draft remains a local refusal with no writes or effects', async () => {
@@ -55,6 +55,6 @@ it('a fresh invalid draft remains a local refusal with no writes or effects', as
   expect(server.writes()).toHaveLength(0);
   expect(server.applied).toHaveLength(0);
   expect(app.view.find('[data-draft-refusal]')?.textContent).toContain(
-    'No creation request was sent',
+    'nothing was sent. Cancel it and start again',
   );
 });

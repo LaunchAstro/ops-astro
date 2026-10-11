@@ -48,8 +48,8 @@ export async function createFromDraft(
     return {
       kind: recovering ? 'unknown' : 'refused',
       because: recovering
-        ? 'The draft operands are invalid. No recovery request was sent. The original create may already have applied.'
-        : 'The draft operands are invalid. No creation request was sent.',
+        ? 'This saved draft could not be read, so nothing was sent. The task may already exist: check the board before you start it again.'
+        : 'This saved draft could not be read, so nothing was sent. Cancel it and start again.',
     };
   const { body } = prepared;
   const initial = command('task.create', attempt.id, body);
@@ -94,7 +94,7 @@ async function finishDraft(
     if (result.answer.kind === 'unknown')
       return {
         kind: 'unknown',
-        because: `No answer for ${partLabel(part)}; Create again to finish.`,
+        because: `No answer yet for ${partLabel(part)}. Retry to finish.`,
       };
     if (result.answer.kind === 'ok') {
       if (REVISES.has(part.kind)) parent = { ...result.receipt!, key: base.key };
@@ -138,7 +138,7 @@ async function write(
   return {
     answer:
       answer.kind !== 'unknown' && known === null
-        ? { kind: 'unknown', because: 'The API did not return a valid creation phase answer.' }
+        ? { kind: 'unknown', because: 'The answer could not be read. Retry to finish.' }
         : answer,
     receipt: known?.receipt ?? null,
   };
