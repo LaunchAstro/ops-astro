@@ -221,10 +221,11 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       setView((last) => ({ ...last, refusal }));
       return;
     }
-    // A running timer stops at Create: its minutes go with the task (DN-05), a new request.
-    const sent = stopTimer(kept.draft, Date.now());
+    // A running timer stops at Create: its minutes go with the task (DN-05), a new
+    // request. A held Create is retried exactly as it was sent.
+    const held = kept.attempt;
+    const sent = held === null ? stopTimer(kept.draft, Date.now()) : kept.draft;
     if (sent !== kept.draft) kept.put(sent);
-    const held = sent === kept.draft ? kept.attempt : null;
     const attempt = held ?? newAttempt(props.client.newOperationId());
     kept.begin(attempt, sent);
     const release = props.hold();
