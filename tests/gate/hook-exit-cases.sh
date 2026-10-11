@@ -195,22 +195,22 @@ real_checker_case "a first push to GitHub asks GitHub, whatever URL rewrites say
   origin "$GITHUB_URL" 1
 git -C "$DIRTY" config --unset url."$SCRATCH/private.git".insteadOf
 
-# Sol's proofs on #1212, kept byte for byte. A remote whose URL changed keeps
-# the old repository's tracking refs, which say nothing about the new one; a
-# rewritten push URL, or a relative one that names a remote, asked again,
-# can lead to another repository.
-sol_proof_case() {
-  if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/$1.proof.test.mjs" >/dev/null 2>&1; then
+# The review's proofs on #1212, kept as written but for names and titles. A
+# remote whose URL changed keeps the old repository's tracking refs, which
+# say nothing about the new one; a rewritten push URL, or a relative one that
+# names a remote, asked again, can lead to another repository.
+proof_case() {
+  if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/$1.test.mjs" >/dev/null 2>&1; then
     pass "$2"
   else
-    fail "$2" "node --test tests/gate/$1.proof.test.mjs failed"
+    fail "$2" "node --test tests/gate/$1.test.mjs failed"
   fi
 }
-sol_proof_case sol-criterion-2-remote-url \
+proof_case pre-push-remote-url-change-scans-history \
   "a first push after a remote's URL changes scans what its old main held"
-sol_proof_case sol-criterion-2-double-url-rewrite \
+proof_case pre-push-double-url-rewrite-scans-history \
   "a first push through a URL rewrite scans everything reachable"
-sol_proof_case sol-criterion-2-url-remote-name \
+proof_case pre-push-relative-url-naming-remote-scans-history \
   "a first push to a relative URL that names another remote scans everything reachable"
 
 stdin_case "a later push scans only what the remote does not have" \
