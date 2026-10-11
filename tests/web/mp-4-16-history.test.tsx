@@ -14,6 +14,7 @@ import { found, task, tick } from './task-page-stub.tsx';
 import { json, mount, page, unmountAll } from './perspective-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { unheld } from './task-look.ts';
+import { History } from '../../apps/web/src/screens/task/History.tsx';
 
 const NOW = new Date('2026-09-29T12:00:00.000Z');
 
@@ -200,5 +201,77 @@ describe('MP-4-16 who: the page names whoever made each change', () => {
     expect(trail).toContain('Ada Lovelace');
     expect(trail).toContain('An agent');
     expect(view.find('[data-history]')?.parentElement?.textContent).not.toMatch(/actor-/u);
+  });
+});
+
+// eslint-disable-next-line max-lines-per-function -- the U116 cases on one fixture
+describe('U116 the change names the fields it set', () => {
+  const change = (minutesAgo: number, changed?: readonly string[]) => ({
+    eventId: `e-${String(minutesAgo)}`,
+    at: at(minutesAgo),
+    actorId: 'actor-mia',
+    personId: 'person-mia',
+    actorName: 'Mia',
+    actorKind: 'person',
+    operation: 'task.update',
+    ...(changed === undefined ? {} : { changed }),
+  });
+
+  it('Core 10b 4: a due date and priority change reads in words, with who made it', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({ history: [change(30, ['title']), change(20), change(10, ['due', 'priority'])] }),
+    );
+    expect(head(view)).toBe('10 minutes ago · Mia · Due date and priority changed');
+    expect(rows(view)).toStrictEqual([
+      '30 minutes ago · MiaTitle changed',
+      // Recorded before the fields were: the change, without inventing which.
+      '20 minutes ago · MiaDetails changed',
+      '10 minutes ago · MiaDue date and priority changed',
+    ]);
+  });
+
+  it('three fields are listed, and a field the page has no words for is left out', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({ history: [change(5, ['description', 'due', 'not_a_field', 'title'])] }),
+    );
+    expect(head(view)).toBe('5 minutes ago · Mia · Description, due date and title changed');
+  });
+
+  it('a cancel and a restart read as what they did, with who did it', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({
+        history: [
+          { ...change(6), operation: 'task.cancel' },
+          { ...change(5), operation: 'task.restart' },
+        ],
+      }),
+    );
+    expect(rows(view)).toStrictEqual([
+      '6 minutes ago · MiaCancelled',
+      '5 minutes ago · MiaRestarted',
+    ]);
+  });
+
+  it('a change by someone who is not current staff names nobody', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({
+        history: [{ ...change(5, ['due']), actorId: null, personId: null, actorName: null }],
+      }),
+    );
+    expect(head(view)).toBe('5 minutes ago · Someone · Due date changed');
+  });
+
+  it('the panel draws no history until something has changed', async () => {
+    const fold = [false, () => null] as const;
+    const view = await mount(<History history={[]} fold={fold} />);
+    expect(view.find('[data-history]')).toBeNull();
+    const changed = await mount(
+      <History history={[change(2, ['title']), change(1, ['due'])]} fold={fold} />,
+    );
+    expect(changed.find('[data-history-fold]')?.textContent).toBe('Show all 2 changes');
   });
 });

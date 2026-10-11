@@ -13,6 +13,7 @@ import { READ_CATALOGUE } from '../reads/catalogue.ts';
 import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
 import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
+import { historyEventOperand } from '../reads/task-history.ts';
 import { blockersFor, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
 import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
 import type { Capability } from '../../../core-wire/src/index.ts';
@@ -682,14 +683,21 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           const read = READ_CATALOGUE['task.read'].parse(request);
           return read.ok ? undefined : read.refusal;
         })(request);
-        const paging = parsePaging(request as unknown as Readonly<Record<string, unknown>>);
-        return isOperandRefusal(id) || !isRefusal(paging) ? id : refused(paging);
+        const body = request as unknown as Readonly<Record<string, unknown>>;
+        const paging = parsePaging(body);
+        if (isOperandRefusal(id)) return id;
+        if (isRefusal(paging)) return refused(paging);
+        const lookup = historyEventOperand(body, paging.detail);
+        return typeof lookup === 'object' ? refused(lookup) : id;
       },
       serve: async (tx, call, _operands, _delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
-        const paging = parsePaging(call.request as unknown as Readonly<Record<string, unknown>>);
+        const body = call.request as unknown as Readonly<Record<string, unknown>>;
+        const paging = parsePaging(body);
         const level = isRefusal(paging) ? undefined : paging.detail;
+        // Checked by `operands` above, so a refusal cannot reach here.
+        const lookup = historyEventOperand(body, level);
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
           task = await readTaskDetail(
@@ -710,6 +718,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             { kind: 'task' },
             // An agent is sent no one's time: the time on a task is its people's.
             null,
+            typeof lookup === 'string' ? lookup : undefined,
           );
         } catch (cause) {
           // Decisions that do not verify are the fault the person read answers

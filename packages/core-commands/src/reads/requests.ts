@@ -91,7 +91,7 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string } & Paging;
+  readonly 'task.read': { readonly recordId: string; readonly historyEventId?: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': ({ readonly board: string | null } | { readonly mode: 'aggregate' }) & {
     readonly person?: string;

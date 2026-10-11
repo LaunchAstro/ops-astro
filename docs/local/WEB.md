@@ -313,10 +313,13 @@ the application as `SignedInName` (`app-state.ts`), never a fixed name; none
 until the server names the person.
 
 History (`History.tsx`, MP-4-16) is the transitions on the task's own address
-from `task.read`, with comments left out (they are the conversation's). Its head
-reads the latest change as how long ago, who and what; the page shows the whole
-trail open, and with no change says "Nothing has changed on this one yet." Who
-is the actor's identifier until the read carries a name. The dock task panel
+from `task.read`, which sends no comments, notes or time (U116). Its head reads
+the latest change as how long ago, who and what; what names the fields the
+change set ("Due date and priority changed") where its event recorded them,
+and the command's words otherwise, both from `history-words.ts` in core-wire.
+The page shows the whole trail open, and with no change says "Nothing has
+changed on this one yet."; the panel draws no history until something has
+changed. Who is the person's name for current staff, "Someone" otherwise. The dock task panel
 folds the trail behind "Show all N changes" and "Hide the trail", and whether
 it shows is the person's own `history.showTrail` preference (`useShowTrail`,
 kept by `screens/task/saved-flag.ts` as show finished is), read above the

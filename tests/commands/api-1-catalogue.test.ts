@@ -162,19 +162,19 @@ function commandsTheAppCalls(): Set<string> {
   return called;
 }
 
-/** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
+/**
+ * Where the app names `task.create` and `task.start`, as the catalogue computes
+ * it. `History.tsx` no longer names them: its words for each change come from
+ * `HISTORY_OPERATIONS` in core-wire (U116), and it calls neither.
+ */
 const CREATE_UI = [
   'agency:projects-board (screens/task/create-custody.ts)',
-  'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
   'app shell (screens/task/draft-command.ts)',
   'app shell (screens/task/draft-parts.ts)',
   'app shell (screens/task/draft-receipts.ts)',
 ];
-const START_UI = [
-  'agency:task-detail (screens/task/History.tsx)',
-  'agency:task-detail (screens/task/Lifecycle.tsx)',
-];
+const START_UI = ['agency:task-detail (screens/task/Lifecycle.tsx)'];
 
 function exemptAndMergedTickets(): void {
   it('API-1 exempt list: view-only actions are exempt with a reason, and nothing that writes a record is', () => {

@@ -98,18 +98,25 @@ export type {
 } from './views-operations.ts';
 
 export interface HistoryEntry {
+  /** The audit event's id: what `task.read`'s `historyEventId` looks up. */
+  readonly eventId: string;
   readonly at: string;
-  readonly actorId: string;
+  /**
+   * The keys of the fields the change set, from `HISTORY_FIELDS` and only those
+   * this reader may see (U116). Absent when the event did not record its
+   * fields (every event written before P20) or named none of them.
+   */
+  readonly changed?: readonly string[];
+  /** The actor, only for a person who is current staff of this business; null for anyone else. */
+  readonly actorId: string | null;
   /** `person`, `agent` or `worker` (MP-4-16); null for an actor this business does not hold. */
   readonly actorKind: string | null;
-  /**
-   * The person's display name for a person's actor; null for any other, and for a
-   * reader not shown people (the agent prefix).
-   */
+  /** The person's display name, under the same rule as `personId`. */
   readonly actorName: string | null;
   /**
-   * The person the actor is; null for an agent or a worker, and for a reader
-   * not shown people (the agent prefix).
+   * The person the actor is, only for current staff; null for an agent, a
+   * worker, a former member or a client's person, and for a reader not shown
+   * people (the agent prefix).
    */
   readonly personId: string | null;
   readonly operation: string;
@@ -144,6 +151,8 @@ export interface TaskDetail extends TaskSummary {
   /** The work label's id as `task.set_category` stored it (MP-4-8, CS-4.16); null for none. */
   readonly category: string | null;
   readonly history: readonly HistoryEntry[];
+  /** Sent only when `historyEventId` was asked: that entry of `history`, or null when it holds none. */
+  readonly historyEvent?: HistoryEntry | null;
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
   /**
