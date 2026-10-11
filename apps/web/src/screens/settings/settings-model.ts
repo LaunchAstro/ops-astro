@@ -53,7 +53,8 @@ export interface SettingsModel {
   readonly ownerKey: string;
   /** The revision the row's newest confirmed save wrote, until a reread shows it. */
   readonly wrote: (which: Which) => number | undefined;
-  readonly save: (which: Which, value: Draft) => void;
+  /** Writes against `base` when given: the revision a draft was built on, not the row on screen. */
+  readonly save: (which: Which, value: Draft, base?: number) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;
   /** Asks the settings read again, after it did not come back. */
