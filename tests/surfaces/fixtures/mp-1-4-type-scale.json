@@ -241,6 +241,10 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".cbd__chip",
       "ruling": "DS-COMP-17"
     },
@@ -270,6 +274,10 @@
     },
     {
       "selector": ".dtp .mstrip__rank",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dtp__fields .tf__k, .dtp .field > .tf__k, .tpr__facts .tf__k, .agent .tf__k",
       "ruling": "R20261012"
     },
     {
@@ -349,6 +357,10 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".tpr__crumb .sb__addr, .empty__action .sb__addr",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".tpr__title",
       "ruling": "R20261012"
     },
@@ -357,11 +369,35 @@
       "ruling": "DR-6"
     },
     {
+      "selector": ".tt__prose",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".dtp .sel__btn",
       "ruling": "R20261012"
     },
     {
+      "selector": ".sb__step-title",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".gate__word",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".tph__stat .tf__k",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".trs[data-summary-layout='full'] .trs__say",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__nt",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__insp__t",
       "ruling": "R20261012"
     }
   ]

@@ -124,8 +124,10 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
   const onDependency = useTodoDependencies(props, read, vocabulary, intent);
   return (
     <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
-      <ScopeFilter scope={scope} setScope={setScope} vocabulary={vocabulary} />
-      <TodoTools {...tools} />
+      <TodoTools
+        {...tools}
+        filters={<ScopeFilter scope={scope} setScope={setScope} vocabulary={vocabulary} />}
+      />
       <IdentityChoices
         filters={filters}
         onChoose={(next) => {

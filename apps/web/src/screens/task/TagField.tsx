@@ -13,7 +13,7 @@
 // **The menu's Escape is the menu's.** It closes the menu and is marked
 // handled, so the panel around it stays open (TR-A3-3).
 
-import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import {
   isRefusal,
   isUnavailable,
@@ -33,6 +33,7 @@ export interface TagFieldProps {
   readonly client: OperationsClient;
   readonly task: Task;
   readonly onChanged: () => void;
+  readonly children?: ReactNode;
 }
 
 /** The new name, then the task carrying it; a refusal of either is the answer. */
@@ -133,27 +134,32 @@ export function TagField(props: TagFieldProps): ReactElement {
   const menu: Menu = { ...field, rows, choose, close: () => field.setOpen(false) };
   return (
     <div className="tf__tags" data-panel-field="tags">
-      <span className="tf__k">Tags</span>
+      <div className="tf__row">
+        <label className="tf__k" htmlFor="panel-tag-input">
+          Tags
+        </label>
+        <TagInput
+          placeholder={task.tags.length === 0 ? 'Add a tag…' : 'Add another…'}
+          busy={busy}
+          typed={field.typed}
+          expanded={rows.length > 0}
+          onFocus={() => {
+            field.setOpen(true);
+            void vocabulary.load();
+          }}
+          onBlur={() => field.setOpen(false)}
+          onType={(text) => {
+            field.type(text);
+            field.setOpen(true);
+          }}
+          onKeyDown={(event) => onMenuKey(event, menu)}
+        />
+        <TagMenu {...menu} />
+      </div>
+      {props.children}
       <div className="tf__tag-chips">
         <TagChips tags={task.tags} busy={busy} onRemove={remove} />
       </div>
-      <TagInput
-        placeholder={task.tags.length === 0 ? 'Add a tag…' : 'Add another…'}
-        busy={busy}
-        typed={field.typed}
-        expanded={rows.length > 0}
-        onFocus={() => {
-          field.setOpen(true);
-          void vocabulary.load();
-        }}
-        onBlur={() => field.setOpen(false)}
-        onType={(text) => {
-          field.type(text);
-          field.setOpen(true);
-        }}
-        onKeyDown={(event) => onMenuKey(event, menu)}
-      />
-      <TagMenu {...menu} />
       {because === null ? null : (
         <p className="field__error" role="alert">
           {because}
@@ -224,10 +230,11 @@ function TagChips(props: {
 function TagMenu(props: Menu): ReactElement | null {
   if (props.rows.length === 0) return null;
   return (
-    <ul id="panel-tag-menu" className="menu" role="listbox" aria-label="Tags">
+    <ul id="panel-tag-menu" className="menu menu--select" role="listbox" aria-label="Tags">
       {props.rows.map((row, index) => (
         <li
           key={row.kind === 'tag' ? row.tag.id : 'new'}
+          className="menu__opt"
           role="option"
           aria-selected={index === props.marked}
           data-tag-row={row.kind === 'tag' ? row.tag.id : 'new'}

@@ -7,10 +7,13 @@
 // into chips, a chip's cross removes it, and Backspace in the empty box drops
 // the last one. None of them writes.
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { Icon, usePanelToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import { wordsOfChip, type Chip } from './todo-list.ts';
 
 export interface TodoToolsProps {
+  readonly filters?: ReactNode;
   readonly query: string;
   readonly onQuery: (query: string) => void;
   readonly chips: readonly Chip[];
@@ -24,8 +27,28 @@ export interface TodoToolsProps {
 }
 
 export function TodoTools(props: TodoToolsProps): ReactElement {
+  const toolbar = usePanelToolbar();
+  if (toolbar === null) return <ToolsBody {...props} />;
+  return (
+    <>
+      {createPortal(
+        <details className="field-callout todos__searchdrop">
+          <summary className="dpanel__btn" aria-label="Search projects" title="Search projects">
+            <Icon name="search" size="sm" />
+          </summary>
+          <div className="field-callout__body todos">{props.filters}</div>
+        </details>,
+        toolbar,
+      )}
+      <ToolsBody {...props} compact />
+    </>
+  );
+}
+
+function ToolsBody(props: TodoToolsProps & { readonly compact?: boolean }): ReactElement {
   return (
     <div className="tsearch todos__tools">
+      {props.compact === true ? null : props.filters}
       <SearchBox {...props} />
       <details className="todos__acts">
         <summary aria-label="Project shortcuts" title="Project shortcuts">

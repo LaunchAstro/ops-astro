@@ -65,9 +65,12 @@
   background: var(--warning);
 }
 .gate__word {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  /* type-exception R20261012: the reference gate label uses regular mono at 12px. */
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text);
 }
 .gate__say {
@@ -224,7 +227,7 @@
 }
 @container (min-width: 1000px) {
   .trs[data-summary-layout='full'] {
-    grid-template-columns: minmax(0, 1fr) 17rem;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 0;
     gap: 0;
   }
@@ -234,7 +237,11 @@
   .trs[data-summary-layout='full'] .trs__details {
     margin-top: var(--s-1);
   }
+  .tpg__main {
+    gap: var(--s-5);
+  }
   .trs[data-summary-layout='full'] .tph__stats {
+    grid-template-columns: repeat(2, minmax(7.5rem, auto));
     gap: 0;
   }
   .trs[data-summary-layout='full'] .tph__stat {
@@ -264,9 +271,6 @@
   min-width: 0;
 }
 .trs__say {
-  font: var(--type-small-strong);
-  letter-spacing: var(--type-small-strong-tracking);
-  text-transform: var(--type-small-strong-case);
   margin: 0;
   color: var(--text);
   font: var(--type-small-strong);
@@ -773,7 +777,8 @@
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
-  font-size: 0.6875rem;
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.55;
 }
 .trs[data-summary-layout='full'] .trs__top {
@@ -782,4 +787,14 @@
 }
 .trs[data-summary-layout='full'] .trs__top > .spill {
   order: -1;
+}
+
+.trs[data-summary-layout='full'] .trs__say {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
 }

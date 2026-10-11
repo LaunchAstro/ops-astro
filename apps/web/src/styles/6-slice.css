@@ -225,20 +225,6 @@
   padding: 0 var(--s-5) var(--s-5);
 }
 
-/* 390: the narrowest pinned comparison width. The create form stacks rather
-   than scrolling sideways, because a horizontal scroll on a form is a control
-   a thumb cannot reach. */
-@media (width <= 480px) {
-  .projects__create {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .projects__create .cbd__field {
-    flex: 1 1 auto;
-  }
-}
-
 /* The proposal section prints stored values it did not choose the length of: an
    evidence pack, a payload, a 64-character hash, a digest. Measured at 390 the
    page and the section both scrolled sideways and the evidence body was wider
@@ -387,6 +373,11 @@
 .todos .tl__row {
   padding: 0.6rem 0;
   border-bottom: 1px solid var(--rule-faint);
+}
+.todos .tl__head {
+  padding: 0 0 0.4rem;
+  border-color: var(--border);
+  white-space: nowrap;
 }
 
 .todos .tl__row:hover {
@@ -650,4 +641,16 @@
 
 .todos > .readstate[data-outcome='ready'] {
   padding: 0;
+}
+
+.todos__searchdrop {
+  position: relative;
+}
+.todos__searchdrop > .field-callout__body {
+  position: absolute;
+  width: min(31rem, 90vw);
+  padding: 0.75rem;
+}
+.todos__searchdrop .todos__tools {
+  margin: 0;
 }

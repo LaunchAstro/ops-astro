@@ -26,18 +26,21 @@
   align-items: center;
   gap: var(--s-2);
   flex-wrap: wrap;
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   color: var(--text-muted);
 }
 /* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
    and the same door out of a gate or an empty page. */
 .tpr__crumb .sb__addr,
 .empty__action .sb__addr {
+  /* type-exception R20261012: the reference breadcrumb door is 13px mono. */
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
+  font-size: 13px;
+  line-height: 1.55;
   color: var(--text);
   text-decoration: none;
 }
@@ -456,45 +459,6 @@
   }
 }
 
-/* -- The gate. The mark is the ONE place a fill is allowed, and only when
-      armed. Everything else is a line. ------------------------------------ */
-.gate {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-4);
-  padding: var(--s-4) var(--s-5);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--text-muted);
-  background: var(--surface);
-}
-.gate--armed {
-  border-left-color: var(--warning);
-}
-.gate__mark {
-  flex: none;
-  width: 0.7rem;
-  height: 0.7rem;
-  margin-top: 0.3rem;
-  border: 1px solid var(--text-muted);
-}
-.gate--armed .gate__mark {
-  border-color: var(--warning);
-  background: var(--warning);
-}
-.gate__word {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-  color: var(--text);
-}
-.gate__say {
-  margin: 0.3rem 0 0;
-  max-width: 74ch;
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  color: var(--text-2);
-}
 .gatebox {
   display: grid;
   gap: var(--s-2);
@@ -569,9 +533,9 @@
 }
 .sb__gate-note {
   margin-inline-start: auto;
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -587,9 +551,11 @@
    One font rule (R60): the description is sans on every surface, and so is
    the rendered brief; mono is kept for the brief's markdown field alone. --- */
 .tt__prose {
+  /* type-exception R20261012: reference rendered prose uses 1.6 leading. */
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
+  line-height: 1.6;
   color: var(--text-2);
 }
 .md p,
@@ -688,11 +654,22 @@
   font-size: 0.9rem;
 }
 .dtp__fields .sel__btn {
-  height: 37px;
+  min-height: 37px;
   padding: 0.55rem var(--s-3);
+}
+.dtp__fields .sel__btn:has(> .av) {
+  height: 41.2px;
 }
 .dtp__fields .sel__native {
   padding: 0;
 }
 
 /* Conversation, inline recipients and quiet row controls share one task dialect. */
+
+.sb__step-title {
+  /* type-exception R20261012: measured reference child titles use 14px sans with 1.35 leading. */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  line-height: 1.35;
+}

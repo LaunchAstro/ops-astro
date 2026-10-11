@@ -274,12 +274,11 @@ function FilingFields(props: PanelFieldsProps & { readonly stage: ReactElement }
           onChanged={props.onChanged}
         />
       </div>
-      <div className="tf__row tf__row--tags">
-        <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
-      </div>
-      <div className="tf__row">
-        <PageLink client={props.client} task={props.task} onChanged={props.onChanged} />
-      </div>
+      <TagField client={props.client} task={props.task} onChanged={props.onChanged}>
+        <div className="tf__row">
+          <PageLink client={props.client} task={props.task} onChanged={props.onChanged} />
+        </div>
+      </TagField>
     </>
   );
 }

@@ -97,7 +97,12 @@ export function Summary(props: {
     >
       <div className="trs__lead">
         <div className="trs__top">
-          <span className="sbact__meta u-mono">Attempt {story.attempt} · agent</span>
+          <span className="sbact__meta u-mono">
+            {compact ? null : (
+              <span data-agent="run-id">{story.head.runId ?? 'not planned'} · </span>
+            )}
+            Attempt {story.attempt} · agent
+          </span>
           <span className="spill" data-tone={story.tone} data-agent="state-word">
             {story.word}
           </span>

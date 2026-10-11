@@ -6,10 +6,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { serveApp } from './app-pages.ts';
+import { captureAgentDetails } from './task-deep-states.ts';
 import { sweepControls } from './control-sweep.ts';
 import { answerMadeUp } from './made-up-api.ts';
 const args = process.argv.slice(2);
 const out = args[args.indexOf('--out') + 1] ?? '.local/visual-parity/states';
+const focusAt = args.indexOf('--surface');
+const focus = focusAt === -1 ? undefined : args[focusAt + 1]?.split(',');
 mkdirSync(out, { recursive: true });
 const served = await serveApp();
 const browser = await chromium.launch({ headless: true });
@@ -91,88 +94,90 @@ async function openDrawer() {
   await page.locator('[data-task-panel] .sb__name').waitFor();
 }
 try {
-  await page.goto(new URL('/projects/', served.app).href);
-  await page.locator('tr[data-row]').first().waitFor();
-  await capture('board');
-  await click('[data-funnel]');
-  await capture('board-filters');
-  await page.keyboard.press('Escape');
-  await page.locator('[data-board-search]').fill('Meridian');
-  await capture('board-typeahead');
-  await page.keyboard.press('Escape');
-  await openDrawer();
-  await capture('task-team');
-  for (const name of ['assignee', 'estimate', 'board', 'category', 'stage', 'status']) {
-    const trigger = page.locator(`[id="panel-field-${name}-control"]`);
-    if ((await trigger.count()) === 0) throw new Error(`Missing ${name} dropdown`);
-    if (await trigger.isDisabled()) {
-      states.push({ name: `task-${name}`, disabled: true });
-      continue;
-    }
-    await trigger.click();
-    await capture(`task-${name}-menu`);
-    await page.keyboard.press('Escape');
-  }
-  await click('[data-panel-field=due]');
-  await capture('task-calendar');
-  await page.keyboard.press('Escape');
-  const tag = page.locator('[data-task-panel] [role=combobox]');
-  await tag.focus();
-  await capture('task-tags');
-  await page.keyboard.press('Escape');
-  await click('.dtp__scores summary');
-  await capture('task-priority');
-  await click('.dtp__scores summary');
-  const lock = page.locator('.dtp__client .field-callout summary');
-  await lock.hover();
-  await capture('task-client-lock');
-  await page.mouse.move(800, 500);
-  const body = page.locator('#panel-comment-body');
-  await body.fill('@');
-  await capture('task-mention-menu');
-  await body.press('ArrowDown');
-  await body.press('Enter');
-  await capture('task-selected-mention');
-  await body.fill('');
-  await page.locator('[data-comment-id]').first().hover();
-  await capture('task-comment-hover');
-  await click('[data-comment-act=edit]');
-  await capture('task-comment-edit');
-  await page.keyboard.press('Escape');
-  await click('[data-comment-act=reply]');
-  await capture('task-comment-reply');
-  await click('[data-task-panel] [data-comments=section] [role=tab][id$=client]');
-  await capture('task-client-comments');
-  await click('[data-task-panel] [data-comments=section] [role=tab][id$=all]');
-  await capture('task-all-activity');
-  await page.locator('[data-time-entry]').first().hover();
-  await capture('task-time-hover');
-  await click('[data-time-note]');
-  await capture('task-time-note');
-  await page.keyboard.press('Escape');
-  await page.locator('[data-step]').first().hover();
-  await capture('task-subtask-hover');
-  await page
-    .getByRole('tab', { name: /^Agent/u })
-    .last()
-    .click();
-  await capture('task-agent');
-  await page.locator('[data-act=door]').last().click();
-  await capture('task-page');
-  await page
-    .getByRole('tab', { name: /^Agent/u })
-    .first()
-    .click();
-  await capture('task-page-agent');
-  for (const id of ['notifs', 'ai', 'clients', 'todos']) {
+  if (focus === undefined) {
     await page.goto(new URL('/projects/', served.app).href);
-    await click(`.dock__tab[data-panel=${id}]`);
-    await capture(`sidebar-${id}`);
+    await page.locator('tr[data-row]').first().waitFor();
+    await capture('board');
+    await click('[data-funnel]');
+    await capture('board-filters');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-board-search]').fill('Meridian');
+    await capture('board-typeahead');
+    await page.keyboard.press('Escape');
+    await openDrawer();
+    await capture('task-team');
+    for (const name of ['assignee', 'estimate', 'board', 'category', 'stage', 'status']) {
+      const trigger = page.locator(`[id="panel-field-${name}-control"]`);
+      if ((await trigger.count()) === 0) throw new Error(`Missing ${name} dropdown`);
+      if (await trigger.isDisabled()) {
+        states.push({ name: `task-${name}`, disabled: true });
+        continue;
+      }
+      await trigger.click();
+      await capture(`task-${name}-menu`);
+      await page.keyboard.press('Escape');
+    }
+    await click('[data-panel-field=due]');
+    await capture('task-calendar');
+    await page.keyboard.press('Escape');
+    const tag = page.locator('[data-task-panel] [role=combobox]');
+    await tag.focus();
+    await capture('task-tags');
+    await page.keyboard.press('Escape');
+    await click('.dtp__scores summary');
+    await capture('task-priority');
+    await click('.dtp__scores summary');
+    const lock = page.locator('.dtp__client .field-callout summary');
+    await lock.hover();
+    await capture('task-client-lock');
+    await page.mouse.move(800, 500);
+    const body = page.locator('#panel-comment-body');
+    await body.fill('@');
+    await capture('task-mention-menu');
+    await body.press('ArrowDown');
+    await body.press('Enter');
+    await capture('task-selected-mention');
+    await body.fill('');
+    await page.locator('[data-comment-id]').first().hover();
+    await capture('task-comment-hover');
+    await click('[data-comment-act=edit]');
+    await capture('task-comment-edit');
+    await page.keyboard.press('Escape');
+    await click('[data-comment-act=reply]');
+    await capture('task-comment-reply');
+    await click('[data-task-panel] [data-comments=section] [role=tab][id$=client]');
+    await capture('task-client-comments');
+    await click('[data-task-panel] [data-comments=section] [role=tab][id$=all]');
+    await capture('task-all-activity');
+    await page.locator('[data-time-entry]').first().hover();
+    await capture('task-time-hover');
+    await click('[data-time-note]');
+    await capture('task-time-note');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-step]').first().hover();
+    await capture('task-subtask-hover');
+    await page
+      .getByRole('tab', { name: /^Agent/u })
+      .last()
+      .click();
+    await capture('task-agent');
+    await captureAgentDetails(page, '.dpanel__body', capture, 'task-agent');
+    await page.locator('[data-act=door]').last().click();
+    await capture('task-page');
+    await page.locator('#perspective-tab-agent').waitFor();
+    await page.locator('#perspective-tab-agent').click();
+    await capture('task-page-agent');
+    await captureAgentDetails(page, '.content', capture, 'task-page-agent');
+    for (const id of ['notifs', 'ai', 'clients', 'todos']) {
+      await page.goto(new URL('/projects/', served.app).href);
+      await click(`.dock__tab[data-panel=${id}]`);
+      await capture(`sidebar-${id}`);
+    }
+    await page.goto(new URL('/projects/', served.app).href);
+    await click('[data-projects-new-task]');
+    await capture('task-draft');
   }
-  await page.goto(new URL('/projects/', served.app).href);
-  await click('[data-projects-new-task]');
-  await capture('task-draft');
-  const surfaces: readonly [string, () => Promise<void>][] = [
+  const surfaces: [string, () => Promise<void>][] = [
     [
       'board',
       async () => {
@@ -196,10 +201,8 @@ try {
       async () => {
         await openDrawer();
         await page.locator('[data-act=door]').last().click();
-        await page
-          .getByRole('tab', { name: /^Agent/u })
-          .first()
-          .click();
+        await page.locator('#perspective-tab-agent').waitFor();
+        await page.locator('#perspective-tab-agent').click();
       },
     ],
     [
@@ -220,14 +223,47 @@ try {
         ] as [string, () => Promise<void>],
     ),
   ];
-  await sweepControls({ page, out, capture, surfaces });
-  await page.goto(new URL('/projects/', served.app).href);
-  await click('[data-projects-new-task]');
-  for (const width of [1440, 1024, 390]) {
-    await page.setViewportSize({ width, height: 1038 });
-    await capture(`task-draft-${width}`);
+  for (const name of ['assignee', 'estimate', 'board', 'category', 'stage', 'status']) {
+    surfaces.push([
+      `team-menu-${name}`,
+      async () => {
+        await openDrawer();
+        await page.locator(`[id="panel-field-${name}-control"]`).click();
+      },
+    ]);
+  }
+  surfaces.push(
+    [
+      'team-menu-tags',
+      async () => {
+        await openDrawer();
+        await page.locator('#panel-tag-input').focus();
+      },
+    ],
+    [
+      'todos-search',
+      async () => {
+        await page.goto(new URL('/projects/', served.app).href);
+        await click('.dock__tab[data-panel=todos]');
+        await page.getByLabel('Search projects', { exact: true }).click();
+      },
+    ],
+  );
+  await sweepControls({
+    page,
+    out,
+    capture,
+    surfaces: focus === undefined ? surfaces : surfaces.filter(([name]) => focus.includes(name)),
+  });
+  if (focus === undefined) {
     await page.goto(new URL('/projects/', served.app).href);
-    await capture(`board-${width}`);
+    await click('[data-projects-new-task]');
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 1038 });
+      await capture(`task-draft-${width}`);
+      await page.goto(new URL('/projects/', served.app).href);
+      await capture(`board-${width}`);
+    }
   }
 } catch (error) {
   await capture('failure');

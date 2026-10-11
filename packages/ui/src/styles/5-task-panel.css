@@ -37,6 +37,9 @@
   background: none;
   color: var(--text-muted);
 }
+.dtp__head .ask {
+  width: 26.484375px;
+}
 .dtp__head .dtp__doors {
   display: flex;
   gap: var(--s-2);
@@ -58,6 +61,7 @@
   letter-spacing: var(--type-subheading-tracking);
   text-transform: var(--type-subheading-case);
   font-size: 1.05rem;
+  letter-spacing: normal;
   line-height: 1.3;
 }
 .dtp .sb__name:focus {
@@ -82,11 +86,11 @@
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   font: var(--type-eyebrow);
 
-  letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
-  font-weight: 400;
-  font-size: var(--text-overline);
-  letter-spacing: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 300;
+  letter-spacing: 0.04em;
 }
 .dtp .mstrip {
   gap: var(--s-3) var(--s-6);
@@ -102,13 +106,24 @@
   text-transform: var(--type-small-case);
   line-height: 1.35;
 }
+.dtp__fields .tf__k,
+.dtp .field > .tf__k,
+.tpr__facts .tf__k,
+.agent .tf__k {
+  /* type-exception R20261012: measured Hub field labels use regular mono at 12px. */
+  font: var(--type-data);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .dtp__fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
+  align-items: center;
   gap: 0.4rem var(--s-3);
 }
-.dtp__fields > .tf__row {
+.dtp__fields .tf__row {
   display: grid;
   grid-template-columns: 4.4rem minmax(0, 1fr);
   align-items: center;
@@ -220,7 +235,23 @@
   grid-column: 1 / -1;
 }
 .dtp__fields .tf__tags {
-  display: contents;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.4rem var(--s-3);
+}
+.dtp__fields .tf__tags > .tf__row {
+  position: relative;
+}
+.dtp__fields .tf__tags .menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 4.9rem;
+  right: 0;
+  z-index: 50;
+  max-height: 17rem;
+  overflow-y: auto;
 }
 .dtp__fields .tf__tag-chips {
   grid-column: 1 / -1;
@@ -229,12 +260,8 @@
   gap: 0.4rem;
   min-width: 0;
 }
-.dtp__fields .tf__tags > .input {
-  grid-column: 2;
-  grid-row: 1;
-}
-.dtp__fields .tf__row--tags {
-  grid-auto-flow: row;
+.dtp__fields .tf__tag-chips:empty {
+  display: none;
 }
 .dtp .tf__tag-chips .chip {
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
@@ -242,6 +269,7 @@
   font: var(--type-data);
   font-size: 10px;
   padding: 0.1rem 0.5rem;
+  border-color: var(--border);
   letter-spacing: var(--type-data-tracking);
   text-transform: uppercase;
 }
@@ -271,10 +299,10 @@
   gap: 0.5rem;
 }
 .dtp [data-tp-pane='team'] {
-  gap: 0.5rem;
+  gap: 0;
 }
 .dtp .cmtab {
-  padding: 0.4rem 0 0.5rem;
+  padding: 0.3rem 0 0.45rem;
 }
 .dtp [data-tp-pane] > .sb__sect {
   padding: var(--s-3) 0 var(--s-2);
@@ -287,15 +315,21 @@
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   padding: 0.5rem var(--s-3);
   background: var(--paper);
-  min-height: 95px;
-  font-size: 13px;
+  min-height: 96px;
+  height: 96px;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  font-size: 12px;
+  line-height: 1.55;
 }
 .dtp .tf__ta--md {
+  height: 205px;
   min-height: 205px;
 }
 .dtp .field:has(.tf__ta) {
   gap: 0.5rem;
-  margin-top: 1.25rem;
+  margin: 1.25rem 0 0;
 }
 .dtp .sb__steplist {
   display: grid;
@@ -376,7 +410,8 @@
   border-bottom-color: var(--accent);
 }
 @media (width <= 640px) {
-  .dtp__fields {
+  .dtp__fields,
+  .dtp__fields .tf__tags {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -434,7 +469,7 @@
 }
 .ttime__controls :is(button, input) {
   box-sizing: border-box;
-  height: 37px;
+  height: 38.0625px;
 }
 [data-time-entry] {
   display: flex;
@@ -705,12 +740,6 @@
   opacity: 1;
 }
 
-.dtp [data-writing='description'] {
-  padding-bottom: 0;
-}
-.dtp [data-steps] {
-  padding-top: 0;
-}
 .dtp .sb__steps:empty {
   display: none;
 }

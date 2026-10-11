@@ -455,7 +455,7 @@
 }
 
 .dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn {
-  min-height: 28px;
+  min-height: 0;
   padding: 0.2rem 0.4rem;
   border-color: transparent;
   background: transparent;
@@ -463,6 +463,9 @@
   color: var(--text-muted);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
+  /* type-exception R20261012: reference compact model picker. */
+  font-size: 0.78rem;
+  line-height: 1.2;
 }
 .dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn:is(:hover, :focus) {
   border-color: var(--border-strong);

@@ -67,7 +67,7 @@ export function TodoHead(props: { readonly order: TodoOrder }): ReactElement {
           {because}
         </p>
       )}
-      <div className="tl__row" data-todos-heads>
+      <div className="tl__row tl__head" data-todos-heads>
         <span />
         <span />
         {task}
