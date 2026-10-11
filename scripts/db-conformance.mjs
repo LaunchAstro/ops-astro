@@ -135,10 +135,12 @@ const shareOf = ({ index, count }) =>
     : (assignShards(items, plan.seconds, count)[index - 1] ?? []);
 const toRun = shard === undefined ? items : shareOf(shard);
 // Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
-// it never exits 0: a stray --list in a CI command fails that shard.
+// it never exits 0: a stray --list in a CI command fails that shard. It exits
+// once the list has left: a write to a full pipe is queued, and an exit
+// before it drains loses the tail.
 if (argv.includes('--list')) {
-  for (const item of toRun) console.log(item);
-  process.exit(3);
+  process.stdout.write(toRun.map((item) => `${item}\n`).join(''), () => process.exit(3));
+  await new Promise(() => {});
 }
 const shardLabel =
   shard === undefined ? '' : `shard ${String(shard.index)}/${String(shard.count)} `;
