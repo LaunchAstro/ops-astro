@@ -37,12 +37,13 @@ import {
   mergeFieldValues,
   nextTaskKey,
   planTaskPlacement,
+  writeRecordData,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
 import { isCommandRefusal, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { isInProductLink } from '../../../core-wire/src/index.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
 import { AGENT_ASSIGN_FIELDS, oneKind, outsideAgentReach } from './tasks-agent.ts';
 import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
@@ -329,19 +330,14 @@ async function writeUpdate(
     );
   }
 
-  const merged = mergeFieldValues(target.data, request.fields);
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
-     returning revision::text as revision`,
-    [tx.businessId, target.id, merged],
-  );
-  const written = rows[0];
+  const written = await writeRecordData(tx, target.id, 'data = $3', [
+    mergeFieldValues(target.data, request.fields),
+  ]);
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
-  return applied(target.id, Number(written.revision), {
-    changed: Object.keys(request.fields).toSorted(),
-  });
+  // `changed` is what the write changed, not what was sent: a no-op is [] (P20).
+  return appliedWrite(target.id, written, { changed: written.changed });
 }
 
 /** A value of the wrong type for its field, then a page link out of the product. */

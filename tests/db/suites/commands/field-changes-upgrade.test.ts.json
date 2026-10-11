@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "P20 upgrade: a chain written before field names existed keeps every event and hash, its old events stay unknown and are never backfilled, and new names chain on with the chain verifying"
+}
