@@ -3,8 +3,8 @@
 // Staging's database logins, the command (ticket S0-1, STAGING-PREP B3). The
 // decisions are in `staging-logins.ts`; this file runs them.
 //
-//   node scripts/ops/staging-logins.mjs before-reset
-//   node scripts/ops/staging-logins.mjs after-reset
+//   node scripts/ops/staging-logins.mjs before-reset [--production]
+//   node scripts/ops/staging-logins.mjs after-reset [--production]
 //
 // A person's act, typed into one Terminal window with STAGING_PROJECT_REF,
 // PRODUCTION_PROJECT_REF (when production has a project), DATABASE_ADMIN_URL
@@ -20,6 +20,10 @@
 // login already there holding more than its one group, judged in the
 // transaction that sets the passwords. Each address requires TLS. Exit 0
 // when done, 1 when refused or stopped; nothing printed carries a value.
+//
+// `--production` makes production's logins the same way, with
+// PRODUCTION_PROJECT_REF and STAGING_PROJECT_REF both set and DATABASE_ADMIN_URL
+// on production's project; it refuses staging's (deploy/production/README.md).
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,6 +33,7 @@ import {
   loginAddresses,
   loginsBeyondTheirGroup,
   loginsRefusal,
+  projectRefSetting,
   statementsFor,
 } from './staging-logins.ts';
 
@@ -47,7 +52,7 @@ if (refusal !== undefined) {
 }
 
 const [step] = args;
-const addresses = loginAddresses(env.DATABASE_ADMIN_URL, env.STAGING_PROJECT_REF, step);
+const addresses = loginAddresses(env.DATABASE_ADMIN_URL, env[projectRefSetting(args)], step);
 // Test-only: set by tests/support/plaintext-at-loopback.mjs for a throwaway
 // server with no TLS; no setting or environment can set it.
 const reach = new URL(env.DATABASE_ADMIN_URL);
@@ -64,7 +69,7 @@ try {
     ]);
     if (found.length !== groups.length) {
       console.error(
-        'staging-logins: refused: the reset has not made the groups yet. Nothing was done.',
+        'staging-logins: refused: the migrations have not made the groups yet. Nothing was done.',
       );
       process.exitCode = 1;
     }

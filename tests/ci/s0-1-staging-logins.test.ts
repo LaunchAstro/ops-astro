@@ -64,7 +64,7 @@ describe('S0-1 staging logins: refused before connecting, by setting name', () =
       loginsRefusal(environment({ DATABASE_ADMIN_URL: admin(STAGING, 'db.example.test') }), [
         'before-reset',
       ]),
-    ).toBe('DATABASE_ADMIN_URL is not a staging database host');
+    ).toBe('DATABASE_ADMIN_URL is not a Supabase database host');
     // The direct host is staging's, but the logins' addresses go through the pooler.
     expect(
       loginsRefusal(

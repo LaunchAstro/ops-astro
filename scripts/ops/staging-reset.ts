@@ -76,6 +76,29 @@ function setting(environment: Environment, name: string): string {
   return value;
 }
 
+/**
+ * The run's own project reference, and the other environment's: staging's run
+ * needs production's only once it is set; production's always needs staging's,
+ * so each refuses the other's project. Named by setting, never by value.
+ */
+export function projectRefs(
+  environment: Environment,
+  production: boolean,
+): { own: string; other: string; ref: string; otherRef: string } {
+  const [own, other] = production ? ['production', 'staging'] : ['staging', 'production'];
+  const ownSetting = `${own.toUpperCase()}_PROJECT_REF`;
+  const otherSetting = `${other.toUpperCase()}_PROJECT_REF`;
+  const ref = setting(environment, ownSetting);
+  if (!REF.test(ref)) throw new Refusal(`${ownSetting} is not a project reference`);
+  const otherRef = production
+    ? setting(environment, otherSetting)
+    : (environment[otherSetting] ?? '');
+  if (otherRef !== '' && !REF.test(otherRef))
+    throw new Refusal(`${otherSetting} is not a project reference`);
+  if (otherRef === ref) throw new Refusal(`${ownSetting} is ${other}'s`);
+  return { own, other, ref, otherRef };
+}
+
 /** The project a database address reaches, read from its login or its direct host. */
 export function databaseProject(name: string, value: string): string {
   const url = URL.parse(value);
@@ -100,7 +123,7 @@ export function databaseProject(name: string, value: string): string {
   if (direct !== undefined && (login === undefined || login === direct)) return direct;
   // Only the pooler routes by the login: anywhere else a login's reference proves nothing.
   if (direct === undefined && !POOLER.test(host))
-    throw new Refusal(`${name} is not a staging database host`);
+    throw new Refusal(`${name} is not a Supabase database host`);
   if (login === undefined || direct !== undefined)
     throw new Refusal(`${name} names no one project (its login must be <login>.<reference>)`);
   return login;
@@ -132,12 +155,7 @@ export function refusalBeforeConnecting(
       );
     const cast = notInvented(STAGING_CAST);
     if (cast.length > 0) throw new Refusal(`the cast holds names that are not invented`);
-    const staging = setting(environment, 'STAGING_PROJECT_REF');
-    if (!REF.test(staging)) throw new Refusal('STAGING_PROJECT_REF is not a project reference');
-    const production = environment['PRODUCTION_PROJECT_REF'] ?? '';
-    if (production !== '' && !REF.test(production))
-      throw new Refusal('PRODUCTION_PROJECT_REF is not a project reference');
-    if (production === staging) throw new Refusal("STAGING_PROJECT_REF is production's");
+    const { ref: staging, otherRef: production } = projectRefs(environment, false);
     const reached: [string, string | undefined][] = [
       [
         'DATABASE_ADMIN_URL',
