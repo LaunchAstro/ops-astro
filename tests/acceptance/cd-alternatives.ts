@@ -5,8 +5,7 @@
 // `recordId`, which reaches 17 of the 75. For each of the other 58 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
-// `identifier-negatives.test.ts` titles its cases from `CASE` below.
-// A harness, not a suite: nothing here runs on its own.
+// `identifier-negatives.test.ts` titles its cases from `CASE` below. A harness, not a suite.
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -30,7 +29,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-seven operations that name no identifier, each with a minimal valid body.
+ * The fifty-eight operations that name no identifier, each with a minimal valid body.
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
  * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
  * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
@@ -46,6 +45,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_money_step_up', { value: true }],
   ['settings.set_conversation_window', { value: 14 }],
   ['settings.set_retention_window', { value: 90 }],
+  ['settings.set_priority_stages', { value: ['sales'] }],
   [
     'privacy.record_incident',
     {

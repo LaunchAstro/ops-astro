@@ -7,6 +7,7 @@
 // surface's reads. What stays here is what is particular to this screen: which
 // two keys it draws, which grant its commands take, and how a row is read.
 
+import { TASK_STAGES } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import type { ReadName } from '../../operations/client.ts';
 import type {
@@ -46,6 +47,7 @@ export const KEY = {
   'sign-off': SIGN_OFF,
   conversation: CONVERSATION_WINDOW,
   retention: RETENTION_WINDOW,
+  priority: 'priority_stages',
 } as const;
 
 /** Each row and the grant its own command takes; the server gates them apart. */
@@ -54,6 +56,7 @@ export const GRANT: Record<keyof typeof KEY, Grant> = {
   'sign-off': SETTINGS_MANAGE,
   conversation: SETTINGS_MANAGE,
   retention: SETTINGS_MANAGE,
+  priority: SETTINGS_MANAGE,
 };
 
 /** A grant in words, as the server names its scopes. */
@@ -87,8 +90,13 @@ export function holds(grants: readonly Capability[], need: Grant): boolean {
   );
 }
 
+/** Priority stages by label, or "none" when no stage is chosen. */
+export const stagesInWords = (ids: readonly string[]): string =>
+  ids.length === 0 ? 'none' : ids.map((id) => TASK_STAGES.labelOf(id)).join(', ');
+
 /** A setting's value in words. Null is a real value — the band is off. */
 export function inWords(row: SettingView): string {
+  if (Array.isArray(row.value)) return stagesInWords(row.value);
   if (row.value === null) return 'off';
   if (typeof row.value === 'boolean') return row.value ? 'on' : 'off';
   return String(row.value);

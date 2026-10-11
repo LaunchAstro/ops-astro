@@ -66,6 +66,7 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   // retention window never below the conversation window.
   'settings.set_conversation_window': { value: 14 },
   'settings.set_retention_window': { value: 90 },
+  'settings.set_priority_stages': { value: ['sales'] },
   // The agents' cost log (MP-14-6) takes its period.
   'finance.agent_costs': { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' },
 };

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Everything `/settings` knows, with no markup in it.
-//
 // The screen is two reads, two commands and four pieces of state that decide
 // what a person may do and what they are told. Keeping that here means the
 // screen file is the form and this file is the rules, and the rules are the
@@ -76,6 +75,7 @@ const COMMAND = {
   'sign-off': 'settings.set_client_sign_off',
   conversation: 'settings.set_conversation_window',
   retention: 'settings.set_retention_window',
+  priority: 'settings.set_priority_stages',
 } as const;
 
 /** The session's memory as this screen holds it, and which session it is. */
