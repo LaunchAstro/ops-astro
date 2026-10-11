@@ -132,7 +132,7 @@ const config: ViteUserConfig = defineConfig({
             'tests/reads/priority-digest-ignores-unscored-task-weight.test.ts',
             'tests/commands/launch-authority-actor-grants-and-lineage.test.ts',
             'tests/commands/comment-change-waits-for-actor-grant-revoke.test.ts',
-            'tests/commands/upgrade-links-pending-launch-proposals.test.ts',
+            'tests/commands/upgrade-refuses-pending-launch-proposals.test.ts',
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/api/server-entry-hosted-sign-in-key.test.ts',
             'tests/review/forwarder-replay-time-order.test.ts',

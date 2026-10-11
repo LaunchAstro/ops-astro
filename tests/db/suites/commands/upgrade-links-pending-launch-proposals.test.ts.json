@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "A Launch proposal pending across the upgrade that adds the version's Launch link is linked by it: its launcher's decision item is withdrawn and their decision refused FOUR_EYES_REQUIRED"
-}

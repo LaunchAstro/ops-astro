@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An upgrade across the version's Launch link refuses while an agent's proposal on a launched task, written before it, is still pending, and links and withdraws nothing; once a person has decided them it applies"
+}
