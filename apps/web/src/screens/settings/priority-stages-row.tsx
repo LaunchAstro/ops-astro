@@ -19,15 +19,18 @@ export function PriorityStagesRow(props: {
   const row = model.rowFor('priority');
   const value = row?.value;
   const held: readonly string[] = Array.isArray(value) ? value : [];
-  // What the person has ticked since the read, or the business's stages until then.
-  const [ticked, setTicked] = useState<readonly string[] | null>(null);
-  const chosen = ticked ?? held;
+  // What this owner has ticked since their last confirmed save, or the
+  // business's stages. A switch or a confirmed save drops it (#1186).
+  const key = model.draftKey('priority');
+  const [ticked, setTicked] = useState<{
+    readonly key: string;
+    readonly ids: readonly string[];
+  } | null>(null);
+  if (ticked !== null && ticked.key !== key) setTicked(null);
+  const chosen = ticked !== null && ticked.key === key ? ticked.ids : held;
   const toggle = (id: string, on: boolean): void => {
-    setTicked(
-      JOURNEY.filter((stage) => (stage.id === id ? on : chosen.includes(stage.id))).map(
-        (stage) => stage.id,
-      ),
-    );
+    const ids = JOURNEY.filter((stage) => (stage.id === id ? on : chosen.includes(stage.id)));
+    setTicked({ key, ids: ids.map((stage) => stage.id) });
   };
   const disabled = model.disabledFor('priority');
   return (

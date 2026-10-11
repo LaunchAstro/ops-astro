@@ -57,6 +57,7 @@ import type {
 import { remember, sessionMemory, type Confirmed, type Draft, type Which } from './confirmed.ts';
 import type { Conflict, SettingsModel } from './settings-model.ts';
 import {
+  COMMAND,
   GRANT,
   KEY,
   SESSION_CAPABILITIES,
@@ -69,14 +70,6 @@ import {
 export type { StorageLike } from '../../session/token.ts';
 export type { Confirmed, Draft, Which } from './confirmed.ts';
 export type { Conflict, SettingsModel } from './settings-model.ts';
-
-const COMMAND = {
-  'four-eyes': 'settings.set_four_eyes_threshold',
-  'sign-off': 'settings.set_client_sign_off',
-  conversation: 'settings.set_conversation_window',
-  retention: 'settings.set_retention_window',
-  priority: 'settings.set_priority_stages',
-} as const;
 
 /** The session's memory as this screen holds it, and which session it is. */
 interface Held {
@@ -139,6 +132,8 @@ export function useSettings(
   const closed = closedBy !== null && desk.owns(closedBy);
   const conflict = stale !== null && desk.owns(stale.tag) ? stale.is : null;
   const [said, setSaid] = useState<{ readonly tag: Tag; readonly text: string } | null>(null);
+  // Each row's confirmed saves, so a row's draft ends when one lands.
+  const [landed, setLanded] = useState<Partial<Record<Which, number>>>({});
   const complaint = said !== null && desk.owns(said.tag) ? said.text : null;
   const setComplaint = (text: string | null): void => {
     setSaid(text === null ? null : { tag: desk.save(), text });
@@ -212,6 +207,7 @@ export function useSettings(
     }
     if (settlement.kind !== 'ok') return;
     setConflict(null);
+    setLanded((was) => ({ ...was, [which]: (was[which] ?? 0) + 1 }));
     const kept = remember(which, settlement.value.detail?.['value'], value);
     // A session refused the read keeps nothing until a read answers it. The
     // hold is judged as it stands now, not as it stood when Save was pressed:
@@ -285,6 +281,7 @@ export function useSettings(
     stepUp: prompt,
     conflict,
     rowFor,
+    draftKey: (which) => `${businessKey}\n${grantKey}\n${String(landed[which] ?? 0)}`,
     save,
     writeOver: () => {
       // Only over what the reread showed: never while it is in flight, and

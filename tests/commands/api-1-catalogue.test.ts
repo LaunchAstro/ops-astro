@@ -202,7 +202,7 @@ function exemptAndMergedTickets(): void {
     expect(ui('task.create')).toEqual(CREATE_UI);
     expect(ui('task.start')).toEqual(START_UI);
     expect(ui('settings.set_client_sign_off')).toEqual([
-      'agency:settings (screens/settings/use-settings.ts)',
+      'agency:settings (screens/settings/reads.ts)',
     ]);
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(workflow).toContain('node scripts/command-parity.mjs --check');

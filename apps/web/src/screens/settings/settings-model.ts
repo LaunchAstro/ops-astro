@@ -42,6 +42,11 @@ export interface SettingsModel {
   readonly stepUp: StepUpAsk | null;
   readonly conflict: Conflict | null;
   readonly rowFor: (which: Which) => SettingView | null;
+  /**
+   * Whose draft a row's controls may hold: this business and person, until the
+   * row's next confirmed save. A stale or unsent draft keeps its key.
+   */
+  readonly draftKey: (which: Which) => string;
   readonly save: (which: Which, value: Draft) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;

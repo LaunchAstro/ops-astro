@@ -50,6 +50,15 @@ export const KEY = {
   priority: 'priority_stages',
 } as const;
 
+/** Each row and the command that writes it. */
+export const COMMAND = {
+  'four-eyes': 'settings.set_four_eyes_threshold',
+  'sign-off': 'settings.set_client_sign_off',
+  conversation: 'settings.set_conversation_window',
+  retention: 'settings.set_retention_window',
+  priority: 'settings.set_priority_stages',
+} as const;
+
 /** Each row and the grant its own command takes; the server gates them apart. */
 export const GRANT: Record<keyof typeof KEY, Grant> = {
   'four-eyes': SPEND_DECIDE,
