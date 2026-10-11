@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The new-task draft's fields (MP-4-13, DN-01, DN-02, DN-05): the name, due,
-// estimate, category, the owner the page named, the project, stage, priority,
+// estimate, category, the owner (`DraftOwner.tsx`), the project, stage, priority,
 // description and agent brief (`DraftDetails.tsx`), tags, subtasks, time spent
 // and a note. Each change goes straight
 // to `put`, which keeps the draft for its person; nothing here writes to the
@@ -18,6 +18,7 @@ import {
 import { TASK_CATEGORIES } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftDetails } from './DraftDetails.tsx';
+import { DraftOwner } from './DraftOwner.tsx';
 import { DraftTime } from './DraftTimer.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import type { TaskDraft } from './task-draft.ts';
@@ -111,8 +112,13 @@ function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElemen
   );
 }
 
-/** The category and the owner, written after the task at Create; the owner only as the page named it. */
-function DraftGuesses({ draft, put, locked }: Omit<DraftFieldsProps, 'name'>): ReactElement {
+/** The category and the owner (a person, an AI agent or nobody), written after the task at Create. */
+function DraftGuesses({
+  client,
+  draft,
+  put,
+  locked,
+}: Omit<DraftFieldsProps, 'name'>): ReactElement {
   return (
     <>
       <Field id="panel-draft-category" label="Category">
@@ -133,22 +139,7 @@ function DraftGuesses({ draft, put, locked }: Omit<DraftFieldsProps, 'name'>): R
           ))}
         </select>
       </Field>
-      {draft.owner === null ? null : (
-        <p className="card__sub" data-draft-owner>
-          Owner: {draft.owner.name}{' '}
-          <button
-            className="btn"
-            type="button"
-            data-draft="clear-owner"
-            disabled={locked}
-            onClick={() => {
-              put({ owner: null });
-            }}
-          >
-            Clear
-          </button>
-        </p>
-      )}
+      <DraftOwner client={client} draft={draft} put={put} locked={locked} />
     </>
   );
 }

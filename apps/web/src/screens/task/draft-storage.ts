@@ -18,8 +18,8 @@ export interface TaskDraft {
   readonly clientId: string | null;
   /** A category id (`TASK_CATEGORIES`), guessed from the page or chosen, or null. */
   readonly category: string | null;
-  /** The owner the page named, or null: Create assigns nobody. */
-  readonly owner: { readonly id: string; readonly name: string } | null;
+  /** The owner: a person, or an AI agent (`agent`); null, Create assigns nobody. */
+  readonly owner: { readonly id: string; readonly name: string; readonly agent?: true } | null;
   /** The sentence admitting what the page's guesses came from (DN-02), or null. */
   readonly why: string | null;
   /** The page it was filed from, kept with it so a reopened draft still names its own. */
@@ -98,7 +98,7 @@ export function draftStored(value: unknown): value is Partial<TaskDraft> & {
       if (
         field !== null &&
         (!object(field) ||
-          Object.keys(field).length !== 2 ||
+          Object.keys(field).length !== (field['agent'] === true ? 3 : 2) ||
           typeof field['id'] !== 'string' ||
           typeof field['name'] !== 'string')
       )

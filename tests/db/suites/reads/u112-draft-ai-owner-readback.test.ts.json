@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "U112 the new-task draft's owner (a person, an AI agent or nobody) reads back as chosen; Assign to AI starts no run; the draft is offered only the reader's own agents"
+}

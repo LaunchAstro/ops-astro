@@ -41,7 +41,8 @@ describe('MP-4-13 a draft filed from a door opens with the page’s guesses', ()
     expect(valueOf(view, '#panel-draft-category')).toBe('seo');
     expect(valueOf(view, '#panel-draft-estimate')).toBe('240');
     expect(valueOf(view, '#panel-draft-due')).toBe('2026-10-14');
-    expect(view.host.querySelector('[data-draft-owner]')?.textContent).toContain('Len');
+    expect(valueOf(view, '#panel-draft-owner')).toBe(`person:${OWNER_ID}`);
+    expect(view.host.querySelector('#panel-draft-owner option:checked')?.textContent).toBe('Len');
     expect(view.host.querySelector('[data-draft-admission]')?.textContent).toBe(
       'New task, filed from Site health. Guessed from “Checkout down”: due in 7 days; owner Len. Nothing is stored until Create.',
     );
@@ -71,7 +72,7 @@ describe('MP-4-13 CS-4.37 Create writes the page’s guesses', () => {
   it('a category changed and the owner cleared on the draft are what Create writes', async () => {
     const { view, sent } = await guessedDraft();
     await view.choose('#panel-draft-category', 'content');
-    await view.click('[data-draft="clear-owner"]');
+    await view.choose('#panel-draft-owner', '');
     await create(view);
     expect(sent.map((one) => one.to)).toStrictEqual([
       '/task/create',
