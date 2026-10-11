@@ -9,10 +9,11 @@ import {
   isUuid,
   subjectsOf,
   wayfinderFacts,
+  writeRecordData,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { invalid, notPermitted, type RequestOf } from './wayfinder.ts';
@@ -131,13 +132,15 @@ export async function setBlocking(
     // oxlint-disable-next-line no-await-in-loop
     await linkBlocks(tx, blocker, target.id);
   }
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('blocked_by', $3::jsonb), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, blockers],
+  const written = await writeRecordData(
+    tx,
+    target.id,
+    `data = data || jsonb_build_object('blocked_by', $3::jsonb), updated_at = now()`,
+    [blockers],
   );
+  if (written === undefined) return refused(refuseNotFound());
   await raiseFrontierDecisions(tx, target.id);
-  return applied(target.id, Number(rows[0]?.revision), { blockedBy: blockers });
+  return appliedWrite(target.id, written, { blockedBy: blockers });
 }
 
 /**
@@ -168,13 +171,14 @@ export async function claimTicket(
       return notPermitted(['claimed'], ['An agent has claimed this ticket already.']);
     }
   }
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('assignee', $3::uuid), updated_at = now()
-      where business_id = $1 and id = $2 and deleted_at is null
-      returning revision::text as revision`,
-    [tx.businessId, target.id, context.session.personId],
+  const written = await writeRecordData(
+    tx,
+    target.id,
+    `data = data || jsonb_build_object('assignee', $3::uuid), updated_at = now()`,
+    [context.session.personId],
   );
-  return applied(target.id, Number(rows[0]?.revision), { assignee: context.session.personId });
+  if (written === undefined) return refused(refuseNotFound());
+  return appliedWrite(target.id, written, { assignee: context.session.personId });
 }
 
 /**
