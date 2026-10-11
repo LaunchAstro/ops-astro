@@ -233,6 +233,9 @@ export const DECLARED: Readonly<
   'activation.roll_back': { carry: 'not carried', plant: 'an automation, not task content' },
   'activation.turn_off': { carry: 'not carried', plant: 'an automation, not task content' },
   'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
+  // Assign to AI: a person's own agent, an actor of the business, never task content.
+  'agent.create': { carry: 'not carried', plant: 'an agent, not task content' },
+  'agent.rename': { carry: 'not carried', plant: 'an agent, not task content' },
   // MP-14-7a: a repair names a connection, never task content.
   'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
   // MP-14-10a: a standing mandate or a graduation row of a client, never task content.
