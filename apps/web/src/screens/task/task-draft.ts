@@ -83,6 +83,7 @@ export const timedMinutes = (draft: TaskDraft): number =>
 /** A fresh draft with the page's guesses in it (DN-02). */
 export const prefilledDraft = (prefill: Prefill): TaskDraft => ({
   ...emptyDraft(prefill.clientId),
+  title: prefill.title,
   due: prefill.due,
   estimate: prefill.estimate,
   category: prefill.category,
@@ -222,5 +223,5 @@ export function draftProblem(storage: Storage | null, person: string): string | 
   } catch {
     /* Hold the raw copy. */
   }
-  return 'The saved draft could not be recovered. Its original copy is held; No recovery request was sent.';
+  return 'The saved draft could not be read, so nothing was sent. It is kept as it was.';
 }

@@ -200,8 +200,8 @@ function ProjectBoardRead(
       )}
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      {/* Keyed on the reader: its lock, refusal and in-flight create are theirs. */}
-      <CreateTask key={grantKey} client={client} onCreated={reload} />
+      {/* The quick-add opens the one kept draft with the typed name. */}
+      <CreateTask scope={props.scope} canFileTask={props.canFileTask === true} />
       <TaskPinsNotice />
 
       {said === null ? null : (

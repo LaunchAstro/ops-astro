@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Retrying a create whose response was lost, through the real form.
+// Retrying a create whose response was lost, through the new-task draft. The
+// Projects quick-add was a second create form; it now opens this one draft
+// (U112), so the finding is proved here.
 //
 // The review's first finding is a recovery path, not a race: the server commits
 // the task, the response never arrives, the person sees "could not be reached"
@@ -17,8 +19,9 @@
 // server commits, and the transport throws on the way back.
 
 import { describe, expect, it } from 'vitest';
-import { Projects } from '../../apps/web/src/screens/Projects.tsx';
+import { DraftPanel } from '../../apps/web/src/screens/task/DraftPanel.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { store } from '../web/draft-support.tsx';
 import { mount, settle } from './mount.tsx';
 
 interface AppliedEntry {
@@ -82,12 +85,6 @@ function server(options: { readonly drop?: boolean } = {}) {
       return json(outcome);
     }
 
-    if (at.endsWith('/task/board')) {
-      return json({
-        ok: true,
-        tasks: tasks.map((task) => boardTask(task)),
-      });
-    }
     throw new Error(`unrouted ${at}`);
   }) as unknown as typeof globalThis.fetch;
 
@@ -105,21 +102,6 @@ function server(options: { readonly drop?: boolean } = {}) {
     release: () => {
       open?.();
     },
-  };
-}
-
-function boardTask(task: { readonly id: string; readonly key: string; readonly title: string }) {
-  return {
-    ...task,
-    state: null,
-    assignee: null,
-    due: null,
-    priority: null,
-    completedAt: null,
-    revision: 1,
-    rank: { number: null, score: null, calc: '' },
-    stage: null,
-    clientSet: false,
   };
 }
 
@@ -143,31 +125,43 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
   });
 }
 
-const screen = (fetch: typeof globalThis.fetch) => (
-  <Projects client={client(fetch)} grantKey="alpha:mia" navigate={() => {}} />
-);
+const PERSON = 'alpha:mia@alpha.local';
+
+async function openDraft(fetch: typeof globalThis.fetch, storage: Storage) {
+  const opened = { created: null as string | null };
+  const view = await mount(
+    <DraftPanel
+      client={client(fetch)}
+      storage={storage}
+      person={PERSON}
+      scope={{ clientId: null, from: 'Projects' }}
+      onCreated={(key) => (opened.created = key)}
+      onClose={() => {}}
+      hold={() => () => true}
+    />,
+  );
+  await settle();
+  return { view, opened };
+}
 
 describe('a create whose response was lost', () => {
   it('is retried as the same attempt, and one task exists at the end', async () => {
     const api = server();
-    const view = await mount(screen(api.fetch));
+    const { view, opened } = await openDraft(api.fetch, store());
+
+    await view.type('#panel-draft-name', 'Wire the board to the API');
+    await view.click('[data-draft="create"]');
     await settle();
 
-    await view.type('#create-title', 'Wire the board to the API');
-    await view.click('button[type="submit"]');
-    await settle();
-
-    // What the person sees: an absence, not a refusal, and the title still in
-    // the box. The button now offers the retry rather than a second create.
+    // What the person sees: an absence, not a refusal, and the name still in
+    // the draft. The button now offers the retry rather than a second create.
     expect(view.text()).toContain('Failed to fetch');
-    expect((view.find('button[type="submit"]') as HTMLElement | null)?.dataset['attempt']).toBe(
-      'retry',
-    );
-    expect((view.find('#create-title') as HTMLInputElement).value).toBe(
+    expect(view.find('[data-draft="create"]')?.textContent).toBe('Retry Create');
+    expect((view.find('#panel-draft-name') as HTMLInputElement).value).toBe(
       'Wire the board to the API',
     );
 
-    await view.click('button[type="submit"]');
+    await view.click('[data-draft="create"]');
     await settle();
     await settle();
 
@@ -175,73 +169,67 @@ describe('a create whose response was lost', () => {
     expect(api.creates[1]?.['operationId']).toBe(api.creates[0]?.['operationId']);
     expect(api.tasks).toHaveLength(1);
     expect(api.applied).toHaveLength(1);
-    expect(view.text()).toContain('Wire the board to the API');
-    expect(view.text()).not.toContain('Failed to fetch');
+    expect(opened.created).toBe('TSK-1');
 
     await view.unmount();
   });
 });
 
 describe('a create whose response was lost', () => {
-  it('starts a new attempt when the person asks for a different task', async () => {
+  it('holds the draft until it is settled, so no edit can make a second task', async () => {
+    // Before U112 a changed title started a new attempt beside the lost one,
+    // which could leave two tasks. The draft is now read-only until its own
+    // retry settles it; Cancel is the deliberate way out.
     const api = server();
-    const view = await mount(screen(api.fetch));
-    await settle();
-
-    await view.type('#create-title', 'First task');
-    await view.click('button[type="submit"]');
+    const storage = store();
+    const first = await openDraft(api.fetch, storage);
+    await first.view.type('#panel-draft-name', 'First task');
+    await first.view.click('[data-draft="create"]');
     await settle();
     expect(api.tasks).toHaveLength(1);
+    await first.view.unmount();
 
-    // A changed title is a different intention, so it must not be folded into
-    // the unresolved attempt: two tasks is the correct answer here.
-    await view.type('#create-title', 'A genuinely different task');
-    expect((view.find('button[type="submit"]') as HTMLElement | null)?.dataset['attempt']).toBe(
-      'new',
-    );
-    await view.click('button[type="submit"]');
+    // A reload: the same draft and attempt come back, still held.
+    const again = await openDraft(api.fetch, storage);
+    expect((again.view.find('#panel-draft-name') as HTMLInputElement).readOnly).toBe(true);
+    expect(again.view.find('[data-draft-unsettled]')).not.toBeNull();
+    await again.view.click('[data-draft="create"]');
     await settle();
     await settle();
 
     expect(api.creates).toHaveLength(2);
-    expect(api.creates[1]?.['operationId']).not.toBe(api.creates[0]?.['operationId']);
-    expect(api.tasks).toHaveLength(2);
-    expect(api.applied).toHaveLength(2);
+    expect(api.creates[1]?.['operationId']).toBe(api.creates[0]?.['operationId']);
+    expect(api.tasks).toHaveLength(1);
+    expect(again.opened.created).toBe('TSK-1');
 
-    await view.unmount();
+    await again.view.unmount();
   });
 });
 
 describe('a create whose response was lost', () => {
   it('is not editable while it is in flight, so a late success erases nothing', async () => {
-    // The second half of the review's finding 2, on the create form. The
-    // success handler used to clear the box unconditionally, so a title typed
-    // for the *next* task while the first create was still out disappeared when
-    // the first one landed. The box is not editable while the request is out,
-    // and the clearing is bound to the title that was submitted.
+    // The second half of the review's finding 2. The fields are read-only
+    // while the request is out, so nothing typed for the next task is lost
+    // when the first one lands.
     const api = server({ drop: false });
-    const view = await mount(screen(api.fetch));
-    await settle();
+    const { view, opened } = await openDraft(api.fetch, store());
 
-    await view.type('#create-title', 'Wire the board to the API');
+    await view.type('#panel-draft-name', 'Wire the board to the API');
     api.hold();
-    await view.click('button[type="submit"]');
+    await view.click('[data-draft="create"]');
     await settle();
 
     expect(api.creates).toHaveLength(1);
-    expect((view.find('#create-title') as HTMLInputElement).disabled).toBe(true);
-    expect((view.find('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true);
-    expect((view.find('button[data-attempt="discard"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((view.find('#panel-draft-name') as HTMLInputElement).readOnly).toBe(true);
+    expect((view.find('[data-draft="create"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((view.find('[data-draft="cancel"]') as HTMLButtonElement).disabled).toBe(true);
 
     api.release();
     await settle();
     await settle();
 
-    // Settled: one task, the box cleared for the next one, nothing unresolved.
     expect(api.tasks).toHaveLength(1);
-    expect((view.find('#create-title') as HTMLInputElement).value).toBe('');
-    expect((view.find('#create-title') as HTMLInputElement).disabled).toBe(false);
-    expect(view.find('button[data-attempt="discard"]')).toBeNull();
+    expect(opened.created).toBe('TSK-1');
 
     await view.unmount();
   });

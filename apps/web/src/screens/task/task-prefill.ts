@@ -29,6 +29,8 @@ import { addDays, todayOn } from './due-dates.ts';
 export interface PageContext {
   /** The page's name, for "filed from". */
   readonly from: string;
+  /** A name typed at the door (the Projects quick-add), for a draft that has none yet. */
+  readonly title?: string;
   /** The thing the door is about, for the name's placeholder and the sentence. */
   readonly subject?: string | undefined;
   readonly channel?: string | undefined;
@@ -54,6 +56,7 @@ export interface Prefill {
   readonly boardId: string | null;
   readonly stage: string | null;
   readonly priority: number | null;
+  readonly title: string;
   readonly why: string;
 }
 
@@ -125,6 +128,7 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
     boardId: page.boardId ?? null,
     stage: TASK_STAGES.list().find((stage) => stage.id === page.stage)?.id ?? null,
     priority,
+    title: page.title ?? '',
     why,
   };
 }
@@ -151,6 +155,7 @@ export function doorContext(door: HTMLElement): PageContext {
     urgent: door.dataset['newTaskUrgent'] !== undefined,
     clientId: read('newTaskClient') ?? null,
     owner: ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
+    ...optional('title', read('newTaskTitle')),
     ...optional('boardId', read('newTaskBoard')),
     ...optional('stage', read('newTaskStage')),
     ...optional('priority', priorityOf(Number(read('newTaskPriority')))),
