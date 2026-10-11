@@ -21,13 +21,15 @@
 //
 // **Create is the task first, then each part by its own command (DN-05;
 // `draft-parts.ts`).**
-// `task.create` writes the task; the client, the category, the owner, the
-// note, the tags, the subtasks and the logged time then go through
-// `task.set_party`, `task.set_category`, `task.assign`, `task.comment`, the
-// tag commands, `task.create` under the new parent and `time.log`, so each is
-// checked against its own permission and audited under its own name. A part
-// refused once the task exists is named back to the person, never retried as
-// a second task.
+// `task.create` writes the task; the client, the project, the stage, the
+// description, brief and priority, the category, the owner, the note, the
+// tags, the subtasks and the logged time then go through `task.set_party`,
+// `task.move`, `task.set_stage`, `task.update`, `task.set_category`,
+// `task.assign`, `task.comment`, the tag commands, `task.create` under the new
+// parent and `time.log`, so each is checked against its own permission and
+// audited under its own name. The client and project go first: if either is
+// refused, nothing after it is sent. A part refused once the task exists is
+// named back to the person, never retried as a second task.
 
 import { currentDraft, sessionGeneration } from './draft-storage.ts';
 import { draftStored, type Attempt, type TaskDraft } from './draft-storage.ts';
@@ -49,6 +51,11 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   from: null,
   timerFrom: null,
   timedMs: 0,
+  boardId: null,
+  stage: null,
+  description: '',
+  agentBrief: '',
+  priority: null,
 });
 
 /** The draft with its running timer stopped at `now`, the time it ran added; as it was if none runs. */
@@ -81,6 +88,9 @@ export const prefilledDraft = (prefill: Prefill): TaskDraft => ({
   category: prefill.category,
   owner: prefill.owner,
   why: prefill.why,
+  boardId: prefill.boardId,
+  stage: prefill.stage,
+  priority: prefill.priority,
 });
 
 const PREFIX = 'ops-astro.task-draft.';

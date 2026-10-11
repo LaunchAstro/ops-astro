@@ -28,6 +28,14 @@ export interface TaskDraft {
   readonly timerFrom: string | null;
   /** Milliseconds the draft's timer has run; rounded once, at Create (`timedMinutes`). */
   readonly timedMs: number;
+  /** The project (a board task's id) the task goes on, or null for none. */
+  readonly boardId: string | null;
+  /** A stage id (`TASK_STAGES`), or null. */
+  readonly stage: string | null;
+  readonly description: string;
+  readonly agentBrief: string;
+  /** P1 to P4, from the page or chosen, or null. */
+  readonly priority: number | null;
 }
 
 export interface Attempt {
@@ -58,8 +66,17 @@ function attempt(value: unknown): value is Attempt {
     strings(value['missed'])
   );
 }
-const TEXT = new Set(['title', 'time', 'note']);
-const NULLABLE_TEXT = new Set(['due', 'clientId', 'category', 'why', 'from', 'timerFrom']);
+const TEXT = new Set(['title', 'time', 'note', 'description', 'agentBrief']);
+const NULLABLE_TEXT = new Set([
+  'due',
+  'clientId',
+  'category',
+  'why',
+  'from',
+  'timerFrom',
+  'boardId',
+  'stage',
+]);
 /** The unsent editor's representation, not a command envelope or proof of an old effect. */
 export function draftStored(value: unknown): value is Partial<TaskDraft> & {
   readonly attempt?: Attempt;
@@ -73,7 +90,7 @@ export function draftStored(value: unknown): value is Partial<TaskDraft> & {
       if (!nullableText(field)) return false;
     } else if (key === 'tags' || key === 'steps') {
       if (!strings(field)) return false;
-    } else if (key === 'estimate') {
+    } else if (key === 'estimate' || key === 'priority') {
       if (field !== null && (typeof field !== 'number' || !Number.isFinite(field))) return false;
     } else if (key === 'timedMs') {
       if (typeof field !== 'number' || !Number.isFinite(field) || field < 0) return false;

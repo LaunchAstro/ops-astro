@@ -18,7 +18,11 @@
 // The estimate is that category's usual size; the due day is a week out, or
 // three days when the door flags the move urgent, on the business's day.
 
-import { TASK_CATEGORIES } from '../../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_CATEGORIES,
+  TASK_STAGES,
+  type InternalTaskDetail,
+} from '../../../../../packages/core-wire/src/index.ts';
 import { addDays, todayOn } from './due-dates.ts';
 
 /** What a task-filing door, or the page behind the dock's New task, says about the work. */
@@ -33,6 +37,11 @@ export interface PageContext {
   readonly urgent?: boolean | undefined;
   readonly clientId?: string | null;
   readonly owner?: { readonly id: string; readonly name: string } | null;
+  /** The project the page is a board of, or the task's own. */
+  readonly boardId?: string | null;
+  readonly stage?: string | null;
+  /** The page's priority: the task's own when filed from a task. */
+  readonly priority?: number | null;
 }
 
 /** The draft's fields the page fills in, and the sentence that admits it. */
@@ -42,6 +51,9 @@ export interface Prefill {
   readonly due: string;
   readonly clientId: string | null;
   readonly owner: { readonly id: string; readonly name: string } | null;
+  readonly boardId: string | null;
+  readonly stage: string | null;
+  readonly priority: number | null;
   readonly why: string;
 }
 
@@ -92,6 +104,7 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
     urgent ? 'the move being flagged urgent' : null,
   ].filter((part) => part !== null);
   const owner = page.owner ?? null;
+  const priority = priorityOf(page.priority);
   const why = [
     from.length > 0
       ? `Guessed from ${from.join(', ')}: due in`
@@ -100,6 +113,7 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
     urgent ? ', pulled in because this move is flagged urgent' : '',
     own === null && routed === undefined ? ', and the category fell back to Admin' : '',
     owner === null ? '; no owner guessed' : `; owner ${owner.name}`,
+    priority === null ? '' : `; priority P${String(priority)} from the page`,
     '.',
   ].join('');
   return {
@@ -108,9 +122,15 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
     due: addDays(todayOn(now), days),
     clientId: page.clientId ?? null,
     owner,
+    boardId: page.boardId ?? null,
+    stage: TASK_STAGES.list().find((stage) => stage.id === page.stage)?.id ?? null,
+    priority,
     why,
   };
 }
+
+const priorityOf = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 4 ? value : null;
 
 /** The page's name, as the mockup reads it: the main heading, else the document's title. */
 export function pageName(): string {
@@ -131,5 +151,25 @@ export function doorContext(door: HTMLElement): PageContext {
     urgent: door.dataset['newTaskUrgent'] !== undefined,
     clientId: read('newTaskClient') ?? null,
     owner: ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
+    ...optional('boardId', read('newTaskBoard')),
+    ...optional('stage', read('newTaskStage')),
+    ...optional('priority', priorityOf(Number(read('newTaskPriority')))),
+  };
+}
+
+const optional = <Key extends string, Value>(key: Key, value: Value | null | undefined) =>
+  (value === null || value === undefined ? {} : { [key]: value }) as Partial<Record<Key, Value>>;
+
+/** The task panel's New task: filed from the task, on its client, project and stage. */
+export function taskContext(task: InternalTaskDetail): PageContext {
+  const subject = task.title ?? task.key;
+  return {
+    from: subject,
+    subject,
+    clientId: task.client,
+    category: task.category ?? undefined,
+    boardId: task.board?.readable === true ? task.board.id : null,
+    stage: task.stage,
+    priority: task.priority,
   };
 }

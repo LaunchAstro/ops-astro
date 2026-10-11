@@ -21,28 +21,22 @@ export function phaseCommand(
   tagId: string | null = null,
 ): DraftCommand {
   const { recordId, revision } = parent;
+  // An owning command writes its own fields on the task, at the revision the last part left.
+  const owned = (name: DraftCommandName, id: string, fields: Readonly<Record<string, unknown>>) =>
+    command(name, id, { recordId, fields }, revision);
   switch (part.kind) {
     case 'party':
-      return command(
-        'task.set_party',
-        part.operationId,
-        { recordId, fields: { client: part.clientId } },
-        revision,
-      );
+      return owned('task.set_party', part.operationId, { client: part.clientId });
+    case 'board':
+      return command('task.move', part.operationId, { recordId, board: part.boardId }, revision);
+    case 'stage':
+      return owned('task.set_stage', part.operationId, { stage: part.stage });
+    case 'details':
+      return owned('task.update', part.operationId, part.fields);
     case 'category':
-      return command(
-        'task.set_category',
-        part.operationId,
-        { recordId, fields: { category: part.category } },
-        revision,
-      );
+      return owned('task.set_category', part.operationId, { category: part.category });
     case 'assignment':
-      return command(
-        'task.assign',
-        part.operationId,
-        { recordId, fields: { assignee: part.assigneeId } },
-        revision,
-      );
+      return owned('task.assign', part.operationId, { assignee: part.assigneeId });
     case 'note':
       return command(
         'task.comment',

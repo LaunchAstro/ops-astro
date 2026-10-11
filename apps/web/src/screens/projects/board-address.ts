@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useRef, useState } from 'react';
+import { decodeBoardAddress, type BoardAddress } from './scoped-board.ts';
 const queryOf = (address: string | undefined): string =>
   address === undefined ? window.location.search : new URL(address, 'http://here').search;
+/** The board scope an address names, or null when it names none that is valid. */
+export function addressScope(address: string | undefined): BoardAddress | null {
+  const scope = decodeBoardAddress(queryOf(address));
+  return scope.kind === 'invalid' ? null : scope;
+}
 /** A board keeps its view through its own writes and hidden Work log returns. */
 export function useProjectBoardAddress(
   address: string | undefined,

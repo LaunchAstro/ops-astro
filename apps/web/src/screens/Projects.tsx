@@ -5,7 +5,7 @@ import { useAssignments } from './task/assignment-context.tsx';
 import { AssignmentRecoveries } from './task/AssignmentRecovery.tsx';
 import { useTimerState } from './task/task-timer-context.tsx';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { usePageToolbar, ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
+import { ProjectsBoard, TabPanel, clientFiltersIn } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import type {
@@ -24,7 +24,7 @@ import { WorkLog } from './projects/WorkLog.tsx';
 import { useSharedTaskPins, TaskPinsNotice } from './task/task-pins-context.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
-import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
+import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import {
   decodeBoardAddress,
   boardBody,
@@ -57,38 +57,18 @@ export interface ProjectsProps {
   readonly inPanel?: boolean;
 }
 
-type ProjectsTab = 'board' | 'worklog';
-
 export function Projects(props: ProjectsProps): ReactElement {
-  const bar = usePageToolbar();
   const { canFileTask = false, inPanel } = props;
-  // The tab is its address's: a panel's own place, never the page's fragment,
-  // or the page's. A chosen tab holds while that address does; a new address
-  // opens on its own tab, and the Work log, once drawn, stays drawn.
-  const here = (): string => (props.inPanel === true ? (props.address ?? '') : pageAddress());
-  const address = here();
-  const [held, setHeld] = useState(() => ({ address, tab: tabInAddress(address) }));
-  const [workLogOpened, setWorkLogOpened] = useState(held.tab === 'worklog');
-  if (held.address !== address) {
-    const next = tabInAddress(address);
-    setHeld({ address, tab: next });
-    if (next === 'worklog') setWorkLogOpened(true);
-  }
-  const tab: ProjectsTab = held.address === address ? held.tab : tabInAddress(address);
-  const select = (id: string): void => {
-    const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
-    if (props.inPanel !== true) writeTab(next);
-    setHeld({ address: here(), tab: next });
-    if (next === 'worklog') setWorkLogOpened(true);
-  };
+  const { address, tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   return (
     <div className="stack">
       {tab === 'board' ? (
-        <ProjectsToolbar bar={inPanel === true ? null : bar} canFileTask={canFileTask} />
+        <ProjectsToolbar inPanel={inPanel === true} canFileTask={canFileTask} address={address} />
       ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
+          canFileTask={canFileTask}
           hidden={tab !== 'board'}
           client={props.client}
           grantKey={props.grantKey}
@@ -205,7 +185,8 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  const empty = scopedView ? <></> : <NoTasks />;
+  const noTasks = <NoTasks scope={props.scope} canFileTask={props.canFileTask === true} />;
+  const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
 
@@ -282,7 +263,7 @@ function ProjectBoardRead(
               address={boardQuery}
               {...(props.scope.target === undefined ? {} : { target: props.scope.target })}
               clients={clients ?? NO_CLIENTS}
-              nothing={<NoTasks />}
+              nothing={noTasks}
               onAddress={(next) => props.place.write(retainBoardScope(query, next))}
             />
           </>

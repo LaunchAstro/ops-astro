@@ -98,7 +98,7 @@ function DockPanel(props: {
       onChanged={taskPanel.changed}
       onClose={taskPanel.close}
       docked
-      onNewTask={taskPanel.openDraft}
+      onNewTask={(page) => taskPanel.openDraft(scopeOf(page))}
       onOpenTask={(key, origin) => taskPanel.host.open(key, 'open', undefined, false, origin)}
       onLeaving={taskPanel.leaving}
       onDuplicated={(key) => {
