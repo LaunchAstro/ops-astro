@@ -134,33 +134,29 @@
   min-width: 0;
 }
 .dtp__fields :is(select.input, [data-panel-field='due'], .dtp__link, .input) {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   box-sizing: border-box;
   width: 100%;
-  height: 37px;
+  height: 38.0625px;
   padding: 0 var(--s-3);
   border: 1px solid var(--border);
   border-radius: 0;
   background: var(--paper);
   color: var(--text);
-  font: var(--type-small);
+  font: var(--type-body);
   text-align: left;
 
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  line-height: 1.2;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .dtp__fields [data-panel-field='due'] {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: var(--s-2);
-  font: var(--type-small);
+  font: var(--type-body);
 
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  line-height: 1.2;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .dtp__fields > :is(.field, .field__error, p, [data-assignment-recovery]) {
   grid-column: 1 / -1;
@@ -368,14 +364,12 @@
   min-width: 0;
 }
 .ttime__log > input {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   width: 100%;
   min-width: 0;
   padding: var(--s-2) 0.65rem;
   border: 1px solid var(--border);
   background: var(--paper);
   font: var(--type-body);
-  font-size: 13px;
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
 }
@@ -472,19 +466,19 @@
   grid-column: 1 / -1;
 }
 [data-comments='section'] .taskform :is(textarea, [data-comment='post']) {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   box-sizing: border-box;
-  min-height: 37px;
+  min-height: 39.0625px;
+  height: 39.0625px;
   margin: 0;
-  padding: 0.6rem 0.65rem;
-  font: var(--type-small);
-
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  line-height: 1.3;
 }
 [data-comments='section'] .taskform textarea {
+  /* type-exception R20261012: reference reply fields use 13.6px sans with 1.55 leading. */
   width: 100%;
+  padding: var(--s-2) 0.65rem;
+  font: var(--type-body);
+  font-size: 0.85rem;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   border: 1px solid var(--border);
   background: var(--surface-2);
   resize: vertical;

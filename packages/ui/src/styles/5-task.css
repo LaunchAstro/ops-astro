@@ -31,9 +31,10 @@
   text-transform: var(--type-body-case);
   color: var(--text-muted);
 }
-/* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
-   and the same door out of a gate or an empty page. */
-.sb__addr {
+/* Task addresses share the measured reference type across their three hosts. */
+.tpr__crumb .sb__addr,
+.empty__action .sb__addr,
+.tpr__facts .sb__addr {
   /* type-exception R20261012: reference task addresses use 13px mono. */
   font: var(--type-data);
   font-size: 13px;
@@ -42,7 +43,7 @@
   color: var(--text);
   text-decoration: none;
 }
-.sb__addr--none {
+.tpr__facts .sb__addr--none {
   color: var(--text-muted);
 }
 .tpr__crumb .sb__addr:hover,
@@ -831,9 +832,9 @@
 
 [data-step-add] {
   width: 100%;
-  height: 1.6rem;
+  height: auto;
   min-height: 0;
-  padding: var(--s-1) 0;
+  padding: 0.25rem 0;
   border: 0;
   border-bottom: 1px solid transparent;
   background: none;
