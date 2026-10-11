@@ -12,7 +12,7 @@ export function usePageToolbar(): HTMLElement | null {
   return useContext(PageToolbar);
 }
 
-export const panelToolbar = createContext<HTMLElement | null>(null);
+export const PanelToolbar = createContext<HTMLElement | null>(null);
 export function usePanelToolbar(): HTMLElement | null {
-  return useContext(panelToolbar);
+  return useContext(PanelToolbar);
 }

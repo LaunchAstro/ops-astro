@@ -7,9 +7,8 @@
 // `task.assign`. Both are disabled while a write is in flight or an edit is
 // unsaved, and the page decides that; these only draw it.
 
-import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
-import { Skeleton } from '@launchastro/ui';
+import { Skeleton, StyledSelect } from '@launchastro/ui';
 import type {
   InternalTaskDetail as Task,
   PersonListResult,

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { StyledSelect } from '@launchastro/ui';
 //
 // The Status select (MP-4-8 CS-4.18, DP-25; Stage 1 adds), drawn the same on
 // the dock task panel and the task page.
@@ -17,6 +16,7 @@ import { StyledSelect } from '@launchastro/ui';
 // write is at the revision read; a landed one is counted (`onChanged`) and a
 // refusal is quoted in the server's words.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import {
   isRefusal,

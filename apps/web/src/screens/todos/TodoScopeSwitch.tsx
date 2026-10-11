@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { StyledSelect } from '@launchastro/ui';
 //
 // The Projects panel's scope switch (MP-7-2, CS-7.4): a teammate from
 // `person.list`, or a client, its waiting comments and its route family.
@@ -7,6 +6,7 @@ import { StyledSelect } from '@launchastro/ui';
 // and clients come from current permitted vocabularies. A client's route family
 // narrows actual runtime whose-move evidence.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { ClientView } from '../../../../../packages/core-wire/src/index.ts';
 import { admittedWords, type Vocabulary } from './typed-scope.ts';

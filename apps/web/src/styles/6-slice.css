@@ -6,8 +6,9 @@
    What is in it: the controls the working slice adds that the pinned mockup
    never drew, because it shipped populated demonstration data and had nothing
    to submit. A sign-in form, a create form, a lifecycle button row and the five
-   read-state containers. Everything borrows layer 1's tokens; no colour, radius
-   or space literal appears below.
+   read-state containers. Shared tokens supply the design values. Measured
+   control geometry follows the canonical reference where no token represents
+   it (R20261012); those literals describe new controls, not ported overrides.
 
    What is NOT in it: any override of a ported rule. A change to the drawn
    estate belongs in the layer that drew it, or it is a divergence from the
@@ -650,7 +651,4 @@
   position: absolute;
   width: min(31rem, 90vw);
   padding: 0.75rem;
-}
-.todos__searchdrop .todos__tools {
-  margin: 0;
 }

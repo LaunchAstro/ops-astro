@@ -23,8 +23,10 @@
 // Seen waits on the portal's read receipt.
 
 import type { ReactElement } from 'react';
+import { BUSINESS_CLOCK } from './due-dates.ts';
+import { isUuid } from '../../session/storage-slot.ts';
 import { EditBox } from './CommentEditBox.tsx';
-import { Empty } from '@launchastro/ui';
+import { Avatar, Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { editOf, parentOf, threadOf, type RowEdit } from './thread-shape.ts';
 
@@ -92,15 +94,16 @@ function Row(props: {
   const edit = actions.editing?.commentId === comment.id ? actions.editing : null;
   const isReply = parentOf(comment) !== null;
   const author =
-    actions.authors?.get(comment.author) ??
-    (/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(comment.author) ? 'Someone' : comment.author);
+    actions.authors?.get(comment.author) ?? (isUuid(comment.author) ? 'Someone' : comment.author);
   return (
     <article
       className={`msg msg--${comment.audience}`}
       data-comment-id={comment.id}
       data-audience={comment.audience}
     >
-      <MessageAvatar author={author} />
+      <span className="msg__avatar" aria-hidden="true">
+        <Avatar name={author} />
+      </span>
       <div className="msg__body">
         <RowMeta comment={comment} author={author} />
         {edit === null ? (
@@ -146,7 +149,7 @@ function RowMeta(props: {
           month: 'short',
           hour: 'numeric',
           minute: '2-digit',
-          timeZone: 'Australia/Brisbane',
+          timeZone: BUSINESS_CLOCK,
         })}
         {props.comment.edited_at === null ? '' : ' · edited'}
       </time>
@@ -224,11 +227,6 @@ function Act(props: {
   );
 }
 
-/**
- * The box a row's words are edited in, showing `body` and handing each
- * keystroke up. It hands back the new words, or null when nothing is to be
- * stored: Esc, words the same as the stored ones (`saved`), or an emptied box.
- */
 const SIGNALS: Readonly<Record<string, { word: string; title: string }>> = {
   owed: { word: 'Reply owed', title: 'The client is waiting on a reply from the team.' },
   not_acknowledged: {
@@ -257,17 +255,4 @@ function audienceWord(audience: string): string {
   // A word this build does not know is printed as it arrived. Inventing a
   // label for it would hide the fact that something new is being stored.
   return audience;
-}
-
-function MessageAvatar(props: { readonly author: string }): ReactElement {
-  return (
-    <span className="msg__avatar" aria-hidden="true">
-      {props.author
-        .trim()
-        .split(/\s+/u)
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join('')}
-    </span>
-  );
 }

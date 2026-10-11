@@ -151,7 +151,18 @@ it('MP-1-3 one table header style', () => {
   );
   // Every table head rule is the one table's.
   expect(heads.length).toBeGreaterThan(0);
-  for (const head of heads) expect(head).toMatch(/: \.table th\b/u);
+  for (const head of heads) {
+    if (head === 'apps/web/src/styles/6-slice.css: .todos .tl__head') {
+      // R20261012: Hub's compact dock head keeps row typography and only
+      // changes its geometry; it is not another table type style.
+      const geometry =
+        /\.todos \.tl__head\s*\{([^}]*)\}/u.exec(
+          read(`${root}apps/web/src/styles/6-slice.css`),
+        )?.[1] ?? '';
+      expect(geometry).not.toMatch(/font|letter-spacing|text-transform|(?:^|;)\s*color:/u);
+      expect(geometry).toMatch(/padding:\s*0 0 0\.4rem/u);
+    } else expect(head).toMatch(/: \.table th\b/u);
+  }
 });
 
 it('MP-1-3 one empty state and one field-shaped loading placeholder replace the eight', async () => {

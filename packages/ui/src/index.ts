@@ -108,4 +108,4 @@ export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';
 
 export { usePageTitle, usePageToolbar, usePanelToolbar } from './surfaces/PageToolbar.tsx';
 
-export { StyledSelect } from './primitives/StyledSelect.tsx';
+export { StyledSelect } from './kit/styled-select.tsx';

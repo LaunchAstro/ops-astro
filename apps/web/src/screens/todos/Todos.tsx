@@ -16,7 +16,7 @@
 // rechecked; completion keeps its current answer while reading back.
 
 import { useEffect, useState, type ReactElement } from 'react';
-import { Empty, Icon } from '@launchastro/ui';
+import { Empty, Icon, usePanelToolbar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { dependencyAdmission } from '../../data/board-live.ts';
@@ -271,12 +271,14 @@ function ScopeFilter(
   props: Pick<ReturnType<typeof useTodoFilters>, 'scope' | 'setScope' | 'vocabulary'>,
 ): ReactElement {
   const { scope, setScope, vocabulary } = props;
+  const compact = usePanelToolbar() !== null;
+  const label = compact ? 'Search projects' : 'Project filters';
   return (
-    <details className="todos__filters field-callout">
-      <summary aria-label="Project filters" title="Project filters">
-        <Icon name="filter" size="xs" />
+    <details className={`field-callout ${compact ? 'todos__searchdrop' : 'todos__filters'}`}>
+      <summary className={compact ? 'dpanel__btn' : undefined} aria-label={label} title={label}>
+        <Icon name={compact ? 'search' : 'filter'} size={compact ? 'sm' : 'xs'} />
       </summary>
-      <div className="field-callout__body">
+      <div className="field-callout__body todos">
         <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
       </div>
     </details>

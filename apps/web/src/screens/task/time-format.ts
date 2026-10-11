@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/** The entries shown before the fold (CS-4.31). */
+export const LATEST_TIME_ENTRIES = 3;
+
 /** "5m", "1h", "1h 30m". */
 export function minutesText(minutes: number): string {
   const hours = Math.floor(minutes / 60);

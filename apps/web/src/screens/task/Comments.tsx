@@ -61,7 +61,7 @@ import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Persp
 import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
 import { useRowActions } from './row-actions.ts';
 import {
-  InternalTaskMentions,
+  CommentComposer,
   useInternalTaskMentions,
   unavailableMentions,
   sameMentionsOwner,
@@ -264,7 +264,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
             }}
           />
         )}
-        <InternalTaskMentions
+        <CommentComposer
           enabled={audience === 'internal' && !picking}
           people={draft.people}
           id={scoped('comment-mentions')}
@@ -275,13 +275,12 @@ function OwnedComments(props: CommentsProps): ReactElement {
               ? 'Add an internal note… @mention someone'
               : 'Reply to the client…'
           }
-          selected={draft.mentions}
+          selected={draft.current.mentions ?? []}
           locked={locked || pending !== null}
           clearLocked={busy || pending !== null}
           onChange={(ids, next) =>
             draft.put({ mentions: ids, ...(next === undefined ? {} : { body: next }) })
           }
-          onBody={(next) => draft.put({ body: next })}
           onSend={post}
         />
         {draft.needsPeople ? (

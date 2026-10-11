@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's Client select (MP-4-8, CS-4.12, DP-19).
 //
@@ -18,7 +17,7 @@ import { StyledSelect } from '@launchastro/ui';
 // (`SourceRegion`) over what it fills, a real one nothing.
 
 import { useMemo, useState, type ReactElement } from 'react';
-import { Icon, SourceRegion } from '@launchastro/ui';
+import { Icon, SourceRegion, StyledSelect } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';

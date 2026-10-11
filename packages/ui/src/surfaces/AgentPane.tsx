@@ -116,7 +116,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
 function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const { shown } = props;
   const compact = usePanelToolbar() !== null;
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+  const lineage = lineageOf(props, shown);
   // The mockup's S6 layout: the run in main, what it was given in a side column after it.
   return (
     <>
@@ -169,17 +169,9 @@ function CurrentRun({ runId }: { readonly runId: RunStory['head']['runId'] }): R
 /** The side column: the scope the run was granted, what it was given and the task's allowance. */
 function RunSide(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const compact = usePanelToolbar() !== null;
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === props.shown.lineageId);
   return (
     <aside className="tpg__side" data-agent="side" aria-label="Scope and allowance">
-      {compact ? null : (
-        <Scope
-          stamp={scopeStamp(lineage)}
-          head={props.shown.head}
-          nameOf={props.nameOf}
-          ledgerHref={props.ledgerHref}
-        />
-      )}
+      {compact ? null : <RunScope {...props} />}
       <Given head={props.shown.head} />
       <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
     </aside>
@@ -232,7 +224,7 @@ function StopAnswers(
 
 function RunWork(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const { shown } = props;
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+  const lineage = lineageOf(props, shown);
   return (
     <>
       <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
@@ -248,7 +240,7 @@ function RunWork(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
 }
 
 function RunScope(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === props.shown.lineageId);
+  const lineage = lineageOf(props, props.shown);
   return (
     <Scope
       stamp={scopeStamp(lineage)}
@@ -257,4 +249,8 @@ function RunScope(props: AgentPaneProps & { readonly shown: RunStory }): ReactEl
       ledgerHref={props.ledgerHref}
     />
   );
+}
+
+function lineageOf(props: AgentPaneProps, shown: RunStory): RunLineage | undefined {
+  return props.lineages?.find((each) => each.lineageId === shown.lineageId);
 }

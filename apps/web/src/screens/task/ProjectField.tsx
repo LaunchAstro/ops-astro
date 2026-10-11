@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's Project select (MP-4-8, CS-4.15, DP-22).
 //
@@ -16,6 +15,7 @@ import { StyledSelect } from '@launchastro/ui';
 // **Through `task.move`** (`task:write`), at the revision the panel read; a
 // move that lands is counted, a refusal is quoted in the server's words.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type {

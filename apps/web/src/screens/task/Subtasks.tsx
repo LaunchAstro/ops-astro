@@ -12,15 +12,7 @@
 // keeps the fold open across a reread. Archived steps stay visible outside the
 // fold and count, saying when and why, with no tick (DT-05).
 
-import {
-  createContext,
-  use,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactElement,
-} from 'react';
+import { createContext, use, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { SubtaskRows, StepCount } from './SubtaskRows.tsx';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -29,9 +21,9 @@ import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
+import { useSubtaskActions, useSubtaskOwner } from './subtask-actions.tsx';
 import { holding, useHeldOperations } from './held-operations.ts';
 
-const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 /** The add box's words where the page holds them above its read; the panel's box keeps its own. */
 export const StepTitleHeld = createContext<readonly [string, (next: string) => void] | null>(null);
 
@@ -130,21 +122,7 @@ interface SubtaskListProps {
 
 export function SubtaskList(props: SubtaskListProps): ReactElement {
   const { client, steps, onOpenTask } = props;
-  const { locked: busy, because, run } = useCommand();
-  const current = useSubtaskOwner(props.client, props.parentId);
-  const tick = (step: StepView): void => {
-    const at = { expectedRevision: step.revision };
-    run(
-      () =>
-        step.done
-          ? client.mutate('task.reopen', { recordId: step.id, reason: REOPEN_REASON }, at)
-          : client.mutate('task.complete', { recordId: step.id }, at),
-      (settlement) => {
-        if (current() && settlement.kind === 'ok') props.onChanged();
-      },
-    );
-  };
-  const remove = removeStepAction(props, run, current);
+  const { busy, because, tick, remove, undo } = useSubtaskActions(props);
   const live = unfinished(steps);
   const archived = steps.filter((step) => step.archived !== null);
   const completed = steps.filter((step) => step.archived === null && step.done);
@@ -168,6 +146,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
         open={props.showFinished}
         onOpen={props.onShowFinished}
       />
+      {undo}
       <StepError because={because} />
     </div>
   );
@@ -244,42 +223,10 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   );
 }
 
-function useSubtaskOwner(client: OperationsClient, parentId: string): () => boolean {
-  const held = useRef({ client, parentId, active: true });
-  if (held.current.client !== client || held.current.parentId !== parentId) {
-    held.current.active = false;
-    held.current = { client, parentId, active: true };
-  }
-  const owner = held.current;
-  useEffect(() => {
-    owner.active = true;
-    return () => {
-      owner.active = false;
-    };
-  }, [owner]);
-  return () => owner.active && held.current === owner;
-}
-
 function StepError(props: { readonly because: string | null }): ReactElement | null {
   return props.because === null ? null : (
     <p className="field__error" role="alert">
       {props.because}
     </p>
   );
-}
-
-function removeStepAction(
-  props: SubtaskListProps,
-  run: ReturnType<typeof useCommand>['run'],
-  current: () => boolean,
-) {
-  const client = props.client;
-  const remove = (step: StepView): void =>
-    run(
-      () => client.mutate('task.trash', { recordId: step.id }, { expectedRevision: step.revision }),
-      (settlement) => {
-        if (current() && settlement.kind === 'ok') props.onChanged();
-      },
-    );
-  return remove;
 }

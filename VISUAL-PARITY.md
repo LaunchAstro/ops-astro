@@ -6,9 +6,9 @@ The CSS uses the existing type-census exception mechanism for measured reference
 
 Shared custom selects retain the native select's form semantics and change events while providing the reference menu, selected tick and arrow. The native select is hidden from assistive technology and the visible button takes its accessible name. Keyboard navigation, disabled options, Escape, Tab and outside clicks use the same select controller.
 
-Internal comments use an inline @ suggestion menu. The composer remains mounted when conversation tabs change, preserving caret position. Task ownership and grant changes clear drafts and suggestions according to the existing custody model. Client comments retain their own audience and never enable internal mention suggestions.
+Internal comments use an inline @ suggestion menu. Selected recipients follow the displayed name in the text; erasing that name removes its recipient id. An unmatched @ query can still be sent with Enter. The composer remains mounted when conversation tabs change, preserving caret position. Task ownership and grant changes clear drafts and suggestions according to the existing custody model. Client comments retain their own audience and never enable internal mention suggestions.
 
-The subtask removal control uses the existing task.trash operation at the child's read revision. Human approval steps retain their gate action and do not gain a removal control. Time removal uses its existing operation. Both controls appear on hover or keyboard focus.
+The subtask removal control uses the existing task.trash operation at the child's read revision, reports the returned batch count and retains an Undo that restores the same batch across a reread. Lost answers replay the held operation id. Receipts remain in memory under the signed-in client and parent. Human approval steps retain their gate action and do not gain a removal control. Time removal uses its existing operation. Both controls appear on hover or keyboard focus.
 
 The execution map is rendered immediately below the agent run summary, from the admitted execution read. The old lower rendering is suppressed in the composed Agent view. Refusals, loading and permissions remain real states.
 

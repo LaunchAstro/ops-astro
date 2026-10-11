@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
+/**
+ * The box a row's words are edited in, showing `body` and handing each
+ * keystroke up. It hands back the new words, or null when nothing is to be
+ * stored: Esc, words the same as the stored ones (`saved`), or an emptied box.
+ */
 export function EditBox(props: {
   readonly saved: string;
   readonly body: string;

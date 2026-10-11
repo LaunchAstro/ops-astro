@@ -25,23 +25,23 @@ it('an unknown mention post locks recipients and retries the exact payload after
       : Promise.resolve(response({ recordId: 'task-one', revision: 9 }));
   const view = await open({ client: server.client });
   await mentionAda(view);
-  await view.type('#comment-body', 'One note');
+  await view.type('#comment-body', '@Ada Synthetic One note');
   await view.click('[data-comment="post"]');
   expect(view.text()).toContain('may already have been stored');
   expect(view.find('#comment-body')).toHaveProperty('disabled', true);
   expect(view.find('[data-internal-task-mentions] textarea')).toHaveProperty('disabled', true);
-  expect(view.find('[data-mention-person] button')).toHaveProperty('disabled', true);
   await view.click('[role="tab"][id$="client"]');
   expect(view.find('[role="tab"][id$="internal"]')).toHaveProperty('ariaSelected', 'true');
   await view.type('#comment-body', 'Changed words');
   await view.render(<Harness client={server.client} revision={9} />);
-  expect(view.find('#comment-body')).toHaveProperty('value', 'One note');
+  expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic One note');
   server.answers.people = () => Promise.resolve(refusal('SCOPE_NOT_GRANTED'));
   await act(async () => {
     window.dispatchEvent(new Event('online'));
     await settle();
   });
-  expect(view.text()).not.toContain('Ada Synthetic');
+  expect(view.find('[role=option]')).toBeNull();
+  expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic One note');
   expect(view.text()).toContain('SCOPE_NOT_GRANTED');
   expect(view.find('[data-mention-clear]')).toHaveProperty('disabled', true);
   expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', false);
@@ -51,17 +51,24 @@ it('an unknown mention post locks recipients and retries the exact payload after
   expect(server.posts()[1]?.body).toMatchObject({ mentions: [ADA], expectedRevision: 4 });
 });
 
-it('removal and the empty sentinel keep ordinary comments free of a mentions field', async () => {
+it('erasing the inline name removes the structured recipient', async () => {
   const server = transport();
   const view = await open({ client: server.client });
   await mentionAda(view);
-  await view.click('[data-mention-person] button');
-  expect(view.find('[data-mention-person]')).toBeNull();
-  await mentionAda(view);
-  await view.click('[data-mention-clear]');
-  expect(view.find('[data-mention-person]')).toBeNull();
   await view.type('#comment-body', 'Ordinary note');
+  expect(view.find('[data-mention-clear]')).toBeNull();
   await view.click('[data-comment="post"]');
+  expect(server.posts()[0]?.body).not.toHaveProperty('mentions');
+});
+
+it('Enter sends an unmatched at-sign query without selecting a person', async () => {
+  const server = transport();
+  const view = await open({ client: server.client });
+  await view.type('#comment-body', '@zz');
+  expect(view.text()).toContain('No matching people');
+  await key(view, '#comment-body', 'Enter');
+  expect(server.posts()).toHaveLength(1);
+  expect(server.posts()[0]?.body).toMatchObject({ body: '@zz' });
   expect(server.posts()[0]?.body).not.toHaveProperty('mentions');
 });
 
@@ -97,11 +104,11 @@ it.each(['SCOPE_NOT_GRANTED', 'VERSION_STALE', 'MENTION_NOT_READABLE'])(
       },
     });
     await mentionAda(view);
-    await view.type('#comment-body', 'Keep this draft');
+    await view.type('#comment-body', '@Ada Synthetic Keep this draft');
     await view.click('[data-comment="post"]');
     expect(view.text()).toContain(code);
-    expect(view.find('#comment-body')).toHaveProperty('value', 'Keep this draft');
-    expect(view.find('[data-mention-person]')).not.toBeNull();
+    expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic Keep this draft');
+    expect(view.find('#comment-body')?.getAttribute('aria-autocomplete')).toBe('list');
     expect(posted).toBe(code === 'VERSION_STALE' ? 1 : 0);
     if (code === 'SCOPE_NOT_GRANTED') {
       expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', true);
@@ -136,20 +143,23 @@ it.each(['VERSION_STALE', 'MENTION_NOT_READABLE'])(
       ++calls === 1 ? Promise.reject(new Error('Lost answer')) : Promise.resolve(refusal(code));
     const view = await open({ client: server.client });
     await mentionAda(view);
-    await view.type('#comment-body', 'Held until answered');
+    await view.type('#comment-body', '@Ada Synthetic Held until answered');
     await view.click('[data-comment="post"]');
     expect(view.find('[data-comment="unresolved"]')).not.toBeNull();
     await view.render(<Harness client={server.client} revision={7} />);
     await view.click('[data-comment="post"]');
     expect(server.posts()[1]?.body).toEqual(server.posts()[0]?.body);
     expect(view.find('[data-comment="unresolved"]')).toBeNull();
-    expect(view.find('#comment-body')).toHaveProperty('value', 'Held until answered');
-    expect(view.find('[data-mention-person]')).not.toBeNull();
+    expect(view.find('#comment-body')).toHaveProperty(
+      'value',
+      '@Ada Synthetic Held until answered',
+    );
+    expect(view.find('#comment-body')?.getAttribute('aria-autocomplete')).toBe('list');
     expect(view.find('#comment-body')).toHaveProperty('disabled', false);
     server.answers.comment = () => Promise.resolve(response({ recordId: 'task-one', revision: 7 }));
     await view.click('[data-comment="post"]');
     expect(server.posts()[2]?.body).toMatchObject({
-      body: 'Held until answered',
+      body: '@Ada Synthetic Held until answered',
       mentions: [ADA],
       expectedRevision: 7,
       operationId: '00000000-0000-4000-8000-000000000002',
@@ -174,7 +184,7 @@ it('a task change retires pending results and the old selection before a new dra
     },
   });
   await mentionAda(view);
-  await view.type('#comment-body', 'Old task');
+  await view.type('#comment-body', '@Ada Synthetic Old task');
   await view.click('[data-comment="post"]');
   await view.render(
     <Harness
@@ -237,7 +247,7 @@ it('Shift Enter and IME do not post; Enter posts the selected internal mention o
   const server = transport();
   const view = await open({ client: server.client });
   await mentionAda(view);
-  await view.type('#comment-body', 'Typed note');
+  await view.type('#comment-body', '@Ada Synthetic Typed note');
   await key(view, '#comment-body', 'Enter', { shiftKey: true });
   await key(view, '#comment-body', 'Enter', { isComposing: true });
   expect(server.posts()).toHaveLength(0);

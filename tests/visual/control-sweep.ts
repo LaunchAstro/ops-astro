@@ -104,12 +104,15 @@ export async function sweepControls(props: SweepProps): Promise<void> {
   for (const [surface, prepare] of props.surfaces) {
     await prepare();
     await props.page.waitForTimeout(250);
-    const root = ['board', 'page-agent'].includes(surface) ? '.content' : '.dpanel';
+    const root =
+      surface === 'board' || surface.startsWith('page-') ? '.content' : ':is(.dpanel,.aipanel)';
     const selectors = surface.includes('-menu-')
       ? `${root} [role=option]`
       : `${root} button,${root} a,${root} summary,${root} input[type=checkbox]`;
     await props.capture(`${surface}-inventory`);
-    for (const control of await inventory(props.page, selectors)) {
+    const controls = await inventory(props.page, selectors);
+    if (controls.length === 0) throw new Error(`No controls inventoried for ${surface}`);
+    for (const control of controls) {
       actions.push(await captureAction(props, surface, prepare, selectors, control));
       writeFileSync(`${props.out}/actions.json`, JSON.stringify(actions, null, 2));
     }

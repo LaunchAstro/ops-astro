@@ -99,7 +99,9 @@ export function Summary(props: {
         <div className="trs__top">
           <span className="sbact__meta u-mono">
             {compact ? null : (
-              <span data-agent="run-id">{story.head.runId ?? 'not planned'} · </span>
+              <>
+                <span data-agent="run-id">{story.head.runId ?? 'not planned'}</span> ·{' '}
+              </>
             )}
             Attempt {story.attempt} · agent
           </span>
@@ -108,9 +110,9 @@ export function Summary(props: {
           </span>
         </div>
         <p className="trs__say">{story.sentence}</p>
+        {props.actions}
         <details className="trs__details" open={compact ? true : undefined}>
           <summary>Run details</summary>
-          {props.actions}
           <div className="trs__grid">
             {summaryCell('Progress', story.progress, 'progress')}
             {summaryCell('Current job', story.currentJob, 'current-job')}

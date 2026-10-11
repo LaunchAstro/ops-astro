@@ -7,16 +7,16 @@ it('keyboard person selection sends structured internal mentions without writing
   const server = transport();
   const view = await open({ client: server.client });
   await mentionAda(view);
-  expect(view.text()).toContain('Ada Synthetic');
+  expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic ');
   expect(server.posts()).toHaveLength(0);
-  await view.type('#comment-body', 'Please check this internal note');
+  await view.type('#comment-body', '@Ada Synthetic Please check this internal note');
   await view.click('[data-comment="post"]');
   expect(server.posts()).toEqual([
     {
       path: '/api/b/alpha/task/comment',
       body: {
         recordId: 'task-one',
-        body: 'Please check this internal note',
+        body: '@Ada Synthetic Please check this internal note',
         audience: 'internal',
         commentType: 'note',
         mentions: [ADA],

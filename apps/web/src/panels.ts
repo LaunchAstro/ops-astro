@@ -17,8 +17,8 @@
 // **The rail's order is one declared list, and nothing else orders it.** A
 // registration is keyed by its id and carries no rank, so the order it was
 // written in cannot leak onto the rail. The list is DR-59's, top to bottom,
-// with the mockup's ids (`dock.js` `ORDER` runs bottom to top), and the working
-// slice's `settings` after it.
+// with the mockup's ids (`dock.js` `ORDER` runs bottom to top). Settings has
+// its own page and no dock tab (R20261012).
 //
 // **Only a panel with a body gets a tab (R34).** `route` is required and is a
 // `StaticRouteId`, so a registration names a route `routes.ts` serves at an

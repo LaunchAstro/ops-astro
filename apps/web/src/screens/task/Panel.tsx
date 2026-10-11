@@ -256,12 +256,7 @@ function PanelWork(props: SideProps): ReactElement {
   );
 }
 
-/**
- * The head: the task's name, New task (a draft filed from here), Ask about
- * it (DP-09), its own page, and close, which the dock draws instead where it
- * hosts the panel.
- */
-
+/** Derived ownership and priority marks above the task's editable fields. */
 function PanelFacts(props: SideProps): ReactElement {
   const { client, task } = props;
   return (

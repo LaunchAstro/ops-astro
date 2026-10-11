@@ -4,7 +4,7 @@
 // address, one divider, back, forward and its X) over its body. What a press
 // or a click inside the body means is the application's; this draws it.
 
-import { panelToolbar } from './PageToolbar.tsx';
+import { PanelToolbar } from './PageToolbar.tsx';
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { MouseEvent } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
@@ -55,7 +55,7 @@ export function DockPanelView(props: {
     if (top !== undefined && body.current !== null) body.current.scrollTop = top;
   }, [dock.restoreWalk, top]);
   return (
-    <panelToolbar.Provider value={toolbar}>
+    <PanelToolbar.Provider value={toolbar}>
       <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
         {props.grip}
         <DockPanelHead panel={panel} dock={dock} setToolbar={setToolbar} />
@@ -75,7 +75,7 @@ export function DockPanelView(props: {
           {panel.body}
         </div>
       </section>
-    </panelToolbar.Provider>
+    </PanelToolbar.Provider>
   );
 }
 

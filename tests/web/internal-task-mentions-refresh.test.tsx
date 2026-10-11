@@ -26,7 +26,7 @@ it('same-owner refresh hides previous names while pending and retires a supersed
   const view = await open({ client: server.client, grantKey: 'same-owner' });
   try {
     await mentionAda(view);
-    expect(view.text()).toContain('Ada Synthetic');
+    expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic ');
     server.answers.people = () => held.promise;
     await online();
     expect(
@@ -42,7 +42,7 @@ it('same-owner refresh hides previous names while pending and retires a supersed
     await online();
     expect(view.text()).toContain('SCOPE_NOT_GRANTED');
     expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', true);
-    await view.type('#comment-body', 'Do not send a hidden old recipient');
+    await view.type('#comment-body', '@Ada Synthetic Do not send a hidden old recipient');
     await view.click('[data-comment="post"]');
     expect(server.posts()).toEqual([]);
     await act(() => {
@@ -68,7 +68,7 @@ it('same-client grant change drops selected names and retires a late post withou
   const held = deferredResponse();
   const view = await open({ client: server.client, grantKey: 'before' });
   await mentionAda(view);
-  await view.type('#comment-body', 'Old grant note');
+  await view.type('#comment-body', '@Ada Synthetic Old grant note');
   server.answers.comment = () => held.promise;
   await view.click('[data-comment="post"]');
   server.answers.people = () => Promise.resolve(refusal('SCOPE_NOT_GRANTED'));

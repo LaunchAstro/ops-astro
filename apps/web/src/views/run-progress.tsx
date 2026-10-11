@@ -63,23 +63,15 @@ export function RunProgressRead(
     readonly state: TaskExecutionRead;
   },
 ): ReactElement {
-  const { client, taskKey, state } = props;
+  const { client, state } = props;
   const value =
     state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
   const readable = value !== null && isReadable(value);
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
-  const graph = readable ? value.graph : undefined;
   return (
     <>
-      {props.showMap === false ? null : (
-        <RunMap
-          graph={graph}
-          proposals={props.proposals ?? []}
-          read={state}
-          scope={`${props.grantKey} ${taskKey}`}
-        />
-      )}
+      {props.showMap === false ? null : <ExecutionMap {...props} />}
       <section className="sb__sect" data-outcome={outcome} data-run-progress="">
         <div className="sb__sh">
           <span className="sb__k">The run</span>
@@ -105,6 +97,28 @@ export function RunProgressRead(
         )}
       </section>
     </>
+  );
+}
+
+/** The read and scope travel together in either the summary or the run section. */
+export function ExecutionMap(
+  props: Pick<RunProgressProps, 'grantKey' | 'taskKey' | 'proposals'> & {
+    readonly state: TaskExecutionRead;
+  },
+): ReactElement {
+  const value =
+    props.state.outcome === 'ready' || props.state.outcome === 'empty'
+      ? props.state.value.execution
+      : null;
+  const graph =
+    value !== null && value !== undefined && isReadable(value) ? value.graph : undefined;
+  return (
+    <RunMap
+      graph={graph}
+      proposals={props.proposals ?? []}
+      read={props.state}
+      scope={`${props.grantKey} ${props.taskKey}`}
+    />
   );
 }
 

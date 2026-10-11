@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
-import { SelectControl, type Option } from '../kit/controls-fields.tsx';
+import { SelectControl, type Option } from './controls-fields.tsx';
 
 type StyledSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   readonly leading?: ReactNode;
@@ -41,7 +41,7 @@ function useNativeSelect(props: StyledSelectProps) {
     );
   });
   const choose = (next: string): void => {
-    if (native.current === null) return;
+    if (native.current === null || next === native.current.value) return;
     native.current.value = next;
     native.current.dispatchEvent(new Event('change', { bubbles: true }));
     if (props.value === undefined) setValue(next);

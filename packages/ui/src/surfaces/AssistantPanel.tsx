@@ -13,7 +13,7 @@
 // **With no model on offer and a reason in words, the drawer sends nothing**
 // (owner line 72): the picker is empty and disabled, the reason sits under the
 // head, and a question asked anyway is answered in the drawer, not sent.
-import { StyledSelect } from '../primitives/StyledSelect.tsx';
+import { StyledSelect } from '../kit/styled-select.tsx';
 import { useRef, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { usePanelToolbar } from './PageToolbar.tsx';

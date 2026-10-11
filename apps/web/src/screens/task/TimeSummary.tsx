@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ReactElement } from 'react';
-import { minutesText, burnOf } from './time-format.ts';
-const LATEST = 3;
+import { LATEST_TIME_ENTRIES, minutesText, burnOf } from './time-format.ts';
 export function Totals(props: {
   readonly total: number;
   readonly estimate: number | null;
@@ -28,7 +27,7 @@ export function Fold(props: {
   readonly open: boolean;
   readonly onOpen: (value: boolean) => void;
 }): ReactElement | null {
-  if (props.count <= LATEST) return null;
+  if (props.count <= LATEST_TIME_ENTRIES) return null;
   return (
     <button
       type="button"

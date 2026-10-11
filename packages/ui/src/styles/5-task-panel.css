@@ -426,9 +426,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-[data-task-status] select.input {
-  height: 37px;
-}
 
 .row-remove {
   /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
@@ -457,7 +454,8 @@
 .row-remove:hover {
   color: var(--danger);
 }
-.row-remove:disabled {
+.sb__step:hover .row-remove:disabled,
+.sb__step:focus-within .row-remove:disabled {
   cursor: default;
   opacity: 0.4;
 }
@@ -611,6 +609,11 @@
   grid-template-columns: 22px minmax(0, 1fr);
   gap: 0.5rem;
   position: relative;
+}
+.msg__avatar .av {
+  width: 22px;
+  height: 22px;
+  font: inherit;
 }
 .msg--deleted {
   display: block;

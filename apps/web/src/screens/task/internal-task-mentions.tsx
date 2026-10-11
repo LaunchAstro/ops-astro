@@ -32,7 +32,6 @@ interface MentionsProps {
   readonly textboxId: string;
   readonly placeholder: string;
   readonly onChange: (ids: readonly string[], body?: string) => void;
-  readonly onBody: (body: string) => void;
   readonly onSend: () => void;
 }
 
@@ -63,7 +62,7 @@ export function unavailableMentions(
 }
 
 /** An at-sign starts a suggestion list; choosing binds the displayed name to its person id. */
-export function InternalTaskMentions(props: MentionsProps) {
+export function CommentComposer(props: MentionsProps) {
   const editor = useMentionEditor(props);
   return (
     <div className="comment-editor" data-internal-task-mentions={props.id}>
@@ -81,8 +80,29 @@ function useMentionEditor(props: MentionsProps) {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const people = props.people;
+  // Names already chosen belong to this in-memory draft, including during a
+  // vocabulary refresh. They never create recipients from unselected text.
+  const names = useRef(new Map<string, string>());
+  if (people.own && people.state.outcome === 'ready') {
+    for (const person of people.state.value.persons) {
+      if (props.selected.includes(person.personId) && !names.current.has(person.personId))
+        names.current.set(person.personId, person.name);
+    }
+  }
+  const recipientsIn = (body: string): readonly string[] =>
+    props.selected.filter((id) => {
+      const name = names.current.get(id);
+      if (name === undefined) return /(?:^|\s)@/u.test(body);
+      const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      return new RegExp(`(?:^|\\s)@${escaped}(?=$|\\s|[.,!?;:])`, 'u').test(body);
+    });
   const match = /(?:^|\s)@([^@\n]{0,40})$/u.exec(props.body.slice(0, caret));
-  const query = match?.[1] ?? null;
+  const typedQuery = match?.[1] ?? null;
+  const query =
+    typedQuery !== null &&
+    [...names.current.values()].some((name) => typedQuery.startsWith(`${name} `))
+      ? null
+      : typedQuery;
   const candidates =
     people.own && people.state.outcome === 'ready' && query !== null
       ? people.state.value.persons.filter(
@@ -98,6 +118,7 @@ function useMentionEditor(props: MentionsProps) {
     const start = caret - query.length - 1;
     const prefix = props.body.slice(0, start) + '@' + person.name + ' ';
     const next = prefix + props.body.slice(caret);
+    names.current.set(person.personId, person.name);
     props.onChange([...props.selected, person.personId], next);
     setCaret(prefix.length);
     setDismissed(next);
@@ -117,7 +138,7 @@ function useMentionEditor(props: MentionsProps) {
       event.preventDefault();
       event.stopPropagation();
       setDismissed(props.body);
-    } else if (open && event.key === 'Enter') {
+    } else if (open && candidates.length > 0 && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       choose(Math.min(active, candidates.length - 1));
     } else if (event.key === 'Enter' && !event.shiftKey) {
@@ -136,6 +157,7 @@ function useMentionEditor(props: MentionsProps) {
     setActive,
     setDismissed,
     people,
+    recipientsIn,
   };
 }
 
@@ -165,7 +187,7 @@ function MentionInput(
       onKeyDown={onKey}
       onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
       onChange={(event) => {
-        props.onBody(event.target.value);
+        props.onChange(props.editor.recipientsIn(event.target.value), event.target.value);
         setCaret(event.target.selectionStart);
         setActive(0);
         setDismissed(null);
@@ -224,14 +246,8 @@ function MentionRecovery(props: MentionsProps & { readonly open: boolean }) {
           {() => null}
         </RecordState>
       ) : null}
-      {!props.enabled || props.selected.length === 0 ? null : (
+      {!props.enabled || !unavailableMentions(people, props.selected) ? null : (
         <>
-          <MentionChips
-            {...props}
-            people={
-              people.own && people.state.outcome === 'ready' ? people.state.value.persons : []
-            }
-          />
           <button
             className="comment-editor__clear"
             type="button"
@@ -244,30 +260,5 @@ function MentionRecovery(props: MentionsProps & { readonly open: boolean }) {
         </>
       )}
     </>
-  );
-}
-
-function MentionChips(
-  props: Omit<MentionsProps, 'people'> & { readonly people: PersonListResult['persons'] },
-) {
-  return (
-    <div className="tf__tagvalue">
-      {props.people
-        .filter((person) => props.selected.includes(person.personId))
-        .map((person) => (
-          <span className="tf__tag" data-mention-person={person.personId} key={person.personId}>
-            @{person.name}
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={props.locked}
-              aria-label={`Remove mention of ${person.name}`}
-              onClick={() => props.onChange(props.selected.filter((id) => id !== person.personId))}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-    </div>
   );
 }

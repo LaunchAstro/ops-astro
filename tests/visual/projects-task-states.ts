@@ -3,17 +3,34 @@
 // Captures interaction states using the real app and isolated synthetic reads.
 // All writes are intercepted. Nothing reaches the local API or publishes.
 // Usage: node tests/visual/projects-task-states.ts --out .local/visual-parity/states
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { serveApp } from './app-pages.ts';
 import { captureAgentDetails } from './task-deep-states.ts';
+import { taskControlSurfaces } from './task-control-surfaces.ts';
 import { sweepControls } from './control-sweep.ts';
+import { DETAIL, STATE } from './made-up-rows.ts';
 import { answerMadeUp } from './made-up-api.ts';
 const args = process.argv.slice(2);
 const out = args[args.indexOf('--out') + 1] ?? '.local/visual-parity/states';
 const focusAt = args.indexOf('--surface');
 const focus = focusAt === -1 ? undefined : args[focusAt + 1]?.split(',');
 mkdirSync(out, { recursive: true });
+writeFileSync(
+  `${out}/candidate.json`,
+  JSON.stringify(
+    {
+      head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== '',
+      viewport: { width: 2048, height: 1038 },
+      writes: 'intercepted and refused',
+      source: 'isolated synthetic reads',
+    },
+    null,
+    2,
+  ),
+);
 const served = await serveApp();
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
@@ -41,6 +58,30 @@ await answerMadeUp(context);
 await context.route('**/api/sign-in', (route) =>
   route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } }),
 );
+let taskVariant: 'normal' | 'empty' | 'assignable' = 'normal';
+await context.route('**/api/b/*/task/read', async (route) => {
+  if (taskVariant === 'normal') {
+    await route.fallback();
+    return;
+  }
+  await route.fulfill({
+    json: {
+      ok: true,
+      task: {
+        ...DETAIL,
+        ...(taskVariant === 'empty'
+          ? { hasContent: false }
+          : {
+              myAgents: [
+                { agentId: '00000000-0000-4000-8000-000000000081', name: 'Copy executor' },
+                { agentId: '00000000-0000-4000-8000-000000000082', name: 'Page reviewer' },
+              ],
+            }),
+      },
+      states: Object.values(STATE),
+    },
+  });
+});
 const page = await context.newPage();
 const errors: string[] = [];
 const states: unknown[] = [];
@@ -88,7 +129,8 @@ async function capture(name: string) {
 async function click(selector: string) {
   await page.locator(selector).first().click();
 }
-async function openDrawer() {
+async function openDrawer(variant: typeof taskVariant = 'normal') {
+  taskVariant = variant;
   await page.goto(new URL('/projects/', served.app).href);
   await page.locator('tr[data-row]').first().locator('td').first().click();
   await page.locator('[data-task-panel] .sb__name').waitFor();
@@ -177,78 +219,14 @@ try {
     await click('[data-projects-new-task]');
     await capture('task-draft');
   }
-  const surfaces: [string, () => Promise<void>][] = [
-    [
-      'board',
-      async () => {
-        await page.goto(new URL('/projects/', served.app).href);
-        await page.locator('tr[data-row]').first().waitFor();
-      },
-    ],
-    ['team', openDrawer],
-    [
-      'agent',
-      async () => {
-        await openDrawer();
-        await page
-          .getByRole('tab', { name: /^Agent/u })
-          .last()
-          .click();
-      },
-    ],
-    [
-      'page-agent',
-      async () => {
-        await openDrawer();
-        await page.locator('[data-act=door]').last().click();
-        await page.locator('#perspective-tab-agent').waitFor();
-        await page.locator('#perspective-tab-agent').click();
-      },
-    ],
-    [
-      'draft',
-      async () => {
-        await page.goto(new URL('/projects/', served.app).href);
-        await click('[data-projects-new-task]');
-      },
-    ],
-    ...['notifs', 'ai', 'clients', 'todos'].map(
-      (id) =>
-        [
-          id,
-          async () => {
-            await page.goto(new URL('/projects/', served.app).href);
-            await click(`.dock__tab[data-panel=${id}]`);
-          },
-        ] as [string, () => Promise<void>],
-    ),
-  ];
-  for (const name of ['assignee', 'estimate', 'board', 'category', 'stage', 'status']) {
-    surfaces.push([
-      `team-menu-${name}`,
-      async () => {
-        await openDrawer();
-        await page.locator(`[id="panel-field-${name}-control"]`).click();
-      },
-    ]);
-  }
-  surfaces.push(
-    [
-      'team-menu-tags',
-      async () => {
-        await openDrawer();
-        await page.locator('#panel-tag-input').focus();
-      },
-    ],
-    [
-      'todos-search',
-      async () => {
-        await page.goto(new URL('/projects/', served.app).href);
-        await click('.dock__tab[data-panel=todos]');
-        await page.getByLabel('Search projects', { exact: true }).click();
-      },
-    ],
-  );
+  const surfaces = taskControlSurfaces({
+    page,
+    app: served.app,
+    openDrawer,
+    reset: () => {
+      taskVariant = 'normal';
+    },
+  });
   await sweepControls({
     page,
     out,
@@ -263,6 +241,18 @@ try {
       await capture(`task-draft-${width}`);
       await page.goto(new URL('/projects/', served.app).href);
       await capture(`board-${width}`);
+      await openDrawer();
+      await capture(`task-team-${width}`);
+      await page
+        .getByRole('tab', { name: /^Agent/u })
+        .last()
+        .click();
+      await capture(`task-agent-${width}`);
+      await page.locator('[data-act=door]').last().click();
+      await page.locator('#perspective-tab-team').waitFor();
+      await capture(`task-page-team-${width}`);
+      await page.locator('#perspective-tab-agent').click();
+      await capture(`task-page-agent-${width}`);
     }
   }
 } catch (error) {

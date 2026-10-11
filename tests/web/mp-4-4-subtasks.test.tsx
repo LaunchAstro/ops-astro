@@ -61,7 +61,14 @@ function commands() {
       command,
       body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'],
     });
-    return Promise.resolve(json({ ok: true, recordId: 'new', revision: 4 }));
+    return Promise.resolve(
+      json({
+        ok: true,
+        recordId: 'new',
+        revision: 4,
+        ...(command === 'task.trash' ? { detail: { batchId: 'batch-one', trashed: 3 } } : {}),
+      }),
+    );
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return { client, sent };
@@ -254,4 +261,33 @@ describe('MP-4-4 harness captures', () => {
     );
     expect(unheld(team)).toEqual([]);
   });
+});
+
+it('removing a subtask reports the whole batch and Undo restores that exact batch after a reread', async () => {
+  const { client, sent } = commands();
+  const { view, rereads } = await list(client, [COPY], []);
+  await click(view, '[data-step-remove="41"]');
+  expect(sent[0]?.body).toMatchObject({ recordId: '41', expectedRevision: 3 });
+  expect(view.find('[data-step-trash]')?.textContent).toContain('3 tasks moved to the bin.');
+  expect(rows(view)).toEqual([]);
+  await click(view, '[data-step-undo]');
+  expect(sent[1]?.command).toBe('task.restore');
+  expect(sent[1]?.body).toMatchObject({ batchId: 'batch-one' });
+  expect(view.find('[data-step-trash]')).toBeNull();
+  expect(rereads()).toBe(2);
+});
+
+it('the Undo receipt survives a remount and belongs only to its signed-in owner and parent', async () => {
+  const first = commands();
+  const old = await list(first.client, [COPY], []);
+  await click(old.view, '[data-step-remove="41"]');
+  await old.view.unmount();
+  const reread = await list(first.client, []);
+  expect(reread.view.find('[data-step-undo]')).not.toBeNull();
+  const other = commands();
+  const outside = await list(other.client, []);
+  expect(outside.view.find('[data-step-undo]')).toBeNull();
+  await click(reread.view, '[data-step-undo]');
+  expect(first.sent[1]?.body).toMatchObject({ batchId: 'batch-one' });
+  expect(other.sent).toHaveLength(0);
 });

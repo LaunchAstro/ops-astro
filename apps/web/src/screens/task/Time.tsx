@@ -8,7 +8,7 @@
 // note edits inline by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
-import { minutesText } from './time-format.ts';
+import { LATEST_TIME_ENTRIES, minutesText } from './time-format.ts';
 import { Totals, Fold } from './TimeSummary.tsx';
 import { TaskTimerButton } from './task-timer-context.tsx';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
@@ -19,7 +19,6 @@ import { useCommand } from '../../records/use-command.ts';
 import { holding, useHeldOperations } from './held-operations.ts';
 
 /** The entries shown before the fold (CS-4.31). */
-const LATEST = 3;
 
 export { minutesText, burnOf } from './time-format.ts';
 const loggedOn = (at: string): string =>
@@ -211,7 +210,7 @@ export function TimeLog(props: TimeLogProps): ReactElement {
   };
   const log = (duration: string, operationId: string, done: (kind: string) => void): void =>
     run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
-  const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
+  const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST_TIME_ENTRIES);
   return (
     <div className="sb__steplist" data-time-log-section>
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />

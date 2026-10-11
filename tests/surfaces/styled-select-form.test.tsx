@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 import { act, useState } from 'react';
 import { expect, it } from 'vitest';
-import { StyledSelect } from '../../packages/ui/src/primitives/StyledSelect.tsx';
+import { StyledSelect } from '../../packages/ui/src/kit/styled-select.tsx';
 import { mount } from './mount.tsx';
 
 it('custom choices retain native form values and the existing change handler', async () => {
@@ -34,6 +34,9 @@ it('custom choices retain native form values and the existing change handler', a
   await view.click('button');
   await view.click('[role=option][aria-disabled=true]');
   expect(changes).toEqual([]);
+  await view.click('[role=option]:nth-child(1)');
+  expect(changes).toEqual([]);
+  await view.click('button');
   await view.click('[role=option]:nth-child(2)');
   expect(changes).toEqual(['b']);
   expect(view.find('button')?.textContent).toBe('Bea');
