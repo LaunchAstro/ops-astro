@@ -79,11 +79,7 @@ const make = async (
   title: string,
   placed: { readonly board?: string; readonly client?: string } = {},
 ) => {
-  const made = await command(business, by, {
-    command: 'task.create',
-    fields: { title },
-    ...(placed.board === undefined ? {} : { board: placed.board }),
-  });
+  const made = await command(business, by, { command: 'task.create', fields: { title } });
   const recordId = made.recordId ?? '';
   if (placed.client !== undefined) {
     await command(business, by, {
@@ -92,6 +88,14 @@ const make = async (
       expectedRevision: await revisionOf(recordId),
       fields: { client: await clientHere(seeded().admin, business, placed.client) },
     });
+  }
+  // Planted after its client: a create onto a client's board is refused, and
+  // so is a move onto another client's.
+  if (placed.board !== undefined) {
+    await seeded().admin.execute(
+      `update public.records set data = jsonb_set(data, '{board}', to_jsonb($2::text)) where id = $1`,
+      [recordId, placed.board],
+    );
   }
   ids[name] = recordId;
   return recordId;
