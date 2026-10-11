@@ -30,11 +30,20 @@ const ROW = {
   client: NORTH,
 };
 
-/** The board with one row of North's, in the Enquiries stage; `client.list` names North. */
+/** A row from a server that predates the client field: it names no client at all. */
+const { client: _omitted, ...UNNAMED } = {
+  ...SUMMIT_TASK,
+  key: 'T-2',
+  id: `${SUMMIT_TASK.id.slice(0, -1)}2`,
+};
+
+/** The board with one row of North's, in the Enquiries stage, and one naming no client; `client.list` names North. */
 const fetch = ((url: string | URL): Promise<Response> => {
   const at = String(url);
   if (at.endsWith('/task/board'))
-    return Promise.resolve(json({ ok: true, tasks: [ROW], changedAt: null, viewer: null }));
+    return Promise.resolve(
+      json({ ok: true, tasks: [ROW, UNNAMED], changedAt: null, viewer: null }),
+    );
   if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
   if (at.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients: [NORTH] }));
   return new Promise<Response>(() => {});

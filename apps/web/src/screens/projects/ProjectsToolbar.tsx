@@ -46,8 +46,10 @@ const only = <Value,>(values: readonly Value[]): Value | undefined =>
 
 /** A filter's value from its facet id (`stage:"Enquiries"`), the id's escapes undone; none for another kind. */
 function valueOf(kind: string, facet: string): readonly string[] {
-  const value = new RegExp(`^${kind}:"(.*)"$`, 'u').exec(facet)?.[1];
-  return value === undefined ? [] : [value.replaceAll('%2C', ',').replaceAll('%25', '%')];
+  const head = `${kind}:"`;
+  if (!facet.startsWith(head) || !facet.endsWith('"') || facet.length <= head.length) return [];
+  const value = facet.slice(head.length, -1);
+  return [value.replaceAll('%2C', ',').replaceAll('%25', '%')];
 }
 
 /** A Stage filter's stage id, from its label. */

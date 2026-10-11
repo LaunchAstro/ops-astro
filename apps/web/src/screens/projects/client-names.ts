@@ -40,7 +40,8 @@ export function doorClients(
 ): readonly ClientView[] {
   const listed =
     state.outcome === 'ready' && Array.isArray(state.value.clients) ? state.value.clients : [];
-  return [...listed, ...tasks.flatMap((task) => (task.client === null ? [] : [task.client]))];
+  // A row from a server that predates the client field names none.
+  return [...listed, ...tasks.flatMap((task) => task.client ?? [])];
 }
 
 /** The board's client list: read only at a client filter; at none, no client is asked for. */
