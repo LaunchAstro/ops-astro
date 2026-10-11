@@ -107,7 +107,7 @@ describe('MP-5-9 the row’s commands from the Projects screen', () => {
     );
     await settle();
     const commands = sent
-      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
+      .filter((each) => !/board|person\/list$|preference\/read$/u.test(each.url))
       .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
     expect(commands).toStrictEqual([
       ['task/complete', { recordId: TASK_ID, operationId: 'operation-1', expectedRevision: 7 }],
@@ -144,7 +144,7 @@ describe('MP-5-9 the hover box holds timer, add subtask and a door: the timer fr
     await mounted.click(`tr[data-row="${TASK_ID}"] [data-route="timer"]`);
     await settle();
     const commands = sent
-      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
+      .filter((each) => !/board|person\/list$|preference\/read$/u.test(each.url))
       .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
     expect(commands).toStrictEqual([
       ['time/start', { taskId: TASK_ID, operationId: 'operation-1' }],

@@ -37,6 +37,17 @@ const isColumnWidths = (value: unknown): boolean =>
   Object.keys(value).length <= COLUMNS_MAX &&
   Object.entries(value).every(([id, width]) => id.length <= COLUMN_ID_MAX && isLength(width));
 
+/** The to-do list's sort (MP-7-1, CS-7.24): one column and its direction, nothing more. */
+const isTodoSort = (value: unknown): boolean => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { key, direction, ...rest } = value as Readonly<Record<string, unknown>>;
+  return (
+    Object.keys(rest).length === 0 &&
+    (key === 'task' || key === 'due' || key === 'priority') &&
+    (direction === 'asc' || direction === 'desc')
+  );
+};
+
 export type PreferenceKey =
   | 'appearance'
   | 'rail.width'
@@ -44,6 +55,7 @@ export type PreferenceKey =
   | 'dock.width'
   | 'dock.sheetHeight'
   | 'columns.widths'
+  | 'todos.sort'
   | 'tips.enabled'
   | 'tips.dismissed'
   | 'subtasks.showFinished'
@@ -61,6 +73,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
   'dock.sheetHeight': isLength,
   /** One width per column id. */
   'columns.widths': isColumnWidths,
+  /** Due, earliest first, the default, is the absence of a row. */
+  'todos.sort': isTodoSort,
   /** Guided tips on or off; on, the default, is the absence of a row. */
   'tips.enabled': (value) => typeof value === 'boolean',
   /** Only the reset: every dismissal is brought back at once. */

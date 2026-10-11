@@ -2895,6 +2895,9 @@ and save each change; a reader the store refuses keeps the choice for the view
 and sends no save.
 The dock panel's trail fold is another (MP-4-8): `history.showTrail` takes
 `true` or `false`; folded, the default, is no row.
+The to-do list's sort is another (MP-7-1, CS-7.24): `todos.sort` takes
+`{ key, direction }`, `key` one of `task`, `due` or `priority` and `direction`
+`asc` or `desc`, and nothing else; due, earliest first, the default, is no row.
 
 ## Open items
 

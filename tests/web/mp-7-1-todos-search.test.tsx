@@ -5,8 +5,8 @@
 // list by name, by tag (`tag:`) and by due (`due:today`), read back in the
 // "Reading this as" line; a task's comment count scopes it to that task;
 // dropping the scope clears it. Sort by task, due and priority. None of it
-// writes. The sort is kept for the session; remembering it for the person
-// leans on the preference store (MP-2-11a).
+// writes a task; the sort is the person's own `todos.sort` preference
+// (MP-2-11a, `tests/web/todo-sort-preference.test.tsx`).
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -71,7 +71,7 @@ describe('MP-7-1 Sort by task, due and priority', () => {
       'Proj-Echo',
       'Proj-Foxtrot',
     ]);
-    await view.choose('#todos-sort', 'task');
+    await view.click('[data-todos-sort="task"]');
     expect(keysOf(view)).toStrictEqual([
       'Proj-Charlie',
       'Proj-Alpha',
@@ -80,7 +80,7 @@ describe('MP-7-1 Sort by task, due and priority', () => {
       'Proj-Echo',
       'Proj-Foxtrot',
     ]);
-    await view.choose('#todos-sort', 'priority');
+    await view.click('[data-todos-sort="priority"]');
     expect(keysOf(view)).toStrictEqual([
       'Proj-Bravo',
       'Proj-Alpha',
@@ -92,19 +92,22 @@ describe('MP-7-1 Sort by task, due and priority', () => {
   });
 });
 
-describe('MP-7-1 not audited: reads, search and sort send no write', () => {
-  it('typing, scoping and sorting send nothing but the reads', async () => {
+describe('MP-7-1 not audited: reads, search and sort send no task write', () => {
+  it('typing, scoping and sorting send the reads and the sort preference only', async () => {
     const server = serving();
     const { view } = await todos({ client: server.client });
     await typeInto(view, SEARCH, 'tag:legal');
     await view.click('[data-todos="clear"]');
-    await view.choose('#todos-sort', 'priority');
+    await view.click('[data-todos-sort="priority"]');
     await view.click('[data-todo-row="Proj-Alpha"] [data-todo-comments]');
     expect(server.joins).toEqual(['/api/b/alpha/live?topic=board']);
-    // The list's one read, and the scope switch's teammates and clients (MP-7-2).
+    // The list's one read, the scope switch's teammates and clients (MP-7-2),
+    // and the person's own sort, read once and saved once.
     expect(server.sent.map((one) => one.to).toSorted()).toStrictEqual([
       '/client/list',
       '/person/list',
+      '/preference/read',
+      '/preference/save',
       '/task/todos',
     ]);
   });

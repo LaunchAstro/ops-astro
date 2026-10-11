@@ -18,6 +18,7 @@ import {
 import type { BoardFollow as Follow } from './board-props.ts';
 import { layoutColumns } from '../board/columns.ts';
 import { widthsAfterDrag } from '../board/widths.ts';
+import { useStoredWidths } from './board-stored-widths.ts';
 import { fitChipRow, type ChipTier } from '../board/funnel.ts';
 import { initialMachine, reduceBoard } from '../board/machine.ts';
 import { readView, writeView } from '../board/address.ts';
@@ -55,19 +56,20 @@ export function useBoardMachine<Row>(
     revealed.current = follow.reveal;
     setMachine((current) => reduceBoard(current, { type: 'reveal' }, context(current.view.ids)));
   }, [follow.reveal, follow.hidden, context]);
+  useStoredWidths(setMachine, machine.view.widths, opening.widths ?? null, follow.onWidths);
   useFollow(machine.view, follow);
   useUndoKeys(setMachine, context, follow.hidden === true);
   return { machine, dispatch };
 }
 
 /**
- * The address and the widths to keep follow the view; the first of each is
- * where it came from. A hidden board writes no address, since the address
- * belongs to the panel showing; it catches up when the board shows again.
+ * The address follows the view; the first is where it came from. A hidden
+ * board writes no address, since the address belongs to the panel showing;
+ * it catches up when the board shows again.
  */
 function useFollow(view: BoardView, follow: Follow): void {
   const written = useRef(writeView(view));
-  const { onAddress, onWidths } = follow;
+  const { onAddress } = follow;
   const hidden = follow.hidden === true;
   useEffect(() => {
     if (hidden) return;
@@ -76,12 +78,6 @@ function useFollow(view: BoardView, follow: Follow): void {
     written.current = next;
     onAddress?.(next);
   }, [view, onAddress, hidden]);
-  const reported = useRef(view.widths);
-  useEffect(() => {
-    if (view.widths === reported.current) return;
-    reported.current = view.widths;
-    onWidths?.(view.widths);
-  }, [view.widths, onWidths]);
 }
 
 /**

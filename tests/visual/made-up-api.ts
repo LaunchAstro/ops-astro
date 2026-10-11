@@ -259,6 +259,8 @@ export function madeUpAnswer(
     return read === undefined ? undefined : { status: 200, json: read };
   }
   if (name in READS) return { status: 200, json: READS[name as keyof typeof READS] };
+  // The person's own preference saves are kept, so a resized column stays resized.
+  if (name === 'preference.save') return { status: 200, json: { recordId: null, revision: null } };
   return undefined;
 }
 

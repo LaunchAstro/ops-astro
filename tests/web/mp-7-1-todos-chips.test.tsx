@@ -161,7 +161,7 @@ describe('a reread keeps the search, the chips, the sort and the comment scope',
     await typeInto(view, SEARCH, 'tag:legal');
     await press(view, SEARCH, 'Enter');
     await typeInto(view, SEARCH, 'budget');
-    await view.choose('#todos-sort', 'priority');
+    await view.click('[data-todos-sort="priority"]');
     await view.click('[data-todo-row="Proj-Alpha"] [data-todo-tick]');
     await tick();
     // The reread is in flight: the list stays drawn under the same choices.
@@ -172,7 +172,9 @@ describe('a reread keeps the search, the chips, the sort and the comment scope',
     await tick();
     expect(chips(view)).toStrictEqual(['tag']);
     expect(view.host.querySelector<HTMLInputElement>(SEARCH)?.value).toBe('budget');
-    expect(view.host.querySelector<HTMLSelectElement>('#todos-sort')?.value).toBe('priority');
+    expect(view.find('[data-todos-sort="priority"]')?.getAttribute('aria-label')).toBe(
+      'Sort by Priority, now ascending',
+    );
     expect(keysOf(view)).toStrictEqual(['Proj-Alpha']);
   });
 

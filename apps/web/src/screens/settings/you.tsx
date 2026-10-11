@@ -19,7 +19,7 @@ import { applyAppearance, isAppearance, type Appearance } from '../../appearance
 import type { OperationsClient } from '../../operations/client.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { OnOff } from './panels.tsx';
-import { usePreferences, type Preferences } from './use-preferences.ts';
+import { usePreferences, type Preferences } from '../../data/use-preferences.ts';
 
 /** The label, one quiet sentence, and the control on the right (DS-COMP-26 rows). */
 function Row(props: {

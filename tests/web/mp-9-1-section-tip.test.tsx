@@ -58,10 +58,11 @@ describe('MP-9-1 section tip on a built page', () => {
     const view = await mount(projects(api.fetch));
     await openWorkLog(view);
     expect(view.find(`${TIP} .banner.banner--info .banner__body`)?.textContent).toMatch(/\S/u);
-    // The one preference call the tip makes is the store's own read.
+    // The tip's one preference call is the store's own read; the board's column
+    // widths (MP-5-6) are the page's other. Neither writes.
     expect(
       api.asked.map((call) => call.path).filter((path) => path.includes('/preference/')),
-    ).toEqual(['/api/b/alpha/preference/read']);
+    ).toEqual(['/api/b/alpha/preference/read', '/api/b/alpha/preference/read']);
     await view.unmount();
   });
 

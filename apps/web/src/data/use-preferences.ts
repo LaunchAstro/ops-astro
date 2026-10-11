@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The person's own preferences as Settings General ▸ You holds them (MP-2-11),
-// with no markup in it: you.tsx is the form, this file the rules. Moved whole
-// from you.tsx to keep that file under the line limit.
+// The person's own preferences (MP-2-11), with no markup in it: Settings
+// General ▸ You (`settings/you.tsx`), the board's column widths and the
+// to-do list's sort draw and save them through it.
 
 import { useEffect, useRef, useState } from 'react';
-import { ownerOf, useDesk, type Desk, type Tag } from '../../data/owned.ts';
-import { savedSince, savePreference } from '../../data/preference-saves.ts';
-import { isRefusal, type OperationsClient } from '../../operations/client.ts';
-import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import { ownerOf, useDesk, type Desk, type Tag } from './owned.ts';
+import { savedSince, savePreference } from './preference-saves.ts';
+import { isRefusal, type OperationsClient } from '../operations/client.ts';
+import { describeFailure, describeRefusal } from '../records/submit.ts';
 
 export type Preferences = Readonly<Record<string, unknown>>;
 type Newer = (key: string) => boolean;

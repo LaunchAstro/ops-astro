@@ -425,10 +425,6 @@
   padding-top: var(--s-2);
 }
 
-.todos__acts .input {
-  width: auto;
-}
-
 .todos .tl {
   display: grid;
   padding: 0.2rem 0.8rem 0.9rem 0;
@@ -445,6 +441,19 @@
   grid-template-columns: 0.95rem 1.35rem minmax(0, 1fr) 1.5rem 4.2rem 3.4rem;
   gap: 0.4rem;
   align-items: center;
+}
+
+/* PJ-05: the column heads are a list row (DS-COMP-13) of the kit's sort
+   buttons, mono and muted; the sorted one in the text colour. */
+.todos .tl__row .table__sort {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.todos .tl__row .table__sort.is-sort {
+  color: var(--text);
 }
 
 .todos .tl__row {

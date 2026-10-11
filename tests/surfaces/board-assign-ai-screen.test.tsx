@@ -123,7 +123,7 @@ describe('Assign to AI from the Projects screen', () => {
     });
     await settle();
     const commands = sent
-      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
+      .filter((each) => !/board|person\/list$|preference\/read$/u.test(each.url))
       .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
     expect(commands).toStrictEqual([
       [

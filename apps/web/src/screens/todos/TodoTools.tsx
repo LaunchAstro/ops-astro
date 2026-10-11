@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The to-dos list's tools (MP-7-1, CS-7.23, CS-7.24): the token search, its
-// chips and its "Reading this as" line (PJ-02 to PJ-04, drawn as the mockup's
-// `.tsearch`), the today scope, dropping the scope, the sort and the door to
-// the board. Enter turns the typed words into chips, a chip's cross removes
-// it, and Backspace in the empty box drops the last one. None of them writes.
+// The to-dos list's tools (MP-7-1, CS-7.23): the token search, its chips and
+// its "Reading this as" line (PJ-02 to PJ-04, drawn as the mockup's
+// `.tsearch`), the today scope, dropping the scope and the door to the board.
+// The sort is the column heads' (`TodoHead.tsx`). Enter turns the typed words
+// into chips, a chip's cross removes it, and Backspace in the empty box drops
+// the last one. None of them writes.
 
 import type { ReactElement } from 'react';
-import { wordsOfChip, type Chip, type SortKey } from './todo-list.ts';
+import { wordsOfChip, type Chip } from './todo-list.ts';
 
 export interface TodoToolsProps {
   readonly query: string;
@@ -16,19 +17,11 @@ export interface TodoToolsProps {
   /** Enter: the typed words become chips. */
   readonly onCommit: () => void;
   readonly onRemove: (index: number) => void;
-  readonly by: SortKey;
-  readonly onSort: (by: SortKey) => void;
   /** The scope read back, or null when nothing scopes the list. */
   readonly reading: string | null;
   readonly onClear: () => void;
   readonly boardAddress?: string;
 }
-
-const SORTS: readonly { readonly key: SortKey; readonly label: string }[] = [
-  { key: 'due', label: 'Due' },
-  { key: 'task', label: 'Task' },
-  { key: 'priority', label: 'Priority' },
-];
 
 export function TodoTools(props: TodoToolsProps): ReactElement {
   return (
@@ -43,21 +36,6 @@ export function TodoTools(props: TodoToolsProps): ReactElement {
         >
           Today
         </button>
-        <select
-          id="todos-sort"
-          className="input"
-          aria-label="Sort by"
-          value={props.by}
-          onChange={(event) => {
-            props.onSort(SORTS.find((sort) => sort.key === event.target.value)?.key ?? 'due');
-          }}
-        >
-          {SORTS.map((sort) => (
-            <option key={sort.key} value={sort.key}>
-              {sort.label}
-            </option>
-          ))}
-        </select>
         <a
           className="btn"
           data-todos="board"

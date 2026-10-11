@@ -42,6 +42,7 @@ import { BoardCustody } from './projects/board-custody.tsx';
 import { useBoardTarget } from './projects/scoped-board-read.ts';
 import { todayOn } from './task/due-dates.ts';
 import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
+import { useBoardWidths, type BoardWidths } from './projects/board-widths.ts';
 
 export interface ProjectsProps {
   readonly canFileTask?: boolean;
@@ -109,6 +110,8 @@ export function Projects(props: ProjectsProps): ReactElement {
 function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & { readonly hidden: boolean },
 ): ReactElement {
+  // Above the keyed read, so a new place or reread keeps the widths already read.
+  const widths = useBoardWidths(props.client, props.grantKey);
   const place = useProjectBoardAddress(props.address, props.inPanel === true, props.hidden);
   const scope = decodeBoardAddress(place.query);
   if (scope.kind === 'invalid') return <p role="alert">{scope.reason}</p>;
@@ -118,6 +121,7 @@ function ProjectBoard(
       {...props}
       scope={scope}
       place={place}
+      widths={widths}
     />
   );
 }
@@ -126,6 +130,7 @@ function ProjectBoardRead(
     readonly hidden: boolean;
     readonly scope: BoardAddress;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
+    readonly widths: BoardWidths;
   },
 ): ReactElement {
   const client = props.client;
@@ -157,7 +162,7 @@ function ProjectBoardRead(
   const grantKey = props.grantKey;
   const edits = useBoardEditRead(client, grantKey, refresh);
   const [refused, setRefused] = useState<string | null>(null);
-  const said = refused ?? edits.said;
+  const said = refused ?? edits.said ?? props.widths.because;
 
   // The people the assignee editor offers (MP-5-10); until they answer, the
   // assignee cell draws no editor.
@@ -251,6 +256,8 @@ function ProjectBoardRead(
             <ProjectsBoard
               // A new place is a new view: the board opens on it afresh.
               hidden={props.hidden}
+              widths={props.widths.widths}
+              onWidths={props.widths.onWidths}
               rows={rows.map((task) =>
                 Object.assign(rowOf(task), {
                   starred: pins?.pinnedIds.includes(task.id) ?? false,
