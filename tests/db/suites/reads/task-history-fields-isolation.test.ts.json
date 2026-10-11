@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "U116 isolation: two businesses, two clients, one grant each; a reader's history and direct lookup hold only the tasks it may read, and the shared view carries no history and no lookup"
+}
