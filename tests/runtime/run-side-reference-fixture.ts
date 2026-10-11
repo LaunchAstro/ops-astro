@@ -29,6 +29,7 @@ import {
 
 export { s, own, other };
 export const VERSION = '20261007174205_run_reference_scopes';
+const AGENT_COLUMNS = '20261011090000_agent_record.sql';
 export const ALL: readonly Migration[] = readMigrations('migrations');
 export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 export const REFERENCES = [
@@ -134,7 +135,9 @@ export function useUpgrade(): void {
     process.env['GATE_SIGNING_SECRET'] = randomUUID();
     directory = mkdtempSync(join(tmpdir(), 'reference-before-'));
     for (const file of readdirSync('migrations')) {
-      if (file.endsWith('.sql') && file < `${VERSION}.sql`) {
+      // With the agent record's columns (20261011090000): today's runtime seeds
+      // these rows, and its inbox raise joins an agent's owner.
+      if (file.endsWith('.sql') && (file < `${VERSION}.sql` || file === AGENT_COLUMNS)) {
         copyFileSync(join('migrations', file), join(directory, file));
       }
     }

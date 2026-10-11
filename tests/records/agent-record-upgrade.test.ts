@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent record migration (20261011090000) over an installation that used
+// The agent record migrations (20261011090000, 20261011090100) over an installation that used
 // 0082's Assign to AI, in two businesses. Each task holding a delegation comes
 // to hold that delegation's agent; an agent gets an owner only where one is
 // plain (its credential's issuer, or the one person whose own delegations of

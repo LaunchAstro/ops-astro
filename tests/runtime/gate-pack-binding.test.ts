@@ -59,8 +59,13 @@ const THROUGH_0029 = (version: string): boolean => version.slice(0, 4) <= '0029'
 // revises an agent's output (AW-09). Neither reads anything 0030 adds, and the
 // runner applies whatever is pending, so the upgrade still applies 0030 onto
 // these rows.
+// And the agent record's columns (20261011090000): that runtime's inbox raise
+// asks who the task is assigned to, joining an agent's owner. They add only
+// two columns to actors, so the runner still applies the rest onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0029(version) || ['0105', '0108'].includes(version.slice(0, 4));
+  THROUGH_0029(version) ||
+  ['0105', '0108'].includes(version.slice(0, 4)) ||
+  version.startsWith('20261011090000');
 
 const PACK_OF_VERSION = { code: '23503', constraint_name: 'gates_pack_in_same_version' };
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
