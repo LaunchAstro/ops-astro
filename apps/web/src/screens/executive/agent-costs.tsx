@@ -286,7 +286,8 @@ export function AgentCostSection(props: {
         title="What our agents cost us"
         right={`${shown === null ? 'Runs' : plural(runCount(shown), 'run')} · API-equivalent`}
       />
-      <RecordState state={state} subject="agent costs" onRetry={reload}>
+      {/* A floor re-read, a tab return's included, updates the costs in place (#1229). */}
+      <RecordState state={state} subject="agent costs" onRetry={reload} keep>
         {(costs) => <Shown costs={costs} />}
       </RecordState>
     </section>
