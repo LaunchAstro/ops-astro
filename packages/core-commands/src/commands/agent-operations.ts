@@ -6,7 +6,12 @@
 // (`agent-envelope.ts`) runs every row through the same pipeline, so adding an
 // operation is adding a row here rather than a branch in each step of it.
 
-import { checkDelegatedAuthority, resolveDelegation } from '../../../core-records/src/index.ts';
+import {
+  checkDelegatedAuthority,
+  delegatingSubjects,
+  isLaunchDelegation,
+  resolveDelegation,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery, AgentSession, Delegation } from '../../../core-records/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { READ_CATALOGUE } from '../reads/catalogue.ts';
@@ -320,9 +325,13 @@ async function serveComment(
  * A proposal on the agent's own task (T2b). `authorise` has held the purpose
  * scope to this record and `task:write` to the delegating person's live grant.
  * The proposal is the agent's, by its own actor; the runtime's check under its
- * locks asks the delegating person's grants, the ceiling the delegation
- * narrows, never a grant of the agent's, which holds none. The task is only
- * read here: the runtime locks it in its own order, after cap and envelope.
+ * locks asks the grants the delegation draws on (`delegatingSubjects`: its
+ * person's, and a Launch's minting actor), the ceiling the delegation
+ * narrows, never a grant of the agent's, which holds none. Under a Launch's
+ * delegation the version names it, so four eyes refuses the launcher the gate
+ * (`assignee.ts`); a pickup's names nothing, its person reviewing (AW-09).
+ * The task is only read here: the runtime locks it in its own order, after
+ * cap and envelope.
  */
 async function servePropose(
   tx: TenantQuery,
@@ -343,7 +352,10 @@ async function servePropose(
       collection: declaration.collection,
       taskTypeId: spine.taskTypeId,
       actorId: session.actorId,
-      subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
+      subjects: await delegatingSubjects(tx, delegation),
+      ...((await isLaunchDelegation(tx, delegation.id))
+        ? { launchDelegationId: delegation.id }
+        : {}),
     },
     fields as unknown as ProposeFields,
   );
@@ -378,9 +390,10 @@ const serveCommentChange =
     // held `for share` before the task, as pickup holds them: a `grant.revoke`
     // takes its row `for update` first, so it either commits before this
     // change and the check refuses, or waits for it. A helper stands on its
-    // parent's person, the same person.
-    const person = { kind: 'person', id: delegation.delegatePersonId } as const;
-    await holdCoveringGrants(tx, [person], call.declaration.collection);
+    // parent's person, the same person, and a Launch's on its minting actor
+    // too (`delegatingSubjects`), whose grants the check asks.
+    const subjects = await delegatingSubjects(tx, delegation);
+    await holdCoveringGrants(tx, subjects, call.declaration.collection);
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();

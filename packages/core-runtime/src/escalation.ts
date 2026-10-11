@@ -24,6 +24,8 @@ export interface EscalationAsk {
   readonly decidedByActorId: string;
   /** Escalate's recipient: a person who must hold decide at business scope. */
   readonly recipientPersonId?: string;
+  /** The gate escalated, whose four eyes the recipient is asked under. */
+  readonly gateId?: string;
 }
 
 /** The gate's task, and the grant ids `holdDecideAuthority` held before the locks. */
@@ -185,7 +187,7 @@ async function recheckRecipient(
   if (held.value.some((grant) => !found.held_grants.includes(grant.id))) {
     throw new AffectedSetChanged('escalate: a recipient grant appeared after the grant hold');
   }
-  if (await assignedTo(tx, found.task_id, recipient)) return ineligible;
+  if (await assignedTo(tx, found.task_id, recipient, request.gateId ?? null)) return ineligible;
   return { ok: true, value: null };
 }
 

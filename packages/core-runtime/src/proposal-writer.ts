@@ -63,6 +63,8 @@ export interface ProposalWrite {
   readonly envelopeId: string | null;
   readonly capId: string | null;
   readonly proposedByActorId: string;
+  /** The Launch delegation an agent proposed under, whose person four eyes refuses; else absent. */
+  readonly launchDelegationId?: string;
   readonly purpose: string;
   readonly maximumMinor: number;
   readonly currency: string;
@@ -161,11 +163,16 @@ export async function writeProposal(
   });
 
   const versionId = randomUUID();
+  // A version under no Launch is written without the column: a database
+  // upgraded only to an earlier migration (the upgrade-path suites propose on
+  // one) has none.
+  const delegated = request.launchDelegationId === undefined ? [] : [request.launchDelegationId];
+  const [column, value] = delegated.length === 0 ? ['', ''] : [', launch_delegation_id', ', $11'];
   await tx.query(
     `insert into public.proposal_versions
        (business_id, id, lineage_id, version, payload, payload_digest, purpose,
-        maximum_minor, currency, proposed_by_actor_id)
-     values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8, $9, $10)`,
+        maximum_minor, currency, proposed_by_actor_id${column})
+     values ($1, $2, $3, $4, $5::text::jsonb, $6, $7, $8, $9, $10${value})`,
     [
       tx.businessId,
       versionId,
@@ -177,6 +184,7 @@ export async function writeProposal(
       request.maximumMinor,
       request.currency,
       request.proposedByActorId,
+      ...delegated,
     ],
   );
 

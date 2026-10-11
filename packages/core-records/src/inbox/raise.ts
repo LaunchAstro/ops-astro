@@ -62,7 +62,7 @@ export async function raiseDecision(
     action: 'decide',
     scope: { kind: 'record', id: gate.taskId },
   });
-  const assigned = await assignedPeople(tx, gate.taskId);
+  const assigned = await assignedPeople(tx, gate.taskId, gate.gateId);
   for (const person of holders.filter((holder) => !assigned.includes(holder))) {
     // oxlint-disable-next-line no-await-in-loop
     await raiseGateItem(tx, person, gate.taskId, gate.gateId);
@@ -93,7 +93,7 @@ export async function raiseEscalation(
   );
   const taskId = gates[0]?.taskId;
   if (taskId === undefined) throw new Error('raiseEscalation: the escalated gate is not here');
-  const assigned = await assignedPeople(tx, taskId);
+  const assigned = await assignedPeople(tx, taskId, escalated.gateId);
   const deciders = await grantHolders(tx, {
     collection: 'task',
     action: 'decide',
@@ -208,8 +208,10 @@ export async function raiseAssignment(
     const scope = gate.to === null ? { kind: 'record' as const, id: change.taskId } : BUSINESS;
     // oxlint-disable-next-line no-await-in-loop
     const holders = await grantHolders(tx, { collection: 'task', action: 'decide', scope });
+    // oxlint-disable-next-line no-await-in-loop
+    const refused = await assignedPeople(tx, change.taskId, gate.id);
     for (const person of new Set([...holders, ...(gate.to === null ? [] : [gate.to])])) {
-      if (assigned.includes(person)) continue;
+      if (refused.includes(person)) continue;
       // oxlint-disable-next-line no-await-in-loop
       await tx.query(REOPEN, [tx.businessId, person, change.taskId, gate.id]);
       // oxlint-disable-next-line no-await-in-loop

@@ -127,7 +127,7 @@ async function decidable(
   const open = rows.filter((row) => !row.escalated || wider);
   // One transaction's statements, queued on its one connection in this order.
   const mine = await Promise.all(
-    open.map(async (row) => await assignedTo(tx, row.task_id, session.personId)),
+    open.map(async (row) => await assignedTo(tx, row.task_id, session.personId, row.gate_id)),
   );
   return open.filter((_, index) => !mine[index]);
 }

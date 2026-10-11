@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Launch authority at use: a launch minted on the launcher's task grants, held on the person or on their actor, lets its agent propose; the launcher's four-eyes exclusion holds for the proposal under their Launch only, so another lineage on the task stays theirs to decide and is raised in their inbox"
+}

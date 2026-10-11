@@ -49,6 +49,8 @@ export interface ProposeRequest {
   readonly taskId: string;
   readonly collection: string;
   readonly proposedByActorId: string;
+  /** The Launch delegation an agent proposes under (`ProposalWrite`); else absent. */
+  readonly launchDelegationId?: string;
   readonly subjects: readonly Subject[];
   readonly purpose: string;
   /** The finite ceiling this proposal asks to be allowed to spend, in minor units. */
@@ -350,6 +352,9 @@ export async function proposeUnderLocks(
       envelopeId: accounting?.id ?? null,
       capId: accounting?.cap_id ?? null,
       proposedByActorId: request.proposedByActorId,
+      ...(request.launchDelegationId === undefined
+        ? {}
+        : { launchDelegationId: request.launchDelegationId }),
       purpose: request.purpose,
       maximumMinor: request.maximumMinor,
       currency: request.currency,

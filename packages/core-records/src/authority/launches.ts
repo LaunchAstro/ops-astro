@@ -5,7 +5,8 @@
 //
 // The run's authority is a fresh delegation minted here, the person-side mint
 // #1192 asked for: scoped to the one task, drawing on the launcher's own live
-// grants (`mintDelegation` refuses what they do not hold), for
+// grants on that task, as the envelope counts them, person and actor
+// (`mintDelegation` refuses what they do not hold), for
 // `LAUNCH_HOURS`. Its purpose word names the task, so one agent may run on
 // several tasks at once while the index still allows it one live delegation
 // per task. The credential is not handed to the launcher: it is derived from
@@ -19,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import type { Subject } from './grants.ts';
 import { mintDelegation } from './delegations.ts';
 
 /** How long a launch's delegation lives: the runner takes it, and works, inside it. */
@@ -30,6 +32,8 @@ export interface LaunchRequest {
   /** The person who clicked Launch, and their acting identity. */
   readonly personId: string;
   readonly actorId: string;
+  /** Whose grants the run may draw on: the subjects the envelope counted. */
+  readonly subjects: readonly Subject[];
 }
 
 export type LaunchResult =
@@ -86,6 +90,7 @@ export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promis
     actions: ['read', 'comment', 'write'],
     purposeScope: { kind: 'record', id: request.taskId },
     expiresAt: new Date(Date.now() + LAUNCH_HOURS * 3_600_000),
+    holders: request.subjects,
   });
   if (!minted.ok) return { ok: false, refusal: minted.refusal };
   const launchId = randomUUID();
