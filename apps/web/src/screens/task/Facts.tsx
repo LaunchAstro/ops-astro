@@ -196,7 +196,13 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['category', 'Category', orNotSet(categoryOf(task))],
     ['stage', 'Stage', orNotSet(task.stage === null ? null : TASK_STAGES.labelOf(task.stage))],
     ['status', 'Status', orNotSet(task.state?.label)],
-    ['page-link', 'Page link', task.pageLink ?? 'nothing yet'],
+    [
+      'page-link',
+      'Page link',
+      <span className="sbact__meta" key="page-link">
+        {task.pageLink ?? 'nothing yet'}
+      </span>,
+    ],
     ['handling', 'Handling', <Handling key="handling" task={task} />],
   ];
   return (
