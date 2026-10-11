@@ -78,10 +78,9 @@ export const DOCK: LookScreen = {
       ],
       {
         widths: SIDE,
-        // The doors the registry holds, not the mockup's eight (R34): six since
-        // the Agent joined (ai, notifications, team, clients, to-dos, settings),
-        // 210 tall, centred on the edge below the app strip.
-        ruled: [...both('box.height', '210', 'R34'), ...both('box.y', '368', 'R34')],
+        // R20261012 removes the 32px Settings door from R34's 210px rail.
+        // The five registered doors remain centred below the app strip.
+        ruled: [...both('box.height', '178', 'R20261012'), ...both('box.y', '384', 'R20261012')],
       },
     ),
     // A panel open: the shadow goes, Close all is added, the rail rides the panel.

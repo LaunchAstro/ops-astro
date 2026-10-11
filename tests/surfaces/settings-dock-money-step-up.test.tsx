@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 /* oxlint-disable no-await-in-loop, require-await -- Sol's proof, kept as written */
-import { act, useState } from 'react';
+import { useState } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
@@ -51,7 +51,7 @@ function common(at: string): Response | undefined {
 }
 
 // Sol OW-078.3 criterion correctness, retitled by what it proves; its body is Sol's.
-it('the Settings dock offers the same money step-up as the full settings page', async () => {
+it('Settings keeps money step-up on its page and has no dock tab', async () => {
   window.sessionStorage.setItem(
     'ops-astro.session',
     JSON.stringify({
@@ -82,19 +82,8 @@ it('the Settings dock offers the same money step-up as the full settings page', 
   expect(page.find('.content [data-step-up="prompt"]')).not.toBeNull();
   await page.unmount();
   views.splice(views.indexOf(page), 1);
-  const dock = await open(<Harness sessions={sessions} fetch={fetch} initial="/dashboard/" />);
-  const tab = dock
-    .all('button')
-    .find((button) => button.textContent?.includes('Settings') && button.closest('main') === null);
-  expect(tab).toBeDefined();
-  await act(() => {
-    (tab as HTMLButtonElement).click();
-  });
-  await settle();
-  expect(dock.find('#settings-planning-cap')).not.toBeNull();
-  await dock.type('#settings-planning-cap', '75');
-  await dock.click('[data-settings="save-planning-cap"]');
-  await settle();
-  expect(writes).toBe(2);
-  expect(dock.find('[data-step-up="prompt"]')).not.toBeNull();
+  const app = await open(<Harness sessions={sessions} fetch={fetch} initial="/dashboard/" />);
+  expect(app.find('.dock__tab[data-panel="settings"]')).toBeNull();
+  expect(app.find('a[href="/settings"]')).not.toBeNull();
+  expect(writes).toBe(1);
 });

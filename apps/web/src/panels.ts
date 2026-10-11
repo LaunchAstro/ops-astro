@@ -17,8 +17,10 @@
 // **The rail's order is one declared list, and nothing else orders it.** A
 // registration is keyed by its id and carries no rank, so the order it was
 // written in cannot leak onto the rail. The list is DR-59's, top to bottom,
-// with the mockup's ids (`dock.js` `ORDER` runs bottom to top), and the working
-// slice's `settings` after it.
+// with the mockup's ids (`dock.js` `ORDER` runs bottom to top). Settings has
+// its own page and no shipped dock tab (R20261012). Its frozen id remains
+// parseable for older stored open sets and explicitly supplied registries;
+// removing a registration never redefines an identifier.
 //
 // **Only a panel with a body gets a tab (R34).** `route` is required and is a
 // `StaticRouteId`, so a registration names a route `routes.ts` serves at an
@@ -99,12 +101,6 @@ export const PANELS: PanelRegistry = {
     ariaLabel: 'My to-dos',
     route: 'agency:todos',
     icon: 'briefcase',
-  },
-  settings: {
-    label: 'Settings',
-    ariaLabel: 'Business settings',
-    route: 'agency:settings',
-    icon: 'settings-sliders',
   },
 };
 

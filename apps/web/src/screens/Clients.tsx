@@ -190,10 +190,15 @@ export function ClientsScreen(props: ClientsProps): ReactElement {
     <div className="clbook">
       {opened(props)}
       <MockRegion word>
-        <p className="clbook__note">
-          Made up for the look: client records are not built yet, so these clients and their counts
-          are samples.
-        </p>
+        <details className="clbook__note field-callout">
+          <summary aria-label="About these sample clients">Sample data</summary>
+          <div className="field-callout__body">
+            <p>
+              Made up for the look: client records are not built yet, so these clients and their
+              counts are samples.
+            </p>
+          </div>
+        </details>
         <div className="clbook__find">
           <input
             className="tf"
