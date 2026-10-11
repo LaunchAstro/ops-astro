@@ -95,3 +95,63 @@ export async function mayDirectAgent(
   if (found.owner === personId.toLowerCase()) return 'yes';
   return (await directsEveryAgent(tx, subjects)) ? 'yes' : 'not-yours';
 }
+
+/** The longest an agent's name may be, as the actors table holds it. */
+export const AGENT_NAME_LIMIT = 60;
+
+/** A name as it is kept: trimmed, 1 to 60 characters, no control character; undefined otherwise. */
+export function agentNameOf(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.trim();
+  // oxlint-disable-next-line no-control-regex -- control characters are what it refuses
+  if (name.length === 0 || name.length > AGENT_NAME_LIMIT || /[\u0000-\u001F\u007F]/u.test(name)) {
+    return undefined;
+  }
+  return name;
+}
+
+/** A new agent of the business, owned by this person and named. */
+export async function createAgent(
+  tx: TenantQuery,
+  ownerPersonId: string,
+  name: string,
+): Promise<string> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `insert into public.actors (business_id, id, kind, person_id, display_name, owner_person_id)
+     values ($1, gen_random_uuid(), 'agent', null, $2, $3)
+     returning id`,
+    [tx.businessId, name, ownerPersonId],
+  );
+  const made = rows[0];
+  if (made === undefined) throw new Error('agents: the insert returned no row');
+  return made.id;
+}
+
+/** Rename one of this person's own active agents; false when it is not theirs, or not here. */
+export async function renameAgent(
+  tx: TenantQuery,
+  ownerPersonId: string,
+  agentId: string,
+  name: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `update public.actors set display_name = $4
+      where business_id = $1 and id = $2 and kind = 'agent' and active and owner_person_id = $3
+      returning id`,
+    [tx.businessId, agentId, ownerPersonId, name],
+  );
+  return rows.length > 0;
+}
+
+/** This person's own active agents, by name. */
+export async function ownAgents(
+  tx: TenantQuery,
+  personId: string,
+): Promise<readonly AgentChoice[]> {
+  return await tx.query<AgentChoice>(
+    `select a.id as "agentId", ${AGENT_NAME_SQL} as name from public.actors a
+      where a.business_id = $1 and a.kind = 'agent' and a.active and a.owner_person_id = $2
+      order by name, a.id`,
+    [tx.businessId, personId],
+  );
+}

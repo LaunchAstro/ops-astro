@@ -42,6 +42,7 @@ import type {
   LiveCorrectionReadResult,
   PersonListResult,
   TagListResult,
+  AgentMineResult,
   TaskTodosResult,
   TeamListResult,
   PresetPlanResult,
@@ -197,6 +198,7 @@ export interface ReadOperands {
   readonly 'session.person': NoOperands;
   /** The caller's own saved preferences (MP-2-11a). */
   readonly 'preference.read': NoOperands;
+  readonly 'agent.mine': NoOperands;
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
   readonly 'client.list': NoOperands;
@@ -270,6 +272,7 @@ export type ReadResult =
   | ConversationListResult
   | SessionPersonResult
   | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
+  | AgentMineResult
   | AccessReadResult
   | ClientListResult
   | OperationsReadResult

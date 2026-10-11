@@ -115,6 +115,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'tag.create': writing(business('tags')),
   'task.add_tag': writing(client('task_tags')),
   'task.remove_tag': writing(client('task_tags')),
+  // A person's own agent (Assign to AI): an actor of the business.
+  'agent.create': writing(business('actors')),
+  'agent.rename': writing(business('actors')),
+  'agent.mine': READ,
   // Search (C1): finds what the caller may read, and stores nothing.
   'task.search': READ,
   // The activity ledger (MP-8-4): reads audit events, writes nothing.

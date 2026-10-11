@@ -233,6 +233,10 @@ export type CommandName =
   | 'task.add_tag'
   | 'task.remove_tag'
   | 'tag.list'
+  // A person's own agents (Assign to AI): their owner's; no grant asked, no agent reaches them.
+  | 'agent.create'
+  | 'agent.rename'
+  | 'agent.mine'
   // The reader's own to-dos (MP-7-1): open tasks assigned to the reader.
   | 'task.todos'
   // Sign-out (C23, CS-2.9): records `session ended (sign-out)` on the audit

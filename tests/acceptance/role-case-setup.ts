@@ -63,6 +63,12 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
     return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
   }
   if (MANDATE_COMMANDS.has(name)) return await mandateBody(name, context);
+  // Assign to AI: the admin renames an agent of their own, made first.
+  if (name === 'agent.rename') {
+    const made = await context.asPerson('agent.create', { name: 'An agent to rename' });
+    const agentId = (made.body['detail'] as Record<string, unknown>)['agentId'];
+    return { body: { agentId, name: 'A renamed agent' } };
+  }
   return await custodyBody(name, context);
 }
 

@@ -31,6 +31,7 @@ interface BravoRows {
   readonly clientId: string;
   readonly secretId: string;
   readonly connectionId: string;
+  readonly agentId: string;
 }
 
 /** A live standing mandate and a graduation row of bravo's client (MP-14-10a). */
@@ -59,6 +60,16 @@ async function bravoMandateRows(world: World, clientId: string): Promise<BravoMa
     [world.bravo, clientId, world.bea.actorId],
   );
   return { mandateId: String(bravoMandate[0]?.id), classId: String(bravoClass[0]?.id) };
+}
+
+/** Assign to AI: an agent of bravo's, owned by bea, an alpha caller could be handed. */
+async function bravoAgent(world: World): Promise<string> {
+  const rows = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.actors (business_id, id, kind, display_name, owner_person_id)
+     values ($1, gen_random_uuid(), 'agent', 'A bravo agent', $2) returning id`,
+    [world.bravo, world.bea.personId],
+  );
+  return String(rows[0]?.id);
 }
 
 export async function bravoRecords(world: World): Promise<BravoRows & BravoMandateRows> {
@@ -100,6 +111,7 @@ export async function bravoRecords(world: World): Promise<BravoRows & BravoManda
 
   return {
     legalVersionId: String(bravoLegal[0]?.id),
+    agentId: await bravoAgent(world),
     credentialId: String(bravoCredential[0]?.id),
     clientId: String(bravoClient[0]?.id),
     secretId: String(bravoSecret[0]?.id),

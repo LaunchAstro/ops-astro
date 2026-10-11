@@ -75,6 +75,8 @@ export interface IdentWorld {
     secretId: string;
     /** A broken connection of bravo's, owner-written (MP-14-7a). */
     connectionId: string;
+    /** An agent of bravo's, owned by bea (Assign to AI). */
+    agentId: string;
   }> &
     BravoAutomation;
   /** The second alpha agent's live pickup. */

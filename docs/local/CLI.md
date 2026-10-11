@@ -133,6 +133,17 @@ pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"
 pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expectedVersion":0,"knowledge":["the brief is agreed"],"unknowns":["the launch date"]}'
 ```
 
+A person makes their own agent, renames it, lists their agents, and hands it
+a task on the person prefix. The task keeps the agent until a person assigns
+it again; assigning starts no run.
+
+```sh
+pnpm cli agent.create --json '{"name":"Reply drafter"}'
+pnpm cli agent.rename --json '{"agentId":"<agentId>","name":"Inbox drafter"}'
+pnpm cli agent.mine
+pnpm cli task.assign --json '{"recordId":"<taskId>","expectedRevision":<revision>,"fields":{"agent":"<agentId>"}}'
+```
+
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
 `detail`. `operationId` is optional on each of them; naming your own lets you
 send the same body again after a lost answer and get the replay.

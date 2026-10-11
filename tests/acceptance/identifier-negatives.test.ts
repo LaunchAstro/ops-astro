@@ -445,6 +445,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
+        ['agent.rename', pair('agentId', f.agentId, (agentId) => ({ agentId, name: NOBODY }))],
         [
           'connector.repair',
           pair('connectionId', f.connectionId, (connectionId) => ({ connectionId })),

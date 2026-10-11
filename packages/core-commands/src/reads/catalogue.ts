@@ -19,6 +19,7 @@ import {
   planPresetSync,
   isUuid,
   listTags,
+  ownAgents,
   readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -742,6 +743,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       (await holdsAnyGrant(tx, session))
         ? { ok: true, preferences: await readPreferences(tx, session.personId) }
         : NO_GRANT_AT_ALL,
+  },
+  // The caller's own agents, by name (Assign to AI): no grant, and no one else's.
+  'agent.mine': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({ ok: true, agents: await ownAgents(tx, session.personId) }),
   },
   // Every person's authority, so it asks the key that changes it: `manage` on
   // `access`, which no agent holds. No subject record, as for `task.queue`.

@@ -66,6 +66,9 @@
 // agent reaches, one row each in the same three tables and the handler map.
 // Launch from the task adds `task.launch`: a targeted person write no agent
 // reaches, a row in the request and handler maps.
+// The seventeenth is a person's own agents (Assign to AI): `agent.create` and
+// `agent.rename`, untargeted self writes no agent reaches, one row each in the
+// same three tables and the handler map, beside the `agent.mine` read.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -355,6 +358,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/agents.ts', async (original) => ({
+  ...(await original<object>()),
+  makeAgent: recorder('makeAgent'),
+  renameOwnAgent: recorder('renameOwnAgent'),
+}));
 vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
   ...(await original<object>()),
   decideLiveCorrection: recorder('decideLiveCorrection'),
@@ -521,6 +529,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
   'tag.create': [],
+  'agent.create': [],
+  'agent.rename': ['agentId'],
   'task.add_tag': ['recordId', 'tagId'],
   'task.remove_tag': ['recordId', 'tagId'],
   'time.delete': ['entryId'],
@@ -540,6 +550,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'activation.change',
   'activation.roll_back',
   'activation.turn_off',
+  'agent.create',
+  'agent.mine',
+  'agent.rename',
   'approval.revoke',
   'automation.registry',
   'budget.record_outcome',
@@ -1001,6 +1014,8 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'time.set_note', operationId: 'op', entryId: 'e-note', note: 'n-note' },
   { command: 'time.delete', operationId: 'op', entryId: 'e-delete' },
   { command: 'tag.create', operationId: 'op', name: 'n-tag' },
+  { command: 'agent.create', operationId: 'op', name: 'n-agent' },
+  { command: 'agent.rename', operationId: 'op', agentId: 'a-rename', name: 'n-rename' },
   { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
   { command: 'task.remove_tag', operationId: 'op', recordId: 'r-remove', tagId: 'g-remove' },
   { command: 'session.end', operationId: 'op' },
@@ -1182,6 +1197,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'time.set_note': ['setEntryNote', 'e-note', 'n-note'],
   'time.delete': ['deleteEntry', 'e-delete'],
   'tag.create': ['createTagNamed', 'n-tag'],
+  'agent.create': ['makeAgent', 'n-agent'],
+  'agent.rename': ['renameOwnAgent', 'a-rename', 'n-rename'],
   'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
   'task.remove_tag': ['removeTagFromTask', 'r-remove', 'g-remove'],
   'session.end': ['endOwnSession', 'request'],

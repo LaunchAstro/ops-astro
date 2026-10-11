@@ -77,6 +77,7 @@ export const READ_NAMES = [
   'session.person',
   // The caller's own preferences (MP-2-11a); MP-2-11 draws them.
   'preference.read',
+  'agent.mine',
   // The activity ledger (MP-8-4), a read from the day it was declared.
   'task.ledger',
   // Settings ▸ Access (C32), under `access:manage` on the server.

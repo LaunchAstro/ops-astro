@@ -87,6 +87,7 @@ const server = (sent: Sent): typeof globalThis.fetch =>
     return Promise.resolve(json({ ok: true, recordId: OFFERED, revision: 8, detail: {} }));
   }) as unknown as typeof globalThis.fetch;
 
+const HELD_BY = `AI: ${AGENT.name}`;
 const CELL = (id: string, key: string): string => `tr[data-row="${id}"] td[data-key="${key}"]`;
 
 describe('Assign to AI from the Projects screen', () => {
@@ -104,7 +105,7 @@ describe('Assign to AI from the Projects screen', () => {
     await settle();
     const board = mounted;
 
-    expect(board.all(`${CELL(HELD, 'assignee')} .cbd__nm`)[0]?.textContent).toBe('AI');
+    expect(board.all(`${CELL(HELD, 'assignee')} .cbd__nm`)[0]?.textContent).toBe(HELD_BY);
     expect(board.all(`tr[data-row="${HELD}"] input.cbd__tick`)[0]?.getAttribute('title')).toBe(
       'The agent’s work is done — send it to Needs review for your confirmation',
     );

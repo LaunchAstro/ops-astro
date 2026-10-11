@@ -42,6 +42,8 @@ const EMPTY: readonly CommandName[] = [
   'chat.conversations',
   // Skill costing (MP-14-9): `finance:read`, no operand.
   'finance.skill_costs',
+  // The caller's own agents (Assign to AI): no operand.
+  'agent.mine',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
@@ -69,6 +71,8 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   'settings.set_priority_stages': { value: ['sales'] },
   // The agents' cost log (MP-14-6) takes its period.
   'finance.agent_costs': { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' },
+  // Assign to AI: every member makes an agent of their own, named.
+  'agent.create': { name: 'The caller’s agent' },
 };
 
 /** The reads' own operands, which the probe body sends as the positive body does. */
@@ -86,7 +90,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
  * and revision, so a refusal it measures is authority's and not the body's.
  */
 export function probeOperands(name: CommandName): Body {
-  if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
+  if (READ_OPERANDS.has(name) || name === 'agent.create') return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'harness.read') return { runId: randomUUID() };
   if (name === 'live_correction.read') return { correctionId: randomUUID() };

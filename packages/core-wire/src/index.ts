@@ -117,6 +117,7 @@ export type {
   LedgerEventView,
   PersonListResult,
   TagListResult,
+  AgentMineResult,
   TagView,
   AgentAssigneeView,
   TaskRunView,

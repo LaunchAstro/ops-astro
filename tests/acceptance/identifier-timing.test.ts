@@ -419,6 +419,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
+    byAda('agent.rename', 'agentId', f.agentId, (agentId) => ({ agentId, name: 'Away' }));
     byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
       connectionId,
     }));
@@ -634,18 +635,17 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 113 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 114 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(113);
-    expect(names).toHaveLength(113);
+    expect(new Set(names).size, 'distinct operations').toBe(114);
+    expect(names).toHaveLength(114);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(
-      names.toSorted(),
-      'every declaration outside the forty-five target-free ones',
-    ).toStrictEqual(bearing);
+    expect(names.toSorted(), 'every declaration outside the sixty target-free ones').toStrictEqual(
+      bearing,
+    );
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load

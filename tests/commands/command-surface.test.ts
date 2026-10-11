@@ -33,14 +33,13 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
 if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction|finance)\/[a-z_]+$/u;
+  /^\/(?:agent|task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction|finance)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -85,7 +84,7 @@ describe('the surface as a table', () => {
     // `credential` is API-2's agent credential. `time` is MP-4-6's (time entries, rows beside a
     // task); `mandate`, `graduation` MP-14-10a. By piece: `tag` MP-4-11; `chat` C71-D; `invitation`
     // C39-T; `map` WF-1; `automation`, `activation` C33; `approval` C52-A; `record`, `onboarding`
-    // C41-A; `live_correction` C80; `finance` MP-14-9 and MP-14-6.
+    // C41-A; `live_correction` C80; `finance` MP-14-9 and MP-14-6; `agent`, a person's own agents.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
@@ -93,6 +92,7 @@ describe('the surface as a table', () => {
 /** The reads the surface declares, sorted. */
 const DECLARED_READS = [
   'access.read',
+  'agent.mine',
   'automation.registry',
   'chat.conversations',
   'chat.messages',
@@ -138,7 +138,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the forty-two reads as reads, and everything else as a write', () => {
+  it('declares the forty-three reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

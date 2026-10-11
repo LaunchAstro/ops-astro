@@ -6,6 +6,13 @@
 
 export type TagRequest<Envelope> =
   | ({ readonly command: 'tag.create'; readonly name: string } & Envelope)
+  // A person's own agent (Assign to AI), named the same way a tag is.
+  | ({ readonly command: 'agent.create'; readonly name: unknown } & Envelope)
+  | ({
+      readonly command: 'agent.rename';
+      readonly agentId: string;
+      readonly name: unknown;
+    } & Envelope)
   | ({
       readonly command: 'task.add_tag' | 'task.remove_tag';
       readonly recordId: string;
