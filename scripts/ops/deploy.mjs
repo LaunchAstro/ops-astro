@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The staging deploy's command (ticket S0-6). The decisions are in
-// `deploy.ts`; this file wires them to the machine.
+// The M5 deploy's command (ticket S0-6), staging's unit unless
+// `--production`. The decisions are in `deploy.ts`; this file wires them to
+// the machine.
 //
 // Usage (the runbook sets the environment, the operator runs it):
-//   node scripts/ops/deploy.mjs --version <id> --artefacts <store>
+//   node scripts/ops/deploy.mjs --version <id> --artefacts <store> [--production]
+//
+// `--production` starts production's unit (deploy/production/compose.json)
+// after production's preflight (deploy/production/README.md).
 //
 // The installation's operator gate (`operator.ts`, requireOperatingOperator:
 // operations:manage in the installation's operating business, since the
@@ -20,11 +24,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { deploy } from './deploy.ts';
+import { definitionPath, deploy } from './deploy.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { compare, snapshot } from './service-report.mjs';
-
-const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 
 function usage(message) {
   console.error(`deploy: ${message}`);
@@ -40,12 +42,18 @@ if (!gate.ok) {
 let values;
 try {
   ({ values } = parseArgs({
-    options: { version: { type: 'string' }, artefacts: { type: 'string' } },
+    options: {
+      version: { type: 'string' },
+      artefacts: { type: 'string' },
+      production: { type: 'boolean' },
+    },
   }));
 } catch (error) {
   usage(error.message);
 }
 const { version, artefacts: store } = values;
+const environment = values.production ? 'production' : 'staging';
+const DEFINITION = definitionPath(environment);
 if (version === undefined || store === undefined)
   usage('--version and --artefacts are both needed');
 
@@ -86,17 +94,17 @@ const effects = {
 
 let outcome;
 try {
-  outcome = await deploy({ version, store }, effects);
+  outcome = await deploy({ version, store }, effects, undefined, environment);
 } catch (error) {
   // A service manager that cannot be read, a build or a Compose run that
   // fails: say so plainly; no record is written.
   console.error(`deploy: FAILED part way: ${error.message}`);
-  console.error('deploy: no record was written; check staging with docker compose ps');
+  console.error(`deploy: no record was written; check ${environment} with docker compose ps`);
   process.exit(1);
 }
 if (outcome.kind !== 'deployed') {
   console.error(`deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
   process.exit(1);
 }
-console.log(`deploy: staging's M5 unit runs beside ${outcome.record.artefact}`);
+console.log(`deploy: ${environment}'s M5 unit runs beside ${outcome.record.artefact}`);
 console.log(JSON.stringify(await recordDeployment(gate, outcome.record)));

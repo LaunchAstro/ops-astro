@@ -8,7 +8,9 @@
 // side of the preparation: a snapshot before, a snapshot after, and a compare
 // that goes red on any live service that stopped, restarted, vanished, moved
 // port, changed image or was reconfigured. Staging's own services, named by
-// the prefix in deploy/staging/compose.json, are listed and never counted.
+// the prefix in deploy/staging/compose.json, are listed and never counted. The
+// deploy passes the unit it starts (deploy.ts, `unitOf`), so production's
+// deploy leaves out production's own instead and counts staging's as live.
 //
 // It reads two service managers: Docker's containers and launchd's jobs.
 // Apple's own launchd jobs start and stop on demand and are not services of
@@ -42,6 +44,7 @@ const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 );
 const OWN_PREFIX = definition['x-ops-astro'].ownPrefix;
+const STAGING = { name: 'staging', owns: (name) => name.startsWith(OWN_PREFIX) };
 const IGNORED_LABELS = /^(?:com\.apple\.|application\.)/u;
 
 function refuse(message) {
@@ -148,11 +151,14 @@ function load(text, which) {
   return new Map(services.map((s) => [`${s.manager} ${s.name}`, s]));
 }
 
-/** Two printed snapshots compared: `unchanged` when every live service is, and the report. */
-export function compare(beforeText, afterText) {
+/**
+ * Two printed snapshots compared: `unchanged` when every live service is, and
+ * the report. `unit`'s own containers are listed and never counted.
+ */
+export function compare(beforeText, afterText, unit = STAGING) {
   const before = load(beforeText, 'before');
   const after = load(afterText, 'after');
-  const own = (key) => key.split(' ')[1].startsWith(OWN_PREFIX);
+  const own = (key) => unit.owns(key.split(' ')[1]);
   const changed = [];
   let unchanged = 0;
   for (const [key, was] of before) {
@@ -172,11 +178,11 @@ export function compare(beforeText, afterText) {
     if (found.length === 0) unchanged += 1;
     changed.push(...found);
   }
-  const staging = [...after.keys()].filter((key) => own(key)).map((key) => key.split(' ')[1]);
+  const owned = [...after.keys()].filter((key) => own(key)).map((key) => key.split(' ')[1]);
   const added = [...after.keys()].filter((key) => !own(key) && !before.has(key));
   const lines = [`${before.size} services before, ${after.size} after`];
-  if (staging.length > 0) lines.push(`staging's own: ${staging.join(', ')}`);
-  if (added.length > 0) lines.push(`new, not staging's: ${added.join(', ')}`);
+  if (owned.length > 0) lines.push(`${unit.name}'s own: ${owned.join(', ')}`);
+  if (added.length > 0) lines.push(`new, not ${unit.name}'s: ${added.join(', ')}`);
   lines.push(
     ...changed,
     `${unchanged} live services unchanged`,

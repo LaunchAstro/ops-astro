@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The staging deploy (ticket S0-6, `deploy recorded`).
+// The M5 deploy (ticket S0-6, `deploy recorded`): staging's unit, or
+// production's with `deploy.mjs --production` (deploy/production/compose.json,
+// staging's definition renamed). Each judges its own definition, preflight and
+// containers, and counts the other's containers among the live services.
 //
 // A person's act under `operations:manage`: `deploy.mjs` asks the operator gate
 // before it reads anything else. It deploys the artefact the store holds for
@@ -32,6 +35,10 @@ import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
+import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
+
+export type DeployEnvironment = 'staging' | 'production';
+type Environment = Readonly<Record<string, string | undefined>>;
 
 /** The staging definition, as the deploy reads it. */
 export interface StagingDefinition {
@@ -43,8 +50,8 @@ export interface StagingDefinition {
 export interface DeployEffects {
   /** The service report's snapshot of the live service managers, as it prints it. */
   snapshot(): string;
-  /** The service report's compare of two snapshots. */
-  compare(before: string, after: string): { unchanged: boolean; report: string };
+  /** The service report's compare of two snapshots, leaving out the unit's own containers. */
+  compare(before: string, after: string, unit: Unit): { unchanged: boolean; report: string };
   /** Compose up, waiting for health. */
   up(): void;
   /** The local image id a pinned reference resolves to, or undefined when it is not there. */
@@ -53,8 +60,15 @@ export interface DeployEffects {
   runningImages(): Record<string, string>;
 }
 
+/** The unit a deploy starts: its name, and whether a container is its own. */
+export interface Unit {
+  readonly name: DeployEnvironment;
+  readonly owns: (container: string) => boolean;
+}
+
 export interface DeployRecord {
   action: 'deploy recorded';
+  environment: DeployEnvironment;
   version: string;
   artefact: string;
 }
@@ -62,9 +76,26 @@ export interface DeployRecord {
 export type DeployOutcome =
   { kind: 'refused' | 'failed'; reason: string } | { kind: 'deployed'; record: DeployRecord };
 
-const definition = JSON.parse(
-  readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
-) as StagingDefinition;
+/** The unit's definition: staging's, or production's beside it. */
+export function definitionPath(environment: DeployEnvironment): string {
+  return new URL(`../../deploy/${environment}/compose.json`, import.meta.url).pathname;
+}
+
+const readDefinition = (environment: DeployEnvironment): StagingDefinition =>
+  JSON.parse(readFileSync(definitionPath(environment), 'utf8')) as StagingDefinition;
+const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
+
+/**
+ * The unit's own containers, which its deploy starts: staging's by its prefix,
+ * as the service report has always judged; production's by its prefix and
+ * never staging's, which shares the start of it.
+ */
+export function unitOf(environment: DeployEnvironment): Unit {
+  const staging = (name: string): boolean => name.startsWith(STAGING_PREFIX);
+  if (environment === 'staging') return { name: environment, owns: staging };
+  const prefix = `${readDefinition(environment)['x-ops-astro'].ownPrefix}-`;
+  return { name: environment, owns: (name) => name.startsWith(prefix) && !staging(name) };
+}
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
 
 /** `repository:tag@sha256:digest`, lower-case, nothing around it. */
@@ -120,18 +151,35 @@ export function stagingSigns(): Promise<string[]> {
   return preflightOn(productionSigns);
 }
 
-/** Production's preflight: no sign that the made-up seed ever ran there. */
+/**
+ * Why `DATABASE_ADMIN_URL` is not production's database: on staging's project,
+ * or on any but production's (PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF).
+ */
+export function productionAddressRefusal(env: Environment): string | undefined {
+  try {
+    const { other, ref, otherRef } = projectRefs(env, true);
+    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
+    if (project === otherRef) return `DATABASE_ADMIN_URL reaches ${other}'s project`;
+    return project === ref ? undefined : "DATABASE_ADMIN_URL is not production's project";
+  } catch (error) {
+    if (error instanceof Refusal) return error.message;
+    throw error;
+  }
+}
+
+/** Production's preflight: its own database, and no sign that the made-up seed ever ran there. */
 export function productionPreflight(): Promise<string[]> {
-  return preflightOn(madeUpSeedSigns);
+  const refusal = productionAddressRefusal(process.env);
+  return refusal === undefined ? preflightOn(madeUpSeedSigns) : Promise.resolve([refusal]);
 }
 
 /** Each environment's own preflight. */
-export function preflightFor(environment: 'staging' | 'production'): () => Promise<string[]> {
+export function preflightFor(environment: DeployEnvironment): () => Promise<string[]> {
   return environment === 'production' ? productionPreflight : stagingSigns;
 }
 
-/** Each staging container not on the image it was named by. */
-function imageProblems(effects: DeployEffects): string[] {
+/** Each of the unit's containers not on the image it was named by. */
+function imageProblems(effects: DeployEffects, definition: StagingDefinition): string[] {
   const problems: string[] = [];
   const running = effects.runningImages();
   for (const [name, service] of Object.entries(definition.services)) {
@@ -149,40 +197,41 @@ function imageProblems(effects: DeployEffects): string[] {
 export async function deploy(
   request: { version: string; store: string },
   effects: DeployEffects,
-  preflight: () => Promise<string[]> = stagingSigns,
+  preflight?: () => Promise<string[]>,
+  environment: DeployEnvironment = 'staging',
 ): Promise<DeployOutcome> {
   const selected = storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return { kind: 'refused', reason: selected };
+  const definition = readDefinition(environment);
   const pins = imagePinProblems(definition, pinRecord);
   if (pins.length > 0) {
     return {
       kind: 'refused',
-      reason: `staging's images are not all pinned: ${pins.join('; ')}. Nothing was deployed.`,
+      reason: `${environment}'s images are not all pinned: ${pins.join('; ')}. Nothing was deployed.`,
     };
   }
 
-  const signs = await preflight();
+  const signs = await (preflight ?? preflightFor(environment))();
   if (signs.length > 0) {
     return {
       kind: 'refused',
-      reason: `staging's database failed the preflight: ${signs.join('; ')}. Nothing was started.`,
+      reason: `${environment}'s database failed the preflight: ${signs.join('; ')}. Nothing was started.`,
     };
   }
 
   const before = effects.snapshot();
   effects.up();
 
-  const problems = imageProblems(effects);
-  const compared = effects.compare(before, effects.snapshot());
+  const problems = imageProblems(effects, definition);
+  const compared = effects.compare(before, effects.snapshot(), unitOf(environment));
   if (!compared.unchanged) problems.push(`a live service changed:\n${compared.report}`);
   if (problems.length > 0) {
+    const unit = environment === 'staging' ? 'Staging' : 'Production';
     return {
       kind: 'failed',
-      reason: `${problems.join('; ')}. Staging is up but this deploy is not recorded. Stop it with docker compose down, then find out why.`,
+      reason: `${problems.join('; ')}. ${unit} is up but this deploy is not recorded. Stop it with docker compose down, then find out why.`,
     };
   }
-  return {
-    kind: 'deployed',
-    record: { action: 'deploy recorded', version: request.version, artefact: selected.name },
-  };
+  const record = { action: 'deploy recorded', environment, version: request.version } as const;
+  return { kind: 'deployed', record: { ...record, artefact: selected.name } };
 }
