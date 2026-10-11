@@ -71,14 +71,14 @@ async function oldTask(w: UpgradeWorld) {
       fields: { title: 'Synthetic task predating start-date metadata' },
     }),
   );
-  const marked = appliedTask(
-    await command(w, {
-      command: 'task.set_scores',
-      recordId: made.id,
-      expectedRevision: made.revision,
-      fields: { impact: 7, confidence: 9, ease: 8 },
-    }),
+  // The scores are stored as the write would store them: today's task.set_scores
+  // records its changed fields through a function this prefix does not have yet.
+  const [scored] = await w.db.admin.execute<{ readonly revision: string }>(
+    `update public.records set data = data || '{"impact": 7, "confidence": 9, "ease": 8}'::jsonb
+      where business_id = $1 and id = $2 returning revision::text as revision`,
+    [w.business, made.id],
   );
+  const marked = { id: made.id, revision: Number(scored?.revision) };
   // Normal existing upgrade-fixture pattern: install the complete spine, then
   // remove only the metadata that the before version did not declare. Actual
   // task creation/marks and all remaining metadata stay exactly as installed.

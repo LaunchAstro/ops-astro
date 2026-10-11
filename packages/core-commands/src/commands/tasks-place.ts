@@ -26,6 +26,7 @@ import {
   checkAuthority,
   subjectsOf,
   wayfinderFacts,
+  writeRecordData,
 } from '../../../core-records/src/index.ts';
 import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -33,7 +34,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseReparentOperands } from './operands.ts';
 import { refuseOtherClient } from './tasks-party.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
@@ -193,16 +194,11 @@ async function writeData(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('writeData: the envelope read no target');
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
-     returning revision::text as revision`,
-    [tx.businessId, target.id, data],
-  );
-  const written = rows[0];
+  const written = await writeRecordData(tx, target.id, 'data = $3', [data]);
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
-  return applied(target.id, Number(written.revision), detail);
+  return appliedWrite(target.id, written, detail);
 }
 
 /**

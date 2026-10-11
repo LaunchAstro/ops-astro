@@ -14,10 +14,11 @@ import {
   subjectsOf,
   TASK_TYPES,
   wayfinderFacts,
+  writeRecordData,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskType } from '../../../core-records/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { outsideHolders } from '../reads/tasks.ts';
@@ -134,13 +135,15 @@ export async function setTaskType(
     const shared = await refuseSharedChildren(tx, context, target.id);
     if (shared !== undefined) return refused(shared);
   }
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || $3::jsonb, updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, retypeChange(context, from, to)],
+  const written = await writeRecordData(
+    tx,
+    target.id,
+    'data = data || $3::jsonb, updated_at = now()',
+    [retypeChange(context, from, to)],
   );
+  if (written === undefined) return refused(refuseNotFound());
   await raiseFrontierDecisions(tx, target.id);
-  return applied(target.id, Number(rows[0]?.revision), { type: to, from });
+  return appliedWrite(target.id, written, { type: to, from });
 }
 
 /** The data a retype writes: the type, one more history entry, and an owner for a new map. */
