@@ -30,11 +30,11 @@ import {
 } from '../../../core-records/src/index.ts';
 import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { isCommandRefusal, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseReparentOperands } from './operands.ts';
 import { refuseOtherClient } from './tasks-party.ts';
-import { appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
+import { appliedWrite, refused, type CarriedWrite, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
@@ -129,7 +129,7 @@ async function carryBoardToDescendants(
   context: CommandContext,
   rootId: string,
   board: string | null,
-): Promise<CommandRefusal | undefined> {
+): Promise<CommandRefusal | readonly CarriedWrite[]> {
   const walk = `with recursive down as (
        select id from records
         where business_id = $1 and record_type_id = $2 and ${PARENT} = $3 and deleted_at is null
@@ -162,17 +162,41 @@ async function carryBoardToDescendants(
     }
     asked.push(...fresh.map(({ id }) => id));
   }
-  if (asked.length === 0) return undefined;
+  return asked.length === 0 ? [] : await writeBoard(tx, asked, board);
+}
 
-  await tx.query(
-    `update records
-        set data = case when $3::text is null then data - 'board'
-                        else jsonb_set(data, '{board}', to_jsonb($3::text)) end
+/**
+ * Each record of `ids` not on `board` already, put on it through the evidence
+ * path as the task itself is written, so each gets its own applied event
+ * naming `board` (#1207).
+ */
+async function writeBoard(
+  tx: TenantQuery,
+  ids: readonly string[],
+  board: string | null,
+): Promise<readonly CarriedWrite[]> {
+  const moving = await tx.query<{ readonly id: string }>(
+    `select id from records
       where business_id = $1 and id = any($2::uuid[]) and deleted_at is null
-        and (data ->> 'board') is distinct from $3::text`,
-    [tx.businessId, asked, board],
+        and (data ->> 'board') is distinct from $3::text
+      order by id`,
+    [tx.businessId, ids, board],
   );
-  return undefined;
+  const carried: CarriedWrite[] = [];
+  for (const { id } of moving) {
+    // eslint-disable-next-line no-await-in-loop -- one write, and its evidence, per record
+    const written = await writeRecordData(
+      tx,
+      id,
+      `data = case when $3::text is null then data - 'board'
+                   else jsonb_set(data, '{board}', to_jsonb($3::text)) end`,
+      [board],
+    );
+    if (written !== undefined) {
+      carried.push({ recordId: id, fieldChanges: { version: 1, keys: written.changed } });
+    }
+  }
+  return carried;
 }
 
 /**
@@ -191,6 +215,7 @@ async function writeData(
   context: CommandContext,
   data: Readonly<Record<string, unknown>>,
   detail: Readonly<Record<string, unknown>>,
+  carried: readonly CarriedWrite[] = [],
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('writeData: the envelope read no target');
@@ -198,7 +223,8 @@ async function writeData(
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
-  return appliedWrite(target.id, written, detail);
+  const answer = appliedWrite(target.id, written, detail);
+  return carried.length === 0 ? answer : { ...answer, carried };
 }
 
 /**
@@ -276,13 +302,15 @@ export async function reparentTask(
 
   // The board is asked about, and the subtree carried, only when it changes.
   const sameBoard = isSameBoard(currentBoard, placement.board);
+  let carried: readonly CarriedWrite[] = [];
   if (!sameBoard) {
     if (placement.board !== null) {
       const unreached = await refuseUnreachedRecord(tx, context, placement.board);
       if (unreached !== undefined) return refused(unreached);
     }
-    const carried = await carryBoardToDescendants(tx, context, target.id, placement.board);
-    if (carried !== undefined) return refused(carried);
+    const subtree = await carryBoardToDescendants(tx, context, target.id, placement.board);
+    if (isCommandRefusal(subtree)) return refused(subtree);
+    carried = subtree;
   }
 
   const board = sameBoard ? currentBoard : placement.board;
@@ -292,11 +320,13 @@ export async function reparentTask(
     board_section: null,
     board_rank: placement.boardRank,
   });
-  return await writeData(tx, context, data, {
-    parent: parentId,
-    board,
-    board_rank: placement.boardRank,
-  });
+  return await writeData(
+    tx,
+    context,
+    data,
+    { parent: parentId, board, board_rank: placement.boardRank },
+    carried,
+  );
 }
 
 /**
@@ -390,16 +420,18 @@ export async function moveTask(
   // one would: the rank it had was among the old board's tasks and can equal
   // one already here. A section change within the board keeps it.
   let boardRank: number | undefined;
+  let carried: readonly CarriedWrite[] = [];
   if (!sameBoard) {
-    const carried = await carryBoardToDescendants(tx, context, target.id, board);
-    if (carried !== undefined) return refused(carried);
+    const subtree = await carryBoardToDescendants(tx, context, target.id, board);
+    if (isCommandRefusal(subtree)) return refused(subtree);
+    carried = subtree;
     boardRank = await rankAfterSiblings(tx, context.spine.taskTypeId, null, board);
   }
 
   const placed = boardRank === undefined ? {} : { board_rank: boardRank };
   const moved = { board: sameBoard ? storedBoard : board, board_section: boardSection, ...placed };
   const data = mergeFieldValues(target.data, moved);
-  return await writeData(tx, context, data, moved);
+  return await writeData(tx, context, data, moved, carried);
 }
 
 const NEIGHBOUR_NOT_ADJACENT = [

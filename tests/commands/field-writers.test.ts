@@ -270,6 +270,25 @@ describe.skipIf(!configured)('P21 every task field writer records what it change
     ]);
   });
 
+  // A write to another record than the task, a carried board, records on that
+  // record's own event (#1207).
+  it.each([
+    ['task.move', ['board']],
+    ['task.reparent', ['board', 'parent']],
+  ])('%s records the board it carried to a descendant', async (command, keys) => {
+    const [from, to] = [await fresh(), await fresh()];
+    const task = await fresh({ board: from.recordId });
+    await fresh({ parentId: task.recordId });
+    const operands =
+      command === 'task.move'
+        ? { board: to.recordId }
+        : { parentId: (await fresh({ board: to.recordId })).recordId };
+    expect(await recorded(on(task, command, operands))).toStrictEqual([
+      ['applied', command, { version: 1, keys }],
+      ['applied', command, { version: 1, keys: ['board'] }],
+    ]);
+  });
+
   it.each(
     Object.entries(CASES).flatMap(([command, one]) => (one.noop ? [[command, one.noop]] : [])),
   )('%s sent with what is stored records []', async (command, noop) => {

@@ -550,17 +550,42 @@ async function answerOf(
       : { ...withoutSecret(handle), auditSubjectId };
   await register(tx, session, request, digest, kept, outcome.recordId);
   if (!declaration.audited) return handle;
-  await writeAuditEvent(tx, {
+  await auditApplied(tx, session, request, digest, outcome);
+  return handle;
+}
+
+/**
+ * The applied event, and one more for each other record the write changed
+ * (`Applied.carried`), so that record's own history shows the change.
+ */
+async function auditApplied(
+  tx: TenantQuery,
+  session: Session,
+  request: IdentifiedRequest,
+  digest: string,
+  outcome: Applied,
+): Promise<void> {
+  const event = {
     actorId: session.actorId,
     command: request.command,
     operationId: request.operationId,
     outcome: 'applied',
-    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
     payloadDigest: digest,
+  } as const;
+  await writeAuditEvent(tx, {
+    ...event,
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
     originConversationId: outcome.originConversationId ?? null,
     fieldChanges: outcome.fieldChanges ?? null,
   });
-  return handle;
+  for (const other of outcome.carried ?? []) {
+    // eslint-disable-next-line no-await-in-loop -- the chain takes one event at a time
+    await writeAuditEvent(tx, {
+      ...event,
+      subjectRecordId: other.recordId,
+      fieldChanges: other.fieldChanges,
+    });
+  }
 }
 
 /**
