@@ -7,7 +7,8 @@
 // or naming one starts no work. After each write the list is read again, and a
 // refusal is shown in the server's words. Make my agent holds one operation id
 // for the name typed until an answer arrives, so a retry after a lost answer
-// replays the first create instead of making a second agent.
+// replays the first create instead of making a second agent. A list showing
+// one more agent of that name is that create's outcome, so the next is new.
 
 import { useRef, useState, type ReactElement } from 'react';
 import type { AgentMineResult } from '../../../../../packages/core-wire/src/index.ts';
@@ -74,11 +75,16 @@ function Outcome(props: { readonly text: string; readonly refused: boolean }): R
   );
 }
 
-/** Make my agent: one operation id per name typed, held until an answer arrives. */
-function useMake(client: OperationsClient, send: Send): (name: string) => void {
-  const making = useRef<{ readonly name: string; readonly id: string } | null>(null);
-  return (name) => {
-    if (making.current?.name !== name) making.current = { name, id: client.newOperationId() };
+type Make = (name: string, agents: AgentMineResult['agents']) => void;
+
+/** Make my agent: one operation id per name typed, held until an answer or the list shows it. */
+function useMake(client: OperationsClient, send: Send): Make {
+  const making = useRef<{ readonly name: string; readonly id: string; readonly had: number }>(null);
+  return (name, agents) => {
+    const had = agents.filter((agent) => agent.name === name).length;
+    if (making.current?.name !== name || had > making.current.had) {
+      making.current = { name, id: client.newOperationId(), had };
+    }
     const operationId = making.current.id;
     send(async () => {
       const answer = await client.mutate('agent.create', { name }, { operationId });
@@ -94,7 +100,7 @@ function AgentRows(props: {
   readonly agents: AgentMineResult['agents'];
   readonly busy: boolean;
   readonly send: Send;
-  readonly make: (name: string) => void;
+  readonly make: Make;
 }): ReactElement {
   const { client, send } = props;
   return (
@@ -124,7 +130,7 @@ function AgentRows(props: {
           button="Make my agent"
           initial=""
           busy={props.busy}
-          onSave={props.make}
+          onSave={(name) => props.make(name, props.agents)}
         />
       </div>
     </div>

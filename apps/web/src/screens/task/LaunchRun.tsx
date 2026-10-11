@@ -7,8 +7,9 @@
 // refusal shows its own words. One operation id per click, reused with the
 // revision it was first sent at if the answer was lost and the person tries
 // again, so a retry replays the first launch and never opens a second run.
+// A read showing the run is that launch's outcome, so the click after it is new.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import { isRefusal, isUnavailable } from '../../operations/results.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
@@ -34,6 +35,10 @@ function useLaunch(props: LaunchRunProps): {
     readonly id: string;
     readonly revision: number;
   } | null>(null);
+  const seen = task.agent !== null && task.agent.run !== null;
+  useEffect(() => {
+    if (seen) operation.current = null;
+  }, [seen]);
   const launch = async (): Promise<void> => {
     if (operation.current?.taskId !== task.id) {
       operation.current = {
@@ -73,7 +78,7 @@ export function LaunchRun(props: LaunchRunProps): ReactElement | null {
       </p>
     );
   }
-  if (task.client !== null) {
+  if (task.clientSet) {
     return <p className="card__sub">Only internal tasks go to an AI agent for now.</p>;
   }
   return (

@@ -52,7 +52,7 @@ describe('Launch from the task', () => {
 
   it("a client's task says it cannot go to an AI agent", async () => {
     const view = await panel(
-      serving({ ...held(null), client: { clientId: 'c-1', name: 'Acme' } }).client,
+      serving({ ...held(null), client: { clientId: 'c-1', name: 'Acme' }, clientSet: true }).client,
     );
     expect(view.find('[data-launch-run]')).toBeNull();
     expect(view.text()).toContain('Only internal tasks go to an AI agent for now.');
@@ -97,5 +97,68 @@ describe('Launch retried after a lost answer', () => {
       [sent[0]?.['operationId'], 1],
       [sent[0]?.['operationId'], 1],
     ]);
+  });
+});
+
+describe('Launch on a task whose client the reader cannot see', () => {
+  it('offers no Launch and says only internal tasks go to an AI agent', async () => {
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: (() => Promise.reject(new Error('nothing is sent'))) as typeof globalThis.fetch,
+    });
+    const view = await mount(
+      <LaunchRun
+        client={client}
+        task={task({ ...held(null), client: null, clientSet: true }) as unknown as Task}
+        busy={false}
+        onChanged={() => {}}
+      />,
+    );
+    onTestFinished(() => view.unmount());
+    expect(view.find('[data-launch-run]')).toBeNull();
+    expect(view.text()).toContain('Only internal tasks go to an AI agent for now.');
+  });
+});
+
+describe('Launch after a lost answer whose run has since been seen', () => {
+  it('sends a new operation id at the revision read once the run has ended', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const fetch = ((_url: string | URL, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return sent.length === 1
+        ? Promise.reject(new TypeError('connection reset'))
+        : Promise.resolve(
+            new Response(JSON.stringify({ ok: true, recordId: TASK_ID }), {
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+    }) as typeof globalThis.fetch;
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
+    const at = (revision: number, run: unknown) => (
+      <LaunchRun
+        client={client}
+        task={task({ ...held(run), revision }) as unknown as Task}
+        busy={false}
+        onChanged={() => {}}
+      />
+    );
+    const view = await mount(at(1, null));
+    onTestFinished(() => view.unmount());
+    await view.click('[data-launch-run]');
+    await tick();
+    await view.render(at(2, { state: 'waiting', launchedAt: '2026-10-11T09:00:00Z' }));
+    await view.render(at(7, null));
+    await view.click('[data-launch-run]');
+    await tick();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.['operationId']).not.toBe(sent[0]?.['operationId']);
+    expect(sent[1]?.['expectedRevision']).toBe(7);
   });
 });
