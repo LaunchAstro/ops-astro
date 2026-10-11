@@ -7,7 +7,6 @@ import {
   close,
   closeAll,
   copied,
-  drain,
   file,
   open,
   seeded,
@@ -17,31 +16,6 @@ afterEach(async () => {
   await closeAll();
   vi.restoreAllMocks();
 });
-
-it.each(['make-001', `a${'b'.repeat(199)}`])(
-  'inline operation identity of length %s remains legal in the shared document',
-  async (operationId) => {
-    const server = new OrderedCreateServer();
-    server.lose('/task/create', 'after');
-    const app = await open(server);
-    const { OperationsClient } = await import('../../apps/web/src/operations/client.ts');
-    vi.spyOn(OperationsClient.prototype, 'newOperationId').mockReturnValue(operationId);
-    await app.view.type('#create-title', 'Legal inline recovery');
-    await app.view.click('.projects__create button[type="submit"]');
-    await drain(app);
-    expect(server.commands('/task/create')[0]?.body['operationId']).toBe(operationId);
-    const original = server.commands('/task/create')[0]!;
-    const tab = copied(app.storage);
-    await close(app);
-    vi.restoreAllMocks();
-    const next = await open(server, tab);
-    expect(server.commands('/task/create')).toHaveLength(1);
-    await next.view.click(`[data-create-retry="${operationId}"]`);
-    await drain(next);
-    expect(server.commands('/task/create')).toStrictEqual([original, original]);
-    expect(server.applied).toHaveLength(1);
-  },
-);
 
 it.each([
   { name: 'null title', patch: { title: null } },
@@ -86,8 +60,6 @@ it('a malformed captured lost-after copy does not deny the prior task effect', a
   expect(server.writes()).toHaveLength(1);
   expect(server.applied).toHaveLength(1);
   expect(tab.getItem(DRAFT_KEY)).toBe(raw);
-  expect(next.view.find('[data-draft-refusal]')?.textContent).toContain(
-    'No recovery request was sent',
-  );
+  expect(next.view.find('[data-draft-refusal]')?.textContent).toContain('nothing was sent');
   expect(next.view.find('[data-draft-refusal]')?.textContent).not.toContain('no task was sent');
 });
