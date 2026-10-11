@@ -14,6 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery, RefusalCode } from '../../../core-records/src/index.ts';
+import type { FieldChanges } from './outcome.ts';
 
 export type AuditOutcome = 'applied' | 'refused' | 'replayed' | 'failed';
 
@@ -35,6 +36,8 @@ export interface AuditEvent {
    * (AW-03). The command that creates a task from a conversation sets it.
    */
   readonly originConversationId?: string | null;
+  /** The field names an applied write actually changed (P20). Absent is unknown, not unchanged. */
+  readonly fieldChanges?: FieldChanges | null;
   /**
    * Offered by a caller and ignored by the server. They are here so a test can
    * present them and watch them not persist; nothing in the product supplies
@@ -118,15 +121,19 @@ export async function writeAuditEvent(
   // column the insert never mentioned could not have been shown to be
   // overwritten.
   //
-  // The origin conversation (0093) is named only when there is one: without
-  // it the insert is the one every earlier schema takes, and the column's
-  // null is its default.
-  const origin = event.originConversationId ?? null;
+  // The origin conversation (0093) and the changed field names (P20) are
+  // named only when there are some: without them the insert is the one every
+  // earlier schema takes, and each column's null is its default.
+  const columns: readonly (readonly [column: string, type: string, value: unknown])[] = [
+    ['origin_conversation_id', 'uuid', event.originConversationId ?? null],
+    ['field_changes', 'jsonb', event.fieldChanges ?? null],
+  ];
+  const optional = columns.filter(([, , value]) => value !== null);
   const rows = await tx.query<WrittenAuditEvent>(
     `insert into audit_events
        (business_id, id, actor_id, command, operation_id, outcome, refusal_code,
-        subject_record_id, payload_digest, attempted, seq, prev_hash, hash${origin === null ? '' : ', origin_conversation_id'})
-     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13${origin === null ? '' : ', $14::uuid'})
+        subject_record_id, payload_digest, attempted, seq, prev_hash, hash${optional.map(([column]) => `, ${column}`).join('')})
+     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13${optional.map(([, type], i) => `, $${14 + i}::${type}`).join('')})
      returning id, seq::text as seq, hash`,
     [
       tx.businessId,
@@ -142,7 +149,7 @@ export async function writeAuditEvent(
       event.seq ?? '1',
       event.prevHash ?? null,
       event.hash ?? PLACEHOLDER_HASH,
-      ...(origin === null ? [] : [origin]),
+      ...optional.map(([, , value]) => value),
     ],
   );
   const written = rows[0];
@@ -209,7 +216,7 @@ export async function verifyAuditChain(tx: TenantQuery): Promise<ChainReport> {
             a.hash,
             public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
               a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-              a.payload_digest, a.attempted, a.origin_conversation_id) as recomputed,
+              a.payload_digest, a.attempted, a.origin_conversation_id, a.field_changes) as recomputed,
             a.prev_hash,
             lag(a.hash) over (order by a.seq) as previous_hash
        from audit_events a

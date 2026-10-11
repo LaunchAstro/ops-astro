@@ -60,6 +60,7 @@ export async function recordApplied(
     payloadDigest: digest,
     outcome: 'applied',
     subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
+    fieldChanges: outcome.fieldChanges ?? null,
   });
   return handle;
 }

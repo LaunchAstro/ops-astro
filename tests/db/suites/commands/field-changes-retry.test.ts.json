@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "P20: a failed applied audit write rolls back the task, the register row and the field names together; the identical retry applies and records the names once, and a replay, also after a revoked grant, records none"
+}
