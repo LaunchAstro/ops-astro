@@ -202,6 +202,8 @@ describe('a worker its credentials no longer let in exits, naming the setting', 
   it.each([
     ['DELEGATION_NOT_LIVE', 'OPS_ASTRO_DELEGATION', 1],
     ['AUTH_UNKNOWN_LOGIN', 'OPS_ASTRO_EMAIL and OPS_ASTRO_PASSWORD', 1],
+    // What the API answers when the agent's login or acting identity is disabled or gone.
+    ['AUTH_NO_AGENT_IDENTITY', "the agent's login and actor", 1],
     // An expired sign-in is renewed once in each pass and asked again.
     ['AUTH_SESSION_EXPIRED', 'OPS_ASTRO_EMAIL and OPS_ASTRO_PASSWORD', 2],
   ])('after ten passes refused %s, exit 1 naming %s', async (code, named, perPass) => {
