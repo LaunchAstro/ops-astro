@@ -75,8 +75,14 @@ const onDisk = readMigrations('migrations');
 // it, and AW-08's 0108 reviewed outputs, which that runtime's revision reads
 // (AW-09). Neither reads anything the migrations under test add, so they are
 // applied with the seed and the runner applies whatever is pending after them.
+// And the agent record's columns (20261011115838): that runtime's inbox raise
+// asks who the task is assigned to, joining an agent's owner. They add only
+// two columns to actors, so the runner still applies the rest onto these rows.
 const THROUGH_0029 = onDisk.filter(
-  (m) => m.version.slice(0, 4) <= '0029' || ['0105', '0108'].includes(m.version.slice(0, 4)),
+  (m) =>
+    m.version.slice(0, 4) <= '0029' ||
+    ['0105', '0108'].includes(m.version.slice(0, 4)) ||
+    m.version.startsWith('20261011115838'),
 );
 const UPGRADE = onDisk.find((m) => m.version.startsWith('0030'));
 
@@ -361,11 +367,12 @@ async function asTheRunnerApplies(admin: AdminConnection, migration: Migration):
   });
 }
 
-/** The newest migration applied, less the two seeded ahead of their turn (0105, 0108). */
+/** The newest migration applied, less the three seeded ahead of their turn (0105, 0108, 20261011115838). */
 async function lastApplied(db: EmptyDatabase): Promise<string | undefined> {
   const [row] = await db.admin.execute<{ readonly last: string }>(
     `select max(version) as last from ops.schema_migrations
-      where version not like '0105%' and version not like '0108%'`,
+      where version not like '0105%' and version not like '0108%'
+        and version not like '20261011115838%'`,
   );
   return row?.last.slice(0, 4);
 }

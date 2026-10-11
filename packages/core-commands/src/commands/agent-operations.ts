@@ -404,20 +404,16 @@ const serveCommentChange =
  * `for share` first, after the task (the global order's delegation class): a
  * `delegation.revoke` writes the row, so one that has not committed waits for
  * the change. A helper has no lease of its own and revoking it takes no task
- * lock, so nothing else orders that revocation with this change. A delegation
- * the locked task names as its agent is left to the task lock: revoking it
- * clears that agent (`revokeDelegation`), so it waits on the task anyway, and
- * having written its own row first it would deadlock against a hold here.
+ * lock, so nothing else orders that revocation with this change.
  */
 async function askedAgain(
   tx: TenantQuery,
   { session, declaration, credential }: AgentCall,
   delegation: Delegation,
-  task: { readonly id: string; readonly data: Readonly<Record<string, unknown>> },
+  task: { readonly id: string },
 ): Promise<CommandRefusal | undefined> {
-  const agent = typeof task.data['agent'] === 'string' ? task.data['agent'].toLowerCase() : null;
   const chain = [delegation.id, delegation.parentDelegationId].filter(
-    (id): id is string => id !== null && id.toLowerCase() !== agent,
+    (id): id is string => id !== null,
   );
   await tx.query(
     `select id from public.delegations

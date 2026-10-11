@@ -2,9 +2,9 @@
 //
 // Assign to AI on the board (agent assignee ruling point 9): each row of
 // `task.board` carries what `task.read` carries for the same task and reader,
-// `agent` (the delegation holding it, only when it is the reader's own) and
-// `myAgents` (the reader's own live delegations that reach it). Nobody else's
-// agent is listed, counted or hinted. Three real crossings, statuses checked:
+// `agent` (the agent holding it, by name with its owner, shown to every person
+// who reads the row) and `myAgents` (the agents the reader may direct: their
+// own, or every one with `agent:assign`). Real crossings, statuses checked:
 // another person, another client in the same business, another business; and
 // an agent, which never reads the board.
 
@@ -14,7 +14,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import { mintDelegation, type BusinessId } from '../../packages/core-records/src/index.ts';
+import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { codeOf } from '../commands/agent-fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
@@ -24,6 +24,7 @@ import {
   assign,
   created,
   minted,
+  ownedAgent,
   type AiWorld,
 } from '../commands/ai-assign-world.ts';
 
@@ -40,8 +41,8 @@ afterAll(async () => {
 
 interface Row {
   readonly id: string;
-  readonly agent?: { readonly delegationId: string } | null;
-  readonly myAgents?: readonly { readonly delegationId: string }[];
+  readonly agent?: { readonly agentId: string; readonly name: string } | null;
+  readonly myAgents?: readonly { readonly agentId: string }[];
 }
 
 const board = async (
@@ -60,82 +61,57 @@ const board = async (
 const rowOf = (rows: readonly Row[], id: string): Row | undefined =>
   rows.find((row) => row.id === id);
 
-const offers = (row: Row | undefined): readonly string[] | undefined =>
-  row?.myAgents?.map((one) => one.delegationId);
-
-/** A live delegation held by `member`, for the world's agent, on one task. */
-const mintedFor = async (member: Member, taskId: string): Promise<string> =>
-  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
-    const made = await mintDelegation(tx, {
-      agentActorId: w.world.agentActorId,
-      delegatePersonId: member.personId,
-      mintedByActorId: member.actorId,
-      purpose: `ai_${randomUUID().slice(0, 8)}`,
-      collections: ['task'],
-      actions: ['read'],
-      purposeScope: { kind: 'record', id: taskId },
-      expiresAt: new Date(Date.now() + 3_600_000),
-    });
-    if (!made.ok) throw new Error(`fixture: the mint was refused ${made.refusal.code}`);
-    return made.value.delegation.id;
-  });
+const offers = (row: Row | undefined): readonly string[] =>
+  (row?.myAgents ?? []).map((one) => one.agentId);
 
 describe.skipIf(serverUrl === undefined)('Assign to AI on the board', () => {
-  it('a row shows the reader’s own agent holding it, and each row offers the reader’s own agents for it', async () => {
+  it('a row shows the agent holding it by name, and every row offers the reader’s own agents', async () => {
     const held = await created(w, w.p, 'held by my agent');
     const open = await created(w, w.p, 'my agent may take it');
-    const holding = await minted(w, w.p, held);
-    const offered = await minted(w, w.p, open);
+    const holding = await ownedAgent(w, w.p, 'Holding agent');
+    const spare = await ownedAgent(w, w.p, 'Spare agent');
     expect(codeOf(await assign(w, w.p, held, { agent: holding }))).toBe('not-a-refusal');
 
     const { rows } = await board(w.world.business, w.p);
-    expect(rowOf(rows, held)?.agent?.delegationId).toBe(holding);
-    expect(offers(rowOf(rows, held))).toStrictEqual([holding]);
+    expect(rowOf(rows, held)?.agent).toMatchObject({ agentId: holding, name: 'Holding agent' });
+    expect(offers(rowOf(rows, held))).toEqual(expect.arrayContaining([holding, spare]));
     expect(rowOf(rows, open)?.agent).toBeNull();
-    expect(offers(rowOf(rows, open))).toStrictEqual([offered]);
+    expect(offers(rowOf(rows, open))).toEqual(expect.arrayContaining([holding, spare]));
   });
 });
 
 describe.skipIf(serverUrl === undefined)('Assign to AI on the board: person to person', () => {
-  it('person to person: Q’s agent on a row gives P no agent, no offer and no id', async () => {
-    const task = await created(w, w.q, `Q's ${CANARY}`);
-    const agent = await minted(w, w.q, task);
-    const spare = await minted(w, w.q, task);
+  it('person to person: P sees Q’s agent holding a row, and is offered none of Q’s agents', async () => {
+    const task = await created(w, w.q, 'Q’s row');
+    const agent = await ownedAgent(w, w.q, 'Q agent');
+    const spare = await ownedAgent(w, w.q, 'Q spare');
     expect(codeOf(await assign(w, w.q, task, { agent }))).toBe('not-a-refusal');
 
-    const { text, rows } = await board(w.world.business, w.p);
-    expect(rowOf(rows, task)?.agent).toBeNull();
-    expect(offers(rowOf(rows, task))).toStrictEqual([]);
-    expect(text).not.toContain(agent);
-    expect(text).not.toContain(spare);
-    // Q, reading the same board, is shown their own.
-    expect(rowOf((await board(w.world.business, w.q)).rows, task)?.agent?.delegationId).toBe(agent);
+    const { rows } = await board(w.world.business, w.p);
+    expect(rowOf(rows, task)?.agent).toMatchObject({ agentId: agent, name: 'Q agent' });
+    expect(offers(rowOf(rows, task))).not.toContain(agent);
+    expect(offers(rowOf(rows, task))).not.toContain(spare);
+    expect(offers(rowOf((await board(w.world.business, w.q)).rows, task))).toContain(spare);
   });
 });
 
 describe.skipIf(serverUrl === undefined)('Assign to AI on the board: client to client', () => {
-  it('client to client: a reader held to client X’s task is offered its agent there and nothing of client Y’s', async () => {
+  it('client to client: a reader held to client X’s task sees its agent and nothing of client Y’s', async () => {
     const x = await created(w, w.p, 'Client X');
     const y = await created(w, w.p, `Client Y ${CANARY}`);
+    const onX = await ownedAgent(w, w.p, 'X agent');
+    const onY = await ownedAgent(w, w.p, `Y agent ${CANARY}`);
+    expect(codeOf(await assign(w, w.p, x, { agent: onX }))).toBe('not-a-refusal');
+    expect(codeOf(await assign(w, w.p, y, { agent: onY }))).toBe('not-a-refusal');
     const reader = await enrol(w.world.db.app, w.world.business, `x-${randomUUID().slice(0, 6)}`);
     await w.world.db.app.withBusiness(w.world.business, async (tx) => {
       await grantTo(tx, reader, 'read', { kind: 'record', id: x });
-      await grantTo(tx, reader, 'read');
     });
-    const onX = await mintedFor(reader, x);
-    const onY = await mintedFor(reader, y);
-    // The business-wide grant a mint asks for ends, leaving the reader held
-    // to X; the delegation on Y is still live and still the reader's own,
-    // which is what the board must not show.
-    await w.world.db.admin.execute(
-      `update public.grants set revoked_at = now()
-        where subject_id = $1 and scope_kind = 'business'`,
-      [reader.personId],
-    );
 
     const { text, rows } = await board(w.world.business, reader);
     expect(rows.map((row) => row.id)).toStrictEqual([x]);
-    expect(offers(rowOf(rows, x))).toStrictEqual([onX]);
+    expect(rowOf(rows, x)?.agent).toMatchObject({ agentId: onX });
+    expect(offers(rowOf(rows, x))).toStrictEqual([]);
     expect(text).not.toContain(y);
     expect(text).not.toContain(onY);
     expect(text).not.toContain(CANARY);
@@ -145,7 +121,8 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: client to c
 describe.skipIf(serverUrl === undefined)('Assign to AI on the board: business to business', () => {
   it('business to business: each business’s board offers its own agents and none of the other’s', async () => {
     const home = await created(w, w.p, `Home ${CANARY}`);
-    const homeAgent = await minted(w, w.p, home);
+    const homeAgent = await ownedAgent(w, w.p, `Home agent ${CANARY}`);
+    expect(codeOf(await assign(w, w.p, home, { agent: homeAgent }))).toBe('not-a-refusal');
     const bravo = await insertBusiness(w.world.db.app, `board-b-${randomUUID().slice(0, 8)}`);
     await installSpine(w.world.db.app, bravo);
     const there = await enrol(w.world.db.app, bravo, 'there');
@@ -154,6 +131,8 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: business to
         // eslint-disable-next-line no-await-in-loop -- two grants
         await grantTo(tx, there, action);
       }
+      // Directing every agent of B reaches none of A's.
+      await grantTo(tx, there, 'assign', undefined, false, 'agent');
     });
     const made = await executeCommand(w.world.db.app, bravo, there.presented, 'api', {
       command: 'task.create',
@@ -171,7 +150,7 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: business to
     expect(theirs.text).not.toContain(CANARY);
     const ours = await board(w.world.business, w.p);
     expect(ours.text).not.toContain(bravoTask);
-    expect(offers(rowOf(ours.rows, home))).toStrictEqual([homeAgent]);
+    expect(offers(rowOf(ours.rows, home))).toContain(homeAgent);
   });
 });
 

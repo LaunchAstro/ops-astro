@@ -94,8 +94,8 @@ async function lockedAuthority(
 
 /**
  * The last authority read, once the change's rows are written: after the
- * audit chain's lock, its last wait (as `tasks-agent.ts` takes it; the key is
- * the chain trigger's, `business_id::text`, lower case). The key is asked at
+ * audit chain's lock, its last wait (the key is the chain trigger's,
+ * `business_id::text`, lower case). The key is asked at
  * that clock, the grants still held, and the session that sent the change must
  * not have ended meanwhile: a sign-out here writes its own audit event, so it
  * either committed before this lock and refuses the change, or waits for it;

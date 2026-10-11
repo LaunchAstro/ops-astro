@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Shared by the Assign to AI suites: the agent world with two people who may
-// assign, their tasks, delegations minted on one task each, and the readers
-// for what a task holds.
+// assign, their tasks, agents each of them owns, delegations minted for a
+// run's authority, and the readers for what a task holds.
 //
 // A harness, not a suite: nothing here runs on its own.
 
@@ -12,7 +12,7 @@ import type { CommandResult } from '../../packages/core-commands/src/commands/re
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import { agentWorld, type AgentWorld, type Decider } from './agent-fixture.ts';
-import { grantTo } from './fixture.ts';
+import { agentOwnedBy, grantTo } from './fixture.ts';
 
 export const CANARY: string = `canary-${randomUUID()}`;
 
@@ -54,11 +54,30 @@ export const created = async (w: AiWorld, by: Decider, title: string): Promise<s
   return answer.recordId ?? '';
 };
 
-/** A live delegation of `by`'s own, for the world's agent, on one task. */
-export const minted = async (w: AiWorld, by: Decider, taskId: string): Promise<string> =>
+/** A fresh agent of the world's business, owned by `by` and named. */
+export const ownedAgent = async (
+  w: AiWorld,
+  by: { readonly personId: string },
+  name?: string,
+): Promise<string> => await agentOwnedBy(w.world.db.app, w.world.business, by.personId, name);
+
+/** `agent:assign` over the whole business: `by` directs every agent, not only their own. */
+export const directsEvery = async (w: AiWorld, by: Decider): Promise<string> =>
+  await w.world.db.app.withBusiness(
+    w.world.business,
+    async (tx) => await grantTo(tx, by, 'assign', undefined, false, 'agent'),
+  );
+
+/** A live delegation of `by`'s own for an agent (the world's by default) on one task: a run's authority. */
+export const minted = async (
+  w: AiWorld,
+  by: Decider,
+  taskId: string,
+  agentActorId: string = w.world.agentActorId,
+): Promise<string> =>
   await w.world.db.app.withBusiness(w.world.business, async (tx) => {
     const made = await mintDelegation(tx, {
-      agentActorId: w.world.agentActorId,
+      agentActorId,
       delegatePersonId: by.personId,
       mintedByActorId: by.actorId,
       purpose: `ai_${randomUUID().slice(0, 8)}`,
@@ -87,7 +106,7 @@ export const assign = async (
     fields,
   });
 
-/** What the task holds: its agent (a delegation) and its person assignee. */
+/** What the task holds: its agent (an agent actor) and its person assignee. */
 export const holder = async (
   w: AiWorld,
   taskId: string,
@@ -114,7 +133,7 @@ export const assignEvents = async (w: AiWorld, taskId: string): Promise<number> 
     )[0]?.n ?? '0',
   );
 
-/** The agents `task.read` offers this reader for the task: their own, reaching it. */
+/** The agents `task.read` offers this reader for the task. */
 export const offered = async (w: AiWorld, by: Decider, taskId: string): Promise<unknown> => {
   const read = await executeRead(w.world.db.app, w.world.business, by.presented, {
     read: 'task.read',
@@ -122,6 +141,16 @@ export const offered = async (w: AiWorld, by: Decider, taskId: string): Promise<
   });
   if (isCommandRefusal(read) || !('task' in read)) return read;
   return (read.task as unknown as { myAgents?: unknown }).myAgents;
+};
+
+/** The agent `task.read` says holds the task, as this reader is sent it. */
+export const heldAs = async (w: AiWorld, by: Decider, taskId: string): Promise<unknown> => {
+  const read = await executeRead(w.world.db.app, w.world.business, by.presented, {
+    read: 'task.read',
+    recordId: taskId,
+  });
+  if (isCommandRefusal(read) || !('task' in read)) return read;
+  return read.task.agent;
 };
 
 /** Set a task's client directly, as the data holds it: the crossing's setup, not a path under test. */

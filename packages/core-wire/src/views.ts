@@ -229,31 +229,33 @@ export interface TaskDetail extends TaskSummary {
   /** The tags this task carries (MP-4-11), by name. */
   readonly tags: readonly TagView[];
   /**
-   * The agent assignee (Assign to AI): the delegation holding the task and
-   * the person accountable for it, or null. `live` is false once it expired
-   * or settled; a revoke clears it. Sent only to its delegating person: null
-   * to every other reader, an agent included.
+   * The agent assignee (Assign to AI): the agent holding the task, by name,
+   * and its owner, or null. It holds the task until a person changes it.
+   * Sent to every person reader; null to an agent.
    */
   readonly agent: AgentAssigneeView | null;
   /**
-   * The reader's own live delegations that reach this task, for the Assign
-   * to AI control. Never anyone else's; empty for an agent.
+   * The agents the reader may hand this task to, for the Assign to AI
+   * control: their own, or every active agent when they hold `agent:assign`.
+   * Empty for an agent.
    */
   readonly myAgents: readonly AgentOfferView[];
 }
 
-/** The agent holding a task, and who answers for it. */
+/** The agent holding a task, and the person who owns it. */
 export interface AgentAssigneeView {
-  readonly delegationId: string;
-  readonly purpose: string;
-  readonly accountable: PersonView;
+  readonly agentId: string;
+  readonly name: string;
+  /** Null for an agent made before agents had owners and never claimed. */
+  readonly owner: PersonView | null;
+  /** Whether a run of this agent is in progress on the task, apart from who holds it. */
   readonly live: boolean;
 }
 
-/** One of the reader's own agents the Assign to AI control offers. */
+/** One agent the Assign to AI control offers the reader. */
 export interface AgentOfferView {
-  readonly delegationId: string;
-  readonly purpose: string;
+  readonly agentId: string;
+  readonly name: string;
 }
 
 /** One name in the business's tag vocabulary (MP-4-11). */
@@ -649,9 +651,9 @@ export interface BoardTask extends TaskSummary {
    * caller's decide grant. The Review mode's rows and its live count.
    */
   readonly awaitingDecision: boolean;
-  /** The agent holding the task, only when it is the reader's own (Assign to AI), as `task.read` sends it. */
+  /** The agent holding the task (Assign to AI), as `task.read` sends it. */
   readonly agent: AgentAssigneeView | null;
-  /** The reader's own live agents that reach the task, as `task.read` sends them; never anyone else's. */
+  /** The agents the reader may hand the task to, as `task.read` sends them. */
   readonly myAgents: readonly AgentOfferView[];
   /** The reader's own waiting client signals and mentions on the task (MP-5-8); never anyone else's. */
   readonly comments: BoardComments;

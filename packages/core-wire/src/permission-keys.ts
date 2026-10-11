@@ -4,8 +4,9 @@
 // permission key catalogue (ops-astro-roadmap `CAPABILITY-SLICES.md`, FU-1-KEYS,
 // 27 September 2026), and each pair the command surface already checks that the
 // catalogue does not list (the reads' `task:read`, `person:read`,
-// `settings:read`, `session:read`, and `preset:manage`). A key added to the
-// catalogue is added here in the same change.
+// `settings:read`, `session:read`, and `preset:manage`), and `agent:assign`:
+// directing every agent of the business, not only one's own (Assign to AI).
+// A key added to the catalogue is added here in the same change.
 //
 // Three keys are self-scoped: every signed-in person holds them on their own
 // account, credentials or preferences and nobody holds them on another's, so
@@ -14,6 +15,7 @@
 
 const CATALOGUE: Readonly<Record<string, readonly string[]>> = {
   access: ['manage', 'share'],
+  agent: ['assign'],
   automation: ['decide', 'manage'],
   billing: ['decide', 'manage', 'write'],
   chat: ['comment', 'manage'],

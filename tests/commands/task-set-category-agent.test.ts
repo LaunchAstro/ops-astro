@@ -20,6 +20,7 @@ import {
   assign,
   created,
   minted,
+  ownedAgent,
   revisionOf,
   type AiWorld,
 } from './ai-assign-world.ts';
@@ -159,7 +160,8 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)('MP-4-8 category leaves agent scope', () => {
   it('a person’s category changes leave the agent’s grant, delegation and stamp as they were', async () => {
     const task = await created(w, w.p, 'assigned to AI');
-    const agent = await minted(w, w.p, task);
+    const agent = await ownedAgent(w, w.p);
+    await minted(w, w.p, task, agent);
     expect(codeOf(await assign(w, w.p, task, { agent }))).toBe('not-a-refusal');
     const before = await scopeOf(task, w.p);
     expect(before.agent).not.toBeNull();

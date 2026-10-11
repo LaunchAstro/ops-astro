@@ -8,7 +8,7 @@ import {
   aiWorld,
   assign,
   created,
-  minted,
+  ownedAgent,
   revisionOf,
   type AiWorld,
 } from '../commands/ai-assign-world.ts';
@@ -47,7 +47,7 @@ it('the actual agent completion review and confirmation retain first-start evide
   await command('task.set_scores', { fields: { impact: 7, confidence: 9, ease: 8 } });
   expect(
     isCommandRefusal(
-      await assign(world, world.p, taskId, { agent: await minted(world, world.p, taskId) }),
+      await assign(world, world.p, taskId, { agent: await ownedAgent(world, world.p) }),
     ),
   ).toBe(false);
   const review = await command('task.complete');

@@ -58,7 +58,7 @@ export async function chooseAssignment(
     const cell = 'tr[data-row="' + TASK + '"] td[data-key="assignee"]';
     await app.view.click(cell + ' button.cbd__edb');
     const label = ownAgent
-      ? 'Assign to AI: ' + OWN_AGENT.purpose
+      ? 'Assign to AI: ' + OWN_AGENT.name
       : value === null
         ? 'Unassigned'
         : PEOPLE.find((person) => person.personId === value)?.name;

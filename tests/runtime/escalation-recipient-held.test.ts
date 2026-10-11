@@ -93,7 +93,7 @@ function recipientRead(personId: string) {
   return (sql: string, parameters: readonly unknown[] | undefined): boolean => {
     if (sql.includes("kind = 'person' and active") && parameters?.[1] === personId)
       actorRead = true;
-    return actorRead && sql.includes('join public.delegations d');
+    return actorRead && sql.includes('r.uuid_2::text as person');
   };
 }
 

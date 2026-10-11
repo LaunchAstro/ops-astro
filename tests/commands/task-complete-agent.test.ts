@@ -25,7 +25,7 @@ import {
   aiWorld,
   assign,
   created,
-  minted,
+  ownedAgent,
   onClient,
   revisionOf,
   type AiWorld,
@@ -76,7 +76,7 @@ const stored = async (
 const agentTask = async (by: Decider, title: string): Promise<{ task: string; agent: string }> => {
   const task = await created(w, by, title);
   expect(codeOf(await lifecycle(by, 'task.start', task))).toBe('not-a-refusal');
-  const agent = await minted(w, by, task);
+  const agent = await ownedAgent(w, by);
   expect(codeOf(await assign(w, by, task, { agent }))).toBe('not-a-refusal');
   return { task, agent };
 };

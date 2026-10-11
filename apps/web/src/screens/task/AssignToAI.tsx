@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Assign to AI on the task page and the dock task panel: the task's agent
-// when it is the reader's own (the server sends no other), and a select of the reader's own agents
-// that reach the task (`myAgents`, which the server fills with nothing
-// else). Choosing one sends `task.assign` with `agent` at the read revision;
-// a landed write asks for a reread. With none of the reader's own agents, no
-// control is drawn, so nothing hints that anyone else's exists. The page locks
-// it as it locks the assignee: while a write is in flight or an edit unsaved.
+// Assign to AI on the task page and the dock task panel: the agent holding
+// the task, by name and owner, and a select of the agents the reader may hand
+// it to (`myAgents`). Choosing one sends `task.assign` with `agent` at the
+// read revision; a landed write asks for a reread. With no agent to offer, no
+// select is drawn. The page locks it as it locks the assignee: while a write
+// is in flight or an edit unsaved.
 
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -43,7 +42,8 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
     <div className="field" data-assign-ai>
       {held === null ? null : (
         <p className="card__sub" data-agent-assignee>
-          Assigned to AI: {held.purpose}, for {held.accountable.name}
+          AI: {held.name}
+          {held.owner === null ? null : `, owned by ${held.owner.name}`}
         </p>
       )}
       {task.myAgents.length === 0 ? null : (
@@ -59,7 +59,7 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
   );
 }
 
-/** The reader's own agents for the task; the held one selected when it is theirs. */
+/** The agents the reader may hand the task to; the held one selected when it is among them. */
 function AgentSelect(props: {
   readonly id: string;
   readonly task: Task;
@@ -67,8 +67,8 @@ function AgentSelect(props: {
   readonly onAssign: (agent: string) => void;
 }): ReactElement {
   const { task } = props;
-  const held = task.agent?.delegationId ?? '';
-  const mine = task.myAgents.some((one) => one.delegationId === held);
+  const held = task.agent?.agentId ?? '';
+  const mine = task.myAgents.some((one) => one.agentId === held);
   return (
     <>
       <label className="tf__k" htmlFor={props.id}>
@@ -83,10 +83,10 @@ function AgentSelect(props: {
           if (event.target.value !== '') props.onAssign(event.target.value);
         }}
       >
-        <option value="">Choose one of your agents</option>
+        <option value="">Choose an agent</option>
         {task.myAgents.map((agent) => (
-          <option key={agent.delegationId} value={agent.delegationId}>
-            {agent.purpose}
+          <option key={agent.agentId} value={agent.agentId}>
+            {agent.name}
           </option>
         ))}
       </select>

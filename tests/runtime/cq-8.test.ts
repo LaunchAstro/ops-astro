@@ -110,14 +110,14 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
   // #1088 (Sol PRV-oa-1088-SC1, SEC1-1): a question's keep takes the audit
-  // chain's key after its page task's share lock, as tasks-agent.ts does, so
+  // chain's key after its page task's share lock, so
   // its grant and page-read re-asks come after every wait.
   'packages/core-commands/src/commands/conversation-context.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
   // C80 (#1002 F3-F6): a correction write takes the audit chain's key after
-  // its row locks, as tasks-agent.ts does, so its authority re-read comes
+  // its row locks, so its authority re-read comes
   // after every wait.
   'packages/core-commands/src/commands/live-correction-standing.ts',
   // MP-14-10a: a mandate command's last ask takes the audit chain key after
@@ -125,10 +125,6 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   'packages/core-commands/src/commands/mandate-authority.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
-  // #413: an agent assignment takes the audit chain's key after its write,
-  // where the envelope's audit write would, so its last liveness read
-  // comes after every wait.
-  'packages/core-commands/src/commands/tasks-agent.ts',
   'packages/core-custody/src/broker-reserve.ts',
   // AW-07b: the mail cap, counted under one lock per business and client or person.
   'packages/core-custody/src/email-class.ts',

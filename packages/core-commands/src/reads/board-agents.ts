@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Assign to AI on the board (agent assignee ruling point 9): for each row
-// served, what `task.read` sends the same reader (`reads/task-agents.ts`), in
-// two queries for the whole board rather than two per row. The agent holding
-// a row is sent only when it is the reader's own delegation; the offers are
-// the reader's own live delegations minted for that row. Both are asked only
-// of the rows already served under the reader's grants, so a delegation on a
-// task the reader cannot read is never looked at. Another person's
-// delegations are never listed, counted or hinted.
+// Assign to AI on the board and the task (agent assignee ruling point 9): for
+// each row served, the agent holding it, by name with its owner, and the
+// agents the reader may hand it to. Asked only of the rows already served
+// under the reader's grants, in two queries for the whole board rather than
+// two per row; `task.read` asks it of its one task (`task-agents.ts`). An
+// agent reader is sent neither.
 
-import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  AGENT_NAME_SQL,
+  DELEGATION_STANDS,
+  directableAgents,
+  personSubjects,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
 
 export interface RowAgents {
@@ -19,7 +23,7 @@ export interface RowAgents {
 
 export const NO_AGENTS: RowAgents = { agent: null, myAgents: [] };
 
-/** Each served row's agent when it is the reader's, and the reader's own agents for it; none for an agent reader. */
+/** Each served row's agent and the reader's choices for it; none for an agent reader (null). */
 export async function readBoardAgents(
   tx: TenantQuery,
   taskIds: readonly string[],
@@ -27,63 +31,45 @@ export async function readBoardAgents(
 ): Promise<ReadonlyMap<string, RowAgents>> {
   const found = new Map<string, RowAgents>();
   if (reader === null || taskIds.length === 0) return found;
-  const at = (taskId: string): RowAgents => found.get(taskId) ?? NO_AGENTS;
-  for (const [taskId, agent] of await heldByReader(tx, taskIds, reader)) {
-    found.set(taskId, { ...at(taskId), agent });
-  }
-  for (const row of await offeredToReader(tx, taskIds, reader)) {
-    const was = at(row.task_id);
-    const offer = { delegationId: row.id, purpose: row.purpose };
-    found.set(row.task_id, { ...was, myAgents: [...was.myAgents, offer] });
+  const myAgents = await directableAgents(tx, reader, await personSubjects(tx, reader));
+  for (const taskId of taskIds) found.set(taskId, { agent: null, myAgents });
+  for (const [taskId, agent] of await heldAgents(tx, taskIds)) {
+    found.set(taskId, { agent, myAgents });
   }
   return found;
 }
 
-/** The delegation holding each row, where it is the reader's own. */
-async function heldByReader(
+/** The agent holding each row, and whether a run of it is in progress there. */
+async function heldAgents(
   tx: TenantQuery,
   taskIds: readonly string[],
-  reader: string,
 ): Promise<readonly (readonly [string, AgentAssigneeView])[]> {
   const rows = await tx.query<{
     readonly task_id: string;
-    readonly id: string;
-    readonly purpose: string;
-    readonly person_id: string;
-    readonly person_name: string | null;
+    readonly agent_id: string;
+    readonly name: string;
+    readonly owner_id: string | null;
+    readonly owner_name: string | null;
     readonly live: boolean;
   }>(
-    `select r.id as task_id, d.id, d.purpose, d.delegate_person_id as person_id,
-            p.display_name as person_name,
-            ${DELEGATION_STANDS} as live
+    `select r.id as task_id, a.id as agent_id, ${AGENT_NAME_SQL} as name,
+            a.owner_person_id as owner_id, p.display_name as owner_name,
+            exists (select 1 from public.delegations d
+                     where d.business_id = r.business_id and d.agent_actor_id = a.id
+                       and d.purpose_scope_id = r.id and ${DELEGATION_STANDS}) as live
        from public.records r
-       join public.delegations d on d.business_id = r.business_id and d.id::text = r.data ->> 'agent'
-       left join public.people p on p.business_id = d.business_id and p.id = d.delegate_person_id
-      where r.business_id = $1 and r.id = any($2::uuid[]) and d.delegate_person_id = $3`,
-    [tx.businessId, taskIds, reader],
+       join public.actors a on a.business_id = r.business_id and a.id::text = r.data ->> 'agent'
+       left join public.people p on p.business_id = a.business_id and p.id = a.owner_person_id
+      where r.business_id = $1 and r.id = any($2::uuid[])`,
+    [tx.businessId, taskIds],
   );
   return rows.map((row) => [
     row.task_id,
     {
-      delegationId: row.id,
-      purpose: row.purpose,
-      accountable: { personId: row.person_id, name: row.person_name ?? '' },
+      agentId: row.agent_id,
+      name: row.name,
+      owner: row.owner_id === null ? null : { personId: row.owner_id, name: row.owner_name ?? '' },
       live: row.live,
     },
   ]);
-}
-
-/** The reader's own live delegations minted for the rows, in purpose order. */
-async function offeredToReader(
-  tx: TenantQuery,
-  taskIds: readonly string[],
-  reader: string,
-): Promise<readonly { readonly task_id: string; readonly id: string; readonly purpose: string }[]> {
-  return await tx.query(
-    `select d.purpose_scope_id as task_id, d.id, d.purpose from public.delegations d
-      where d.business_id = $1 and d.delegate_person_id = $2 and d.purpose_scope_id = any($3::uuid[])
-        and ${DELEGATION_STANDS}
-      order by d.purpose, d.id`,
-    [tx.businessId, reader, taskIds],
-  );
 }

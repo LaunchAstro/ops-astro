@@ -20,6 +20,9 @@ _Avoid_: person, actor.
 **Actor**: A person, agent or worker that can act within a business. Authentication identifies the caller. It does not define their authority.
 _Avoid_: user, profile.
 
+**Agent**: An actor that does machine work for a business, with a name and the person who owns it. A task handed to an agent stays with it until a person changes it; a delegation is the authority for one run, not the assignment. Four eyes counts an agent's work as its owner's.
+_Avoid_: bot, AI user.
+
 **Membership**: A person's relationship and configured responsibilities within a business, party, or bounded collection of work.
 _Avoid_: seat.
 

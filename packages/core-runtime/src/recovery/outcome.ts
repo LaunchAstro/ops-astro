@@ -96,18 +96,12 @@ const replacementLocks = (replacements: readonly Replacement[]): readonly LockRe
  * `happened` says the work is finished, so
  * a replacement not yet dispatched is stopped under the outcome's locks: its
  * lease ends, its delegation is revoked and its hold goes back, by amount,
- * under the recorded outcome. It never dispatches. The clear of its agent from
- * the task is audited as `actorId`, the person who recorded the outcome.
+ * under the recorded outcome. It never dispatches.
  */
-async function stopReplacement(
-  tx: TenantQuery,
-  one: Replacement,
-  causeId: string,
-  actorId: string,
-): Promise<void> {
+async function stopReplacement(tx: TenantQuery, one: Replacement, causeId: string): Promise<void> {
   if (one.lease_id !== null) await endLease(tx, one.lease_id, 'released');
   if (one.delegation_id !== null) {
-    await revokeDelegation(tx, one.delegation_id, 'work_retired', actorId);
+    await revokeDelegation(tx, one.delegation_id, 'work_retired');
   }
   await release(tx, one, causeId);
 }
@@ -194,7 +188,7 @@ export async function recordOutcome(
     for (const one of replacements) {
       // Sequential: each moves the one envelope the step shares.
       // eslint-disable-next-line no-await-in-loop
-      await stopReplacement(tx, one, row.attempt_id, request.actorId);
+      await stopReplacement(tx, one, row.attempt_id);
     }
   }
   const settlement =
@@ -218,7 +212,7 @@ export async function recordOutcome(
       attemptId: row.attempt_id,
       outcome: request.outcome,
       settlement,
-      resumed: resumes ? await resume(tx, left, false, request.actorId) : null,
+      resumed: resumes ? await resume(tx, left, false) : null,
     },
   };
 }

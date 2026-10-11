@@ -22,6 +22,7 @@ import {
   setSchedules,
 } from './run-side-rows-fixture.ts';
 const VERSION = '20261007174204_run_bound_keys';
+const AGENT_COLUMNS = '20261011115838_agent_record.sql';
 const ALL = readMigrations('migrations');
 let beforeDirectory: string;
 
@@ -31,7 +32,9 @@ beforeAll(() => {
   process.env['GATE_SIGNING_SECRET'] = randomUUID();
   beforeDirectory = mkdtempSync(join(tmpdir(), 'run-bound-before-'));
   for (const file of readdirSync('migrations')) {
-    if (file.endsWith('.sql') && file < `${VERSION}.sql`) {
+    // With the agent record's columns (20261011115838): today's runtime seeds
+    // these rows, and its inbox raise joins an agent's owner.
+    if (file.endsWith('.sql') && (file < `${VERSION}.sql` || file === AGENT_COLUMNS)) {
       copyFileSync(join('migrations', file), join(beforeDirectory, file));
     }
   }

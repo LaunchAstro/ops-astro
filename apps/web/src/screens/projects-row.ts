@@ -59,9 +59,9 @@ export interface RowOpened {
   readonly origin?: 'row';
 }
 
-/** The person assigned, or the reader's own agent holding the task (drawn as AI). */
+/** The person assigned, or the agent holding the task (drawn as AI). */
 export function assigneeOf(task: BoardTask, agent: BoardTask['agent']): ProjectRow['assignee'] {
-  if (agent !== null) return { id: agent.delegationId, name: agent.purpose, agent: true };
+  if (agent !== null) return { id: agent.agentId, name: agent.name, agent: true };
   return task.assignee === null
     ? null
     : { id: task.assignee.personId, name: task.assignee.name, agent: false };
@@ -231,9 +231,9 @@ export function rowOf(task: BoardTask): ProjectRow {
     // that predates it, or a client out of reach, sends none.
     client: read.client?.name ?? null,
     assignee: assigneeOf(task, agent),
-    // The reader's own agents for the task; the read sends no one else's.
-    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
-    // The tick sends the reader's agent's work to review unless it is there.
+    // The agents the reader may hand the task to.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.agentId, name: one.name })),
+    // The tick sends an agent's work to review unless it is there.
     toReview:
       agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
     due: task.due,

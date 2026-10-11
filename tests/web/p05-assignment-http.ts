@@ -5,7 +5,7 @@ export const OTHER = '00000000-0000-4000-8000-000000000013';
 export const AGENT = '00000000-0000-4000-8000-000000000014';
 export const TITLE = 'Assignment recovery synthetic task';
 export const NAME = 'Synthetic assignee';
-export const OWN_AGENT = { delegationId: AGENT, purpose: 'Synthetic own-agent work' };
+export const OWN_AGENT = { agentId: AGENT, name: 'Synthetic own-agent work' };
 export const FIRST_PERSON = { personId: PERSON, name: NAME };
 export const PEOPLE = [FIRST_PERSON, { personId: OTHER, name: 'Synthetic next assignee' }];
 export const json = (value: unknown, status = 200) =>

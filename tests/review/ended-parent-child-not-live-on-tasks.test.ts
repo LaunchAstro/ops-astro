@@ -2,75 +2,51 @@
 //
 // Catalogue #413, the same root cause beyond Access: a child delegation whose
 // parent has ended is refused at each call by `checkDelegatedAuthority`, so the
-// task and board reads never offer it, never show it live, and `task.assign`
-// refuses it.
-import { randomUUID } from 'node:crypto';
+// task and board reads never show the child's agent live on its task. The
+// agent still holds the task: an assignment is no delegation's to end.
 import { expect, it as vitestIt } from 'vitest';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { readBoardAgents } from '../../packages/core-commands/src/reads/board-agents.ts';
 import { readTaskAgents } from '../../packages/core-commands/src/reads/task-agents.ts';
 import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
-import { codeOf } from '../commands/agent-fixture.ts';
-import { grantTo } from '../commands/fixture.ts';
 import { child, noDatabase, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
 
 useChildWorld('endedparent413');
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
-/** Work with its parent and a child for the decider, then the parent revoked. */
-async function deadChild(): Promise<{ readonly taskId: string; readonly childId: string }> {
+/** Work with its parent and a child, the child's agent holding the task, then the parent revoked. */
+async function deadChild(): Promise<{ readonly taskId: string; readonly agentId: string }> {
   const { parent } = await parentWork(w.s);
   const minted = await child(w.s, parent, w.helper);
-  await w.s.db.app.withBusiness(w.s.business, async (tx) => await revokeDelegation(tx, parent.id));
-  return { taskId: parent.purposeScope.id, childId: minted.delegation.id };
-}
-
-const hold = async (taskId: string, delegationId: string): Promise<void> => {
+  const taskId = parent.purposeScope.id;
+  const agentId = minted.delegation.agentActorId;
   await w.s.db.admin.execute(
     `update public.records set data = data || jsonb_build_object('agent', $1::text)
       where business_id = $2 and id = $3`,
-    [delegationId, w.s.business, taskId],
+    [agentId, w.s.business, taskId],
   );
-};
+  const live = await w.s.db.app.withBusiness(
+    w.s.business,
+    async (tx) => await readTaskAgents(tx, taskId, w.s.decider.personId),
+  );
+  expect(live.agent).toMatchObject({ agentId, live: true });
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => await revokeDelegation(tx, parent.id));
+  return { taskId, agentId };
+}
 
-it('the task read neither offers nor shows live a child whose parent was revoked', async () => {
-  const { taskId, childId } = await deadChild();
-  await hold(taskId, childId);
+it('the task read shows the agent of a child whose parent was revoked holding the task, not live', async () => {
+  const { taskId, agentId } = await deadChild();
   const read = await w.s.db.app.withBusiness(
     w.s.business,
     async (tx) => await readTaskAgents(tx, taskId, w.s.decider.personId),
   );
-  expect(read.myAgents.map((one) => one.delegationId)).not.toContain(childId);
-  expect(read.agent).toMatchObject({ delegationId: childId, live: false });
+  expect(read.agent).toMatchObject({ agentId, live: false });
 });
 
-it('the board neither offers nor shows live a child whose parent was revoked', async () => {
-  const { taskId, childId } = await deadChild();
-  await hold(taskId, childId);
+it('the board shows the agent of a child whose parent was revoked holding the task, not live', async () => {
+  const { taskId, agentId } = await deadChild();
   const rows = await w.s.db.app.withBusiness(
     w.s.business,
     async (tx) => await readBoardAgents(tx, [taskId], w.s.decider.personId),
   );
-  const row = rows.get(taskId);
-  expect((row?.myAgents ?? []).map((one) => one.delegationId)).not.toContain(childId);
-  expect(row?.agent).toMatchObject({ delegationId: childId, live: false });
-});
-
-it('task.assign refuses a child whose parent was revoked', async () => {
-  const { taskId, childId } = await deadChild();
-  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
-    await grantTo(tx, w.s.decider, 'assign');
-  });
-  const revision = await w.s.db.admin.execute<{ readonly revision: number }>(
-    'select revision from public.records where business_id = $1 and id = $2',
-    [w.s.business, taskId],
-  );
-  const result = await executeCommand(w.s.db.app, w.s.business, w.s.decider.presented, 'api', {
-    command: 'task.assign',
-    operationId: randomUUID(),
-    recordId: taskId,
-    expectedRevision: Number(revision[0]?.revision),
-    fields: { agent: childId },
-  });
-  expect(codeOf(result)).toBe('DELEGATION_NOT_LIVE');
+  expect(rows.get(taskId)?.agent).toMatchObject({ agentId, live: false });
 });

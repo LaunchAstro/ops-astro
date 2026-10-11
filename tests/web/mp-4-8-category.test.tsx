@@ -100,12 +100,12 @@ describe('MP-4-8 category leaves agent scope', () => {
   it('a category change sends the label alone, and the Assign to AI stamp and choice stay as they were', async () => {
     const held = {
       agent: {
-        delegationId: 'd-mine-1',
-        purpose: 'draft_replies',
-        accountable: { personId: 'p-ada', name: 'Ada' },
+        agentId: 'd-mine-1',
+        name: 'draft_replies',
+        owner: { personId: 'p-ada', name: 'Ada' },
         live: true,
       },
-      myAgents: [{ delegationId: 'd-mine-1', purpose: 'draft_replies' }],
+      myAgents: [{ agentId: 'd-mine-1', name: 'draft_replies' }],
     };
     const { client, sent } = serving(held);
     const view = await panel(client);
