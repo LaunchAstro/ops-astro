@@ -250,6 +250,44 @@ describe.skipIf(!configured)('U116 task history names the fields a change set', 
     expect(refused).toMatchObject({ code: 'FIELD_VALUE_INVALID', names: ['historyEventId'] });
   });
 
+  it('an agent’s change is shown as the agent’s, by its actor, to staff and to the agent', async () => {
+    const decider = await world.decider('agent-writer-decider');
+    const picked = await world.pickUp(decider, 'the agent writes here');
+    const marked = await world.asAgent(
+      {
+        command: 'task.update',
+        operationId: randomUUID(),
+        recordId: picked.taskId,
+        expectedRevision: Number(
+          (
+            await world.db.admin.execute<{ readonly revision: string }>(
+              'select revision::text as revision from public.records where id = $1',
+              [picked.taskId],
+            )
+          )[0]?.revision,
+        ),
+        fields: { description: 'written by the agent' },
+      },
+      picked.credential,
+    );
+    expect(isCommandRefusal(marked)).toBe(false);
+    const asAgent = detailOf(
+      await world.asAgent(
+        { command: 'task.read', operationId: randomUUID(), recordId: picked.taskId },
+        picked.credential,
+      ),
+    )['task'] as { readonly history: readonly HistoryEntry[] };
+    for (const history of [await historyOf(picked.taskId), asAgent.history]) {
+      expect(history.at(-1)).toMatchObject({
+        operation: 'task.update',
+        changed: ['description'],
+        actorKind: 'agent',
+        actorId: world.agentActorId,
+        personId: null,
+      });
+    }
+  });
+
   it('the audit chain still verifies', async () => {
     expect(await world.db.app.withBusiness(world.business, verifyAuditChain)).toMatchObject({
       intact: true,

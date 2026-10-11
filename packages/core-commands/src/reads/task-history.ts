@@ -132,14 +132,17 @@ async function entryOf(
   const shown = row.field_changes?.keys.filter(
     (key) => Object.hasOwn(HISTORY_FIELDS, key) && (internal || !INTERNAL_FIELDS.has(key)),
   );
-  // A former member, a client's person, an agent or the system is not named;
-  // an outside reader (and an agent, read as one) is shown no person at all.
+  // An agent's change is always shown as an agent's, by its actor here: an
+  // agent holds no person, so there is no one behind it to withhold. A former
+  // member, a client's person or the system is not named; an outside reader
+  // (and an agent, read as one) is shown no person at all.
   const named = internal && row.staff;
+  const agent = row.actor_kind === 'agent';
   const entry: HistoryEntry = {
     eventId: row.id,
     at: row.occurred_at.toISOString(),
     ...(shown === undefined || shown.length === 0 ? {} : { changed: shown }),
-    actorId: row.staff ? row.actor_id : null,
+    actorId: row.staff || agent ? row.actor_id : null,
     actorKind: row.actor_kind,
     personId: named ? row.person_id : null,
     actorName: named ? row.actor_name : null,

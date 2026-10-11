@@ -107,7 +107,10 @@ export interface HistoryEntry {
    * fields (every event written before P20) or named none of them.
    */
   readonly changed?: readonly string[];
-  /** The actor, only for a person who is current staff of this business; null for anyone else. */
+  /**
+   * The actor, for current staff of this business and for an agent of it, so an
+   * agent's change always reads as an agent's; null for anyone else.
+   */
   readonly actorId: string | null;
   /** `person`, `agent` or `worker` (MP-4-16); null for an actor this business does not hold. */
   readonly actorKind: string | null;

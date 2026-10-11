@@ -319,7 +319,8 @@ change set ("Due date and priority changed") where its event recorded them,
 and the command's words otherwise, both from `history-words.ts` in core-wire.
 The page shows the whole trail open, and with no change says "Nothing has
 changed on this one yet."; the panel draws no history until something has
-changed. Who is the person's name for current staff, "Someone" otherwise. The dock task panel
+changed. Who is the person's name for current staff, "AI agent" for an agent,
+"The system" for a worker, and "Someone" for anyone else. The dock task panel
 folds the trail behind "Show all N changes" and "Hide the trail", and whether
 it shows is the person's own `history.showTrail` preference (`useShowTrail`,
 kept by `screens/task/saved-flag.ts` as show finished is), read above the

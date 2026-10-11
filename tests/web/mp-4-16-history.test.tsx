@@ -199,7 +199,8 @@ describe('MP-4-16 who: the page names whoever made each change', () => {
     expect(head(view)).toBe('10 minutes ago · The system · Details changed');
     const trail = rows(view).join(' | ');
     expect(trail).toContain('Ada Lovelace');
-    expect(trail).toContain('An agent');
+    expect(trail).toContain('AI agent');
+    expect(trail).not.toContain('Someone');
     expect(view.find('[data-history]')?.parentElement?.textContent).not.toMatch(/actor-/u);
   });
 });
@@ -253,6 +254,24 @@ describe('U116 the change names the fields it set', () => {
       '6 minutes ago · MiaCancelled',
       '5 minutes ago · MiaRestarted',
     ]);
+  });
+
+  it('an agent’s change always reads as an agent’s, never as someone’s', async () => {
+    const view = await page(
+      'Proj-Verity-Pacing',
+      found({
+        history: [
+          {
+            ...change(5, ['due']),
+            actorId: 'actor-agent',
+            personId: null,
+            actorName: null,
+            actorKind: 'agent',
+          },
+        ],
+      }),
+    );
+    expect(head(view)).toBe('5 minutes ago · AI agent · Due date changed');
   });
 
   it('a change by someone who is not current staff names nobody', async () => {

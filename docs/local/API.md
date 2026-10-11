@@ -2399,7 +2399,7 @@ answer and an internal note is absent from it rather than hidden in it (I09).
 Its `history`, like everyone's, has no comment, note or time entries, so none
 shows an author or time there (`historyOf`, `reads/task-history.ts`). Nor
 does its `history` name a person behind any actor: `personId` and `actorName`
-are null on every entry, and only `actorId` (for current staff) and
+are null on every entry, and only `actorId` (for current staff and agents) and
 `actorKind` remain. A change to a rank mark (`impact`, `confidence`, `ease`)
 is not named in its `changed`, as the marks are not sent to it.
 An agent's `task.comment` is `internal` only: `client` is
@@ -2850,11 +2850,13 @@ command stays, as a cancel or a restart writes no task field.
 Each history entry names who made the change (MP-4-16): `actorKind`
 (`person`, `agent` or `worker`) and, for a person's actor, `personId` and
 `actorName`, the person's display name, joined inside the business; the page
-draws a person by name and the other two as "An agent" and "The system", never
+draws a person by name and the other two as "AI agent" and "The system", never
 an actor identifier. Only an internal reader gets the person, and only for
 current staff (an active membership here in an internal role): a former
-member or a client's person is null for both. **Wire change (U116):**
-`actorId` is now `string | null`, null for anyone but current staff.
+member or a client's person is null for both, and the page says "Someone".
+**Wire change (U116):** `actorId` is now `string | null`: set for current
+staff and for an agent of this business, so an agent's change always reads as
+an agent's, and null for anyone else.
 
 `task.read` takes `historyEventId`, a UUID, and answers `historyEvent`: that
 entry of the task's own `history`, found in the same entries the reader is

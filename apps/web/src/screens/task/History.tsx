@@ -14,8 +14,9 @@
 // (`useShowTrail`), read by the panel above its task read. With no change the head
 // has nothing after it and the page says so.
 //
-// Who is the person's name the read carries for a person's actor, and "An
-// agent" or "The system" for the other two kinds (`whoOf`).
+// Who is the person's name the read carries for a person's actor, "AI agent"
+// (or its name, once the read carries one) and "The system" for the other two
+// kinds, and "Someone" only for a person the reader is not told of (`whoOf`).
 
 import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
@@ -71,7 +72,7 @@ function whatOf(entry: Entry): string {
  */
 const whoOf = (entry: Entry): string => {
   const kind = entry.actorKind ?? null;
-  if (kind === 'agent') return 'An agent';
+  if (kind === 'agent') return entry.actorName ?? 'AI agent';
   if (kind === 'worker') return 'The system';
   return entry.actorName ?? 'Someone';
 };
