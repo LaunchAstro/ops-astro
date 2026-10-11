@@ -8,8 +8,8 @@ import { mount, settle } from './mount.tsx';
 
 // eslint-disable-next-line max-lines-per-function -- one mounted screen and its fake server
 describe('SL04 live Tasks screen', () => {
-  // eslint-disable-next-line max-lines-per-function -- one behavioural sequence with three projections
-  it('one live invalidation updates the open board, inbox and owed count', async () => {
+  // eslint-disable-next-line max-lines-per-function -- one behavioural sequence on a mounted screen
+  it('one live invalidation updates the open board and reads no inbox', async () => {
     let changed = false;
     const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
     const task = {
@@ -26,19 +26,6 @@ describe('SL04 live Tasks screen', () => {
       rank: { number: null, score: null, calc: '' },
       stage: null,
       clientSet: false,
-    };
-    const item = {
-      id: 'item-1',
-      reason: 'assignment',
-      workState: 'open',
-      access: 'readable',
-      owed: true,
-      counted: true,
-      raisedAt: '2026-09-30T00:00:00.000Z',
-      closedAt: null,
-      seenAt: null,
-      lastDelivery: null,
-      task: { key: task.key, title: task.title },
     };
     const fetch = ((url: string | URL) => {
       const path = String(url);
@@ -57,15 +44,9 @@ describe('SL04 live Tasks screen', () => {
       if (path.endsWith('/task/board')) {
         return Promise.resolve(Response.json({ ok: true, tasks: changed ? [task] : [] }));
       }
-      if (path.endsWith('/inbox/read')) {
-        return Promise.resolve(Response.json({ ok: true, inbox: changed ? [item] : [] }));
-      }
       // The assignee editor's people (MP-5-10), none.
       if (path.endsWith('/person/list'))
         return Promise.resolve(Response.json({ ok: true, persons: [] }));
-      if (path.endsWith('/inbox/count')) {
-        return Promise.resolve(Response.json({ ok: true, owed: changed ? 1 : 0 }));
-      }
       throw new Error(`Unexpected request: ${path}`);
     }) as typeof globalThis.fetch;
     const client = new OperationsClient({
@@ -79,10 +60,7 @@ describe('SL04 live Tasks screen', () => {
     );
     try {
       await settle();
-      expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
-        '0',
-      );
-      expect(view.all('[data-inbox-item]')).toHaveLength(0);
+      expect(view.text()).not.toContain('Added by a teammate');
 
       changed = true;
       for (const stream of streams) {
@@ -91,10 +69,6 @@ describe('SL04 live Tasks screen', () => {
       await vi.waitFor(
         async () => {
           await settle();
-          expect(
-            (view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount'],
-          ).toBe('1');
-          expect(view.all('[data-inbox-item]')).toHaveLength(1);
           expect(view.text()).toContain('Added by a teammate');
         },
         { timeout: 500 },

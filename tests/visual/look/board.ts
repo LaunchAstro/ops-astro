@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// B2 and B3, the Projects board and the inbox minimum above it (PAGE-MAP BOARDS, the Projects board).
+// B2 and B3, the Projects board (PAGE-MAP BOARDS, the Projects board). The
+// board draws no inbox, as the mockup's does not: that is the dock's
+// Notifications panel.
 //
 // The board's own parts are measured on the mockup's `/agency/projects/`. The
 // tab row (DS-COMP-2) is measured where the mockup draws one (`/agency/brief/`:
-// the Projects page has a single tab there), and the inbox card (DS-COMP-7) on
-// a mockup page that draws a flush card with a head (`/agency/executive/`).
+// the Projects page has a single tab there).
 
 import type { LookProbe, LookScreen } from './probe.ts';
 
@@ -253,33 +254,6 @@ const BOARD_PROBES: readonly LookProbe[] = [
     `${APP_ROW} td:last-child .cbd__dim, tbody .cbd__dim`,
     ['font-size', 'color'],
     { widths: WIDE },
-  ),
-  // INB-1: the inbox minimum, a flush card (DS-COMP-7) with the kit's list rows.
-  probe(
-    'board.inbox-card',
-    { path: '/agency/executive/', selector: '.card--flush' },
-    'section.inbox',
-    ['padding-top', 'row-gap', 'border-top-color', 'background-color'],
-  ),
-  probe(
-    'board.inbox-head',
-    { path: '/agency/executive/', selector: '.card--flush > .card__head' },
-    'section.inbox > .card__head',
-    ['padding-top', 'padding-left'],
-  ),
-  probe(
-    'board.inbox-title',
-    { path: '/agency/executive/', selector: '.card--flush .card__title' },
-    'section.inbox .card__title',
-    [...TYPE, 'color', 'line-height'],
-    // TOKENS.md declares the card title 15/1.1; the mockup's card drew 15/1.2.
-    { ruled: themed('line-height', '16.5px', 'DS-TOK-119') },
-  ),
-  probe(
-    'board.inbox-sub',
-    { path: '/agency/executive/', selector: '.card--flush .card__sub' },
-    'section.inbox .card__sub',
-    [...TYPE, 'color'],
   ),
 ];
 
