@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Four eyes excludes the launcher: a person who launched another person's agent is refused FOUR_EYES_REQUIRED on the gate the agent proposed under that Launch's delegation and is raised no decision item, as the owner is, after the launch ends and the owner launches again; a third person decides, and a pickup's person still reviews what the agent proposes under it"
+}

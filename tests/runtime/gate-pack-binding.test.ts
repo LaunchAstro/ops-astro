@@ -280,7 +280,8 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
  * Columns a migration after 0030 adds to a table this snapshot reads. A row
  * that gained a column has not changed what it held, so the snapshot compares
  * the columns the seed wrote: 0041 (T3a) adds the escalation columns to gates
- * and 0093 adds `origin_conversation_id`.
+ * and 0093 adds `origin_conversation_id`. 20261011155623 adds a version's
+ * `launch_delegation_id`, taken off the versions alike.
  */
 const ADDED_AFTER_0030 = `array['escalated_to_person_id','escalated_by_person_id','escalated_by_actor_id','escalated_at','origin_conversation_id']`;
 
@@ -290,7 +291,8 @@ async function seedSnapshot(db: EmptyDatabase): Promise<string> {
     `select coalesce((select string_agg((to_jsonb(g) - ${ADDED_AFTER_0030})::text, '|' order by g.id)
                         from public.gates g), '') || '#' ||
             coalesce((select string_agg(p::text, '|' order by p.id) from public.evidence_packs p), '') || '#' ||
-            coalesce((select string_agg(v::text, '|' order by v.id) from public.proposal_versions v), '') || '#' ||
+            coalesce((select string_agg((to_jsonb(v) - 'launch_delegation_id')::text, '|' order by v.id)
+                        from public.proposal_versions v), '') || '#' ||
             coalesce((select string_agg(d::text, '|' order by d.id) from public.gate_decisions d), '')
        as all`,
   );

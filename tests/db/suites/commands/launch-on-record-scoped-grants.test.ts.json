@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Launch on grants held on the task alone: a launcher holding read, comment, write and assign on exactly the task, on their person or their actor, opens one run under a delegation scoped to it; one lacking write on the task is refused DELEGATION_WIDENS and no run opens"
+}

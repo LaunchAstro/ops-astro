@@ -209,6 +209,7 @@ export {
 export {
   LAUNCH_HOURS,
   launchPurpose,
+  isLaunchDelegation,
   launchRun,
   type LaunchRequest,
   type LaunchResult,

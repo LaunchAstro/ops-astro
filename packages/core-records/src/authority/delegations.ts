@@ -49,7 +49,13 @@ import {
   DERIVED_SCHEME,
   type CredentialKeysDecision,
 } from './credential-keys.ts';
-import { effectiveGrants, type Action, type ScopeRequest } from './grants.ts';
+import {
+  effectiveGrants,
+  type Action,
+  type Scope,
+  type ScopeRequest,
+  type Subject,
+} from './grants.ts';
 
 export type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION'
@@ -124,6 +130,12 @@ export interface MintRequest {
   /** The picked-up task's record id. Mandatory: there is no unscoped purpose. */
   readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
+  /**
+   * Whose grants bound the mint, asked at `purposeScope`: Launch's, the
+   * subjects its envelope counts (`launches.ts`). Absent, the delegating
+   * person's alone, asked across the business, as pickup and a child mint ask.
+   */
+  readonly holders?: readonly Subject[];
 }
 
 export interface MintedDelegation {
@@ -228,7 +240,9 @@ export async function mintDelegation(
   if (!keys.ok) throw new Error(`delegations: no delegation credential key: ${keys.problem}`);
   if (request.actions.includes('decide')) return decideRefused();
 
-  const person = [{ kind: 'person', id: request.delegatePersonId }] as const;
+  const holders = request.holders ?? [{ kind: 'person', id: request.delegatePersonId }];
+  const scope: Scope =
+    request.holders === undefined ? { kind: 'business', id: null } : request.purposeScope;
   for (const collection of request.collections) {
     const actions = request.actions.filter((action) => withinCeiling(collection, action));
     if (actions.length === 0) {
@@ -242,11 +256,7 @@ export async function mintDelegation(
       // Sequential on purpose: one transaction, one connection, and a refusal
       // that names the first pair the person does not hold.
       // oxlint-disable-next-line no-await-in-loop
-      const held = await effectiveGrants(tx, person, {
-        collection,
-        action,
-        scope: { kind: 'business', id: null },
-      });
+      const held = await effectiveGrants(tx, holders, { collection, action, scope });
       if (held.length === 0) {
         return refuse(
           'DELEGATION_WIDENS',

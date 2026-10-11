@@ -113,11 +113,13 @@ export interface Proposer {
   readonly taskTypeId: string;
   readonly actorId: string;
   readonly subjects: readonly Subject[];
+  /** The Launch delegation an agent proposes under; absent for a person or a pickup's. */
+  readonly launchDelegationId?: string;
 }
 
 export async function proposeFor(
   tx: TenantQuery,
-  { target, collection, taskTypeId, actorId, subjects }: Proposer,
+  { target, collection, taskTypeId, actorId, subjects, launchDelegationId }: Proposer,
   fields: ProposeFields,
 ): Promise<HandlerOutcome> {
   // A trashed task is gone to the work surface until its batch is restored,
@@ -199,6 +201,7 @@ export async function proposeFor(
     taskId: target.id,
     collection,
     proposedByActorId: actorId,
+    ...(launchDelegationId === undefined ? {} : { launchDelegationId }),
     subjects,
     purpose: fields.purpose,
     maximumMinor: fields.maximumMinor,

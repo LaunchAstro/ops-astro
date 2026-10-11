@@ -130,6 +130,7 @@ export async function launchTask(
     agentActorId: String(target.data['agent']),
     personId: session.personId,
     actorId: session.actorId,
+    subjects: subjectsOf(session),
   });
   if (!launched.ok) return refused(launched.refusal);
   return applied(target.id, target.revision, { runId: launched.launchId, state: 'waiting' });
