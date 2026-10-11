@@ -119,6 +119,7 @@ export type {
   TagListResult,
   TagView,
   AgentAssigneeView,
+  TaskRunView,
   AgentOfferView,
   BoardComments,
   TeamListResult,

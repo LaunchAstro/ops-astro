@@ -70,6 +70,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.start': TASK,
   // An assignment raises the assignee's item (INB-1).
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
+  // A run opened for the task's agent, with the delegation it acts under.
+  'task.launch': writing(business('task_launches', 'delegations')),
   'task.triage': TASK,
   'task.set_stage': TASK,
   // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).

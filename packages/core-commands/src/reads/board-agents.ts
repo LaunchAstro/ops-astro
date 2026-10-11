@@ -61,15 +61,24 @@ async function heldAgents(
     readonly owner_id: string | null;
     readonly owner_name: string | null;
     readonly live: boolean;
+    readonly run_state: 'waiting' | 'started' | null;
+    readonly launched_at: Date | null;
   }>(
     `select r.id as task_id, a.id as agent_id, ${AGENT_NAME_SQL} as name,
             a.owner_person_id as owner_id, p.display_name as owner_name,
             exists (select 1 from public.delegations d
                      where d.business_id = r.business_id and d.agent_actor_id = a.id
-                       and d.purpose_scope_id = r.id and ${DELEGATION_STANDS}) as live
+                       and d.purpose_scope_id = r.id and ${DELEGATION_STANDS}) as live,
+            run.state as run_state, run.launched_at
        from public.records r
        join public.actors a on a.business_id = r.business_id and a.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = a.business_id and p.id = a.owner_person_id
+       -- The open launch of this agent on the task, while its delegation stands.
+       left join lateral (
+         select l.state, l.launched_at from public.task_launches l
+           join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+          where l.business_id = r.business_id and l.task_id = r.id and l.agent_actor_id = a.id
+            and l.state <> 'ended' and ${DELEGATION_STANDS}) run on true
       where r.business_id = $1 and r.id = any($2::uuid[])`,
     [tx.businessId, taskIds],
   );
@@ -80,6 +89,10 @@ async function heldAgents(
       name: row.name,
       owner: row.owner_id === null ? null : { personId: row.owner_id, name: row.owner_name ?? '' },
       live: row.live,
+      run:
+        row.run_state === null || row.launched_at === null
+          ? null
+          : { state: row.run_state, launchedAt: row.launched_at.toISOString() },
     },
   ]);
 }

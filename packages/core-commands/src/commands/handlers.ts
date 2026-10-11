@@ -16,6 +16,7 @@ import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
+import { launchTask } from './tasks-launch.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
 import { setCategory } from './tasks-category.ts';
@@ -95,6 +96,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
 
   'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
+  'task.launch': (tx, context) => launchTask(tx, context),
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
   'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),

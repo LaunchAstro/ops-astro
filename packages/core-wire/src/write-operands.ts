@@ -105,6 +105,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     successor: 'any',
   },
   'task.assign': FIELDS,
+  'task.launch': TARGET,
   'task.triage': FIELDS,
   'task.set_stage': FIELDS,
   'task.set_party': FIELDS,

@@ -206,6 +206,13 @@ export {
   UNNAMED_AGENT,
   type AgentChoice,
 } from './authority/agents.ts';
+export {
+  LAUNCH_HOURS,
+  launchPurpose,
+  launchRun,
+  type LaunchRequest,
+  type LaunchResult,
+} from './authority/launches.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
