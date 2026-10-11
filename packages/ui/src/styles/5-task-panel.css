@@ -263,15 +263,6 @@
 .dtp__fields .tf__tag-chips:empty {
   display: none;
 }
-.tf__tag-chips .chip {
-  flex: none;
-  padding-right: 4.4px;
-}
-.tf__tag-chips .chip__x {
-  font: inherit;
-  letter-spacing: normal;
-  padding: 0 0.1em;
-}
 
 .dtp__fields .dtp__link {
   display: flex;

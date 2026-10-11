@@ -27,7 +27,7 @@
 // the client model names it.
 
 import type { ReactElement } from 'react';
-import { Icon } from '@launchastro/ui';
+import { Chip, Icon } from '@launchastro/ui';
 import { estimateWords } from './estimates.ts';
 import {
   TASK_CATEGORIES,
@@ -202,6 +202,9 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
   return (
     <section className="tpr__facts" aria-label="Facts" data-task-facts="">
       <TaskFactStrip task={task} />
+      {task.rank.score === null || task.rank.calc.trim() === '' ? null : (
+        <p className="tpr__calc">{task.rank.calc}</p>
+      )}
       <div className="taskform">
         <dl className="tf__grid" data-band>
           {band.map(([key, label, value]) => (
@@ -212,6 +215,15 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
           ))}
         </dl>
       </div>
+      {(task.tags ?? []).length === 0 ? null : (
+        <div className="tpr__tags" aria-label="Tags">
+          {task.tags.map((tag) => (
+            <Chip key={tag.id} kind="soft">
+              {tag.name}
+            </Chip>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

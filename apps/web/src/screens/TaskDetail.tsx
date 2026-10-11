@@ -84,7 +84,7 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
-import { usePageToolbar } from '@launchastro/ui';
+import { Icon, usePageToolbar } from '@launchastro/ui';
 import { createPortal } from 'react-dom';
 import { useAssignments } from './task/assignment-context.tsx';
 import { PageAssignment } from './task/PageAssignment.tsx';
@@ -631,19 +631,18 @@ function Loaded(props: LoadedProps): ReactElement {
       />
 
       <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
+      <TeamControls
+        props={props}
+        people={people}
+        writes={writes}
+        form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
+      />
 
       <Perspectives
         counts={counts}
         selected={props.perspective}
         onSelect={props.onPerspective}
-        team={
-          <TeamSide
-            props={props}
-            people={people}
-            writes={writes}
-            form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
-          />
-        }
+        team={<TeamSide props={props} />}
         agent={
           <AgentSide
             execution={execution}
@@ -675,13 +674,11 @@ interface TeamSideProps {
  * The Team side of the task (MP-4-3): the description, its controls, the
  * subtasks and time, the conversation and the history.
  */
-function TeamSide(side: TeamSideProps): ReactElement {
+function TeamSide(side: Pick<TeamSideProps, 'props'>): ReactElement {
   const { task } = side.props;
   return (
     <>
       <DescriptionSection description={task.description} />
-
-      <TeamControls {...side} />
 
       <StepTitleHeld value={[side.props.stepTitle ?? '', side.props.onStepTitle]}>
         <TeamSubtasks {...side.props} />
@@ -726,30 +723,46 @@ function TaskStateControls({
 function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
   const { client, task } = props;
   const locked = writes.busy || form.dirty;
-  return (
-    <>
-      <TaskStateControls props={props} writes={writes} form={form} />
+  const toolbar = usePageToolbar();
+  const editor = (
+    <details
+      className="task-controls"
+      data-task-controls
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector('summary')?.focus();
+        event.stopPropagation();
+      }}
+    >
+      <summary className="dpanel__btn" aria-label="Edit task details" title="Edit task details">
+        <Icon name="pencil" size="sm" />
+      </summary>
+      <div className="task-controls__body">
+        <TaskStateControls props={props} writes={writes} form={form} />
 
-      <PageAssignment
-        client={client}
-        task={task}
-        grantKey={props.grantKey}
-        people={people}
-        disabled={locked}
-        onChanged={props.onChanged}
-      />
+        <PageAssignment
+          client={client}
+          task={task}
+          grantKey={props.grantKey}
+          people={people}
+          disabled={locked}
+          onChanged={props.onChanged}
+        />
 
-      <DetailsForm
-        formRef={writes.fields}
-        busy={writes.busy}
-        title={form.title}
-        due={form.due}
-        onEdit={form.onEdit}
-        onField={form.onField}
-        onSubmit={writes.onFields}
-      />
-    </>
+        <DetailsForm
+          formRef={writes.fields}
+          busy={writes.busy}
+          title={form.title}
+          due={form.due}
+          onEdit={form.onEdit}
+          onField={form.onField}
+          onSubmit={writes.onFields}
+        />
+      </div>
+    </details>
   );
+  return toolbar === null ? editor : createPortal(editor, toolbar);
 }
 
 /** The team side's conversation, with its draft, open edit and refusal held above the read. */

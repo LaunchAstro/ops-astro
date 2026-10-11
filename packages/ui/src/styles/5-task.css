@@ -81,6 +81,7 @@
   text-transform: var(--type-small-case);
 }
 .tpr__crumb [data-copy] {
+  min-height: 0;
   display: grid;
   place-items: center;
   padding: 0;
@@ -104,11 +105,19 @@
 }
 /* The rank's calculation, under the fact strip (MP-4-2). */
 .tpr__calc {
-  margin: 0;
+  /* type-exception R20261012: the reference rank calculation is 12/1.5. */
+  margin: calc(var(--s-4) * -1) 0 var(--s-4);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tpr__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 /* Inert on the task page: the strip's ticks say what the record says and do
    nothing, so the cursor is the default one, never the pointer (MP-4-2, D-08).
@@ -773,4 +782,42 @@
   height: 20px;
   font-size: 11px;
   background: var(--paper);
+}
+
+/* Full-page editing is retained in the toolbar, beside the drawer door. */
+.task-controls {
+  position: relative;
+}
+.task-controls > summary {
+  list-style: none;
+}
+.task-controls > summary::-webkit-details-marker {
+  display: none;
+}
+.task-controls__body {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 55;
+  width: min(360px, calc(100vw - var(--s-6)));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--s-4);
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+.task-controls[open] > .task-controls__body {
+  display: grid;
+  gap: var(--s-4);
+}
+.topbar:has(.task-controls) {
+  position: relative;
+}
+.topbar .task-controls {
+  position: static;
+}
+.topbar .task-controls__body {
+  right: var(--s-6);
+  width: min(360px, calc(100% - var(--s-6) * 2));
 }

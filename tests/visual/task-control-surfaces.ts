@@ -27,7 +27,7 @@ async function draft(props: SurfaceProps) {
 }
 async function todoSearch(props: SurfaceProps) {
   await dock(props, 'todos');
-  await props.page.getByLabel('Search projects', { exact: true }).click();
+  await props.page.getByLabel('Choose project scope', { exact: true }).click();
 }
 /** Fresh preparations for the page, drawer, dock and every option menu. */
 export function taskControlSurfaces(props: SurfaceProps): Surface[] {
@@ -35,6 +35,13 @@ export function taskControlSurfaces(props: SurfaceProps): Surface[] {
     ['board', () => board(props)],
     ['team', () => props.openDrawer()],
     ['page-team', () => taskPage(props)],
+    [
+      'page-team-controls',
+      async () => {
+        await taskPage(props);
+        await props.page.getByLabel('Edit task details', { exact: true }).click();
+      },
+    ],
     [
       'agent',
       async () => {

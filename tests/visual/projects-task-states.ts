@@ -259,6 +259,14 @@ try {
       await page.locator('[data-act=door]').last().click();
       await page.locator('#perspective-tab-team').waitFor();
       await capture(`task-page-team-${width}`);
+      await page.getByLabel('Edit task details', { exact: true }).click();
+      await capture(`task-page-editor-${width}`);
+      const editorInside = await page.locator('.task-controls__body').evaluate((editor) => {
+        const rect = editor.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth;
+      });
+      if (!editorInside) throw new Error(`Task editor is outside the viewport at ${String(width)}`);
+      await page.keyboard.press('Escape');
       await page.locator('#perspective-tab-agent').click();
       await capture(`task-page-agent-${width}`);
     }

@@ -269,6 +269,10 @@
   color: var(--accent);
   cursor: pointer;
 }
+.check .icon {
+  width: 12px;
+  height: 12px;
+}
 .check:hover:not(:disabled) {
   border-color: var(--accent);
 }
@@ -925,4 +929,18 @@
 .menu__opt[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Attached tags use the same chip geometry everywhere (R20261012). */
+.chip--tag {
+  flex: none;
+  padding-right: 4.4px;
+}
+.chip--tag .chip__x {
+  font: inherit;
+  padding: 0 0.1em;
+}
+.chip--tag .chip__x .icon {
+  width: 1em;
+  height: 1em;
 }

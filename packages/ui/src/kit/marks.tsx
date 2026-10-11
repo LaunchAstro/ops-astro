@@ -12,6 +12,14 @@ export type MarkTone = 'ok' | 'warn' | 'bad' | 'info' | 'idle';
 /** DS-PRIM-11. Chips are pills everywhere (DR-29). */
 export type ChipProps =
   | {
+      /** A tag already attached, removable without changing the vocabulary. */
+      readonly kind: 'tag';
+      readonly id: string;
+      readonly name: string;
+      readonly disabled?: boolean;
+      readonly onRemove: () => void;
+    }
+  | {
       readonly kind?: 'outline' | 'soft' | undefined;
       readonly tone?: MarkTone | undefined;
       readonly icon?: GlyphName | undefined;
@@ -32,18 +40,26 @@ export type ChipProps =
     };
 
 export function Chip(props: ChipProps): ReactElement {
+  if (props.kind === 'tag') {
+    return (
+      <span className="chip chip--soft chip--tag" data-tag-chip={props.id}>
+        {props.name}
+        <ChipRemove
+          label={`Remove the tag ${props.name}`}
+          disabled={props.disabled}
+          onRemove={props.onRemove}
+        />
+      </span>
+    );
+  }
   if (props.kind === 'filter') {
     return (
       <span className="chip chip--filter">
         <span className="chip__key">{props.name}</span> {props.value}
-        <button
-          type="button"
-          className="chip__x"
-          aria-label={`Remove the filter ${props.name} ${props.value}`}
-          onClick={props.onRemove}
-        >
-          <Icon name="cross-small" size="xs" />
-        </button>
+        <ChipRemove
+          label={`Remove the filter ${props.name} ${props.value}`}
+          onRemove={props.onRemove}
+        />
       </span>
     );
   }
@@ -60,6 +76,24 @@ export function Chip(props: ChipProps): ReactElement {
       {props.icon === undefined ? null : <Icon name={props.icon} size="xs" />}
       {props.children}
     </span>
+  );
+}
+
+function ChipRemove(props: {
+  readonly label: string;
+  readonly disabled?: boolean | undefined;
+  readonly onRemove: () => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      className="chip__x"
+      aria-label={props.label}
+      disabled={props.disabled}
+      onClick={props.onRemove}
+    >
+      <Icon name="cross-small" size="xs" />
+    </button>
   );
 }
 

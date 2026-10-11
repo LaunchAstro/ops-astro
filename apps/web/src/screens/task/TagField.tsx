@@ -14,6 +14,7 @@
 // handled, so the panel around it stays open (TR-A3-3).
 
 import { useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { Chip } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -209,18 +210,14 @@ function TagChips(props: {
   return (
     <>
       {props.tags.map((tag) => (
-        <span key={tag.id} className="chip chip--soft" data-tag-chip={tag.id}>
-          {tag.name}
-          <button
-            className="chip__x"
-            type="button"
-            aria-label={`Remove the tag ${tag.name}`}
-            disabled={props.busy}
-            onClick={() => props.onRemove(tag)}
-          >
-            ×
-          </button>
-        </span>
+        <Chip
+          key={tag.id}
+          kind="tag"
+          id={tag.id}
+          name={tag.name}
+          disabled={props.busy}
+          onRemove={() => props.onRemove(tag)}
+        />
       ))}
     </>
   );

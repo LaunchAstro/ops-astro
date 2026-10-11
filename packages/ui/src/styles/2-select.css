@@ -11,7 +11,7 @@
   gap: 0.4rem;
   width: 100%;
   min-height: 37px;
-  padding: 8.8px 12px;
+  padding: 8.8px var(--s-3);
   border: 1px solid var(--border);
   border-radius: 0;
   background: var(--bg);

@@ -38,3 +38,14 @@ were inspected alongside the gallery and dock control sweep. This is a shared
 reference update under R20261012, rather than a second feature-local icon scale.
 Measured spacing uses existing shared steps wherever the values coincide.
 Conversation row styles live together in 5-task.css for both task presentations.
+
+The full Team page keeps Description, Subtasks, Time and Conversation in the
+reference order. Its existing lifecycle, marks, assignment and details editor
+lives in a compact toolbar disclosure. The same operations, revision checks,
+unsaved-edit locks and held drafts remain connected. This is an intentional
+placement change; the controls are inspected with the disclosure open as well.
+The shared Chip has a typed attached-tag kind, including disabled removal.
+Checkbox marks keep their previous 12px inset geometry on every consumer,
+including Operations, independently of the shared icon-size update.
+The current icon contract is recorded in docs/design-system.md; the generated
+TOKENS.md is retained as the dated transfer plan, with its source left intact.
