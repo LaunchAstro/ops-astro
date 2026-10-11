@@ -74,6 +74,8 @@ const SETTING_REFUSED: Readonly<Record<string, string>> = {
   AUTH_NO_AGENT_IDENTITY:
     "the API finds no active agent for its login; check the agent's login and actor are active",
   DELEGATION_NOT_LIVE: 'its delegation is no longer live; OPS_ASTRO_DELEGATION needs a new one',
+  DELEGATION_NARROWED:
+    'the person who handed its delegation no longer holds what it draws on; OPS_ASTRO_DELEGATION needs a new one',
 };
 
 /** How the worker reaches the API and the sign-in service; a test hands its own. */

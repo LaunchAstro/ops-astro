@@ -201,6 +201,8 @@ describe('a worker that cannot sign in does not start', () => {
 describe('a worker its credentials no longer let in exits, naming the setting', () => {
   it.each([
     ['DELEGATION_NOT_LIVE', 'OPS_ASTRO_DELEGATION', 1],
+    // The person who handed the delegation lost the grant it draws on.
+    ['DELEGATION_NARROWED', 'no longer holds what it draws on', 1],
     ['AUTH_UNKNOWN_LOGIN', 'OPS_ASTRO_EMAIL and OPS_ASTRO_PASSWORD', 1],
     // What the API answers when the agent's login or acting identity is disabled or gone.
     ['AUTH_NO_AGENT_IDENTITY', "the agent's login and actor", 1],
