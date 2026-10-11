@@ -290,7 +290,7 @@ function scoresOf(row: TaskRowRead): Pick<InternalTaskDetail, 'scores'> {
   return { scores: { impact: row.impact, confidence: row.confidence, ease: row.ease } };
 }
 
-/** One task with its history, or nothing at all. */
+/** One task with its history (and one entry of it, `historyEventId`), or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
   taskTypeId: string,
@@ -299,10 +299,10 @@ export async function readTaskDetail(
   rankPool: RankPool,
   /** The person whose own time is sent (RS-VAULT-9); null sends none, as to an agent. */
   timeReader: string | null,
+  historyEventId?: string,
 ): Promise<(TaskDetail & Pick<InternalTaskDetail, 'scores'>) | undefined> {
-  // A malformed identifier is not cast and not queried. The cast would raise
-  // where the contract promises a refusal, and "that is not a uuid" is an
-  // answer a caller can learn from, which is one more than they should get.
+  // A malformed identifier is not cast and not queried: the cast would raise
+  // where the contract promises a refusal, and teach the caller it is no uuid.
   if (!isUuid(recordId)) return undefined;
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
@@ -318,7 +318,7 @@ export async function readTaskDetail(
     agentBrief: row.agent_brief,
     ...unslottedOf(row),
     ...(comments.internal ? scoresOf(row) : {}),
-    history: await historyOf(tx, row.id, comments.internal, rankPool),
+    ...(await historyOf(tx, row.id, comments.internal, rankPool, historyEventId)),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
     // because the projection carries no comment body and no field value the

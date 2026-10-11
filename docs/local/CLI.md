@@ -192,7 +192,7 @@ the missing key.
 
 ```
 pnpm cli help
-pnpm cli task get <id> [--detail brief|standard|full] [--fields a,b] [--json]
+pnpm cli task get <id> [--detail brief|standard|full] [--history-event <id>] [--fields a,b] [--json]
 pnpm cli task list [--board <id> | --mode aggregate] [--person <id>] [--client <id>] [--limit n] [--page <next>] [--detail ...]
 pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
 pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
@@ -211,6 +211,9 @@ pnpm cli map view|frontier <id>
   goes back as `--page`; a list reordered before the token, or missing a task
   it showed, refuses it (`FIELD_VALUE_INVALID` on `page`): list again.
 - The API takes `detail`, `limit` and `page` on `task.read` and `task.board`.
+- `task get <id> --history-event <id>` looks up one entry of the task's
+  history as `historyEvent` (null when the history holds none). It reads the
+  full detail unless `--detail` says otherwise.
 
 `task list --mode aggregate` reads open tasks across boards and unboarded
 tasks. `--person <UUID>` and `--client <UUID>` intersect that pool or a selected

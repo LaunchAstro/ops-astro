@@ -118,7 +118,7 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.reparent`                              | `parentId`                                            | a string, or `null` for the top level; absent or any other type is refused                                                                                                                       | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`)                                   |
 | `task.restore`                               | `batchId`                                             | a non-empty string, the one `task.trash` answered                                                                                                                                                | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 | `task.purge`                                 | none                                                  | no window operand, see below                                                                                                                                                                     | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)                                        |
-| `task.read`                                  | `recordId`                                            | a string                                                                                                                                                                                         | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.read`                                  | `recordId`, `historyEventId?`                         | a string, and a history entry's UUID or absent                                                                                                                                                   | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
 | `task.board`                                 | `board`                                               | a board task's id, or `null` for tasks on no board                                                                                                                                               | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
 | `task.ledger`                                | `timeZone`, `before?`, `query?`                       | a zone name the server knows (`pg_timezone_names`, exact spelling), a day `YYYY-MM-DD` from 1970 or absent/`null` for the newest days, and `task.search`'s query or absent/`null` for every task | the row's `parse` for the shapes, its `serve` for the zone, from `serveRead` (`reads/dispatch.ts`) |
 | `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`              | two non-empty strings, and an array of field objects, which may be empty                                                                                                                         | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
@@ -2396,10 +2396,12 @@ the re-login path.
 An agent is never an internal reader. It is a delegate working one task, not a
 member of the business, so `task.read` gives it `externalCommentProjection`'s
 answer and an internal note is absent from it rather than hidden in it (I09).
-Its `history` leaves out `task.comment` entries too, so no comment, internal or
-client, shows an author or time there (`historyOf`, `reads/task-history.ts`).
-Nor does its `history` name a person behind any actor: `personId` and
-`actorName` are null on every entry, and only `actorId` and `actorKind` remain.
+Its `history`, like everyone's, has no comment, note or time entries, so none
+shows an author or time there (`historyOf`, `reads/task-history.ts`). Nor
+does its `history` name a person behind any actor: `personId` and `actorName`
+are null on every entry, and only `actorId` (for current staff) and
+`actorKind` remain. A change to a rank mark (`impact`, `confidence`, `ease`)
+is not named in its `changed`, as the marks are not sent to it.
 An agent's `task.comment` is `internal` only: `client` is
 `AUDIENCE_NOT_PERMITTED` 422 on the agent prefix, and the agent credential on
 the person prefix is `AUTH_NO_MEMBERSHIP` 403
@@ -2835,13 +2837,30 @@ it.
 successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
-excludes the reads, because a history is what happened _to_ the task.
+excludes the reads, because a history is what happened _to_ the task. It is
+the commands listed in `HISTORY_OPERATIONS` (`core-wire/src/history-words.ts`)
+and nothing else: no comments or their edits, no time or its notes, no
+preferences and no agent run checks (U116). Each entry carries `eventId`, its
+audit event's id. Where the event recorded the fields it changed
+(`audit_events.field_changes`, P20), `changed` lists their keys, only those in
+`HISTORY_FIELDS` and the reader may see; an event recorded before that, or
+naming none of them, has no `changed` and reads by its command ("Details
+changed"). An event that recorded its fields and changed none is left out.
 Each history entry names who made the change (MP-4-16): `actorKind`
 (`person`, `agent` or `worker`) and, for a person's actor, `personId` and
 `actorName`, the person's display name, joined inside the business; the page
 draws a person by name and the other two as "An agent" and "The system", never
-an actor identifier. Only an internal reader gets the person: the agent
-prefix, read as an outside reader, gets null for both.
+an actor identifier. Only an internal reader gets the person, and only for
+current staff (an active membership here in an internal role): a former
+member or a client's person is null for both. **Wire change (U116):**
+`actorId` is now `string | null`, null for anyone but current staff.
+
+`task.read` takes `historyEventId`, a UUID, and answers `historyEvent`: that
+entry of the task's own `history`, found in the same entries the reader is
+sent, or null when they hold none (another task's event, a comment's, another
+business's). It is refused `FIELD_VALUE_INVALID` when it is not a UUID or the
+read asks for `brief` or `standard`, which carry no history, and `NOT_FOUND`
+for a reader of the shared view, which has none.
 `settings.read`, `session.capabilities` and `task.search` carry a null
 subject: none is about one record, and naming one would make "who read this
 record" false.

@@ -222,7 +222,8 @@ describe.skipIf(serverUrl === undefined)('identity edges on the agent prefix', (
 
     const person = await world.asPerson('task.read', { recordId: mine.taskId });
     const personHistory = (person.body['task'] as Record<string, unknown>)['history'];
-    expect(JSON.stringify(personHistory)).toContain('task.comment');
+    // A comment is not a change to the task, so no reader's history carries it (U116).
+    expect(JSON.stringify(personHistory)).not.toContain('task.comment');
     expect(JSON.stringify(personHistory)).toContain('"personId":"');
 
     const agent = await world.asAgent(

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "U116 parity: task get --history-event reads one history entry through the same task.read the app and the API call"
+}

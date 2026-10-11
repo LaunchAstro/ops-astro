@@ -18,6 +18,7 @@ const before: InternalTaskDetail = {
   revision: 4,
   history: [
     {
+      eventId: 'e-create',
       at: AT,
       actorId: 'actor-ada',
       personId: 'person-ada',
@@ -53,8 +54,8 @@ const names = new Map([['person-ben', 'Ben']]);
 
 // Sol OW-091.4 criterion correctness, retitled by what it proves; its body is Sol's.
 it('a comment-only change is reported without a task revision bump', () => {
-  // writeTaskComment returns the unchanged target revision; only the comment
-  // and applied history grow. This is the real task.comment read contract.
+  // writeTaskComment returns the unchanged target revision; only the comments
+  // grow. This is the real task.comment read contract.
   const now: InternalTaskDetail = {
     ...before,
     comments: [
@@ -72,20 +73,12 @@ it('a comment-only change is reported without a task revision bump', () => {
         own: false,
       },
     ],
-    history: [
-      ...before.history,
-      {
-        at: '2026-10-04T01:00:01.000Z',
-        actorId: 'actor-ben',
-        personId: 'person-ben',
-        actorKind: 'person',
-        actorName: 'Ben',
-        operation: 'task.comment',
-      },
-    ],
+    // A comment is not a change to the task, so the history does not grow
+    // (U116): the notice cannot name who wrote it, and says someone did.
+    history: before.history,
   };
   expect(now.revision).toBe(before.revision);
-  expect(changedSince(before, now, names)).toEqual({ who: ['Ben'], what: ['a comment'] });
+  expect(changedSince(before, now, names)).toEqual({ who: ['someone'], what: ['a comment'] });
 });
 
 // Sol OW-091.5 criterion 5, retitled by what it proves; its body is Sol's.
@@ -99,6 +92,7 @@ it('history additions sharing a timestamp still name their actor', () => {
     history: [
       ...before.history,
       {
+        eventId: 'e-update',
         at: AT,
         actorId: 'actor-ben',
         personId: 'person-ben',

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "U116: task history names the fields each change set from its own audit event, reads legacy events as an unnamed change, leaves out no-op writes and comments, names only current staff, withholds rank marks from an agent, and looks up one entry by its event id"
+}
