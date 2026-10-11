@@ -190,7 +190,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  // 20261011095521 (Launch from the task): a launch is opened and moved on, never deleted.
+  // 20261011102109 (Launch from the task): a launch is opened and moved on, never deleted.
   ['siu', 'task_launches'],
   ...MANDATE_GROUPS,
 ];

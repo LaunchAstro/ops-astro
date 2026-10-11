@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Launch from the task: a person opens a run for the task's agent, waiting for
-// the runner (migration 20261011095521). Assigning starts nothing; this does.
+// the runner (migration 20261011102109). Assigning starts nothing; this does.
 //
 // The run's authority is a fresh delegation minted here, the person-side mint
 // #1192 asked for: scoped to the one task, drawing on the launcher's own live
