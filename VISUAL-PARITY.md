@@ -49,3 +49,5 @@ Checkbox marks keep their previous 12px inset geometry on every consumer,
 including Operations, independently of the shared icon-size update.
 The current icon contract is recorded in docs/design-system.md; the generated
 TOKENS.md is retained as the dated transfer plan, with its source left intact.
+
+The shared shell toolbar title uses the reference 24px/1.15 typography across page headings, including Dashboard, Inbox, Clients, Connections and Settings. This is one shared shell treatment rather than separate per-page title rules. Task subtask rows, add inputs and time totals share one layout between full pages and drawers. Full-page editing stays in its toolbar disclosure; an invalid field reopens it before native validation focuses the field.

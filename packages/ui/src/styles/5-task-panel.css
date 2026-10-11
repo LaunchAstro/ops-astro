@@ -335,11 +335,6 @@
   display: grid;
   gap: var(--s-2);
 }
-.dtp .sb__steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
 .dtp .empty {
   padding: var(--s-2) 0;
 }
@@ -438,15 +433,6 @@
 }
 [data-time-log-section] {
   position: relative;
-}
-.dtp [data-time-total] {
-  position: absolute;
-  right: 0;
-  top: -24px;
-  font: var(--type-data);
-  color: var(--text-muted);
-  text-transform: var(--type-data-case);
-  letter-spacing: var(--type-data-tracking);
 }
 .ttime__controls :is(button, input) {
   box-sizing: border-box;
@@ -580,32 +566,6 @@
   border: 0;
 }
 
-.dtp .sb__step {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
-  display: flex;
-  align-items: center;
-  min-height: 36px;
-  gap: 0.6rem;
-  border-bottom: 1px solid var(--border);
-  font: var(--type-small);
-
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  line-height: 1.4;
-}
-.dtp [data-step] .sb__step-title {
-  flex: 1;
-  min-width: 0;
-  color: var(--text);
-  text-decoration: none;
-}
-.dtp [data-step] .sb__step-title:hover {
-  color: var(--accent);
-}
-.dtp .sb__step .av {
-  width: 22px;
-  height: 22px;
-}
 .dtp__scores summary {
   opacity: 0;
 }

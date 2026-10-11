@@ -202,7 +202,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
   return (
     <section className="tpr__facts" aria-label="Facts" data-task-facts="">
       <TaskFactStrip task={task} />
-      {task.rank.calc.trim() === '' ? null : (
+      {task.rank.calc === '' ? null : (
         <p className="tpr__calc" data-calc>
           {task.rank.calc}
         </p>
