@@ -38,6 +38,30 @@ export async function clientOf(
   return rows[0]?.client ?? null;
 }
 
+/**
+ * The client a live task carries, read under its row lock: a parent a task
+ * goes under, or a board it goes onto or sits on. A `task.set_party` on an
+ * empty task holds that row `for update` until it commits, so this waits and
+ * reads the client it commits rather than the one it is replacing; a plain
+ * read would let a reparent check against the old client and land one
+ * client's subtree under another's parent. `for share`, as
+ * `planTaskPlacement` takes the parent next, in the same order: the target,
+ * then the parent or board.
+ */
+export async function lockedClientOf(
+  tx: TenantQuery,
+  taskTypeId: string,
+  taskId: string,
+): Promise<string | null> {
+  const rows = await tx.query<{ readonly client: string | null }>(
+    `select ${CLIENT}::text as client from records
+      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null
+        for share`,
+    [tx.businessId, taskTypeId, taskId],
+  );
+  return rows[0]?.client ?? null;
+}
+
 export function refuseOtherClient(): CommandRefusal {
   return refuseCommand(
     'PLACEMENT_IS_DERIVED',
@@ -111,6 +135,24 @@ export async function setParty(
   if (naming && parentId !== null) {
     const theirs = await clientOf(tx, context.spine.taskTypeId, parentId);
     if (client !== theirs) return refused(refuseOtherClient());
+  }
+  // A client's project holds only that client's work (U112), as `task.move`
+  // keeps it; a project with no client takes any.
+  const board = (target.data['board'] as string | undefined) ?? null;
+  if (naming && parentId === null && board !== null) {
+    const boardClient = await lockedClientOf(tx, context.spine.taskTypeId, board);
+    if (boardClient !== null && boardClient.toLowerCase() !== client) {
+      return refused(
+        refuseCommand(
+          'PLACEMENT_IS_DERIVED',
+          ['board'],
+          [
+            'This task is on a project that belongs to another client.',
+            'Move it to one of that client’s projects, or one with no client, first.',
+          ],
+        ),
+      );
+    }
   }
   if (naming) {
     const unshared = await refuseUnsharedDescendants(tx, context, target.id);

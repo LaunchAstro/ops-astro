@@ -44,7 +44,7 @@ import { isCommandRefusal, refuseCommand, refuseNotFound, type CommandRefusal } 
 import { refuseWrongValueType } from './values.ts';
 import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { applied, appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
-import { clientOf } from './tasks-party.ts';
+import { clientOf, lockedClientOf } from './tasks-party.ts';
 import { AGENT_ASSIGN_FIELDS, oneKind, outsideAgentReach } from './tasks-agent.ts';
 import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
@@ -154,10 +154,30 @@ export async function createTask(
     typeof request.parentId === 'string'
       ? request.parentId.toLowerCase()
       : (request.parentId ?? null);
+  const board =
+    typeof request.board === 'string' ? request.board.toLowerCase() : (request.board ?? null);
+  // A client's project holds only that client's work (U112), and a new
+  // top-level task has no client yet. Read under the board's row lock, before
+  // the placement takes its siblings, as `task.move` orders them.
+  if (
+    parentId === null &&
+    board !== null &&
+    (await lockedClientOf(tx, context.spine.taskTypeId, board)) !== null
+  ) {
+    return refused(
+      refuseCommand(
+        'PLACEMENT_IS_DERIVED',
+        ['board'],
+        [
+          'This project belongs to a client, and a new task has no client yet.',
+          'Create the task, set its client, then move it onto the project.',
+        ],
+      ),
+    );
+  }
   const placement = await planTaskPlacement(tx, context.spine.taskTypeId, {
     parentId,
-    board:
-      typeof request.board === 'string' ? request.board.toLowerCase() : (request.board ?? null),
+    board,
     boardSection: request.boardSection ?? null,
     suppliedKeys: Object.keys(request.fields),
   });
