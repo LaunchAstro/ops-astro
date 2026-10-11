@@ -25,7 +25,7 @@
 // read is a success-looking lie, and it is the exact failure the honest-failure
 // case exists to catch.
 
-import type { ReactElement, ReactNode } from 'react';
+import { useRef, type ReactElement, type ReactNode } from 'react';
 import { Banner, Empty } from '@launchastro/ui';
 import type { ReadState } from '../data/authorised-read.ts';
 import { describeRefusal } from '../records/submit.ts';
@@ -49,21 +49,28 @@ export interface RecordStateProps<T> {
   /**
    * Keep the last answer drawn while its re-read is in flight, so a page
    * holding an unsaved edit stays mounted under a live change (C4 live-sync
-   * 4). That answer did succeed, under this grant: a new grant starts a new
-   * read with none, and a denial or an outage has already dropped it.
+   * 4), and a page re-read on coming back to the tab does not flash or lose
+   * its scroll (#1229). That answer did succeed, under this grant: a new
+   * grant starts a new read with none, and a denial or an outage has already
+   * dropped it. An empty answer keeps its empty voice.
    */
   readonly keep?: boolean;
 }
 
 export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   const state = props.state;
+  // Whether the last answer was an empty collection, so a kept one keeps its empty voice.
+  const wasEmpty = useRef(false);
+  if (state.outcome === 'ready' || state.outcome === 'empty') {
+    wasEmpty.current = state.outcome === 'empty';
+  }
 
   if (state.outcome === 'loading' && props.keep === true && state.previous !== null) {
-    // The same element as the ready rendering below, so React keeps what is
-    // under it, focus and caret included.
+    // The same element as the ready or empty rendering below, so React keeps
+    // what is under it, focus and caret included.
     return (
       <div className="readstate" data-outcome="loading" aria-busy="true">
-        {props.children(state.previous)}
+        {wasEmpty.current ? emptyVoice(props) : props.children(state.previous)}
       </div>
     );
   }
@@ -125,9 +132,7 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   if (state.outcome === 'empty') {
     return (
       <div className="readstate" data-outcome="empty">
-        {props.empty ?? (
-          <Empty title={`No ${props.subject} yet.`} description="Nothing has been added to it." />
-        )}
+        {emptyVoice(props)}
       </div>
     );
   }
@@ -136,5 +141,13 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
     <div className="readstate" data-outcome="ready">
       {props.children(state.value)}
     </div>
+  );
+}
+
+function emptyVoice<T>(props: RecordStateProps<T>): ReactNode {
+  return (
+    props.empty ?? (
+      <Empty title={`No ${props.subject} yet.`} description="Nothing has been added to it." />
+    )
   );
 }
