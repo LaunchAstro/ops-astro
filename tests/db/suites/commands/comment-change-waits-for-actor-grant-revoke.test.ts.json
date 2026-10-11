@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's comment edit or delete under a Launch delegation holds the grant that admits it, on the launcher's person or actor, so a revocation of it waits for the change, or commits first and the change is refused DELEGATION_NARROWED writing nothing"
+}

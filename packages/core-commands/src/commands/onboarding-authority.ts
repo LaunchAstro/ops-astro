@@ -4,10 +4,10 @@
 
 import {
   DELEGATION_STANDS_AT_CHECK,
+  delegatingSubjects,
   subjectsOf,
   type Delegation,
   type Session,
-  type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import {
@@ -74,13 +74,16 @@ export async function grantsStillHold(tx: TenantQuery, session: Session): Promis
   };
 }
 
-/** A delegated agent: its person's grants held, then the delegation (and parent) held and asked live at the locked clock. */
+/** A delegated agent: the grants it draws on held (`delegatingSubjects`), then the delegation (and parent) held and asked live at the locked clock. */
 export async function delegationStillHolds(
   tx: TenantQuery,
-  delegation: Pick<Delegation, 'id' | 'delegatePersonId'>,
+  delegation: Pick<
+    Delegation,
+    'id' | 'delegatePersonId' | 'mintedByActorId' | 'parentDelegationId'
+  >,
 ): Promise<StillHolds> {
-  const person: readonly Subject[] = [{ kind: 'person', id: delegation.delegatePersonId }];
-  await holdCoveringGrants(tx, person, 'task');
+  const subjects = await delegatingSubjects(tx, delegation);
+  await holdCoveringGrants(tx, subjects, 'task');
   return async ({ taskId }) => {
     // Held, then read in its own statement (fresh clock); child and parent in id order, as `acquire` takes them.
     await tx.query(
@@ -105,7 +108,7 @@ export async function delegationStillHolds(
     if (row?.live !== true) return row?.narrowed === true ? NARROWED : NOT_LIVE;
     const held = await checkAuthorityAt(
       tx,
-      person,
+      subjects,
       { collection: 'task', action: 'write', scope: { kind: 'record', id: taskId } },
       await lockedInstant(tx),
     );

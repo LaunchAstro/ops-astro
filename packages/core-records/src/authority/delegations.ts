@@ -750,14 +750,21 @@ export async function isLaunchDelegation(tx: TenantQuery, delegationId: string):
 /**
  * Whose grants a delegation draws on: its person's and, for a Launch's, the
  * acting identity it was minted on, the subjects that mint asked (`holders`).
- * Every other delegation stands on its person alone.
+ * A helper stands on its parent's, whose person and minting actor it carries.
+ * Every other delegation stands on its person alone. What a check asks of
+ * these, a write that rests on it holds (`holdCoveringGrants`), so revoking
+ * any of them waits for the write.
  */
 export async function delegatingSubjects(
   tx: TenantQuery,
-  delegation: Pick<Delegation, 'id' | 'delegatePersonId' | 'mintedByActorId'>,
+  delegation: Pick<
+    Delegation,
+    'id' | 'delegatePersonId' | 'mintedByActorId' | 'parentDelegationId'
+  >,
 ): Promise<readonly Subject[]> {
   const person = { kind: 'person', id: delegation.delegatePersonId } as const;
-  if (!(await isLaunchDelegation(tx, delegation.id))) return [person];
+  const root = delegation.parentDelegationId ?? delegation.id;
+  if (!(await isLaunchDelegation(tx, root))) return [person];
   return [person, { kind: 'actor', id: delegation.mintedByActorId }];
 }
 

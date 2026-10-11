@@ -390,9 +390,10 @@ const serveCommentChange =
     // held `for share` before the task, as pickup holds them: a `grant.revoke`
     // takes its row `for update` first, so it either commits before this
     // change and the check refuses, or waits for it. A helper stands on its
-    // parent's person, the same person.
-    const person = { kind: 'person', id: delegation.delegatePersonId } as const;
-    await holdCoveringGrants(tx, [person], call.declaration.collection);
+    // parent's person, the same person, and a Launch's on its minting actor
+    // too (`delegatingSubjects`), whose grants the check asks.
+    const subjects = await delegatingSubjects(tx, delegation);
+    await holdCoveringGrants(tx, subjects, call.declaration.collection);
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();
