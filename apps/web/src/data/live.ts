@@ -19,6 +19,9 @@
 // inbox panel re-reads without the board (C4 notifications live). Its
 // `conversation` signal (C71) reaches them as a change, so the Team panel's
 // list and the Team tab's unread chip re-read.
+// A deployment with no live channel (a hosted function mounts no live route)
+// answers the join `no-channel`: the floor rereads as above, but nothing is
+// down, so the header says how fresh the last read is, not "Reconnecting".
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
@@ -30,11 +33,11 @@ export type LiveChange = 'changed' | 'closed' | 'inbox';
 type OnChange = (change: LiveChange) => void;
 type OnSeat = (seat: string | null) => void;
 
-/** Open one stream naming `topics`, or null when it is refused or unreachable. */
+/** Open one stream naming `topics`, null when it is refused or unreachable, or `no-channel` where none is served. */
 export type OpenTopics = (
   topics: readonly string[],
   signal: AbortSignal,
-) => Promise<ReadableStream<Uint8Array> | null>;
+) => Promise<ReadableStream<Uint8Array> | null | 'no-channel'>;
 
 export interface HubOptions {
   readonly visible?: () => boolean;
@@ -229,7 +232,8 @@ class TabStream implements LiveHub {
     const body =
       topics.length === 0 ? null : await this.#open(topics, abort.signal).catch(() => null);
     if (abort.signal.aborted) return;
-    if (body === null) this.#down();
+    if (body === 'no-channel') this.#status(null);
+    else if (body === null) this.#down();
     else {
       this.#up();
       await readEvents(body, this.#onEvent, abort.signal).catch(() => {});
@@ -237,7 +241,7 @@ class TabStream implements LiveHub {
       this.#reseat(null);
       this.#down();
     }
-    await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
+    await wait(body === null || body === 'no-channel' ? FLOOR_MS : REJOIN_MS, abort.signal);
     if (!abort.signal.aborted) await this.#run(abort);
   }
 }

@@ -373,7 +373,10 @@ environment, calls `composeApi`, runs restart recovery through that same
 resolver, and only then binds the port.
 `apps/api/function.ts` is the Vercel function entry. It builds the same
 `composeApi` from the function's settings, with no identity route or live
-channel, since those belong to a long-running process. It owns recovery:
+channel, since those belong to a long-running process. A tab's live join
+there answers a bare 404, which the web app reads as no live channel: its
+pages reread every 30 s and the header marker says how fresh that read is,
+not "Reconnecting" (where hosted pages get a live channel is #1242). It owns recovery:
 before a request it runs the reconciliation pass for each business
 `RECOVERY_BUSINESS_KEYS` names, which a named environment (`OPS_ENVIRONMENT`)
 must set, if only to `none`. It has no admin login. It reads the business key

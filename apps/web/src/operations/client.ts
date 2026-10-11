@@ -189,23 +189,29 @@ export class OperationsClient {
     return this.#post(ACCOUNT_AVAILABILITY_PATH, body);
   }
 
-  /** One live stream naming every topic (C4), or nothing if the join is refused or unreachable. */
+  /** One live stream naming every topic (C4), nothing if the join is refused or unreachable, or `no-channel`. */
   async openLive(
     topics: readonly string[],
     signal: AbortSignal,
-  ): Promise<ReadableStream<Uint8Array> | null> {
+  ): Promise<ReadableStream<Uint8Array> | null | 'no-channel'> {
     const query = topics.map((topic) => `topic=${encodeURIComponent(topic)}`).join('&');
-    return (await this.#live(`?${query}`, { signal }))?.body ?? null;
+    const response = await this.#live(`?${query}`, { signal });
+    return response === 'no-channel' ? response : (response?.body ?? null);
   }
 
   /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
   async live(path: string, init: RequestInit): Promise<unknown> {
     const response = await this.#live(`/${path}`, init);
-    return response === null ? null : await response.json().catch(() => null);
+    return response === null || response === 'no-channel'
+      ? null
+      : await response.json().catch(() => null);
   }
 
-  /** The live channel at `path`, sent and its refusal heard as `#post`'s are: 2xx, else null. */
-  async #live(path: string, init: RequestInit): Promise<Response | null> {
+  /**
+   * The live channel at `path`, sent and its refusal heard as `#post`'s are: 2xx, else null.
+   * A bare 404, no refusal in it, is a deployment that mounts no live route (a hosted function).
+   */
+  async #live(path: string, init: RequestInit): Promise<Response | null | 'no-channel'> {
     const { origin, businessKey, sessionId } = this.#options;
     const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live${path}`;
     const headers = new Headers(init.headers);
@@ -217,6 +223,7 @@ export class OperationsClient {
       if (response.ok) return response;
       const parsed: unknown = await response.json().catch(() => {});
       if (isWireRefusal(parsed)) this.#heard(response.status, parsed);
+      else if (response.status === 404) return 'no-channel';
       return null;
     } catch {
       return null;
