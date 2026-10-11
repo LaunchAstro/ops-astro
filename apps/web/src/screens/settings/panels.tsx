@@ -22,11 +22,26 @@ import type {
   CapabilitiesResult,
   SettingView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { SETTINGS_MANAGE, SPEND_DECIDE, holds, inWords, scopeName } from './reads.ts';
+import {
+  SETTINGS_MANAGE,
+  SPEND_DECIDE,
+  holds,
+  inWords,
+  scopeName,
+  stagesInWords,
+} from './reads.ts';
 import type { Conflict, Draft, Which } from './use-settings.ts';
 
 export const draftInWords = (draft: Draft): string =>
-  draft === null ? 'off' : typeof draft === 'boolean' ? (draft ? 'on' : 'off') : String(draft);
+  Array.isArray(draft)
+    ? stagesInWords(draft)
+    : draft === null
+      ? 'off'
+      : typeof draft === 'boolean'
+        ? draft
+          ? 'on'
+          : 'off'
+        : String(draft);
 
 /** What the settings read is, in its own words: DS-PRIM-28, the one empty state. */
 export function ReadBanner(props: {

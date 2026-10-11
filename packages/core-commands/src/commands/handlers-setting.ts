@@ -19,6 +19,7 @@ export function setting(
     | 'settings.set_money_step_up'
     | 'settings.set_conversation_window'
     | 'settings.set_retention_window'
+    | 'settings.set_priority_stages'
   >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);

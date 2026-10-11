@@ -97,8 +97,10 @@ async function provePreservedUpgrade(w: UpgradeWorld, id: string) {
   const fieldsBefore = await fields(w);
   const recordBefore = await record(w, id);
   await w.db.closeSessions();
-  const migrated = await applyMigrations(w.db.admin, readMigrations('migrations'));
-  expect(migrated.applied).toStrictEqual([START_MIGRATION]);
+  const migrations = readMigrations('migrations');
+  const migrated = await applyMigrations(w.db.admin, migrations);
+  const start = migrations.findIndex((m) => m.version === START_MIGRATION);
+  expect(migrated.applied).toStrictEqual(migrations.slice(start).map((m) => m.version));
   expect(await fields(w)).toStrictEqual(fieldsBefore);
   expect(await record(w, id)).toStrictEqual(recordBefore);
   const added = await w.db.admin.execute(

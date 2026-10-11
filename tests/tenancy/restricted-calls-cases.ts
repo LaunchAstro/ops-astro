@@ -250,6 +250,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   // business; PUBLIC may not execute it.
   'public.factor_login_live_elsewhere',
   ...MANDATE_EXECUTES,
+  'public.priority_stage_ids_valid',
 ];
 
 /** What the server said, reduced to what a contract can name. */

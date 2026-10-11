@@ -319,6 +319,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       'settings.set_money_step_up',
       'settings.set_conversation_window',
       'settings.set_retention_window',
+      'settings.set_priority_stages',
     ] as const
   ).map((name) =>
     declare(name, 'manage', {

@@ -34,6 +34,7 @@ const answered = ((url: string | URL) =>
           settings: [
             { key: 'four_eyes_threshold', value: 500, revision: 2 },
             { key: 'client_sign_off_required', value: true, revision: 1 },
+            { key: 'priority_stages', valueType: 'stage_ids', value: ['trust'], revision: 7 },
             { key: 'conversation_window_days', value: 30, revision: 1 },
             { key: 'retention_window_days', value: 365, revision: 1 },
           ],
@@ -61,6 +62,36 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
+function expectPriorityRow(row: Element | null): void {
+  expect(row?.querySelector('.setrow__t .setrow__k')?.textContent).toBe('Priority stages');
+  expect(row?.querySelector('.setrow__t .setrow__note')).not.toBeNull();
+  const fieldset = row?.querySelector('.setrow__ctl fieldset[data-settings="priority-stages"]');
+  expect(fieldset?.querySelector('legend')?.textContent).toBe('Priority stages');
+  expect(
+    [...(fieldset?.querySelectorAll('label') ?? [])].map((label) => label.textContent),
+  ).toEqual(['Awareness', 'Trust', 'Enquiries', 'Sales', 'Retention', 'Advocacy']);
+  expect(
+    [...(fieldset?.querySelectorAll('input[type="checkbox"]') ?? [])].map((input) => [
+      input.getAttribute('value'),
+      input instanceof HTMLInputElement && input.checked,
+    ]),
+  ).toEqual([
+    ['awareness', false],
+    ['trust', true],
+    ['enquiries', false],
+    ['sales', false],
+    ['retention', false],
+    ['advocacy', false],
+  ]);
+  expect(fieldset?.querySelector('input[value="ops"], input[type="text"]')).toBeNull();
+  expect(
+    row?.querySelector('.setrow__ctl .btn.btn--sm[data-settings="save-priority"]')?.textContent,
+  ).toBe('Save priority stages');
+  expect(
+    row?.querySelector('.setrow__ctl .setrow__state[data-settings="priority-value"]')?.textContent,
+  ).toBe('The business holds: Trust');
+}
+
 describe('B5 settings, as the mockup draws settings rows', () => {
   it('draws one capped card with a row per setting and its controls beside it', async () => {
     const client = new OperationsClient({
@@ -79,10 +110,13 @@ describe('B5 settings, as the mockup draws settings rows', () => {
     expect(rows.map((row) => (row as HTMLElement).dataset['set'])).toEqual([
       'four-eyes',
       'sign-off',
+      'priority',
       'conversation',
       'retention',
     ]);
-    for (const row of rows) {
+    for (const row of rows.filter(
+      (one) => one instanceof HTMLElement && one.dataset['set'] !== 'priority',
+    )) {
       expect(row.querySelector('.setrow__t .setrow__k')).not.toBeNull();
       expect(row.querySelector('.setrow__t .setrow__note')).not.toBeNull();
       expect(
@@ -91,6 +125,7 @@ describe('B5 settings, as the mockup draws settings rows', () => {
       expect(row.querySelector('.setrow__ctl .btn.btn--sm')).not.toBeNull();
       expect(row.querySelector('.setrow__ctl .setrow__state')?.textContent).toMatch(/holds/u);
     }
+    expectPriorityRow(page.find('[data-set="priority"]'));
     // A read that answered leaves no empty read-state box above the card.
     expect(page.find('[data-settings="read"]')?.childElementCount).toBe(0);
     await page.unmount();

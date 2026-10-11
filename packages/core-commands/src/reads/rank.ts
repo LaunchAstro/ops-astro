@@ -24,7 +24,7 @@
 
 import { readableRecordIds, type Subject } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { RankView } from '../../../core-wire/src/index.ts';
+import { priorityStageIds, type RankView } from '../../../core-wire/src/index.ts';
 
 export type MarkName = 'impact' | 'confidence' | 'ease';
 
@@ -147,6 +147,8 @@ export interface RankPoolRow {
   readonly impact: string | null;
   readonly confidence: string | null;
   readonly ease: string | null;
+  readonly stage: string | null;
+  readonly priority_stages: unknown;
   readonly open: boolean;
   readonly started_at: Date | null;
   readonly now: Date;
@@ -155,6 +157,7 @@ export interface RankPoolRow {
 const markOf = (value: string | null): number | null => (value === null ? null : Number(value));
 
 export function rankInputOf(row: RankPoolRow): RankInput {
+  const priorityStages = priorityStageIds(row.priority_stages) ?? [];
   return {
     id: row.id,
     key: row.key ?? '',
@@ -164,9 +167,7 @@ export function rankInputOf(row: RankPoolRow): RankInput {
       confidence: markOf(row.confidence),
       ease: markOf(row.ease),
     },
-    // R70 priority stages still need an authoritative business-owned contract.
-    // MP-5-13 supplies client-board scope, not that configuration.
-    priorityStage: false,
+    priorityStage: row.stage !== null && priorityStages.includes(row.stage),
     open: row.open,
     startedAt: row.started_at,
   };
@@ -195,13 +196,17 @@ export async function readTaskRank(
         });
   const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
-            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
+            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease, r.txt_5 as stage,
+            priority.value as priority_stages,
             coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
               and not (r.data ? 'archived_at') as open,
             (r.data ->> 'started_at')::timestamptz as started_at, now() as now
        from public.records r
        left join public.records s
          on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
+       left join public.business_settings priority
+         on priority.business_id = r.business_id and priority.key = 'priority_stages'
+        and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and (r.id = $3 or r.id = any($4::uuid[]))`,
     [tx.businessId, taskTypeId, recordId, readable],
