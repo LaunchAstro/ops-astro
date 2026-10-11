@@ -281,6 +281,7 @@
         "tests/review/export-session-ended-after-part-gate-proof.test.ts",
         "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
         "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
+        "tests/commands/launch-authority-actor-grants-and-lineage.test.ts",
         "tests/surfaces/page-kit-check-rejects-class-attribute-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-parent-scoped-tip-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-subject-only-restyle.test.tsx",

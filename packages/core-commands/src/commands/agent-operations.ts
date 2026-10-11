@@ -8,6 +8,7 @@
 
 import {
   checkDelegatedAuthority,
+  delegatingSubjects,
   isLaunchDelegation,
   resolveDelegation,
 } from '../../../core-records/src/index.ts';
@@ -324,7 +325,8 @@ async function serveComment(
  * A proposal on the agent's own task (T2b). `authorise` has held the purpose
  * scope to this record and `task:write` to the delegating person's live grant.
  * The proposal is the agent's, by its own actor; the runtime's check under its
- * locks asks the delegating person's grants, the ceiling the delegation
+ * locks asks the grants the delegation draws on (`delegatingSubjects`: its
+ * person's, and a Launch's minting actor), the ceiling the delegation
  * narrows, never a grant of the agent's, which holds none. Under a Launch's
  * delegation the version names it, so four eyes refuses the launcher the gate
  * (`assignee.ts`); a pickup's names nothing, its person reviewing (AW-09).
@@ -350,7 +352,7 @@ async function servePropose(
       collection: declaration.collection,
       taskTypeId: spine.taskTypeId,
       actorId: session.actorId,
-      subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
+      subjects: await delegatingSubjects(tx, delegation),
       ...((await isLaunchDelegation(tx, delegation.id))
         ? { launchDelegationId: delegation.id }
         : {}),

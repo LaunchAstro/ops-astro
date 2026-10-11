@@ -78,15 +78,6 @@ async function closeLapsed(tx: TenantQuery, taskId: string): Promise<CommandRefu
   return undefined;
 }
 
-/** Whether this delegation is one a Launch minted, and not a pickup's. */
-export async function isLaunchDelegation(tx: TenantQuery, delegationId: string): Promise<boolean> {
-  const rows = await tx.query(
-    'select 1 from public.task_launches where business_id = $1 and delegation_id = $2',
-    [tx.businessId, delegationId],
-  );
-  return rows.length > 0;
-}
-
 export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promise<LaunchResult> {
   const open = await closeLapsed(tx, request.taskId);
   if (open !== undefined) return { ok: false, refusal: open };

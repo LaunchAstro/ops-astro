@@ -11,6 +11,8 @@ export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
+  delegatingSubjects,
+  isLaunchDelegation,
   DELEGATION_STANDS,
   DELEGATION_STANDS_AT_CHECK,
   digestOf,
@@ -209,7 +211,6 @@ export {
 export {
   LAUNCH_HOURS,
   launchPurpose,
-  isLaunchDelegation,
   launchRun,
   type LaunchRequest,
   type LaunchResult,

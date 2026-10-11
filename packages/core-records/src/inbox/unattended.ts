@@ -165,7 +165,7 @@ async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
     return false;
   }
   if (row.reason !== 'decision') return true;
-  if (await assignedTo(tx, task.id, row.recipientPersonId)) return false;
+  if (await assignedTo(tx, task.id, row.recipientPersonId, row.factId)) return false;
   // task.decide is authorised on the task itself (GATE_TASK), so neither its
   // map's decide grant nor its client's is a path.
   return row.escalated

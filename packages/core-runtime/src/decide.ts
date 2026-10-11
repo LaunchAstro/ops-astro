@@ -470,7 +470,7 @@ async function recheckDecision(
   // gate. Read under the task lock taken above (the record row, for update),
   // which an assignment's own update of that row waits on, so a reassignment
   // racing this decision is seen or waits for it, never missed.
-  if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
+  if (await assignedTo(tx, found.task_id, request.decidedByPersonId, request.gateId)) {
     return { ok: false, refusal: fourEyesRequired() };
   }
   // AW-09: every decision is a person's, as themselves (`review-round.ts`).

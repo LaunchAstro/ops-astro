@@ -738,6 +738,29 @@ export async function resolveSettledByLease(
  * reads no grant. The person's live grants last, and their absence is
  * `DELEGATION_NARROWED` by name.
  */
+/** Whether this delegation is one a Launch minted (`launches.ts`), and not a pickup's. */
+export async function isLaunchDelegation(tx: TenantQuery, delegationId: string): Promise<boolean> {
+  const rows = await tx.query(
+    'select 1 from public.task_launches where business_id = $1 and delegation_id = $2',
+    [tx.businessId, delegationId],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Whose grants a delegation draws on: its person's and, for a Launch's, the
+ * acting identity it was minted on, the subjects that mint asked (`holders`).
+ * Every other delegation stands on its person alone.
+ */
+export async function delegatingSubjects(
+  tx: TenantQuery,
+  delegation: Pick<Delegation, 'id' | 'delegatePersonId' | 'mintedByActorId'>,
+): Promise<readonly Subject[]> {
+  const person = { kind: 'person', id: delegation.delegatePersonId } as const;
+  if (!(await isLaunchDelegation(tx, delegation.id))) return [person];
+  return [person, { kind: 'actor', id: delegation.mintedByActorId }];
+}
+
 export async function checkDelegatedAuthority(
   tx: TenantQuery,
   delegation: Delegation,
@@ -798,11 +821,7 @@ export async function checkDelegatedAuthority(
     return parent.ok ? await checkDelegatedAuthority(tx, parent.value, request) : parent;
   }
 
-  const held = await effectiveGrants(
-    tx,
-    [{ kind: 'person', id: delegation.delegatePersonId }],
-    request,
-  );
+  const held = await effectiveGrants(tx, await delegatingSubjects(tx, delegation), request);
   if (held.length === 0) {
     return refuse(
       'DELEGATION_NARROWED',
