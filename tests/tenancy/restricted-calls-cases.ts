@@ -228,11 +228,10 @@ const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: 
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
   if (granted === undefined || at === undefined) return granted;
-  const version = at;
   const revoked = REVOKED[qualified];
   const added = ADDED[qualified];
-  if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
-  if (added !== undefined && version < added.from) return granted.replace(added.letters, '');
+  if (revoked !== undefined && at < revoked.from) return granted + revoked.letters;
+  if (added !== undefined && at < added.from) return granted.replace(added.letters, '');
   return granted;
 }
 
