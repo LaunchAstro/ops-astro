@@ -16,8 +16,12 @@ export function seeded(fields: Partial<TaskDraft> = {}): Storage {
   storage.setItem(DRAFT_KEY, JSON.stringify({ ...emptyDraft(null), ...fields }));
   return storage;
 }
-export async function open(server: OrderedCreateServer, storage = draftTab()): Promise<Mounted> {
-  const app = await realm(server.fetch, storage, '/projects/');
+export async function open(
+  server: OrderedCreateServer,
+  storage = draftTab(),
+  path = '/projects/',
+): Promise<Mounted> {
+  const app = await realm(server.fetch, storage, path);
   opened.set(app, server);
   return app;
 }
