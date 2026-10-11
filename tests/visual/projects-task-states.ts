@@ -206,6 +206,19 @@ try {
     await captureAgentDetails(page, '.dpanel__body', capture, 'task-agent');
     await page.locator('[data-act=door]').last().click();
     await capture('task-page');
+    await page.getByLabel('Edit task details', { exact: true }).click();
+    await page.locator('#task-title').fill('');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-draft-resolve=save]').click();
+    const invalidShown = await page
+      .locator('#task-title')
+      .evaluate(
+        (input) => input.closest('details')?.open === true && document.activeElement === input,
+      );
+    if (!invalidShown) throw new Error('Closed editor hides invalid title validation');
+    await capture('task-page-invalid-title');
+    await page.locator('[data-draft-resolve=discard]').click();
+    await page.keyboard.press('Escape');
     await page.locator('#perspective-tab-agent').waitFor();
     await page.locator('#perspective-tab-agent').click();
     await capture('task-page-agent');
@@ -263,7 +276,9 @@ try {
       await capture(`task-page-editor-${width}`);
       const editorInside = await page.locator('.task-controls__body').evaluate((editor) => {
         const rect = editor.getBoundingClientRect();
-        return rect.left >= 0 && rect.right <= innerWidth;
+        return (
+          rect.left >= 0 && rect.right <= innerWidth && rect.width >= Math.min(280, innerWidth - 64)
+        );
       });
       if (!editorInside) throw new Error(`Task editor is outside the viewport at ${String(width)}`);
       await page.keyboard.press('Escape');

@@ -955,7 +955,7 @@ button.appbar__search:hover {
 .topbar:has(.topbar__record-title:not(:empty)) .topbar__meta {
   min-height: 0;
 }
-.topbar:has(.topbar__record-title:not(:empty)) .t-title {
-  /* type-exception R20261012: the reference record toolbar title is 24/1.15. */
+.topbar .t-title {
+  /* type-exception R20261012: the reference toolbar title is 24/1.15. */
   line-height: 1.15;
 }

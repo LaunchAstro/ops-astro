@@ -728,6 +728,9 @@ function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElem
     <details
       className="task-controls"
       data-task-controls
+      onInvalidCapture={(event) => {
+        event.currentTarget.open = true;
+      }}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || event.defaultPrevented) return;
         event.currentTarget.open = false;

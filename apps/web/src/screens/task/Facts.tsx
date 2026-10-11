@@ -202,8 +202,10 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
   return (
     <section className="tpr__facts" aria-label="Facts" data-task-facts="">
       <TaskFactStrip task={task} />
-      {task.rank.score === null || task.rank.calc.trim() === '' ? null : (
-        <p className="tpr__calc">{task.rank.calc}</p>
+      {task.rank.calc.trim() === '' ? null : (
+        <p className="tpr__calc" data-calc>
+          {task.rank.calc}
+        </p>
       )}
       <div className="taskform">
         <dl className="tf__grid" data-band>
@@ -215,7 +217,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
           ))}
         </dl>
       </div>
-      {(task.tags ?? []).length === 0 ? null : (
+      {task.tags.length === 0 ? null : (
         <div className="tpr__tags" aria-label="Tags">
           {task.tags.map((tag) => (
             <Chip key={tag.id} kind="soft">

@@ -82,6 +82,7 @@
 }
 .tpr__crumb [data-copy] {
   min-height: 0;
+  height: auto;
   display: grid;
   place-items: center;
   padding: 0;
@@ -818,6 +819,9 @@
   position: relative;
 }
 .topbar .task-controls {
+  position: static;
+}
+.topbar:has(.task-controls) .topbar__bar {
   position: static;
 }
 .topbar .task-controls__body {
