@@ -392,23 +392,6 @@
     grid-template-columns: 1fr;
   }
 }
-.dtp [data-step-add] {
-  width: 100%;
-  height: 1.6rem;
-  min-height: 0;
-  padding: var(--s-1) 0;
-  border: 0;
-  border-bottom: 1px solid transparent;
-  background: none;
-  color: var(--text);
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-.dtp [data-step-add]:focus {
-  outline: none;
-  border-bottom-color: var(--accent);
-}
 @media (width <= 640px) {
   .dtp__fields,
   .dtp__fields .tf__tags {
