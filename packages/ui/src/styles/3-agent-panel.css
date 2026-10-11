@@ -139,8 +139,8 @@ select.aip__hmodel:hover:not(:disabled) {
 .aip__chip {
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
+  border-radius: 0;
+  background: var(--paper);
   color: var(--text-2);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);

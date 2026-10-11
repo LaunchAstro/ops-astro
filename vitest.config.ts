@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig, type ViteUserConfig } from 'vitest/config';
 import { BaseSequencer, type TestSpecification } from 'vitest/node';
 import { localFileShards, readShardPlan } from './scripts/ci-shards.ts';
@@ -52,6 +53,11 @@ class MeasuredShards extends BaseSequencer {
 }
 
 const config: ViteUserConfig = defineConfig({
+  resolve: {
+    alias: {
+      '@launchastro/ui': fileURLToPath(new URL('./packages/ui/src/index.ts', import.meta.url)),
+    },
+  },
   test: {
     environment: 'node',
     globals: false,

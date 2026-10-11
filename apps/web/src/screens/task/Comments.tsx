@@ -51,7 +51,7 @@
 // the ×, and the signals are drawn by `Thread.tsx`; an edit or a delete goes
 // out through its own command and the task is read again, as a post is.
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
@@ -212,13 +212,20 @@ function OwnedComments(props: CommentsProps): ReactElement {
 
   return (
     <section className="sb__sect" data-comments="section">
-      <CommentsHead count={props.comments.length} />
+      {props.scope === 'panel' ? null : <CommentsHead count={props.comments.length} />}
 
       <Conversation
         name={scoped('conversation')}
         comments={props.comments}
         tab={tab}
-        actions={rows.actions}
+        actions={{
+          ...rows.actions,
+          authors: new Map(
+            draft.people.own && draft.people.state.outcome === 'ready'
+              ? draft.people.state.value.persons.map((person) => [person.personId, person.name])
+              : [],
+          ),
+        }}
         onTab={draft.onTab}
       />
       <RowRefusal because={rows.because} />
@@ -257,23 +264,26 @@ function OwnedComments(props: CommentsProps): ReactElement {
             }}
           />
         )}
-        <CommentBody
-          id={scoped('comment-body')}
+        <InternalTaskMentions
+          enabled={audience === 'internal' && !picking}
+          people={draft.people}
+          id={scoped('comment-mentions')}
+          textboxId={scoped('comment-body')}
           body={body}
+          placeholder={
+            audience === 'internal'
+              ? 'Add an internal note… @mention someone'
+              : 'Reply to the client…'
+          }
+          selected={draft.mentions}
           locked={locked || pending !== null}
-          onPut={draft.put}
+          clearLocked={busy || pending !== null}
+          onChange={(ids, next) =>
+            draft.put({ mentions: ids, ...(next === undefined ? {} : { body: next }) })
+          }
+          onBody={(next) => draft.put({ body: next })}
           onSend={post}
         />
-        {audience === 'internal' && !picking ? (
-          <InternalTaskMentions
-            people={draft.people}
-            id={scoped('comment-mentions')}
-            selected={draft.mentions}
-            locked={locked || pending !== null}
-            clearLocked={busy || pending !== null}
-            onChange={(ids) => draft.put({ mentions: ids })}
-          />
-        ) : null}
         {draft.needsPeople ? (
           <p className="card__sub" role="status">
             Selected mentions are unavailable. Wait for the people read or clear mentions before
@@ -287,15 +297,13 @@ function OwnedComments(props: CommentsProps): ReactElement {
           data-comment="post"
           disabled={cannotPost}
         >
-          {busy
-            ? 'Posting…'
-            : !hold.kept && pending === null
-              ? 'Retry recovery cleanup'
-              : 'Post comment'}
+          {busy ? 'Posting…' : !hold.kept && pending === null ? 'Retry recovery cleanup' : 'Send'}
         </button>
         {closed ? <ClosedNote /> : null}
       </form>
-      <PanelDoorButton door="reply" tab={tab} onOpenPanel={props.onOpenPanel} />
+      {props.scope === 'panel' ? null : (
+        <PanelDoorButton door="reply" tab={tab} onOpenPanel={props.onOpenPanel} />
+      )}
     </section>
   );
 }
@@ -542,40 +550,6 @@ function Conversation(props: {
         </TabPanel>
       ))}
     </>
-  );
-}
-
-/** What a comment says. Enter sends it; Shift and Enter starts a new line. */
-function CommentBody(props: {
-  readonly id: string;
-  readonly body: string;
-  readonly locked: boolean;
-  readonly onPut: (next: Partial<CommentDraft>) => void;
-  readonly onSend: () => void;
-}): ReactElement {
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    props.onSend();
-  };
-  return (
-    <div className="field">
-      <label className="tf__k" htmlFor={props.id}>
-        Say something
-      </label>
-      <textarea
-        id={props.id}
-        className="input"
-        rows={3}
-        required
-        disabled={props.locked}
-        value={props.body}
-        onKeyDown={onKeyDown}
-        onChange={(event) => {
-          props.onPut({ body: event.target.value });
-        }}
-      />
-    </div>
   );
 }
 

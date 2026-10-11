@@ -186,12 +186,13 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     'packages/ui/src/surfaces/BoardCommandBar.tsx',
   ];
   expect(users).toEqual([
-    'apps/web/src/screens/Clients.tsx',
     'apps/web/src/screens/operations/held-sections.tsx',
     'packages/ui/src/kit/gallery-feedback.tsx',
     'packages/ui/src/kit/treatments.tsx',
     ...board,
   ]);
+  const clients = sources().find((s) => s.path === 'apps/web/src/screens/Clients.tsx')?.text ?? '';
+  expect(clients).toContain('Sample data');
   for (const path of board) {
     const text = sources().find((s) => s.path === path)?.text ?? '';
     expect(text, path).toMatch(/\.mock === true/u);

@@ -134,7 +134,9 @@ export function TagField(props: TagFieldProps): ReactElement {
   return (
     <div className="tf__tags" data-panel-field="tags">
       <span className="tf__k">Tags</span>
-      <TagChips tags={task.tags} busy={busy} onRemove={remove} />
+      <div className="tf__tag-chips">
+        <TagChips tags={task.tags} busy={busy} onRemove={remove} />
+      </div>
       <TagInput
         placeholder={task.tags.length === 0 ? 'Add a tag…' : 'Add another…'}
         busy={busy}

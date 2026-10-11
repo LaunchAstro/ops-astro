@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's Client select (MP-4-8, CS-4.12, DP-19).
 //
@@ -17,7 +18,7 @@
 // (`SourceRegion`) over what it fills, a real one nothing.
 
 import { useMemo, useState, type ReactElement } from 'react';
-import { SourceRegion } from '@launchastro/ui';
+import { Icon, SourceRegion } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -55,7 +56,7 @@ function ClientSelect(props: {
     props.facts.unseen || (current !== null && !choices.some((choice) => choice.id === current));
   const shown = current ?? (unseen ? UNSEEN : '');
   return (
-    <select
+    <StyledSelect
       id="panel-field-client"
       className="input"
       disabled={hasContent || props.busy}
@@ -75,7 +76,7 @@ function ClientSelect(props: {
           A client you cannot see
         </option>
       ) : null}
-    </select>
+    </StyledSelect>
   );
 }
 
@@ -91,18 +92,23 @@ function ClientValue(props: {
     <>
       <ClientSelect facts={props.facts} busy={props.busy} onChoose={props.onChoose} />
       {props.facts.hasContent ? (
-        <>
-          <p className="field__hint">{LOCKED_LINE}</p>
-          <button
-            className="btn"
-            type="button"
-            data-panel-field="duplicate"
-            aria-expanded={props.duplicating}
-            onClick={props.onDuplicate}
-          >
-            Duplicate without contents
-          </button>
-        </>
+        <details className="field-callout">
+          <summary aria-label="Why the client is locked" title="Why the client is locked">
+            <Icon name="lock" size="xs" />
+          </summary>
+          <div className="field-callout__body">
+            <p className="field__hint">{LOCKED_LINE}</p>
+            <button
+              className="btn btn--secondary btn--sm"
+              type="button"
+              data-panel-field="duplicate"
+              aria-expanded={props.duplicating}
+              onClick={props.onDuplicate}
+            >
+              Duplicate without contents
+            </button>
+          </div>
+        </details>
       ) : null}
     </>
   );
@@ -165,7 +171,7 @@ export function ClientField(props: ClientFieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-client">
         Client
       </label>
-      <div data-panel-field="client">
+      <div className="dtp__client" data-panel-field="client">
         <SourceRegion provenance={source.provenance}>
           <RecordState state={facts.state} subject="clients" onRetry={facts.reload}>
             {(value) => (

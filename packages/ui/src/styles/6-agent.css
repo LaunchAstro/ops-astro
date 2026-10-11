@@ -9,6 +9,7 @@
   display: grid;
   gap: var(--s-3);
   min-width: 0;
+  container-type: inline-size;
 }
 
 /* MP-6-2: the run in main, what it was given in a side column after it; 21rem
@@ -16,10 +17,11 @@
    app.css:12696). A side section opens on a rule. */
 .tpg {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-5);
   min-width: 0;
 }
-@media (width >= 1279px) {
+@container (min-width: 1000px) {
   .tpg {
     grid-template-columns: minmax(0, 1fr) 21rem;
     align-items: start;
@@ -88,8 +90,8 @@
 }
 .sout__where {
   font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--ink-faint);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -119,8 +121,8 @@
 }
 .sout__meta {
   font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--ink-faint);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -203,6 +205,46 @@
   display: grid;
   gap: var(--s-2);
   min-width: 0;
+}
+.trs__lead {
+  display: grid;
+  align-content: start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.trs__details > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.trs[data-summary-layout='compact'] .trs__details > summary {
+  display: none;
+}
+@container (min-width: 1000px) {
+  .trs[data-summary-layout='full'] {
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    padding: 0;
+    gap: 0;
+  }
+  .trs[data-summary-layout='full'] .trs__lead {
+    padding: var(--s-4);
+  }
+  .trs[data-summary-layout='full'] .trs__details {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    padding: 0.25rem var(--s-4);
+  }
+  .trs[data-summary-layout='full'] .tph__stats {
+    gap: 0;
+  }
+  .trs[data-summary-layout='full'] .tph__stat {
+    border-bottom: 1px solid var(--border);
+  }
+  .trs[data-summary-layout='full'] .tph__stat:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
 }
 .trs[data-tone='gate'] {
   border-left-color: var(--warning);

@@ -27,24 +27,29 @@ export function TodoTools(props: TodoToolsProps): ReactElement {
   return (
     <div className="tsearch todos__tools">
       <SearchBox {...props} />
-      <div className="todos__acts">
-        <button
-          className="btn"
-          type="button"
-          data-todos="today"
-          onClick={() => props.onQuery('due:today')}
-        >
-          Today
-        </button>
-        <a
-          className="btn"
-          data-todos="board"
-          href={props.boardAddress}
-          aria-disabled={props.boardAddress === undefined ? true : undefined}
-        >
-          Open the board
-        </a>
-      </div>
+      <details className="todos__acts">
+        <summary aria-label="Project shortcuts" title="Project shortcuts">
+          ⋯
+        </summary>
+        <div>
+          <button
+            className="btn"
+            type="button"
+            data-todos="today"
+            onClick={() => props.onQuery('due:today')}
+          >
+            Today
+          </button>
+          <a
+            className="btn"
+            data-todos="board"
+            href={props.boardAddress}
+            aria-disabled={props.boardAddress === undefined ? true : undefined}
+          >
+            Open the board
+          </a>
+        </div>
+      </details>
       <Reading reading={props.reading} onClear={props.onClear} />
     </div>
   );
@@ -79,7 +84,7 @@ function SearchBox(props: TodoToolsProps): ReactElement {
   );
 }
 
-const PLACEHOLDER = 'today, p1, person:"name", client:"name", route:team, tag:name, any words';
+const PLACEHOLDER = 'Search — a client, “today”, a priority, any words';
 
 function ChipTag(props: { readonly chip: Chip; readonly onRemove: () => void }): ReactElement {
   const words = wordsOfChip(props.chip);

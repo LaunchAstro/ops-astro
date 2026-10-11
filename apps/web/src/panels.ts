@@ -100,12 +100,6 @@ export const PANELS: PanelRegistry = {
     route: 'agency:todos',
     icon: 'briefcase',
   },
-  settings: {
-    label: 'Settings',
-    ariaLabel: 'Business settings',
-    route: 'agency:settings',
-    icon: 'settings-sliders',
-  },
 };
 
 const IDS: ReadonlySet<string> = new Set(PANEL_RANK);

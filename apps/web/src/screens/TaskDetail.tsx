@@ -84,6 +84,8 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
+import { usePageToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import { useAssignments } from './task/assignment-context.tsx';
 import { PageAssignment } from './task/PageAssignment.tsx';
 import { useRereadOn } from './task/reread-on.ts';
@@ -347,10 +349,11 @@ function RefreshRow(props: {
   readonly outcome: ReadState<TaskReadResult>['outcome'];
   readonly onRefresh: () => void;
 }): ReactElement | null {
+  const toolbar = usePageToolbar();
   // The failed read draws its own Try again; a second button above it is the
   // stray one the mockup never draws (UI-TRACK B4).
   if (props.outcome === 'unavailable') return null;
-  return (
+  const content = (
     <>
       {/*
       Refresh sits outside the read's own region on purpose. Inside it, the
@@ -384,6 +387,7 @@ function RefreshRow(props: {
       </div>
     </>
   );
+  return toolbar === null ? content : createPortal(content, toolbar);
 }
 
 /** The page kept under a reread: by an unsaved draft, or an open step-up prompt (OW-085.4). */

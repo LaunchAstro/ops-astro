@@ -133,10 +133,11 @@ describe('MP-4-8 same facts as the task page', () => {
     );
     await tick();
     const pageFacts = page.find('.tpr__facts')?.textContent;
+    const pageRank = page.find('[data-mstrip-fact=rank]')?.getAttribute('title');
     const pageAgent = page.find('#perspective-tab-agent .cbadge')?.textContent;
     await page.unmount();
     const view = await panel(client);
-    expect(pageFacts).toContain('impact 7 × confidence 9 × ease 8 = 504');
+    expect(pageRank).toContain('impact 7 × confidence 9 × ease 8 = 504');
     expect(view.find('[data-task-panel] .tpr__facts')?.textContent).toBe(pageFacts);
     expect(view.find('#panel-perspective-tab-agent .cbadge')?.textContent).toBe(pageAgent);
     await view.unmount();

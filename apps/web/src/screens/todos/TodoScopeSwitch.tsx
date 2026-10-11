@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { StyledSelect } from '@launchastro/ui';
 //
 // The Projects panel's scope switch (MP-7-2, CS-7.4): a teammate from
 // `person.list`, or a client, its waiting comments and its route family.
@@ -153,7 +154,7 @@ function Choice(props: {
   readonly disabled?: boolean;
 }): ReactElement {
   return (
-    <select
+    <StyledSelect
       id={props.id}
       className="input"
       aria-label={props.label}
@@ -169,6 +170,6 @@ function Choice(props: {
           {option.label}
         </option>
       ))}
-    </select>
+    </StyledSelect>
   );
 }

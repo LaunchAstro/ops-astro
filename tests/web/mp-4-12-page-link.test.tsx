@@ -24,7 +24,7 @@ describe('MP-4-12 link here captures path and hash', () => {
   it('Link here sends the address being read, path and hash, at the read revision', async () => {
     const { client, sent } = serving();
     const view = await panel(client);
-    expect(view.find('[data-page-link="set"]')?.textContent).toBe('Link here');
+    expect(view.find('[data-page-link="set"]')?.getAttribute('aria-label')).toBe('Link here');
     await view.click('[data-page-link="set"]');
     await tick();
     expect(sent.map((each) => [each.to, each.body])).toStrictEqual([
@@ -43,7 +43,7 @@ describe('MP-4-12 link here captures path and hash', () => {
   it('once linked it reads Relink and re-points the link to the address being read', async () => {
     const { client, sent } = serving({ pageLink: '/boards/website#row-4' });
     const view = await panel(client);
-    expect(view.find('[data-page-link="set"]')?.textContent).toBe('Relink');
+    expect(view.find('[data-page-link="set"]')?.getAttribute('aria-label')).toBe('Relink');
     await view.click('[data-page-link="set"]');
     await tick();
     expect(sent.map((each) => each.body['fields'])).toStrictEqual([
@@ -87,13 +87,15 @@ describe('MP-4-12 the head’s go-to appears only when linked', () => {
 });
 
 const fact = (view: Awaited<ReturnType<typeof panel>>): string | null =>
-  view.find('.tpr__facts [data-field="page-link"]')?.textContent ?? null;
+  view.find('[data-page-link="value"]')?.textContent ?? null;
 
-describe('MP-4-12 the facts band reads the link', () => {
-  it('as words, like every mark in the band, and nothing yet with none', async () => {
+describe('MP-4-12 the field reads the link', () => {
+  it('as a working in-product link, and nothing yet with none', async () => {
     const linked = await panel(serving({ pageLink: '/boards/website#row-4' }).client);
     expect(fact(linked)).toContain('/boards/website#row-4');
-    expect(linked.find('.tpr__facts [data-field="page-link"] a')).toBeNull();
+    expect(linked.find('a[data-page-link="value"]')?.getAttribute('href')).toBe(
+      '/boards/website#row-4',
+    );
     await linked.unmount();
     const none = await panel(serving().client);
     expect(fact(none)).toContain('nothing yet');

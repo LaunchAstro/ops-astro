@@ -7,6 +7,7 @@
 // `task.assign`. Both are disabled while a write is in flight or an edit is
 // unsaved, and the page decides that; these only draw it.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import { Skeleton } from '@launchastro/ui';
 import type {
@@ -96,7 +97,7 @@ export function Assignee(props: AssigneeProps): ReactElement {
         placeholder={<Skeleton shape="field" />}
       >
         {(value) => (
-          <select
+          <StyledSelect
             className="input"
             aria-label="Assignee"
             disabled={props.disabled}
@@ -111,7 +112,7 @@ export function Assignee(props: AssigneeProps): ReactElement {
                 {person.name}
               </option>
             ))}
-          </select>
+          </StyledSelect>
         )}
       </RecordState>
     </section>

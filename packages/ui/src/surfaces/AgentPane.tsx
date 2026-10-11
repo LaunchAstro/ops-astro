@@ -10,7 +10,7 @@
 // the caller, which sends them through the real decide path. The mockup's
 // demonstration state is not ported (R44). Its parts live in `agent/`.
 
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { runStories, type RunStory } from '../state/agent-run.ts';
 import type { RunLineage } from '../state/run-projection.ts';
 import { Activity, type RunActivity } from './agent/activity.tsx';
@@ -33,6 +33,7 @@ export type { RecordedOutcome } from './agent/unknown.tsx';
 export type { RunActivity } from './agent/activity.tsx';
 
 export interface AgentPaneProps {
+  readonly executionMap?: ReactNode;
   /** `task.read`'s proposals; absent on a read that carries none. */
   readonly lineages: readonly RunLineage[] | undefined;
   /** What approving the gate will do, in the server's words; null when it has not said. */
@@ -95,6 +96,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
           Nothing has been handed to the agent on this task yet. Write a brief to tell it what to
           do, and it proposes a run for a person to approve before anything happens.
         </p>
+        {props.executionMap}
       </section>
     );
   }
@@ -128,6 +130,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         )}
         <CurrentRun runId={shown.head.runId} />
         <Summary story={shown} />
+        {props.executionMap}
         <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
         <Unknown {...props} shown={shown} />
         <StopAnswers

@@ -765,7 +765,7 @@
   gap: var(--s-4);
   flex-wrap: wrap;
   min-height: 2.9rem;
-  padding: var(--s-3) var(--s-6);
+  padding: 0.625rem var(--s-6);
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -779,6 +779,35 @@
   font: var(--type-title);
   letter-spacing: var(--type-title-tracking);
   text-transform: var(--type-title-case);
+}
+.topbar__bar {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: var(--s-3);
+}
+.topbar__bar:empty {
+  display: none;
+}
+.topbar__bar > .cbd__cmd {
+  display: contents;
+}
+.topbar__bar > [data-projects-new-task] {
+  order: 4;
+  flex: none;
+}
+.topbar__bar .cbd__fresh {
+  order: 5;
+  flex: none;
+}
+@media (width <= 900px) {
+  .topbar__bar {
+    flex-wrap: wrap;
+  }
+  .topbar__bar .cbdm__search {
+    flex-basis: 100%;
+  }
 }
 .topbar__meta {
   display: flex;
@@ -888,4 +917,24 @@ button.appbar__search:hover {
   margin: 0;
   padding: var(--s-4);
   color: var(--text-2);
+}
+
+.topbar__title:has(.topbar__record-title:not(:empty)) {
+  flex: 1;
+  min-width: 0;
+}
+.topbar__title:has(.topbar__record-title:not(:empty)) .topbar__default-title {
+  display: none;
+}
+.topbar__record-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar__record-title:empty {
+  display: none;
+}
+.topbar:has(.topbar__record-title:not(:empty)) .topbar__bar {
+  flex: none;
 }

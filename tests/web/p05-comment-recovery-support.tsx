@@ -65,9 +65,8 @@ export function world() {
 }
 export async function compose(view: Awaited<ReturnType<typeof draftApp>>['view']) {
   await view.click('[data-comment-id="' + PARENT + '"] [data-comment-act="reply"]');
-  const chooser = '[data-internal-task-mentions] button[aria-haspopup="listbox"]';
-  await key(view, chooser, 'ArrowDown');
-  await key(view, chooser, 'ArrowDown');
+  const chooser = '[data-internal-task-mentions] textarea';
+  await view.type(chooser, '@Ada');
   await key(view, chooser, 'Enter');
   await view.type('#comment-body', BODY);
   await view.click('main [data-comment="post"]');

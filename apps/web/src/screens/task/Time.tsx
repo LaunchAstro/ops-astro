@@ -140,12 +140,14 @@ function EntryRow(props: {
       {entry.minutes === null ? null : (
         <button
           type="button"
-          className="btn btn--ghost"
+          className="row-remove"
+          aria-label="Delete time entry"
+          title="Delete time entry"
           data-time-delete={entry.id}
           disabled={props.busy}
           onClick={remove}
         >
-          Delete
+          ×
         </button>
       )}
     </li>
@@ -170,12 +172,12 @@ function LogBox(props: {
     });
   };
   return (
-    <div className="sb__steplist">
+    <div className="ttime__log">
       <input
         className="field__input"
         data-time-log
         aria-label="Log time"
-        placeholder="1h 30m, 90m or 90"
+        placeholder={'eg "1h 30m"'}
         value={typed}
         onChange={(event) => setTyped(event.target.value)}
         onKeyDown={(event) => {
@@ -196,7 +198,8 @@ function Totals(props: { readonly total: number; readonly estimate: number | nul
   return (
     <>
       <span className="card__sub" data-time-total>
-        {minutesText(props.total)} logged on this task
+        {minutesText(props.total)}
+        {props.estimate === null ? ' logged' : ` of ${minutesText(props.estimate)}`}
       </span>
       {burn === null ? null : (
         <div className="sb__burn" data-time-burn data-danger={burn.danger} aria-hidden="true">
@@ -261,9 +264,17 @@ export function TimeLog(props: {
   const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
   return (
     <div className="sb__steplist" data-time-log-section>
-      <TaskTimerButton task={timerTask(props)} busy={busy} />
-      <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />
+      <div className="ttime__controls">
+        <div className="ttime__timer">
+          <span className="ttime__label">Timer</span>
+          <TaskTimerButton task={timerTask(props)} busy={busy} />
+        </div>
+        <div className="ttime__logging">
+          <span className="ttime__label">Log time</span>
+          <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
+        </div>
+      </div>
       <ul className="sb__steps">
         {shown.map((entry) => (
           <EntryRow

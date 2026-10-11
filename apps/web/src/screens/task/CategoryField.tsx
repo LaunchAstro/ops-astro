@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's Category select (MP-4-8, CS-4.16, DP-23).
 //
@@ -56,7 +57,7 @@ export function CategoryField(props: CategoryFieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-category">
         Category
       </label>
-      <select
+      <StyledSelect
         id="panel-field-category"
         className="input"
         disabled={busy}
@@ -70,7 +71,7 @@ export function CategoryField(props: CategoryFieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={category}>{category}</option> : null}
-      </select>
+      </StyledSelect>
       {because === null ? null : (
         <p className="field__error" role="alert">
           {because}

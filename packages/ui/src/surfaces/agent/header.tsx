@@ -4,6 +4,7 @@
 // summary grid, and the job list (DA-01, DA-02, TA-03).
 
 import type { ReactElement } from 'react';
+import { usePanelToolbar } from '../PageToolbar.tsx';
 import type { Job, RunStory } from '../../state/agent-run.ts';
 import { words } from './format.ts';
 import type { GateRef } from './gate.tsx';
@@ -82,22 +83,34 @@ function jobRow(job: Job): ReactElement {
 
 export function Summary(props: { readonly story: RunStory }): ReactElement {
   const { story } = props;
+  const compact = usePanelToolbar() !== null;
   return (
-    <div className="trs" data-tone={story.tone} data-agent="summary" data-run-state={story.state}>
-      <div className="trs__top">
-        <span className="sbact__meta u-mono">Attempt {story.attempt} · agent</span>
-        <span className="spill" data-tone={story.tone} data-agent="state-word">
-          {story.word}
-        </span>
+    <div
+      className="trs"
+      data-tone={story.tone}
+      data-agent="summary"
+      data-run-state={story.state}
+      data-summary-layout={compact ? 'compact' : 'full'}
+    >
+      <div className="trs__lead">
+        <div className="trs__top">
+          <span className="sbact__meta u-mono">Attempt {story.attempt} · agent</span>
+          <span className="spill" data-tone={story.tone} data-agent="state-word">
+            {story.word}
+          </span>
+        </div>
+        <p className="trs__say">{story.sentence}</p>
       </div>
-      <p className="trs__say">{story.sentence}</p>
-      <HeroStats story={story} />
-      <div className="trs__grid">
-        {summaryCell('Progress', story.progress, 'progress')}
-        {summaryCell('Current job', story.currentJob, 'current-job')}
-        {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
-        {summaryCell('Next action', story.nextAction, 'next-action')}
-      </div>
+      {compact ? null : <HeroStats story={story} />}
+      <details className="trs__details" open={compact ? true : undefined}>
+        <summary>Run details</summary>
+        <div className="trs__grid">
+          {summaryCell('Progress', story.progress, 'progress')}
+          {summaryCell('Current job', story.currentJob, 'current-job')}
+          {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
+          {summaryCell('Next action', story.nextAction, 'next-action')}
+        </div>
+      </details>
     </div>
   );
 }

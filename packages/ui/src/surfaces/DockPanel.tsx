@@ -4,7 +4,8 @@
 // address, one divider, back, forward and its X) over its body. What a press
 // or a click inside the body means is the application's; this draws it.
 
-import { useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import { panelToolbar } from './PageToolbar.tsx';
+import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { MouseEvent } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 
@@ -47,43 +48,51 @@ export function DockPanelView(props: {
 }): ReactElement {
   const { panel, dock } = props;
   const body = useRef<HTMLDivElement>(null);
+  const [toolbar, setToolbar] = useState<HTMLElement | null>(null);
   const top = panel.scrollTop;
   // A walk of the history puts the panel's scroll back, once per walk.
   useLayoutEffect(() => {
     if (top !== undefined && body.current !== null) body.current.scrollTop = top;
   }, [dock.restoreWalk, top]);
   return (
-    <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
-      {props.grip}
-      <DockPanelHead panel={panel} dock={dock} />
-      {/* A click here is heard, not handled: the application decides whether
+    <panelToolbar.Provider value={toolbar}>
+      <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
+        {props.grip}
+        <DockPanelHead panel={panel} dock={dock} setToolbar={setToolbar} />
+        {/* A click here is heard, not handled: the application decides whether
           a link walks the panel. Keyboard activation of a link is a click. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div
-        ref={body}
-        className="dpanel__body"
-        onClick={(event) => {
-          dock.onBodyClick?.(panel.id, event);
-        }}
-        onScroll={(event) => {
-          dock.onScroll?.(panel.id, event.currentTarget.scrollTop);
-        }}
-      >
-        {panel.body}
-      </div>
-    </section>
+        {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div
+          ref={body}
+          className="dpanel__body"
+          onClick={(event) => {
+            dock.onBodyClick?.(panel.id, event);
+          }}
+          onScroll={(event) => {
+            dock.onScroll?.(panel.id, event.currentTarget.scrollTop);
+          }}
+        >
+          {panel.body}
+        </div>
+      </section>
+    </panelToolbar.Provider>
   );
 }
 
 function DockPanelHead(props: {
+  readonly setToolbar: (element: HTMLElement | null) => void;
   readonly panel: DockPanel;
   readonly dock: DockPanelActs;
 }): ReactElement {
   const { panel, dock } = props;
   return (
     <header className="dpanel__head">
-      <h2 className="dpanel__name">{panel.label}</h2>
+      <h2 className="dpanel__name">
+        <Icon name={panel.icon ?? 'list-check'} size="sm" />
+        {panel.label}
+      </h2>
       <div className="dpanel__acts">
+        <span className="dpanel__extra" ref={props.setToolbar} />
         {panel.onNew === undefined ? null : (
           <button
             className="dpanel__btn"

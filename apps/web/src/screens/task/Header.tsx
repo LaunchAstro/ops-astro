@@ -18,7 +18,8 @@
 // carried proposal evidence. Unknown or incomplete evidence never says none.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Spill } from '@launchastro/ui';
+import { Icon, Spill, usePageTitle } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import {
   TASK_CATEGORIES,
   type BoardCrumb,
@@ -40,10 +41,12 @@ export function TaskHeader(props: {
   readonly execution: TaskExecutionRead;
 }): ReactElement {
   const { task } = props;
+  const title = usePageTitle();
   const run = runLineOf(task.proposals, props.execution, task.id);
   const boardAddress = owningBoardAddress(task);
   return (
     <header className="tpr">
+      {title === null ? null : createPortal(titleOf(task.title), title)}
       <nav className="tpr__crumb" aria-label="Where this task sits">
         {boardAddress === null ? (
           <span className="sb__addr" data-crumb="projects">
@@ -69,12 +72,21 @@ export function TaskHeader(props: {
       {run === null ? null : (
         <p className="card__sub" data-run={run.shape}>
           {run.words}
+          <span
+            className="tpr__revision"
+            title={task.completedAt === null ? 'Not completed' : `Completed ${task.completedAt}`}
+          >
+            {' '}
+            · Revision {task.revision}
+          </span>
         </p>
       )}
-      <div className="card__sub">
-        Revision {task.revision} ·{' '}
-        {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-      </div>
+      {run === null ? (
+        <div className="card__sub tpr__revision">
+          Revision {task.revision} ·{' '}
+          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -159,12 +171,14 @@ function CopyAddress(props: { readonly path: string }): ReactElement {
         className="btn"
         type="button"
         data-copy="address"
+        aria-label={copied ? 'Copied' : 'Copy link'}
+        title={copied ? 'Copied' : 'Copy link'}
         data-copied={copied ? 'yes' : 'no'}
         onClick={() => {
           void copy();
         }}
       >
-        {copied ? 'Copied ✓' : 'Copy link'}
+        <Icon name={copied ? 'check' : 'link'} size="xs" />
       </button>
       {failed ? (
         <span className="field__error" role="alert" data-copy="failed">

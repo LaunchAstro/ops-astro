@@ -31,6 +31,7 @@ export type { RowEdit };
 
 /** What a row can ask of the conversation around it. */
 export interface RowActions {
+  readonly authors?: ReadonlyMap<string, string>;
   readonly onReply: (commentId: string) => void;
   readonly onEdit: (comment: InternalCommentView, body: string) => void;
   readonly onDelete: (commentId: string) => void;
@@ -89,54 +90,75 @@ function Row(props: {
   const { comment, actions } = props;
   const edit = actions.editing?.commentId === comment.id ? actions.editing : null;
   const isReply = parentOf(comment) !== null;
+  const author =
+    actions.authors?.get(comment.author) ??
+    (/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(comment.author) ? 'Someone' : comment.author);
   return (
     <article
       className={`msg msg--${comment.audience}`}
       data-comment-id={comment.id}
       data-audience={comment.audience}
     >
-      <RowMeta comment={comment} />
-      {edit === null ? (
-        <p className="card__body">{comment.body}</p>
-      ) : (
-        <EditBox
-          saved={comment.body}
-          body={edit.body}
-          busy={actions.busy}
-          onText={(body) => actions.onEditing({ ...edit, body })}
-          onDone={(next) => {
-            if (next === null) actions.onEditing(null);
-            else actions.onEdit(comment, next);
+      <span className="msg__avatar" aria-hidden="true">
+        {author
+          .trim()
+          .split(/\s+/u)
+          .map((part) => part[0])
+          .slice(0, 2)
+          .join('')}
+      </span>
+      <div className="msg__body">
+        <RowMeta comment={comment} author={author} />
+        {edit === null ? (
+          <p className="card__body">{comment.body}</p>
+        ) : (
+          <EditBox
+            saved={comment.body}
+            body={edit.body}
+            busy={actions.busy}
+            onText={(body) => actions.onEditing({ ...edit, body })}
+            onDone={(next) => {
+              if (next === null) actions.onEditing(null);
+              else actions.onEdit(comment, next);
+            }}
+          />
+        )}
+        <RowActs
+          comment={comment}
+          reply={isReply}
+          editing={edit !== null}
+          actions={actions}
+          onEditing={() => {
+            actions.onEditing(editOf(comment));
           }}
         />
-      )}
-      <RowActs
-        comment={comment}
-        reply={isReply}
-        editing={edit !== null}
-        actions={actions}
-        onEditing={() => {
-          actions.onEditing(editOf(comment));
-        }}
-      />
-      {props.children}
+        {props.children}
+      </div>
     </article>
   );
 }
 
 /** Who may read a row, what it is, who wrote it and when, and a client message's signal. */
-function RowMeta(props: { readonly comment: InternalCommentView }): ReactElement {
+function RowMeta(props: {
+  readonly comment: InternalCommentView;
+  readonly author: string;
+}): ReactElement {
   return (
-    <div className="sbact__meta">
-      {/* The audience is drawn on every comment, because "who may read
-            this" is the one thing a person writing the next one needs to
-            know and the one thing a colour cannot say. */}
-      <span className="sb__state" data-comment-audience={props.comment.audience}>
+    <div className="msg__meta" title={props.comment.comment_type}>
+      <b>{props.author}</b>
+      <time className="msg__at" dateTime={props.comment.posted_at} title={props.comment.posted_at}>
+        {new Date(props.comment.posted_at).toLocaleString('en-AU', {
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: 'Australia/Brisbane',
+        })}
+        {props.comment.edited_at === null ? '' : ' · edited'}
+      </time>
+      <span className="msg__audience" data-comment-audience={props.comment.audience}>
         {audienceWord(props.comment.audience)}
       </span>
-      <span> · {props.comment.comment_type}</span>
-      <span> · {props.comment.author}</span>
-      <span> · {props.comment.posted_at}</span>
       <Signal signal={props.comment.signal ?? null} />
     </div>
   );

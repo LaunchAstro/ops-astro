@@ -56,6 +56,7 @@ export function CommandBar<Row>(props: {
         ranked={props.ranked}
         hidden={hiddenFilters(view, props.presets)}
         ids={view.ids}
+        canClear={view.ids.length > 0 || view.text.length > 0}
         noun={props.noun}
         dispatch={dispatch}
       />
@@ -66,6 +67,7 @@ export function CommandBar<Row>(props: {
 }
 
 interface FunnelProps {
+  readonly canClear: boolean;
   readonly menu: Menu;
   readonly ranked: readonly RankedFacet[];
   /** How many filters are on that the chip row does not show. */
@@ -104,7 +106,7 @@ function Funnel(props: FunnelProps): ReactElement {
           setMenu((current) => ({ ...current, open: !current.open }));
         }}
       >
-        ⏷
+        <Icon name="filter" size="xs" />
         {hidden === 0 ? null : (
           <span className="cbd__badge" data-badge="" aria-hidden="true">
             {hidden}
@@ -156,6 +158,17 @@ function FunnelList(props: FunnelProps): ReactElement {
           {menu.all ? 'Show fewer filters' : `Show all filters (${String(listing.more)} more)`}
         </button>
       ) : null}
+      <button
+        className="btn btn--primary btn--sm cbd__clear"
+        type="button"
+        disabled={!props.canClear}
+        title={props.canClear ? 'Drop every filter and search term' : 'Nothing to clear'}
+        onClick={() => {
+          props.dispatch({ type: 'clear' });
+        }}
+      >
+        Clear all
+      </button>
     </div>
   );
 }
@@ -209,7 +222,6 @@ function FacetGroups(props: {
 function Steps(props: { readonly machine: MachineState; readonly dispatch: Send }): ReactElement {
   const { view, history } = props.machine;
   const { dispatch } = props;
-  const rest = view.ids.length === 0 && view.text.length === 0;
   return (
     <>
       {view.widths === null ? null : (
@@ -228,17 +240,6 @@ function Steps(props: { readonly machine: MachineState; readonly dispatch: Send 
       )}
       <Step kind="undo" step={history.past.at(-1)} dispatch={dispatch} />
       <Step kind="redo" step={history.future.at(-1)} dispatch={dispatch} />
-      <button
-        className="btn btn--primary btn--sm cbd__clear"
-        type="button"
-        disabled={rest}
-        title={rest ? 'Nothing to clear' : 'Drop every filter and search term'}
-        onClick={() => {
-          dispatch({ type: 'clear' });
-        }}
-      >
-        Clear all
-      </button>
     </>
   );
 }
@@ -265,7 +266,7 @@ function Step(props: {
         props.dispatch({ type: kind });
       }}
     >
-      {kind === 'undo' ? '↶' : '↷'}
+      <Icon name={kind === 'undo' ? 'rotate-left' : 'rotate-right'} size="xs" />
     </button>
   );
 }

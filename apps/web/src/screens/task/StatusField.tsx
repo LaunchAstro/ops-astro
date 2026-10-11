@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { StyledSelect } from '@launchastro/ui';
 //
 // The Status select (MP-4-8 CS-4.18, DP-25; Stage 1 adds), drawn the same on
 // the dock task panel and the task page.
@@ -100,7 +101,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
       <label className="tf__k" htmlFor={props.id}>
         Status
       </label>
-      <select
+      <StyledSelect
         id={props.id}
         className="input"
         disabled={busy || props.disabled === true}
@@ -114,7 +115,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={current.id}>{current.label}</option> : null}
-      </select>
+      </StyledSelect>
       {because === null ? null : (
         <p className="field__error" role="alert">
           {because}

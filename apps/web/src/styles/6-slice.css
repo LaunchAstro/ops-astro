@@ -175,53 +175,6 @@
   gap: var(--s-2);
 }
 
-/* The create form wears the mockup's quick-add field (`.cbd__field`, layer 4)
-   and its secondary sm button, in one row above the board. */
-.projects__create {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-3);
-}
-
-.projects__create .cbd__field {
-  flex: 0 1 31rem;
-}
-
-.projects__create > p {
-  flex: 1 0 100%;
-  margin: 0;
-}
-
-/* The title box is the board's quick-add field (DS-COMP-16): the box draws the
-   border and the focus, the input inside it draws nothing. */
-.projects__create .cbd__field {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.projects__create .cbd__field:focus-within {
-  border-color: var(--accent);
-}
-
-.projects__create .cbd__field input {
-  width: 100%;
-  min-width: 3rem;
-  /* The control's own 1px 2px, which the mockup's field keeps: the box is 34 tall. */
-  padding: 1px 2px;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-}
-
 /* The Projects page's Board and Work log, drawn as the tab row (DS-COMP-2):
    43 tall, the tabs 32 apart, the current one in --text at 500 over a 2px
    accent rule. At 390 the row scrolls sideways with no scrollbar. */
@@ -596,81 +549,6 @@
   gap: var(--s-2);
 }
 
-/* The dock task panel's body (MP-4-8), drawn as the mockup's panel (TASKS S1
-   to S3, `assets/app.css` .sb): the name an inline field in the display face,
-   the rank in mono, the fields on the paper, the description in mono and the
-   subtask add a bare line. Each text snaps to its canonical style (TOKENS.md
-   census, R53). Scoped to the panel: the task page draws the same parts its
-   own way. */
-.dtp .sb__name {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
-  color: var(--text);
-  font: var(--type-subheading);
-  letter-spacing: var(--type-subheading-tracking);
-  text-transform: var(--type-subheading-case);
-  text-align: start;
-  cursor: text;
-}
-
-.dtp .sb__name:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.dtp [data-fact='rank'] output {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-  color: var(--text);
-}
-
-.dtp .tpr__tick {
-  background: var(--bg);
-}
-
-/* A native select sizes to its font's own line: the height is set to the
-   mockup's button, a 14.4px 1.2 line, its padding and its border. */
-.dtp .dtp__fields select.input {
-  block-size: calc(0.9rem * 1.2 + 1.1rem + 2px);
-  padding: 0.55rem var(--s-3);
-  border-radius: 0;
-  background: var(--bg);
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-
-.dtp .tf__ta {
-  padding: 0.5rem var(--s-3);
-  background: var(--bg);
-}
-
-.dtp .sb__k {
-  color: var(--ink-faint);
-}
-
-.dtp [data-step-add] {
-  width: 100%;
-  padding: 0.25rem 0;
-  border: 0;
-  border-bottom: 1px solid transparent;
-  background: none;
-  color: var(--text);
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-
-.dtp [data-step-add]:focus {
-  outline: none;
-  border-bottom-color: var(--accent);
-}
-
 /* Settings ▸ Workflow triggers (C33): the list card's rows run to its edges. */
 .triggers__list {
   margin: 0;
@@ -697,4 +575,79 @@
 [data-step-list] [data-step-archived] {
   flex-basis: 100%;
   overflow-wrap: anywhere;
+}
+
+.projects__views {
+  position: relative;
+  order: 3;
+}
+.projects__views > summary {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.projects__views > summary::-webkit-details-marker {
+  display: none;
+}
+.projects__views > .routetabs {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  min-width: 200px;
+  margin: 0;
+  padding: 0 0.75rem;
+}
+
+.todos {
+  position: relative;
+}
+.todos__filters {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  z-index: 2;
+}
+.todos__tools {
+  margin-bottom: 0.5rem;
+}
+.todos__tools .tsearch__tags {
+  padding-right: 64px;
+}
+.todos__acts {
+  position: absolute;
+  top: 5px;
+  right: 34px;
+}
+.todos__acts > summary {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  list-style: none;
+  text-align: center;
+}
+.todos__acts > summary::-webkit-details-marker {
+  display: none;
+}
+.todos__acts > div {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  padding: 0.75rem;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  display: flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.todos > .readstate[data-outcome='ready'] {
+  padding: 0;
 }

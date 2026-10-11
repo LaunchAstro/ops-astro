@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { Avatar, StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
 // date (`PanelDue.tsx`), the estimate and the stage; the project is
@@ -40,7 +41,7 @@ import { StatusField } from './StatusField.tsx';
 import { ClientField } from './ClientField.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { CategoryField } from './CategoryField.tsx';
-import { ScoreFields } from './ScoreFields.tsx';
+import { PageLink } from './PageLink.tsx';
 
 export interface PanelFieldsProps extends ClientSeams {
   readonly client: OperationsClient;
@@ -143,7 +144,47 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
   );
   return (
     <div className="dtp__fields">
-      <AssigneeField {...props} {...field} assignment={assignment} />
+      <div className="tf__row">
+        <AssigneeField {...props} {...field} assignment={assignment} />
+      </div>
+      <div className="tf__row">
+        <ClientField {...props} />
+      </div>
+      <div className="tf__row">
+        <DueField {...props} {...field} />
+      </div>
+      <div className="tf__row">
+        <EstimateField {...props} {...field} />
+      </div>
+      <div className="tf__row">
+        <ProjectField
+          client={props.client}
+          grantKey={props.grantKey}
+          task={props.task}
+          onChanged={props.onChanged}
+        />
+      </div>
+      <div className="tf__row">
+        <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
+      </div>
+      <div className="tf__row">
+        <StageField {...props} {...field} />
+      </div>
+      <div className="tf__row">
+        <StatusField
+          client={props.client}
+          task={props.task}
+          states={props.states ?? []}
+          id="panel-field-status"
+          onChanged={props.onChanged}
+        />
+      </div>
+      <div className="tf__row tf__row--tags">
+        <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
+      </div>
+      <div className="tf__row">
+        <PageLink client={props.client} task={props.task} onChanged={props.onChanged} />
+      </div>
       <AssignToAI
         client={props.client}
         task={props.task}
@@ -157,26 +198,6 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
         hold={assignment.hold}
         recordId={props.task.id}
       />
-      <DueField {...props} {...field} />
-      <EstimateField {...props} {...field} />
-      <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
-      <StageField {...props} {...field} />
-      <ScoreFields {...props} scope="panel" disabled={field.busy} />
-      <StatusField
-        client={props.client}
-        task={props.task}
-        states={props.states ?? []}
-        id="panel-field-status"
-        onChanged={props.onChanged}
-      />
-      <ProjectField
-        client={props.client}
-        grantKey={props.grantKey}
-        task={props.task}
-        onChanged={props.onChanged}
-      />
-      <ClientField {...props} />
-      <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
       <Refusal because={field.because} />
     </div>
   );
@@ -201,8 +222,13 @@ function AssigneeField(
       </label>
       <RecordState state={people.state} subject="people" onRetry={people.reload}>
         {(value) => (
-          <select
+          <StyledSelect
             id="panel-field-assignee"
+            leading={task.assignee === null ? undefined : <Avatar name={task.assignee.name} />}
+            optionLeading={(id) => {
+              const person = value.persons.find((candidate) => candidate.personId === id);
+              return person === undefined ? null : <Avatar name={person.name} />;
+            }}
             className="input"
             disabled={props.busy || props.assignment.locked}
             value={task.assignee?.personId ?? ''}
@@ -218,7 +244,7 @@ function AssigneeField(
                 {person.name}
               </option>
             ))}
-          </select>
+          </StyledSelect>
         )}
       </RecordState>
     </>
@@ -237,7 +263,7 @@ function EstimateField(props: FieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-estimate">
         Estimate
       </label>
-      <select
+      <StyledSelect
         id="panel-field-estimate"
         className="input"
         disabled={props.busy}
@@ -254,7 +280,7 @@ function EstimateField(props: FieldProps): ReactElement {
             {estimateWords(choice)}
           </option>
         ))}
-      </select>
+      </StyledSelect>
     </>
   );
 }
@@ -269,7 +295,7 @@ function StageField(props: FieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-stage">
         Stage
       </label>
-      <select
+      <StyledSelect
         id="panel-field-stage"
         className="input"
         disabled={props.busy}
@@ -287,7 +313,7 @@ function StageField(props: FieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={stage}>{stage}</option> : null}
-      </select>
+      </StyledSelect>
     </>
   );
 }

@@ -15,7 +15,7 @@
   align-items: center;
   gap: 0.35rem;
   flex-wrap: wrap;
-  padding: var(--s-3) var(--s-5);
+  padding: var(--s-2) var(--s-5);
   border-bottom: 1px solid var(--border);
 }
 .cbd__flabel {
@@ -92,12 +92,11 @@
   max-width: 100%;
 }
 .cbd__tbl {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
+  font: 400 var(--text-sm)/var(--leading-normal) var(--font-sans);
 }
 .cbd__thl {
   display: block;

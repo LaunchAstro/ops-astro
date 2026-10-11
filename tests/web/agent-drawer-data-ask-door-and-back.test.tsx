@@ -79,14 +79,14 @@ it('back restores the live Agent drawer without a fake registration', async () =
   const page = await app();
   await page.click('.dock__tab[data-panel="ai"]');
   expect(page.find('[data-panel-id="ai"]')).not.toBeNull();
-  const settings = page.find('.dock__tab[data-panel="settings"]');
-  if (settings === null) throw new Error('no settings tab');
+  const projects = page.find('.dock__tab[data-panel="todos"]');
+  if (projects === null) throw new Error('no Projects tab');
   await act(() => {
-    settings.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    projects.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
   });
   expect(page.find('[data-panel-id="ai"]')).not.toBeNull();
-  expect(page.find('[data-panel-id="settings"]')).not.toBeNull();
-  await page.click('[data-panel-id="settings"] [data-act="back"]');
-  expect(page.find('[data-panel-id="settings"]')).toBeNull();
+  expect(page.find('[data-panel-id="todos"]')).not.toBeNull();
+  await page.click('[data-panel-id="todos"] [data-act="back"]');
+  expect(page.find('[data-panel-id="todos"]')).toBeNull();
   expect(page.find('[data-panel-id="ai"]')).not.toBeNull();
 });

@@ -104,4 +104,6 @@ export * from './page-kit/detail.tsx';
 // Money in a currency's own minor digits, the server's rule; the task page shares it.
 export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';
 
-export { usePageToolbar } from './surfaces/PageToolbar.tsx';
+export { usePageTitle, usePageToolbar, usePanelToolbar } from './surfaces/PageToolbar.tsx';
+
+export { StyledSelect } from './primitives/StyledSelect.tsx';

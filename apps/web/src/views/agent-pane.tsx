@@ -33,8 +33,14 @@ import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { closedNote, refusesRecipient, type DecisionNote } from './gate-controls.tsx';
+import { RunMap } from './run-map.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
-import { activityOf, useTaskExecution, type TaskExecutionRead } from './task-execution.ts';
+import {
+  activityOf,
+  isReadable,
+  useTaskExecution,
+  type TaskExecutionRead,
+} from './task-execution.ts';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
@@ -248,12 +254,25 @@ function AgentSectionBody(
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
   const activity = activityOf(props.execution);
+  const state = props.execution;
+  const value =
+    state.outcome === 'ready' || state.outcome === 'empty' ? state.value.execution : null;
+  const graph =
+    value !== null && value !== undefined && isReadable(value) ? value.graph : undefined;
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
   return (
     <section className="sb__sect" data-section="agent" aria-label="Agent">
       <AgentPane
+        executionMap={
+          <RunMap
+            graph={graph}
+            read={state}
+            scope={`${props.grantKey} ${props.taskKey}`}
+            proposals={props.proposals ?? []}
+          />
+        }
         lineages={props.proposals}
         effect={null}
         nameOf={nameOf}

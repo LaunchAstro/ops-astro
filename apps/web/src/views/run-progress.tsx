@@ -40,6 +40,7 @@ import { useRead } from '../data/use-read.ts';
 export interface RunProgressProps extends TaskExecutionOptions {
   /** The task read's proposals, for each run's gate on the execution map (MP-6-3). */
   readonly proposals?: readonly ProposalView[];
+  readonly showMap?: boolean;
 }
 /**
  * The run of one task read under one grant. A section is keyed by both, so
@@ -71,12 +72,14 @@ export function RunProgressRead(
   const graph = readable ? value.graph : undefined;
   return (
     <>
-      <RunMap
-        graph={graph}
-        proposals={props.proposals ?? []}
-        read={state}
-        scope={`${props.grantKey} ${taskKey}`}
-      />
+      {props.showMap === false ? null : (
+        <RunMap
+          graph={graph}
+          proposals={props.proposals ?? []}
+          read={state}
+          scope={`${props.grantKey} ${taskKey}`}
+        />
+      )}
       <section className="sb__sect" data-outcome={outcome} data-run-progress="">
         <div className="sb__sh">
           <span className="sb__k">The run</span>

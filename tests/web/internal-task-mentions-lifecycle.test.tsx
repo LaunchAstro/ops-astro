@@ -29,10 +29,7 @@ it('an unknown mention post locks recipients and retries the exact payload after
   await view.click('[data-comment="post"]');
   expect(view.text()).toContain('may already have been stored');
   expect(view.find('#comment-body')).toHaveProperty('disabled', true);
-  expect(view.find('[data-internal-task-mentions] button[aria-haspopup="listbox"]')).toHaveProperty(
-    'disabled',
-    true,
-  );
+  expect(view.find('[data-internal-task-mentions] textarea')).toHaveProperty('disabled', true);
   expect(view.find('[data-mention-person] button')).toHaveProperty('disabled', true);
   await view.click('[role="tab"][id$="client"]');
   expect(view.find('[role="tab"][id$="internal"]')).toHaveProperty('ariaSelected', 'true');
@@ -61,8 +58,7 @@ it('removal and the empty sentinel keep ordinary comments free of a mentions fie
   await view.click('[data-mention-person] button');
   expect(view.find('[data-mention-person]')).toBeNull();
   await mentionAda(view);
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'ArrowDown');
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'Enter');
+  await view.click('[data-mention-clear]');
   expect(view.find('[data-mention-person]')).toBeNull();
   await view.type('#comment-body', 'Ordinary note');
   await view.click('[data-comment="post"]');
@@ -78,7 +74,8 @@ it.each(['denied', 'unavailable'] as const)(
         ? Promise.resolve(refusal('SCOPE_NOT_GRANTED'))
         : Promise.reject(new Error('People offline'));
     const view = await open({ client: server.client });
-    expect(view.find('[data-internal-task-mentions] button[aria-haspopup="listbox"]')).toBeNull();
+    await view.type('#comment-body', '@');
+    expect(view.find('[role=option]')).toBeNull();
     expect(view.text()).not.toContain('Ada Synthetic');
     expect(view.text()).toContain(outcome === 'denied' ? 'SCOPE_NOT_GRANTED' : 'could not be read');
     await view.type('#comment-body', 'Comment-only note');
@@ -217,7 +214,7 @@ it('an owner change offers neither old names nor a late old people answer', asyn
   await settle();
   expect(view.text()).not.toContain('Ada Synthetic');
   expect(view.text()).not.toContain('Bea Synthetic');
-  expect(view.find('[data-internal-task-mentions] button[aria-haspopup="listbox"]')).toBeNull();
+  expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
   expect(bravo.posts()).toHaveLength(0);
 });
 
@@ -226,10 +223,10 @@ it('All activity has no selection or post; Client never receives an internal men
   const view = await open({ client: server.client });
   await mentionAda(view);
   await view.click('[role="tab"][id$="all"]');
-  expect(view.find('[data-internal-task-mentions] button[aria-haspopup="listbox"]')).toBeNull();
+  expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
   expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', true);
   await view.click('[role="tab"][id$="client"]');
-  expect(view.find('[data-internal-task-mentions] button[aria-haspopup="listbox"]')).toBeNull();
+  expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
   await view.type('#comment-body', 'Client note');
   await view.click('[data-comment="post"]');
   expect(server.posts()[0]?.body).toMatchObject({ audience: 'client', commentType: 'client' });

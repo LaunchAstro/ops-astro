@@ -15,6 +15,7 @@
 //
 // The pin (CS-4.7, DP-10) waits on the preference model.
 
+import { Icon } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import {
@@ -55,35 +56,41 @@ export function PageLink(props: PageLinkProps): ReactElement {
     );
   };
   return (
-    <div className="dtp__link">
-      <span className="tf__k">Page</span>
-      {door === null ? (
-        <span className="card__sub" data-page-link="value">
-          {task.pageLink ?? 'Not linked'}
-        </span>
-      ) : (
-        <a className="t-link" data-page-link="value" href={door} title={door}>
-          {door}
-        </a>
-      )}
-      <button className="btn" type="button" data-page-link="set" disabled={busy} onClick={linkHere}>
-        {task.pageLink === null ? 'Link here' : 'Relink'}
-      </button>
-      {because === null ? null : (
-        <p className="field__error" role="alert">
-          {because}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** The head's go-to, drawn only when the task links to a page inside the product. */
-export function GoTo(props: { readonly task: Task }): ReactElement | null {
-  const door = pageLinkDoor(props.task);
-  return door === null ? null : (
-    <a className="btn" data-panel-head="goto" href={door} title={door}>
-      Go to its page link
-    </a>
+    <>
+      <span className="tf__k">Page link</span>
+      <div className="dtp__link">
+        {door === null ? (
+          <span className="card__sub" data-page-link="value">
+            {task.pageLink ?? 'nothing yet'}
+          </span>
+        ) : (
+          <a
+            className="t-link"
+            data-page-link="value"
+            data-panel-head="goto"
+            href={door}
+            title={door}
+          >
+            {door}
+          </a>
+        )}
+        <button
+          className="dtp__action"
+          aria-label={task.pageLink === null ? 'Link here' : 'Relink'}
+          title={task.pageLink === null ? 'Link here' : 'Relink'}
+          type="button"
+          data-page-link="set"
+          disabled={busy}
+          onClick={linkHere}
+        >
+          <Icon name="link" size="xs" />
+        </button>
+        {because === null ? null : (
+          <p className="field__error" role="alert">
+            {because}
+          </p>
+        )}
+      </div>
+    </>
   );
 }

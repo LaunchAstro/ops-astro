@@ -18,15 +18,15 @@ const css =
 const noop = () => {};
 
 // Sol OW-126 correctness, retitled by what it proves; its body is Sol's.
-it('six available sheet panels at the permitted minimum keep every close control clickable', async () => {
-  const ids = ['ai', 'notifs', 'team', 'clients', 'todos', 'settings'];
+it('five available sheet panels at the permitted minimum keep every close control clickable', async () => {
+  const ids = ['ai', 'notifs', 'team', 'clients', 'todos'];
   expect(dockTabs().map((tab) => tab.id)).toEqual(ids.slice(1));
   expect(
     dockGeometry({
       viewport: 1100,
       navRail: 224,
       width: 550,
-      open: ['ai', 'notifs', 'team', 'clients', 'todos', 'settings'],
+      open: ['ai', 'notifs', 'team', 'clients', 'todos'],
     }).open,
   ).toEqual(ids);
   expect(clampSheet(220, 1000)).toBe(220);

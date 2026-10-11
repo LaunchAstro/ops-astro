@@ -6,6 +6,7 @@
 
 import {
   useId,
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -112,6 +113,7 @@ export function SearchBox(props: SearchBoxProps): ReactElement {
 export interface Option {
   readonly value: string;
   readonly label: string;
+  readonly disabled?: boolean;
 }
 
 /** DS-PRIM-5, opening DS-PRIM-19's option menu. */
@@ -122,6 +124,7 @@ export interface SelectProps extends FieldFrame {
   readonly disabled?: boolean | undefined;
   /** Drawn open, for the gallery's capture of the open state. */
   readonly defaultOpen?: boolean | undefined;
+  readonly optionLeading?: ((value: string) => ReactNode) | undefined;
 }
 
 /** DS-PRIM-19's option menu: the listbox a select owns while it is open. */
@@ -131,10 +134,11 @@ function SelectMenu(props: {
   readonly value: string;
   readonly active: number;
   readonly choose: (index: number) => void;
+  readonly optionLeading?: ((value: string) => ReactNode) | undefined;
 }): ReactElement {
   const { id } = props;
   return (
-    <ul className="menu" role="listbox" id={`${id}-menu`} aria-labelledby={id}>
+    <ul className="menu menu--select" role="listbox" id={`${id}-menu`} aria-labelledby={id}>
       {props.options.map((option, index) => (
         <li
           key={option.value}
@@ -142,15 +146,19 @@ function SelectMenu(props: {
           role="option"
           className={`menu__opt${index === props.active ? ' is-active' : ''}`}
           aria-selected={option.value === props.value}
+          aria-disabled={option.disabled === true ? true : undefined}
           onMouseDown={(event) => {
             event.preventDefault();
           }}
           onClick={() => {
-            props.choose(index);
+            if (option.disabled !== true) props.choose(index);
           }}
         >
-          {option.label}
-          {option.value === props.value ? <Icon name="check" size="sm" /> : null}
+          <span className="menu__check" aria-hidden="true">
+            {option.value === props.value ? <Icon name="check" size="xs" /> : null}
+          </span>
+          {props.optionLeading?.(option.value)}
+          <span>{option.label}</span>
         </li>
       ))}
     </ul>
@@ -180,6 +188,16 @@ function useSelect(props: SelectProps): {
   const [open, setOpen] = useState(props.defaultOpen === true);
   const [active, setActive] = useState(() => valueIndex(props));
   const trigger = useRef<HTMLButtonElement>(null);
+  const typed = useRef({ text: '', at: 0 });
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !trigger.current?.parentElement?.contains(event.target))
+        setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [open]);
   const shown = open && props.disabled !== true;
   const at = Math.min(active, props.options.length - 1);
   const openAtValue = (): void => {
@@ -192,8 +210,14 @@ function useSelect(props: SelectProps): {
   };
   const choose = (index: number): void => {
     const option = props.options[index];
-    if (option !== undefined) props.onChange(option.value);
+    if (option !== undefined && option.disabled !== true) props.onChange(option.value);
     close();
+  };
+  const enabledAt = (from: number, direction: 1 | -1): number => {
+    for (let index = from; index >= 0 && index < props.options.length; index += direction) {
+      if (props.options[index]?.disabled !== true) return index;
+    }
+    return at;
   };
   const onKey = (event: KeyboardEvent): void => {
     const last = props.options.length - 1;
@@ -206,11 +230,32 @@ function useSelect(props: SelectProps): {
       // Walk from the option drawn active, so a list that shrank while open
       // never walks from an option it no longer has.
       if (shown)
-        setActive(event.key === 'ArrowDown' ? Math.min(last, at + 1) : Math.max(0, at - 1));
+        setActive(event.key === 'ArrowDown' ? enabledAt(at + 1, 1) : enabledAt(at - 1, -1));
       else openAtValue();
+    } else if ((event.key === 'Home' || event.key === 'End') && shown) {
+      event.preventDefault();
+      setActive(event.key === 'Home' ? enabledAt(0, 1) : enabledAt(last, -1));
     } else if ((event.key === 'Enter' || event.key === ' ') && shown) {
       event.preventDefault();
       choose(at);
+    } else if ((event.key === 'Enter' || event.key === ' ') && !shown) {
+      event.preventDefault();
+      openAtValue();
+    } else if (event.key === 'Tab') {
+      setOpen(false);
+    } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      const now = Date.now();
+      const text =
+        (now - typed.current.at > 700 ? '' : typed.current.text) + event.key.toLowerCase();
+      typed.current = { text, at: now };
+      const found = props.options.findIndex(
+        (option) => option.disabled !== true && option.label.toLowerCase().startsWith(text),
+      );
+      if (found >= 0) {
+        setActive(found);
+        setOpen(true);
+      }
     }
   };
   const toggle = (): void => {
@@ -222,39 +267,59 @@ function useSelect(props: SelectProps): {
 
 export function Select(props: SelectProps): ReactElement {
   const id = useId();
-  const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
-  const current = props.options.find((o) => o.value === props.value);
   return (
     <Field id={id} label={props.label} hint={props.hint} error={props.error}>
-      <div className="sel">
-        <button
-          ref={trigger}
-          id={id}
-          type="button"
-          className="sel__btn"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={`${id}-menu`}
-          aria-activedescendant={open ? `${id}-opt-${String(active)}` : undefined}
-          aria-invalid={props.error === undefined ? undefined : true}
-          aria-describedby={describedBy(id, props)}
-          disabled={props.disabled}
-          onClick={toggle}
-          onKeyDown={onKey}
-        >
-          <span className="sel__value">{current?.label ?? ''}</span>
-          <span className="sel__caret" aria-hidden="true" />
-        </button>
-        {open ? (
-          <SelectMenu
-            id={id}
-            options={props.options}
-            value={props.value}
-            active={active}
-            choose={choose}
-          />
-        ) : null}
-      </div>
+      <SelectControl {...props} id={id} />
     </Field>
+  );
+}
+
+/** The same menu without a second label, for inline forms and drawer fields. */
+export function SelectControl(
+  props: SelectProps & { readonly id: string; readonly leading?: ReactNode },
+): ReactElement {
+  const { id } = props;
+  const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
+  const current = props.options.find((o) => o.value === props.value);
+  useEffect(() => {
+    if (open)
+      document
+        // eslint-disable-next-line unicorn/prefer-query-selector -- opaque React ids need no CSS escaping here.
+        .getElementById(`${id}-opt-${String(active)}`)
+        ?.scrollIntoView?.({ block: 'nearest' });
+  }, [id, open, active]);
+  return (
+    <div className={`sel${open ? ' is-open' : ''}`}>
+      <button
+        ref={trigger}
+        id={id}
+        type="button"
+        className="sel__btn"
+        aria-label={props.label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-menu`}
+        aria-activedescendant={open ? `${id}-opt-${String(active)}` : undefined}
+        aria-invalid={props.error === undefined ? undefined : true}
+        aria-describedby={describedBy(id, props)}
+        disabled={props.disabled}
+        onClick={toggle}
+        onKeyDown={onKey}
+      >
+        {props.leading}
+        <span className="sel__value">{current?.label ?? ''}</span>
+        <span className="sel__caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <SelectMenu
+          id={id}
+          options={props.options}
+          value={props.value}
+          active={active}
+          choose={choose}
+          optionLeading={props.optionLeading}
+        />
+      ) : null}
+    </div>
   );
 }

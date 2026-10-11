@@ -9,17 +9,26 @@
 /* -- The task page record header (S2; TASK-PAGE S5, DS-TASK-11) --------- */
 .tpr {
   display: grid;
-  gap: var(--s-3);
+  gap: 0.75rem;
   margin-bottom: var(--s-4);
+}
+.content .readstate[data-outcome='ready']:has(> [data-task]) {
+  padding: 0;
+}
+.stack[data-task] {
+  gap: 0;
+}
+.tpr__facts {
+  margin-bottom: 0;
 }
 .tpr__crumb {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   flex-wrap: wrap;
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text-muted);
 }
 /* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
@@ -40,14 +49,29 @@
 }
 /* TP-06: DS-TOK-107 --type-display (the mockup's 600 weight is drift). */
 .tpr__title {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   margin: 0;
-  font: var(--type-display);
+  font: 600 2.75rem/1.15 var(--font-display);
   letter-spacing: var(--type-display-tracking);
   text-transform: var(--type-display-case);
   /* A long name wraps at 390 rather than clipping (MP-4-1). */
   overflow-wrap: anywhere;
 }
 /* Refresh sits outside the read (TaskDetail.tsx says why), at the page's end. */
+.tpr__revision {
+  font: var(--type-small);
+  color: var(--text-muted);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tpr__crumb [data-copy] {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
 .tpr__refresh {
   display: flex;
   justify-content: flex-end;
@@ -148,30 +172,368 @@
 /* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
    control pairs, two to a line, one below 641; a field that is more than a
    pair (Assign to AI, the tags, a refusal) takes the whole line. */
+.dtp {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.dtp [data-task] {
+  flex: 1;
+  gap: 0;
+}
+.dtp__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: 0 0 var(--s-2);
+}
+.dtp__head .t-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.dtp__head .ask,
+.dtp__head .dtp__action {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
+.dtp__head .dtp__doors {
+  display: flex;
+  gap: var(--s-2);
+  flex-basis: 100%;
+}
+.dtp .sb__name {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  color: var(--text);
+  font: 500 1.05rem/1.3 var(--font-display);
+  text-align: start;
+  cursor: text;
+}
+.dtp .sb__name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.dtp__facts {
+  position: relative;
+}
+.dtp .mstrip {
+  margin: var(--s-4) 0;
+}
+.dtp .tpr__strip {
+  display: contents;
+}
+.dtp .tpr__tick {
+  background: var(--paper);
+}
+.dtp .mstrip__k,
+.dtp .tf__k,
+.dtp .sb__k {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: 400 var(--text-overline)/1.4 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.dtp .mstrip {
+  gap: var(--s-3) var(--s-5);
+}
+.dtp .mstrip__c:first-child {
+  flex: 1;
+}
+.dtp .mstrip__c:nth-child(2) {
+  flex: 0 0 22%;
+}
+.dtp .tpr__fact {
+  gap: 0.35rem;
+}
+.dtp .mstrip__rank {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: 400 var(--text-sm)/1.35 var(--font-sans);
+}
 .dtp__fields {
   display: grid;
-  grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 0.4rem var(--s-3);
 }
-@media (width <= 640px) {
-  .dtp__fields {
-    grid-template-columns: 4.4rem minmax(0, 1fr);
-  }
+.dtp__fields > .tf__row {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
 }
-.dtp__fields > :is(.field, .tf__tags, .field__error, p) {
+.dtp__fields .readstate {
+  padding: 0;
+  min-width: 0;
+}
+.dtp__fields :is(select.input, [data-panel-field='due'], .dtp__link, .input) {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  box-sizing: border-box;
+  width: 100%;
+  height: 37px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--text);
+  font: 400 var(--text-sm)/1.2 var(--font-sans);
+  text-align: left;
+}
+.dtp__fields [data-panel-field='due'] {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  font: 400 var(--text-sm)/1.2 var(--font-sans);
+}
+.dtp__fields > :is(.field, .field__error, p, [data-assignment-recovery]) {
   grid-column: 1 / -1;
 }
-/* DS-PRIM-5, the field select, on the panel and the page's Status: 37 tall. */
-.dtp__fields select.input,
-[data-task-status] select.input {
-  box-sizing: border-box;
-  block-size: 2.3125rem;
-  padding: 0 var(--s-3);
+.dtp__fields .field__error {
+  grid-column: 1 / -1;
+}
+.dtp__client {
+  position: relative;
+  min-width: 0;
+}
+.dtp__client select {
+  padding-right: var(--s-6);
+}
+.dtp__client .field-callout {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.field-callout {
+  position: relative;
+}
+.field-callout > summary {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+  width: 18px;
+  height: 24px;
+}
+.field-callout > summary::-webkit-details-marker {
+  display: none;
+}
+.field-callout__body {
+  display: none;
+  position: absolute;
+  z-index: 45;
+  top: 100%;
+  right: 0;
+  width: min(280px, 70vw);
+  padding: var(--s-3);
+  border: 1px solid var(--border-strong);
   background: var(--paper);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.field-callout:is([open], :hover, :focus-within) > .field-callout__body {
+  display: grid;
+  gap: var(--s-3);
+}
+.field-callout__body p {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.dtp__scores {
+  position: absolute;
+  right: -18px;
+  top: 0;
+}
+.dtp__scores > summary {
+  width: 16px;
+  height: 16px;
+}
+.dtp__scores .field-callout__body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dtp__scores .field-callout__body > :is(p, button) {
+  grid-column: 1 / -1;
+}
+.dtp__fields .tf__tags {
+  display: contents;
+}
+.dtp__fields .tf__tag-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.dtp__fields .tf__tags > .input {
+  grid-column: 2;
+  grid-row: 1;
+}
+.dtp__fields .tf__row--tags {
+  grid-auto-flow: row;
+}
+.dtp .tf__tag-chips .chip {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  flex: none;
+  font: var(--type-data);
+  font-size: 10px;
+  padding: 0.1rem 0.5rem;
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.dtp__fields .dtp__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-right: 0.25rem;
+  color: var(--text-muted);
+}
+.dtp__link > :is(span, a) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--type-data);
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.dtp .cmtabs {
+  border: 0;
+  margin-bottom: 0;
+  padding: 0;
+}
+.dtp .tpr__perspectives {
+  gap: 0.5rem;
+}
+.dtp [data-tp-pane='team'] {
+  gap: 0.5rem;
+}
+.dtp .cmtab {
+  padding: 0.4rem 0 0.5rem;
+}
+.dtp [data-tp-pane] > .sb__sect {
+  padding: var(--s-3) 0 var(--s-2);
+  border: 0;
+}
+.dtp [data-tp-pane] > .sb__sect:last-child {
+  padding-bottom: 0;
+}
+.dtp .tf__ta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.5rem var(--s-3);
+  background: var(--paper);
+  min-height: 95px;
+  font-size: 13px;
+}
+.dtp .tf__ta--md {
+  min-height: 205px;
+}
+.dtp .field:has(.tf__ta) {
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.dtp .sb__steplist {
+  display: grid;
+  gap: 0.5rem;
+}
+.dtp .sb__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dtp .empty {
+  padding: 0.5rem 0;
+}
+.ttime__controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.ttime__timer,
+.ttime__logging {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ttime__label {
+  font: var(--type-data);
+  color: var(--text-muted);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.ttime__timer > .btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.ttime__log {
+  display: flex;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.ttime__log > input {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  font: var(--type-body);
+  font-size: 13px;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.ttime__log > .btn {
+  flex: none;
+}
+@media (width <= 400px) {
+  .ttime__controls {
+    grid-template-columns: 1fr;
+  }
+}
+.dtp [data-step-add] {
+  width: 100%;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text);
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
+}
+.dtp [data-step-add]:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+@media (width <= 640px) {
+  .dtp__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+[data-task-status] select.input {
+  height: 37px;
 }
 
 /* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. The
@@ -304,24 +666,6 @@
   min-width: 0;
 }
 
-/* -- The Agent tab's two columns (S4) ------------------------------------ */
-.tpg {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--s-5);
-  align-items: start;
-}
-.tpg__main,
-.tpg__side {
-  display: grid;
-  gap: var(--s-5);
-  min-width: 0;
-}
-@media not all and (max-width: 1278px) {
-  .tpg {
-    grid-template-columns: minmax(0, 1fr) 21rem;
-  }
-}
 .sb__sect {
   display: grid;
   gap: var(--s-2);
@@ -656,7 +1000,8 @@
 .msg__acts [data-comment-act='delete'] {
   opacity: 0;
 }
-.msg:hover > .msg__acts [data-comment-act],
+.msg:hover .msg__acts [data-comment-act],
+.msg:focus-within .msg__acts [data-comment-act],
 .msg__acts [data-comment-act]:focus-visible {
   opacity: 1;
 }
@@ -697,4 +1042,306 @@
 }
 .dtp__action[data-task-pin][aria-pressed='true'] {
   color: var(--accent);
+}
+
+.dtp .sel__btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  background: var(--paper);
+  font-size: 0.9rem;
+}
+.dtp__fields .sel__btn {
+  height: 37px;
+  padding: 0.55rem var(--s-3);
+}
+.dtp__fields .sel__native {
+  padding: 0;
+}
+
+/* Conversation, inline recipients and quiet row controls share one task dialect. */
+.row-remove {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 400 16px/1 var(--font-sans);
+  cursor: pointer;
+  opacity: 0;
+}
+.sb__step:hover .row-remove,
+.sb__step:focus-within .row-remove {
+  opacity: 1;
+}
+.row-remove:hover {
+  color: var(--danger);
+}
+.row-remove:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+@media (hover: none) {
+  .row-remove {
+    /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+    opacity: 1;
+  }
+}
+[data-time-log-section] {
+  position: relative;
+}
+.dtp [data-time-total] {
+  position: absolute;
+  right: 0;
+  top: -24px;
+  font: var(--type-data);
+  color: var(--text-muted);
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.ttime__controls :is(button, input) {
+  box-sizing: border-box;
+  height: 37px;
+}
+[data-time-entry] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+[data-time-entry] .sb__step-title {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  flex: none;
+  font: var(--type-data);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+[data-time-entry] [data-time-note] {
+  flex: 1;
+  cursor: text;
+}
+[data-comments='section'] > .taskform {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+[data-comments='section'] .taskform > p,
+[data-comment='replying'] {
+  grid-column: 1 / -1;
+}
+[data-comments='section'] .taskform :is(textarea, [data-comment='post']) {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  box-sizing: border-box;
+  min-height: 37px;
+  margin: 0;
+  padding: 0.6rem 0.65rem;
+  font: 400 13px/1.3 var(--font-sans);
+}
+[data-comments='section'] .taskform textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  resize: vertical;
+}
+[data-comments='section'] .taskform [data-comment='post'] {
+  min-width: 52px;
+}
+[data-comments='section'] .taskform > .field:has(textarea) {
+  display: block;
+  margin: 0;
+}
+[data-comments='section'] [role='tabpanel'] {
+  min-height: 192px;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  background: var(--paper);
+}
+[data-comments='section'] [role='tabpanel'] > .empty {
+  display: flex;
+  align-items: end;
+  min-height: 168px;
+  padding: 0;
+  color: var(--text-muted);
+}
+.comment-editor {
+  position: relative;
+  min-width: 0;
+}
+.mention-menu {
+  position: absolute;
+  z-index: 50;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+}
+.mention-menu [role='option'] {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  padding: 0.55rem 0.65rem;
+  font: 400 13px/1.3 var(--font-sans);
+  cursor: pointer;
+}
+.mention-menu [aria-selected='true'] {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.comment-editor .tf__tagvalue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.comment-editor .tf__tagvalue .btn,
+.comment-editor__clear {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  min-height: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.msg {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 0.5rem;
+  position: relative;
+}
+.msg--deleted {
+  display: block;
+}
+.msg__avatar {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font: 400 9px/1 var(--font-mono);
+  color: var(--text-muted);
+}
+.msg__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.msg__body > .card__body {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  margin: 0;
+  white-space: pre-wrap;
+  font: 400 14px/1.45 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.msg__meta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font: 400 13px/1rem var(--font-sans);
+  color: var(--text-muted);
+}
+.msg__meta b {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  color: var(--text);
+  font-weight: 500;
+}
+.msg__at {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font-size: 12px;
+}
+.msg__audience {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-data);
+  font-size: 9px;
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.msg__acts {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  gap: 0.2rem;
+}
+.msg__acts .btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.2rem;
+  min-height: 20px;
+  height: 20px;
+  font-size: 11px;
+  background: var(--paper);
+}
+.msg__replies {
+  margin: 0.75rem 0 0;
+  padding-left: 0.75rem;
+}
+
+.comment-editor__clear {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  border: 0;
+  background: none;
+  font: 400 11px/1.3 var(--font-sans);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mention-menu > .readstate {
+  padding: 0;
+}
+.mention-menu .menu {
+  position: static;
+  border: 0;
+}
+
+.dtp .sb__step {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font: 400 13px/1.4 var(--font-sans);
+}
+.dtp [data-step] .sb__step-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.dtp [data-step] .sb__step-title:hover {
+  color: var(--accent);
+}
+.dtp .sb__step .av {
+  width: 22px;
+  height: 22px;
+}
+.dtp__scores summary {
+  opacity: 0;
+}
+.dtp__facts:hover .dtp__scores summary,
+.dtp__scores:focus-within summary,
+.dtp__scores[open] summary {
+  opacity: 1;
 }

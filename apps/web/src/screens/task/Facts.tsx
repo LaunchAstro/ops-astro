@@ -114,7 +114,10 @@ function Handling(props: { readonly task: InternalTaskDetail }): ReactElement {
  * DS-TASK-1, the page's read-only variant: two derived cells and two ticks
  * drawn as pictures of a state (no pointer, nothing to press).
  */
-function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
+export function TaskFactStrip(props: {
+  readonly task: InternalTaskDetail;
+  readonly handling?: ReactElement;
+}): ReactElement {
   const { task } = props;
   const move = whoseMove(task);
   return (
@@ -127,14 +130,20 @@ function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
           title="Worked out from the task, not set"
         >
           <Derived label="Whose move" />
-          <output className="mstrip__v mstrip__bucket">{move}</output>
+          <output className="mstrip__v mstrip__bucket">
+            <Icon
+              name={move === 'Review' ? 'eye' : move === 'Agent' ? 'sparkles' : 'users'}
+              size="xs"
+            />
+            {move}
+          </output>
         </span>
       )}
       <span
         className="mstrip__c"
         data-mstrip-fact="rank"
         data-fact="rank"
-        title="Worked out from the marks, not set"
+        title={task.rank.calc || 'Worked out from the marks, not set'}
       >
         <Derived label="Rank" />
         {task.rank.number === null ? (
@@ -143,8 +152,12 @@ function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
           <output className="mstrip__v mstrip__rank">#{task.rank.number}</output>
         )}
       </span>
-      <Mark name="adhoc" label="Ad hoc" on={task.adHoc} />
-      <Mark name="client-access" label="Client access" on={task.clientAccess} />
+      {props.handling ?? (
+        <>
+          <Mark name="adhoc" label="Ad hoc" on={task.adHoc} />
+          <Mark name="client-access" label="Client access" on={task.clientAccess} />
+        </>
+      )}
     </div>
   );
 }
@@ -188,12 +201,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
   ];
   return (
     <section className="tpr__facts" aria-label="Facts" data-task-facts="">
-      <Strip task={task} />
-      {task.rank.calc === '' ? null : (
-        <p className="tpr__calc" data-calc>
-          {task.rank.calc}
-        </p>
-      )}
+      <TaskFactStrip task={task} />
       <div className="taskform">
         <dl className="tf__grid" data-band>
           {band.map(([key, label, value]) => (

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { StyledSelect } from '@launchastro/ui';
 //
 // The dock task panel's Project select (MP-4-8, CS-4.15, DP-22).
 //
@@ -55,7 +56,7 @@ function ProjectSelect(props: {
 }): ReactElement {
   const { task } = props;
   return (
-    <select
+    <StyledSelect
       id="panel-field-board"
       className="input"
       disabled={props.busy}
@@ -73,7 +74,7 @@ function ProjectSelect(props: {
           {choice.title ?? 'Untitled'}
         </option>
       ))}
-    </select>
+    </StyledSelect>
   );
 }
 

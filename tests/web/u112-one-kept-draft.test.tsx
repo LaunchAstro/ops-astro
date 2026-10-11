@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 //
 // U112 and U106 (P05, P14), in the actual App: every Projects door enters the
-// one kept draft, the quick-add included, and a Create whose answer was lost
+// one kept draft, and a Create whose answer was lost
 // holds the draft until its own retry finishes it with one task and one of
 // each part.
 
@@ -27,16 +27,16 @@ afterEach(closeAll);
 const nameOf = (app: Mounted): string | null =>
   app.view.host.querySelector<HTMLInputElement>('#panel-draft-name')?.value ?? null;
 
-async function quickAdd(app: Mounted, title: string): Promise<void> {
-  await app.view.type('#create-title', title);
-  await app.view.click('.projects__create button[type="submit"]');
+async function newTask(app: Mounted, title?: string): Promise<void> {
+  await app.view.click('[data-projects-new-task]');
   await drain(app);
+  if (title !== undefined) await app.view.type('#panel-draft-name', title);
 }
 
-it('Core 04 1: the quick-add opens the one kept draft with the typed name and creates nothing itself', async () => {
+it('Core 04 1: New task opens the one kept draft and keeps its typed name without creating', async () => {
   const server = new OrderedCreateServer();
   const app = await open(server);
-  await quickAdd(app, 'Typed at the board');
+  await newTask(app, 'Typed at the board');
   expect(app.view.find('[data-draft-panel]')).not.toBeNull();
   expect(nameOf(app)).toBe('Typed at the board');
   expect(server.writes()).toStrictEqual([]);
@@ -50,10 +50,10 @@ it('Core 04 1: the quick-add opens the one kept draft with the typed name and cr
   expect(server.parents.map((task) => task.title)).toStrictEqual(['Typed at the board']);
 });
 
-it('a kept draft that already has a name keeps it when the quick-add is used', async () => {
+it('a kept draft that already has a name keeps it when New task is used', async () => {
   const server = new OrderedCreateServer();
   const app = await open(server, seeded({ title: 'Left half done', note: 'Keep me' }));
-  await quickAdd(app, 'Something else');
+  await newTask(app);
   expect(nameOf(app)).toBe('Left half done');
   expect(readDraft(app.storage, PERSON)).toMatchObject({
     title: 'Left half done',

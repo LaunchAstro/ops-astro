@@ -17,6 +17,7 @@
 // **Ask drafts, never sends.** The head's Ask opens the dock's assistant with
 // the task in scope (`assistant/asks.ts`), under the panel's own session.
 
+import { Icon } from '@launchastro/ui';
 import { useState, type ReactElement } from 'react';
 import type {
   InternalTaskDetail as Task,
@@ -99,7 +100,7 @@ export function AskDoor(props: { readonly grantKey: string; readonly task: Task 
         askDrawer(taskAsk(scopeOf(props.task)), props.grantKey);
       }}
     >
-      <span aria-hidden="true">Ask</span>
+      <Icon name="sparkles" size="sm" />
     </button>
   );
 }

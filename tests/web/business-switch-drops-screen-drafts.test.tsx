@@ -7,10 +7,11 @@
 // business; nothing typed or said under the first may still be on screen, or
 // be one press from being sent, under the second.
 
-import { act, useState } from 'react';
+import { useState } from 'react';
 import { afterEach, expect, it } from 'vitest';
+import { PANELS } from '../../apps/web/src/panels.ts';
 import { App } from '../../apps/web/src/App.tsx';
-import { dockKey, SessionStore } from '../../apps/web/src/session/token.ts';
+import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 
 const views: Mounted[] = [];
@@ -26,6 +27,10 @@ function Harness(props: { sessions: SessionStore; fetch: typeof globalThis.fetch
   return (
     <App
       path={path}
+      panels={{
+        ...PANELS,
+        settings: { label: 'Settings', ariaLabel: 'Business settings', route: 'agency:settings' },
+      }}
       navigate={navigate}
       sessions={props.sessions}
       gotrueUrl="http://identity.invalid"
@@ -71,18 +76,7 @@ async function signedInToAlphaHolding(
   return { view, sessions };
 }
 
-async function openDockTab(view: Mounted, label: string) {
-  const tab = view
-    .all('button')
-    .find((button) => button.textContent?.includes(label) && button.closest('main') === null);
-  expect(tab).toBeDefined();
-  await act(() => {
-    (tab as HTMLButtonElement).click();
-  });
-  await settle();
-}
-
-it('business to business, a threshold typed in the docked Settings under one business is not there after the switch', async () => {
+it('business to business, a threshold typed on Settings under one business is not there after the switch', async () => {
   const bravoThresholds: unknown[] = [];
   const { view, sessions } = await signedInToAlphaHolding('/projects/', (at, init) => {
     if (at.endsWith('/b/bravo/settings/set_four_eyes_threshold')) {
@@ -91,20 +85,17 @@ it('business to business, a threshold typed in the docked Settings under one bus
     }
     return null;
   });
-  await openDockTab(view, 'Settings');
+  await view.click('.dock__tab[data-panel="settings"]');
+  await settle();
   expect(view.find('[data-screen="settings"][data-business="alpha"]')).not.toBeNull();
   await view.type('#settings-four-eyes', '9000');
   expect((view.find('#settings-four-eyes') as HTMLInputElement).value).toBe('9000');
-  // The same person had Settings docked under bravo earlier in this tab.
-  window.sessionStorage.setItem(
-    dockKey('bravo'),
-    window.sessionStorage.getItem(dockKey('alpha')) ?? '',
-  );
-
   await view.click('[data-switch="held-address"]');
   await settle();
 
   expect(sessions.session?.businessKey).toBe('bravo');
+  await view.click('.dock__tab[data-panel="settings"]');
+  await settle();
   expect(view.find('[data-screen="settings"][data-business="bravo"]')).not.toBeNull();
   expect((view.find('#settings-four-eyes') as HTMLInputElement).value).toBe('');
   await view.click('[data-settings="save-four-eyes"]');

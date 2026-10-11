@@ -7,112 +7,132 @@
 .cbd__cmd {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-3);
   flex-wrap: wrap;
 }
-
 .cbdm__search {
   position: relative;
-  flex: 1 1 220px;
-  min-width: 0;
-}
-
-.cbd__barq {
-  width: 100%;
-  font: inherit;
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 16rem;
+  min-width: 8rem;
+  padding: 0.4rem 0.65rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
+  color: var(--text-muted);
+  background: var(--paper);
 }
-
-.cbd__barq:focus {
-  outline: none;
+.cbdm__search:focus-within {
   border-color: var(--accent);
 }
-
-.cbd__ico {
+.cbd__barq {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
   font: inherit;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+}
+.cbd__barq:focus,
+.cbd__barq:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.cbd__ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--text-2);
   cursor: pointer;
 }
-
 .cbd__ico:disabled {
   opacity: 0.4;
-  cursor: default;
+  cursor: not-allowed;
 }
-
+.cbd__ico:hover:not(:disabled) {
+  color: var(--text);
+}
 .cbd__clear:disabled {
-  opacity: 0.32;
-  cursor: default;
+  display: none;
 }
-
 .cbd__preset,
 .cbd__mode {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font: inherit;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
+  gap: 0.35rem;
+  flex: none;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--paper);
   color: var(--text-2);
+  font: 400 13px/1.35 var(--font-sans);
   cursor: pointer;
 }
-
+.cbd__mode {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
 .cbd__preset:hover {
-  border-color: var(--text);
+  border-color: var(--ink);
+  color: var(--text);
 }
-
 .cbd__preset.is-on {
-  background: var(--text);
-  border-color: var(--text);
-  color: var(--bg);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
-
 .cbd__mode.is-on {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cbd__preset--cat.is-flagged {
+  border-color: var(--accent);
+}
+.cbd__presi {
+  display: inline-grid;
+  place-items: center;
+}
+.cbd__preset--viewer .cbd__presi {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  font: 0.5rem var(--font-sans);
+  background: var(--surface-3);
   color: var(--text);
 }
-
+.cbd__preset--cat:first-of-type {
+  margin-inline-start: var(--s-3);
+}
 .cbd__count {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
 }
-
-/* The viewer's own chip (P-11): an ink fill when on. */
-.cbd__preset--viewer.is-on {
-  background: var(--ink);
-  border-color: var(--ink);
-}
-
-/* A category chip where a client or a mention waits (P-13): flagged, never counted. */
-.cbd__preset--cat.is-flagged {
-  border-color: var(--accent);
-}
-
-/* The Review chip's live count (P-10): a badge, its figure on the accent
-   deepened toward the void, since --accent-ink on the plain accent is 4.4:1.
-   The void never flips, so the badge holds about 5.9:1 in both themes. */
 .cbd__count--accent {
-  padding: 0 5px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--accent) 85%, var(--void-deep));
+  padding: 0 3px;
+  border-radius: 0;
+  background: var(--accent);
   color: var(--accent-ink);
 }
-
 .cbd__read {
   margin: 0;
+  padding: 0.4rem var(--s-4);
+  font: var(--type-small);
   color: var(--text-muted);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 /* The typeahead: groups are presentation, options are the only stops. It
@@ -250,7 +270,7 @@
 }
 
 .cbd__hd:not([data-tight]) .cbd__thi {
-  display: none;
+  display: inline-grid;
 }
 
 /* Tight: the head drops its words and centres its icon; the label stays the
@@ -443,9 +463,6 @@ td[data-tight] {
 /* The chip row's ladder (B-25): full words, then each chip's words capped at
    96, 72, 56 and 44px (clipped, like every cell), then icons only; the chip
    keeps its name as its label. */
-.cbd__presi {
-  display: none;
-}
 
 .cbd__filters[data-tier]:not([data-tier='words'], [data-tier='icons']) .cbd__presetw {
   display: inline-block;
@@ -460,7 +477,7 @@ td[data-tight] {
 }
 
 .cbd__filters[data-tier='icons'] .cbd__presi {
-  display: inline;
+  display: inline-grid;
 }
 
 /* The sticky stack (B-26): the chip row under the chrome, the heads under the
@@ -621,6 +638,10 @@ td[data-tight] {
    900, where there is no hover. */
 .cbd__tick {
   flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
   margin: 0;
   accent-color: var(--accent);
 }

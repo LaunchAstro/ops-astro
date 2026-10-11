@@ -11,6 +11,7 @@
 // scope, and the Review mode with its live count (MP-5-12).
 
 import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { usePageToolbar } from './PageToolbar.tsx';
 import { BoardMachine } from './BoardMachine.tsx';
 import type { BoardMachineProps } from './board-props.ts';
 import { projectCell, type CellContext } from './ProjectCell.tsx';
@@ -52,6 +53,7 @@ export interface ProjectsBoardProps {
   readonly owed?: number;
   /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
   readonly viewerOn?: boolean;
+  readonly toolbar?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
   /** Whether its tab is not shown: a hidden board takes no Undo and writes no address. */
@@ -123,6 +125,7 @@ function useCells(props: ProjectsBoardProps, now: Date): CellContext {
 
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const viewer = props.viewer ?? null;
+  const toolbar = usePageToolbar();
   // The viewer preset is on at load agency-wide and off on a client's board (P-11).
   const [opening] = useState(() =>
     withWorkOrder(openWithViewer(props.address ?? '', props.viewerOn === false ? null : viewer)),
@@ -146,6 +149,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   return (
     <BoardMachine<ProjectRow>
       hidden={props.hidden === true}
+      bar={props.toolbar === false ? null : toolbar}
       {...passedOn(props)}
       rows={rows}
       withheld={props.withheld ?? 0}

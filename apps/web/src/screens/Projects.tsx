@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useState, type ReactElement } from 'react';
-import { TabPanel } from '@launchastro/ui';
+import { Icon, TabPanel, usePageToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import type { ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
@@ -13,12 +14,13 @@ export type { ProjectsProps };
 
 export function Projects(props: ProjectsProps): ReactElement {
   const { canFileTask = false, inPanel } = props;
+  const toolbar = usePageToolbar();
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
   const [clients, setClients] = useState<readonly ClientView[]>([]);
   return (
-    <div className="stack">
+    <div className="stack projects">
       {tab === 'board' ? (
         <ProjectsToolbar
           inPanel={inPanel === true}
@@ -27,7 +29,31 @@ export function Projects(props: ProjectsProps): ReactElement {
           clients={clients}
         />
       ) : null}
-      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      {toolbar !== null && inPanel !== true ? (
+        createPortal(
+          <details className="projects__views">
+            <summary aria-label="Project views" title="Project views">
+              <Icon name="calendar" size="xs" />
+            </summary>
+            <ProjectsTabs
+              label="Projects"
+              name="projects"
+              tabs={TABS}
+              selected={tab}
+              onSelect={select}
+            />
+          </details>,
+          toolbar,
+        )
+      ) : (
+        <ProjectsTabs
+          label="Projects"
+          name="projects"
+          tabs={TABS}
+          selected={tab}
+          onSelect={select}
+        />
+      )}
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           canFileTask={canFileTask}

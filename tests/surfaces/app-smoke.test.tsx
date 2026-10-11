@@ -208,8 +208,8 @@ describe('the six read outcomes, in the mounted app', () => {
     // Create a task, which reloads the board. The reload is the read that
     // fails, so the rows on screen are now the previous read's. The quick-add
     // opens the draft (U112); its guessed category is cleared, so one write.
-    await view.type('#create-title', 'Anything at all');
-    await view.click('.projects__create button[type="submit"]');
+    await view.click('[data-projects-new-task]');
+    await view.type('#panel-draft-name', 'Anything at all');
     await settle();
     await view.choose('#panel-draft-category', '');
     await view.click('[data-draft="create"]');

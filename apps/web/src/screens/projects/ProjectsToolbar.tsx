@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, usePageToolbar } from '@launchastro/ui';
+import { usePageToolbar } from '@launchastro/ui';
 import { TASK_STAGES, type ClientView } from '../../../../../packages/core-wire/src/index.ts';
 import { addressScope, queryOf } from './board-address.ts';
 
@@ -82,7 +82,7 @@ export function ProjectsToolbar(props: {
           : 'The shared task draft is unavailable here.'
       }
     >
-      <Icon name="plus" size="xs" /> New task
+      New task
     </button>
   );
   return bar === null ? (

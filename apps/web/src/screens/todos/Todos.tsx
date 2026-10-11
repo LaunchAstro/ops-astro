@@ -16,7 +16,7 @@
 // rechecked; completion keeps its current answer while reading back.
 
 import { useEffect, useState, type ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Empty, Icon } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { dependencyAdmission } from '../../data/board-live.ts';
@@ -123,7 +123,14 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
   const onDependency = useTodoDependencies(props, read, vocabulary, intent);
   return (
     <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
-      <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
+      <details className="todos__filters field-callout">
+        <summary aria-label="Project filters" title="Project filters">
+          <Icon name="filter" size="xs" />
+        </summary>
+        <div className="field-callout__body">
+          <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
+        </div>
+      </details>
       <TodoTools {...tools} />
       <IdentityChoices
         filters={filters}

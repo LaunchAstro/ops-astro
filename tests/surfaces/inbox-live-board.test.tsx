@@ -12,6 +12,7 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { InboxScreen } from '../../apps/web/src/screens/Inbox.tsx';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { mount, settle } from './mount.tsx';
 
@@ -84,7 +85,10 @@ describe('INB-1f the board moves live on the page', () => {
   it('INB-1 board live (page): one stream per tab; an invalidate re-reads the board and an inbox signal reads nothing', async () => {
     const api = server();
     const view = await mount(
-      <Projects client={api.client} grantKey="alpha:mia" navigate={() => {}} />,
+      <>
+        <Projects client={api.client} grantKey="alpha:mia" navigate={() => {}} />
+        <InboxScreen client={api.client} grantKey="alpha:mia" navigate={() => {}} />
+      </>,
     );
     const deadline = Date.now() + 2_000;
     await until('the tab joined', () => api.joins.length > 0, deadline);
@@ -111,7 +115,10 @@ describe('INB-1f the board moves live on the page', () => {
     vi.useFakeTimers();
     const down = server({ down: true });
     const view = await mount(
-      <Projects client={down.client} grantKey="alpha:mia" navigate={() => {}} />,
+      <>
+        <Projects client={down.client} grantKey="alpha:mia" navigate={() => {}} />
+        <InboxScreen client={down.client} grantKey="alpha:mia" navigate={() => {}} />
+      </>,
     );
     await vi.advanceTimersByTimeAsync(10);
     const first = { ...down.asked };
@@ -123,7 +130,10 @@ describe('INB-1f the board moves live on the page', () => {
 
     const up = server();
     const live = await mount(
-      <Projects client={up.client} grantKey="alpha:mia" navigate={() => {}} />,
+      <>
+        <Projects client={up.client} grantKey="alpha:mia" navigate={() => {}} />
+        <InboxScreen client={up.client} grantKey="alpha:mia" navigate={() => {}} />
+      </>,
     );
     await vi.advanceTimersByTimeAsync(10);
     expect(up.joins).toHaveLength(1);

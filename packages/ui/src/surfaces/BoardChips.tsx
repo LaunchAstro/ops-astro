@@ -9,7 +9,8 @@ import type { ReactElement, RefObject } from 'react';
 import { presetCount } from '../board/filters.ts';
 import type { BoardAction, BoardView, Facet, Preset } from '../board/types.ts';
 import { MockRegion } from '../kit/blocks.tsx';
-import { GLYPH, STACK_TIP, type BoardMode } from './board-props.ts';
+import { Icon } from '../primitives/Icon.tsx';
+import { BOARD_ICONS, STACK_TIP, type BoardMode } from './board-props.ts';
 
 export function ChipRow<Row>(props: {
   readonly chipRow: RefObject<HTMLDivElement | null>;
@@ -37,13 +38,13 @@ export function ChipRow<Row>(props: {
   );
   const mock = props.presets.filter((preset) => preset.mock === true);
   return (
-    <div className="cbd__filters" ref={props.chipRow}>
-      {props.presets.filter((preset) => preset.mock !== true).map((one) => chip(one))}
-      {/* Made-up chips (no catalogue yet) sit together under the one mock label. */}
-      {mock.length === 0 ? null : <MockRegion word>{mock.map((one) => chip(one))}</MockRegion>}
+    <div className="cbd__filters cbd__filters--cat" ref={props.chipRow}>
       {props.modes.map((one) => (
         <ModeChip key={one.id} mode={one} on={view.mode === one.id} dispatch={dispatch} />
       ))}
+      {props.presets.filter((preset) => preset.mock !== true).map((one) => chip(one))}
+      {/* Made-up chips (no catalogue yet) sit together under the one mock label. */}
+      {mock.length === 0 ? null : <MockRegion word>{mock.map((one) => chip(one))}</MockRegion>}
       <FilterTags facets={props.facets} view={view} hidden={shownByPreset} dispatch={dispatch} />
     </div>
   );
@@ -112,6 +113,7 @@ function ModeChip<Row>(props: {
         props.dispatch({ type: 'mode', id: mode.id });
       }}
     >
+      <Icon name="eye" size="xs" />
       {mode.label}
       {mode.badge === undefined ? null : (
         <span className="cbd__count cbd__count--accent">{mode.badge.count}</span>
@@ -142,10 +144,20 @@ function PresetChip(props: {
       }}
     >
       <span className="cbd__presi" data-icon={props.preset.icon} aria-hidden="true">
-        {GLYPH[props.preset.icon ?? ''] ?? props.preset.label.charAt(0)}
+        {props.preset.variant === 'viewer' ? (
+          props.preset.label
+            .split(' ')
+            .map((word) => word[0])
+            .join('')
+            .slice(0, 2)
+        ) : (
+          <Icon name={BOARD_ICONS[props.preset.icon ?? ''] ?? 'document'} size="xs" />
+        )}
       </span>
       <span className="cbd__presetw">{props.preset.label}</span>
-      {props.preset.uncounted === true ? null : <span className="cbd__count">{props.count}</span>}
+      {props.preset.uncounted === true || props.preset.variant === 'viewer' ? null : (
+        <span className="cbd__count">{props.count}</span>
+      )}
     </button>
   );
 }

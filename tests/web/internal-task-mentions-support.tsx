@@ -104,9 +104,8 @@ export async function key(
   });
 }
 export async function mentionAda(view: Mounted) {
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'ArrowDown');
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'ArrowDown');
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'Enter');
+  await view.type('[data-internal-task-mentions] textarea', '@Ada');
+  await key(view, '[data-internal-task-mentions] textarea', 'Enter');
 }
 
 export function deferredResponse() {

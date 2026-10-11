@@ -11,6 +11,7 @@
 // said above the heads. A first read that fails is not said: the list keeps
 // the default sort, due earliest first.
 
+import { Icon } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import { usePreferences } from '../../data/use-preferences.ts';
@@ -70,7 +71,9 @@ export function TodoHead(props: { readonly order: TodoOrder }): ReactElement {
         <span />
         <span />
         {task}
-        <span />
+        <span>
+          <Icon name="comments" size="xs" />
+        </span>
         {due}
         {priority}
       </div>

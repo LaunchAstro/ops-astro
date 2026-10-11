@@ -87,7 +87,7 @@ function AddStep(props: {
         data-step-add
         disabled={closed}
         aria-label="Add a subtask"
-        placeholder="Add a subtask and press Enter"
+        placeholder="+ Add subtask…"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={onKeyDown}
@@ -144,6 +144,13 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
       },
     );
   };
+  const remove = (step: StepView): void =>
+    run(
+      () => client.mutate('task.trash', { recordId: step.id }, { expectedRevision: step.revision }),
+      (settlement) => {
+        if (current() && settlement.kind === 'ok') props.onChanged();
+      },
+    );
   const live = unfinished(steps);
   const archived = steps.filter((step) => step.archived !== null);
   const completed = steps.filter((step) => step.archived === null && step.done);
@@ -158,7 +165,14 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
       <AddStep client={client} parentId={props.parentId} onChanged={props.onChanged} />
       <ul className="sb__steps">
         {shown.map((step) => (
-          <StepRow key={step.id} step={step} busy={busy} onTick={tick} onOpenTask={onOpenTask} />
+          <StepRow
+            key={step.id}
+            step={step}
+            busy={busy}
+            onTick={tick}
+            onRemove={remove}
+            onOpenTask={onOpenTask}
+          />
         ))}
       </ul>
       {live.length === 0 && completed.length > 0 ? (
@@ -212,7 +226,7 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
-      progress={<StepCount value={task.steps.length === 0 ? null : stepProgress(task.steps)} />}
+      progress={<StepCount value={stepProgress(task.steps)} />}
       list={
         <SubtaskList
           client={props.client}

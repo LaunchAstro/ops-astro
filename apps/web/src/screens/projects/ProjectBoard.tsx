@@ -18,7 +18,6 @@ import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { useRereadOn } from '../task/reread-on.ts';
 import { pathTo } from '../../routes.ts';
-import { CreateTask } from './CreateTask.tsx';
 import { useSharedTaskPins, TaskPinsNotice } from '../task/task-pins-context.tsx';
 import {
   decodeBoardAddress,
@@ -190,8 +189,6 @@ function ProjectBoardRead(
           {waiting} {waiting === 1 ? 'message' : 'messages'} waiting on us
         </p>
       )}
-      {/* The quick-add opens the one kept draft with the typed name. */}
-      <CreateTask {...door} />
       <TaskPinsNotice />
 
       {said === null ? null : (
@@ -220,6 +217,7 @@ function ProjectBoardRead(
             <AssignmentRecoveries custody={assignments.custody} tasks={admitted ? rows : []} />
             <BoardEditRecoveries custody={edits.custody} tasks={admitted ? rows : []} />
             <ProjectsBoard
+              toolbar={props.inPanel !== true}
               // A new place is a new view: the board opens on it afresh.
               hidden={props.hidden}
               widths={props.widths.widths}

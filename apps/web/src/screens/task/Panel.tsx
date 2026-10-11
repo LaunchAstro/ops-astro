@@ -30,6 +30,8 @@
 // **Escape closes the panel, never a control's Escape.** A key that started in
 // a field, a select or a text box is that control's (TR-A3-3).
 
+import { Icon, usePanelToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import { TaskTimerBoundary, useTimerRead, useTimerState } from './task-timer-context.tsx';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -43,7 +45,8 @@ import { taskDependencyAdmission, useTaskDependencies } from '../../data/board-l
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { TaskFacts } from './Facts.tsx';
+import { TaskFactStrip } from './Facts.tsx';
+import { ScoreFields } from './ScoreFields.tsx';
 import { History, useShowTrail } from './History.tsx';
 import {
   Perspectives,
@@ -53,7 +56,6 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PageLink, GoTo } from './PageLink.tsx';
 import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import { taskContext, type PageContext } from './task-prefill.ts';
@@ -173,12 +175,28 @@ function PanelBody(
   return (
     <div ref={body} className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead {...props} />
-      <PanelFields {...props} />
-      <PageLink client={client} task={task} onChanged={props.onChanged} />
-      <TaskFacts task={task} />
-      <HandlingTicks client={client} task={task} onChanged={props.onChanged} />
       <Perspectives
         name="panel-perspective"
+        before={
+          <>
+            <div className="dtp__facts">
+              <TaskFactStrip
+                task={task}
+                handling={<HandlingTicks client={client} task={task} onChanged={props.onChanged} />}
+              />
+              <details className="field-callout dtp__scores">
+                <summary aria-label="Priority marks" title="Priority marks">
+                  <Icon name="settings-sliders" size="xs" />
+                </summary>
+                <div className="field-callout__body">
+                  <ScoreFields {...props} scope="panel" />
+                  {task.rank.calc === '' ? null : <p className="tpr__calc">{task.rank.calc}</p>}
+                </div>
+              </details>
+            </div>
+            <PanelFields {...props} />
+          </>
+        }
         counts={counts}
         selected={perspective}
         onSelect={setPerspective}
@@ -262,33 +280,53 @@ function PanelWork(props: SideProps): ReactElement {
  */
 function PanelHead(props: SideProps): ReactElement {
   const { task, onNewTask } = props;
+  const toolbar = usePanelToolbar();
   return (
     <div className="dtp__head">
       <h2 className="t-title" data-panel-title>
         <PanelName client={props.client} task={task} onChanged={props.onChanged} />
       </h2>
-      <TaskPin taskId={task.id} />
-      <button
-        className="btn"
-        type="button"
-        data-panel-head="new"
-        disabled={onNewTask === undefined}
-        onClick={() => {
-          onNewTask?.(taskContext(task));
-        }}
-      >
-        New task
-      </button>
       <AskDoor grantKey={props.grantKey} task={task} />
-      <a
-        className="btn"
-        data-panel-head="page"
-        href={pathTo('agency:task-detail', { key: task.key })}
-      >
-        Open its page
-      </a>
-      <PanelBoardDoor task={task} />
-      <GoTo task={task} />
+      <TaskPin taskId={task.id} />
+      {toolbar === null ? (
+        <div className="dtp__doors">
+          <button
+            className="btn"
+            type="button"
+            data-panel-head="new"
+            disabled={onNewTask === undefined}
+            onClick={() => onNewTask?.(taskContext(task))}
+          >
+            New task
+          </button>
+          <a
+            className="btn"
+            data-panel-head="page"
+            href={pathTo('agency:task-detail', { key: task.key })}
+          >
+            Open its page
+          </a>
+          <PanelBoardDoor task={task} />
+        </div>
+      ) : (
+        createPortal(
+          <>
+            <button
+              className="dpanel__btn"
+              type="button"
+              data-panel-head="new"
+              aria-label="New task"
+              title="New task"
+              disabled={onNewTask === undefined}
+              onClick={() => onNewTask?.(taskContext(task))}
+            >
+              <Icon name="plus" />
+            </button>
+            <PanelBoardDoor task={task} compact />
+          </>,
+          toolbar,
+        )
+      )}
       <TaskPinsNotice />
       {props.docked === true ? null : (
         <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>

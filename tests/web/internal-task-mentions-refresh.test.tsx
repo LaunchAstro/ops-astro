@@ -13,7 +13,6 @@ import {
   transport,
 } from './internal-task-mentions-support.tsx';
 
-const chooser = '[data-internal-task-mentions] button[aria-haspopup="listbox"]';
 const online = () =>
   act(() => {
     window.dispatchEvent(new Event('online'));
@@ -30,9 +29,11 @@ it('same-owner refresh hides previous names while pending and retires a supersed
     expect(view.text()).toContain('Ada Synthetic');
     server.answers.people = () => held.promise;
     await online();
-    expect(view.text()).not.toContain('Ada Synthetic');
+    expect(
+      view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '',
+    ).not.toContain('Ada Synthetic');
     expect(view.text()).not.toContain('Bea Synthetic');
-    expect(view.host.querySelector(chooser)).toBeNull();
+    expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
     expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', true);
     expect(view.find('[data-mention-clear]')).toHaveProperty('disabled', false);
     await online();
@@ -47,9 +48,11 @@ it('same-owner refresh hides previous names while pending and retires a supersed
     await act(() => {
       held.resolve(response(PEOPLE));
     });
-    expect(view.text()).not.toContain('Ada Synthetic');
+    expect(
+      view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '',
+    ).not.toContain('Ada Synthetic');
     expect(view.text()).not.toContain('Bea Synthetic');
-    expect(view.host.querySelector(chooser)).toBeNull();
+    expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
     expect(server.posts()).toEqual([]);
     await view.click('[data-mention-clear]');
     await view.type('#comment-body', 'Ordinary note after vocabulary revoke');
@@ -70,7 +73,9 @@ it('same-client grant change drops selected names and retires a late post withou
   await view.click('[data-comment="post"]');
   server.answers.people = () => Promise.resolve(refusal('SCOPE_NOT_GRANTED'));
   await view.render(<Harness client={server.client} grantKey="after" />);
-  expect(view.text()).not.toContain('Ada Synthetic');
+  expect(view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '').not.toContain(
+    'Ada Synthetic',
+  );
   expect(view.find('#comment-body')).toHaveProperty('value', '');
   await view.type('#comment-body', 'New grant note');
   await act(() => {

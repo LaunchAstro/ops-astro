@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react';
 import { TaskTimerSelection } from './task-timer-selection.tsx';
+import { Icon } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { tabOwnerGeneration } from '../../session/token.ts';
 import { TaskTimer, type TimerTask } from './task-timer.ts';
@@ -163,7 +164,8 @@ export function TaskTimerButton(props: {
       disabled={props.busy || blocked}
       onClick={() => (running ? timer?.stop(props.task.id) : timer?.start(props.task))}
     >
-      {running ? '■ Stop' : 'Start timer'}
+      <Icon name={running ? 'stop' : 'play'} size="xs" />
+      {running ? 'Stop' : 'Start timer'}
     </button>
   );
 }

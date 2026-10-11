@@ -51,12 +51,8 @@ it.each(['page', 'panel'] as const)(
     const app = await composed(where);
     if (where === 'panel') await key(app.view, 'main tr[data-row]', 'Enter');
     const scope = where === 'panel' ? 'panel-' : '';
-    const chooser =
-      '[data-internal-task-mentions="' +
-      scope +
-      'comment-mentions"] button[aria-haspopup="listbox"]';
-    await key(app.view, chooser, 'ArrowDown');
-    await key(app.view, chooser, 'ArrowDown');
+    const chooser = '[data-internal-task-mentions="' + scope + 'comment-mentions"] textarea';
+    await app.view.type(chooser, '@Ada');
     await key(app.view, chooser, 'Enter');
     expect(app.view.text()).toContain('Ada Synthetic');
     const body = '#' + scope + 'comment-body';

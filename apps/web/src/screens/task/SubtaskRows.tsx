@@ -33,6 +33,7 @@ export function StepRow(props: {
   readonly step: StepView;
   readonly busy: boolean;
   readonly onTick: (step: StepView) => void;
+  readonly onRemove?: (step: StepView) => void;
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
 }): ReactElement {
   const { step } = props;
@@ -66,6 +67,19 @@ export function StepRow(props: {
       ) : null}
       <StepTitle step={step} onOpenTask={props.onOpenTask} />
       {step.assignee === null ? null : <Avatar name={step.assignee.name} />}
+      {step.archived !== null || props.onRemove === undefined ? null : (
+        <button
+          className="row-remove"
+          type="button"
+          data-step-remove={step.id}
+          aria-label={`Remove subtask ${title}`}
+          title="Remove subtask"
+          disabled={props.busy}
+          onClick={() => props.onRemove?.(step)}
+        >
+          ×
+        </button>
+      )}
       {step.archived === null ? null : (
         <span className="card__sub" data-step-archived>
           Archived {archivedOn(step.archived.at)} · {step.archived.why}
