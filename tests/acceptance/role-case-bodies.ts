@@ -122,6 +122,8 @@ export interface BodyContext {
   brokenConnection?(): Promise<string>;
   /** MP-14-10a: a new client with one `ready` graduation row, owner-written. */
   readyClass?(): Promise<{ readonly clientId: string; readonly classId: string }>;
+  /** A fresh agent the positive caller owns, for `task.launch` (Launch from the task). */
+  ownAgent?(): Promise<string>;
 }
 
 export const batchOf = (answer: Answer): string =>

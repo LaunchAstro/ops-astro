@@ -25,7 +25,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
-import { enrol } from '../commands/fixture.ts';
+import { agentOwnedBy, enrol } from '../commands/fixture.ts';
 import { enrolCaller, type Caller } from './cast.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
@@ -262,6 +262,8 @@ export async function createHarness(part: string): Promise<Harness> {
       brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
       readyClass: async () =>
         await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),
+      ownAgent: async () =>
+        await agentOwnedBy(world.db.app, world.alpha, world.ada.personId as string),
     }),
     approvedReservation,
     reserve,
