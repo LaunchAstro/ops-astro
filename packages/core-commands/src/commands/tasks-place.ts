@@ -33,42 +33,18 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { isCommandRefusal, refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseReparentOperands } from './operands.ts';
-import { refuseOtherClient } from './tasks-party.ts';
+import { lockedClientOf, refuseOtherClient } from './tasks-party.ts';
 import { appliedWrite, refused, type CarriedWrite, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
 const BOARD_RANK = slotOf(TASK_SPINE, 'board_rank');
-const CLIENT = slotOf(TASK_SPINE, 'client');
 const WHOLE_TASKS = {
   collection: 'task',
   action: 'write',
   scope: { kind: 'business', id: null },
 } as const;
-
-/**
- * The client a live parent carries, read under the parent's row lock. A
- * `task.set_party` on an empty parent holds that row `for update` until it
- * commits, so this waits and reads the client it commits rather than the one
- * it is replacing; a plain read would let a reparent check against the old
- * client and land one client's subtree under another's parent. `for share`, as
- * `planTaskPlacement` takes the parent next, in the same order: the target,
- * then the parent.
- */
-async function lockedClientOf(
-  tx: TenantQuery,
-  taskTypeId: string,
-  parentId: string,
-): Promise<string | null> {
-  const rows = await tx.query<{ readonly client: string | null }>(
-    `select ${CLIENT}::text as client from records
-      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null
-        for share`,
-    [tx.businessId, taskTypeId, parentId],
-  );
-  return rows[0]?.client ?? null;
-}
 
 /**
  * The envelope's question, `write` on `task`, put to another record's own

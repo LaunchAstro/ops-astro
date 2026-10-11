@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "U112 a client's project holds only that client's work in the trash too: an empty task on a trashed client project is refused another client, and is unchanged after the project's restore"
+}
