@@ -23,7 +23,6 @@ import {
   assign,
   created,
   directsEvery,
-  onClient,
   ownedAgent,
   revisionOf,
   type AiWorld,
@@ -31,6 +30,16 @@ import {
 
 /** What `codeOf` answers for a command that applied. */
 const APPLIED = 'not-a-refusal';
+
+/** Put a task under a client as the product holds it: its `client` slot (`uuid_7`) and its data. */
+const underClient = async (taskId: string): Promise<void> => {
+  const client = randomUUID();
+  await w.world.db.admin.execute(
+    `update public.records set uuid_7 = $2::uuid,
+            data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
+};
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('task-launch-isolation: DATABASE_URL is unset.');
@@ -164,7 +173,7 @@ describe.skipIf(serverUrl === undefined)(
     it("cannot act on a client's task", async () => {
       const task = await launched('Internal launched');
       const theirs = await created(w, w.p, `Client ${CANARY}`);
-      await onClient(w, theirs, randomUUID());
+      await underClient(theirs);
       const answer = await comment(theirs, await credentialFor(task));
       expect(codeOf(answer)).not.toBe(APPLIED);
       expect(JSON.stringify(answer)).not.toContain(CANARY);

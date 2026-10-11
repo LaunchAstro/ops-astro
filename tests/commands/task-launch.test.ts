@@ -20,7 +20,6 @@ import {
   assign,
   created,
   heldAs,
-  onClient,
   ownedAgent,
   revisionOf,
   type AiWorld,
@@ -28,6 +27,16 @@ import {
 
 /** What `codeOf` answers for a command that applied. */
 const APPLIED = 'not-a-refusal';
+
+/** Put a task under a client as the product holds it: its `client` slot (`uuid_7`) and its data. */
+const underClient = async (taskId: string): Promise<void> => {
+  const client = randomUUID();
+  await w.world.db.admin.execute(
+    `update public.records set uuid_7 = $2::uuid,
+            data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
+};
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('task-launch: DATABASE_URL is unset, so nothing ran.');
@@ -145,7 +154,7 @@ describe.skipIf(serverUrl === undefined)('Launch: refused in plain words, writin
 
   it("a client's task: only internal tasks go to an AI agent for now", async () => {
     const { task } = await heldTask(w.p, 'Client brief');
-    await onClient(w, task, randomUUID());
+    await underClient(task);
     const before = await footprint();
     const answer = await launch(w.p, task);
     expect(codeOf(answer)).toBe('LAUNCH_CLIENT_TASK');

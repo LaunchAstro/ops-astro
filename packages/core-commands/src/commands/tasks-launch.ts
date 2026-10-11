@@ -37,7 +37,11 @@ const no = (
 ): HandlerOutcome => refused(refuseCommand(code, names, fixes));
 
 /** Why this task cannot be launched by anyone: no agent holds it, or it is a client's. */
-function taskRefusal(data: Readonly<Record<string, unknown>>): HandlerOutcome | undefined {
+async function taskRefusal(
+  tx: TenantQuery,
+  taskId: string,
+  data: Readonly<Record<string, unknown>>,
+): Promise<HandlerOutcome | undefined> {
   if (typeof data['agent'] !== 'string') {
     return no(
       'LAUNCH_NO_AGENT',
@@ -48,7 +52,13 @@ function taskRefusal(data: Readonly<Record<string, unknown>>): HandlerOutcome | 
       ],
     );
   }
-  if (typeof data['client'] === 'string' && data['client'] !== '') {
+  // The task's client as every read takes it, its slot (`task-content.ts`),
+  // read under the task lock the envelope holds.
+  const [slot] = await tx.query<{ readonly client: boolean }>(
+    'select uuid_7 is not null as client from public.records where business_id = $1 and id = $2',
+    [tx.businessId, taskId],
+  );
+  if (slot?.client === true) {
     return no(
       'LAUNCH_CLIENT_TASK',
       ['client'],
@@ -65,13 +75,14 @@ function taskRefusal(data: Readonly<Record<string, unknown>>): HandlerOutcome | 
 async function refusalOf(
   tx: TenantQuery,
   context: CommandContext,
+  taskId: string,
   data: Readonly<Record<string, unknown>>,
 ): Promise<HandlerOutcome | undefined> {
   const { session } = context;
   if (session.credentialScope !== undefined) {
     return no('SCOPE_NOT_GRANTED', [], ['Only a person launches a run, signed in as themselves.']);
   }
-  const unlaunchable = taskRefusal(data);
+  const unlaunchable = await taskRefusal(tx, taskId, data);
   if (unlaunchable !== undefined) return unlaunchable;
   const agent = String(data['agent']);
   const may = await mayDirectAgent(tx, session.personId, subjectsOf(session), agent);
@@ -112,7 +123,7 @@ export async function launchTask(
 ): Promise<HandlerOutcome> {
   const { session, target } = context;
   if (target === undefined) throw new Error('launchTask: the envelope read no target');
-  const refusal = await refusalOf(tx, context, target.data);
+  const refusal = await refusalOf(tx, context, target.id, target.data);
   if (refusal !== undefined) return refusal;
   const launched = await launchRun(tx, {
     taskId: target.id,
