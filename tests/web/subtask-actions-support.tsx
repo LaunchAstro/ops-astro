@@ -34,7 +34,12 @@ export function commands(wait?: (command: string) => Promise<void>) {
 }
 
 /** The list under a parent that rereads on change: it redraws the server's next steps. */
-export async function list(client: OperationsClient, steps: readonly StepView[], next = steps) {
+export async function list(
+  client: OperationsClient,
+  steps: readonly StepView[],
+  next = steps,
+  grantKey?: string,
+) {
   const counter = { rereads: 0 };
   function Parent(): ReactElement {
     const [shown, setShown] = useState(steps);
@@ -42,6 +47,7 @@ export async function list(client: OperationsClient, steps: readonly StepView[],
     return (
       <SubtaskList
         client={client}
+        {...(grantKey === undefined ? {} : { grantKey })}
         parentId={TASK_ID}
         steps={shown}
         showFinished={open}

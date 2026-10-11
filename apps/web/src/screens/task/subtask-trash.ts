@@ -11,19 +11,20 @@ interface TrashStore {
   readonly listeners: Set<() => void>;
 }
 // A successful removal outlives the parent's reread. Custody stays in memory,
-// under this signed-in client and parent; another owner never inherits it.
+// under this signed-in client, grant and parent; another owner never inherits it.
 const owners = new WeakMap<OperationsClient, Map<string, TrashStore>>();
 
-export function useSubtaskTrash(client: OperationsClient, parentId: string) {
+export function useSubtaskTrash(client: OperationsClient, parentId: string, grantKey?: string) {
+  const ownerKey = JSON.stringify([grantKey ?? client.businessKey, parentId]);
   let parents = owners.get(client);
   if (parents === undefined) {
     parents = new Map();
     owners.set(client, parents);
   }
-  let found = parents.get(parentId);
+  let found = parents.get(ownerKey);
   if (found === undefined) {
     found = { receipts: [], listeners: new Set() };
-    parents.set(parentId, found);
+    parents.set(ownerKey, found);
   }
   const store = found;
   const receipts = useSyncExternalStore(

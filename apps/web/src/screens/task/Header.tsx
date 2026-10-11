@@ -187,7 +187,7 @@ function RunStatus(props: {
     <>
       {run === null ? null : (
         <p className="card__sub" data-run={run.shape}>
-          {run.words}
+          {run.words}{' '}
           <span
             className="tpr__revision"
             title={task.completedAt === null ? 'Not completed' : `Completed ${task.completedAt}`}

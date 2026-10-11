@@ -63,3 +63,24 @@ it('the subtask list can render on the server with its scoped receipt snapshot',
   );
   expect(markup).toContain('Write the copy');
 });
+
+it('a late removal stays with its original grant when the same client opens another grant', async () => {
+  let finish: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const server = commands(() => held);
+  const old = await list(server.client, [COPY], [], 'grant-one');
+  await old.view.click('[data-step-remove="41"]');
+  await old.view.unmount();
+  const next = await list(server.client, [], [], 'grant-two');
+  await act(() => {
+    finish?.();
+  });
+  await tick();
+  expect(next.view.find('[data-step-undo]')).toBeNull();
+  const returned = await list(server.client, [], [], 'grant-one');
+  expect(returned.view.find('[data-step-undo]')).not.toBeNull();
+  expect(old.rereads()).toBe(0);
+  expect(next.rereads()).toBe(0);
+});

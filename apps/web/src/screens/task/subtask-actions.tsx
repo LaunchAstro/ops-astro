@@ -10,6 +10,7 @@ const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 interface SubtaskOwner {
   readonly client: OperationsClient;
   readonly parentId: string;
+  readonly grantKey?: string;
   readonly onChanged: () => void;
 }
 
@@ -17,8 +18,8 @@ interface SubtaskOwner {
 export function useSubtaskActions(props: SubtaskOwner) {
   const { client } = props;
   const { locked: busy, because, run } = useCommand();
-  const current = useSubtaskOwner(client, props.parentId);
-  const trash = useSubtaskTrash(client, props.parentId);
+  const current = useSubtaskOwner(client, props.parentId, props.grantKey);
+  const trash = useSubtaskTrash(client, props.parentId, props.grantKey);
   const held = useHeldOperations();
   const tick = tickStepAction(props, run, current);
   const remove = (step: StepView): void => {
@@ -115,11 +116,19 @@ function TrashUndo(props: {
   ));
 }
 
-export function useSubtaskOwner(client: OperationsClient, parentId: string): () => boolean {
-  const held = useRef({ client, parentId, active: true });
-  if (held.current.client !== client || held.current.parentId !== parentId) {
+export function useSubtaskOwner(
+  client: OperationsClient,
+  parentId: string,
+  grantKey?: string,
+): () => boolean {
+  const held = useRef({ client, parentId, grantKey, active: true });
+  if (
+    held.current.client !== client ||
+    held.current.parentId !== parentId ||
+    held.current.grantKey !== grantKey
+  ) {
     held.current.active = false;
-    held.current = { client, parentId, active: true };
+    held.current = { client, parentId, grantKey, active: true };
   }
   const owner = held.current;
   useEffect(() => {

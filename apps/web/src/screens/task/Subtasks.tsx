@@ -110,6 +110,7 @@ function FinishedFold(props: {
 
 interface SubtaskListProps {
   readonly client: OperationsClient;
+  readonly grantKey?: string;
   readonly parentId: string;
   /** The composed Team heading carries this summary; standalone lists keep their own. */
   readonly showProgress?: boolean;
@@ -154,6 +155,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
 
 interface TeamSubtasksProps {
   readonly client: OperationsClient;
+  readonly grantKey?: string;
   readonly task: {
     readonly id: string;
     readonly key?: string;
@@ -192,6 +194,7 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
       list={
         <SubtaskList
           client={props.client}
+          {...(props.grantKey === undefined ? {} : { grantKey: props.grantKey })}
           parentId={task.id}
           showProgress={false}
           steps={task.steps}

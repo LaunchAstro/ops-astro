@@ -196,6 +196,7 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
         type="button"
         data-timer
         title={binding === null ? 'Select task to time' : undefined}
+        aria-label={binding === null ? 'Start timer: select a task' : undefined}
         data-running={binding !== null}
         disabled={timer === null || state.attempt !== null}
         onClick={() => (binding === null ? props.onSelect() : timer?.stop())}
