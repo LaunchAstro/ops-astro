@@ -33,8 +33,14 @@ const OPERATIONS: readonly string[] = Object.keys(HISTORY_OPERATIONS);
 /** The marks only an internal reader is sent (`scoresOf`), so only they are told one changed. */
 const INTERNAL_FIELDS: ReadonlySet<string> = new Set(['impact', 'confidence', 'ease']);
 
-/** Whether this reader is told that a field changed. */
-const told = (key: string, internal: boolean): boolean => internal || !INTERNAL_FIELDS.has(key);
+/**
+ * The changed fields this reader is sent: those a history names, less the
+ * rank marks for an outside reader. Undefined where the event recorded none.
+ */
+const shownOf = (row: HistoryRow, internal: boolean): readonly string[] | undefined =>
+  row.field_changes?.keys.filter(
+    (key) => Object.hasOwn(HISTORY_FIELDS, key) && (internal || !INTERNAL_FIELDS.has(key)),
+  );
 
 /**
  * The field writers that are an act of their own, whatever fields they wrote:
@@ -124,17 +130,16 @@ export async function historyOf(
     INTERNAL_ROLE_KEYS,
   ]);
   // A field command's one effect is its data write, so one that changed no
-  // field this reader is told of did not happen to the task for them: a repeat
-  // of the stored value, or, to an outside reader, a rank-mark edit. An act is
-  // its own change, and an event that recorded no keys is a change unnamed,
-  // except a rank-mark command's, which an outside reader is never told of.
-  const changes = rows.filter(
-    (row) =>
-      (internal || row.command !== 'task.set_scores') &&
-      (ACTS.has(row.command) ||
-        row.field_changes === null ||
-        row.field_changes.keys.some((key) => told(key, internal))),
-  );
+  // field this reader is sent did not happen to the task for them: a repeat of
+  // the stored value, a custom field's edit, or, to an outside reader, a
+  // rank-mark edit. An act is its own change, and an event that recorded no
+  // keys is a change unnamed, except a rank-mark command's to an outside reader.
+  const changes = rows.filter((row) => {
+    if (ACTS.has(row.command)) return true;
+    const shown = shownOf(row, internal);
+    if (shown === undefined) return internal || row.command !== 'task.set_scores';
+    return shown.length > 0;
+  });
   const history = await Promise.all(
     changes.map(async (row) => await entryOf(tx, viewer, internal, row)),
   );
@@ -154,9 +159,7 @@ async function entryOf(
   internal: boolean,
   row: HistoryRow,
 ): Promise<HistoryEntry> {
-  const shown = row.field_changes?.keys.filter(
-    (key) => Object.hasOwn(HISTORY_FIELDS, key) && told(key, internal),
-  );
+  const shown = shownOf(row, internal);
   // An agent's change is always shown as an agent's, by its actor here: an
   // agent holds no person, so there is no one behind it to withhold. A former
   // member, a client's person or the system is not named; an outside reader

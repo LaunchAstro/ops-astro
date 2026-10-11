@@ -58,7 +58,8 @@ export const HISTORY_OPERATIONS: Readonly<Record<string, string>> = {
 /**
  * The task fields a history entry may name, by the key the audit event
  * recorded (`audit_events.field_changes`). A key not listed here, a custom
- * field's included, is never sent: the change is told by its command alone.
+ * field's included, is never sent, and a field command that changed only such
+ * keys is not in the history at all (`historyOf`).
  */
 export const HISTORY_FIELDS: Readonly<Record<string, string>> = {
   title: 'Title',
