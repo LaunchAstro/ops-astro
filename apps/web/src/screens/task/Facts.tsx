@@ -196,13 +196,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['category', 'Category', orNotSet(categoryOf(task))],
     ['stage', 'Stage', orNotSet(task.stage === null ? null : TASK_STAGES.labelOf(task.stage))],
     ['status', 'Status', orNotSet(task.state?.label)],
-    [
-      'page-link',
-      'Page link',
-      <span className="sbact__meta" key="page-link">
-        {task.pageLink ?? 'nothing yet'}
-      </span>,
-    ],
+    ['page-link', 'Page link', <PageAddress value={task.pageLink} key="page-link" />],
     ['handling', 'Handling', <Handling key="handling" task={task} />],
   ];
   return (
@@ -233,5 +227,14 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
         </div>
       )}
     </section>
+  );
+}
+
+/** The stored address remains read-only in the facts band. */
+function PageAddress(props: { readonly value: string | null }): ReactElement {
+  return (
+    <span className={props.value === null ? 'sb__addr sb__addr--none' : 'sb__addr'}>
+      {props.value ?? 'nothing yet'}
+    </span>
   );
 }

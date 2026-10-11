@@ -33,17 +33,17 @@
 }
 /* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
    and the same door out of a gate or an empty page. */
-.tpr__crumb .sb__addr,
-.empty__action .sb__addr {
+.sb__addr {
+  /* type-exception R20261012: reference task addresses use 13px mono. */
   font: var(--type-data);
+  font-size: 13px;
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--text);
   text-decoration: none;
 }
-.tpr__crumb .sb__addr {
-  /* type-exception R20261012: the reference task breadcrumb door is 13px mono. */
-  font-size: 13px;
+.sb__addr--none {
+  color: var(--text-muted);
 }
 .tpr__crumb .sb__addr:hover,
 .tpr__crumb .sb__addr:focus-visible,
