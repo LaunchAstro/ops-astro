@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Four eyes counts an agent's work as its owner's whoever holds the task now: after the owner hands the task to a person or to another agent, the owner of the agent that proposed a pending gate is refused FOUR_EYES_REQUIRED on it and raised no decision item, and a person who neither owns, launched nor holds the task decides it"
+}

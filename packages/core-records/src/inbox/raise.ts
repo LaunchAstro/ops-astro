@@ -180,10 +180,10 @@ const REOPEN = `update public.inbox_items set work_state = 'open', closed_at = n
  * An assignment written. Whoever held the open assignment item and is no
  * longer the assignee has it withdrawn; the new assignee is raised one,
  * unless they assigned themselves. Four eyes: the open decision items on the
- * task of those it is now assigned to (an agent's delegating person too)
- * withdraw, and everyone else who decides a pending gate on it now
- * (as `raiseDecision` and `raiseEscalation` ask) holds an open one, a former
- * assignee's withdrawn one reopened. Under the task row this write holds,
+ * task of those it now refuses every gate (`assignedPeople`) withdraw, and
+ * everyone else who decides a pending gate on it now (as `raiseDecision` and
+ * `raiseEscalation` ask) holds an open one, a former assignee's withdrawn
+ * one reopened. Under the task row this write holds,
  * which a decision locks too.
  */
 export async function raiseAssignment(

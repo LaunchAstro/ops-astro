@@ -10,8 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import { mintDelegation } from '../../packages/core-records/src/index.ts';
-import { agentWorld, type AgentWorld, type Decider } from './agent-fixture.ts';
+import { configuredCredentialKeys, mintDelegation } from '../../packages/core-records/src/index.ts';
+import { agentWorld, codeOf, type AgentWorld, type Decider } from './agent-fixture.ts';
 import { agentOwnedBy, grantTo } from './fixture.ts';
 
 export const CANARY: string = `canary-${randomUUID()}`;
@@ -160,3 +160,86 @@ export const onClient = async (w: AiWorld, taskId: string, client: string): Prom
     [taskId, client],
   );
 };
+
+/** `task.launch` by a person, at the task's current revision, as its answer's code. */
+export const launch = async (w: AiWorld, by: Decider, taskId: string): Promise<string> =>
+  codeOf(
+    await w.world.asPerson(by, {
+      command: 'task.launch',
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: await revisionOf(w, taskId),
+    }),
+  );
+
+/** The credential the runner is handed for the task's waiting launch, derived as the API derives it. */
+export async function launchCredential(w: AiWorld, taskId: string): Promise<string> {
+  const [row] = await w.world.db.admin.execute<{ readonly id: string; readonly key: string }>(
+    `select d.id, d.credential_key_id as key
+       from public.task_launches l
+       join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+      where l.task_id = $1 and l.state = 'waiting'`,
+    [taskId],
+  );
+  const keys = configuredCredentialKeys();
+  if (row === undefined || !keys.ok) throw new Error('fixture: no launch to derive from');
+  const credential = keys.keys.derive(row.key, {
+    businessId: w.world.business,
+    agentActorId: w.world.agentActorId,
+    delegationId: row.id,
+  });
+  if (credential === undefined) throw new Error('fixture: the key is not held');
+  return credential;
+}
+
+export type Gate = {
+  readonly gateId: string;
+  readonly versionId: string;
+};
+
+/** The world agent's proposal on the task, under the launch's delegation unless another credential is named. */
+export async function agentProposes(
+  w: AiWorld,
+  taskId: string,
+  credential?: string,
+): Promise<Gate> {
+  const answer = await w.world.asAgent(
+    {
+      command: 'task.propose',
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: await revisionOf(w, taskId),
+      purpose: `gate_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3_000,
+      currency: 'AUD',
+      payload: { instruction: 'draft a reply' },
+      step: { kind: 'compose', payload: {} },
+    },
+    credential ?? (await launchCredential(w, taskId)),
+  );
+  if (isCommandRefusal(answer)) throw new Error(`task.propose refused ${answer.code}`);
+  return answer.detail as Gate;
+}
+
+/** `task.decide` approving the gate, as its answer's code. */
+export const decide = async (w: AiWorld, by: Decider, gate: Gate): Promise<string> =>
+  codeOf(
+    await w.world.asPerson(by, {
+      command: 'task.decide',
+      operationId: randomUUID(),
+      gateId: gate.gateId,
+      versionId: gate.versionId,
+      decision: 'approve',
+      note: 'a second person decides',
+    }),
+  );
+
+/** Who holds an open decision item on the gate. */
+export const offeredTo = async (w: AiWorld, gateId: string): Promise<readonly string[]> =>
+  (
+    await w.world.db.admin.execute<{ readonly person: string }>(
+      `select recipient_person_id::text as person from public.inbox_items
+        where reason = 'decision' and fact_kind = 'gate' and fact_id = $1 and work_state = 'open'`,
+      [gateId],
+    )
+  ).map((row) => row.person);
