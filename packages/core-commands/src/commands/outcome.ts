@@ -8,7 +8,18 @@
 // two shapes are separate types rather than one union with a flag so that a
 // handler cannot return a half-filled result and have it read as applied.
 
+import type { DataWrite } from '../../../core-records/src/index.ts';
 import type { CommandRefusal } from './refusal.ts';
+
+/**
+ * The names of the fields an applied write actually changed, for its audit
+ * event (P20, `audit_events.field_changes`). Names only, never a value; `[]`
+ * is a write that changed nothing. Absent means unknown, not unchanged.
+ */
+export interface FieldChanges {
+  readonly version: 1;
+  readonly keys: readonly string[];
+}
 
 export interface Applied {
   /** The record the command touched, or null where it touched no single one. */
@@ -25,6 +36,8 @@ export interface Applied {
    * audit event names the mandate it filed or revoked (MP-14-10a).
    */
   readonly auditSubjectId?: string;
+  /** Set only by a writer that read back what its write changed (`appliedWrite`). */
+  readonly fieldChanges?: FieldChanges;
 }
 
 export interface Refused {
@@ -68,6 +81,18 @@ export function applied(
   detail: Readonly<Record<string, unknown>> = {},
 ): Applied {
   return { recordId, revision, detail };
+}
+
+/** The applied answer for a data write, carrying the keys it actually changed. */
+export function appliedWrite(
+  recordId: string,
+  write: DataWrite,
+  detail: Readonly<Record<string, unknown>> = {},
+): Applied {
+  return {
+    ...applied(recordId, write.revision, detail),
+    fieldChanges: { version: 1, keys: write.changed },
+  };
 }
 
 export function refused(

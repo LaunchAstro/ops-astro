@@ -15,8 +15,9 @@ it('R70 task start date is an internal nullable typed field with the normal task
   });
 });
 
-it('the task start-date metadata migration follows the latest installed migration IDs', () => {
-  const migrations = readMigrations('migrations');
-  expect(migrations.at(-1)?.version).toBe('20261008120000_task_rank_started_at');
-  expect(migrations.at(-2)?.version).toBe('20261007174205_run_reference_scopes');
+it('the task start-date metadata migration follows the migration IDs installed before it', () => {
+  const versions = readMigrations('migrations').map((m) => m.version);
+  const index = versions.indexOf('20261008120000_task_rank_started_at');
+  expect(index).toBeGreaterThan(0);
+  expect(versions[index - 1]).toBe('20261007174205_run_reference_scopes');
 });
