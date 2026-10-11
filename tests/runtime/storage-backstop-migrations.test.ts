@@ -69,11 +69,11 @@ const THROUGH_0025 = (version: string): boolean => version.slice(0, 4) <= '0025'
 // And AW-06's 0105 plan step key: the runtime that seeds below proposes with
 // it, and it reads nothing the migrations under test add, so it is applied
 // with the seed and the runner applies whatever is pending after it.
-// And the agent record's columns (20261011090000): that runtime's inbox raise
+// And the agent record's columns (20261011115838): that runtime's inbox raise
 // asks who the task is assigned to, joining an agent's owner. They add only
 // two columns to actors, so the runner still applies the rest onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0025(version) || version.startsWith('0105') || version.startsWith('20261011090000');
+  THROUGH_0025(version) || version.startsWith('0105') || version.startsWith('20261011115838');
 /** The three this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0026', '0027', '0028'];
 
@@ -526,7 +526,7 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
         );
         const [ledger] = await db.admin.execute<{ readonly last: string }>(
           `select max(version) as last from ops.schema_migrations
-            where version not like '0105%' and version not like '20261011090000%'`,
+            where version not like '0105%' and version not like '20261011115838%'`,
         );
         expect(ledger?.last.slice(0, 4)).toBe(stopsAt);
         expect(await seedSnapshot(db)).toBe(seeded);

@@ -2,7 +2,7 @@
 //
 // An agent of the business, as people name and direct it: an actor of kind
 // `agent` (0002) with a display name and the person who owns it (migration
-// 20261011090000). A task handed to an agent names this actor in its `agent`
+// 20261011115838). A task handed to an agent names this actor in its `agent`
 // field, and the assignment stays until a person changes it.
 //
 // **Who directs an agent.** Its owner, or a holder of `agent:assign` over the

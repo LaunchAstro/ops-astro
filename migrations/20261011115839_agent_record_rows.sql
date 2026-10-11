@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- The rows already here, for the agent record (20261011090000): an owner for
+-- The rows already here, for the agent record (20261011115838): an owner for
 -- each agent where it is plain, and every task held by a delegation moved to
 -- that delegation's agent. Kept apart from the columns, which an older install
 -- seeded with today's runtime takes first; this reads agent credentials

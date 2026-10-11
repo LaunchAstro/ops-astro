@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent record migrations (20261011090000, 20261011090100) over an installation that used
+// The agent record migrations (20261011115838, 20261011115839) over an installation that used
 // 0082's Assign to AI, in two businesses. Each task holding a delegation comes
 // to hold that delegation's agent; an agent gets an owner only where one is
 // plain (its credential's issuer, or the one person whose own delegations of
@@ -25,7 +25,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 
-const MIGRATION = '20261011090000_agent_record';
+const MIGRATION = '20261011115838_agent_record';
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('agent-record-upgrade: DATABASE_URL is unset.');
 

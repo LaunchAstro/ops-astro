@@ -16,7 +16,7 @@
 -- already enabled, forced and keyed on the business. They ask nothing past
 -- 0002, so an upgrade test that seeds an older install with today's runtime
 -- (whose four-eyes read joins `owner_person_id`) applies this file with its
--- seed. The owners and the tasks move in 20261011090100.
+-- seed. The owners and the tasks move in 20261011115839.
 
 alter table public.actors
   add column display_name text,

@@ -2,7 +2,7 @@
 //
 // `task.assign` with the agent assignee (Assign to AI). A task's assignee is
 // a person or an agent, one at a time; the agent is an agent actor of this
-// business, in the task's `agent` field (migrations 0082, 20261011090000).
+// business, in the task's `agent` field (migrations 0082, 20261011115838).
 //
 // **Who may hand a task to an agent.** The envelope has asked `task:assign`
 // of the task, as for a person. Beyond that the assigner must direct the
