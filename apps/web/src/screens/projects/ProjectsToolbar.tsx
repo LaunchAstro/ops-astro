@@ -2,19 +2,25 @@
 import type { ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, usePageToolbar } from '@launchastro/ui';
-import { TASK_STAGES, type ClientView } from '../../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_CATEGORIES,
+  TASK_STAGES,
+  type ClientView,
+} from '../../../../../packages/core-wire/src/index.ts';
 import { addressScope, queryOf } from './board-address.ts';
 
 /**
  * A New task door on the board at `address`, filed with its context: the
- * board's client (its scope's, else the one Client filter's, named from
- * `clients`) and project, the one stage it is filtered to, and the one
- * priority and category its scope reads as. Two of a kind guess neither.
+ * board's client (its scope's, else the selected project's own `project`
+ * client, else the one Client filter's, named from `clients`) and project, the
+ * one stage and category it is filtered to, and the one priority and category
+ * its scope reads as. Two of a kind guess neither.
  */
 export function boardDoor(
   address: string | undefined,
   canFileTask: boolean,
   clients: readonly ClientView[] = [],
+  project: ClientView | null = null,
 ): Readonly<Record<string, string | undefined>> {
   if (!canFileTask) return {};
   const scope = addressScope(address);
@@ -24,20 +30,26 @@ export function boardDoor(
   const filtered = only(facets.flatMap((facet) => valueOf('client', facet)));
   const clientId =
     scope?.client ??
+    project?.clientId ??
     only([...new Set(clients.filter((one) => one.name === filtered).map((one) => one.clientId))]);
   return {
     'data-new-task': '',
     'data-new-task-label': 'Projects',
     'data-new-task-client': clientId,
-    'data-new-task-client-name': clients.find((one) => one.clientId === clientId)?.name,
+    'data-new-task-client-name': [...clients, ...(project === null ? [] : [project])].find(
+      (one) => one.clientId === clientId,
+    )?.name,
     'data-new-task-board': scope?.kind === 'selected' ? scope.boardId : undefined,
     'data-new-task-stage': only(
       facets.flatMap((facet) => valueOf('stage', facet).flatMap((label) => stageOf(label))),
     ),
     'data-new-task-priority': priority === undefined ? undefined : String(priority),
-    'data-new-task-category': only(
-      chips.flatMap((chip) => (chip.kind === 'category' ? [chip.value] : [])),
-    ),
+    'data-new-task-category': only([
+      ...chips.flatMap((chip) => (chip.kind === 'category' ? [chip.value] : [])),
+      ...facets.flatMap((facet) =>
+        valueOf('category', facet).flatMap((label) => categoryOf(label)),
+      ),
+    ]),
   };
 }
 
@@ -58,6 +70,12 @@ function stageOf(label: string): readonly string[] {
   return stage === undefined ? [] : [stage.id];
 }
 
+/** A Category filter's category id, from its label. */
+function categoryOf(label: string): readonly string[] {
+  const category = TASK_CATEGORIES.list().find((one) => one.label === label);
+  return category === undefined ? [] : [category.id];
+}
+
 /** The page's New task, in the page toolbar; inline when the board is in a panel. */
 export function ProjectsToolbar(props: {
   readonly inPanel: boolean;
@@ -66,6 +84,8 @@ export function ProjectsToolbar(props: {
   readonly address: string;
   /** The clients the board knows by name, for a Client filter's door. */
   readonly clients: readonly ClientView[];
+  /** The selected project's own client, read for its door; null for none or unread. */
+  readonly project: ClientView | null;
 }): ReactElement {
   const pageBar = usePageToolbar();
   const bar = props.inPanel ? null : pageBar;
@@ -74,7 +94,7 @@ export function ProjectsToolbar(props: {
       className="btn btn--secondary btn--sm"
       type="button"
       data-projects-new-task
-      {...boardDoor(props.address, props.canFileTask, props.clients)}
+      {...boardDoor(props.address, props.canFileTask, props.clients, props.project)}
       disabled={!props.canFileTask}
       title={
         props.canFileTask

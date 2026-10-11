@@ -12,12 +12,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { json, unmountAll } from './perspective-support.tsx';
 import { draft } from './draft-support.tsx';
-import { tick } from './task-page-stub.tsx';
+import { task, tick } from './task-page-stub.tsx';
 import { OrderedCreateServer, closeAll, drain, file, open } from './p05-draft-create-support.ts';
 import { draftTab, PERSON } from './projects-draft-app-support.tsx';
 import { readDraft } from '../../apps/web/src/screens/task/task-draft.ts';
 import { boardDoor } from '../../apps/web/src/screens/projects/ProjectsToolbar.tsx';
 import { doorContext } from '../../apps/web/src/screens/task/task-prefill.ts';
+import { owningBoardAddress } from '../../apps/web/src/screens/task/board-door.tsx';
 
 afterEach(closeAll);
 afterEach(unmountAll);
@@ -69,6 +70,16 @@ describe('Core 04 2: board doors carry the board’s context into the draft', ()
     expect(page).toMatchObject({ clientId: null });
   });
 
+  it('a Category filter files its category; two Category filters guess none', () => {
+    const one = encodeURIComponent('stage:"Enquiries",category:"SEO"');
+    expect(contextOf(`/projects/?board=none&f=${one}`)).toMatchObject({
+      stage: 'enquiries',
+      category: 'seo',
+    });
+    const two = encodeURIComponent('category:"SEO",category:"Content"');
+    expect(contextOf(`/projects/?board=none&f=${two}`).category).toBeUndefined();
+  });
+
   it('a door that may not file a task carries nothing', () => {
     expect(boardDoor(SCOPED, false)).toStrictEqual({});
   });
@@ -101,6 +112,46 @@ describe('Core 04 2: in the App, the board doors open the draft with that contex
       stage: 'enquiries',
       priority: 2,
     });
+  });
+});
+
+describe('a client’s project board, at the address the app writes for it', () => {
+  // The address a task's Open its board link writes: the project, no client.
+  const ADDRESS = owningBoardAddress({
+    key: 'WEB-1',
+    board: { id: BOARD, readable: true, title: 'Website rebuild' },
+  } as never)!;
+  const serving = (server: OrderedCreateServer): OrderedCreateServer => {
+    const inner = server.fetch;
+    const served = task({
+      id: BOARD,
+      key: 'WEB-PROJECT',
+      title: 'Website rebuild',
+      client: CLIENT,
+      clientSummary: { kind: 'readable', name: 'Client B' },
+    });
+    server.fetch = async (url, init) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+        recordId?: unknown;
+      };
+      return String(url).endsWith('/task/read') && body.recordId === BOARD
+        ? json({ ok: true, task: served, states: [] })
+        : await inner(url, init);
+    };
+    return server;
+  };
+
+  it('every door files the draft on the project’s own client', async () => {
+    expect(ADDRESS).not.toContain('client=');
+    const app = await open(serving(new OrderedCreateServer()), draftTab(), ADDRESS);
+    await drain(app);
+    for (const door of ['[data-projects-new-task]', '[data-projects-empty-new-task]'])
+      expect(app.view.host.querySelector<HTMLElement>(door)?.dataset['newTaskClient'], door).toBe(
+        CLIENT,
+      );
+    await file(app);
+    await app.view.type('#panel-draft-name', 'Filed on the client’s project');
+    expect(readDraft(app.storage, PERSON)).toMatchObject({ clientId: CLIENT, boardId: BOARD });
   });
 });
 

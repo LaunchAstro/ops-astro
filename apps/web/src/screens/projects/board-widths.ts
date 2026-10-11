@@ -7,7 +7,9 @@
 // (`usePreferences`, not audited). A change made before the first read
 // answers is drawn and held, then saved onto what the read brings, so no other
 // board's entries are lost. A refused save is said, and the stored widths come
-// back with the reread; a failed read leaves the defaults and saves nothing.
+// back with the reread. A failed read leaves the defaults and saves nothing
+// until a change is made: that change reads again and is saved onto what the
+// reread brings, or, when it fails too, the board says widths are not kept.
 
 import { useEffect, useMemo, useState } from 'react';
 import { WIDTHS_PREFERENCE, isWidth, widthsToPreference, type ColumnWidths } from '@launchastro/ui';
@@ -16,6 +18,7 @@ import { usePreferences } from '../../data/use-preferences.ts';
 import { isRecord } from '../../session/token.ts';
 
 const BOARD = 'projects';
+const NOT_KEPT = 'Column widths are not being kept: your preferences could not be read.';
 
 /** This board's widths in the stored key, or null for the defaults. */
 function boardWidths(stored: unknown): ColumnWidths | null {
@@ -31,13 +34,13 @@ export interface BoardWidths {
   readonly onWidths: (widths: ColumnWidths | null) => void;
   /**
    * Why the last save failed, in plain words; null when none did. A first read
-   * that fails is not said: the board keeps its default widths.
+   * that fails is not said until a change cannot be kept.
    */
   readonly because: string | null;
 }
 
 export function useBoardWidths(client: OperationsClient, grantKey: string): BoardWidths {
-  const { preferences, because, save } = usePreferences(client, grantKey);
+  const { preferences, because, save, unread, reread } = usePreferences(client, grantKey);
   // A change made before the read answers, held for its owner. Nothing is
   // saved until then, so `preferences` is null until the read answers.
   const [early, setEarly] = useState<{
@@ -59,10 +62,12 @@ export function useBoardWidths(client: OperationsClient, grantKey: string): Boar
   }, [held, answered]);
   return {
     widths,
-    because: preferences === null ? null : because,
+    because: answered ? because : held !== null && unread ? NOT_KEPT : null,
     onWidths: (next) => {
       if (!answered) {
         setEarly({ of: grantKey, next });
+        // After a failed read, the change reads again, to be saved onto its answer.
+        if (unread) reread();
         return;
       }
       setEarly(null);

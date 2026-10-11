@@ -41,16 +41,19 @@ function saveAnswer(body: Body, fail: boolean, keep: () => void): Response {
   return Response.json({ recordId: null, revision: null, detail: {} });
 }
 
-/** One person's server; with `delayed`, each preference read waits to be answered. */
-function server(initial: Body = {}, delayed = false) {
+/** One person's server; `delayed` holds each preference read, and the first `outages` fail. */
+function server(initial: Body = {}, delayed = false, outages = 0) {
   let persisted = initial;
   let fail = false;
+  let read = 0;
   const saves: Body[] = [];
   const reads: (() => void)[] = [];
   const fetch: typeof globalThis.fetch = (url, init) => {
     const path = new URL(String(url), 'http://test').pathname;
     const body = JSON.parse(String(init?.body ?? '{}')) as Body;
     if (path.endsWith('/preference/read')) {
+      read += 1;
+      if (read <= outages) return Promise.resolve(new Response(null, { status: 503 }));
       const snapshot = persisted;
       return delayed
         ? new Promise<Response>((resolve) => {
@@ -192,27 +195,23 @@ it('Core06-3 a refused resize is said, and the stored widths are drawn again', a
   expect(layout(view)).toEqual(before);
 });
 
-it('Core06-3 a failed read keeps the default widths and says nothing', async () => {
-  const fetch: typeof globalThis.fetch = (url) =>
-    Promise.resolve(
-      String(url).endsWith('/preference/read')
-        ? new Response(null, { status: 503 })
-        : Response.json(
-            String(url).endsWith('/task/board')
-              ? { ok: true, viewer: null, tasks: [row] }
-              : { ok: true, persons: [], clients: [], inbox: [], owed: 0 },
-          ),
-    );
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
-  const reference = server();
-  const drawn = await mount(page(reference.client));
+it('Core06-3 a failed read keeps the default widths; each resize reads again until one saves', async () => {
+  const drawn = await mount(page(server().client));
   await settle();
   const defaults = layout(drawn);
   await drawn.unmount();
-
-  const view = await mount(page(client));
+  // The first read fails, and so does the one the first resize asks for.
+  const api = server({ 'columns.widths': { 'other.name': 401 } }, false, 2);
+  const view = await mount(page(api.client));
   await settle();
   expect(layout(view)).toEqual(defaults);
+  expect(view.find('[data-board-refusal]')).toBeNull();
+  await resize(view);
+  expect(api.saves).toStrictEqual([]);
+  expect(view.find('[data-board-refusal]')?.textContent).toContain('not being kept');
+  await resize(view);
+  const saved = api.persisted()['columns.widths'];
+  expect(saved).toMatchObject({ 'other.name': 401, 'projects.name': expect.any(Number) });
   expect(view.find('[data-board-refusal]')).toBeNull();
 });
 

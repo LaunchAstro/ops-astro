@@ -17,6 +17,13 @@ import {
   tick,
 } from './p12-board-door-support.tsx';
 
+/**
+ * The tasks read: the task page's own, then the opened project's, for the
+ * client its doors file; never a lookup of the target.
+ */
+const taskReads = (sent: readonly { path: string; body: Readonly<Record<string, unknown>> }[]) =>
+  sent.filter((one) => one.path === '/task/read').map((one) => one.body['recordId']);
+
 it.each([
   { board: { readable: true as const, id: boardA, title: 'Current board' }, value: boardA },
   { board: null, value: 'none' },
@@ -104,7 +111,7 @@ it('revoked destination authority never falls back to an aggregate or target loo
       .filter((one) => one.path === '/task/board')
       .every((one) => one.body['board'] === boardA),
   ).toBe(true);
-  expect(app.sent.filter((one) => one.path === '/task/read')).toHaveLength(1);
+  expect(taskReads(app.sent)).toStrictEqual([KEY, boardA]);
 });
 it('a late admitted destination row is focused only after its read arrives', async () => {
   const app = await boardDoorApp();
@@ -120,7 +127,7 @@ it('an absent target performs no extra task lookup or wider board read', async (
   await app.view.click(PAGE_DOOR);
   await tick();
   expect(app.view.all('[data-row]')).toHaveLength(0);
-  expect(app.sent.filter((one) => one.path === '/task/read')).toHaveLength(1);
+  expect(taskReads(app.sent)).toStrictEqual([KEY, boardA]);
   expect(
     app.sent
       .filter((one) => one.path === '/task/board')

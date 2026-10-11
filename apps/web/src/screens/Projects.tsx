@@ -8,6 +8,7 @@ import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import { useProjectBoardAddress } from './projects/board-address.ts';
+import { useProjectClient } from './projects/project-client.ts';
 
 export type { ProjectsProps };
 
@@ -17,6 +18,8 @@ export function Projects(props: ProjectsProps): ReactElement {
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
   const [clients, setClients] = useState<readonly ClientView[]>([]);
+  // A selected project's own client, which every door on its board files.
+  const project = useProjectClient(props.client, props.grantKey, place.query);
   return (
     <div className="stack">
       {tab === 'board' ? (
@@ -25,6 +28,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           canFileTask={canFileTask}
           address={place.view}
           clients={clients}
+          project={project}
         />
       ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
@@ -34,6 +38,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           hidden={tab !== 'board'}
           place={place}
           onClients={setClients}
+          project={project}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

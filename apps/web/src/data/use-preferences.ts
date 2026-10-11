@@ -14,6 +14,12 @@ export type Preferences = Readonly<Record<string, unknown>>;
 type Newer = (key: string) => boolean;
 
 type Held = { readonly of: string; readonly value: Preferences } | null;
+/** What is said to one owner; `unread` when it is why their read brought nothing. */
+type Said = { readonly of: string; readonly text: string; readonly unread?: true } | null;
+
+/** Why a read brought no preferences, in plain words. */
+const unreadBecause = (answer: Parameters<typeof isRefusal>[0]): string =>
+  isRefusal(answer) ? describeRefusal(answer) : 'Your preferences could not be read.';
 
 /** A read's answer for `of`, but a key saved since the read left keeps its saved value. */
 function answered(before: Held, of: string, read: Preferences, newer: Newer) {
@@ -54,12 +60,13 @@ function changed(before: Held, of: string, key: string, value: unknown): Held {
 export function usePreferences(client: OperationsClient, grantKey: string) {
   const [held, setHeld] = useState<Held>(null);
   // A refusal is said to one owner, as `held` is held for one.
-  const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
+  const [said, setSaid] = useState<Said>(null);
   const desk = useDesk(ownerOf(client, grantKey));
   // Any reread that draws runs every refused save's restore: a newer reread
   // that superseded the one a refusal asked for does not lose it.
   const restores = useRef<Restore[]>([]);
   const reread = () => {
+    setSaid((before) => (before?.unread === true ? null : before));
     const tag = desk.read();
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
       if (!desk.draws(tag)) return answer;
@@ -69,8 +76,7 @@ export function usePreferences(client: OperationsClient, grantKey: string) {
       if (typeof preferences === 'object' && preferences !== null) {
         setHeld((before) => answered(before, grantKey, preferences as Preferences, newer));
         restore(restores.current.splice(0), preferences as Preferences, desk, newer);
-      } else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
-      else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
+      } else setSaid({ of: grantKey, text: unreadBecause(answer), unread: true });
       return answer;
     });
   };
@@ -98,5 +104,6 @@ export function usePreferences(client: OperationsClient, grantKey: string) {
 
   const preferences = held !== null && held.of === grantKey ? held.value : null;
   const because = said !== null && said.of === grantKey ? said.text : null;
-  return { preferences, because, save };
+  const unread = said?.of === grantKey && said.unread === true && preferences === null;
+  return { preferences, because, save, unread, reread };
 }
