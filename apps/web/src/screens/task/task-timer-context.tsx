@@ -195,13 +195,19 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
         className="appbar__timer"
         type="button"
         data-timer
+        title={binding === null ? 'Select task to time' : undefined}
         data-running={binding !== null}
         disabled={timer === null || state.attempt !== null}
         onClick={() => (binding === null ? props.onSelect() : timer?.stop())}
       >
-        {binding === null
-          ? 'Select task to time'
-          : `■ Stop · ${binding.task.title ?? binding.task.key ?? 'Task unavailable'}`}
+        {binding === null ? (
+          <>
+            <Icon name="play" size="xs" />
+            Start timer
+          </>
+        ) : (
+          `■ Stop · ${binding.task.title ?? binding.task.key ?? 'Task unavailable'}`
+        )}
       </button>
       {binding?.running === null || binding === null ? null : (
         <Elapsed startedAt={binding.running.startedAt} />

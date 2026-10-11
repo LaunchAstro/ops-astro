@@ -175,7 +175,7 @@ it('another admitted owner cannot inherit a persisted timer or replay its intent
   );
   const before = world.writes().length;
   const second = await realm(world.fetch, storage, '/projects');
-  expect(second.view.find(strip)?.textContent).toBe('Select task to time');
+  expect(second.view.find(strip)?.textContent).toBe('Start timer');
   expect(second.storage.getItem(TIMER)).toBeNull();
   expect(world.writes()).toHaveLength(before);
 });
@@ -193,7 +193,7 @@ it('a business departure clears custody even when the same owner returns before 
   expect(first.storage.getItem(TIMER)).toBeNull();
   await first.view.unmount();
   const second = await realm(world.fetch, copied(first.storage), '/projects');
-  expect(second.view.find(strip)?.textContent).toBe('Select task to time');
+  expect(second.view.find(strip)?.textContent).toBe('Start timer');
 });
 
 it('an old-owner delayed answer cannot repopulate custody after departure', async () => {
@@ -269,6 +269,6 @@ it('invalid stored bytes confer no timer identity and trigger no command', async
   const storage = draftTab();
   storage.setItem(TIMER, '{malformed timer recovery');
   const first = await realm(world.fetch, storage, '/projects');
-  expect(first.view.find(strip)?.textContent).toBe('Select task to time');
+  expect(first.view.find(strip)?.textContent).toBe('Start timer');
   expect(world.writes()).toEqual([]);
 });
