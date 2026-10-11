@@ -160,3 +160,11 @@ receipt and term digest stay outside Git. The full first-push range, normal
 hooks, hashed and shape scans, public-content checks and merge requirements
 remain in force. This decision neither permits client material nor treats
 the earlier retained matches as clean history.
+
+On 11 October 2026 Nathan corrected the description: the approved term in
+those two blobs is a team member's first name, not a client and not a made-up
+word. He ruled it harmless and asked for no history rewrite. The existing
+receipt already covers it: the same path, the same two blobs and the same
+term digest, so the registry is unchanged. A first push clears the literal
+sweep only when the hook environment supplies the receipt through
+`HUB_GATE_LITERAL_HISTORY_RECEIPT`, beside `HUB_GATE_TERMS`.

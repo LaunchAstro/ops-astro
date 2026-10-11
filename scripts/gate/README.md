@@ -151,13 +151,17 @@ material is copied into this repository, ever, by anyone, for any reason.
 ## Historical synthetic collisions
 
 This mechanism requires a recorded maintainer decision that the exact historical
-fixture is synthetic and contains no client material. It cannot authorise private
-or client material. Existing fix-forward review does not approve retained history.
+fixture contains no client material and is either synthetic or ruled harmless by
+the owner, such as a team member's first name. It cannot authorise client
+material. Existing fix-forward review does not approve retained history.
 
 The literal scanner defaults to refusal. An approved decision may commit one
 receipt SHA-256, a full immutable historical anchor and a decision ID to
 `literal-history-approvals.sha256`. The corresponding receipt stays outside every
 Git repository and is supplied through `HUB_GATE_LITERAL_HISTORY_RECEIPT`.
+Export it wherever `HUB_GATE_TERMS` is exported for hooks (for example the
+Husky startup file); with the terms but no receipt, a first push refuses the
+approved blobs.
 The receipt includes a randomly generated 256-bit nonce, version 1, that exact
 anchor and exact path/blob/full normalised-term SHA-256 tuples. Generate the nonce
 on the maintainer machine. Never publish the receipt or a short-term hash. The
