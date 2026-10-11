@@ -54,9 +54,16 @@ fi
 #    whether the branch you are actually publishing is clean. A backup branch
 #    kept before a history rewrite is the obvious case.
 #
-#    An all-zero remote sha means the remote has no such branch yet, so the
-#    range is everything reachable from the local ref. That is the first-push
-#    case, and it is the one that matters most.
+#    An all-zero remote sha means the remote has no such branch yet: the
+#    first-push case, and the one that matters most. The range is then every
+#    commit not already on origin/main. Those on main were swept when they
+#    reached it, so a file added and deleted in the new commits is still
+#    read. With no origin/main here, it is everything reachable from the
+#    local ref.
+first_push_base=""
+if main_sha=$(git rev-parse --verify -q 'refs/remotes/origin/main^{commit}'); then
+  first_push_base="$main_sha.."
+fi
 ranges=""
 had_input=0
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -68,7 +75,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   esac
   case "$remote_sha" in
     *[!0]*) ranges="$ranges $remote_sha..$local_sha" ;;
-    *) ranges="$ranges $local_sha" ;;
+    *) ranges="$ranges $first_push_base$local_sha" ;;
   esac
 done
 
