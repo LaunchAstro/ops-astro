@@ -90,19 +90,13 @@ check 0 0 0        1  "public-content"   "public policy 3: refuses a scanner fai
 # would refuse a clean push because some unrelated local branch is dirty, and
 # would say nothing about the branch actually being published. A backup branch
 # kept before a history rewrite is the obvious case.
-# Two throwaway repositories for the first-push cases, so the answer does not
-# depend on whether the checkout running the cases has an origin/main.
-make_repo() {
-  git init -q "$1"
-  git -C "$1" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
-    commit -q --allow-empty -m base
-}
-NO_MAIN="$SCRATCH/no-main"
+# A throwaway repository with an origin/main for the first-push cases, so the
+# answer does not depend on the checkout running the cases.
 WITH_MAIN="$SCRATCH/with-main"
-make_repo "$NO_MAIN"
-make_repo "$WITH_MAIN"
+git init -q "$WITH_MAIN"
+git -C "$WITH_MAIN" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
+  commit -q --allow-empty -m base
 git -C "$WITH_MAIN" update-ref refs/remotes/origin/main HEAD
-MAIN_SHA="$(git -C "$WITH_MAIN" rev-parse HEAD)"
 
 # label stdin-line expected-text [repo]
 stdin_case() {
@@ -128,15 +122,68 @@ STUB
 }
 
 ZERO=0000000000000000000000000000000000000000
-# A first push scans only what main does not already have: commits on main
-# were swept when they reached it. Without a local origin/main there is no
-# such base, so everything reachable is scanned, as before.
-stdin_case "a first push scans only the commits not already on origin/main" \
+# A first push scans everything reachable from the local ref. A local
+# origin/main says nothing about what the destination holds (#1210).
+stdin_case "a first push scans everything reachable, even with an origin/main" \
   "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
-  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN"
-stdin_case "a first push with no origin/main scans everything reachable" \
-  "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
-  "publish: aaaaaaa1$" "$NO_MAIN"
+  "publish: aaaaaaa1$" "$WITH_MAIN"
+
+# The real public-content checker, not a stub: origin/main holds a private
+# path, and every first push still reads it. Only the hashed gate is stubbed.
+DIRTY="$SCRATCH/dirty"
+git init -q "$DIRTY"
+# Built at run time, so this file never holds the path the gate refuses.
+printf '/%s/synthetic-person/Documents/private-note\n' Users > "$DIRTY/note.txt"
+git -C "$DIRTY" add note.txt
+git -C "$DIRTY" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
+  commit -q -m note
+git -C "$DIRTY" update-ref refs/remotes/origin/main HEAD
+DIRTY_SHA="$(git -C "$DIRTY" rev-parse HEAD)"
+
+# label remote url
+real_checker_refuses() {
+  local out actual
+  out="$(
+    cd "$DIRTY" || exit 99
+    printf 'refs/heads/main %s refs/heads/main %s\n' "$DIRTY_SHA" "$ZERO" \
+      | HUB_GATE_CMD=true HUB_PUBLIC_CONTENT_CMD="node $REPO_ROOT/scripts/public-content-check.mjs" \
+        sh -e "$HOOK" "$2" "$3" 2>&1
+    echo "HOOK_EXIT=$?"
+  )"
+  actual="$(printf '%s\n' "$out" | grep '^HOOK_EXIT=' | tail -1)"
+  if [ "${actual#HOOK_EXIT=}" = 1 ]; then
+    pass "$1"
+  else
+    fail "$1" "expected hook exit 1. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  fi
+}
+real_checker_refuses "a first push to another remote reads what origin/main holds" \
+  secondary "$SCRATCH/public.git"
+real_checker_refuses "a first push to a bare URL reads what origin/main holds" \
+  "$SCRATCH/public.git" "$SCRATCH/public.git"
+real_checker_refuses "a first push to origin on GitHub reads what origin/main holds" \
+  origin https://github.com/LaunchAstro/ops-astro.git
+
+# Proofs from #1212's review that a skipped first-push range publishes history
+# the destination never received: a remote whose URL changed, a rewritten
+# push URL, a relative URL that names another remote, and an SSH transport
+# that reaches another receiver.
+proof_case() {
+  if SOL_REVIEW_HOOK="$HOOK" node --test "$REPO_ROOT/tests/gate/$1.test.mjs" >/dev/null 2>&1; then
+    pass "$2"
+  else
+    fail "$2" "node --test tests/gate/$1.test.mjs failed"
+  fi
+}
+proof_case pre-push-remote-url-change-scans-history \
+  "a first push after a remote's URL changes scans everything reachable"
+proof_case pre-push-double-url-rewrite-scans-history \
+  "a first push through a URL rewrite scans everything reachable"
+proof_case pre-push-relative-url-naming-remote-scans-history \
+  "a first push to a relative URL that names another remote scans everything reachable"
+proof_case pre-push-ssh-transport-scans-history \
+  "a first push over an SSH transport to another receiver scans everything reachable"
+
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
   "publish: bbbbbbb1..aaaaaaa2"
@@ -181,8 +228,6 @@ STUB
 ZERO2=0000000000000000000000000000000000000000
 same_refs_case "all three scanners get the same refs on a first push" \
   "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN"
-same_refs_case "all three scanners get the same refs on a first push with no origin/main" \
-  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$NO_MAIN"
 same_refs_case "all three scanners get the same refs on a later push" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1"
 

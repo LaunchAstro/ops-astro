@@ -176,3 +176,11 @@ tests/authority/endings-once-exit-and-settings-proof.test.ts
 # Sol's D3-FIX2 proofs, byte-for-byte apart from their titles, as above.
 tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts
 tests/identity/login-subject-fixed-during-ban-proof.test.ts
+
+# The pre-push first-push proofs from #1212's review, kept as written but
+# for their names, titles and one constructed URL, run by
+# tests/gate/hook-exit-cases.sh.
+tests/gate/pre-push-remote-url-change-scans-history.test.mjs
+tests/gate/pre-push-double-url-rewrite-scans-history.test.mjs
+tests/gate/pre-push-relative-url-naming-remote-scans-history.test.mjs
+tests/gate/pre-push-ssh-transport-scans-history.test.mjs
