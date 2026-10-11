@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { TabPanel } from '@launchastro/ui';
+import type { ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
@@ -15,13 +16,15 @@ export function Projects(props: ProjectsProps): ReactElement {
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
+  const [clients, setClients] = useState<readonly ClientView[]>([]);
   return (
     <div className="stack">
       {tab === 'board' ? (
         <ProjectsToolbar
           inPanel={inPanel === true}
           canFileTask={canFileTask}
-          address={place.query}
+          address={place.view}
+          clients={clients}
         />
       ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
@@ -30,6 +33,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           canFileTask={canFileTask}
           hidden={tab !== 'board'}
           place={place}
+          onClients={setClients}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

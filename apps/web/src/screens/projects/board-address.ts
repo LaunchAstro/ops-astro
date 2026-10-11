@@ -19,21 +19,31 @@ export function useProjectBoardAddress(
   const wasHidden = useRef(hidden);
   const returning = wasHidden.current && !hidden;
   wasHidden.current = hidden;
-  const [held, setHeld] = useState(() => ({ observed: external, query: external, generation: 0 }));
+  const [held, setHeld] = useState(() => ({
+    observed: external,
+    query: external,
+    view: external,
+    generation: 0,
+  }));
   let current = held;
   if (external !== held.observed) {
     current =
       hidden || returning || external === written.current
         ? { ...held, observed: external }
-        : { observed: external, query: external, generation: held.generation + 1 };
+        : { observed: external, query: external, view: external, generation: held.generation + 1 };
     setHeld(current);
   }
   return {
     query: current.query,
+    /** The query of the view the board shows now, its own writes included: what its doors carry. */
+    view: current.view,
     generation: current.generation,
     write: (next: string) => {
-      if (hidden || inPanel) return;
-      written.current = next === '' ? '' : `?${next}`;
+      if (hidden) return;
+      const view = next === '' ? '' : `?${next}`;
+      setHeld((before) => (before.view === view ? before : { ...before, view }));
+      if (inPanel) return;
+      written.current = view;
       window.history.replaceState(
         window.history.state,
         '',

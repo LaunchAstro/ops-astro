@@ -7,12 +7,15 @@
 
 import { useState, type ReactElement } from 'react';
 import { Icon } from '@launchastro/ui';
+import type { ClientView } from '../../../../../packages/core-wire/src/index.ts';
 import { boardDoor } from './ProjectsToolbar.tsx';
 
 export function CreateTask(props: {
   /** The board's address, whose context the door carries. */
   readonly address: string;
   readonly canFileTask: boolean;
+  /** The clients the board knows by name, for a Client filter's door. */
+  readonly clients: readonly ClientView[];
 }): ReactElement {
   const [title, setTitle] = useState('');
   const named = title.trim();
@@ -36,7 +39,7 @@ export function CreateTask(props: {
         className="btn btn--secondary btn--sm"
         type="submit"
         disabled={!props.canFileTask || named === ''}
-        {...boardDoor(props.address, props.canFileTask && named !== '')}
+        {...boardDoor(props.address, props.canFileTask && named !== '', props.clients)}
         data-new-task-title={named === '' ? undefined : named}
       >
         Add to draft
