@@ -7,7 +7,7 @@
 // once the write has met its row locks, the grants it rests on are
 // share-locked (a revocation after this waits for the commit), an agent's
 // delegation is too, the audit chain's lock is taken (the envelope's last
-// wait, as `tasks-agent.ts` takes it), and the authority is read again at
+// wait), and the authority is read again at
 // that statement's own clock.
 
 import {

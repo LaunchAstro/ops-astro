@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A helper's comment change on a task that names the helper's delegation as
-// its agent, racing `delegation.revoke` of that helper. The revoke writes the
-// delegation row, then clears the task's agent, so it waits on the task the
-// change holds. The change, once its comment lock is free, must not then wait
-// on the delegation row the revoke holds: that closes a cycle PostgreSQL
-// breaks by aborting the change (40P01), and its retry is refused although
-// it held the task first. Ordered, the change applies and the revoke follows.
+// A helper's comment change on a task its agent holds (Assign to AI), racing
+// `delegation.revoke` of that helper. The task names the helper's agent, not
+// its delegation, so the revoke writes the delegation row and touches no task:
+// it never waits on the task the change holds, and no cycle can close. The
+// change, once its comment lock is free, takes the delegation `for share`,
+// waits for nothing (the revoke committed), reads it revoked and is refused,
+// so the comment keeps its words and the agent keeps the task.
 import { randomUUID } from 'node:crypto';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -89,13 +88,13 @@ async function helperWithComment() {
   if (isCommandRefusal(posted)) throw new Error(posted.code);
   const commentId = posted.detail['commentId'];
   if (typeof commentId !== 'string') throw new Error('No comment id');
-  // The task names the helper's delegation as its agent, as Assign to AI may.
+  // The task names the helper's agent as its agent, as Assign to AI may.
   await w.world.db.admin.execute(
     `update public.records set data = jsonb_set(data, '{agent}', to_jsonb($2::text))
       where id = $1`,
-    [picked.taskId, childId],
+    [picked.taskId, helperActorId],
   );
-  return { taskId: picked.taskId, helper, credential, childId, commentId };
+  return { taskId: picked.taskId, helper, helperActorId, credential, childId, commentId };
 }
 
 /** Whether a backend of this world waits on a row lock in a statement matching `like`. */
@@ -109,10 +108,11 @@ async function waitsOnLock(like: string, pid?: number): Promise<boolean> {
 }
 
 it.each(['task.edit_comment', 'task.delete_comment'] as const)(
-  '%s by a helper the task names as agent applies before a revoke of that helper that waits on the task',
+  '%s by a helper whose agent holds the task is refused after a revoke that waits on nothing',
   // oxlint-disable-next-line max-lines-per-function -- one concurrent schedule
   async (command) => {
-    const { taskId, helper, credential, childId, commentId } = await helperWithComment();
+    const { taskId, helper, helperActorId, credential, childId, commentId } =
+      await helperWithComment();
     const manager = await enrol(w.world.db.app, w.world.business, `manager_${randomUUID()}`);
     // A delegation is revoked within the revoker's own ceiling: manage, and
     // the comment the helper's delegation carries.
@@ -121,10 +121,6 @@ it.each(['task.edit_comment', 'task.delete_comment'] as const)(
       await grantTo(tx, manager, 'comment');
     });
     const revoker = connect(w.world.db.appUrl);
-    const [revokerBackend] = await revoker.withBusiness(w.world.business, (tx) =>
-      tx.query<{ pid: number }>('select pg_backend_pid() as pid'),
-    );
-    if (revokerBackend === undefined) throw new Error('No revoker backend');
     const server = databaseUrlFromEnvironment();
     if (server === undefined) throw new Error('No database URL');
     const url = new URL(server);
@@ -155,30 +151,23 @@ it.each(['task.edit_comment', 'task.delete_comment'] as const)(
         operationId: randomUUID(),
         delegationId: childId,
       });
-      // The revoke has written the delegation row and waits on the task.
-      await expect.poll(() => waitsOnLock('%', revokerBackend.pid), { timeout: 10_000 }).toBe(true);
-      // Past deadlock_timeout (1s): the revoke's one deadlock check has run
-      // and found no cycle, so a cycle the change closes aborts the change.
-      await sleep(1_500);
+      // The revoke settles while the change still holds the task.
+      expect(codeOf(await revoking)).toBe('not-a-refusal');
+      expect(await waitsOnLock('%for update of r%')).toBe(true);
       release.resolve();
       await held;
-      expect(codeOf(await changing)).toBe('not-a-refusal');
-      expect(codeOf(await revoking)).toBe('not-a-refusal');
+      expect(codeOf(await changing)).toBe('DELEGATION_NOT_LIVE');
       const [row] = await w.world.db.admin.execute<{ body: string; deleted: boolean }>(
         `select data ->> 'body' as body, deleted_at is not null as deleted
            from public.records where id = $1`,
         [commentId],
       );
-      expect(row).toEqual(
-        command === 'task.edit_comment'
-          ? { body: 'Changed by the helper', deleted: false }
-          : { body: 'Original words', deleted: true },
-      );
+      expect(row).toEqual({ body: 'Original words', deleted: false });
       const [task] = await w.world.db.admin.execute<{ agent: string | null }>(
         `select data ->> 'agent' as agent from public.records where id = $1`,
         [taskId],
       );
-      expect(task?.agent).toBeNull();
+      expect(task?.agent).toBe(helperActorId);
     } finally {
       release.resolve();
       await held;

@@ -234,16 +234,9 @@ export const settle = async (
  * a hold a person has just settled needs no mark. Nothing left to hold stops
  * the run at its budget and asks (AW-05). A replacement the envelope or cap
  * has no room for, or whose approval moved, is not reserved, and the step keeps its stop (the savepoint takes the
- * mark back with it, so the next pass asks again). `actorId` is the person whose
- * recorded outcome resumed it, whom the clear of the old identity's agent from
- * the task names; null on the pass's own paths, which no person ran.
+ * mark back with it, so the next pass asks again).
  */
-export async function resume(
-  tx: TenantQuery,
-  row: Unknown,
-  keep: boolean,
-  actorId: string | null = null,
-): Promise<string> {
+export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
   const heldMinor = BigInt(row.held_minor) - BigInt(row.spent_minor);
   // AW-05: nothing left to hold stops the run at its budget and asks a person.
@@ -284,7 +277,7 @@ export async function resume(
   // work, so a worker woken now is refused and the purpose is free for the
   // replacement's pickup.
   if (row.delegation_id !== null) {
-    await revokeDelegation(tx, row.delegation_id, 'work_retired', actorId);
+    await revokeDelegation(tx, row.delegation_id, 'work_retired');
   }
   return `resumed as attempt ${replaced.value.attemptId}; the old identity is fenced`;
 }

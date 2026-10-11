@@ -3,14 +3,15 @@
 // Catalogue #413, #932: one operation identity presented on two tasks at once.
 // The second request waits at the envelope's door, before any lock or record of
 // its own, until the first commits, then answers from the first's record. So
-// nothing the first does after its final liveness read can wait on the second,
-// and the two cannot deadlock.
+// nothing the first does after its last lock can wait on the second, and the
+// two cannot deadlock. The first hands a task to an agent its sender owns.
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 import { codeOf } from '../commands/agent-fixture.ts';
-import { child, noDatabase, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
+import { agentOwnedBy } from '../commands/fixture.ts';
+import { noDatabase, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
 import {
   awaitParked,
   barrier,
@@ -18,7 +19,6 @@ import {
   racer,
   revisionOf,
   scalar,
-  waitPast,
 } from '../runtime/schedules-harness.ts';
 
 useChildWorld('authz6door');
@@ -76,8 +76,6 @@ interface Race {
   readonly agentTask: string;
   readonly personTask: string;
   readonly personRevision: number;
-  readonly agentRevision: number;
-  readonly childId: string;
   readonly operationId: string;
   readonly atDoor: number;
   readonly results: readonly [
@@ -89,18 +87,16 @@ interface Race {
 /**
  * The assignment holds the identity and queues on the audit chain's lock; the
  * person write, same identity, another task, starts on its own connection.
- * `whileParked` runs before the audit lock is let go.
  */
-async function race(whileParked: (parentId: string) => Promise<void>): Promise<Race> {
+async function race(): Promise<Race> {
   const { parent } = await parentWork(w.s);
-  const minted = await child(w.s, parent, w.helper);
+  const agent = await agentOwnedBy(w.s.db.app, w.s.business, w.s.decider.personId);
   const agentTask = parent.purposeScope.id;
   const personTask = await createTask(w.s, `authz6 ${randomUUID()}`);
   const operationId = randomUUID();
   const send = (database: Database, recordId: string, fields: Record<string, string>) =>
     assign(database, operationId, recordId, fields);
   const personRevision = await revisionOf(w.s, personTask);
-  const agentRevision = await revisionOf(w.s, agentTask);
   const database = racer(w.s);
   const second = racer(w.s);
   const locked = barrier();
@@ -112,12 +108,11 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
   });
   await locked.held;
   try {
-    const assigning = send(w.s.db.app, agentTask, { agent: minted.delegation.id });
+    const assigning = send(w.s.db.app, agentTask, { agent });
     await awaitParked(w.s, 'advisory', 1);
     const assigningPerson = send(second, personTask, { assignee: w.s.decider.personId });
     await awaitParked(w.s, 'advisory', 2);
     const atDoor = await parkedOn(doorOf(operationId));
-    await whileParked(parent.id);
     gate.release();
     await held;
     const results = await Promise.all([assigning, assigningPerson]);
@@ -125,8 +120,6 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
       agentTask,
       personTask,
       personRevision,
-      agentRevision,
-      childId: minted.delegation.id,
       operationId,
       atDoor,
       results,
@@ -148,7 +141,7 @@ const count = async (sql: string, operationId: string): Promise<string | undefin
 
 it('one operation identity on two tasks at once: the second waits at the door and answers from the first, with no deadlock', async () => {
   const before = await deadlocks();
-  const run = await race(async () => {});
+  const run = await race();
   expect(run.atDoor, 'the person write waits at the door, holding no record').toBe(1);
   expect(codeOf(run.results[0])).toBe('not-a-refusal');
   expect(codeOf(run.results[1])).toBe('OPERATION_ID_REUSED');
@@ -160,29 +153,4 @@ it('one operation identity on two tasks at once: the second waits at the door an
   // A backend reports a deadlock when it next goes idle, within its ten-second flush.
   await pause(11_000);
   expect(await deadlocks(), 'no deadlock').toBe(before);
-}, 60_000);
-
-it('a parent that expires while a same-identity request waits at the door refuses the assignment', async () => {
-  const run = await race(async (parentId) => {
-    await w.s.db.admin.execute(
-      `update public.delegations set expires_at = clock_timestamp() + interval '1 second'
-        where business_id = $1 and id = $2`,
-      [w.s.business, parentId],
-    );
-    await waitPast(w.s, 'select expires_at from public.delegations where id = $1', parentId);
-  });
-  expect(run.atDoor, 'the person write waits at the door, holding no record').toBe(1);
-  expect(codeOf(run.results[0])).toBe('DELEGATION_NOT_LIVE');
-  const stored = await w.s.db.admin.execute<{ readonly agent: string | null }>(
-    `select data ->> 'agent' as agent from public.records where business_id = $1 and id = $2`,
-    [w.s.business, run.agentTask],
-  );
-  expect(stored[0]?.agent).not.toBe(run.childId);
-  expect(await revisionOf(w.s, run.agentTask), 'the refusal wrote nothing').toBe(run.agentRevision);
-  expect(await count(OPERATIONS, run.operationId), 'one operation record').toBe('1');
-  expect(await count(APPLIED, run.operationId), 'no applied audit event').toBe('0');
-  expect(codeOf(run.results[1])).toBe('OPERATION_ID_REUSED');
-  expect(await revisionOf(w.s, run.personTask), 'the second wrote nothing').toBe(
-    run.personRevision,
-  );
 }, 60_000);

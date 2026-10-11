@@ -2,8 +2,8 @@
 //
 // A decision item goes to a person `task.decide` would let decide, and the
 // unattended list counts a decision attended only through such a person. Two
-// people hold decide and are still refused: the person whose agent holds the
-// task (Assign to AI), whom four eyes refuses `FOUR_EYES_REQUIRED` as it
+// people hold decide and are still refused: the owner of the agent holding
+// the task (Assign to AI), whom four eyes refuses `FOUR_EYES_REQUIRED` as it
 // refuses a person assignee, and a holder of decide on the task's client
 // alone, whom decide refuses `SCOPE_NOT_GRANTED` because it asks decide on the
 // task itself. Neither is raised a decision item nor counted a path.
@@ -21,6 +21,7 @@ import {
   created,
   holder as heldBy,
   minted,
+  ownedAgent,
   revisionOf,
   type AiWorld,
 } from './ai-assign-world.ts';
@@ -106,9 +107,9 @@ async function unattendedWithOnly(gate: Gate, kept: string): Promise<boolean> {
 }
 
 describe.skipIf(serverUrl === undefined)('decision items: an agent assignee is its person', () => {
-  it('assigning AI before proposal removes its delegating person from decision recipients', async () => {
+  it('assigning AI before proposal removes its owner from decision recipients', async () => {
     const task = await created(w, w.p, 'AI first, then the proposal');
-    expect(codeOf(await assign(w, w.p, task, { agent: await minted(w, w.p, task) }))).toBe(
+    expect(codeOf(await assign(w, w.p, task, { agent: await ownedAgent(w, w.p) }))).toBe(
       'not-a-refusal',
     );
     const gate = await proposed(task);
@@ -118,11 +119,11 @@ describe.skipIf(serverUrl === undefined)('decision items: an agent assignee is i
     expect(recipients).not.toContain(w.p.personId);
   });
 
-  it('assigning AI after proposal removes its delegating person from decision recipients', async () => {
+  it('assigning AI after proposal removes its owner from decision recipients', async () => {
     const task = await created(w, w.p, 'The proposal, then AI');
     const gate = await proposed(task);
     expect((await openItems(gate)).map((item) => item.person)).toContain(w.p.personId);
-    expect(codeOf(await assign(w, w.p, task, { agent: await minted(w, w.p, task) }))).toBe(
+    expect(codeOf(await assign(w, w.p, task, { agent: await ownedAgent(w, w.p) }))).toBe(
       'not-a-refusal',
     );
     expect(codeOf(await decide(w.p, gate))).toBe('FOUR_EYES_REQUIRED');
@@ -138,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('decision items: the agent removed', ()
     const task = await created(w, w.p, title);
     const gate = await proposed(task);
     expect((await openItems(gate)).map((item) => item.person)).toContain(w.p.personId);
-    const agent = await minted(w, w.p, task);
+    const agent = await ownedAgent(w, w.p);
     expect(codeOf(await assign(w, w.p, task, { agent }))).toBe('not-a-refusal');
     expect((await openItems(gate)).map((item) => item.person)).not.toContain(w.p.personId);
     return { task, gate, agent };
@@ -166,22 +167,24 @@ describe.skipIf(serverUrl === undefined)('decision items: the agent removed', ()
     await owedAgain(task, gate);
   });
 
-  it('revoking the agent gives its person the decision back', async () => {
-    const { task, gate, agent } = await heldByAgent('The agent revoked');
-    await w.world.revokeDelegation(agent);
-    await owedAgain(task, gate);
+  it('revoking a run’s delegation leaves the agent holding the task, its owner still owed nothing', async () => {
+    const { task, gate, agent } = await heldByAgent('The agent’s run revoked');
+    await w.world.revokeDelegation(await minted(w, w.p, task, agent));
+    expect(await heldBy(w, task)).toStrictEqual({ agent, person: null });
+    expect((await openItems(gate)).map((item) => item.person)).not.toContain(w.p.personId);
+    expect(codeOf(await decide(w.p, gate))).toBe('FOUR_EYES_REQUIRED');
   });
 });
 
 describe.skipIf(serverUrl === undefined)('unattended: only a path decide admits', () => {
-  it('an item held by the person whose agent holds the task is no path to its decision', async () => {
+  it('an item held by the owner of the agent holding the task is no path to its decision', async () => {
     const task = await created(w, w.p, 'An item left with the agent’s person');
     const gate = await proposed(task);
     // The agent set on the row alone, as no command sets it, so the item P
     // was raised stays open and the read's own rule is what is asked.
     await w.world.db.admin.execute(
       `update public.records set data = data || jsonb_build_object('agent', $2::text) where id = $1`,
-      [task, await minted(w, w.p, task)],
+      [task, await ownedAgent(w, w.p)],
     );
     expect(codeOf(await decide(w.p, gate))).toBe('FOUR_EYES_REQUIRED');
     expect(await unattendedWithOnly(gate, w.p.personId)).toBe(true);

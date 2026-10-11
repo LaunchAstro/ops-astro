@@ -1,57 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent assignee as `task.read` sends it (Assign to AI): the delegation
-// holding the task, sent only to its own delegating person, and the reader's
-// own live delegations that reach the task, which is all the Assign to AI
-// control offers. Another person's delegations are never listed, counted or
-// hinted, the one holding the task included.
+// The agent assignee as `task.read` sends it (Assign to AI): the board's
+// reading (`board-agents.ts`) of the one task.
 
-import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
-import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
+import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { NO_AGENTS, readBoardAgents, type RowAgents } from './board-agents.ts';
 
-/** The task's agent when it is the reader's, and the reader's own agents for it; neither for an agent reader. */
+/** The task's agent and the reader's choices for it; neither for an agent reader (null). */
 export async function readTaskAgents(
   tx: TenantQuery,
   recordId: string,
   reader: string | null,
-): Promise<{
-  readonly agent: AgentAssigneeView | null;
-  readonly myAgents: readonly AgentOfferView[];
-}> {
-  // An agent reader is sent neither: the delegation holding the task may be
-  // another person's, and an agent never sees another person's delegations.
-  if (reader === null) return { agent: null, myAgents: [] };
-  const held = await tx.query<{
-    readonly id: string;
-    readonly purpose: string;
-    readonly person_id: string;
-    readonly person_name: string | null;
-    readonly live: boolean;
-  }>(
-    `select d.id, d.purpose, d.delegate_person_id as person_id, p.display_name as person_name,
-            ${DELEGATION_STANDS} as live
-       from public.records r
-       join public.delegations d on d.business_id = r.business_id and d.id::text = r.data ->> 'agent'
-       left join public.people p on p.business_id = d.business_id and p.id = d.delegate_person_id
-      where r.business_id = $1 and r.id = $2 and d.delegate_person_id = $3`,
-    [tx.businessId, recordId, reader],
-  );
-  const row = held[0];
-  const agent =
-    row === undefined
-      ? null
-      : {
-          delegationId: row.id,
-          purpose: row.purpose,
-          accountable: { personId: row.person_id, name: row.person_name ?? '' },
-          live: row.live,
-        };
-  const mine = await tx.query<{ readonly id: string; readonly purpose: string }>(
-    `select d.id, d.purpose from public.delegations d
-      where d.business_id = $1 and d.delegate_person_id = $2 and d.purpose_scope_id = $3
-        and ${DELEGATION_STANDS}
-      order by d.purpose, d.id`,
-    [tx.businessId, reader, recordId],
-  );
-  return { agent, myAgents: mine.map((one) => ({ delegationId: one.id, purpose: one.purpose })) };
+): Promise<RowAgents> {
+  return (await readBoardAgents(tx, [recordId], reader)).get(recordId) ?? NO_AGENTS;
 }

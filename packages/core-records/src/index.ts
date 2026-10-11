@@ -197,6 +197,15 @@ export {
   type EntryPoint,
 } from './tasks/placement.ts';
 export { assignedPeople, assignedTo } from './tasks/assignee.ts';
+export {
+  AGENT_ASSIGN,
+  AGENT_NAME_SQL,
+  directableAgents,
+  mayDirectAgent,
+  personSubjects,
+  UNNAMED_AGENT,
+  type AgentChoice,
+} from './authority/agents.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';

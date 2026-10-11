@@ -29,7 +29,7 @@ const OFFERED = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const HELD = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const IN_REVIEW = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const ADA = { personId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Ada Park' };
-const AGENT = { delegationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', purpose: 'draft the menu' };
+const AGENT = { agentId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', name: 'draft the menu' };
 
 const task = (id: string, key: string, over: Readonly<Record<string, unknown>>) => ({
   id,
@@ -54,13 +54,13 @@ const task = (id: string, key: string, over: Readonly<Record<string, unknown>>) 
 const TASKS = [
   task(OFFERED, 'TSK-1', { myAgents: [AGENT], revision: 7 }),
   task(HELD, 'TSK-2', {
-    agent: { ...AGENT, accountable: ADA, live: true },
+    agent: { ...AGENT, owner: ADA, live: true },
     myAgents: [AGENT],
   }),
   task(IN_REVIEW, 'TSK-3', {
     state: { id: 's-0', key: 'needs_review', label: 'Needs review', machineCategory: 'unstarted' },
     statePosition: 1000,
-    agent: { ...AGENT, accountable: ADA, live: true },
+    agent: { ...AGENT, owner: ADA, live: true },
   }),
 ];
 
@@ -130,7 +130,7 @@ describe('Assign to AI from the Projects screen', () => {
         'task/assign',
         {
           recordId: OFFERED,
-          fields: { agent: AGENT.delegationId },
+          fields: { agent: AGENT.agentId },
           operationId: 'operation-1',
           expectedRevision: 7,
         },

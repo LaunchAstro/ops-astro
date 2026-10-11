@@ -54,7 +54,11 @@ async function installedBeforeDate(db: EmptyDatabase): Promise<UpgradeWorld> {
   const migrations = readMigrations('migrations');
   const index = migrations.findIndex((m) => m.version === START_MIGRATION);
   if (index <= 0) throw new Error('Start-date migration not found after an installed prefix');
-  await applyMigrations(db.admin, migrations.slice(0, index));
+  // Every other migration, later ones included, so today's reads run against the old install.
+  await applyMigrations(
+    db.admin,
+    migrations.filter((m) => m.version !== START_MIGRATION),
+  );
   const business = await insertBusiness(db.app, `rankcore-upgrade-${randomUUID()}`);
   const spine = await installSpine(db.app, business);
   const owner = await enrol(db.app, business, 'rankcore-upgrade-owner');

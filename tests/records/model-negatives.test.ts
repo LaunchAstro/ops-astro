@@ -43,12 +43,18 @@ import {
   TASK_STATE_FIELDS,
   TASK_STATE_TYPE_KEY,
 } from '../../packages/core-records/src/tasks/states.ts';
-import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { createCli } from '../../apps/cli/client.ts';
-import { enrol, grantTo, WHOLE_BUSINESS, installSpine, type Member } from '../commands/fixture.ts';
+import {
+  agentOwnedBy,
+  enrol,
+  grantTo,
+  WHOLE_BUSINESS,
+  installSpine,
+  type Member,
+} from '../commands/fixture.ts';
 import { BUSINESS_KEY, createApiFixture, tokenFor, type ApiFixture } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -219,7 +225,7 @@ type Payload = Readonly<Record<string, unknown>>;
 interface OwnerWorld {
   readonly other: Member;
   readonly freshTask: (title: string) => Promise<{ id: string; revision: number }>;
-  /** A live delegation of the writer's own, minted for this task (the agent assignee). */
+  /** An agent the writer owns (the agent assignee). */
   readonly ownAgent: (taskId: string) => Promise<string>;
   /** A client of this business (C32): the party link names a real one. */
   readonly madeClient: () => Promise<string>;
@@ -338,35 +344,6 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
   },
 };
 
-/** A live delegation of the writer's own, minted for one task (the agent assignee). */
-async function mintOwnAgent(
-  db: FreshDatabase,
-  business: string,
-  worker: Member,
-  taskId: string,
-): Promise<string> {
-  return await db.app.withBusiness(business, async (tx) => {
-    const agentActorId = randomUUID();
-    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
-      business,
-      agentActorId,
-    ]);
-    const made = await mintDelegation(tx, {
-      agentActorId,
-      delegatePersonId: worker.personId,
-      mintedByActorId: worker.actorId,
-      purpose: `owner_${randomUUID().slice(0, 8)}`,
-      collections: ['task'],
-      // The writer holds write, assign and share here, and a mint never widens.
-      actions: ['write'],
-      purposeScope: { kind: 'record', id: taskId },
-      expiresAt: new Date(Date.now() + 3_600_000),
-    });
-    if (!made.ok) throw new Error(`model negatives: mint refused ${made.refusal.code}`);
-    return made.value.delegation.id;
-  });
-}
-
 describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it owns', () => {
   let db: FreshDatabase;
   let business: string;
@@ -412,7 +389,7 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
     });
     world = {
       other,
-      ownAgent: async (taskId) => await mintOwnAgent(db, business, worker, taskId),
+      ownAgent: async () => await agentOwnedBy(db.app, business, worker.personId),
       freshTask: async (title) => {
         const made = await run({
           command: 'task.create',

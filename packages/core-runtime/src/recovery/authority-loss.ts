@@ -153,10 +153,10 @@ export async function classifyAuthorityLoss<T>(
       // credential answers as `DELEGATION_NARROWED`. After an explicit
       // `delegation.revoke` the row is already revoked with its own cause and
       // this writes nothing.
-      await revokeDelegation(tx, unit.revoke, 'authority_lost', request.actorId);
+      await revokeDelegation(tx, unit.revoke, 'authority_lost');
     }
     const work = workAfter.filter((row) => unit.match(row));
-    await retireWork(tx, work, locks, request.actorId);
+    await retireWork(tx, work, locks);
     ended.push(...work.map((row) => row.run_id));
     const holds = heldAfter.filter((row) => unit.match(row));
     classified.push(

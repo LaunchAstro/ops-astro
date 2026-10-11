@@ -133,7 +133,7 @@ function assignmentRead(personId: string): Stop['at'] {
   return (sql, parameters) => {
     if (sql.includes("kind = 'person' and active") && parameters?.[1] === personId)
       actorRead = true;
-    return actorRead && sql.includes('join public.delegations d');
+    return actorRead && sql.includes('r.uuid_2::text as person');
   };
 }
 

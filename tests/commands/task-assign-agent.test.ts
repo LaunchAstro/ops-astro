@@ -12,7 +12,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import { agentWorld, codeOf, type AgentWorld, type Decider } from './agent-fixture.ts';
-import { enrol, grantTo } from './fixture.ts';
+import { agentOwnedBy, enrol, grantTo } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -94,12 +94,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 an agent’s assign keeps one k
     const decider = await world.decider('sol-dual-holder');
     const taskId = await created(decider, 'Sol dual holder');
     const credential = await assigning(decider, taskId);
-    const rows = await world.db.admin.execute<{ readonly id: string }>(
-      `select id from public.delegations where business_id = $1 and purpose_scope_id = $2`,
-      [world.business, taskId],
-    );
-    const agent = rows[0]?.id;
-    if (agent === undefined) throw new Error('Sol proof: no delegation was minted');
+    const agent = await agentOwnedBy(world.db.app, world.business, decider.personId);
     const byPerson = await world.asPerson(decider, {
       command: 'task.assign',
       operationId: randomUUID(),

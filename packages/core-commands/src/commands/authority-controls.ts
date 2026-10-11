@@ -397,7 +397,7 @@ export async function revokeDelegationAsManager(
       // Clearing the tasks it held is audited in the revoke, as this actor's.
       const revokedAt =
         live[0]?.live === true
-          ? await revokeDelegation(tx, delegationId, 'delegation_revoked', context.session.actorId)
+          ? await revokeDelegation(tx, delegationId, 'delegation_revoked')
           : null;
       return revokedAt === null
         ? { applied: false, value: null }

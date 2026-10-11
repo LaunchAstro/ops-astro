@@ -10,7 +10,7 @@
 // and an active acting identity), can read the task, and for a decision is one
 // `task.decide` would admit: holding `task:decide` on the task itself or across
 // the business (decide asks no client-scoped grant), and not someone the task
-// is assigned to, an agent's delegating person included (four eyes), since a
+// is assigned to, the owner of its agent included (four eyes), since a
 // decider the gate refuses is no path to the decision. An escalated gate is
 // decided only with decide across the business (T3a), so for its decision that
 // is the grant asked. In-app is the

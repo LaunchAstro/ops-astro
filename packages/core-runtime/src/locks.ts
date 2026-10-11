@@ -59,8 +59,7 @@
 // `acquire`, then holds an agent lease's delegation row `for share` (lease
 // before delegation, as here), before it writes its ledger row.
 // The audit chain's key (the business id, `audit_events_chain`) is taken by
-// each audit write, for most commands their last lock; an agent `task.assign`
-// takes it just after its write, before its operation record (`tasks-agent.ts`).
+// each audit write, for most commands their last lock.
 // The operation identity's key, its door (`enter` in the envelope:
 // `operation:<business>:<actor>:<sha256 of the id>`), is a command-layer lock,
 // taken first of all of them; before it a call holds only key-share locks

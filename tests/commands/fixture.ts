@@ -55,6 +55,24 @@ export async function enrol(database: Database, businessId: string, name: string
   });
 }
 
+/** A fresh agent of the business, owned by one person and named (Assign to AI). */
+export async function agentOwnedBy(
+  database: Database,
+  businessId: string,
+  ownerPersonId: string,
+  name: string = `Agent ${randomUUID().slice(0, 6)}`,
+): Promise<string> {
+  const id = randomUUID();
+  await database.withBusiness(businessId, async (tx) => {
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id, display_name, owner_person_id)
+       values ($1, $2, 'agent', null, $3, $4)`,
+      [tx.businessId, id, name, ownerPersonId],
+    );
+  });
+  return id;
+}
+
 /** `subject` signed in just now with the second factor: inside C59's step-up window. */
 export function freshSubject(subject: string): VerifiedSubject {
   const now = Math.floor(Date.now() / 1000);

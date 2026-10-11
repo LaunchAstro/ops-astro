@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Assign to AI on the dock task panel and the task page: the control offers
-// only the reader's own agents that reach the task (`myAgents`, which the
-// server fills with nothing else), choosing one sends `task.assign` with
-// `agent`, and the task's agent shows with the person accountable for it.
-// With no agent of the reader's own, nothing is drawn: no hint that anyone
-// else's exists. The rules are tests/commands/task-assign-ai*.
+// the agents the reader may direct (`myAgents`), by name; choosing one sends
+// `task.assign` with `agent`, and the task's agent shows by name with its
+// owner. With no agent to offer, no select is drawn. The rules are
+// tests/commands/task-assign-ai*.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { TASK_ID, found, tick } from './task-page-stub.tsx';
@@ -16,14 +15,14 @@ import { panel, serving } from './panel-fields-support.tsx';
 afterEach(unmountAll);
 
 const MINE = [
-  { delegationId: 'd-mine-1', purpose: 'draft_replies' },
-  { delegationId: 'd-mine-2', purpose: 'triage_inbox' },
+  { agentId: 'd-mine-1', name: 'Reply drafter' },
+  { agentId: 'd-mine-2', name: 'Inbox triage' },
 ];
 const HELD = {
   agent: {
-    delegationId: 'd-mine-1',
-    purpose: 'draft_replies',
-    accountable: { personId: 'p-ada', name: 'Ada' },
+    agentId: 'd-mine-1',
+    name: 'Reply drafter',
+    owner: { personId: 'p-ada', name: 'Ada' },
     live: true,
   },
 };
@@ -32,7 +31,7 @@ const options = (view: { readonly all: (s: string) => readonly Element[] }, sele
   view.all(`${select} option`).map((option) => (option as HTMLOptionElement).value);
 
 describe('Assign to AI: the dock task panel', () => {
-  it('the control lists only my agents that reach the task', async () => {
+  it('the control lists the agents I may direct', async () => {
     const view = await panel(serving({ myAgents: MINE }).client);
     expect(options(view, '#panel-assign-ai')).toStrictEqual(['', 'd-mine-1', 'd-mine-2']);
   });
@@ -49,17 +48,15 @@ describe('Assign to AI: the dock task panel', () => {
     expect(changes.count).toBe(1);
   });
 
-  it('others’ agents are not shown: with none of my own, no control and no hint', async () => {
+  it('with no agent to offer, no control is drawn', async () => {
     const view = await panel(serving({ myAgents: [] }).client);
     expect(view.find('#panel-assign-ai')).toBeNull();
     expect(view.find('[data-assign-ai]')).toBeNull();
   });
 
-  it('the assignee shows as the agent, with the person accountable for it', async () => {
+  it('the assignee shows as the agent by name, with its owner', async () => {
     const view = await panel(serving({ ...HELD, myAgents: MINE }).client);
-    expect(view.find('[data-agent-assignee]')?.textContent).toBe(
-      'Assigned to AI: draft_replies, for Ada',
-    );
+    expect(view.find('[data-agent-assignee]')?.textContent).toBe('AI: Reply drafter, owned by Ada');
   });
 });
 
@@ -74,11 +71,9 @@ describe('Assign to AI: the task page', () => {
     expect(view.find('#page-assign-ai')).toBeNull();
   });
 
-  it('the task page shows the agent assignee with its accountable person', async () => {
+  it('the task page shows the agent assignee by name, with its owner', async () => {
     const view = await page('Proj-Verity-Pacing', found({ ...HELD, myAgents: [] }));
-    expect(view.find('[data-agent-assignee]')?.textContent).toBe(
-      'Assigned to AI: draft_replies, for Ada',
-    );
+    expect(view.find('[data-agent-assignee]')?.textContent).toBe('AI: Reply drafter, owned by Ada');
   });
 
   it('Assign to AI is locked while the title or due date is unsaved, as assigning is', async () => {
