@@ -32,6 +32,7 @@ import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
 import { chatBody, isChatName } from './role-case-chat-bodies.ts';
 import { onboardingBody } from './role-case-onboarding.ts';
+import { launchBody } from './role-case-launch-body.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -103,6 +104,8 @@ export function createPositiveBody(
         return { body: await commentChangeBody(context, declaration.name, author) };
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
+      case 'task.launch':
+        return await launchBody(context);
       case 'task.triage':
         return { body: { ...(await target()), fields: { intake_state: 'accepted' } } };
       case 'task.set_stage':
