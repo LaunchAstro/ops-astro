@@ -12,6 +12,8 @@ export interface PrioritySettingsWorld {
   revision: number;
   caps: 'manage' | 'without-manage' | 'denied';
   next: 'ok' | 'stale';
+  /** How `settings.read` answers: the rows, or a 503 or 403 with none. */
+  read: 200 | 503 | 403;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -44,6 +46,8 @@ function priorityCapabilities(world: PrioritySettingsWorld, businessKey: string)
 }
 
 function priorityRead(world: PrioritySettingsWorld): Response {
+  if (world.read === 503) return json({ error: 'unavailable' }, 503);
+  if (world.read === 403) return refusal('SCOPE_NOT_GRANTED');
   return json({
     ok: true,
     settings: [
@@ -67,6 +71,9 @@ function priorityWrite(world: PrioritySettingsWorld, parsed: Record<string, unkn
     world.revision += 1;
     return refusal('VERSION_STALE');
   }
+  // As the writer does: a revision sent is compared, none sent writes anyway.
+  const expected = parsed['expectedRevision'];
+  if (expected !== undefined && expected !== world.revision) return refusal('VERSION_STALE');
   world.value = parsed['value'];
   world.revision += 1;
   return json({
@@ -97,6 +104,7 @@ export function prioritySettingsWorld(businessKey = 'alpha'): PrioritySettingsWo
     revision: 7,
     caps: 'manage',
     next: 'ok',
+    read: 200,
     client: new OperationsClient({ origin: '', businessKey, signedIn: true, fetch }),
   };
   return world;

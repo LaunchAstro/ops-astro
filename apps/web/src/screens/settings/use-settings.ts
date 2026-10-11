@@ -222,7 +222,7 @@ export function useSettings(
     settings.reload();
   };
 
-  const save = (which: Which, value: Draft): void => {
+  const save = (which: Which, value: Draft, base?: number): void => {
     if (command.busy || closed || !mayFor(which)) return;
     if (conflict !== null && read.outcome !== 'ready') {
       setComplaint(
@@ -230,7 +230,7 @@ export function useSettings(
       );
       return;
     }
-    const seen = rowFor(which)?.revision;
+    const seen = base ?? rowFor(which)?.revision;
     setPressed(which);
     setComplaint(null);
     const tag = desk.save();
