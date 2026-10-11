@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a write whose access ended while it waited is refused as the door now refuses it and keeps nothing, and a manager ending their own access keeps the act"
+}

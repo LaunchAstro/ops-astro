@@ -72,6 +72,13 @@ export interface Applied {
   readonly auditSubjectId?: string;
   /** Set only by a field writer: what its write changed (`appliedWrite`), or none (`appliedUnwritten`). */
   readonly fieldChanges?: FieldChanges;
+  /**
+   * The act ended the caller's own access (C58, a manager ending their own),
+   * so the envelope does not ask the caller's sign-in again after it: the
+   * standing it would find lost is what the act did. Set by the handler,
+   * which alone knows whose access it ended.
+   */
+  readonly endsOwnAccess?: true;
 }
 
 export interface Refused {

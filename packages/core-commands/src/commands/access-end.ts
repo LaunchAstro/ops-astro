@@ -108,7 +108,7 @@ export async function endAccessOnSettings(
   const authority = await endPersonAuthority(tx, personId, context.session.actorId);
   const credentialsRevoked = await revokeIssued(tx, personId, context.session.actorId);
   const endings = await endStanding(tx, personId, context.session.actorId);
-  return applied(personId, null, {
+  const ended = applied(personId, null, {
     personId,
     grantsRevoked: authority.grantsRevoked,
     delegationsRevoked: authority.delegationsRevoked,
@@ -116,6 +116,7 @@ export async function endAccessOnSettings(
     classifiedHolds: authority.classifiedHolds,
     endingIds: endings.map((row) => row.id),
   });
+  return personId === context.session.personId ? { ...ended, endsOwnAccess: true } : ended;
 }
 
 /**
