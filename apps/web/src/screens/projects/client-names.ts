@@ -5,7 +5,11 @@
 // no row, so a Clients row door to a quiet client keeps its filter. A failed
 // read keeps the filters the address asks for, never every client's work.
 
-import type { ClientListResult } from '../../../../../packages/core-wire/src/index.ts';
+import type {
+  BoardTask,
+  ClientListResult,
+  ClientView,
+} from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { CallResult } from '../../operations/results.ts';
@@ -27,6 +31,16 @@ export function clientNamesOf(
   // An answer without its list reached none: the address's filters hold.
   if (!Array.isArray(answered?.clients)) return requestedIn(query);
   return answered.clients.length > 0 ? answered.clients.map((one) => one.name) : NO_CLIENTS;
+}
+
+/** The clients a board's doors may name: those `client.list` answered, then those its rows name. */
+export function doorClients(
+  state: ReadState<ClientListResult>,
+  tasks: readonly BoardTask[],
+): readonly ClientView[] {
+  const listed =
+    state.outcome === 'ready' && Array.isArray(state.value.clients) ? state.value.clients : [];
+  return [...listed, ...tasks.flatMap((task) => (task.client === null ? [] : [task.client]))];
 }
 
 /** The board's client list: read only at a client filter; at none, no client is asked for. */

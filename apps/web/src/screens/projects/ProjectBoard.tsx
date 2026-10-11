@@ -9,6 +9,7 @@ import { ProjectsBoard, clientFiltersIn } from '@launchastro/ui';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from '../projects-row.ts';
 import type {
   ClientListResult,
+  ClientView,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
@@ -35,7 +36,7 @@ import {
 import { BoardCustody } from './board-custody.tsx';
 import { useBoardTarget } from './scoped-board-read.ts';
 import { todayOn } from '../task/due-dates.ts';
-import { NO_CLIENTS, clientNamesOf, readClients } from './client-names.ts';
+import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-names.ts';
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
 
 import type { OperationsClient } from '../../operations/client.ts';
@@ -58,6 +59,8 @@ export function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & {
     readonly hidden: boolean;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
+    /** The clients the board's doors may name, for the page's own New task. */
+    readonly onClients: (clients: readonly ClientView[]) => void;
   },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
@@ -81,6 +84,7 @@ function ProjectBoardRead(
     readonly scope: BoardAddress;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
+    readonly onClients: (clients: readonly ClientView[]) => void;
   },
 ): ReactElement {
   const client = props.client;
@@ -159,7 +163,21 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  const noTasks = <NoTasks address={query} canFileTask={props.canFileTask === true} />;
+  // The doors carry the view the board shows now, and name a Client filter's client.
+  const known = useMemo(
+    () => doorClients(reached.state, admitted ? (answer?.tasks ?? []) : []),
+    [reached.state, admitted, answer],
+  );
+  const { onClients } = props;
+  useEffect(() => {
+    onClients(known);
+  }, [onClients, known]);
+  const door = {
+    address: props.place.view,
+    canFileTask: props.canFileTask === true,
+    clients: known,
+  };
+  const noTasks = <NoTasks {...door} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
@@ -173,7 +191,7 @@ function ProjectBoardRead(
         </p>
       )}
       {/* The quick-add opens the one kept draft with the typed name. */}
-      <CreateTask address={query} canFileTask={props.canFileTask === true} />
+      <CreateTask {...door} />
       <TaskPinsNotice />
 
       {said === null ? null : (

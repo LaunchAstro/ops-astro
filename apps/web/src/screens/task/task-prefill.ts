@@ -38,6 +38,8 @@ export interface PageContext {
   readonly category?: string | undefined;
   readonly urgent?: boolean | undefined;
   readonly clientId?: string | null;
+  /** The client's name, for the sentence; the draft keeps only the id. */
+  readonly clientName?: string | undefined;
   readonly owner?: { readonly id: string; readonly name: string } | null;
   /** The project the page is a board of, or the task's own. */
   readonly boardId?: string | null;
@@ -108,11 +110,13 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
   ].filter((part) => part !== null);
   const owner = page.owner ?? null;
   const priority = priorityOf(page.priority);
+  const client = (page.clientId ?? null) === null ? null : (page.clientName ?? null);
   const why = [
-    from.length > 0
-      ? `Guessed from ${from.join(', ')}: due in`
-      : 'Nothing here to guess from: due in',
-    ` ${String(days)} days`,
+    from.length > 0 ? `Guessed from ${from.join(', ')}: ` : '',
+    from.length === 0 && client !== null ? 'Guessed from the page: ' : '',
+    from.length === 0 && client === null ? 'Nothing here to guess from: ' : '',
+    client === null ? '' : `client ${client}, `,
+    `due in ${String(days)} days`,
     urgent ? ', pulled in because this move is flagged urgent' : '',
     own === null && routed === undefined ? ', and the category fell back to Admin' : '',
     owner === null ? '; no owner guessed' : `; owner ${owner.name}`,
@@ -154,6 +158,7 @@ export function doorContext(door: HTMLElement): PageContext {
     category: read('newTaskCategory'),
     urgent: door.dataset['newTaskUrgent'] !== undefined,
     clientId: read('newTaskClient') ?? null,
+    clientName: read('newTaskClientName'),
     owner: ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
     ...optional('title', read('newTaskTitle')),
     ...optional('boardId', read('newTaskBoard')),
@@ -172,6 +177,7 @@ export function taskContext(task: InternalTaskDetail): PageContext {
     from: subject,
     subject,
     clientId: task.client,
+    clientName: task.clientSummary?.kind === 'readable' ? task.clientSummary.name : undefined,
     category: task.category ?? undefined,
     boardId: task.board?.readable === true ? task.board.id : null,
     stage: task.stage,
