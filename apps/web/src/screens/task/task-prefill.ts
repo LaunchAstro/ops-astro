@@ -40,7 +40,7 @@ export interface PageContext {
   /** The project the page is a board of, or the task's own. */
   readonly boardId?: string | null;
   readonly stage?: string | null;
-  /** The page's priority: the task's own, or the board's one priority filter. */
+  /** The page's priority: the task's own when filed from a task. */
   readonly priority?: number | null;
 }
 

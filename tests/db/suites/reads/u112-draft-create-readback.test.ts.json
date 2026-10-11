@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
-  "isolation": true,
+  "isolation": false,
   "why": "U112 the new-task draft's client-first command order writes every chosen field and task.read reads each back"
 }
