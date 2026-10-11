@@ -55,17 +55,18 @@ fi
 #    kept before a history rewrite is the obvious case.
 #
 #    An all-zero remote sha means the remote has no such branch yet: the
-#    first-push case, and the one that matters most. Git names the
-#    destination in $1 (a remote, or the URL itself) and its URL in $2. When
-#    $1 is a remote that is fetched from that same URL, the range is every
-#    commit not already on its main: those were swept when they reached that
-#    repository, so a file added and deleted in the new commits is still
-#    read. Any other destination, or no such main here, scans everything
-#    reachable from the local ref: a private origin/main says nothing about
-#    what another repository has received (#1210).
+#    first-push case, and the one that matters most. Git gives the
+#    destination's URL in $2, and the hook asks that repository for its
+#    main. When it answers with a commit this clone has, the range is every
+#    commit not already on it: the destination holds those already, so this
+#    push publishes none of them, and a file added and deleted in the new
+#    commits is still read. No answer, no main there, or a commit not here
+#    scans everything reachable from the local ref. Remote-tracking refs are
+#    not trusted: one may have come from another repository, as after a
+#    remote's URL changes (#1210).
 first_push_base=""
-if [ "$(git remote get-url -- "$1" 2>/dev/null || true)" = "$2" ] &&
-  main_sha=$(git rev-parse --verify -q "refs/remotes/$1/main^{commit}"); then
+dest_main=$(GIT_TERMINAL_PROMPT=0 git ls-remote -- "$2" refs/heads/main 2>/dev/null | cut -f1)
+if [ -n "$dest_main" ] && main_sha=$(git rev-parse --verify -q "$dest_main^{commit}"); then
   first_push_base="$main_sha.."
 fi
 ranges=""

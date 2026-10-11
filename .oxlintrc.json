@@ -14,6 +14,10 @@
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
     {
+      "files": ["tests/gate/sol-criterion-2-remote-url.proof.test.mjs"],
+      "rules": { "unicorn/consistent-function-scoping": "off" }
+    },
+    {
       "files": [
         "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
         "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
