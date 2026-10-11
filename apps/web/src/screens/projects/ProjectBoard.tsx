@@ -26,7 +26,7 @@ import {
   retainBoardScope,
   type BoardAddress,
 } from './scoped-board.ts';
-import { useProjectBoardAddress } from './board-address.ts';
+import type { useProjectBoardAddress } from './board-address.ts';
 import {
   boardAdmission,
   scopedBoardRows,
@@ -56,11 +56,14 @@ export interface ProjectsProps {
 }
 
 export function ProjectBoard(
-  props: Omit<ProjectsProps, 'navigate'> & { readonly hidden: boolean },
+  props: Omit<ProjectsProps, 'navigate'> & {
+    readonly hidden: boolean;
+    readonly place: ReturnType<typeof useProjectBoardAddress>;
+  },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
   const widths = useBoardWidths(props.client, props.grantKey);
-  const place = useProjectBoardAddress(props.address, props.inPanel === true, props.hidden);
+  const place = props.place;
   const scope = decodeBoardAddress(place.query);
   if (scope.kind === 'invalid') return <p role="alert">{scope.reason}</p>;
   return (
@@ -158,7 +161,7 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  const noTasks = <NoTasks scope={props.scope} canFileTask={props.canFileTask === true} />;
+  const noTasks = <NoTasks address={query} canFileTask={props.canFileTask === true} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
@@ -174,7 +177,7 @@ function ProjectBoardRead(
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       {/* The quick-add opens the one kept draft with the typed name. */}
-      <CreateTask scope={props.scope} canFileTask={props.canFileTask === true} />
+      <CreateTask address={query} canFileTask={props.canFileTask === true} />
       <TaskPinsNotice />
 
       {said === null ? null : (

@@ -6,22 +6,30 @@ import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
+import { useProjectBoardAddress } from './projects/board-address.ts';
 
 export type { ProjectsProps };
 
 export function Projects(props: ProjectsProps): ReactElement {
   const { canFileTask = false, inPanel } = props;
-  const { address, tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
+  const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
+  // The board's place, held here so the toolbar's door carries the view the board is on.
+  const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
   return (
     <div className="stack">
       {tab === 'board' ? (
-        <ProjectsToolbar inPanel={inPanel === true} canFileTask={canFileTask} address={address} />
+        <ProjectsToolbar
+          inPanel={inPanel === true}
+          canFileTask={canFileTask}
+          address={place.query}
+        />
       ) : null}
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           canFileTask={canFileTask}
           hidden={tab !== 'board'}
+          place={place}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
