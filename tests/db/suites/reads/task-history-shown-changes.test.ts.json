@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1206: history lists a field command only for a change its reader is shown: an agent is told of no rank-mark edit, by history or lookup, a no-op field command is left out, and a cancel stays"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#1207: a move or reparent gives every descendant whose board it carried an applied audit event of its own naming board, in the mover's business, and a matching history entry; the audit chain verifies"
+}
