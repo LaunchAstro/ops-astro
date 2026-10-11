@@ -39,15 +39,15 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/session/use-signed-in.ts':
     "threads that fetch to the held-address offer, the product's own API",
   'apps/web/src/screens/SignIn.tsx': "threads that fetch to the product's own sign-in route",
-  'apps/cli/main.ts': "the command line calls the product's own API",
   // Main's core after the slice's base (rebase onto 8eba5e6):
   'apps/cli/client.ts':
-    "the command line's and the worker's one transport to the product's own API (T2b)",
+    "the CLI's and the worker's one transport to the product's own API (T2b), and sign-in fetch",
   'apps/api/identity.ts':
     'runs the local git once at process start to read its own checkout (T4); no network',
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
+  'apps/web/src/session/password-grant.ts': 'the password grant, to the sign-in provider only',
   'apps/web/src/session/sign-in-again.ts':
     'signs out, at the sign-in provider, a new session the tab never adopted (C59)',
   // Batch 1's, taken at 5d3e129 (reviewed there):

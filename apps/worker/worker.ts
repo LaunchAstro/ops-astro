@@ -9,8 +9,9 @@
 // same identity, so it replays rather than repeats.
 //
 // It is a client of the API and nothing more (spike RN-04). It talks through
-// the command line's own agent entry (`apps/cli/client.ts`), holds an agent
-// login and one delegation, and never opens the database: no module it loads
+// the command line's own agent entry (`apps/cli/client.ts`), holds its own
+// agent login, the delegation it proposes under and each pickup's own while
+// it holds that work, and never opens the database: no module it loads
 // can, which `tests/worker/worker-boundary.test.ts` checks on its import graph.
 // Which task it works on is the delegation's answer, read from
 // `session.capabilities`, never chosen here.
@@ -19,6 +20,8 @@ import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
+import { halfway, keptAlive } from './keep-alive.ts';
+import type { Bearer } from './sign-in.ts';
 import { proposeStep, selfOf, type Proposer } from './proposal.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
@@ -26,9 +29,9 @@ import { callProvider, ProviderFault, type Provider, type UsageReporter } from '
 export interface WorkerOptions {
   readonly transport: Transport;
   readonly businessKey: string;
-  /** The agent's own login bearer. */
-  readonly credential: string;
-  /** The one delegation it acts under, from `OPS_ASTRO_DELEGATION` as the command line takes it. */
+  /** The agent's own login, which it renews itself (`sign-in.ts`); a test may hand a bearer. */
+  readonly credential: Bearer | string;
+  /** The delegation it proposes under, from `OPS_ASTRO_DELEGATION`; work it applies holds its own. */
   readonly delegation: string;
   readonly reporter: UsageReporter;
   /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
@@ -69,6 +72,8 @@ interface Held {
   readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
   readonly attemptId: string;
   readonly credential: string;
+  /** When its lease is next kept alive (`keep-alive.ts`). */
+  readonly beatAt: number;
   /** Set once the provider dropped this attempt: only its hand-back is sent again, and replays. */
   readonly drop?: {
     readonly cause: 'provider_unavailable' | 'connection_lost';
@@ -106,7 +111,7 @@ async function applyOnce(
   const known = kept.get(taskId);
   let work: Held;
   if (known !== undefined && 'credential' in known) {
-    work = known;
+    work = await keptAlive(options, known);
   } else {
     const asked = known ?? (await ask(options, taskId, self));
     if (!('operationId' in asked)) return asked;
@@ -118,8 +123,8 @@ async function applyOnce(
       return picked;
     }
     work = picked.held;
-    kept.set(taskId, work);
   }
+  kept.set(taskId, work);
   const outcome = await effectOnce(options, taskId, work, (dropped) => {
     kept.set(taskId, dropped);
   });
@@ -168,6 +173,7 @@ async function pickUp(
       lease: { leaseId: picked.detail['leaseId'], fence: picked.detail['fence'] },
       attemptId: String(picked.detail['attemptId']),
       credential: String(picked.detail['credential']),
+      beatAt: halfway(picked.detail['expiresAt']),
     },
   };
 }
