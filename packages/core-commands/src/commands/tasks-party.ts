@@ -46,18 +46,21 @@ export async function clientOf(
  * read would let a reparent check against the old client and land one
  * client's subtree under another's parent. `for share`, as
  * `planTaskPlacement` takes the parent next, in the same order: the target,
- * then the parent or board.
+ * then the parent or board. `trashed` reads a trashed one too: a board in the
+ * trash still holds its tasks, and comes back holding them on restore.
  */
 export async function lockedClientOf(
   tx: TenantQuery,
   taskTypeId: string,
   taskId: string,
+  trashed = false,
 ): Promise<string | null> {
   const rows = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT}::text as client from records
-      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null
+      where business_id = $1 and record_type_id = $2 and id = $3
+        and ($4 or deleted_at is null)
         for share`,
-    [tx.businessId, taskTypeId, taskId],
+    [tx.businessId, taskTypeId, taskId, trashed],
   );
   return rows[0]?.client ?? null;
 }
@@ -137,10 +140,10 @@ export async function setParty(
     if (client !== theirs) return refused(refuseOtherClient());
   }
   // A client's project holds only that client's work (U112), as `task.move`
-  // keeps it; a project with no client takes any.
+  // keeps it, trashed or not; a project with no client takes any.
   const board = (target.data['board'] as string | undefined) ?? null;
   if (naming && parentId === null && board !== null) {
-    const boardClient = await lockedClientOf(tx, context.spine.taskTypeId, board);
+    const boardClient = await lockedClientOf(tx, context.spine.taskTypeId, board, true);
     if (boardClient !== null && boardClient.toLowerCase() !== client) {
       return refused(
         refuseCommand(
