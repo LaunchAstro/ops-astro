@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// U112 Core 04 6, against a real database: the commands the new-task draft
-// sends at Create, in its order (client, project, stage, then the details),
-// write every chosen field, and `task.read` reads each one back. The client
-// goes first because any later write is content and locks it (S0-5).
+// U112 Core 04 6, against a real database: a filled draft from a client's
+// project board, sent as its own recipe (`draftRecipe`, `phaseCommand`)
+// builds it and in that order, writes every chosen field onto the client's
+// project, and `task.read` reads each one back. The client goes first because
+// any later write is content and locks it (S0-5), and a client's project
+// takes only that client's work.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -19,6 +21,10 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { clientHere } from './client-rows.ts';
+import { emptyDraft, type TaskDraft } from '../../apps/web/src/screens/task/task-draft.ts';
+import { draftBody, draftRecipe, partLabel } from '../../apps/web/src/screens/task/draft-recipe.ts';
+import { command, phaseCommand } from '../../apps/web/src/screens/task/draft-command.ts';
+import type { DraftCommand, DraftReceipt } from '../../apps/web/src/screens/task/draft-receipts.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -33,7 +39,10 @@ interface World {
   readonly business: BusinessId;
   readonly owner: Member;
   readonly clientId: string;
+  /** The client's own project. */
   readonly projectId: string;
+  /** The agency's own project, which takes any client's work. */
+  readonly agencyProjectId: string;
 }
 
 async function send(world: World, body: Body) {
@@ -56,60 +65,128 @@ async function seed(): Promise<World> {
   await installSpine(db.app, business);
   const owner = await enrol(db.app, business, 'owner');
   await db.app.withBusiness(business, async (tx) => {
-    for (const action of ['read', 'write', 'share'] as const) {
+    for (const action of ['read', 'write', 'share', 'assign', 'comment'] as const) {
       // eslint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
       await grantTo(tx, owner, action);
     }
+    // The draft's time and new tag are written to their own collections.
+    for (const collection of ['time', 'tag']) {
+      // eslint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
+      await grantTo(tx, owner, 'write', undefined, false, collection);
+    }
   });
   const clientId = await clientHere(db.admin, business, randomUUID());
-  const partial = { db, business, owner, clientId, projectId: '' };
+  const partial = { db, business, owner, clientId, projectId: '', agencyProjectId: '' };
   const project = await applied(partial, {
     command: 'task.create',
     fields: { title: 'Website rebuild' },
   });
-  return { ...partial, projectId: project.recordId ?? '' };
+  await applied(partial, {
+    command: 'task.set_party',
+    recordId: project.recordId,
+    expectedRevision: project.revision,
+    fields: { client: clientId },
+  });
+  const agency = await applied(partial, {
+    command: 'task.create',
+    fields: { title: 'Agency site' },
+  });
+  return { ...partial, projectId: project.recordId ?? '', agencyProjectId: agency.recordId ?? '' };
 }
 
-/** Create a task the way the draft does, then read every chosen field back. */
-async function createInDraftOrder(world: World): Promise<void> {
-  const made = await applied(world, {
-    command: 'task.create',
-    fields: { title: 'Rebuild the booking page', estimated_minutes: 120 },
-    board: null,
+/** The draft as a client's project board's door opens it, every field then filled in. */
+const filled = (world: World): TaskDraft => ({
+  ...emptyDraft(world.clientId),
+  title: 'Rebuild the booking page',
+  due: '2026-11-02',
+  estimate: 120,
+  boardId: world.projectId,
+  stage: 'enquiries',
+  priority: 2,
+  description: 'Mobile users drop off.',
+  agentBrief: 'Test on a phone.',
+  category: 'seo',
+  owner: { id: world.owner.personId, name: 'The owner' },
+  note: 'Start with the booking form.',
+  tags: ['Launch'],
+  steps: ['Audit the form'],
+  time: '30m',
+});
+
+/** Each field of `filled` as `task.read` reads it back. */
+const everyField = (world: World) => ({
+  title: 'Rebuild the booking page',
+  client: world.clientId,
+  board: { readable: true, id: world.projectId, title: 'Website rebuild' },
+  stage: 'enquiries',
+  priority: 2,
+  description: 'Mobile users drop off.',
+  agentBrief: 'Test on a phone.',
+  category: 'seo',
+  estimateMinutes: 120,
+  due: '2026-11-02T00:00:00.000Z',
+  assignee: { personId: world.owner.personId },
+  comments: [{ body: 'Start with the booking form.', comment_type: 'note' }],
+  tags: [{ name: 'Launch' }],
+  steps: [{ title: 'Audit the form' }],
+  time: { totalMinutes: 30 },
+});
+
+/** The command as the app sends it: the part's body with its identity and revision. */
+async function sendCommand(world: World, sent: DraftCommand) {
+  return await send(world, {
+    command: sent.command,
+    ...sent.body,
+    operationId: sent.operationId,
+    ...(sent.expectedRevision === null ? {} : { expectedRevision: sent.expectedRevision }),
   });
-  const recordId = made.recordId ?? '';
-  let revision = made.revision ?? 0;
-  for (const part of [
-    { command: 'task.set_party', fields: { client: world.clientId } },
-    { command: 'task.move', board: world.projectId },
-    { command: 'task.set_stage', fields: { stage: 'enquiries' } },
-    {
-      command: 'task.update',
-      fields: {
-        description: 'Mobile users drop off.',
-        agent_brief: 'Test on a phone.',
-        priority: 2,
-      },
-    },
-  ]) {
+}
+
+const receiptOf = (answer: {
+  recordId: string | null;
+  revision: number | null;
+  detail?: unknown;
+}) => ({
+  recordId: answer.recordId,
+  revision: answer.revision,
+  key: null,
+  identifier: (answer.detail as { tagId?: string } | undefined)?.tagId ?? null,
+  minutes: null,
+});
+
+/** The parts whose answer is the task's next revision, as the draft takes them. */
+const REVISES = new Set(['party', 'board', 'stage', 'details', 'category', 'assignment', 'agent']);
+
+/** Create the draft's task with its own recipe, in its order: the labels of the parts not added. */
+async function createFromDraft(world: World, draft: TaskDraft) {
+  const recipe = draftRecipe(() => randomUUID(), draft);
+  const made = await sendCommand(world, command('task.create', randomUUID(), draftBody(draft)));
+  if (isCommandRefusal(made)) throw new Error(`task.create refused ${made.code}`);
+  let parent: DraftReceipt = receiptOf(made);
+  const missed: string[] = [];
+  for (const part of recipe) {
+    let tagId: string | null = null;
+    if (part.kind === 'tag') {
+      // eslint-disable-next-line no-await-in-loop -- the tag is made before it is added
+      const tag = await sendCommand(world, phaseCommand(part, parent));
+      tagId = isCommandRefusal(tag) ? null : receiptOf(tag).identifier;
+    }
     // eslint-disable-next-line no-await-in-loop -- each part names the revision the last one wrote
-    const answer = await applied(world, { ...part, recordId, expectedRevision: revision });
-    revision = answer.revision ?? revision;
+    const answer = await sendCommand(world, phaseCommand(part, parent, tagId));
+    if (isCommandRefusal(answer)) missed.push(`${partLabel(part)} ${answer.code}`);
+    else if (REVISES.has(part.kind)) parent = receiptOf(answer);
   }
+  return { recordId: made.recordId ?? '', missed };
+}
+
+/** The task as `task.read` answers it. */
+async function readBack(world: World, recordId: string) {
   const read = await executeRead(world.db.app, world.business, world.owner.presented, {
     read: 'task.read',
     recordId,
   });
   if (isCommandRefusal(read) || !('task' in read)) throw new Error('task.read refused');
-  expect(read.task).toMatchObject({
-    title: 'Rebuild the booking page',
-    client: world.clientId,
-    board: { readable: true, id: world.projectId, title: 'Website rebuild' },
-    stage: 'enquiries',
-    priority: 2,
-    description: 'Mobile users drop off.',
-    agentBrief: 'Test on a phone.',
-  });
+  return read.task;
 }
 
 describe.skipIf(serverUrl === undefined)('U112 Core 04 6: every draft field reads back', () => {
@@ -123,8 +200,15 @@ describe.skipIf(serverUrl === undefined)('U112 Core 04 6: every draft field read
     await world?.db.drop();
   });
 
-  it('the draft’s commands in order write the client, project, stage, priority, description and brief', async () => {
-    await createInDraftOrder(world);
+  it('a project door’s filled draft, sent as its recipe builds it, reads back every field', async () => {
+    const created = await createFromDraft(world, filled(world));
+    expect(created.missed).toStrictEqual([]);
+    expect(await readBack(world, created.recordId)).toMatchObject(everyField(world));
+  });
+
+  it('a project door’s draft with no client is refused the client’s project', async () => {
+    const created = await createFromDraft(world, { ...filled(world), clientId: null });
+    expect(created.missed[0]).toBe('the project PLACEMENT_IS_DERIVED');
   });
 
   it('a client sent after the project would be refused, which is why the draft sends it first', async () => {
@@ -136,7 +220,7 @@ describe.skipIf(serverUrl === undefined)('U112 Core 04 6: every draft field read
     const moved = await applied(world, {
       command: 'task.move',
       recordId,
-      board: world.projectId,
+      board: world.agencyProjectId,
       expectedRevision: made.revision,
     });
     const late = await send(world, {

@@ -61,6 +61,8 @@ export function ProjectBoard(
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     /** The clients the board's doors may name, for the page's own New task. */
     readonly onClients: (clients: readonly ClientView[]) => void;
+    /** The selected project's own client, which the board's doors file. */
+    readonly project: ClientView | null;
   },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
@@ -85,6 +87,7 @@ function ProjectBoardRead(
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
     readonly onClients: (clients: readonly ClientView[]) => void;
+    readonly project: ClientView | null;
   },
 ): ReactElement {
   const client = props.client;
@@ -177,7 +180,7 @@ function ProjectBoardRead(
     canFileTask: props.canFileTask === true,
     clients: known,
   };
-  const noTasks = <NoTasks {...door} />;
+  const noTasks = <NoTasks {...door} project={props.project} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
