@@ -56,7 +56,7 @@ import {
 import { PageLink, GoTo } from './PageLink.tsx';
 import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
-import { taskScope, type DraftScope } from './panel-host.ts';
+import { taskContext, type PageContext } from './task-prefill.ts';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
@@ -88,7 +88,7 @@ export interface TaskPanelProps extends ClientSeams {
   /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
   readonly docked?: boolean;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
-  readonly onNewTask?: (scope: DraftScope) => void;
+  readonly onNewTask?: (page: PageContext) => void;
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
@@ -274,7 +274,7 @@ function PanelHead(props: SideProps): ReactElement {
         data-panel-head="new"
         disabled={onNewTask === undefined}
         onClick={() => {
-          onNewTask?.(taskScope(task));
+          onNewTask?.(taskContext(task));
         }}
       >
         New task

@@ -11,10 +11,10 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { json, typeInto, unmountAll } from './perspective-support.tsx';
 import { task as taskStub, tick } from './task-page-stub.tsx';
 import { NEW_ID, NEW_KEY, create, draft, store, valueOf, type Sent } from './draft-support.tsx';
-import { doorContext } from '../../apps/web/src/screens/task/task-prefill.ts';
+import { doorContext, taskContext } from '../../apps/web/src/screens/task/task-prefill.ts';
 import type { InternalTaskDetail } from '../../packages/core-wire/src/index.ts';
 import { boardDoor } from '../../apps/web/src/screens/projects/ProjectsToolbar.tsx';
-import { scopeOf, taskScope } from '../../apps/web/src/screens/task/panel-host.ts';
+import { scopeOf } from '../../apps/web/src/screens/task/panel-host.ts';
 import { prefilledDraft } from '../../apps/web/src/screens/task/task-draft.ts';
 
 afterEach(unmountAll);
@@ -193,13 +193,13 @@ describe('Core 04 2: each door carries its page’s scope, never a fixed client'
       priority: 3,
       board: { readable: true, id: BOARD, title: 'Website rebuild' },
     }) as unknown as InternalTaskDetail;
-    const filed = prefilledDraft(taskScope(task).prefill!);
+    const filed = prefilledDraft(scopeOf(taskContext(task)).prefill!);
     expect(filed).toMatchObject({ clientId: CLIENT, boardId: BOARD, stage: 'trust', priority: 3 });
     expect(filed.why).toContain('priority P3 from the page');
   });
 
   it('a board the reader cannot open is not carried', () => {
     const task = taskStub({ board: { readable: false } }) as unknown as InternalTaskDetail;
-    expect(taskScope(task).prefill?.boardId).toBeNull();
+    expect(scopeOf(taskContext(task)).prefill?.boardId).toBeNull();
   });
 });
