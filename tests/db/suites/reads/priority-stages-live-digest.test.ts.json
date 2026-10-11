@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "P11 priority stage writes move the live board digest of task readers only, notify only their own business, and an open board stream says resync without its recheck, in an owned fresh database."
+}
