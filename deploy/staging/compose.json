@@ -145,7 +145,7 @@
       "working_dir": "/app",
       "command": ["node", "scripts/ops/egress.mjs", "relay"],
       "environment": {
-        "STAGING_WEB_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
+        "OPS_ASTRO_API_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
         "OPS_EGRESS_API_ALIAS": "${STAGING_EGRESS_API_HOST:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
@@ -191,7 +191,7 @@
       "working_dir": "/app",
       "command": ["node", "scripts/ops/egress.mjs", "out"],
       "environment": {
-        "STAGING_WEB_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
+        "OPS_ASTRO_API_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Staging's one way out (ticket S0-1 containment; ORCH40's egress ruling): the
-// worker, its forwarder and the backup dump reach exactly five places, each
-// named by a setting, and nothing else.
+// The M5 unit's one way out, staging's and production's (ticket S0-1
+// containment; ORCH40's egress ruling): the worker, its forwarder and the
+// backup dump reach exactly five places, each named by a setting, and nothing
+// else.
 //
 //   node scripts/ops/egress.mjs relay | out
 //
@@ -15,7 +16,7 @@
 // the bytes unchanged. Neither ends TLS, so every client still checks the real
 // host's certificate. A pair off the list is closed with nothing sent on.
 //
-// Settings: STAGING_WEB_URL, the very address the worker is given for the API,
+// Settings: OPS_ASTRO_API_URL, the very address the worker is given for the API,
 // whose host is the API's place (one source, so no setting can swap it);
 // OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST and OPS_EGRESS_AUTH_HOST (the
 // sign-in service the worker renews its login at; https, port 443),
@@ -35,11 +36,11 @@ const HELLO_LIMIT = 16_384;
 
 /** The API's host from the worker's own address: https, port 443, nothing but a host. */
 function apiHost(env) {
-  const url = URL.parse(env['STAGING_WEB_URL'] ?? '');
+  const url = URL.parse(env['OPS_ASTRO_API_URL'] ?? '');
   const bare = url?.username === '' && url.password === '' && url.search === '' && url.hash === '';
   if (url?.protocol !== 'https:' || url.port !== '' || !bare || !['/', ''].includes(url.pathname))
-    throw new Error('STAGING_WEB_URL is not an https address of a host alone.');
-  if (!HOST.test(url.hostname)) throw new Error('STAGING_WEB_URL is not set to a host name.');
+    throw new Error('OPS_ASTRO_API_URL is not an https address of a host alone.');
+  if (!HOST.test(url.hostname)) throw new Error('OPS_ASTRO_API_URL is not set to a host name.');
   return url.hostname;
 }
 
@@ -164,7 +165,7 @@ if (import.meta.main) {
     if (mode !== 'relay' && mode !== 'out') throw new Error('usage: egress.mjs relay | out');
     list = allowList(process.env);
     if (mode === 'relay' && process.env['OPS_EGRESS_API_ALIAS'] !== list[0][0])
-      throw new Error('OPS_EGRESS_API_ALIAS is not the host of STAGING_WEB_URL.');
+      throw new Error('OPS_EGRESS_API_ALIAS is not the host of OPS_ASTRO_API_URL.');
   } catch (error) {
     process.stderr.write(`egress: ${error.message}\n`);
     process.exit(1);
