@@ -81,6 +81,7 @@ export const HISTORY_FIELDS: Readonly<Record<string, string>> = {
   delegate: 'Delegate',
   agent: 'Agent',
   parent: 'Parent task',
+  blocked_by: 'Blocked by',
   client: 'Client',
   client_visible: 'Client access',
   type: 'Type',

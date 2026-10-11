@@ -15,6 +15,7 @@ import { eventsOf, made, type Made } from './field-changes-world.ts';
 import { FIELD_WRITES } from '../../packages/core-commands/src/commands/outcome.ts';
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
 const configured = databaseUrlFromEnvironment() !== undefined;
 const DUE = '2026-11-01T00:00:00.000Z';
@@ -217,6 +218,14 @@ const CASES: Readonly<Record<string, Case>> = {
       keys: ['answer', 'completed_at', 'gist', 'state'],
     }),
   },
+  'task.restore': {
+    change: async () => {
+      const trashed = await send(on(await fresh(), 'task.trash'));
+      if (isCommandRefusal(trashed)) throw new Error(`trash refused ${trashed.code}`);
+      const batchId = trashed.detail['batchId'];
+      return { body: { command: 'task.restore', operationId: randomUUID(), batchId }, keys: [] };
+    },
+  },
   'task.close_out_of_scope': {
     change: async () => ({
       body: on(await ticket(), 'task.close_out_of_scope', { reason: 'P21 elsewhere' }),
@@ -269,6 +278,27 @@ describe.skipIf(!configured)('P21 every task field writer records what it change
       ['applied', command, { version: 1, keys: write.keys }],
     ]);
   });
+
+  // What a field writer changed is a change to the task, so its event is in the
+  // task's history: a command whose keys no history names, and that is not an
+  // act of its own, would vanish from every reader's history.
+  it.each([...FIELD_WRITES])(
+    '%s, when it changes something, is in the history',
+    async (command) => {
+      const write = await CASES[command]?.change();
+      if (write === undefined) throw new Error(`no case for ${command}`);
+      expect(isCommandRefusal(await send(write.body))).toBe(false);
+      const [event] = await eventsOf(world.db.admin, [String(write.body['operationId'])]);
+      const subject = String(event?.row['subject_record_id']);
+      const answer = await executeRead(world.db.app, world.business, writer.presented, {
+        read: 'task.read',
+        recordId: subject,
+      } as never);
+      if (isCommandRefusal(answer) || !('task' in answer)) throw new Error('task not answered');
+      const listed = answer.task.history.map((entry) => entry.eventId);
+      expect(listed).toContain(event?.row['id']);
+    },
+  );
 
   // A write to another record than the task, a carried board, records on that
   // record's own event (#1207).

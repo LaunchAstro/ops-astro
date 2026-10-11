@@ -236,6 +236,8 @@ export async function trashSubtree<Denied>(
 export interface RestoreResult {
   readonly batchId: string;
   readonly recordIds: readonly string[];
+  /** Each restored record and the data keys the restore changed, the batch's root first. */
+  readonly changes: readonly { readonly recordId: string; readonly changed: readonly string[] }[];
 }
 
 interface BatchRow {
@@ -285,7 +287,9 @@ interface ParentRow {
  * share` above, so a move holding it waits for this restore, whose rows its
  * rewrite then sees live, or this restore waits for the move and reads the
  * board it wrote. A top-level row keeps its own board, and a row whose parent
- * no longer exists (case L10) keeps the board it had.
+ * no longer exists (case L10) keeps the board it had. Each row
+ * comes back with the keys its data changed, as a data write records them
+ * (`writeRecordData`), for the restore's evidence.
  */
 export async function restoreBatch(
   tx: TenantQuery,
@@ -345,7 +349,9 @@ export async function restoreBatch(
   const taken = await claimsAlreadyTaken(tx, [...inThisBatch]);
   if (taken !== undefined) return taken;
 
-  const restored = await tx.query<{ readonly id: string }>(
+  const parentOf = new Map(rows.map((row) => [row.id, row.parent_id]));
+  const isRoot = (id: string) => !inThisBatch.has(parentOf.get(id) ?? '');
+  const restored = await tx.query<{ readonly id: string; readonly changed: readonly string[] }>(
     `with recursive carried (id, board) as (
          select r.id, p.${BOARD}::text from records r
            join records p on p.business_id = r.business_id and p.id = r.${PARENT}
@@ -356,7 +362,8 @@ export async function restoreBatch(
           where child.business_id = $1 and child.trash_batch_id = $2
        ) cycle id set looped using path,
        placed as (
-         select b.id, carried.id is not null as derived, carried.board from records b
+         select b.id, b.data as before_data, carried.id is not null as derived, carried.board
+           from records b
            left join carried on carried.id = b.id and not carried.looped
           where b.business_id = $1 and b.trash_batch_id = $2
        )
@@ -367,10 +374,13 @@ export async function restoreBatch(
                         else jsonb_set(r.data, '{board}', to_jsonb(placed.board)) end
        from placed
       where r.business_id = $1 and r.id = placed.id and r.trash_batch_id = $2
-      returning r.id`,
+      returning r.id, public.record_changed_field_keys(placed.before_data, r.data) as changed`,
     [tx.businessId, options.batchId],
   );
-  return { batchId: options.batchId, recordIds: restored.map((each) => each.id) };
+  const changes = restored
+    .map((each) => ({ recordId: each.id, changed: each.changed }))
+    .toSorted((a, b) => Number(isRoot(b.recordId)) - Number(isRoot(a.recordId)));
+  return { batchId: options.batchId, recordIds: restored.map((each) => each.id), changes };
 }
 
 /**

@@ -7,7 +7,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { registerAttempt, type CommandHandle } from './register-store.ts';
 import { isRefused, type Applied, type HandlerOutcome } from './outcome.ts';
-import { writeAuditEvent } from './audit.ts';
+import { writeAppliedEvents } from './audit.ts';
 import type { AgentCall } from './agent-call.ts';
 import type { IdentifiedRequest } from './requests.ts';
 
@@ -53,15 +53,16 @@ export async function recordApplied(
     result: storable(handle),
     recordId: outcome.recordId,
   });
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: request.command,
-    operationId: request.operationId,
-    payloadDigest: digest,
-    outcome: 'applied',
-    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
-    fieldChanges: outcome.fieldChanges ?? null,
-  });
+  await writeAppliedEvents(
+    tx,
+    {
+      actorId: session.actorId,
+      command: request.command,
+      operationId: request.operationId,
+      payloadDigest: digest,
+    },
+    outcome,
+  );
   return handle;
 }
 

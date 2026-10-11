@@ -106,13 +106,26 @@ export async function restoreTasks(
   if (isRecordsRefusal(restored)) return refused(restored);
   // C41-A: an onboarding step that opened while its task was in the trash.
   await parkRestoredSteps(tx, restored.recordIds);
-  // The ids go in the stored result: the event this command writes has one
-  // subject column and a restore has no single subject.
-  return applied(null, null, {
+  // The ids go in the stored result, and each restored record gets an applied
+  // event of its own, the batch's root on the command's, naming what the
+  // restore changed in its data: a subtask's board, taken again from its live
+  // parent, so its history shows it back and where (#1207).
+  const [root, ...others] = restored.changes.map(({ recordId, changed }) => ({
+    recordId,
+    fieldChanges: { version: 1, keys: changed } as const,
+  }));
+  const answer = applied(null, null, {
     batchId,
     restored: restored.recordIds.length,
     restoredIds: restored.recordIds,
   });
+  if (root === undefined) return answer;
+  return {
+    ...answer,
+    auditSubjectId: root.recordId,
+    fieldChanges: root.fieldChanges,
+    carried: others,
+  };
 }
 
 /**

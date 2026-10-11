@@ -218,5 +218,6 @@ it('refuses to upgrade while a pickup proposal sits on a task an unrelated Launc
 it('upgrades once a person has decided every pending launch proposal written before it', async () => {
   await w.world.db.closeSessions();
   const upgrade = await migrate(w.world.db.admin, 'migrations');
-  expect(upgrade.applied).toEqual([LINK, GUARD]);
+  // The two apply first, in order; migrations added after them come too.
+  expect(upgrade.applied.slice(0, 2)).toEqual([LINK, GUARD]);
 }, 60_000);
