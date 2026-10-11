@@ -128,6 +128,8 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // #1224: assigning another person's agent takes the audit chain's key after
   // its write, so its `agent:assign` re-ask comes after every wait.
   'packages/core-commands/src/commands/tasks-agent.ts',
+  // #1248: launching another person's agent re-asks its `agent:assign` the same way.
+  'packages/core-commands/src/commands/tasks-launch.ts',
   'packages/core-custody/src/broker-reserve.ts',
   // AW-07b: the mail cap, counted under one lock per business and client or person.
   'packages/core-custody/src/email-class.ts',
