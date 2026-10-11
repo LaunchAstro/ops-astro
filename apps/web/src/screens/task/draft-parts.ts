@@ -9,6 +9,7 @@ import {
   isDraftBody,
   operationIds,
   partLabel,
+  scopePart,
   type DraftPart,
 } from './draft-recipe.ts';
 import { command, phaseCommand } from './draft-command.ts';
@@ -95,14 +96,29 @@ async function finishDraft(
         kind: 'unknown',
         because: `No answer for ${partLabel(part)}; Create again to finish.`,
       };
-    if (result.answer.kind !== 'ok') missed.push(partLabel(part));
-    else if (part.kind === 'party' || part.kind === 'category' || part.kind === 'assignment')
-      parent = { ...result.receipt!, key: base.key };
+    if (result.answer.kind === 'ok') {
+      if (REVISES.has(part.kind)) parent = { ...result.receipt!, key: base.key };
+    } else if (scopePart(part)) {
+      // The rest would land outside the task's client or project: none of it is sent.
+      missed.push(...recipe.slice(index).map((rest) => partLabel(rest)));
+      done = recipe.length;
+      save(now());
+      break;
+    } else missed.push(partLabel(part));
     done = index + 1;
     save(now());
   }
   return { kind: 'created', key: base.key ?? base.recordId!, missed };
 }
+/** The parts whose answer is the task's next revision. */
+const REVISES = new Set<DraftPart['kind']>([
+  'party',
+  'board',
+  'stage',
+  'details',
+  'category',
+  'assignment',
+]);
 interface Written {
   readonly answer: Settlement;
   readonly receipt: DraftReceipt | null;
