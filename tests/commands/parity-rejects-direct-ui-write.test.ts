@@ -19,7 +19,7 @@ it('rejects a stateful button that posts directly with no command catalogue or C
   const file = 'screens/Projects.tsx';
   const source = files.get(file);
   if (!source) throw new Error('the built Projects screen must be present');
-  const anchor = '<div className="stack">';
+  const anchor = '<div className="stack projects">';
   expect(source).toContain(anchor);
   files.set(
     file,

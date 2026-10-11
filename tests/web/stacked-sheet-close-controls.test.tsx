@@ -86,7 +86,7 @@ it('five available sheet panels at the permitted minimum keep every close contro
         };
       }),
     );
-    expect(boxes).toHaveLength(6);
+    expect(boxes).toHaveLength(ids.length);
     for (const box of boxes) {
       expect(box.clickable, JSON.stringify(box)).toBe(true);
     }

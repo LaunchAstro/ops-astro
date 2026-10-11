@@ -5,7 +5,7 @@
 // Usage: node tests/visual/projects-task-states.ts --out .local/visual-parity/states
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { serveApp } from './app-pages.ts';
 import { captureAgentDetails } from './task-deep-states.ts';
 import { taskControlSurfaces } from './task-control-surfaces.ts';
@@ -32,7 +32,7 @@ writeFileSync(
   ),
 );
 const served = await serveApp();
-const browser = await chromium.launch({ headless: true });
+const browser = await launchChromium({ headless: true });
 const context = await browser.newContext({
   viewport: { width: 2048, height: 1038 },
   deviceScaleFactor: 1,

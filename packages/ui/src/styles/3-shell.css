@@ -803,11 +803,23 @@
 }
 @media (width <= 900px) {
   .topbar__bar {
+    position: relative;
     flex-basis: 100%;
     flex-wrap: wrap;
   }
   .topbar__bar .cbdm__search {
     flex-basis: 100%;
+  }
+  /* The wrapped funnel starts at the left gutter. Its menu must open into
+     the page, and the portalled command bar has no box to anchor at 390. */
+  .topbar__bar .cbd__menu {
+    left: 0;
+    right: auto;
+  }
+}
+@media (width <= 480px) {
+  .topbar__bar .cbd__menu {
+    right: 0;
   }
 }
 .topbar__meta {
