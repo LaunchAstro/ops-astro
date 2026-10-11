@@ -199,10 +199,15 @@ export {
 export { assignedPeople, assignedTo } from './tasks/assignee.ts';
 export {
   AGENT_ASSIGN,
+  AGENT_NAME_LIMIT,
   AGENT_NAME_SQL,
+  agentNameOf,
+  createAgent,
   directableAgents,
   mayDirectAgent,
+  ownAgents,
   personSubjects,
+  renameAgent,
   UNNAMED_AGENT,
   type AgentChoice,
 } from './authority/agents.ts';

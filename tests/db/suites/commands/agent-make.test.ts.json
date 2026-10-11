@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Make my agent: agent.create, agent.rename and agent.mine reach the caller's own agents only, across another person, another business and a person who is not a member; the agent made is handed a task and read back by name"
+}

@@ -99,11 +99,11 @@ describe('Assign to AI on the board: the assignee menu', () => {
 });
 
 describe('Assign to AI on the board: the row', () => {
-  it('an agent’s row draws the dashed A and AI, and its tick sends the work to review', async () => {
+  it('an agent’s row draws the dashed A and AI with its name, and its tick sends the work to review', async () => {
     const { board } = await open();
     const cell = one(board, 'tr[data-row="held"] td[data-key="assignee"]');
     expect(cell?.querySelector('.cbd__av.is-agent')?.textContent).toBe('A');
-    expect(cell?.querySelector('.cbd__nm')?.textContent).toBe('AI');
+    expect(cell?.querySelector('.cbd__nm')?.textContent).toBe('AI: draft the menu');
     const tick = one(board, 'tr[data-row="held"] input.cbd__tick');
     expect(tick?.getAttribute('title')).toBe(REVIEW);
     expect(tick?.getAttribute('aria-label')).toBe('Send Held to review');

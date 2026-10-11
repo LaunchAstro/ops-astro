@@ -33,6 +33,7 @@
 import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
+import { OWN_AGENT_SURFACE } from './surface-agents.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -788,6 +789,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     }),
   ),
   read('tag.list', TASK_COLLECTION),
+  // A person's own agents (Assign to AI), in their own file.
+  ...OWN_AGENT_SURFACE,
   read('task.todos', TASK_COLLECTION),
 
   // The inbox is one person's: no agent reaches it, and each row answers the

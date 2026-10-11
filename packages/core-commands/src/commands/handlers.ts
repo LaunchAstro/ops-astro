@@ -71,6 +71,7 @@ import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
 import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
+import { makeAgent, renameOwnAgent } from './agents.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
@@ -250,6 +251,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     addTagToTask(tx, context, request.recordId, request.tagId),
   'task.remove_tag': (tx, context, request) =>
     removeTagFromTask(tx, context, request.recordId, request.tagId),
+  // A person's own agent (Assign to AI); no grant was asked.
+  'agent.create': (tx, context, request) => makeAgent(tx, context, request.name),
+  'agent.rename': (tx, context, request) =>
+    renameOwnAgent(tx, context, request.agentId, request.name),
 
   'preference.save': (tx, context, request) =>
     saveOwnPreference(tx, context, request.preference, request.value),

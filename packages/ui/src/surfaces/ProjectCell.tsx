@@ -90,7 +90,7 @@ function Assignee(props: { readonly row: ProjectRow }): ReactNode {
       ) : (
         <Avatar name={who.name} />
       )}
-      <span className="cbd__nm">{who.agent ? 'AI' : short}</span>
+      <span className="cbd__nm">{who.agent ? `AI: ${who.name}` : short}</span>
     </div>
   );
 }

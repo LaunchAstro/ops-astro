@@ -781,6 +781,12 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
+/** `agent.mine`: the caller's own agents, by name (Assign to AI). */
+export interface AgentMineResult {
+  readonly ok: true;
+  readonly agents: readonly AgentOfferView[];
+}
+
 /** `tag.list`'s answer: the business's tag vocabulary, by name (MP-4-11). */
 export interface TagListResult {
   readonly ok: true;

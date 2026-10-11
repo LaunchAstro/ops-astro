@@ -23,6 +23,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 const PINNED_IDENTIFIERS = {
   'access.read': [],
+  'agent.mine': [],
   'automation.registry': [],
   'chat.conversations': [],
   'chat.messages': ['conversationId'],
@@ -222,6 +223,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   })),
   'session.person': BODIES.map(() => null),
   'preference.read': BODIES.map(() => null),
+  'agent.mine': BODIES.map(() => null),
   'task.search': BODIES.map(() => QUERY),
   'access.read': BODIES.map(() => null),
   'operations.read': BODIES.map(() => null),
@@ -247,7 +249,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-two reads', () => {
+  it('names the same forty-three reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

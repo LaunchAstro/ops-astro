@@ -257,6 +257,8 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'time.set_note': { entryId: 'id', note: 'any' },
   'time.delete': { entryId: 'id' },
   'tag.create': { name: 'any' },
+  'agent.create': { name: 'any' },
+  'agent.rename': { agentId: 'id', name: 'any' },
   'task.add_tag': { recordId: 'id', tagId: 'id' },
   'task.remove_tag': { recordId: 'id', tagId: 'id' },
   'session.end': {},
