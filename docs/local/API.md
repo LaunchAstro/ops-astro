@@ -662,8 +662,9 @@ heading. `tests/reads/mp-5-11-board-wait-reason.test.ts` holds the reasons
 and the three crossings.
 
 Each row also carries `awaitingDecision` (MP-5-12): true when the task waits
-at such a gate and the caller's decide grant reaches the task, the grant
-`task.decide` checks. The decide reach comes from `readableScope` with action
+at a gate `task.decide` would admit the caller to, asked gate by gate: the
+caller's decide grant reaches the task, an escalated gate needs decide across
+the business, and four eyes does not refuse them that gate. The decide reach comes from `readableScope` with action
 `decide`, and the gates are read only for the rows already served
 (`awaitingApproval`, `reads/awaiting.ts`), so a gate on a task the caller
 cannot read is never read or counted. The Projects board's Review mode draws these rows and counts
