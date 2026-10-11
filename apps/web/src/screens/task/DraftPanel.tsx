@@ -90,7 +90,13 @@ function DraftBody(
         {kept.draft.why === null ? '' : `${kept.draft.why} `}
         Nothing is stored until Create.
       </p>
-      <DraftFields draft={kept.draft} put={kept.put} name={kept.name} locked={creating.busy} />
+      <DraftFields
+        client={props.client}
+        draft={kept.draft}
+        put={kept.put}
+        name={kept.name}
+        locked={creating.busy}
+      />
       {creating.refusal === null ? null : (
         <p className="field__error" role="alert" data-draft-refusal>
           {creating.refusal}

@@ -4,6 +4,9 @@ import { timedMinutes, type TaskDraft } from './task-draft.ts';
 
 export type DraftPart =
   | { readonly kind: 'party'; readonly operationId: string; readonly clientId: string }
+  | { readonly kind: 'board'; readonly operationId: string; readonly boardId: string }
+  | { readonly kind: 'stage'; readonly operationId: string; readonly stage: string }
+  | { readonly kind: 'details'; readonly operationId: string; readonly fields: DraftDetails }
   | { readonly kind: 'category'; readonly operationId: string; readonly category: string }
   | { readonly kind: 'assignment'; readonly operationId: string; readonly assigneeId: string }
   | { readonly kind: 'note'; readonly operationId: string; readonly body: string }
@@ -20,6 +23,12 @@ export type DraftPart =
       readonly duration: string;
       readonly source: 'typed' | 'timer';
     };
+/** What `task.update` writes once the task has its client and project. */
+export type DraftDetails = {
+  readonly description?: string;
+  readonly agent_brief?: string;
+  readonly priority?: number;
+};
 export type DraftBody = {
   readonly fields: {
     readonly title: string;
@@ -45,8 +54,15 @@ export function draftRecipe(
 ): readonly DraftPart[] {
   const id = (tagCreate = false): string => identify(parts.length, tagCreate);
   const parts: DraftPart[] = [];
+  // The client, then the project: no content is written before the task's scope is set.
   if (draft.clientId !== null)
     parts.push({ kind: 'party', operationId: id(), clientId: draft.clientId });
+  if (draft.boardId !== null)
+    parts.push({ kind: 'board', operationId: id(), boardId: draft.boardId });
+  if (draft.stage !== null) parts.push({ kind: 'stage', operationId: id(), stage: draft.stage });
+  const details = detailsOf(draft);
+  if (Object.keys(details).length > 0)
+    parts.push({ kind: 'details', operationId: id(), fields: details });
   if (draft.category !== null)
     parts.push({ kind: 'category', operationId: id(), category: draft.category });
   if (draft.owner !== null)
@@ -68,10 +84,38 @@ export function draftRecipe(
     });
   return Object.freeze(parts.map((part) => Object.freeze(part)));
 }
+function detailsOf(draft: TaskDraft): DraftDetails {
+  const description = draft.description.trim();
+  const brief = draft.agentBrief.trim();
+  return {
+    ...(description === '' ? {} : { description }),
+    ...(brief === '' ? {} : { agent_brief: brief }),
+    ...(draft.priority === null ? {} : { priority: draft.priority }),
+  };
+}
+
+const DETAIL_LABELS: Readonly<Record<keyof DraftDetails, string>> = {
+  description: 'the description',
+  agent_brief: 'the agent brief',
+  priority: 'the priority',
+};
+
+/** A refused client or project stops Create: nothing more is written outside the task's scope. */
+export const scopePart = (part: DraftPart): boolean =>
+  part.kind === 'party' || part.kind === 'board';
+
 export function partLabel(part: DraftPart): string {
   switch (part.kind) {
     case 'party':
       return 'the client';
+    case 'board':
+      return 'the project';
+    case 'stage':
+      return 'the stage';
+    case 'details':
+      return (Object.keys(part.fields) as (keyof DraftDetails)[])
+        .map((key) => DETAIL_LABELS[key])
+        .join(', ');
     case 'category':
       return 'the category';
     case 'assignment':
@@ -101,9 +145,26 @@ export function closed(value: unknown, keys: readonly string[]): value is Record
   );
 }
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+/** Each one-operand part's operand. */
+const OPERAND: Readonly<Record<string, string>> = {
+  party: 'clientId',
+  board: 'boardId',
+  stage: 'stage',
+  category: 'category',
+  assignment: 'assigneeId',
+  note: 'body',
+  child: 'title',
+  time: 'duration',
+};
 export function draftPart(value: unknown): value is DraftPart {
   if (!record(value)) return false;
   const kind = value['kind'];
+  if (kind === 'details')
+    return (
+      closed(value, ['kind', 'operationId', 'fields']) &&
+      isOperationId(value['operationId']) &&
+      record(value['fields'])
+    );
   if (kind === 'tag')
     return (
       closed(value, ['kind', 'name', 'createOperationId', 'addOperationId']) &&
@@ -111,20 +172,7 @@ export function draftPart(value: unknown): value is DraftPart {
       isOperationId(value['createOperationId']) &&
       isOperationId(value['addOperationId'])
     );
-  const operand =
-    kind === 'party'
-      ? 'clientId'
-      : kind === 'category'
-        ? 'category'
-        : kind === 'assignment'
-          ? 'assigneeId'
-          : kind === 'note'
-            ? 'body'
-            : kind === 'child'
-              ? 'title'
-              : kind === 'time'
-                ? 'duration'
-                : null;
+  const operand = typeof kind === 'string' ? (OPERAND[kind] ?? null) : null;
   if (
     operand === null ||
     !closed(value, ['kind', 'operationId', operand, ...(kind === 'time' ? ['source'] : [])]) ||
@@ -132,7 +180,8 @@ export function draftPart(value: unknown): value is DraftPart {
     !text(value[operand])
   )
     return false;
-  if ((kind === 'party' || kind === 'assignment') && !isUuid(value[operand])) return false;
+  if ((kind === 'party' || kind === 'board' || kind === 'assignment') && !isUuid(value[operand]))
+    return false;
   return kind !== 'time' || value['source'] === 'typed' || value['source'] === 'timer';
 }
 export function isDraftBody(value: unknown): value is DraftBody {

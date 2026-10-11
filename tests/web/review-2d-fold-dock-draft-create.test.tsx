@@ -56,6 +56,9 @@ function server() {
       string,
       unknown
     >;
+    // New task from a task is prefilled from it (U112): its project and category parts land.
+    if (/\/task\/(?:move|set_category)$/u.test(where))
+      return Promise.resolve(json({ recordId: CREATED_ID, revision: 2, detail: {} }));
     if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
     if (where.endsWith('/task/queue')) {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));

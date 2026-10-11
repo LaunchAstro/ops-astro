@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The new-task draft's fields (MP-4-13, DN-01, DN-02, DN-05): the name, due,
-// estimate, category, the owner the page named, tags, subtasks, time spent and a note. Each change goes straight
+// estimate, category, the owner the page named, the project, stage, priority,
+// description and agent brief (`DraftDetails.tsx`), tags, subtasks, time spent
+// and a note. Each change goes straight
 // to `put`, which keeps the draft for its person; nothing here writes to the
 // server. While Create is out every field is read-only, so the draft its
 // answer settles is the one it sent.
@@ -14,11 +16,15 @@ import {
   type RefObject,
 } from 'react';
 import { TASK_CATEGORIES } from '../../../../../packages/core-wire/src/index.ts';
+import type { OperationsClient } from '../../operations/client.ts';
+import { DraftDetails } from './DraftDetails.tsx';
 import { DraftTime } from './DraftTimer.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import type { TaskDraft } from './task-draft.ts';
 
 export interface DraftFieldsProps {
+  /** Reads the project choices; nothing here writes. */
+  readonly client: OperationsClient;
   readonly draft: TaskDraft;
   readonly put: (next: Partial<TaskDraft>) => void;
   /** The name field, focused on open and on an empty-name refusal. */
@@ -32,6 +38,7 @@ export function DraftFields(props: DraftFieldsProps): ReactElement {
     <div className="dtp__fields">
       <DraftFacts {...props} />
       <DraftGuesses {...props} />
+      <DraftDetails {...props} />
       <DraftParts {...props} />
     </div>
   );
