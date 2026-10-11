@@ -139,6 +139,38 @@ async function seed(): Promise<void> {
   projects.foreign = made.recordId ?? '';
 }
 
+/** A project holding a task on its board has content: its client change is refused. */
+async function heldTaskLocksProjectClient(): Promise<void> {
+  const project = await drafted(world.ours);
+  const task = await drafted(world.ours);
+  expect(isCommandRefusal(await moveOnto(task, project.recordId))).toBe(false);
+  const before = await factsOf(project.recordId);
+  const held = await factsOf(task.recordId);
+
+  const answer = await send(world.owner, {
+    command: 'task.set_party',
+    recordId: project.recordId,
+    expectedRevision: before.revision,
+    fields: { client: world.theirs },
+  });
+  expect(isCommandRefusal(answer) ? answer.code : 'applied').toBe('CLIENT_LOCKED');
+  expect(await factsOf(project.recordId)).toEqual(before);
+  expect(await factsOf(task.recordId)).toEqual(held);
+  expect(held).toMatchObject({ client: world.ours, board: project.recordId });
+}
+
+async function emptyProjectClientChanges(): Promise<void> {
+  const project = await drafted(world.ours);
+  expect((await factsOf(project.recordId)).hasContent).toBe(false);
+  await applied(world.owner, {
+    command: 'task.set_party',
+    recordId: project.recordId,
+    expectedRevision: project.revision,
+    fields: { client: world.theirs },
+  });
+  expect((await factsOf(project.recordId)).client).toBe(world.theirs);
+}
+
 describe.skipIf(serverUrl === undefined)(
   'U112 Core 04 4: a project holds its client’s work',
   () => {
@@ -171,36 +203,9 @@ describe.skipIf(serverUrl === undefined)(
       expect(await boardOf(task.recordId)).toBeNull();
     });
 
-    it('a project holding a task on its board keeps its client, and the task stays put', async () => {
-      const project = await drafted(world.ours);
-      const task = await drafted(world.ours);
-      expect(isCommandRefusal(await moveOnto(task, project.recordId))).toBe(false);
-      const before = await factsOf(project.recordId);
-      const held = await factsOf(task.recordId);
+    it('a project with a task on its board keeps its client', heldTaskLocksProjectClient);
 
-      const answer = await send(world.owner, {
-        command: 'task.set_party',
-        recordId: project.recordId,
-        expectedRevision: before.revision,
-        fields: { client: world.theirs },
-      });
-      expect(isCommandRefusal(answer) ? answer.code : 'applied').toBe('CLIENT_LOCKED');
-      expect(await factsOf(project.recordId)).toEqual(before);
-      expect(await factsOf(task.recordId)).toEqual(held);
-      expect(held).toMatchObject({ client: world.ours, board: project.recordId });
-    });
-
-    it('an empty project’s client still changes', async () => {
-      const project = await drafted(world.ours);
-      expect((await factsOf(project.recordId)).hasContent).toBe(false);
-      await applied(world.owner, {
-        command: 'task.set_party',
-        recordId: project.recordId,
-        expectedRevision: project.revision,
-        fields: { client: world.theirs },
-      });
-      expect((await factsOf(project.recordId)).client).toBe(world.theirs);
-    });
+    it('an empty project’s client still changes', emptyProjectClientChanges);
 
     it('another business’s project and one the person cannot reach are refused, naming nothing of it', async () => {
       const task = await drafted(world.ours);
