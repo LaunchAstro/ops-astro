@@ -24,16 +24,26 @@ import type { FieldValues } from './requests.ts';
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const CLIENT = slotOf(TASK_SPINE, 'client');
 
-/** The client a live task of this business carries, or null for none. */
+/**
+ * The client a live task of this business carries, or null for none.
+ * `trashed` reads a trashed one too: a board in the trash still holds its
+ * tasks, and comes back holding them. No row lock: `task.set_party` reads its
+ * task's board under the task's own lock, which holds the task on that board,
+ * and a board holding a task has content, so its client is locked
+ * (`CLIENT_LOCKED`). Locking the board after the task would take the two in
+ * the opposite order to a reparent of that board under the task.
+ */
 export async function clientOf(
   tx: TenantQuery,
   taskTypeId: string,
   taskId: string,
+  trashed = false,
 ): Promise<string | null> {
   const rows = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT}::text as client from public.records
-      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
-    [tx.businessId, taskTypeId, taskId],
+      where business_id = $1 and record_type_id = $2 and id = $3
+        and ($4 or deleted_at is null)`,
+    [tx.businessId, taskTypeId, taskId, trashed],
   );
   return rows[0]?.client ?? null;
 }
@@ -46,21 +56,18 @@ export async function clientOf(
  * read would let a reparent check against the old client and land one
  * client's subtree under another's parent. `for share`, as
  * `planTaskPlacement` takes the parent next, in the same order: the target,
- * then the parent or board. `trashed` reads a trashed one too: a board in the
- * trash still holds its tasks, and comes back holding them on restore.
+ * then the parent or board.
  */
 export async function lockedClientOf(
   tx: TenantQuery,
   taskTypeId: string,
   taskId: string,
-  trashed = false,
 ): Promise<string | null> {
   const rows = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT}::text as client from records
-      where business_id = $1 and record_type_id = $2 and id = $3
-        and ($4 or deleted_at is null)
+      where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null
         for share`,
-    [tx.businessId, taskTypeId, taskId, trashed],
+    [tx.businessId, taskTypeId, taskId],
   );
   return rows[0]?.client ?? null;
 }
@@ -143,7 +150,7 @@ export async function setParty(
   // keeps it, trashed or not; a project with no client takes any.
   const board = (target.data['board'] as string | undefined) ?? null;
   if (naming && parentId === null && board !== null) {
-    const boardClient = await lockedClientOf(tx, context.spine.taskTypeId, board, true);
+    const boardClient = await clientOf(tx, context.spine.taskTypeId, board, true);
     if (boardClient !== null && boardClient.toLowerCase() !== client) {
       return refused(
         refuseCommand(
