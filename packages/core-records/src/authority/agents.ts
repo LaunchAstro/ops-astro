@@ -108,12 +108,17 @@ export async function mayDirectAgent(
 /** The longest an agent's name may be, as the actors table holds it. */
 export const AGENT_NAME_LIMIT = 60;
 
-/** A name as it is kept: trimmed, 1 to 60 characters, no control character; undefined otherwise. */
+// What a name a person reads may not hold, as `readableText` (core-commands
+// `values.ts`) refuses it: a C0 or C1 control or DEL, a lone surrogate, a line
+// or paragraph separator, and a bidi mark, embedding, override or isolate. The
+// joiners emoji need stay. The actors table checks the same (20261011230525).
+const UNREADABLE = /[\p{Cc}\p{Cs}\u061C\u200E\u200F\u2028-\u202E\u2066-\u2069]/u;
+
+/** A name as it is kept: trimmed, 1 to 60 characters, nothing unreadable; undefined otherwise. */
 export function agentNameOf(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const name = value.trim();
-  // oxlint-disable-next-line no-control-regex -- control characters are what it refuses
-  if (name.length === 0 || name.length > AGENT_NAME_LIMIT || /[\u0000-\u001F\u007F]/u.test(name)) {
+  if (name.length === 0 || name.length > AGENT_NAME_LIMIT || UNREADABLE.test(name)) {
     return undefined;
   }
   return name;
