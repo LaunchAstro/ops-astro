@@ -29,6 +29,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
+import { withProviderKey } from '../web/src/session/provider-key.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
 import {
   accepts,
@@ -37,8 +38,8 @@ import {
   isRefusal,
   isWrite,
   shownAddress,
-  statusOnlyRedirect,
   unknownVerb,
+  unredirected,
   usage,
   type CliAnswer,
 } from './client.ts';
@@ -181,8 +182,8 @@ const HELP = [
   '       pnpm cli logout',
   '',
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
-  '             OPS_ASTRO_GOTRUE_URL, OPS_ASTRO_AGENT=1, OPS_ASTRO_DELEGATION,',
-  '             OPS_ASTRO_DELEGATION_FILE, OPS_ASTRO_WEB_URL',
+  '             OPS_ASTRO_GOTRUE_URL, SUPABASE_PUBLISHABLE_KEY, OPS_ASTRO_AGENT=1,',
+  '             OPS_ASTRO_DELEGATION, OPS_ASTRO_DELEGATION_FILE, OPS_ASTRO_WEB_URL',
   'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure,',
   '             4 fault (an answer that is neither a success nor a refusal)',
   '',
@@ -222,13 +223,6 @@ interface Io {
   readonly stdin: () => Promise<string>;
 }
 
-/**
- * Fetch that never follows a redirect: a followed 307 resends the password
- * (#780). The redirect answers by its status alone.
- */
-const unredirected: typeof globalThis.fetch = async (input, init) =>
-  await statusOnlyRedirect(await globalThis.fetch(input, { ...init, redirect: 'manual' }));
-
 async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
@@ -236,10 +230,14 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   if (password === '') throw new UsageError('login needs a password on stdin');
   const gotrueUrl = text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue;
   assertWritable(tokenFile, 'the login token');
-  // The web sign-in's own function: the same password grant, the same endpoint.
-  const result = await signIn({ gotrueUrl, email, password, fetch: unredirected });
+  // The web sign-in's own function: the same password grant, the same endpoint,
+  // and the hosted service's publishable key, added to calls under it only.
+  const key = env['SUPABASE_PUBLISHABLE_KEY'];
+  const fetch = withProviderKey(unredirected, gotrueUrl, key);
+  const result = await signIn({ gotrueUrl, email, password, fetch });
   if (!result.ok) {
-    io.err(`login: ${result.because}`);
+    const hint = key ? '' : ' (a hosted sign-in service needs SUPABASE_PUBLISHABLE_KEY set)';
+    io.err(`login: ${result.because}${hint}`);
     return EXIT.refused;
   }
   try {

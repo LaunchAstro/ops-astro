@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { main as cli } from '../../apps/cli/main.ts';
 import { main as worker } from '../../apps/worker/main.ts';
+import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
 
 const BEARER = 'bearer-canary-9a4d17';
 const DELEGATION = 'delegation-canary-5c1e08';
@@ -54,6 +55,8 @@ afterAll(() => {
 const SETTINGS = {
   OPS_ASTRO_BUSINESS: 'alpha',
   OPS_ASTRO_TOKEN: BEARER,
+  ...SIGN_IN_SETTINGS,
+  OPS_ASTRO_PASSWORD: PASSWORD,
   OPS_ASTRO_DELEGATION: DELEGATION,
   OPS_ASTRO_AGENT: '1',
 };
@@ -89,8 +92,11 @@ describe('a redirect to another origin receives no credential', () => {
     received.length = 0;
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const code = await worker(['--once'], { ...SETTINGS, OPS_ASTRO_API_URL: address }, () =>
-      Promise.resolve('sent'),
+    const code = await worker(
+      ['--once'],
+      { ...SETTINGS, OPS_ASTRO_API_URL: address },
+      () => Promise.resolve('sent'),
+      signedInReach(BEARER),
     );
     vi.restoreAllMocks();
     expectNothingElsewhere();
@@ -113,5 +119,20 @@ describe('a redirect to another origin receives no credential', () => {
     });
     expectNothingElsewhere();
     expect(code).toBe(1);
+  });
+});
+
+describe('a sign-in service that redirects receives no password', () => {
+  it("the worker's own sign-in sends no password there, key or none, and is refused", async () => {
+    for (const key of [{}, { SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example-test-only' }]) {
+      received.length = 0;
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      // oxlint-disable-next-line no-await-in-loop -- one run at a time
+      const code = await worker(['--once'], { ...SETTINGS, ...key, OPS_ASTRO_GOTRUE_URL: address });
+      vi.restoreAllMocks();
+      expectNothingElsewhere();
+      expect(code).toBe(1);
+    }
   });
 });

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { main as cli } from '../../apps/cli/main.ts';
 import { main as worker } from '../../apps/worker/main.ts';
 import { streamText } from '../support/console-text.ts';
+import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
 
 const CANARY = 'canary-7f3e0a91';
 /**
@@ -26,6 +27,7 @@ const ADDRESSES = [
 const SETTINGS = {
   OPS_ASTRO_BUSINESS: 'alpha',
   OPS_ASTRO_TOKEN: 'made-up-token',
+  ...SIGN_IN_SETTINGS,
   OPS_ASTRO_DELEGATION: 'made-up-delegation',
 };
 
@@ -67,8 +69,11 @@ describe('a failed request never prints a secret from the API address', () => {
     };
     vi.spyOn(process.stdout, 'write').mockImplementation(capture);
     vi.spyOn(process.stderr, 'write').mockImplementation(capture);
-    const code = await worker(['--once'], { ...SETTINGS, OPS_ASTRO_API_URL: address }, () =>
-      Promise.resolve('sent'),
+    const code = await worker(
+      ['--once'],
+      { ...SETTINGS, OPS_ASTRO_API_URL: address },
+      () => Promise.resolve('sent'),
+      signedInReach('made-up-token'),
     );
     vi.restoreAllMocks();
     expect(code).toBe(4);

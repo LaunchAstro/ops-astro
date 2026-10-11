@@ -13,6 +13,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../../apps/worker/main.ts';
 import { streamText } from '../support/console-text.ts';
+import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
 
 const HEARTBEAT = 'https://heartbeat.example.test/api/push/made-up-worker-token';
 
@@ -55,11 +56,21 @@ async function api(status: number): Promise<string> {
 const settings = (url: string, heartbeat = HEARTBEAT) => ({
   OPS_ASTRO_API_URL: url,
   OPS_ASTRO_BUSINESS: 'alpha',
-  OPS_ASTRO_TOKEN: 'made-up-worker-bearer',
+  ...SIGN_IN_SETTINGS,
   OPS_ASTRO_DELEGATION: 'made-up-delegation',
   OPS_WORKER_HEARTBEAT_URL: heartbeat,
   OPS_EGRESS_HEARTBEAT_HOST: 'heartbeat.example.test',
 });
+
+const reach = signedInReach('made-up-worker-bearer');
+
+/** A stand-in ping that keeps each address it was asked to ping. */
+const keeping =
+  (beats: unknown[]) =>
+  (address: string | undefined): Promise<string> => {
+    beats.push(address);
+    return Promise.resolve('sent');
+  };
 
 const quiet = (): string[] => {
   const written: string[] = [];
@@ -80,7 +91,7 @@ describe('S0-2 heartbeats: the worker pings its own heartbeat', () => {
       beats.push(address);
       return Promise.resolve('sent');
     };
-    expect(await main(['--once'], settings(await api(200)), beat)).toBe(0);
+    expect(await main(['--once'], settings(await api(200)), beat, reach)).toBe(0);
     expect(beats).toEqual([HEARTBEAT]);
   });
 
@@ -89,19 +100,15 @@ describe('S0-2 heartbeats: the worker pings its own heartbeat', () => {
     for (const status of [500, 403]) {
       const beats: unknown[] = [];
       // oxlint-disable-next-line no-await-in-loop -- one fake API at a time
-      await main(['--once'], settings(await api(status)), (address) => {
-        beats.push(address);
-        return Promise.resolve('sent');
-      });
+      const url = await api(status);
+      // oxlint-disable-next-line no-await-in-loop -- one run at a time
+      await main(['--once'], settings(url), keeping(beats), reach);
       expect(beats, String(status)).toEqual([]);
       // oxlint-disable-next-line no-await-in-loop -- closed before the next
       await stop();
     }
     const beats: unknown[] = [];
-    await main(['--once'], settings('http://127.0.0.1:1'), (address) => {
-      beats.push(address);
-      return Promise.resolve('sent');
-    });
+    await main(['--once'], settings('http://127.0.0.1:1'), keeping(beats), reach);
     expect(beats).toEqual([]);
   });
 

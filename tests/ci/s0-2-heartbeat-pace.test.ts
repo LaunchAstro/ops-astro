@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { createForwarder } from '../../apps/forwarder/forward.ts';
 import { heartbeatEvery, paced } from '../../apps/worker/heartbeat.ts';
 import { main as worker } from '../../apps/worker/main.ts';
+import { SIGN_IN_SETTINGS } from '../support/stand-in-gotrue.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const HALF_HOUR = 1_800_000;
@@ -108,7 +109,7 @@ describe('S0-2 heartbeats, paced: the worker and forwarder read the setting', ()
       const code = await worker(['--once'], {
         OPS_ASTRO_API_URL: 'http://127.0.0.1:1',
         OPS_ASTRO_BUSINESS: 'alpha',
-        OPS_ASTRO_TOKEN: 'made-up-token',
+        ...SIGN_IN_SETTINGS,
         OPS_ASTRO_DELEGATION: 'made-up-delegation',
         OPS_HEARTBEAT_EVERY_MS: 'soon',
       });

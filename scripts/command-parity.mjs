@@ -34,10 +34,9 @@ const TRANSPORTS = new Map([
     ['this.#options.fetch(url, { ...init, headers })', 'this.#options.fetch(url, {'],
   ],
   // signs a person in and out: a session, not a record
-  [
-    'session/sign-in.ts',
-    ['request.fetch(url, {', 'request.fetch(`${request.apiOrigin}${path}`, {'],
-  ],
+  ['session/sign-in.ts', ['request.fetch(`${request.apiOrigin}${path}`, {']],
+  // the password grant at the sign-in provider, which sign-in.ts, the CLI and the worker make
+  ['session/password-grant.ts', ['request.fetch(url, {']],
   // signs out, at the provider, a new session the tab never adopted (C59): a session, not a record
   ['session/sign-in-again.ts', ['fetch: typeof globalThis.fetch,', 'fetch(url, {']],
   // asks where to sign in before there is a session, and hands the app its fetch
