@@ -95,6 +95,40 @@ The forwarder reports as `OPS_ENVIRONMENT=production`. The egress relay takes
 the API's host from the worker's own `OPS_ASTRO_API_URL`, set from
 `PRODUCTION_WEB_URL`.
 
+## Backups and the restore drill
+
+Production's backup store is `backups` in production's unit
+(`ops-astro-backups`, on the internal `ops-astro` network, data on
+`ops-astro-backups-data`). Its admin makes it as staging's is made, with
+`../staging/backup-store.sql` and each numbered upgrade in order.
+
+```sh
+node --env-file=<backup env> scripts/ops/backup.mjs run --production
+node --env-file=<retention env> scripts/ops/backup.mjs expire --production
+node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill --production
+```
+
+`--production` goes after the command or mode, for every drill mode:
+`--export`, `--drill --archive` and `--record` too. Each reaches production's
+store through psql in a throwaway container on production's network, named
+`ops-astro-store-<hex>` (the dump's `ops-astro-backup-<hex>`), so production's
+deploy counts these runs as its own. The runbook's sweep for runs left behind is
+staging's with production's names:
+`docker ps --all --filter 'name=^ops-astro-(store|backup)-[0-9a-f]{16}$'`.
+
+The backup and retention env files also set `PRODUCTION_PROJECT_REF` and
+`STAGING_PROJECT_REF`. A `BACKUP_SOURCE_URL` on staging's project, or on any
+project but production's, fails the run as `config`. A `DATABASE_UPKEEP_URL`
+off production's project skips the second-factor purge and says so.
+
+`ops-astro-backup.plist` and `ops-astro-backup-expire.plist` are staging's two
+launchd jobs renamed, run with `--production`.
+
+The drill still takes no target. It restores only into its own container,
+`ops-astro-drill-<hex>`, with no network, and never into production's
+database. Its receipt's `ranOn` says `staging machine` for a drill on the M5:
+that is the store's own value for "on the machine", shared by both stores.
+
 ## The promotion step
 
 `scripts/ops/promote.mjs` predates the Vercel plan. A real run stops and

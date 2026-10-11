@@ -35,10 +35,11 @@ import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
-import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
+import { productionAddressRefusal } from './staging-reset.ts';
+
+export { productionAddressRefusal } from './staging-reset.ts';
 
 export type DeployEnvironment = 'staging' | 'production';
-type Environment = Readonly<Record<string, string | undefined>>;
 
 /** The staging definition, as the deploy reads it. */
 export interface StagingDefinition {
@@ -149,22 +150,6 @@ async function preflightOn(judge: (admin: OwnerQuery) => Promise<string[]>): Pro
 /** Staging's preflight: the made-up-only judgement. */
 export function stagingSigns(): Promise<string[]> {
   return preflightOn(productionSigns);
-}
-
-/**
- * Why `DATABASE_ADMIN_URL` is not production's database: on staging's project,
- * or on any but production's (PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF).
- */
-export function productionAddressRefusal(env: Environment): string | undefined {
-  try {
-    const { other, ref, otherRef } = projectRefs(env, true);
-    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
-    if (project === otherRef) return `DATABASE_ADMIN_URL reaches ${other}'s project`;
-    return project === ref ? undefined : "DATABASE_ADMIN_URL is not production's project";
-  } catch (error) {
-    if (error instanceof Refusal) return error.message;
-    throw error;
-  }
 }
 
 /** Production's preflight: its own database, and no sign that the made-up seed ever ran there. */

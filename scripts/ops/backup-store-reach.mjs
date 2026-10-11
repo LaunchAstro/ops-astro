@@ -25,9 +25,16 @@ import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { containerArgs, runContainer } from './container-run.mjs';
 
-const staging = JSON.parse(
-  readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
-);
+/** A unit's route to its store: its internal network, and the prefix its runs are named by. */
+export function routeOf(environment) {
+  const definition = JSON.parse(
+    readFileSync(new URL(`../../deploy/${environment}/compose.json`, import.meta.url), 'utf8'),
+  );
+  return {
+    network: definition.networks[environment].name,
+    prefix: definition['x-ops-astro'].ownPrefix,
+  };
+}
 
 const LOGIN = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGSSLMODE'];
 const TYPES = new Set(['text', 'uuid', 'timestamptz', 'integer', 'bigint', 'jsonb', 'bytea']);
@@ -122,10 +129,10 @@ export function reachArgs(network, names = LOGIN) {
  * neither. A reach that stopped its run answers only once that stop is done,
  * and fails if docker would not remove the container, however the client closed.
  */
-export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
+export function psqlOn(network, { connectSeconds, timeoutMs, prefix } = {}) {
   return async (url, script, onLine) => {
     const login = reachEnv(url, connectSeconds);
-    const run = stoppable(runContainer('store', network, login, PSQL, { stdin: true }));
+    const run = stoppable(runContainer('store', network, login, PSQL, { stdin: true, prefix }));
     const deadline = timeoutMs === undefined ? undefined : setTimeout(run.halt, timeoutMs);
     try {
       const pieces = typeof script === 'string' ? [script] : script;
@@ -188,11 +195,17 @@ async function readOut(run, onLine) {
   return { text: '', error };
 }
 
+/** The route the job and the drill take on `environment`'s unit, bounded when `bounds` are given. */
+export function reachFor(environment, bounds = {}) {
+  const { network, prefix } = routeOf(environment);
+  return psqlOn(network, { ...bounds, prefix });
+}
+
 /** The route the job and the drill take on staging. */
-export const stagingReach = psqlOn(staging.networks.staging.name);
+export const stagingReach = reachFor('staging');
 
 /** The same route, bounded (`psqlOn`), for a hop that must not hold up its job. */
-export const stagingReachWithin = (bounds) => psqlOn(staging.networks.staging.name, bounds);
+export const stagingReachWithin = (bounds) => reachFor('staging', bounds);
 
 // The most bytes one `decode` holds: its hex is twice that, far inside a string.
 const PIECE = 4 * 1024 * 1024;

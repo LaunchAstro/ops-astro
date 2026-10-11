@@ -51,6 +51,7 @@ export async function restoreDrill({
   scope,
   docker: run = docker,
   image = staging.services.backups.image,
+  prefix = staging['x-ops-astro'].ownPrefix,
 }) {
   const record = {
     event: 'restore drill',
@@ -62,7 +63,7 @@ export async function restoreDrill({
     targetMajor: null,
     timings: {},
   };
-  const name = `${staging['x-ops-astro'].ownPrefix}-drill-${randomBytes(4).toString('hex')}`;
+  const name = `${prefix}-drill-${randomBytes(4).toString('hex')}`;
   const exec = (args, input) => run(['exec', ...(input ? ['-i'] : []), name, ...args], input);
   const psql = async (...commands) =>
     (await must(exec(['psql', ...AS, '-Atq', ...commands.flatMap((c) => ['-c', c])]))).trim();

@@ -4,7 +4,7 @@
 // C11). launchd runs each from its own job in deploy/staging/, under its own
 // identity:
 //
-//   node --env-file=<backup env> scripts/ops/backup.mjs run
+//   node --env-file=<backup env> scripts/ops/backup.mjs run [--production]
 //     BACKUP_SOURCE_URL  a login holding ops_astro_backup (migration 0045),
 //                        its host as staging's network names the database
 //     BACKUP_STORE_URL   a login holding ops_astro_backup on the backup store,
@@ -15,7 +15,7 @@
 //                        backup is recorded
 //     OPS_EGRESS_POOLER_HOST, OPS_EGRESS_POOLER_PORT  required: the pooler the
 //                        egress relay lists; unset, or a source elsewhere, is refused
-//   node --env-file=<retention env> scripts/ops/backup.mjs expire
+//   node --env-file=<retention env> scripts/ops/backup.mjs expire [--production]
 //     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention on the
 //                        backup store
 //     OPS_RESTORE_HEARTBEAT_URL  the watcher's restore heartbeat, pinged only
@@ -46,21 +46,24 @@
 // store only through psql on staging's network (backup-store-reach.mjs): it
 // publishes no port.
 //
+// `--production` reaches production's store and refuses a source or upkeep
+// address off production's project (deploy/production/README.md).
+//
 // Each run prints one JSON line, recorded or failed, and exits 0 or 1. A
 // failed line names the stage and nothing else: an error from pg_dump or the
 // server can carry a host, a login or a password, so its text is never kept.
 
-import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { sealer } from './archive-seal.mjs';
 import { pgDump } from './backup-dump.mjs';
-import { bound, param, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
+import { reachFor, stagingReach } from './backup-store-reach.mjs';
+import { upload } from './backup-upload.mjs';
 import { offEgress, ping } from './heartbeat.mjs';
+import { productionAddressRefusal } from './staging-reset.ts';
 
 import { stopped } from './backup-dump.mjs';
 export { pgDump } from './backup-dump.mjs';
 
-const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
 const UPKEEP_ROLE = 'ops_astro_upkeep';
 // The purge's bounds (security review M1): a lock waited on, the statement,
@@ -68,68 +71,6 @@ const UPKEEP_ROLE = 'ops_astro_upkeep';
 // the purge alone and the job still ends and writes its record.
 const PURGE_LIMITS = "set lock_timeout = '30s';\nset statement_timeout = '2min';\n";
 const PURGE_REACH = { connectSeconds: 15, timeoutMs: 180_000 };
-// The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
-const PART = 4 * 1024 * 1024;
-
-/** The dump's pieces, whether `dump` answered them as a stream or as one buffer. */
-async function* piecesOf(source) {
-  if (Buffer.isBuffer(source)) yield source;
-  else yield* source;
-}
-
-/**
- * The store script for one archive, as pieces: the dump, sealed as it
- * streams, in parts of `PART` bytes, then the archive completed with its size
- * and the sha256 of its whole ciphertext, in one transaction. `failure.stage`
- * names the step that failed if the dump or the seal throws.
- */
-async function* upload(source, seal, failure) {
-  yield `set role ${BACKUP_ROLE};\nbegin;\n`;
-  const whole = createHash('sha256');
-  let [held, size, seq, bytes] = [[seal.header], seal.header.length, 0, 0];
-  function* part(bytesOut) {
-    whole.update(bytesOut);
-    bytes += bytesOut.length;
-    yield `select backups.add_part(${seq}, `;
-    yield* value(bytesOut, 'bytea');
-    yield ');\n';
-    seq += 1;
-  }
-  function* flush(all) {
-    // Whole parts only, until the end, when the last may be short.
-    const under = all ? 0 : PART - 1;
-    while (size > under) {
-      const joined = Buffer.concat(held);
-      const out = joined.subarray(0, PART);
-      held = [joined.subarray(out.length)];
-      size = joined.length - out.length;
-      yield* part(out);
-    }
-  }
-  const pieces = piecesOf(source)[Symbol.asyncIterator]();
-  for (;;) {
-    failure.stage = 'dump';
-    // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
-    const next = await pieces.next();
-    failure.stage = 'seal';
-    if (next.done) break;
-    held.push(seal.update(next.value));
-    size += held.at(-1).length;
-    failure.stage = null;
-    yield* flush(false);
-  }
-  held.push(seal.final());
-  size += held.at(-1).length;
-  failure.stage = null;
-  yield* flush(true);
-  yield bound(`select backups.complete_archive(${param(1, 'bigint')}, ${param(2, 'text')})`, [
-    bytes,
-    whole.digest('hex'),
-  ]);
-  yield 'commit;\n';
-  failure.bytes = bytes;
-}
-
 /** A run's record when it fails: the stage only, never an error's text. */
 function failed(event, stage) {
   return { event, outcome: 'failed', stage, at: new Date().toISOString() };
@@ -245,37 +186,60 @@ function readKey(path) {
   }
 }
 
-async function main(command) {
+/**
+ * Why production's job may not dump `BACKUP_SOURCE_URL`: it is on staging's
+ * project, or on any but production's. Staging's job judges no project.
+ */
+export function sourceRefusal(environment, unit) {
+  return unit === 'production'
+    ? productionAddressRefusal(environment, 'BACKUP_SOURCE_URL')
+    : undefined;
+}
+
+async function main(command, unit) {
   if (command === 'run') {
     const [source, storeUrl] = [env('BACKUP_SOURCE_URL'), env('BACKUP_STORE_URL')];
     const publicKey = readKey(env('BACKUP_PUBLIC_KEY_FILE'));
-    // The dump leaves staging by the pooler the relay lists (OPS_EGRESS_POOLER_*), or not at all.
+    // The dump leaves the machine by the pooler the relay lists (OPS_EGRESS_POOLER_*), or not at all.
     const off = offEgress(process.env, [
       ['BACKUP_SOURCE_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
     ]);
-    if (source === undefined || storeUrl === undefined || publicKey === undefined || off) {
+    const elsewhere = source !== undefined && sourceRefusal(process.env, unit) !== undefined;
+    if (
+      source === undefined ||
+      storeUrl === undefined ||
+      publicKey === undefined ||
+      off ||
+      elsewhere
+    ) {
       return failed('backup run', 'config');
     }
     const heartbeat = env('OPS_BACKUP_HEARTBEAT_URL');
     return await runBackup({
-      dump: () => pgDump(source),
+      dump: () => pgDump(source, unit),
       storeUrl,
       publicKey,
       heartbeat,
+      reach: reachFor(unit),
     });
   }
   if (command === 'expire') {
     const storeUrl = env('BACKUP_RETENTION_URL');
     if (storeUrl === undefined) return failed('backup expired', 'config');
-    // The purge reaches staging's database by the pooler the relay lists, or not at all.
-    const upkeepRefused = offEgress(process.env, [
-      ['DATABASE_UPKEEP_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
-    ]);
+    // The purge reaches the unit's database by the pooler the relay lists, or not at all.
+    const upkeepRefused =
+      offEgress(process.env, [
+        ['DATABASE_UPKEEP_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
+      ]) ??
+      (unit === 'production' && env('DATABASE_UPKEEP_URL') !== undefined
+        ? productionAddressRefusal(process.env, 'DATABASE_UPKEEP_URL')
+        : undefined);
     return await expireBackups({
       storeUrl,
       upkeepUrl: env('DATABASE_UPKEEP_URL'),
       upkeepRefused: upkeepRefused !== undefined,
-      upkeepReach: stagingReachWithin(PURGE_REACH),
+      reach: reachFor(unit),
+      upkeepReach: reachFor(unit, PURGE_REACH),
       restoreHeartbeat: env('OPS_RESTORE_HEARTBEAT_URL'),
     });
   }
@@ -287,9 +251,14 @@ async function main(command) {
 // entry point is matched by real path, so a path with a space or a link still runs.
 const entry = process.argv[1];
 if (entry !== undefined && realpathSync(entry) === realpathSync(import.meta.filename)) {
-  const record = await main(process.argv[2]);
+  const [command, ...rest] = process.argv.slice(2);
+  const production = rest.length === 1 && rest[0] === '--production';
+  const record =
+    rest.length === 0 || production
+      ? await main(command, production ? 'production' : 'staging')
+      : undefined;
   if (record === undefined) {
-    process.stderr.write('usage: backup.mjs run | expire\n');
+    process.stderr.write('usage: backup.mjs run | expire, then --production for production\n');
     process.exitCode = 2;
   } else {
     process.stdout.write(`${JSON.stringify(record)}\n`);
