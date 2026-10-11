@@ -7,13 +7,17 @@
 // access and it commits; then the fixture lets go. The save must be refused as
 // the door now refuses Gus, `AUTH_ACCESS_ENDED`, and keep nothing: the value,
 // the operation and the audit are as they were. A person who ends their own
-// access keeps the act: the lost standing is the act itself.
+// access keeps the act: the lost standing is the act itself. A sign-out of that
+// same session while the ending waits on the access lock is not the act, so the
+// ending is refused as signed out and keeps nothing.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { signOutSession, type FactorProvider } from '../../packages/core-commands/src/index.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
+import { lockAccess } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import {
@@ -147,5 +151,62 @@ it.skipIf(serverUrl === undefined)(
     expect(codeOf(await send(lea, body))).toBe('applied');
     expect(await kept(body.operationId)).toStrictEqual({ operations: 1, applied: 1 });
     expect(codeOf(await send(lea, body))).toBe('AUTH_ACCESS_ENDED');
+  },
+);
+
+/** A provider that confirms every sign-out and is asked for nothing else. */
+const done = Promise.resolve({ ok: true, value: undefined } as const);
+const provider: FactorProvider = {
+  verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+  enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
+  verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
+  remove: () => done,
+  signOut: () => done,
+};
+
+/** The person's active memberships and live grants in alpha. */
+async function standingRows(person: Member): Promise<unknown> {
+  const [row] = await db.admin.execute(
+    `select (select count(*)::int from public.memberships
+              where business_id = $1 and person_id = $2 and active) as memberships,
+            (select count(*)::int from public.grants
+              where business_id = $1 and subject_id in ($2, $3)
+                and revoked_at is null) as grants`,
+    [alpha, person.personId, person.actorId],
+  );
+  return row;
+}
+
+it.skipIf(serverUrl === undefined)(
+  'a manager ending their own access is refused as signed out when that session signed out while it waited',
+  async () => {
+    const signedIn = await manager('Ivo Park');
+    const ivo = { ...signedIn, presented: { ...signedIn.presented, sessionId: randomUUID() } };
+    const body = { command: 'access.end', operationId: randomUUID(), holderId: ivo.personId };
+    const ender = connect(db.appUrl);
+    try {
+      const access = await hold(db.appUrl, alpha, async (tx) => await lockAccess(tx));
+      let ending: Promise<CommandResult> | undefined;
+      try {
+        ending = send(ivo, body, ender);
+        await waitingOn(db.admin, 'advisory', 'pg_advisory_xact_lock');
+        const caller = { database: db.app, businessId: alpha, presented: ivo.presented };
+        const out = await signOutSession({ ...caller, accessToken: 'token' }, {}, provider);
+        expect(out).toStrictEqual({ ended: 1, signedOutAtProvider: true });
+      } finally {
+        await access.letGo();
+      }
+      expect({
+        answer: codeOf(await ending),
+        standing: await standingRows(ivo),
+        kept: await kept(body.operationId),
+      }).toStrictEqual({
+        answer: 'AUTH_SESSION_EXPIRED',
+        standing: { memberships: 1, grants: 1 },
+        kept: { operations: 0, applied: 0 },
+      });
+    } finally {
+      await ender.close();
+    }
   },
 );

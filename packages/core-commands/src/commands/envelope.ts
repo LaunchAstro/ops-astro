@@ -28,7 +28,13 @@
 // the transport above it.
 
 import { createHash } from 'node:crypto';
-import { advisoryLock, standingOf, withSession } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  ENDED_FIXES,
+  sessionEndedSince,
+  standingOf,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -490,14 +496,14 @@ async function attempt(
     // no access lock against. Writes re-check at commit (OWNER-3 A): after the
     // last wait, a caller the door would now refuse keeps nothing, and the
     // refusal holds no operation id, so a caller let back in can retry it. An
-    // act that ended the caller's own access is not asked: that loss is the act.
-    const keepsWrites = isRefused(outcome)
-      ? outcome.retains === true
-      : outcome.endsOwnAccess !== true;
+    // act that ended the caller's own access is asked only about its session:
+    // the lost membership is the act, and a sign-out while it waited is not.
+    const keepsWrites = !isRefused(outcome) || outcome.retains === true;
+    const ownEnding = !isRefused(outcome) && outcome.endsOwnAccess === true;
     const standing =
       presented === undefined || !keepsWrites
         ? undefined
-        : await standingOf(tx, presented, 'required');
+        : await (ownEnding ? signedOut(tx, session) : standingOf(tx, presented, 'required'));
     if (standing === undefined || !('refused' in standing)) return answer;
     await tx.query('rollback to savepoint command_attempt');
     return await settle(tx, session, request, digest, standing, 'none');
@@ -509,6 +515,12 @@ async function attempt(
     await tx.query('rollback to savepoint command_attempt').catch(() => undefined);
     throw cause;
   }
+}
+
+/** Whether the session ended since it was resolved, refused as the door would refuse it (C58). */
+async function signedOut(tx: TenantQuery, session: Session): Promise<CommandRefusal | undefined> {
+  if (!(await sessionEndedSince(tx, session))) return undefined;
+  return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
 }
 
 /** The attempt's answer: a refusal registered and settled, or the applied row and its audit. */

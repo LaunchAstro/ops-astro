@@ -74,8 +74,8 @@ export interface Applied {
   readonly fieldChanges?: FieldChanges;
   /**
    * The act ended the caller's own access (C58, a manager ending their own),
-   * so the envelope does not ask the caller's sign-in again after it: the
-   * standing it would find lost is what the act did. Set by the handler,
+   * so the envelope asks only whether the caller's session ended after it: the
+   * membership it would find lost is what the act did. Set by the handler,
    * which alone knows whose access it ended.
    */
   readonly endsOwnAccess?: true;
