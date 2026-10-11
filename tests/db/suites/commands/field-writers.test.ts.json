@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "P21: every command that owns a task field records the names of the fields its write actually changed, and [] for a no-op; the command list, the cases and the audit column's constraint stay in step"
+}

@@ -9,6 +9,7 @@
 // handler cannot return a half-filled result and have it read as applied.
 
 import type { DataWrite } from '../../../core-records/src/index.ts';
+import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { CommandRefusal } from './refusal.ts';
 
 /**
@@ -20,6 +21,39 @@ export interface FieldChanges {
   readonly version: 1;
   readonly keys: readonly string[];
 }
+
+/**
+ * Every command that owns a task field, and so records `FieldChanges` on its
+ * applied audit event (P21). The column's constraint (migration
+ * 20261011034325) lists the same commands; `field-writers.test.ts` fails when
+ * the two lists or the handlers drift apart.
+ */
+export const FIELD_WRITES: readonly CommandName[] = [
+  'task.update',
+  'task.assign',
+  'task.set_stage',
+  'task.set_party',
+  'task.set_scores',
+  'task.set_adhoc',
+  'task.set_category',
+  'task.triage',
+  'task.set_audience',
+  'map.scope',
+  'task.start',
+  'task.complete',
+  'task.reopen',
+  'task.cancel',
+  'task.restart',
+  'task.set_state',
+  'task.move',
+  'task.reparent',
+  'task.rank',
+  'task.set_type',
+  'task.claim',
+  'task.set_blocking',
+  'task.resolve',
+  'task.close_out_of_scope',
+];
 
 export interface Applied {
   /** The record the command touched, or null where it touched no single one. */
@@ -36,7 +70,7 @@ export interface Applied {
    * audit event names the mandate it filed or revoked (MP-14-10a).
    */
   readonly auditSubjectId?: string;
-  /** Set only by a writer that read back what its write changed (`appliedWrite`). */
+  /** Set only by a field writer: what its write changed (`appliedWrite`), or none (`appliedUnwritten`). */
   readonly fieldChanges?: FieldChanges;
 }
 
@@ -93,6 +127,14 @@ export function appliedWrite(
     ...applied(recordId, write.revision, detail),
     fieldChanges: { version: 1, keys: write.changed },
   };
+}
+
+/** The applied answer for a field writer that writes no field of its task: none changed. */
+export function appliedUnwritten(
+  recordId: string,
+  detail: Readonly<Record<string, unknown>> = {},
+): Applied {
+  return { ...applied(recordId, null, detail), fieldChanges: { version: 1, keys: [] } };
 }
 
 export function refused(

@@ -4,10 +4,15 @@
 // gist, or closed as out of scope onto its map. Each runs inside the envelope
 // (see `wayfinder-chart.ts`).
 
-import { OWNER_TYPES, wayfinderFacts, writeComment } from '../../../core-records/src/index.ts';
+import {
+  OWNER_TYPES,
+  wayfinderFacts,
+  writeComment,
+  writeRecordData,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery, WayfinderFacts } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { appliedWrite, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
@@ -58,24 +63,22 @@ async function completeWith(
   const steps = await holdSteps(tx, context, target.id, 'archive');
   if ('refusal' in steps) return steps;
   await before?.();
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records
-        set data = (data - 'closed_as')
-                   || jsonb_build_object('state', $3::text, 'completed_at', clock_timestamp()::text)
-                   || $4::jsonb,
-            updated_at = now()
-      where business_id = $1 and id = $2 and deleted_at is null
-      returning revision::text as revision`,
-    [tx.businessId, target.id, state.id, extra],
+  const written = await writeRecordData(
+    tx,
+    target.id,
+    `data = (data - 'closed_as')
+            || jsonb_build_object('state', $3::text, 'completed_at', clock_timestamp()::text)
+            || $4::jsonb,
+     updated_at = now()`,
+    [state.id, extra],
   );
-  const written = rows[0];
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
   await moveSteps(tx, steps, 'archive');
   // Completing a ticket can unblock its map's grilling and prototype tickets (WF-2).
   await raiseFrontierDecisions(tx, target.id);
-  return applied(target.id, Number(written.revision), { state: state.key, ...extra });
+  return appliedWrite(target.id, written, { state: state.key, ...extra });
 }
 
 /**

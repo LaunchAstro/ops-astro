@@ -17,6 +17,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
+import { writeRecordData, type DataWrite } from '../records/data-write.ts';
 import { completionStampFor } from './placement.ts';
 import type { MachineCategory } from './states.ts';
 
@@ -62,6 +63,7 @@ export async function readTaskStates(
  *
  * Reopening clears the field and does not clear the history: the completion
  * event stays in the audit with its actor and time, once T1f writes one.
+ * The answer names the keys the write changed, for the command's audit (P21).
  */
 export async function setTaskState(
   tx: TenantQuery,
@@ -71,7 +73,7 @@ export async function setTaskState(
     readonly taskStateTypeId: string;
     readonly now?: Date;
   },
-): Promise<{ readonly completedAt: Date | null } | RecordsRefusal> {
+): Promise<(DataWrite & { readonly completedAt: Date | null }) | RecordsRefusal> {
   const states = await readTaskStates(tx, options.taskStateTypeId);
   const state = states.find((candidate) => candidate.id === options.stateId);
   if (state === undefined) {
@@ -86,30 +88,22 @@ export async function setTaskState(
   }
 
   const completedAt = completionStampFor(state.machineCategory, options.now ?? new Date());
-  const updated = await tx.query<{ readonly id: string }>(
-    `update records
-        set data = case
-              when $4::timestamptz is null
-                then (data - 'completed_at') || jsonb_build_object('state', $3::text)
-              else data || jsonb_build_object('state', $3::text, 'completed_at', $4::text)
-            end || case
-              when $5::boolean and data ->> 'started_at' is null
-                then jsonb_build_object('started_at', coalesce($6::timestamptz, now())::text)
-              else '{}'::jsonb
-            end
-      where business_id = $1 and id = $2 and deleted_at is null
-      returning id`,
-    [
-      tx.businessId,
-      options.taskId,
-      options.stateId,
-      completedAt,
-      state.machineCategory === 'started',
-      options.now ?? null,
-    ],
+  const written = await writeRecordData(
+    tx,
+    options.taskId,
+    `data = case
+          when $4::timestamptz is null
+            then (data - 'completed_at') || jsonb_build_object('state', $3::text)
+          else data || jsonb_build_object('state', $3::text, 'completed_at', $4::text)
+        end || case
+          when $5::boolean and data ->> 'started_at' is null
+            then jsonb_build_object('started_at', coalesce($6::timestamptz, now())::text)
+          else '{}'::jsonb
+        end`,
+    [options.stateId, completedAt, state.machineCategory === 'started', options.now ?? null],
   );
-  if (updated.length === 0) {
+  if (written === undefined) {
     return refuse('NOT_FOUND', ['task'], ['No live task carries that identifier here.']);
   }
-  return { completedAt };
+  return { ...written, completedAt };
 }
