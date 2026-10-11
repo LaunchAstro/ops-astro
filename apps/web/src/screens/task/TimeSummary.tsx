@@ -8,7 +8,7 @@ export function Totals(props: {
   const burn = burnOf(props.total, props.estimate);
   return (
     <>
-      <span className="card__sub" data-time-total>
+      <span className="sb__meta" data-time-total>
         {minutesText(props.total)}
         {props.estimate === null ? ' logged' : ` of ${minutesText(props.estimate)}`}
       </span>

@@ -77,7 +77,7 @@ describe('MP-4-3 CS-4.8 switch perspectives', () => {
     expect(view.find('#perspective-tab-team')?.getAttribute('aria-selected')).toBe('true');
     expect(paneHidden(view, 'team')).toBe(false);
     expect(paneHidden(view, 'agent')).toBe(true);
-    expect(view.find('#perspective-panel-team #task-fields')).not.toBeNull();
+    expect(view.find('[data-task-controls] #task-fields')).not.toBeNull();
     expect(view.find('#perspective-panel-agent [data-proposals="section"]')).not.toBeNull();
 
     await view.click('#perspective-tab-agent');
@@ -85,7 +85,8 @@ describe('MP-4-3 CS-4.8 switch perspectives', () => {
     expect(paneHidden(view, 'team')).toBe(true);
     expect(paneHidden(view, 'agent')).toBe(false);
     // Hidden, never unmounted: the other side is still in the page.
-    expect(view.find('#perspective-panel-team #task-fields')).not.toBeNull();
+    expect(view.find('#perspective-panel-team [data-comments="section"]')).not.toBeNull();
+    expect(view.find('[data-task-controls] #task-fields')).not.toBeNull();
 
     await press(view, '#perspective-tab-agent', 'ArrowLeft');
     expect(paneHidden(view, 'team')).toBe(false);
@@ -107,12 +108,20 @@ describe('MP-4-3 CS-4.8 the side showing belongs to this reading', () => {
 });
 
 describe('MP-4-3 panes toggle without losing typing', () => {
-  it('a title typed on Team is still there after a trip to Agent and back', async () => {
+  it('a title and Team comment draft survive a trip to Agent and back', async () => {
     const view = await page('Proj-Verity-Pacing', found());
+    await view.click('[data-task-controls] summary[aria-label="Edit task details"]');
+    expect(view.find('[data-task-controls]')?.hasAttribute('open')).toBe(true);
     await view.type('#task-title', 'Typed before the switch');
+    await view.type('#comment-body', 'Team draft before the switch');
     await view.click('#perspective-tab-agent');
+    expect(view.find('#perspective-panel-team #comment-body')).toHaveProperty(
+      'value',
+      'Team draft before the switch',
+    );
     await view.click('#perspective-tab-team');
     expect((view.find('#task-title') as HTMLInputElement).value).toBe('Typed before the switch');
+    expect(view.find('#comment-body')).toHaveProperty('value', 'Team draft before the switch');
     await view.unmount();
   });
 });

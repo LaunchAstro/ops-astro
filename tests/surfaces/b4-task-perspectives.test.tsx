@@ -154,15 +154,19 @@ describe('B4 the Team and Agent perspectives', () => {
 
     const team = page.find('[data-tp-pane="team"]');
     expect(team?.querySelector('[data-task-description]')?.textContent).toContain('signed scope');
+    expect(team?.querySelector('[data-comments="section"]')).not.toBeNull();
+    const controls = page.find('[data-task-controls]');
+    expect(controls?.hasAttribute('open')).toBe(false);
+    await click(controls?.querySelector('summary[aria-label="Edit task details"]') ?? null);
+    expect(controls?.hasAttribute('open')).toBe(true);
     for (const hook of [
       '[data-lifecycle="start"]',
       '[data-lifecycle="complete"]',
       '[data-lifecycle="reopen"]',
       'select[aria-label="Assignee"]',
       'form#task-fields',
-      '[data-comments="section"]',
     ]) {
-      expect(team?.querySelector(hook), hook).not.toBeNull();
+      expect(controls?.querySelector(hook), hook).not.toBeNull();
     }
     const agent = page.find('[data-tp-pane="agent"]');
     expect(agent?.querySelector('.tpg .tpg__main [data-run-progress]')).not.toBeNull();

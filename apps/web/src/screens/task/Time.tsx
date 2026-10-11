@@ -14,6 +14,7 @@ import { TaskTimerButton } from './task-timer-context.tsx';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import { useSignedInName } from '../../app-state.ts';
+import { Avatar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { holding, useHeldOperations } from './held-operations.ts';
@@ -113,11 +114,12 @@ function EntryRow(props: {
   };
   return (
     <li className="sb__step" data-time-entry={entry.id}>
-      <span className="sb__step-title">
-        {entry.minutes === null ? 'Running' : minutesText(entry.minutes)} ·{' '}
-        {loggedOn(entry.startedAt) + (who === null ? '' : ` · ${who}`)}
-      </span>
+      {who === null ? <span aria-hidden="true" /> : <Avatar name={who} />}
+      <span className="sb__step-title">{loggedOn(entry.startedAt)}</span>
       <EntryNote {...props} />
+      <span className="ttime__duration">
+        {entry.minutes === null ? 'Running' : minutesText(entry.minutes)}
+      </span>
       {entry.minutes === null ? null : (
         <button
           type="button"

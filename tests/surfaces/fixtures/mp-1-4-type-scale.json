@@ -309,7 +309,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": "[data-time-entry] .sb__step-title",
+      "selector": "[data-time-entry] :is([data-time-note], [data-time-note-edit])",
       "ruling": "R20261012"
     },
     {
@@ -381,7 +381,7 @@
       "ruling": "R20261012"
     },
     {
-      "selector": ".sb__step",
+      "selector": ".sb__step .av",
       "ruling": "R20261012"
     },
     {

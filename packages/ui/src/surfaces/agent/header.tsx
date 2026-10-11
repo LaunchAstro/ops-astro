@@ -6,8 +6,19 @@
 import type { ReactElement, ReactNode } from 'react';
 import { usePanelToolbar } from '../PageToolbar.tsx';
 import type { Job, RunStory } from '../../state/agent-run.ts';
+import type { DrawnState } from '../../state/project.ts';
 import { words } from './format.ts';
 import type { GateRef } from './gate.tsx';
+
+const JOB_TONE: Readonly<Record<Job['state'], DrawnState['tone']>> = {
+  done: 'done',
+  approved: 'done',
+  running: 'run',
+  waiting: 'wait',
+  pending: 'gate',
+  failed: 'bad',
+  refused: 'bad',
+};
 
 export function ProposalHeader(props: {
   readonly story: RunStory;
@@ -74,7 +85,7 @@ function jobRow(job: Job): ReactElement {
         <span className="wf__t">{job.title}</span>
         <span className="sbact__meta u-mono">{job.meta}</span>
       </div>
-      <span className="spill wf__state" data-tone={job.state}>
+      <span className="spill wf__state" data-tone={JOB_TONE[job.state]}>
         {job.state}
       </span>
     </div>

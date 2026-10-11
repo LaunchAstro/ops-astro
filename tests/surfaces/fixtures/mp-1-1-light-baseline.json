@@ -1,5 +1,5 @@
 {
-  "about": "Every token of the light theme as it resolved on main before MP-1-1, the baseline the light theme must still match.",
+  "about": "Every token of the light theme as it resolved on main before MP-1-1, with the R20261012 canonical white accent ink and its hover-text alias.",
   "light": {
     "--paper": "oklch(1 0 0)",
     "--paper-cream": "oklch(0.945 0.006 70)",
@@ -13,7 +13,7 @@
     "--rule": "oklch(0 0 0)",
     "--rule-faint": "oklch(0 0 0 / 0.12)",
     "--accent": "oklch(0.58 0.21 285)",
-    "--accent-ink": "oklch(0.98 0 0)",
+    "--accent-ink": "oklch(1 0 0)",
     "--accent-ring": "color-mix(in oklch, oklch(0.58 0.21 285) 35%, transparent)",
     "--brand": "oklch(0.58 0.21 285)",
     "--bg": "oklch(1 0 0)",
@@ -30,7 +30,7 @@
     "--btn-fill": "oklch(0 0 0)",
     "--btn-text": "oklch(1 0 0)",
     "--btn-hover": "oklch(0.58 0.21 285)",
-    "--btn-hover-text": "oklch(0.98 0 0)",
+    "--btn-hover-text": "oklch(1 0 0)",
     "--btn-outline": "oklch(0 0 0)",
     "--hover-accent": "oklch(0.58 0.21 285)",
     "--info-light": "#009dea",

@@ -676,7 +676,7 @@
   font-size: 0.9rem;
 }
 .dtp__fields .sel__btn {
-  min-height: 37px;
+  min-height: 0;
   padding: 0.55rem var(--s-3);
 }
 .dtp__fields .sel__btn:has(> .av) {
@@ -855,17 +855,15 @@
 }
 
 .sb__step {
-  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   display: flex;
   align-items: center;
-  min-height: 36px;
-  gap: 0.6rem;
+  gap: var(--s-3);
+  padding: 0.35rem 0;
   border-bottom: 1px solid var(--border);
-  font: var(--type-small);
+  font: var(--type-body);
 
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  line-height: 1.4;
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 [data-step] .sb__step-title {
   flex: 1;
@@ -877,8 +875,14 @@
   color: var(--accent);
 }
 .sb__step .av {
-  width: 22px;
-  height: 22px;
+  /* type-exception R20261012: reference row initials use 9px mono with 1.55 leading. */
+  width: 1.35rem;
+  height: 1.35rem;
+  font: var(--type-data);
+  font-size: 0.5625rem;
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
 }
 
 .sb__steps {
@@ -886,13 +890,16 @@
   margin: 0;
   padding: 0;
 }
+.sb__steps:has(> [data-step]) {
+  display: grid;
+  gap: 0.1rem;
+}
+.sb__steps > [data-step]:last-child {
+  border-bottom: 0;
+}
 
 [data-time-total] {
   position: absolute;
   right: 0;
-  top: -24px;
-  font: var(--type-data);
-  color: var(--text-muted);
-  text-transform: var(--type-data-case);
-  letter-spacing: var(--type-data-tracking);
+  top: calc(-1 * (1.05rem + var(--s-3)));
 }
