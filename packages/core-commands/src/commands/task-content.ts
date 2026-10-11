@@ -27,17 +27,21 @@ const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
 
 /**
  * Content is an applied write beyond creation and client changes, or a row
- * naming the task: a subtask, a proposal, a planned run, an envelope, a
- * lease, an alert, a time entry (deleted or not: a time event names no
- * subject, RS-VAULT-9, so the entry's row is what the lock reads), a live
- * correction (its audit event names the correction, not the task, and its
- * party is pinned to the client it was filed under).
+ * naming the task: a subtask, a task on its board (U112: a client's project
+ * holds only that client's work, so a project holding a task keeps its
+ * client), a proposal, a planned run, an envelope, a lease, an alert, a time
+ * entry (deleted or not: a time event names no subject, RS-VAULT-9, so the
+ * entry's row is what the lock reads), a live correction (its audit event
+ * names the correction, not the task, and its party is pinned to the client it
+ * was filed under).
  */
 export async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   const [row] = await tx.query<{ readonly content: boolean }>(
     `select exists (select 1 from audit_events where business_id = $1 and subject_record_id = $2
                       and outcome = 'applied' and command = any($3::text[]))
          or exists (select 1 from records r where r.business_id = $1 and r.uuid_4 = $2
+                      and r.record_type_id = (select record_type_id from records where id = $2))
+         or exists (select 1 from records r where r.business_id = $1 and r.uuid_5 = $2
                       and r.record_type_id = (select record_type_id from records where id = $2))
          or exists (select 1 from proposal_lineages where business_id = $1 and task_id = $2)
          or exists (select 1 from planned_runs where business_id = $1 and task_id = $2)

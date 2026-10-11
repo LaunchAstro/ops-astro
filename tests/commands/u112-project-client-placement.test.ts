@@ -4,7 +4,9 @@
 // client's work. The new-task draft sends its project as `task.move` after the
 // client; a project of another client, of another business, or one the person
 // cannot reach is refused as that part, and the task stays off it. A project
-// with no client (the agency's own) still takes any task.
+// with no client (the agency's own) still takes any task. A project holding a
+// task on its board has content, so its own client is locked: it cannot leave
+// that task under another client's project.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -35,6 +37,7 @@ interface World {
   readonly owner: Member;
   readonly narrow: Member;
   readonly ours: string;
+  readonly theirs: string;
   readonly projects: { ours: string; theirs: string; agency: string; foreign: string };
 }
 
@@ -86,6 +89,21 @@ async function boardOf(recordId: string): Promise<string | null> {
   return read.task.board?.readable === true ? read.task.board.id : null;
 }
 
+async function factsOf(recordId: string) {
+  const read = await executeRead(world.db.app, world.business, world.owner.presented, {
+    read: 'task.read',
+    recordId,
+  });
+  if (isCommandRefusal(read) || !('task' in read)) throw new Error('task.read refused');
+  const task = read.task as unknown as Body;
+  return {
+    client: task['client'],
+    hasContent: task['hasContent'],
+    revision: task['revision'],
+    board: await boardOf(recordId),
+  };
+}
+
 async function member(db: FreshDatabase, business: string, name: string): Promise<Member> {
   const who = await enrol(db.app, business, name);
   await db.app.withBusiness(business, async (tx) => {
@@ -109,7 +127,7 @@ async function seed(): Promise<void> {
   const ours = await clientHere(db.admin, business, randomUUID());
   const theirs = await clientHere(db.admin, business, randomUUID());
   const projects = { ours: '', theirs: '', agency: '', foreign: '' };
-  world = { db, business, owner, narrow, ours, projects };
+  world = { db, business, owner, narrow, ours, theirs, projects };
   projects.ours = (await drafted(ours)).recordId;
   projects.theirs = (await drafted(theirs)).recordId;
   projects.agency = (await drafted(null)).recordId;
@@ -151,6 +169,37 @@ describe.skipIf(serverUrl === undefined)(
       const answer = await moveOnto(task, world.projects.ours);
       expect(isCommandRefusal(answer) ? answer.names : 'applied').toEqual(['board']);
       expect(await boardOf(task.recordId)).toBeNull();
+    });
+
+    it('a project holding a task on its board keeps its client, and the task stays put', async () => {
+      const project = await drafted(world.ours);
+      const task = await drafted(world.ours);
+      expect(isCommandRefusal(await moveOnto(task, project.recordId))).toBe(false);
+      const before = await factsOf(project.recordId);
+      const held = await factsOf(task.recordId);
+
+      const answer = await send(world.owner, {
+        command: 'task.set_party',
+        recordId: project.recordId,
+        expectedRevision: before.revision,
+        fields: { client: world.theirs },
+      });
+      expect(isCommandRefusal(answer) ? answer.code : 'applied').toBe('CLIENT_LOCKED');
+      expect(await factsOf(project.recordId)).toEqual(before);
+      expect(await factsOf(task.recordId)).toEqual(held);
+      expect(held).toMatchObject({ client: world.ours, board: project.recordId });
+    });
+
+    it('an empty project’s client still changes', async () => {
+      const project = await drafted(world.ours);
+      expect((await factsOf(project.recordId)).hasContent).toBe(false);
+      await applied(world.owner, {
+        command: 'task.set_party',
+        recordId: project.recordId,
+        expectedRevision: project.revision,
+        fields: { client: world.theirs },
+      });
+      expect((await factsOf(project.recordId)).client).toBe(world.theirs);
     });
 
     it('another business’s project and one the person cannot reach are refused, naming nothing of it', async () => {
