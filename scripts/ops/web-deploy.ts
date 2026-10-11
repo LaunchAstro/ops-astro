@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The staging web deploy on Vercel (ticket S0-6, `deploy recorded`; the Vercel
-// re-plan, section 11 step 4). It sits beside `deploy.ts`, which still starts
-// the machine's own containers.
+// re-plan, section 11 step 4), and production's with `--production`. It sits
+// beside `deploy.ts`, which still starts the machine's own containers.
 //
 // A person's act under `operations:manage`: `web-deploy.mjs` asks the operator
 // gate first. This takes the build output the store holds for the version
@@ -38,6 +38,11 @@
 // it off; it holds no function, so it declares no region, and it is recorded
 // on the deploy's answer alone, without `vercel inspect`. Deploying a version
 // again takes it off.
+//
+// Production's deploy makes every check above but made-up-only, which its real
+// sign-ins would fail: first DATABASE_ADMIN_URL and GOTRUE_URL must be
+// production's project, never staging's, and its preflight is production's own
+// (`deploy.ts`). The record names the environment.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -47,11 +52,14 @@ import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
 import { type StoredArtefact, storedArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
+import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
+export type DeployEnvironment = 'staging' | 'production';
 
 export interface WebDeployRecord {
   readonly action: 'deploy recorded';
+  readonly environment: DeployEnvironment;
   readonly version: string;
   readonly artefact: string;
   readonly digest: string;
@@ -161,6 +169,22 @@ function settingProblems(env: Environment): string[] {
   return problems;
 }
 
+/** Production's addresses: its database and sign-in on its own project, never staging's. */
+function productionProblems(env: Environment): string[] {
+  try {
+    const { other, ref, otherRef } = projectRefs(env, true);
+    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
+    if (project === otherRef) return [`DATABASE_ADMIN_URL reaches ${other}'s project`];
+    if (project !== ref) return ["DATABASE_ADMIN_URL is not production's project"];
+    if (env['GOTRUE_URL'] !== `https://${ref}.supabase.co/auth/v1`)
+      return ["GOTRUE_URL is not production's sign-in"];
+    return [];
+  } catch (error) {
+    if (error instanceof Refusal) return [error.message];
+    throw error;
+  }
+}
+
 const refused = (why: string): Unrecorded => ({
   kind: 'refused',
   reason: `${why}. Nothing was deployed.`,
@@ -192,7 +216,7 @@ const NO_ADDRESS: Unrecorded = {
 function deployCopy(
   folder: string,
   env: Environment,
-  version: string,
+  { version, environment }: { version: string; environment: DeployEnvironment },
   selected: StoredArtefact,
   authVersion: string,
 ): WebDeployOutcome {
@@ -215,7 +239,13 @@ function deployCopy(
       reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live. It is not recorded. Remove it from the dashboard and find out why.`,
     };
   }
-  const record = { action: 'deploy recorded', version, artefact: selected.name, digest } as const;
+  const record = {
+    action: 'deploy recorded',
+    environment,
+    version,
+    artefact: selected.name,
+    digest,
+  } as const;
   return {
     kind: 'deployed',
     record: { ...record, deployment, region: 'syd1', runtime, authVersion },
@@ -224,22 +254,34 @@ function deployCopy(
 
 export async function deployWeb(
   request: { version: string; store: string },
-  options: { env: Environment; preflight: () => Promise<string[]> },
+  options: {
+    env: Environment;
+    preflight: () => Promise<string[]>;
+    environment?: DeployEnvironment;
+  },
 ): Promise<WebDeployOutcome> {
+  const environment = options.environment ?? 'staging';
   const settings = settingProblems(options.env);
+  if (environment === 'production') settings.push(...productionProblems(options.env));
   if (settings.length > 0) return refused(settings.join('; '));
   const selected = storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return refused(selected);
   const signs = await options.preflight();
   if (signs.length > 0) {
-    return refused(`staging's database failed the preflight: ${signs.join('; ')}`);
+    return refused(`${environment}'s database failed the preflight: ${signs.join('; ')}`);
   }
   const authVersion = await authVersionOf(options.env);
   if (authVersion === undefined) {
     return refused('the sign-in server at GOTRUE_URL did not report its version');
   }
   return inFolder((folder) =>
-    deployCopy(folder, options.env, request.version, selected, authVersion),
+    deployCopy(
+      folder,
+      options.env,
+      { version: request.version, environment },
+      selected,
+      authVersion,
+    ),
   );
 }
 

@@ -59,6 +59,7 @@ function recordedCase() {
       kind: 'deployed',
       record: {
         action: 'deploy recorded',
+        environment: 'staging',
         version: STAGED,
         artefact: artefactName(STAGED),
         digest: digest.digest,

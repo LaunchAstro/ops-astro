@@ -123,6 +123,24 @@ export async function productionSigns(
   return [...signs, ...(await specialSigns(admin))];
 }
 
+/**
+ * Production's preflight: the signs that the made-up seed, or its guard, ever
+ * ran on this database. Production holds real sign-ins and businesses, so
+ * `productionSigns` refuses it by design; this asks the opposite, from the
+ * seed's own mark, guard schema and watch alone, and reads no row. It does not
+ * read `ops.installation`, which stays made-up until every first-client gate
+ * item is done (migration 0058).
+ */
+export async function madeUpSeedSigns(admin: OwnerQuery): Promise<string[]> {
+  const signs: string[] = [];
+  if (await marked(admin)) signs.push('it carries the made-up mark');
+  if (await yes(admin, `to_regnamespace('ops_astro_made_up') is not null`))
+    signs.push('the made-up guard is installed');
+  if (await yes(admin, `exists (select from pg_event_trigger where evtname = '${GUARD}')`))
+    signs.push("the made-up guard's watch is installed");
+  return signs;
+}
+
 /** What a marked database's guard says about its sign-ins, which no reset empties. */
 const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
 

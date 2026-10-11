@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Production's deploy preflight passes a database holding real sign-ins and refuses one the made-up seed marked; it must be judged on a real migrated database with the seed's own guard installed."
+}

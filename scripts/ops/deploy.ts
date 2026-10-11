@@ -30,7 +30,7 @@
 
 import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import { productionSigns } from './made-up-only.ts';
+import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
 
 /** The staging definition, as the deploy reads it. */
@@ -103,16 +103,31 @@ export function imagePinProblems(def: StagingDefinition, record: string): string
   return problems;
 }
 
-/** The preflight on the database `DATABASE_ADMIN_URL` names: its signs, or why it could not judge. */
-export async function stagingSigns(): Promise<string[]> {
+/** `judge` on the database `DATABASE_ADMIN_URL` names: its signs, or why it could not judge. */
+async function preflightOn(judge: (admin: OwnerQuery) => Promise<string[]>): Promise<string[]> {
   const url = process.env['DATABASE_ADMIN_URL'] ?? '';
   if (url === '') return ['DATABASE_ADMIN_URL is not set, so the preflight could not run'];
   const admin = connectAsAdmin(url, { source: 'preflight' });
   try {
-    return await productionSigns(admin);
+    return await judge(admin);
   } finally {
     await admin.close();
   }
+}
+
+/** Staging's preflight: the made-up-only judgement. */
+export function stagingSigns(): Promise<string[]> {
+  return preflightOn(productionSigns);
+}
+
+/** Production's preflight: no sign that the made-up seed ever ran there. */
+export function productionPreflight(): Promise<string[]> {
+  return preflightOn(madeUpSeedSigns);
+}
+
+/** Each environment's own preflight. */
+export function preflightFor(environment: 'staging' | 'production'): () => Promise<string[]> {
+  return environment === 'production' ? productionPreflight : stagingSigns;
 }
 
 /** Each staging container not on the image it was named by. */
