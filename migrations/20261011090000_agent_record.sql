@@ -9,7 +9,7 @@
 -- holds the work. So the field now holds the agent actor (0002), and the
 -- assignment stays until a person changes it. `task.assign` asks that the
 -- agent is this business's and that the assigner owns it or holds
--- `agent:assign` (`packages/core-records/src/identity/agents.ts`); no
+-- `agent:assign` (`packages/core-records/src/authority/agents.ts`); no
 -- delegation is needed to assign one.
 --
 -- No function is added. The columns sit on `actors`, whose row security is
