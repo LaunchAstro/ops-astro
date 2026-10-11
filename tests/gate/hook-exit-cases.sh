@@ -90,8 +90,23 @@ check 0 0 0        1  "public-content"   "public policy 3: refuses a scanner fai
 # would refuse a clean push because some unrelated local branch is dirty, and
 # would say nothing about the branch actually being published. A backup branch
 # kept before a history rewrite is the obvious case.
+# Two throwaway repositories for the first-push cases, so the answer does not
+# depend on whether the checkout running the cases has an origin/main.
+make_repo() {
+  git init -q "$1"
+  git -C "$1" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
+    commit -q --allow-empty -m base
+}
+NO_MAIN="$SCRATCH/no-main"
+WITH_MAIN="$SCRATCH/with-main"
+make_repo "$NO_MAIN"
+make_repo "$WITH_MAIN"
+git -C "$WITH_MAIN" update-ref refs/remotes/origin/main HEAD
+MAIN_SHA="$(git -C "$WITH_MAIN" rev-parse HEAD)"
+
+# label stdin-line expected-text [repo]
 stdin_case() {
-  local label="$1" line="$2" expect_scan="$3"
+  local label="$1" line="$2" expect_scan="$3" repo="${4:-$REPO_ROOT}"
   local dir out
   dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
@@ -101,7 +116,7 @@ exit 0
 STUB
   chmod +x "$dir/gate-stub"
   out="$(
-    cd "$REPO_ROOT" || exit 99
+    cd "$repo" || exit 99
     printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin git@example.invalid:none.git 2>&1
   )"
   rm -rf "$dir"
@@ -113,9 +128,15 @@ STUB
 }
 
 ZERO=0000000000000000000000000000000000000000
-stdin_case "a first push scans everything reachable from the local ref" \
-  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO" \
-  "publish: aaaaaaa1"
+# A first push scans only what main does not already have: commits on main
+# were swept when they reached it. Without a local origin/main there is no
+# such base, so everything reachable is scanned, as before.
+stdin_case "a first push scans only the commits not already on origin/main" \
+  "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
+  "publish: $MAIN_SHA..aaaaaaa1" "$WITH_MAIN"
+stdin_case "a first push with no origin/main scans everything reachable" \
+  "refs/heads/new aaaaaaa1 refs/heads/new $ZERO" \
+  "publish: aaaaaaa1$" "$NO_MAIN"
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
   "publish: bbbbbbb1..aaaaaaa2"
@@ -129,8 +150,8 @@ stdin_case "a branch deletion scans nothing, and does not fall back" \
 # a contaminated backup branch could block a clean push of main, and the two
 # scanners could disagree about what was being published.
 same_refs_case() {
-  local label="$1" line="$2"
-  local dir out range_args literal_args
+  local label="$1" line="$2" repo="${3:-$REPO_ROOT}"
+  local dir out range_args literal_args public_args
   dir="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   cat > "$dir/gate-stub" <<'STUB'
 #!/bin/sh
@@ -139,14 +160,17 @@ exit 0
 STUB
   chmod +x "$dir/gate-stub"
   out="$(
-    cd "$REPO_ROOT" || exit 99
+    cd "$repo" || exit 99
     printf '%s\n' "$line" | HUB_GATE_CMD="$dir/gate-stub" HUB_PUBLIC_CONTENT_CMD="$dir/gate-stub" sh -e "$HOOK" origin git@example.invalid:none.git 2>&1
   )"
   rm -rf "$dir"
   range_args="$(printf '%s\n' "$out" | grep '^stub gate: --range' | sed 's/^stub gate: --range//' | tr -s ' ')"
   literal_args="$(printf '%s\n' "$out" | grep '^stub gate: --literal' | sed 's/^stub gate: --literal//' | tr -s ' ')"
+  public_args=" $(printf '%s\n' "$out" | grep '^stub gate: --repo' | sed 's/.* --range //' | tr '\n' ' ' | sed 's/ $//')"
   if [ -z "$literal_args" ] && [ -z "$range_args" ]; then
     fail "$label" "neither scanner ran. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  elif [ "$range_args" != "$public_args" ]; then
+    fail "$label" "range got '$range_args', public-content got '$public_args'"
   elif [ "$range_args" = "$literal_args" ]; then
     pass "$label"
   else
@@ -155,9 +179,11 @@ STUB
 }
 
 ZERO2=0000000000000000000000000000000000000000
-same_refs_case "both scanners get the same refs on a first push" \
-  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2"
-same_refs_case "both scanners get the same refs on a later push" \
+same_refs_case "all three scanners get the same refs on a first push" \
+  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$WITH_MAIN"
+same_refs_case "all three scanners get the same refs on a first push with no origin/main" \
+  "refs/heads/main aaaaaaa1 refs/heads/main $ZERO2" "$NO_MAIN"
+same_refs_case "all three scanners get the same refs on a later push" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1"
 
 # A deletion is not the same as no input. With nothing to publish, neither
