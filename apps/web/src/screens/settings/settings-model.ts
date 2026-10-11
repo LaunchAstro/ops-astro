@@ -13,6 +13,13 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { Confirmed, Draft, Which } from './confirmed.ts';
 
+/** The session's memory as this screen holds it, and which session it is. */
+export interface Held {
+  readonly grantKey: string;
+  readonly confirmed: Confirmed;
+  readonly denied: boolean;
+}
+
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
   readonly which: Which;
@@ -42,6 +49,10 @@ export interface SettingsModel {
   readonly stepUp: StepUpAsk | null;
   readonly conflict: Conflict | null;
   readonly rowFor: (which: Which) => SettingView | null;
+  /** The business and person a row's draft is held for. */
+  readonly ownerKey: string;
+  /** The revision the row's newest confirmed save wrote, until a reread shows it. */
+  readonly wrote: (which: Which) => number | undefined;
   readonly save: (which: Which, value: Draft) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;

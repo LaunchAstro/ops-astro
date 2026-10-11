@@ -54,9 +54,10 @@ import type {
   SettingsReadResult,
   SettingView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { remember, sessionMemory, type Confirmed, type Draft, type Which } from './confirmed.ts';
-import type { Conflict, SettingsModel } from './settings-model.ts';
+import { remember, sessionMemory, type Draft, type Which } from './confirmed.ts';
+import type { Conflict, Held, SettingsModel } from './settings-model.ts';
 import {
+  COMMAND,
   GRANT,
   KEY,
   SESSION_CAPABILITIES,
@@ -69,21 +70,6 @@ import {
 export type { StorageLike } from '../../session/token.ts';
 export type { Confirmed, Draft, Which } from './confirmed.ts';
 export type { Conflict, SettingsModel } from './settings-model.ts';
-
-const COMMAND = {
-  'four-eyes': 'settings.set_four_eyes_threshold',
-  'sign-off': 'settings.set_client_sign_off',
-  conversation: 'settings.set_conversation_window',
-  retention: 'settings.set_retention_window',
-  priority: 'settings.set_priority_stages',
-} as const;
-
-/** The session's memory as this screen holds it, and which session it is. */
-interface Held {
-  readonly grantKey: string;
-  readonly confirmed: Confirmed;
-  readonly denied: boolean;
-}
 
 export function useSettings(
   client: OperationsClient,
@@ -139,6 +125,9 @@ export function useSettings(
   const closed = closedBy !== null && desk.owns(closedBy);
   const conflict = stale !== null && desk.owns(stale.tag) ? stale.is : null;
   const [said, setSaid] = useState<{ readonly tag: Tag; readonly text: string } | null>(null);
+  // The revision each row's newest confirmed save wrote, so its draft ends once a read shows it;
+  // the owner's alone, as a revision means nothing in another business.
+  const [wrote, setWrote] = useState<Partial<Record<Which, { tag: Tag; revision: number }>>>({});
   const complaint = said !== null && desk.owns(said.tag) ? said.text : null;
   const setComplaint = (text: string | null): void => {
     setSaid(text === null ? null : { tag: desk.save(), text });
@@ -212,6 +201,7 @@ export function useSettings(
     }
     if (settlement.kind !== 'ok') return;
     setConflict(null);
+    setWrote((was) => ({ ...was, [which]: { tag, revision: settlement.value.revision } }));
     const kept = remember(which, settlement.value.detail?.['value'], value);
     // A session refused the read keeps nothing until a read answers it. The
     // hold is judged as it stands now, not as it stood when Save was pressed:
@@ -285,6 +275,11 @@ export function useSettings(
     stepUp: prompt,
     conflict,
     rowFor,
+    ownerKey: `${businessKey}\n${grantKey}`,
+    wrote: (which) => {
+      const saved = wrote[which];
+      return saved !== undefined && desk.owns(saved.tag) ? saved.revision : undefined;
+    },
     save,
     writeOver: () => {
       // Only over what the reread showed: never while it is in flight, and

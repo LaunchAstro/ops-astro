@@ -40,6 +40,10 @@
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
     {
+      "files": ["tests/surfaces/priority-draft-kept-until-reread-shows-save.test.tsx"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/api/c71-g-send-after-revocation.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },

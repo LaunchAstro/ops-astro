@@ -72,11 +72,13 @@ export async function shownInbox(
  * runs and their events, and what its board row derives from other rows: the
  * state and assignee it names, its Actual total (`readActualMinutes`) and the
  * gates it waits at (`awaitingApproval`), as of now, so a deadline passing
- * moves it with no write. The business's priority stages revision is in it
- * too while any task is read, since every rank derives from that setting (P11);
- * a reader with no task is told nothing of it. Of the state and the assignee it takes only what the
- * row shows, so a write to the rest of their rows (a second factor verified on
- * the person) tells a reader of the board nothing. Any change the reader can
+ * moves it with no write. Which of those tasks with all three marks the
+ * business's priority stages weight is in it too, the only way the setting
+ * moves their scores and ranks (P11); an unscored task has no score to move, so
+ * a change that weights none of the scored ones tells their reader nothing. Of
+ * the state and the assignee it takes only what the row shows, so a write to
+ * the rest of their rows (a second factor verified on the person) tells a
+ * reader of the board nothing. Any change the reader can
  * see moves it, and so does a task revoked, trashed or moved to another
  * client; undefined unless the bearer still resolves to that person.
  */
@@ -107,7 +109,9 @@ export async function boardReach(
 /** A map's tickets by its grants walked here (`REACH`), so a revoked map grant moves nothing. */
 const SEEN = `${REACH},
        seen as (
-         select t.id, t.uuid_1 as state, t.uuid_2 as assignee from public.records t
+         select t.id, t.uuid_1 as state, t.uuid_2 as assignee, t.txt_5 as stage,
+                t.num_3 is not null and t.num_4 is not null and t.num_5 is not null as scored
+           from public.records t
           where t.business_id = $1 and t.record_type_id = $3 and t.deleted_at is null
             and ($4::boolean or t.id = any($5::uuid[]) or t.uuid_7 = any($6::uuid[])
                  or (t.uuid_4 = any((select records from reach)::uuid[])
@@ -119,9 +123,11 @@ const SEEN = `${REACH},
                   and (r.id in (select id from seen)
                        or r.data ->> 'task' in (select id::text from seen))
                union all
-               select 'priority:' || priority.revision::text from public.business_settings priority
-                where priority.business_id = $1 and priority.key = 'priority_stages'
-                  and exists (select 1 from seen)
+               select 'w' || t.id::text from seen t
+                 join public.business_settings priority
+                   on priority.business_id = $1 and priority.key = 'priority_stages'
+                  and priority.value_type = 'stage_ids'
+                where t.scored and priority.value @> to_jsonb(t.stage)
                union all
                select 's' || s.id::text || ':' || jsonb_build_array(s.data ->> 'key',
                         s.data ->> 'label', s.data ->> 'machine_category', s.data ->> 'position')::text

@@ -121,3 +121,57 @@ it('a stale save keeps the ticked stages; only an explicit overwrite sends the n
     await page.unmount();
   }
 });
+
+it('a business switch drops the ticked stages: beta saves its own stages, not alpha draft', async () => {
+  const alpha = prioritySettingsWorld('alpha');
+  const page = await mount(priorityScreen(alpha));
+  try {
+    await tick();
+    await choosePriority(page, 'sales');
+    const beta = prioritySettingsWorld('beta');
+    beta.value = ['retention'];
+    await page.render(priorityScreen(beta, 'beta:ada:0'));
+    await tick();
+    expect(page.find('[data-settings="priority-value"]')?.textContent).toContain('Retention');
+    expect(priorityInput(page, 'retention').checked).toBe(true);
+    expect(priorityInput(page, 'trust').checked).toBe(false);
+    expect(priorityInput(page, 'sales').checked).toBe(false);
+    await page.click('[data-settings="save-priority"]');
+    await tick();
+    expect(priorityWrites(alpha)).toHaveLength(0);
+    expect(priorityWrites(beta)[0]?.body).toMatchObject({
+      value: ['retention'],
+      expectedRevision: 7,
+    });
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('a confirmed save drops the ticked stages, so a later reread shows what the server holds', async () => {
+  const world = prioritySettingsWorld();
+  const page = await mount(priorityScreen(world));
+  try {
+    await tick();
+    await choosePriority(page, 'sales');
+    await page.click('[data-settings="save-priority"]');
+    await tick();
+    expect(priorityWrites(world)[0]?.body).toMatchObject({ value: ['trust', 'sales'] });
+    // Another administrator changes the stages; this screen's sign-off save rereads.
+    world.value = ['retention'];
+    world.revision += 1;
+    await page.click('[data-settings="save-sign-off"]');
+    await tick();
+    expect(page.find('[data-settings="priority-value"]')?.textContent).toContain('Retention');
+    expect(priorityInput(page, 'retention').checked).toBe(true);
+    expect(priorityInput(page, 'sales').checked).toBe(false);
+    await page.click('[data-settings="save-priority"]');
+    await tick();
+    expect(priorityWrites(world)[1]?.body).toMatchObject({
+      value: ['retention'],
+      expectedRevision: 9,
+    });
+  } finally {
+    await page.unmount();
+  }
+});
