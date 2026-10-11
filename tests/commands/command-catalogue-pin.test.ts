@@ -174,6 +174,9 @@ vi.mock('../../packages/core-commands/src/commands/tasks-comment-edit.ts', async
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
+}));
+vi.mock('../../packages/core-commands/src/commands/settings-notification.ts', async (original) => ({
+  ...(await original<object>()),
   setNotificationChannel: recorder('setNotificationChannel'),
 }));
 // C80's approver setting reads its writer's key again after the write (a database read).
@@ -493,6 +496,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
+  'settings.set_priority_stages': [],
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
   'settings.set_live_correction_approver': [],
@@ -625,6 +629,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_four_eyes_threshold',
   'settings.set_live_correction_approver',
   'settings.set_money_step_up',
+  'settings.set_priority_stages',
   'settings.set_retention_window',
   'tag.create',
   'tag.list',
@@ -788,6 +793,12 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
   { command: 'settings.set_money_step_up', operationId: 'op', value: false },
+  {
+    command: 'settings.set_priority_stages',
+    operationId: 'op',
+    value: ['trust', 'advocacy'],
+    expectedRevision: 7,
+  },
   { command: 'settings.set_conversation_window', operationId: 'op', value: 14 },
   { command: 'settings.set_retention_window', operationId: 'op', value: 90 },
   {
@@ -1066,6 +1077,12 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     'settings.set_money_step_up',
     false,
     undefined,
+  ],
+  'settings.set_priority_stages': [
+    'setBusinessSetting',
+    'settings.set_priority_stages',
+    ['trust', 'advocacy'],
+    7,
   ],
   'settings.set_conversation_window': [
     'setBusinessSetting',

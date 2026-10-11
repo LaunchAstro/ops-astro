@@ -102,6 +102,7 @@ export type CommandName =
   // MP-2-11: the conversation and retention windows, in days (C122-1).
   | 'settings.set_conversation_window'
   | 'settings.set_retention_window'
+  | 'settings.set_priority_stages'
   // C55: the breach runbook's day-0 record, `privacy incident recorded`.
   | 'privacy.record_incident'
   // C81: the legal documents' versions, drafted, approved as those exact

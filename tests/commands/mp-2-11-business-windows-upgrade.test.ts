@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, expect, it } from 'vitest';
 import {
+  BUSINESS_SETTINGS,
   installBusinessSettings,
   readBusinessSetting,
 } from '../../packages/core-records/src/records/business-settings.ts';
@@ -88,7 +89,9 @@ it.skipIf(serverUrl === undefined)(
     const before = onDisk.filter((migration) => migration.version.slice(0, 4) < '0068');
     await applyMigrations(upgraded.admin, before);
     const business = await insertBusiness(upgraded.app, 'early');
-    await upgraded.app.withBusiness(business, async (tx) => await installBusinessSettings(tx));
+    // Priority stages came later (20261009060000); this schema cannot hold them.
+    const then = BUSINESS_SETTINGS.filter((setting) => setting.key !== 'priority_stages');
+    await upgraded.app.withBusiness(business, (tx) => installBusinessSettings(tx, then));
     // What an install before this change wrote: both windows generic, one
     // already moved by the business.
     await upgraded.admin.execute(

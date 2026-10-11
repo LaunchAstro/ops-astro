@@ -64,14 +64,14 @@ import { refuseCommand, type CommandRefusal } from '../register.ts';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import type { WriteMode, VisibilityClass } from './fields.ts';
 
-export type SettingValueType = 'numeric' | 'boolean' | 'text';
+export type SettingValueType = 'numeric' | 'boolean' | 'text' | 'stage_ids';
 
 export interface SettingDefinition {
   readonly key: string;
   readonly label: string;
   readonly valueType: SettingValueType;
   /** Null is a real value here: the four-eyes band being off, a window unset. */
-  readonly value: number | boolean | string | null;
+  readonly value: number | boolean | string | readonly string[] | null;
   readonly writeMode: WriteMode;
   readonly owningOperations: readonly string[];
   readonly visibilityClass?: VisibilityClass;
@@ -89,6 +89,15 @@ export interface SettingDefinition {
  * generic write could not hold.
  */
 export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
+  {
+    key: 'priority_stages',
+    label: 'Priority stages',
+    valueType: 'stage_ids',
+    value: [],
+    writeMode: 'operation',
+    owningOperations: ['settings.set_priority_stages'],
+    visibilityClass: 'internal',
+  },
   {
     key: 'four_eyes_threshold',
     label: 'Second approver above',
@@ -160,7 +169,7 @@ export interface BusinessSetting {
   readonly key: string;
   readonly label: string;
   readonly valueType: SettingValueType;
-  readonly value: number | boolean | string | null;
+  readonly value: number | boolean | string | readonly string[] | null;
   readonly writeMode: WriteMode;
   readonly owningOperations: readonly string[];
   readonly visibilityClass: VisibilityClass;
@@ -176,7 +185,7 @@ interface SettingRow {
   readonly key: string;
   readonly label: string;
   readonly value_type: SettingValueType;
-  readonly value: number | boolean | string | null;
+  readonly value: number | boolean | string | readonly string[] | null;
   readonly write_mode: WriteMode;
   readonly owning_operation: readonly string[] | null;
   readonly visibility_class: VisibilityClass;
@@ -222,11 +231,15 @@ export async function lockSettingsInstall(
  * `on conflict do nothing` rather than an upsert: the key is unique per
  * business, so a second install adds what a later release named and leaves
  * every existing value where the business put it. The install lock is taken
- * first, before any row is added.
+ * first, before any row is added. An upgrade test at an older schema names the
+ * settings that schema could hold.
  */
-export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
+export async function installBusinessSettings(
+  tx: TenantQuery,
+  settings: readonly SettingDefinition[] = BUSINESS_SETTINGS,
+): Promise<void> {
   await lockSettingsInstall(tx, 'exclusive');
-  for (const setting of BUSINESS_SETTINGS) {
+  for (const setting of settings) {
     // Sequential: one transaction, one connection, and a partial install is
     // worse than a slow one.
     // oxlint-disable-next-line no-await-in-loop
@@ -238,6 +251,7 @@ export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
                case $5::text
                  when 'numeric' then
                    case when $6::text is null then 'null'::jsonb else to_jsonb($6::numeric) end
+                 when 'stage_ids' then $6::jsonb
                  when 'boolean' then
                    case when $6::text is null then 'null'::jsonb else to_jsonb($6::boolean) end
                  else
@@ -255,7 +269,11 @@ export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
         // the row declares. Handing the driver a JSON document instead makes
         // the band the string "500", which no comparison reads, and the
         // check constraint is what caught that.
-        setting.value === null ? null : String(setting.value),
+        setting.valueType === 'stage_ids'
+          ? JSON.stringify(setting.value)
+          : setting.value === null
+            ? null
+            : String(setting.value),
         setting.writeMode,
         setting.owningOperations.length === 0 ? null : setting.owningOperations,
         setting.visibilityClass ?? 'internal',
@@ -326,7 +344,7 @@ export interface BusinessSettingWrite {
    * row declares and the server applies it; handing the driver a string for a
    * `numeric` makes the band the JSON string "500", which no comparison reads.
    */
-  readonly value: number | boolean | string | null;
+  readonly value: number | boolean | string | readonly string[] | null;
   /**
    * The revision the caller read. Absent means "write it anyway", which is what
    * a caller that has not learnt to send one does.
@@ -345,7 +363,7 @@ export interface BusinessSettingWrite {
 export interface BusinessSettingWritten {
   readonly id: string;
   readonly key: string;
-  readonly value: number | boolean | string | null;
+  readonly value: number | boolean | string | readonly string[] | null;
   /** The revision the row is now at, which the next write names. */
   readonly revision: number;
 }
@@ -363,6 +381,7 @@ export interface BusinessSettingWritten {
  * band is off" is a value rather than an absence.
  */
 const VALUE_SQL_BY_TYPE: Readonly<Record<SettingValueType, string>> = {
+  stage_ids: '$3::text::jsonb',
   numeric: `case when $3::text is null then 'null'::jsonb else to_jsonb($3::numeric) end`,
   boolean: `to_jsonb($3::boolean)`,
   text: `case when $3::text is null then 'null'::jsonb else to_jsonb($3::text) end`,
@@ -434,7 +453,7 @@ export async function writeBusinessSetting(
   const written = await tx.query<{
     readonly id: string;
     readonly key: string;
-    readonly value: number | boolean | string | null;
+    readonly value: number | boolean | string | readonly string[] | null;
     readonly revision: number;
   }>(
     `update business_settings
@@ -444,7 +463,12 @@ export async function writeBusinessSetting(
             updated_by_actor_id = $4
       where business_id = $1 and key = $2
     returning id, key, value, revision`,
-    [tx.businessId, write.key, write.value ?? null, write.actorId ?? null],
+    [
+      tx.businessId,
+      write.key,
+      row.value_type === 'stage_ids' ? JSON.stringify(write.value) : (write.value ?? null),
+      write.actorId ?? null,
+    ],
   );
   // The row was locked above, so the update reaches it or the transaction is
   // not the one holding the lock, which cannot happen inside one statement.

@@ -118,6 +118,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       'four_eyes_threshold',
       'live_correction_approver',
       'money_step_up_required',
+      'priority_stages',
       'retention_window_days',
     ]);
   });
@@ -181,6 +182,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         ['four_eyes_threshold', 1],
         ['live_correction_approver', 1],
         ['money_step_up_required', 1],
+        ['priority_stages', 1],
         ['retention_window_days', 1],
       ]);
     });
@@ -414,7 +416,9 @@ describe.skipIf(serverUrl === undefined)(
       db = await createEmptyDatabase({ part: 'l2sup' });
       await applyMigrations(db.admin, onDisk.slice(0, revision));
       business = await insertBusiness(db.app, 'before');
-      await db.app.withBusiness(business, installBusinessSettings);
+      // Priority stages came later (20261009060000); this schema cannot hold them.
+      const then = BUSINESS_SETTINGS.filter((setting) => setting.key !== 'priority_stages');
+      await db.app.withBusiness(business, (tx) => installBusinessSettings(tx, then));
       // The runner refuses while this database has other sessions; seeding opened one.
       await db.closeSessions();
       await applyMigrations(db.admin, onDisk);
