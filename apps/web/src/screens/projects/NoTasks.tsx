@@ -2,11 +2,11 @@
 import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import { boardDoor } from './ProjectsToolbar.tsx';
-import type { BoardAddress } from './scoped-board.ts';
 
 /** The authorised board's empty state; loading and refused reads never draw it. */
 export function NoTasks(props: {
-  readonly scope: BoardAddress;
+  /** The board's address, whose context the door carries. */
+  readonly address: string;
   readonly canFileTask: boolean;
 }): ReactElement {
   return (
@@ -20,7 +20,7 @@ export function NoTasks(props: {
             className="btn btn--secondary btn--sm"
             type="button"
             data-projects-empty-new-task
-            {...boardDoor(props.scope, true)}
+            {...boardDoor(props.address, true)}
           >
             New task
           </button>

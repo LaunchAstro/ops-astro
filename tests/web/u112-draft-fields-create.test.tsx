@@ -161,10 +161,7 @@ describe('Core 04 2: each door carries its page’s scope, never a fixed client'
   it('the Projects board door carries the board’s client and project', () => {
     const door = document.createElement('button');
     for (const [name, value] of Object.entries(
-      boardDoor(
-        { kind: 'selected', boardId: BOARD, client: CLIENT, filters: [], focus: null },
-        true,
-      ),
+      boardDoor(`/projects/?board=${BOARD}&client=${CLIENT}`, true),
     ))
       if (value !== undefined) door.setAttribute(name, value);
     const page = doorContext(door);
@@ -178,9 +175,7 @@ describe('Core 04 2: each door carries its page’s scope, never a fixed client'
 
   it('an unscoped board door names no client and no project', () => {
     const door = document.createElement('button');
-    for (const [name, value] of Object.entries(
-      boardDoor({ kind: 'unboarded', filters: [], focus: null }, true),
-    ))
+    for (const [name, value] of Object.entries(boardDoor('/projects/?board=none', true)))
       if (value !== undefined) door.setAttribute(name, value);
     expect(doorContext(door)).toMatchObject({ clientId: null });
     expect(doorContext(door)).not.toHaveProperty('boardId');

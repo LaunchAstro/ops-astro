@@ -7,6 +7,9 @@
 // **The project list is read only when wanted.** A draft filed from a project
 // reads it at once, to name that project; any other draft reads it when the
 // Project select is first focused, so Create never waits on a task list.
+//
+// **A client's project holds only that client's work.** The list offers the
+// agency's own projects and the draft's client's, as `task.move` admits them.
 
 import { useEffect, useState, type ReactElement } from 'react';
 import { TASK_STAGES, type TaskBoardResult } from '../../../../../packages/core-wire/src/index.ts';
@@ -126,9 +129,12 @@ function Words(
   );
 }
 
+/** A project and its client: null for the agency's own, '' for one the reader cannot see. */
+type Project = Choice & { readonly client: string | null };
+
 /** The Projects board's projects, read once `asked`; null until they answer. */
 function useProjects(client: OperationsClient, asked: boolean) {
-  const [answer, setAnswer] = useState<readonly Choice[] | 'failed' | null>(null);
+  const [answer, setAnswer] = useState<readonly Project[] | 'failed' | null>(null);
   useEffect(() => {
     if (!asked) return;
     let live = true;
@@ -137,7 +143,11 @@ function useProjects(client: OperationsClient, asked: boolean) {
       setAnswer(
         isRefusal(read) || isUnavailable(read)
           ? 'failed'
-          : read.value.tasks.map((task) => ({ id: task.id, title: task.title ?? 'Untitled' })),
+          : read.value.tasks.map((task) => ({
+              id: task.id,
+              title: task.title ?? 'Untitled',
+              client: task.clientSet ? (task.client?.clientId ?? '') : null,
+            })),
       );
       return null;
     });
@@ -152,7 +162,9 @@ function DraftProject(props: Props): ReactElement {
   const chosen = props.draft.boardId;
   const [asked, setAsked] = useState(chosen !== null);
   const answer = useProjects(props.client, asked);
-  const offered = Array.isArray(answer) ? answer : [];
+  const offered = Array.isArray(answer)
+    ? answer.filter((project) => project.client === null || project.client === props.draft.clientId)
+    : [];
   const listed =
     chosen === null || offered.some((choice) => choice.id === chosen)
       ? offered

@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// @vitest-environment jsdom
+//
+// U112 Core 04 2, in the actual App: every Projects board door (the toolbar's
+// New task, the quick-add and the empty board's door) opens the one kept draft
+// with the board's own context: its client and project, the stage it is
+// filtered to, and the priority and category its scope reads as. A door on a
+// board with none of these guesses none of them.
+
+import { act } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { json, unmountAll } from './perspective-support.tsx';
+import { draft } from './draft-support.tsx';
+import { tick } from './task-page-stub.tsx';
+import { OrderedCreateServer, closeAll, drain, file, open } from './p05-draft-create-support.ts';
+import { draftTab, PERSON } from './projects-draft-app-support.tsx';
+import { readDraft } from '../../apps/web/src/screens/task/task-draft.ts';
+import { boardDoor } from '../../apps/web/src/screens/projects/ProjectsToolbar.tsx';
+import { doorContext } from '../../apps/web/src/screens/task/task-prefill.ts';
+
+afterEach(closeAll);
+afterEach(unmountAll);
+
+const CLIENT = '11111111-1111-4111-8111-111111111111';
+const BOARD = '22222222-2222-4222-8222-222222222222';
+const FILTERS = JSON.stringify([
+  { kind: 'priority', value: 2 },
+  { kind: 'category', value: 'seo' },
+]);
+const STAGE = encodeURIComponent('stage:"Enquiries"');
+const SCOPED = `/projects/?board=${BOARD}&client=${CLIENT}&filters=${encodeURIComponent(FILTERS)}&f=${STAGE}`;
+
+const project = (id: string, title: string, client: string | null) => ({
+  id,
+  title,
+  clientSet: client !== null,
+  client: client === null ? null : { clientId: client, name: 'A client' },
+});
+
+const contextOf = (address: string) => {
+  const door = document.createElement('button');
+  for (const [name, value] of Object.entries(boardDoor(address, true)))
+    if (value !== undefined) door.setAttribute(name, value);
+  return doorContext(door);
+};
+
+describe('Core 04 2: board doors carry the board’s context into the draft', () => {
+  it('a door names the board’s client, project, filtered stage, priority and category', () => {
+    expect(contextOf(SCOPED)).toMatchObject({
+      from: 'Projects',
+      clientId: CLIENT,
+      boardId: BOARD,
+      stage: 'enquiries',
+      priority: 2,
+      category: 'seo',
+    });
+  });
+
+  it('two stages or two priorities in view guess neither', () => {
+    const two = JSON.stringify([
+      { kind: 'priority', value: 1 },
+      { kind: 'priority', value: 3 },
+    ]);
+    const stages = encodeURIComponent('stage:"Enquiries",stage:"Sales"');
+    const page = contextOf(`/projects/?board=none&filters=${encodeURIComponent(two)}&f=${stages}`);
+    expect(page).not.toHaveProperty('stage');
+    expect(page).not.toHaveProperty('priority');
+    expect(page).toMatchObject({ clientId: null });
+  });
+
+  it('a door that may not file a task carries nothing', () => {
+    expect(boardDoor(SCOPED, false)).toStrictEqual({});
+  });
+});
+
+describe('Core 04 2: in the App, the board doors open the draft with that context', () => {
+  it('the toolbar’s New task opens the kept draft with that context', async () => {
+    const app = await open(new OrderedCreateServer(), draftTab(), SCOPED);
+    await file(app);
+    // A fresh draft is kept from its first edit.
+    await app.view.type('#panel-draft-name', 'Filed from the toolbar');
+    expect(readDraft(app.storage, PERSON)).toMatchObject({
+      clientId: CLIENT,
+      boardId: BOARD,
+      stage: 'enquiries',
+      priority: 2,
+      category: 'seo',
+    });
+  });
+
+  it('the quick-add opens the kept draft with the typed name and the same context', async () => {
+    const app = await open(new OrderedCreateServer(), draftTab(), SCOPED);
+    await app.view.type('#create-title', 'Typed on a filtered board');
+    await app.view.click('.projects__create button[type="submit"]');
+    await drain(app);
+    expect(readDraft(app.storage, PERSON)).toMatchObject({
+      title: 'Typed on a filtered board',
+      clientId: CLIENT,
+      boardId: BOARD,
+      stage: 'enquiries',
+      priority: 2,
+    });
+  });
+});
+
+describe('Core 04 4: the draft offers only projects its client’s work may join', () => {
+  it('another client’s project is not offered; the agency’s and the client’s own are', async () => {
+    const OTHER = '33333333-3333-4333-8333-333333333333';
+    const fetch = (() =>
+      Promise.resolve(
+        json({
+          ok: true,
+          tasks: [
+            project('44444444-4444-4444-8444-444444444444', 'Agency site', null),
+            project(BOARD, 'Website rebuild', CLIENT),
+            project('55555555-5555-4555-8555-555555555555', 'Their launch', OTHER),
+          ],
+          viewer: 'p',
+          owed: 0,
+        }),
+      )) as unknown as typeof globalThis.fetch;
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
+    const { view } = await draft({ client, scope: { clientId: CLIENT, from: 'Client A' } });
+    await act(() => {
+      view.host.querySelector<HTMLSelectElement>('#panel-draft-board')?.focus();
+    });
+    await tick();
+    const offered = [
+      ...view.host.querySelectorAll<HTMLOptionElement>('#panel-draft-board option'),
+    ].map((option) => option.textContent);
+    expect(offered).toStrictEqual(['None', 'Agency site', 'Website rebuild']);
+  });
+});

@@ -367,6 +367,23 @@ export async function moveTask(
         refuseCommand('NOT_FOUND', ['board'], ['No board carries that identifier here.']),
       );
     }
+    // A client's board holds only that client's work (U112); the agency's own
+    // board, with no client, takes any task. Read under the board's row lock,
+    // as a reparent reads its parent's client.
+    const boardClient = await lockedClientOf(tx, context.spine.taskTypeId, board);
+    const taskClient = (target.data['client'] as string | undefined)?.toLowerCase() ?? null;
+    if (boardClient !== null && boardClient.toLowerCase() !== taskClient) {
+      return refused(
+        refuseCommand(
+          'PLACEMENT_IS_DERIVED',
+          ['board'],
+          [
+            'This project belongs to another client.',
+            'Choose one of this task’s client’s projects, or one with no client.',
+          ],
+        ),
+      );
+    }
   }
 
   // Onto another board, the task ranks after that board's last task, as a new

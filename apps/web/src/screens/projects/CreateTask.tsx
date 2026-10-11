@@ -8,10 +8,10 @@
 import { useState, type ReactElement } from 'react';
 import { Icon } from '@launchastro/ui';
 import { boardDoor } from './ProjectsToolbar.tsx';
-import type { BoardAddress } from './scoped-board.ts';
 
 export function CreateTask(props: {
-  readonly scope: BoardAddress;
+  /** The board's address, whose context the door carries. */
+  readonly address: string;
   readonly canFileTask: boolean;
 }): ReactElement {
   const [title, setTitle] = useState('');
@@ -36,7 +36,7 @@ export function CreateTask(props: {
         className="btn btn--secondary btn--sm"
         type="submit"
         disabled={!props.canFileTask || named === ''}
-        {...boardDoor(props.scope, props.canFileTask && named !== '')}
+        {...boardDoor(props.address, props.canFileTask && named !== '')}
         data-new-task-title={named === '' ? undefined : named}
       >
         Add to draft
