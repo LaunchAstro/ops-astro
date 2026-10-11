@@ -10,7 +10,7 @@
 // authority on one task never reaches a lineage on another (R3's rule, the one
 // `propose` enforces), and `decide` is asked again with the grants held.
 // Neither writes the task record, which is why neither takes an
-// `expectedRevision`.
+// `expectedRevision`, and why each records that it changed no task field (P21).
 
 import {
   isUuid,
@@ -29,7 +29,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { appliedUnwritten, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 
 const REASON_LIMIT = 500;
@@ -174,7 +174,7 @@ export async function cancelOnTask(
   await raiseIncident(tx, result.value);
   // INB-1: the cancelled lineage's pending gate can no longer be decided.
   await withdrawEndedGates(tx, found.taskId);
-  return applied(found.taskId, null, {
+  return appliedUnwritten(found.taskId, {
     lineageId: found.lineageId,
     state: 'cancelled',
     reservations: result.value.map((one) => ({
@@ -235,7 +235,7 @@ export async function restartOnTask(
   if (lapsed !== null) return lapsed;
   await closeOpenEnvelope(tx, found.taskId);
   await raiseDecision(tx, { taskId: found.taskId, gateId: result.value.gateId });
-  return applied(found.taskId, null, {
+  return appliedUnwritten(found.taskId, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,
     versionId: result.value.versionId,

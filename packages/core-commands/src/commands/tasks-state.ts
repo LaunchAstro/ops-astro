@@ -37,6 +37,7 @@ import {
   setTaskState,
   isWayfinderRecord,
   wayfinderFacts,
+  writeRecordData,
 } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
@@ -47,7 +48,7 @@ import type {
 import { acquire } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
-import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { appliedWrite, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
@@ -312,12 +313,7 @@ export async function setState(
   if (isRecordsRefusal(moved)) return refused(moved);
   if (stepMove !== undefined) await moveSteps(tx, steps, stepMove);
 
-  const rows = await tx.query<{ readonly revision: string }>(
-    `select revision::text as revision from records where business_id = $1 and id = $2`,
-    [tx.businessId, target.id],
-  );
-  const revision = rows[0]?.revision;
-  return applied(target.id, revision === undefined ? null : Number(revision), {
+  return appliedWrite(target.id, moved, {
     state: state.key,
     completedAt: moved.completedAt === null ? null : moved.completedAt.toISOString(),
     ...(reason === undefined ? {} : { reason }),
@@ -374,12 +370,7 @@ export async function setStateById(
     taskStateTypeId: context.spine.taskStateTypeId,
   });
   if (isRecordsRefusal(moved)) return refused(moved);
-  const rows = await tx.query<{ readonly revision: string }>(
-    `select revision::text as revision from records where business_id = $1 and id = $2`,
-    [tx.businessId, target.id],
-  );
-  const revision = rows[0]?.revision;
-  return applied(target.id, revision === undefined ? null : Number(revision), { state: state.key });
+  return appliedWrite(target.id, moved, { state: state.key });
 }
 
 /**
@@ -471,12 +462,7 @@ export async function writeOwnedFields(
   // person in the one form every read and join compares against.
   const links = canonicalPersonLinks(fields);
   const merged = mergeFieldValues(target.data, links);
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
-     returning revision::text as revision`,
-    [tx.businessId, target.id, merged],
-  );
-  const written = rows[0];
+  const written = await writeRecordData(tx, target.id, 'data = $3', [merged]);
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
   }
@@ -488,7 +474,8 @@ export async function writeOwnedFields(
   }
   // C41-A: an onboarding step's move follows its assignee and its client.
   if ('assignee' in links || 'client' in links) await reparkStepMove(tx, target.id);
-  return applied(target.id, Number(written.revision), { changed: keys });
+  // `changed` is what the write changed, not what was sent: a no-op is [] (P21).
+  return appliedWrite(target.id, written, { changed: written.changed });
 }
 
 /**

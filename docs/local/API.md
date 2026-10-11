@@ -1849,8 +1849,11 @@ That list, and the audit row's `field_changes` (`{ "version": 1, "keys": [...] }
 P20), name the fields the write actually changed, compared in the database
 before and after the update: a field sent with its current value is not in
 it, and an update that changes nothing answers `changed: []`. Only names are
-kept, never a value. A null `field_changes` means unknown: every event
-written before P20, and every command that does not record its keys yet. An agent writes the two on its own delegated task through
+kept, never a value. Since P21 every command that owns a task field
+(`FIELD_WRITES` in `outcome.ts`, the same list as the column's constraint)
+records them on its applied event; `task.cancel` and `task.restart` write no
+task field and record `[]`. A null `field_changes` means unknown: every event
+written before P20 or P21, and every command outside that list. An agent writes the two on its own delegated task through
 `task.update` (`updateTaskAsAgent`), and with them the name, the due date,
 the estimate and the page link, which MP-4-8's and MP-4-12's Permissions tables give it
 "inside its delegation"; each is still held to the delegation's `task:write`
