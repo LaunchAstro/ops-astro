@@ -165,9 +165,9 @@ it('an installed business at the old migration prefix gains start-date metadata 
   try {
     const w = await installedBeforeDate(db);
     const old = await oldTask(w);
-    const before = await page(w, old.id);
-    expect(before.startedAt).toBeNull();
-    expect(before.rank.score).toBe(504);
+    // No task.read before the upgrade: today's read names each change's fields
+    // from a column this prefix does not have yet. The same task reads
+    // unstarted at 504 straight after it, in proveUpgradedWrites.
     expect(
       await command(w, {
         command: 'task.update',
