@@ -542,8 +542,7 @@ async function answerOf(
     revision: outcome.revision,
     detail: outcome.detail,
   };
-  // A promote's or demote's audit names the mandate (`auditSubjectId`); the
-  // register keeps that beside the answer, so its replay names the same one.
+  // A promote's or demote's audit names the mandate (`auditSubjectId`); its replay names it too.
   const { auditSubjectId } = outcome;
   const kept: KeptHandle =
     auditSubjectId === undefined
@@ -559,6 +558,7 @@ async function answerOf(
     subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
     payloadDigest: digest,
     originConversationId: outcome.originConversationId ?? null,
+    fieldChanges: outcome.fieldChanges ?? null,
   });
   return handle;
 }

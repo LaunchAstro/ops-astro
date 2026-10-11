@@ -240,14 +240,15 @@ export function applicationGrantsAt(qualified: string, at?: string): string | un
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  'public.record_changed_field_keys',
+  'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
   // 20261005144947 (C40B): the reset's token lookup, two ids for one hash.
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
-  // 20261005235557 (C59): a definer answering one boolean for a login of the caller's own
-  // business; PUBLIC may not execute it.
+  // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
   ...MANDATE_EXECUTES,
 ];

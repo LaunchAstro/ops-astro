@@ -1358,7 +1358,7 @@ pass yet, and raising a failure as an inbox item is INB-1's.
 Which conversation created a task is a fact of the task's creation audit
 event: `audit_events.origin_conversation_id` (0093), a same-business
 reference to `conversations`, in the chain's one hash formula
-(`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
+(`audit_event_hash`, fourteen arguments since P20). A null adds nothing to the hashed
 text, so events without one hash as they did before 0093. The command that
 creates a task from a conversation sets it; until that command exists, the
 wrap-up's "tasks created" item says no task records the conversation.
@@ -1841,9 +1841,16 @@ to an already-sent unknown operation, because that changes the payload digest.
 each null when none is written. Both are task text written through
 `task.update` under `task:write`; `agent_brief` is a field of its own
 (migration 0076), unslotted and internal like the description, so the shared
-view carries neither. The audit row names `task.update`; the field changed is
-the result's `changed` list, which the register stores in the same
-transaction. An agent writes the two on its own delegated task through
+view carries neither. The audit row names `task.update`; the fields changed
+are the result's `changed` list, which the register stores in the same
+transaction.
+
+That list, and the audit row's `field_changes` (`{ "version": 1, "keys": [...] }`,
+P20), name the fields the write actually changed, compared in the database
+before and after the update: a field sent with its current value is not in
+it, and an update that changes nothing answers `changed: []`. Only names are
+kept, never a value. A null `field_changes` means unknown: every event
+written before P20, and every command that does not record its keys yet. An agent writes the two on its own delegated task through
 `task.update` (`updateTaskAsAgent`), and with them the name, the due date,
 the estimate and the page link, which MP-4-8's and MP-4-12's Permissions tables give it
 "inside its delegation"; each is still held to the delegation's `task:write`

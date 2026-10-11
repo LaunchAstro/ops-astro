@@ -158,6 +158,7 @@ export {
   writeBusinessSetting,
   type SettingValueType,
 } from './records/business-settings.ts';
+export { writeRecordData, type DataWrite } from './records/data-write.ts';
 export { readFieldDefinitions } from './records/field-store.ts';
 export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fields.ts';
 export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
