@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Launch judges a business-wide agent:assign again after the audit-chain wait: a grant that expires while the launch waits is refused SCOPE_NOT_GRANTED and no launch or delegation is kept, and the owner launches their own agent across the same wait"
+}
