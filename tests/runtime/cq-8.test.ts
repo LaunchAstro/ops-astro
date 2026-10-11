@@ -125,6 +125,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   'packages/core-commands/src/commands/mandate-authority.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
+  // #1224: assigning another person's agent takes the audit chain's key after
+  // its write, so its `agent:assign` re-ask comes after every wait.
+  'packages/core-commands/src/commands/tasks-agent.ts',
   'packages/core-custody/src/broker-reserve.ts',
   // AW-07b: the mail cap, counted under one lock per business and client or person.
   'packages/core-custody/src/email-class.ts',
