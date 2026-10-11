@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Four eyes is asked gate by gate: a pickup proposal keeps its agent's owner out after the task is handed to a person, the owner is refused only the gate their agent proposed and named once when also its launcher, and the board marks a task as awaiting a reader only when one open gate admits them on both the escalation and four eyes checks"
+}

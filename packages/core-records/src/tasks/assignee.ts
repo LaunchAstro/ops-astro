@@ -12,9 +12,9 @@
 // another lineage on the task is theirs to decide. A pickup's delegation
 // names the person who authorised the run, who goes on to judge its output
 // (AW-09), so only a Launch's is kept there. Asked of the task without a gate
-// (a read of waiting tasks), the proposer's owner or launcher is named only
-// when they are so for every gate still open (live lineage, current version,
-// before its deadline), so none is left to them. `task.decide` refuses each
+// (an assignment withdrawing decision items), the proposer's owner or launcher
+// is named only when they are so for every gate still open (live lineage,
+// current version, before its deadline), so none is left to them. `task.decide` refuses each
 // of them the gate, so the inbox raises none of them a decision item and
 // counts none a path to one. One statement for every caller, so the gate and
 // the inbox never disagree.
