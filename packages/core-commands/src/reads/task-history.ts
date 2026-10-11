@@ -10,6 +10,7 @@ import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { HISTORY_FIELDS, HISTORY_OPERATIONS } from '../../../core-wire/src/index.ts';
 import { invalid } from '../commands/operands.ts';
 import type { FieldChanges } from '../commands/outcome.ts';
+import { isArchiveMark } from '../commands/tasks-steps.ts';
 import type { CommandRefusal } from '../commands/refusal.ts';
 import type { Detail } from './detail.ts';
 import type { HistoryEntry, TaskDetail } from './requests.ts';
@@ -44,15 +45,12 @@ const shownOf = (row: HistoryRow, internal: boolean): readonly string[] | undefi
 
 /**
  * The field writers that are an act of their own, whatever fields they wrote:
- * a cancel or a restart writes no task field (P21), and a placement (a move, a
- * reparent or a reorder) can change only the rank, which no history names
- * though the reader sees the board's order change. Every other command that
- * records its field changes is those changes and nothing more.
+ * a cancel or a restart writes no task field (P21), and a restore may write
+ * none though the task came back from the bin. One that recorded only a
+ * step's archive mark is not that act on this record: the mark is what its
+ * parent's completion or reopening carried to the step (`isArchiveMark`).
  */
 const ACTS: ReadonlySet<string> = new Set([
-  'task.move',
-  'task.reparent',
-  'task.rank',
   'task.start',
   'task.complete',
   'task.reopen',
@@ -61,7 +59,31 @@ const ACTS: ReadonlySet<string> = new Set([
   'task.claim',
   'task.resolve',
   'task.close_out_of_scope',
+  'task.restore',
 ]);
+
+/**
+ * A placement (a move, a reparent or a reorder) can change only the rank,
+ * which no history names though the reader sees the board's order change. So
+ * it is a change when it changed anything, and a placement onto where the
+ * task already is, which changed nothing, is not.
+ */
+const PLACEMENTS: ReadonlySet<string> = new Set(['task.move', 'task.reparent', 'task.rank']);
+
+/** Whether this event is a change to the task for this reader. */
+function isChange(row: HistoryRow, internal: boolean): boolean {
+  const keys = row.field_changes?.keys;
+  // An event that recorded no keys is a change unnamed, except a rank-mark
+  // command's to an outside reader.
+  if (keys === undefined) return internal || row.command !== 'task.set_scores';
+  if (PLACEMENTS.has(row.command)) return keys.length > 0;
+  if (ACTS.has(row.command)) return !isArchiveMark(keys);
+  // A field command's one effect is its data write, so one that changed no
+  // field this reader is sent did not happen to the task for them: a repeat of
+  // the stored value, a custom field's edit, or, to an outside reader, a
+  // rank-mark edit.
+  return shownOf(row, internal)?.length !== 0;
+}
 
 // The changes only, by the closed list in `HISTORY_OPERATIONS`. Reads are
 // audited (I13) and carry the record they looked at, and comments, time
@@ -134,17 +156,7 @@ export async function historyOf(
     OPERATIONS,
     INTERNAL_ROLE_KEYS,
   ]);
-  // A field command's one effect is its data write, so one that changed no
-  // field this reader is sent did not happen to the task for them: a repeat of
-  // the stored value, a custom field's edit, or, to an outside reader, a
-  // rank-mark edit. An act is its own change, and an event that recorded no
-  // keys is a change unnamed, except a rank-mark command's to an outside reader.
-  const changes = rows.filter((row) => {
-    if (ACTS.has(row.command)) return true;
-    const shown = shownOf(row, internal);
-    if (shown === undefined) return internal || row.command !== 'task.set_scores';
-    return shown.length > 0;
-  });
+  const changes = rows.filter((row) => isChange(row, internal));
   const history = await Promise.all(
     changes.map(async (row) => await entryOf(tx, viewer, internal, row)),
   );

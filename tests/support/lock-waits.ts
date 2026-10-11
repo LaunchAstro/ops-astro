@@ -155,7 +155,9 @@ export async function revokedOrBehindHolder(
 /**
  * Where each operation's audit event stands in its business's chain. `seq` is
  * given under a transaction-scoped advisory lock (migration 0093), so the
- * order of two places is the order their transactions committed in.
+ * order of two places is the order their transactions committed in. An
+ * operation that changed other records too has an event on each, together in
+ * the chain, and stands where its first one does.
  */
 export async function chainPlaces(
   admin: Pick<AdminConnection, 'execute'>,
@@ -167,7 +169,7 @@ export async function chainPlaces(
   );
   return operationIds.map((id) => {
     const found = rows.filter((row) => row.operation_id === id);
-    if (found.length !== 1) throw new Error(`chainPlaces: ${found.length} audit events for ${id}`);
-    return Number(found[0]?.seq);
+    if (found.length === 0) throw new Error(`chainPlaces: no audit event for ${id}`);
+    return Math.min(...found.map((row) => Number(row.seq)));
   });
 }

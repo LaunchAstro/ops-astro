@@ -75,10 +75,11 @@ async function completeWith(
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
-  await moveSteps(tx, steps, 'archive');
+  const carried = await moveSteps(tx, steps, 'archive');
   // Completing a ticket can unblock its map's grilling and prototype tickets (WF-2).
   await raiseFrontierDecisions(tx, target.id);
-  return appliedWrite(target.id, written, { state: state.key, ...extra });
+  const answer = appliedWrite(target.id, written, { state: state.key, ...extra });
+  return carried.length === 0 ? answer : { ...answer, carried };
 }
 
 /**

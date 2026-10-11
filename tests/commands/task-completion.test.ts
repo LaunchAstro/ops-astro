@@ -198,10 +198,15 @@ describe.skipIf(serverUrl === undefined)('MP-4-15 audit read-back', () => {
         where business_id = $1 and operation_id = any($2::text[]) order by seq`,
       [alpha, [completed, reopened]],
     );
-    expect(events).toEqual([
+    expect(events.filter((event) => event.subject_record_id === parent)).toEqual([
       { command: 'task.complete', outcome: 'applied', subject_record_id: parent },
       { command: 'task.reopen', outcome: 'applied', subject_record_id: parent },
     ]);
+    // Each open step the completion archived, and the reopen restored, has an
+    // event of its own under the same operation, after the task's.
+    expect(
+      events.filter((event) => event.subject_record_id !== parent).map((event) => event.command),
+    ).toEqual(['task.complete', 'task.complete', 'task.reopen', 'task.reopen']);
     const chain = await seeded().app.withBusiness(alpha, async (tx) => await verifyAuditChain(tx));
     expect(chain.intact).toBe(true);
   });

@@ -53,6 +53,7 @@ export const FIELD_WRITES: readonly CommandName[] = [
   'task.set_blocking',
   'task.resolve',
   'task.close_out_of_scope',
+  'task.restore',
 ];
 
 /** A record a command changed besides the one it names, and what changed. */

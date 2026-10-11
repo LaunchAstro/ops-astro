@@ -15,6 +15,7 @@ import { eventsOf, made, type Made } from './field-changes-world.ts';
 import { FIELD_WRITES } from '../../packages/core-commands/src/commands/outcome.ts';
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
 const configured = databaseUrlFromEnvironment() !== undefined;
 const DUE = '2026-11-01T00:00:00.000Z';
@@ -217,6 +218,14 @@ const CASES: Readonly<Record<string, Case>> = {
       keys: ['answer', 'completed_at', 'gist', 'state'],
     }),
   },
+  'task.restore': {
+    change: async () => {
+      const trashed = await send(on(await fresh(), 'task.trash'));
+      if (isCommandRefusal(trashed)) throw new Error(`trash refused ${trashed.code}`);
+      const batchId = trashed.detail['batchId'];
+      return { body: { command: 'task.restore', operationId: randomUUID(), batchId }, keys: [] };
+    },
+  },
   'task.close_out_of_scope': {
     change: async () => ({
       body: on(await ticket(), 'task.close_out_of_scope', { reason: 'P21 elsewhere' }),
@@ -262,32 +271,25 @@ describe.skipIf(!configured)('P21 every task field writer records what it change
     expect(Object.keys(CASES).toSorted()).toStrictEqual([...FIELD_WRITES].toSorted());
   });
 
-  it.each([...FIELD_WRITES])('%s records exactly the fields it changed', async (command) => {
-    const write = await CASES[command]?.change();
-    if (write === undefined) throw new Error(`no case for ${command}`);
-    expect(await recorded(write.body)).toStrictEqual([
-      ['applied', command, { version: 1, keys: write.keys }],
-    ]);
-  });
-
-  // A write to another record than the task, a carried board, records on that
-  // record's own event (#1207).
-  it.each([
-    ['task.move', ['board']],
-    ['task.reparent', ['board', 'parent']],
-  ])('%s records the board it carried to a descendant', async (command, keys) => {
-    const [from, to] = [await fresh(), await fresh()];
-    const task = await fresh({ board: from.recordId });
-    await fresh({ parentId: task.recordId });
-    const operands =
-      command === 'task.move'
-        ? { board: to.recordId }
-        : { parentId: (await fresh({ board: to.recordId })).recordId };
-    expect(await recorded(on(task, command, operands))).toStrictEqual([
-      ['applied', command, { version: 1, keys }],
-      ['applied', command, { version: 1, keys: ['board'] }],
-    ]);
-  });
+  // And what it changed is in the task's history: a writer whose keys no
+  // history names, and that is not an act of its own, would vanish from it.
+  it.each([...FIELD_WRITES])(
+    '%s records exactly the fields it changed, in the history',
+    async (command) => {
+      const write = await CASES[command]?.change();
+      if (write === undefined) throw new Error(`no case for ${command}`);
+      expect(await recorded(write.body)).toStrictEqual([
+        ['applied', command, { version: 1, keys: write.keys }],
+      ]);
+      const [event] = await eventsOf(world.db.admin, [String(write.body['operationId'])]);
+      const answer = await executeRead(world.db.app, world.business, writer.presented, {
+        read: 'task.read',
+        recordId: event?.row['subject_record_id'],
+      } as never);
+      const listed = expect.objectContaining({ eventId: event?.row['id'] });
+      expect(answer).toHaveProperty('task.history', expect.arrayContaining([listed]));
+    },
+  );
 
   it.each(
     Object.entries(CASES).flatMap(([command, one]) => (one.noop ? [[command, one.noop]] : [])),

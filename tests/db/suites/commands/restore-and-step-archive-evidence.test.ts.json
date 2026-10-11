@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A restore and a completion's step archiving each leave an applied event on every record they change, naming the fields, and a restored task's history ends with its restore"
+}

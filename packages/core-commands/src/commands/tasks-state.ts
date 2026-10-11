@@ -311,13 +311,14 @@ export async function setState(
     taskStateTypeId: context.spine.taskStateTypeId,
   });
   if (isRecordsRefusal(moved)) return refused(moved);
-  if (stepMove !== undefined) await moveSteps(tx, steps, stepMove);
+  const carried = stepMove === undefined ? [] : await moveSteps(tx, steps, stepMove);
 
-  return appliedWrite(target.id, moved, {
+  const answer = appliedWrite(target.id, moved, {
     state: state.key,
     completedAt: moved.completedAt === null ? null : moved.completedAt.toISOString(),
     ...(reason === undefined ? {} : { reason }),
   });
+  return carried.length === 0 ? answer : { ...answer, carried };
 }
 
 /**

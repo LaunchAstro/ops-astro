@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Task history lists a change to what blocks a ticket and finds it by lookup, leaves out a move onto the board the task is on, and lists a rank-only reorder"
+}

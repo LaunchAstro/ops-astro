@@ -16,8 +16,9 @@
 // before anything is written. The first step out of reach refuses the whole
 // transition, as `task.move` refuses a subtree it cannot carry.
 
-import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
+import { checkAuthority, subjectsOf, writeRecordData } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { CarriedWrite } from './outcome.ts';
 import type { CommandRefusal } from './refusal.ts';
 import type { CommandContext } from './context.ts';
 
@@ -25,6 +26,18 @@ import type { CommandContext } from './context.ts';
 export const PARENT_COMPLETED = 'The parent task was completed.';
 
 export type StepMove = 'archive' | 'restore';
+
+/**
+ * The keys of a step's archive mark, the only ones its parent's completion or
+ * reopening writes on it. An applied event that recorded these and nothing
+ * else is that mark, carried to the step, and not the step's own transition:
+ * neither its history nor the work log calls it Completed or Reopened.
+ */
+export const ARCHIVE_MARK: readonly string[] = ['archived_at', 'archived_why'];
+
+/** Whether an event's recorded keys are a step's archive mark and nothing else. */
+export const isArchiveMark = (keys: readonly string[]): boolean =>
+  keys.length > 0 && keys.every((key) => ARCHIVE_MARK.includes(key));
 
 const WHICH: Readonly<Record<StepMove, string>> = {
   // Unfinished: not completed or cancelled, and not already archived.
@@ -81,21 +94,30 @@ export async function lockSteps(
   return { ok: true, ids };
 }
 
-/** Write the move on the steps `lockSteps` returned, in the same transaction. */
+/**
+ * Write the move on the steps `lockSteps` returned, in the same transaction,
+ * each as a data write of its own, so each step's applied event names the
+ * archive mark it took or lost (`Applied.carried`).
+ */
 export async function moveSteps(
   tx: TenantQuery,
   ids: readonly string[],
   move: StepMove,
-): Promise<void> {
-  if (ids.length === 0) return;
-  await tx.query(
-    move === 'archive'
-      ? `update public.records
-            set data = data || jsonb_build_object('archived_at', to_jsonb(now()),
-                                                  'archived_why', $3::text)
-          where business_id = $1 and id = any($2::uuid[])`
-      : `update public.records set data = data - 'archived_at' - 'archived_why'
-          where business_id = $1 and id = any($2::uuid[]) and $3::text is not null`,
-    [tx.businessId, ids, PARENT_COMPLETED],
-  );
+): Promise<readonly CarriedWrite[]> {
+  const carried: CarriedWrite[] = [];
+  for (const id of ids) {
+    // eslint-disable-next-line no-await-in-loop -- one write, and its evidence, per step
+    const written = await writeRecordData(
+      tx,
+      id,
+      move === 'archive'
+        ? `data = data || jsonb_build_object('archived_at', to_jsonb(now()), 'archived_why', $3::text)`
+        : `data = data - 'archived_at' - 'archived_why'`,
+      move === 'archive' ? [PARENT_COMPLETED] : [],
+    );
+    if (written !== undefined) {
+      carried.push({ recordId: id, fieldChanges: { version: 1, keys: written.changed } });
+    }
+  }
+  return carried;
 }

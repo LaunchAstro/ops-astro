@@ -52,9 +52,9 @@ const codesIn = (body: string): string[] => [
   ...new Set([...body.matchAll(/refuse(?:Command)?\(\s*'([A-Z_]+)'/gu)].map((m) => m[1] ?? '')),
 ];
 
-/** The keys of the object literal `return applied(…, …, {` answers in `body`, in order. */
+/** The keys of the object literal the `applied(…, …, {` call in `body` answers, in order. */
 function appliedKeys(body: string): string[] {
-  const open = body.indexOf('{', body.indexOf('return applied('));
+  const open = body.indexOf('{', body.search(/\bapplied\(/u));
   const close = body.indexOf('});', open);
   return [...body.slice(open + 1, close).matchAll(/^\s*(\w+)[,:]/gmu)].map((m) => m[1] ?? '');
 }

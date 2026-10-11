@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery, RefusalCode } from '../../../core-records/src/index.ts';
-import type { FieldChanges } from './outcome.ts';
+import type { Applied, FieldChanges } from './outcome.ts';
 
 export type AuditOutcome = 'applied' | 'refused' | 'replayed' | 'failed';
 
@@ -107,6 +107,33 @@ export function storable<T>(value: T): T {
   return Object.fromEntries(
     Object.entries(value).map(([key, member]) => [storableString(key), storable(member)]),
   ) as T;
+}
+
+/**
+ * An applied command's event, and one more for each other record its write
+ * changed (`Applied.carried`), so that record's own history shows the change.
+ * A person's command and an agent's call write them alike.
+ */
+export async function writeAppliedEvents(
+  tx: TenantQuery,
+  event: Pick<AuditEvent, 'actorId' | 'command' | 'operationId' | 'payloadDigest'>,
+  outcome: Applied,
+): Promise<void> {
+  const applied = { ...event, outcome: 'applied' } as const;
+  await writeAuditEvent(tx, {
+    ...applied,
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
+    originConversationId: outcome.originConversationId ?? null,
+    fieldChanges: outcome.fieldChanges ?? null,
+  });
+  for (const other of outcome.carried ?? []) {
+    // eslint-disable-next-line no-await-in-loop -- the chain takes one event at a time
+    await writeAuditEvent(tx, {
+      ...applied,
+      subjectRecordId: other.recordId,
+      fieldChanges: other.fieldChanges,
+    });
+  }
 }
 
 /** Write one event. The position, the link and the hash come back from the server. */
