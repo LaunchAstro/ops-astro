@@ -17,6 +17,7 @@ it('staging egress refuses an API destination that differs from the worker API U
     OPS_EGRESS_POOLER_PORT: '6543',
     OPS_EGRESS_HEARTBEAT_HOST: 'heartbeat.example.test',
     OPS_EGRESS_SINK_HOST: 'sink.example.test',
+    OPS_EGRESS_AUTH_HOST: 'auth.example.test',
   };
 
   expect(allowList(configured)).not.toContainEqual(['elsewhere.example.test', 443]);

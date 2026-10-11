@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-1 egress allow-list: the worker unit and the backup dump reach exactly
-// the API, pooler, heartbeat and sink hosts, each a setting. Table half: the
-// script and compose.json; live half: both hops beside stand-ins for the four
-// and one place off the list.
+// S0-1 egress allow-list: the worker unit and the backup dump reach exactly the API,
+// pooler, heartbeat, sink and sign-in hosts, each a setting. Table half: the script and
+// compose.json; live half: both hops beside stand-ins for the five and one off the list.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -30,6 +29,7 @@ const LIST = {
   OPS_EGRESS_POOLER_PORT: '6543',
   OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.test',
   OPS_EGRESS_SINK_HOST: 'sink.example.test',
+  OPS_EGRESS_AUTH_HOST: 'auth.example.test',
 };
 
 type Service = { networks?: string[] | Record<string, { aliases?: string[] }> };
@@ -48,12 +48,13 @@ describe('S0-1 egress allow-list', () => {
 });
 
 function listCases() {
-  it('the allow-list is exactly the four named destinations', () => {
+  it('the allow-list is exactly the five named destinations', () => {
     expect(allowList(LIST)).toEqual([
       ['api.example.test', 443],
       ['pooler.example.test', 6543],
       ['beat.example.test', 443],
       ['sink.example.test', 443],
+      ['auth.example.test', 443],
     ]);
   });
 
@@ -102,7 +103,7 @@ function nameAndRouteCases() {
     expect(serverName(noName)).toBe(undefined);
   });
 
-  it('egress-out is the one service with a route out, alone on its network, and the relay answers for the four', () => {
+  it('egress-out is the one service with a route out, alone on its network, and the relay answers for the five', () => {
     const def = load();
     const out = Object.entries(def.services).flatMap(([name, s]) =>
       netsOf(s)
@@ -117,12 +118,10 @@ function nameAndRouteCases() {
     const others = Object.entries(def.services).filter(([name]) => !name.startsWith('egress'));
     for (const [name, s] of others) expect(netsOf(s), name).toEqual(['staging']);
     const relay = def.services['egress']!.networks as Record<string, { aliases?: string[] }>;
-    expect(relay['staging']?.aliases).toEqual([
-      '${STAGING_EGRESS_API_HOST:?set from the staging runbook}',
-      '${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}',
-      '${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}',
-      '${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}',
-    ]);
+    const places = ['API', 'POOLER', 'HEARTBEAT', 'SINK', 'AUTH'];
+    expect(relay['staging']?.aliases).toEqual(
+      places.map((place) => `\${STAGING_EGRESS_${place}_HOST:?set from the staging runbook}`),
+    );
   });
 }
 
@@ -149,13 +148,12 @@ const compose = (args: string[]) =>
     ['compose', '-p', project, '-f', 'deploy/staging/compose.json', '-f', override, ...args],
     env,
   );
-const stand = [
-  ['api', 'api.example.test', '443'],
+type Place = readonly [who: string, host: string, port: string];
+const place = (who: string): Place => [who, `${who}.example.test`, '443'];
+const stand: readonly Place[] = [
+  ...['api', 'beat', 'sink', 'auth', 'elsewhere'].map((who) => place(who)),
   ['pooler', 'pooler.example.test', '6543'],
-  ['beat', 'beat.example.test', '443'],
-  ['sink', 'sink.example.test', '443'],
-  ['elsewhere', 'elsewhere.example.test', '443'],
-] as const;
+];
 /** From a container on staging: connect, send `bytes`, print what comes back. */
 const ask = (host: string, port: string, bytes: Buffer) =>
   docker([
@@ -272,9 +270,10 @@ function liveCases() {
   }, 120_000);
 
   it('each listed destination is reachable from staging through the relay, by its own name', () => {
-    expect(ask('api.example.test', '443', hello('api.example.test'))).toBe('got:from-api');
-    expect(ask('beat.example.test', '443', hello('beat.example.test'))).toBe('got:from-beat');
-    expect(ask('sink.example.test', '443', hello('sink.example.test'))).toBe('got:from-sink');
+    for (const who of ['api', 'beat', 'sink', 'auth']) {
+      const host = `${who}.example.test`;
+      expect(ask(host, '443', hello(host)), who).toBe(`got:from-${who}`);
+    }
     expect(ask('pooler.example.test', '6543', Buffer.from('ssl?'))).toBe('got:from-pooler');
   }, 120_000);
 

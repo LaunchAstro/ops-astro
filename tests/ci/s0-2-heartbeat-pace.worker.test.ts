@@ -5,6 +5,7 @@
 // loop is proven to use the paced beat, not only to read the setting.
 
 import { expect, it, vi } from 'vitest';
+import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
 
 let passes = 0;
 vi.mock('../../apps/worker/worker.ts', () => ({
@@ -22,7 +23,7 @@ it('the worker pings once per gap, not once per answered pass', async () => {
     [],
     {
       OPS_ASTRO_BUSINESS: 'alpha',
-      OPS_ASTRO_TOKEN: 'made-up-token',
+      ...SIGN_IN_SETTINGS,
       OPS_ASTRO_DELEGATION: 'made-up-delegation',
       OPS_ASTRO_WORKER_INTERVAL_MS: '0',
       OPS_HEARTBEAT_EVERY_MS: '1800000',
@@ -31,6 +32,7 @@ it('the worker pings once per gap, not once per answered pass', async () => {
       beats.push(address ?? '');
       return Promise.resolve('sent');
     },
+    signedInReach('made-up-token'),
   );
   expect(code).toBe(0);
   expect(beats).toHaveLength(1);

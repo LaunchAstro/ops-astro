@@ -41,6 +41,7 @@ import {
   type ApiFixture,
 } from './fixture.ts';
 import { detailOf, proposal, runWorker, type Ran } from './t2b-support.ts';
+import { SIGN_IN_SETTINGS, standInGoTrue, type StandIn } from '../support/stand-in-gotrue.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -167,15 +168,30 @@ describe.skipIf(serverUrl === undefined)(
 
     describe('worker_boundary: the worker process', () => {
       let ran: Ran;
+      let gotrue: StandIn;
+      const key = 'sb_publishable_t2b-worker-test-only';
 
       beforeAll(async () => {
+        gotrue = await standInGoTrue({
+          issue: () => Promise.resolve(agentToken),
+          expiresIn: 600,
+          key,
+        });
         ran = await runWorker({
           OPS_ASTRO_API_URL: origin,
           OPS_ASTRO_BUSINESS: BUSINESS_KEY,
-          OPS_ASTRO_TOKEN: agentToken,
+          ...SIGN_IN_SETTINGS,
+          OPS_ASTRO_GOTRUE_URL: gotrue.url,
+          SUPABASE_PUBLISHABLE_KEY: key,
           OPS_ASTRO_DELEGATION: credential.worker,
         });
       }, 60_000);
+
+      afterAll(async () => await gotrue?.close());
+
+      it('signs in itself, once, with the publishable key', () => {
+        expect(gotrue.signIns()).toBe(1);
+      });
 
       it('proposes one synthetic change, seen as version 1 with a pending gate', async () => {
         expect(ran.stderr).toBe('');
@@ -192,8 +208,8 @@ describe.skipIf(serverUrl === undefined)(
         expect(await proposalsOn(task.sibling.id)).toStrictEqual([]);
       });
 
-      it('T2 canary token: neither credential reaches the worker’s output', () => {
-        for (const secret of [agentToken, credential.worker]) {
+      it('T2 canary token: no credential reaches the worker’s output', () => {
+        for (const secret of [agentToken, credential.worker, SIGN_IN_SETTINGS.OPS_ASTRO_PASSWORD]) {
           expect(ran.stdout).not.toContain(secret);
           expect(ran.stderr).not.toContain(secret);
         }

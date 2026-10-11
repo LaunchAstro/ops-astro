@@ -63,6 +63,9 @@ function importGraph(entry: string): { files: Set<string>; packages: Set<string>
   return { files, packages };
 }
 
+/** Its one transport to the API, and the password grant to the sign-in service, never the API. */
+const FETCHES = new Set(['apps/cli/client.ts', 'apps/web/src/session/password-grant.ts']);
+
 describe('worker_boundary: the structure', () => {
   it('the worker entry exists and is its own process entry', () => {
     expect(existsSync(join(ROOT, WORKER_ENTRY))).toBe(true);
@@ -96,10 +99,10 @@ describe('worker_boundary: the structure', () => {
     const { files } = importGraph(WORKER_ENTRY);
     expect(files.has('apps/cli/client.ts')).toBe(true);
     const fetches = [...files].filter(
-      (file) =>
-        file !== 'apps/cli/client.ts' && /\bfetch\(/u.test(readFileSync(join(ROOT, file), 'utf8')),
+      (file) => !FETCHES.has(file) && /\bfetch\(/u.test(readFileSync(join(ROOT, file), 'utf8')),
     );
     expect(fetches).toStrictEqual([]);
+    expect(files.has('apps/web/src/operations/client.ts')).toBe(false);
   });
 
   it('the shipped graph cannot reach the fixture reporter', () => {

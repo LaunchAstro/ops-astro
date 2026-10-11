@@ -66,17 +66,32 @@ unit: the same pinned Node image, running the checkout the runbook copies into
 the read-only volume `ops-astro-staging-app`. Starting the forwarder starts the
 worker, and production's stop names the pair. The worker holds no database.
 
+The worker holds the agent's own login, never a bearer: `STAGING_WORKER_EMAIL`
+and `STAGING_WORKER_PASSWORD` from custody (`OPS_ASTRO_EMAIL`,
+`OPS_ASTRO_PASSWORD`), the sign-in service's address `STAGING_GOTRUE_URL`
+(`OPS_ASTRO_GOTRUE_URL`) and its publishable key `STAGING_PUBLISHABLE_KEY`
+(`SUPABASE_PUBLISHABLE_KEY`). It signs in itself and signs in again before
+each token expires, and once more on `AUTH_SESSION_EXPIRED`.
+`STAGING_WORKER_DELEGATION` (`OPS_ASTRO_DELEGATION`) is the delegation a
+`task.pickup` returned for the task it proposes on, used for that one proposal
+only; work it applies it picks up itself, and keeps alive with
+`task.heartbeat` only while it holds it. After 10 passes in a row refused its
+sign-in or its delegation, the worker exits 1 with one line naming the
+setting, so Compose shows it restarting instead of a quiet `Up`.
+
 Staging's one way out is two egress hops of the same image and a script of
 ours (`scripts/ops/egress.mjs`, `S0-1 egress allow-list` in
 `tests/ci/staging-egress.test.ts`). `egress` sits on `staging` and answers
-there for exactly four host names:
+there for exactly five host names:
 
 - the API, taken from the worker's own `STAGING_WEB_URL` (the relay refuses to
   start unless its API alias, `STAGING_EGRESS_API_HOST`, is that host);
 - the pooler's host and port (`STAGING_EGRESS_POOLER_HOST`,
   `STAGING_EGRESS_POOLER_PORT`);
 - the watcher's heartbeat host (`STAGING_EGRESS_HEARTBEAT_HOST`);
-- the error sink's host (`STAGING_EGRESS_SINK_HOST`).
+- the error sink's host (`STAGING_EGRESS_SINK_HOST`);
+- the sign-in service's host (`STAGING_EGRESS_AUTH_HOST`), where the worker
+  signs in.
 
 The relay holds host names and a port only, never a credential. The worker,
 the forwarder and the backup run refuse to start when an address of theirs is
