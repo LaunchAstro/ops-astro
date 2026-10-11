@@ -135,6 +135,7 @@ export const DETAIL: InternalTaskDetail = {
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
     {
+      eventId: 'e-created',
       at: '2026-09-24T01:10:00.000Z',
       actorId: NATHAN.personId,
       actorKind: 'person',
@@ -143,6 +144,7 @@ export const DETAIL: InternalTaskDetail = {
       operation: 'task.create',
     },
     {
+      eventId: 'e-updated',
       at: '2026-09-25T03:40:00.000Z',
       actorId: NATHAN.personId,
       actorKind: 'person',

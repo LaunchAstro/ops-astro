@@ -32,6 +32,7 @@ import {
 } from '../commands/refusal.ts';
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
+import { historyEventOperand } from './task-history.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
@@ -247,10 +248,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   'task.read': {
     identifiers: ['recordId'],
-    parse: (body) =>
-      typeof body['recordId'] === 'string'
-        ? withPaging(body, { recordId: body['recordId'] })
-        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
+    parse: (body) => {
+      if (typeof body['recordId'] !== 'string') {
+        return rejected('recordId', 'Send recordId as the task’s identifier or its key.');
+      }
+      const read = withPaging(body, { recordId: body['recordId'] });
+      if (!read.ok) return read;
+      const historyEventId = historyEventOperand(body, read.operands.detail);
+      if (typeof historyEventId === 'object') return { ok: false, refusal: historyEventId };
+      return historyEventId === undefined ? read : parsed({ ...read.operands, historyEventId });
+    },
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
     // and learns nothing from it either way, and an unresolved name is checked
@@ -262,18 +269,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, session, operands, { spine, recordId }) {
       if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
-      // first among them, gets the shared view, which is built from the
-      // catalogue's `shared` fields and never from the detail with parts cut.
+      // first among them, gets the shared view, built from the catalogue's
+      // `shared` fields, never the detail with parts cut, and with no history
+      // to look an entry up in.
       if (!isInternalReader(session.roleKey)) {
-        const sharedTask = await readSharedTask(
-          tx,
-          spine.taskTypeId,
-          recordId,
-          spine.taskCommentTypeId,
-        );
-        return sharedTask === undefined
+        const { taskTypeId, taskCommentTypeId } = spine;
+        const shared = await readSharedTask(tx, taskTypeId, recordId, taskCommentTypeId);
+        return shared === undefined || operands.historyEventId !== undefined
           ? refuseNotFound()
-          : sharedRead(operands.detail, sharedTask);
+          : sharedRead(operands.detail, shared);
       }
       // An agent credential's call stands as its person but is an agent's
       // (API-2, I09): it reads what the agent prefix reads, never as an
@@ -291,6 +295,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         agent ? { kind: 'task' } : { kind: 'grants', subjects: subjectsOf(session) },
         // A member reads their own time on the task (RS-VAULT-9).
         agent ? null : session.personId,
+        operands.historyEventId,
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();

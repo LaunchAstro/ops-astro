@@ -47,8 +47,8 @@ const revision = (flags: Flags): number => {
   if (!Number.isInteger(value)) throw new UsageError('--revision is a whole number');
   return value;
 };
-const detail = (flags: Flags): string => {
-  const value = maybe(flags, 'detail') ?? 'standard';
+const detail = (flags: Flags, fallback = 'standard'): string => {
+  const value = maybe(flags, 'detail') ?? fallback;
   if (!DETAILS.has(value)) throw new UsageError('--detail is brief, standard or full');
   return value;
 };
@@ -67,8 +67,16 @@ export const VERB_TABLE: readonly VerbRow[] = [
   {
     verb: 'task get',
     command: 'task.read',
-    usage: '<id> [--detail brief|standard|full] [--fields a,b] [--json]',
-    body: (id, flags) => ({ recordId: target(id), detail: detail(flags) }),
+    usage: '<id> [--detail brief|standard|full] [--history-event <id>] [--fields a,b] [--json]',
+    // One history entry is looked up in the full detail, which carries the history.
+    body: (id, flags) => {
+      const event = maybe(flags, 'history-event');
+      return {
+        recordId: target(id),
+        detail: detail(flags, event === undefined ? 'standard' : 'full'),
+        ...optional('historyEventId', event),
+      };
+    },
   },
   {
     verb: 'task list',

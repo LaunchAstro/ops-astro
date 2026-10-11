@@ -3,10 +3,10 @@
 // The task page's history (MP-4-16, DT-22, TT-05): what the server recorded
 // happening to the task, oldest first as it sent it.
 //
-// **Transitions only.** `task.read`'s history is every applied write on the
-// task's own address, and a comment is one of them. A comment is the
-// conversation's, not a change to the task, so it is neither the latest change
-// nor a row of the trail here.
+// **Transitions only.** `task.read`'s history is the changes applied to the
+// task (`HISTORY_OPERATIONS`): no comments, notes or time, which the server
+// leaves out. A change names the fields it set where its event recorded them,
+// "Due date and priority changed", and its command's words where not.
 //
 // **The head reads the latest change**: how long ago, who, and what. The page
 // shows the whole trail open; the dock task panel folds it (MP-4-8), and
@@ -19,7 +19,11 @@
 
 import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
-import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
+import {
+  HISTORY_FIELDS,
+  HISTORY_OPERATIONS,
+  type InternalTaskDetail as Task,
+} from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useSavedFlag } from './saved-flag.ts';
 
@@ -31,31 +35,6 @@ export const useShowTrail = (
 ): readonly [boolean, (open: boolean) => void] => useSavedFlag(client, SHOW_TRAIL);
 
 type Entry = Task['history'][number];
-
-/** Writes that are conversation, not a change to the task. */
-const NOT_TRANSITIONS: ReadonlySet<string> = new Set(['task.comment']);
-
-/** What each change is, in the words a person reads. Anything else is shown as sent. */
-const WHAT: Readonly<Record<string, string>> = {
-  'task.create': 'Created',
-  'task.update': 'Details changed',
-  'task.assign': 'Assigned',
-  'task.start': 'Started',
-  'task.complete': 'Completed',
-  'task.reopen': 'Reopened',
-  'task.set_stage': 'Stage set',
-  'task.set_party': 'Client set',
-  'task.set_audience': 'Audience set',
-  'task.set_scores': 'Rank marks set',
-  'task.set_adhoc': 'Ad hoc changed',
-  'task.set_category': 'Category changed',
-  'task.share_with_client': 'Shared with the client',
-  'task.revoke_client_share': 'Client access withdrawn',
-  'task.propose': 'Proposed',
-  'task.decide': 'Decided',
-  'task.trash': 'Moved to the bin',
-  'task.restore': 'Restored',
-};
 
 const MINUTE = 60_000;
 const UNITS: readonly (readonly [number, string])[] = [
@@ -74,7 +53,15 @@ function ago(at: string, now: number): string {
   return 'just now';
 }
 
-const whatOf = (entry: Entry): string => WHAT[entry.operation] ?? entry.operation;
+/** The fields a change set, "Due date and priority changed", or what its command did. */
+function whatOf(entry: Entry): string {
+  const labels = (entry.changed ?? []).flatMap((key) => HISTORY_FIELDS[key] ?? []);
+  const [first, ...rest] = labels;
+  if (first === undefined) return HISTORY_OPERATIONS[entry.operation] ?? 'Changed';
+  const named = [first, ...rest.map((label) => label.toLowerCase())];
+  const last = named.pop() ?? '';
+  return `${named.length === 0 ? last : `${named.join(', ')} and ${last}`} changed`;
+}
 
 /**
  * Who made a change, in words (MP-4-16): a person by name, an agent and the
@@ -96,9 +83,14 @@ export function History(props: {
    * whether it shows, and the change, from `useShowTrail`. Absent, it is open.
    */
   readonly fold?: readonly [boolean, (open: boolean) => void];
-}): ReactElement {
+}): ReactElement | null {
   const now = Date.now();
-  const changes = props.history.filter((entry) => !NOT_TRANSITIONS.has(entry.operation));
+  // An older server sent comments in the history too; they are not changes.
+  const changes = props.history.filter((entry) =>
+    Object.hasOwn(HISTORY_OPERATIONS, entry.operation),
+  );
+  // The panel draws no history at all until something has changed (MP-4-16).
+  if (props.fold !== undefined && changes.length === 0) return null;
   const latest = changes.at(-1);
   const open = props.fold?.[0] ?? true;
   return (
@@ -122,7 +114,7 @@ export function History(props: {
       {changes.length === 0 || !open ? null : (
         <div className="sbact" data-history="trail">
           {changes.map((entry, index) => (
-            <div className="sbact__row" key={`${entry.at}-${String(index)}`}>
+            <div className="sbact__row" key={entry.eventId ?? String(index)}>
               <span className="sbact__meta">
                 {ago(entry.at, now)} · {whoOf(entry)}
               </span>
