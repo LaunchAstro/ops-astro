@@ -11,8 +11,8 @@
 //
 // **One create, however many presses.** An outcome nobody knows keeps the
 // create's identity for the retry, so the server's replay answers it rather
-// than a second task; an edit to the draft is a different request and starts
-// a new one. The identity is stored with the draft before Create goes out, so
+// than a second task. Until it is settled the fields are read-only, so no
+// edit can start a second create beside it; Cancel still discards it. The identity is stored with the draft before Create goes out, so
 // a reload or Back while it is out reopens the draft with it. While Create is
 // out, the fields, Close, Cancel, Escape and the host's doors wait for it, so
 // the draft is never changed under it, reopened or created again; a Create
@@ -82,6 +82,8 @@ function DraftBody(
   props: DraftPanelProps & { readonly kept: Kept; readonly creating: Creating },
 ): ReactElement {
   const { kept, creating } = props;
+  // A Create with no answer yet holds the draft: only its own retry can finish it.
+  const unsettled = kept.attempt !== null;
   return (
     <>
       <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
@@ -95,13 +97,32 @@ function DraftBody(
         draft={kept.draft}
         put={kept.put}
         name={kept.name}
-        locked={creating.busy}
+        locked={creating.busy || unsettled}
       />
+      <DraftActions kept={kept} creating={creating} unsettled={unsettled} />
+    </>
+  );
+}
+
+/** What Create answered, and Create (or its retry) and Cancel. */
+function DraftActions(props: {
+  readonly kept: Kept;
+  readonly creating: Creating;
+  readonly unsettled: boolean;
+}): ReactElement {
+  const { kept, creating, unsettled } = props;
+  return (
+    <>
       {creating.refusal === null ? null : (
         <p className="field__error" role="alert" data-draft-refusal>
           {creating.refusal}
         </p>
       )}
+      {unsettled && !creating.busy ? (
+        <p className="card__sub" data-draft-unsettled>
+          Create did not finish. Retry sends the same request, so no second task is made.
+        </p>
+      ) : null}
       <div className="dtp__head">
         <button
           className="btn btn--primary"
@@ -112,7 +133,7 @@ function DraftBody(
             void creating.create();
           }}
         >
-          Create task
+          {unsettled ? 'Retry Create' : 'Create task'}
         </button>
         <button
           className="btn"

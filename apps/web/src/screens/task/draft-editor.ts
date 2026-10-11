@@ -26,26 +26,36 @@ export interface DraftEditorProps {
   readonly scope: DraftScope;
   readonly onClose: () => void;
 }
+/** The kept draft as left, given the door's typed name if it has none; else a fresh one. */
+function openedDraft(props: DraftEditorProps, typed: string): TaskDraft {
+  const kept = readDraft(props.storage, props.person);
+  if (kept !== null)
+    return kept.title.trim() === '' && typed !== '' ? { ...kept, title: typed } : kept;
+  const fresh =
+    props.scope.prefill === undefined
+      ? emptyDraft(props.scope.clientId)
+      : prefilledDraft(props.scope.prefill);
+  return { ...fresh, from: props.scope.from };
+}
+
 /** The draft as kept for the person: read once, and written on every change (DN-04). */
 export function useKeptDraft(props: DraftEditorProps) {
   const { storage, person } = props;
-  const [draft, setDraft] = useState<TaskDraft>(
-    () =>
-      readDraft(storage, person) ?? {
-        ...(props.scope.prefill === undefined
-          ? emptyDraft(props.scope.clientId)
-          : prefilledDraft(props.scope.prefill)),
-        from: props.scope.from,
-      },
-  );
-  // The create's identity, kept across an unknown outcome and a remount, and
-  // dropped by any edit.
+  const typed = props.scope.prefill?.title ?? '';
+  const [draft, setDraft] = useState<TaskDraft>(() => openedDraft(props, typed));
+  // The create's identity, kept across an unknown outcome and a remount until
+  // its own retry settles it or Cancel drops the draft.
   const [attempt, setAttempt] = useState<Attempt | null>(() => readAttempt(storage, person));
   const name = useRef<HTMLInputElement>(null);
   useEffect(() => {
     name.current?.focus();
+    // A name typed at the door is kept like any edit.
+    if (typed !== '' && draft.title === typed && attempt === null)
+      keepDraft(storage, person, draft);
   }, []);
   const put = (next: Partial<TaskDraft>): void => {
+    // A Create with no answer yet holds the draft as it sent it (U112).
+    if (attempt !== null) return;
     const merged = { ...draft, ...next };
     setDraft(merged);
     setAttempt(null);

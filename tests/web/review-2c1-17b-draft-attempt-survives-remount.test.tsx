@@ -6,8 +6,7 @@
 // host holding it, while its Create is out or after an answer nobody knows.
 // The kept draft then reopens from storage, and its Create must be sent under
 // the same operation id, so the server replays the first task rather than
-// making a second. An edit to the reopened draft is a new request, with a new
-// identity, as before.
+// making a second. Until then the reopened draft takes no edit (U112).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -51,6 +50,7 @@ function server(first: 'pending' | 'unknown') {
   }) as unknown as typeof globalThis.fetch;
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
+    sent,
     identities: (): unknown[] =>
       sent
         .filter((one) => one.to === '/task/create' && one.body['parentId'] === undefined)
@@ -91,15 +91,20 @@ describe('REVIEW-2C1-17b the create identity is kept with the draft', () => {
     expect(second, 'the reopened draft minted a new operation id').toBe(first);
   });
 
-  it('REVIEW-2C1-17b: an edit to the reopened draft starts a new attempt', async () => {
+  // U112 changed this: an edit used to start a new attempt beside the one with
+  // no answer, which could leave two tasks. The draft now holds until its own
+  // retry settles it, so the edit is not taken and Create replays the first.
+  it('REVIEW-2C1-17b: an edit to the reopened draft is held until its Create is settled', async () => {
     const storage = store();
     const api = await startAndLeave('pending', storage);
     const again = await draft({ client: api.client, storage });
     await typeInto(again.view, '#panel-draft-name', 'New brief for the client');
     await create(again.view);
     const [first, second] = api.identities();
-    expect(second).toBeDefined();
-    expect(second).not.toBe(first);
+    expect(second).toBe(first);
+    expect(api.sent.findLast((one) => one.to === '/task/create')?.body['fields']).toMatchObject({
+      title: 'New brief',
+    });
   });
 });
 
