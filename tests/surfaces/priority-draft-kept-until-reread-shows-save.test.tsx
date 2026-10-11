@@ -73,7 +73,7 @@ function world() {
   };
 }
 
-it('Sol proof, criterion 3: an edit during the confirmed-save reread retains the saved Sales stage', async () => {
+it('an edit during the confirmed-save reread retains the saved Sales stage', async () => {
   const { state, screen } = world();
   const page = await mount(screen);
   try {
@@ -102,7 +102,7 @@ it('Sol proof, criterion 3: an edit during the confirmed-save reread retains the
   }
 });
 
-it('Sol proof, criterion 3: a failed confirmed-save reread cannot turn the next Save into clearing priority', async () => {
+it('a failed confirmed-save reread cannot turn the next Save into clearing priority', async () => {
   const { state, screen } = world();
   const page = await mount(screen);
   try {

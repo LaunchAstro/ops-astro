@@ -13,6 +13,13 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { Confirmed, Draft, Which } from './confirmed.ts';
 
+/** The session's memory as this screen holds it, and which session it is. */
+export interface Held {
+  readonly grantKey: string;
+  readonly confirmed: Confirmed;
+  readonly denied: boolean;
+}
+
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
   readonly which: Which;

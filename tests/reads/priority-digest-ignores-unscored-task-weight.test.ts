@@ -21,7 +21,7 @@ afterAll(async () => {
   await world?.db.drop();
 });
 
-it('Sol proof, criterion 2: an unscored task reader hears no priority write that changes none of their visible ranks', async () => {
+it('an unscored task reader hears no priority write that changes none of their visible ranks', async () => {
   const w = world;
   if (w === undefined) throw new Error('No proof database');
   const initial = await readPriority(w);
