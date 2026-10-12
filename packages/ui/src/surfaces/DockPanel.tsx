@@ -8,6 +8,7 @@ import { PanelToolbar } from './PageToolbar.tsx';
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import type { MouseEvent } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
+import { inAppAddress } from './gesture.ts';
 
 export interface DockPanel {
   readonly id: string;
@@ -100,6 +101,7 @@ function DockPanelHead(props: {
           href={panel.door}
           aria-label={`Open ${panel.label} as a page`}
           onClick={(event) => {
+            if (inAppAddress(event) === null) return;
             event.preventDefault();
             dock.onDoor(panel.door);
           }}
