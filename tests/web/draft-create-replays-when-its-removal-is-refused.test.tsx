@@ -12,6 +12,7 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { DraftPanel } from '../../apps/web/src/screens/task/DraftPanel.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { dropOtherDrafts } from '../../apps/web/src/screens/task/task-draft.ts';
 import { store } from './draft-support.tsx';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 
@@ -257,5 +258,29 @@ describe('a refused Create', () => {
     expect(api.creates).toHaveLength(2);
     expect(api.creates[1]).not.toBe(FIRST_ID);
     await view.unmount();
+  });
+
+  it('settled while storage would not write leaves no held id for a reload', async () => {
+    const storage = store();
+    const api = server();
+    const { view } = await openDraft(api, storage);
+    await view.type('#panel-draft-name', 'Renew the domain');
+    api.next.refuse = true;
+    api.next.hold = true;
+    await view.click('[data-draft="create"]');
+    const setItem = storage.setItem.bind(storage);
+    storage.setItem = () => {
+      throw new DOMException('full', 'QuotaExceededError');
+    };
+    await release(api, 0);
+    expect(createLabel(view)).toBe('Create task');
+    storage.setItem = setItem;
+    await view.unmount();
+    // A reload: the tab's memory is gone, its storage is not.
+    dropOtherDrafts(null, null);
+    const reloaded = await openDraft(api, storage);
+    expect(createLabel(reloaded.view)).toBe('Create task');
+    expect(heldId(storage)).toBeNull();
+    await reloaded.view.unmount();
   });
 });
