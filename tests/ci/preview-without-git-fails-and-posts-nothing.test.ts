@@ -19,6 +19,7 @@ it('an unavailable git executable returns a failed preview', async () => {
               'https://api.vercel.com/v1/integrations/deploy/prj_previews01/synthetic',
           },
           push: (version) => gitPush(version, { PATH: emptyPath }),
+          // oxlint-disable-next-line unicorn/no-useless-undefined -- the branch cannot be read
           head: () => undefined,
           post: () => {
             posts++;
