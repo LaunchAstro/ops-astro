@@ -3,7 +3,7 @@
 /* oxlint-disable unicorn/prefer-query-selector, require-await, unicorn/no-useless-undefined -- Sol's check page, kept as written */
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import '@launchastro/ui';
+import '../../packages/ui/src/index.ts';
 import '../../apps/web/src/styles/6-slice.css';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
