@@ -379,6 +379,26 @@
     {
       "selector": ".sb__step .av",
       "ruling": "R20261012"
+    },
+    {
+      "selector": ".gate__word",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tph__stat .tf__k",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".trs[data-summary-layout='full'] .trs__say",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__nt",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__insp__t",
+      "ruling": "R20261012"
     }
   ]
 }
