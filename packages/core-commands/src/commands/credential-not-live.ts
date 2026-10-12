@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The one answer for an API-2 credential not served, at the door or after a lock wait (`onboarding-authority.ts`),
-// and the expiry asked again after a command's last wait (`credential-envelope.ts`).
+// and the expiry asked again after a command's or a read's last wait (`credential-envelope.ts`).
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { recordCredentialRefusal } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { runRead } from '../reads/dispatch.ts';
+import type { ReadRequest, ReadResult } from '../reads/requests.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 const NOT_LIVE_FIXES: readonly string[] = [
@@ -31,3 +34,24 @@ export const lapsedSince =
     );
     return row?.lapsed === false ? undefined : credentialNotLive();
   };
+
+/**
+ * A credential's read, its expiry judged again after the read's audit-chain
+ * wait (#1011): one that expired meanwhile serves nothing, the read's audit
+ * event goes with it, and the refusal is recorded as the door records it.
+ */
+export async function readWhileLive(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+  credentialId: string,
+  credential: string,
+): Promise<ReadResult | CommandRefusal> {
+  await tx.query('savepoint credential_read');
+  const read = await runRead(tx, session, request);
+  const lapsed = await lapsedSince(credentialId)(tx);
+  if (lapsed === undefined) return read;
+  await tx.query('rollback to savepoint credential_read');
+  await recordCredentialRefusal(tx, credential, lapsed.code);
+  return lapsed;
+}
