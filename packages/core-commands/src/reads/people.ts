@@ -14,13 +14,15 @@
 
 import {
   asksMoneyStepUp,
+  checkDelegatedAuthority,
   DELEGATION_STANDS,
   heldPermissions,
   listAllClients,
   listClientPrivacy,
+  resolveLiveById,
   standsOnShares,
 } from '../../../core-records/src/index.ts';
-import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Action, HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
 import { declarationOf, EXTERNAL_WRITES } from '../../../core-wire/src/index.ts';
 import type {
   AccessAgent,
@@ -103,9 +105,6 @@ interface DelegationRow {
   readonly purpose_scope_kind: 'record';
   readonly purpose_scope_id: string;
   readonly expires_at: Date;
-  readonly minted_by_actor_id: string;
-  /** Minted by a Launch, or a helper of one: it draws on the minting identity too. */
-  readonly launch: boolean;
 }
 
 /**
@@ -116,10 +115,7 @@ interface DelegationRow {
 async function standingDelegations(tx: TenantQuery): Promise<readonly DelegationRow[]> {
   return await tx.query<DelegationRow>(
     `select d.id, d.agent_actor_id, p.id as person_id, p.display_name, d.purpose, d.collections,
-            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at, d.minted_by_actor_id,
-            exists (select 1 from public.task_launches l
-                     where l.business_id = d.business_id
-                       and l.delegation_id = coalesce(d.parent_delegation_id, d.id)) as launch
+            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at
        from public.delegations d
        join public.actors a
          on a.business_id = d.business_id and a.id = d.agent_actor_id and a.active
@@ -195,7 +191,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
   return {
     team: team.map((person) => withPreview(person, true)),
     clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name }, false)),
-    agents: delegations.map((row) => agentOf(row, held)),
+    agents: await agentsOf(tx, delegations),
     clientRecords: await listAllClients(tx),
     clientPrivacy: await listClientPrivacy(tx),
   };
@@ -249,31 +245,36 @@ function once(held: readonly AccessPermission[]): AccessPermission[] {
 }
 
 /**
- * What `checkDelegatedAuthority` grants the agent: each collection and action
- * its purpose carries, except `decide`, that its person holds by a grant
- * naming them (or, for a Launch's, the acting identity it was minted on, as
- * `delegatingSubjects` says, even once that identity is inactive), at
- * business scope or on the delegation's one record; and only ever on that
- * record.
+ * What each agent may do: `checkDelegatedAuthority` itself asked, on the
+ * delegation's one record, for each collection and action its purpose
+ * carries. The check is called, not copied, so whose grants a delegation
+ * draws on (its person's, a Launch's minting identity, a helper's parent)
+ * and which of them count is the check's rule alone.
  */
-function agentOf(row: DelegationRow, held: readonly HeldPermission[]): AccessAgent {
-  const scope = { kind: row.purpose_scope_kind, id: row.purpose_scope_id };
-  const drawn = held.filter(
-    (permission) =>
-      permission.personId === row.person_id &&
-      (permission.direct || (row.launch && permission.actorId === row.minted_by_actor_id)) &&
-      permission.action !== 'decide' &&
-      row.collections.includes(permission.collection) &&
-      row.actions.includes(permission.action) &&
-      (permission.scope.kind === 'business' ||
-        (permission.scope.kind === scope.kind && permission.scope.id === scope.id)),
-  );
-  return {
-    agentActorId: row.agent_actor_id,
-    delegationId: row.id,
-    purpose: row.purpose,
-    person: { personId: row.person_id, name: row.display_name },
-    expiresAt: row.expires_at.toISOString(),
-    permissions: once(drawn.map(({ collection, action }) => ({ collection, action, scope }))),
-  };
+async function agentsOf(tx: TenantQuery, rows: readonly DelegationRow[]): Promise<AccessAgent[]> {
+  const agents: AccessAgent[] = [];
+  for (const row of rows) {
+    const scope = { kind: row.purpose_scope_kind, id: row.purpose_scope_id };
+    // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
+    const delegation = await resolveLiveById(tx, row.agent_actor_id, row.id);
+    const permissions: AccessPermission[] = [];
+    for (const collection of row.collections) {
+      for (const action of row.actions as readonly Action[]) {
+        const request = { collection, action, scope };
+        // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
+        if (delegation && (await checkDelegatedAuthority(tx, delegation, request)).ok) {
+          permissions.push(request);
+        }
+      }
+    }
+    agents.push({
+      agentActorId: row.agent_actor_id,
+      delegationId: row.id,
+      purpose: row.purpose,
+      person: { personId: row.person_id, name: row.display_name },
+      expiresAt: row.expires_at.toISOString(),
+      permissions,
+    });
+  }
+  return agents;
 }
