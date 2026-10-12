@@ -193,11 +193,12 @@ export function settled(
     return;
   }
   // `SCOPE_NOT_GRANTED` is about this reader rather than about this version, so
-  // it closes the control. Everything else is about the record, and the record
+  // it closes the control, unless it names the escalation's recipient, which is
+  // about the person chosen. Everything else is about the record, and the record
   // is what gets read again.
   props.onDecided({
     because: settlement.because,
-    closed: settlement.kind === 'closed',
+    closed: settlement.kind === 'closed' && !refusesRecipient(settlement),
     gateId: props.gate.id,
     lineageId: props.lineageId,
   });
