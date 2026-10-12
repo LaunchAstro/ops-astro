@@ -168,8 +168,11 @@
   gap: var(--s-1-5);
   min-width: 0;
 }
+/* The label and the hint are text a person needs to fill the field in, so
+   they take --text-2 (4.5:1 or more) rather than --text-muted (about 3.6:1
+   on paper). */
 .field__label {
-  color: var(--text-muted);
+  color: var(--text-2);
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
@@ -844,6 +847,9 @@
 [aria-invalid='true'] {
   border-color: var(--danger);
 }
+/* The status red alone is about 3.8:1 on paper, so the error's words take it
+   a step towards the ink: darker on paper, lighter on the void, 4.5:1 or more
+   on both. The border keeps the plain red. */
 .field__error {
   display: inline-flex;
   align-items: center;
@@ -851,13 +857,13 @@
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
-  color: var(--danger);
+  color: color-mix(in oklch, var(--danger) 88%, var(--text));
 }
 .field__hint {
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
-  color: var(--text-muted);
+  color: var(--text-2);
 }
 
 /* -- Voice three: the product has not built this yet. --------------------
