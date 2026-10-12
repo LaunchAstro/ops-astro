@@ -69,7 +69,11 @@ function InputRow(props: {
           props.onValue(event.target.value);
         }}
         onKeyDown={(event) => {
-          if (event.key !== 'Enter') return;
+          // The Enter that commits an input method's word is the input
+          // method's; Safari reports it as key 229 once the composition ended.
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229) {
+            return;
+          }
           event.preventDefault();
           props.onSend();
         }}
