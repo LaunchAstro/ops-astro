@@ -36,7 +36,8 @@ const hasWord = (query: string): boolean => /[\p{L}\p{N}]/u.test(query);
 
 /**
  * Search's own state: open or not is the application's; the strip's box and
- * ⌘K open it on the agency face only, and closing returns focus to the box.
+ * ⌘K open it on the agency face only, and closing returns focus to the box
+ * once the palette, and the inert page behind it, are gone.
  * `dismiss` closes it without moving focus, for a hit that navigates away.
  */
 export function useSearch(): {
@@ -48,12 +49,20 @@ export function useSearch(): {
 } {
   const [showing, setShowing] = useState(false);
   const box = useRef<HTMLButtonElement | null>(null);
+  // Focus goes back once the palette has gone: until its cleanup runs, the
+  // page behind it is inert and the browser refuses focus to the box.
+  const giveBack = useRef(false);
+  useEffect(() => {
+    if (showing || !giveBack.current) return;
+    giveBack.current = false;
+    box.current?.focus();
+  }, [showing]);
   const open = useCallback(() => {
     setShowing(true);
   }, []);
   const close = useCallback(() => {
+    giveBack.current = true;
     setShowing(false);
-    box.current?.focus();
   }, []);
   const dismiss = useCallback(() => {
     setShowing(false);
