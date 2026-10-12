@@ -3,9 +3,11 @@
 /* eslint-disable max-lines -- the one parity check: the app's scan and the surfaces' probes */
 // The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
-import { readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseSync } from '@swc/core';
+import react from '@vitejs/plugin-react';
+import { build } from 'vite';
 import {
   COMMAND_SURFACE,
   PREFIX,
@@ -16,6 +18,7 @@ import {
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
+import { prepareCommand } from '../packages/core-commands/src/commands/prepare.ts';
 import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
@@ -60,15 +63,42 @@ const withoutNamed = (text, file) =>
     const named = call.replaceAll('fetch', 'named').replaceAll('/api/', '/');
     return rest.slice(0, at) + named + rest.slice(at + call.length);
   }, text);
+// The one module that names the API's addresses; a request sent from it still fails.
+const ADDRESSES = '../../../packages/core-wire/src/paths.ts';
 const REQUEST_GLOBALS = new Set(['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket']);
 const REQUEST_METHODS = new Set(['fetch', 'sendBeacon']);
 const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
 
-function sources(root) {
-  return readdirSync(root, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name))
-    .map((entry) => relative(root, join(entry.parentPath, entry.name)));
+// Every module the web app ships, by its path from apps/web/src: the repository's own files in
+// the module graph Vite builds (nothing written), wherever each sits, script or TypeScript. The
+// build resolves as apps/web/vite.config.ts does, with its root, React plugin and one alias; that
+// file also stamps the build from git, which a copied tree cannot give.
+async function sources() {
+  const shipped = new Set();
+  const graph = {
+    name: 'command-parity-graph',
+    generateBundle() {
+      for (const id of this.getModuleIds()) shipped.add(id);
+    },
+  };
+  const repo = resolve(WEB, '..', '..', '..');
+  await build({
+    root: resolve(WEB, '..'),
+    configFile: false,
+    logLevel: 'silent',
+    publicDir: false,
+    plugins: [react(), graph],
+    // A worker (`?worker`, `new Worker(new URL(...))`) is its own bundle, built with these.
+    worker: { plugins: () => [graph] },
+    resolve: { alias: { '@launchastro/ui': join(repo, 'packages', 'ui', 'src', 'index.ts') } },
+    build: { write: false, minify: false },
+  });
+  return [...shipped]
+    .filter((id) => id.startsWith(`${repo}/`) && !id.includes('/node_modules/'))
+    .filter((id) => /\.[cm]?[jt]sx?$/u.test(id))
+    .map((id) => relative(WEB, id));
 }
+const SHIPPED = await sources();
 
 function importsOf(root, file, text) {
   return [...text.matchAll(/from\s+'(\.{1,2}\/[^']+)'/gu)].map((match) =>
@@ -88,7 +118,7 @@ function nodesOf(text, file, values = false) {
     nodes.push(node);
     for (const key of Object.keys(node)) if (key !== 'span') walk(node[key]);
   };
-  walk(parseSync(text, { syntax: 'typescript', tsx: file.endsWith('.tsx') }));
+  walk(parseSync(text, { syntax: 'typescript', tsx: file.endsWith('x') }));
   return nodes;
 }
 
@@ -124,7 +154,7 @@ export function sendsDirectly(text, file = 'a.tsx') {
         GLOBAL_OBJECTS.has(node.object.value) &&
         REQUEST_GLOBALS.has(node.property.value ?? node.property.expression?.value)) ||
       REQUEST_METHODS.has(method?.value ?? method?.expression?.value) ||
-      (textOf(node) ?? '').startsWith('/api/')
+      (file !== ADDRESSES && (textOf(node) ?? '').startsWith('/api/'))
     );
   });
 }
@@ -156,7 +186,8 @@ export function scanUses(files, namespaces, unparsed = []) {
       if (sendsDirectly(withoutNamed(text, file), file)) {
         unparsed.push(`${file} sends a request itself, with no command or CLI verb`);
       }
-      if (NOT_ACTIONS.has(file)) continue;
+      // The kit's command names are labels: the app's own files call the commands.
+      if (NOT_ACTIONS.has(file) || file.startsWith('..')) continue;
       commands = commandsIn(text, namespaces, file);
     } catch {
       // Fails closed: a file that cannot be read for commands fails the check.
@@ -198,8 +229,11 @@ const OPERANDS = {
   'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
-// The grants a read really asks: the real read path on a transaction that holds none.
-async function askedBy(read) {
+// The grants a command really asks, on a transaction that holds none: a read by its real read
+// path, a write by its real preparation (prepare.ts; the handler not run). Preparation asks a
+// write's own key, or none when self-scoped, and with no grant held refuses for that; its handler
+// asks any other its declaration names.
+async function askedBy(declaration) {
   const asked = [];
   const spine = [
     { key: 'task', id: 't' },
@@ -213,14 +247,25 @@ async function askedBy(read) {
     },
   };
   const session = { personId: 'p', actorId: 'a', roleKey: 'member' };
-  await runRead(tx, session, { ...OPERANDS[read], read }).catch(() => null);
-  return asked;
+  const { name, kind, authorisedOn, collection, action } = declaration;
+  if (kind === 'read') {
+    await runRead(tx, session, { ...OPERANDS[name], read: name }).catch(() => null);
+    return asked;
+  }
+  const prepared = await prepareCommand(tx, session, 'api', { command: name }, declaration).catch(
+    () => null,
+  );
+  const own = authorisedOn === 'self' ? '' : `${collection}:${action}`;
+  // A grant is checked only if holding none refuses here: a query that admits anyway checks
+  // nothing, so the write reports no key and its declared one reads as skipped. A later refusal
+  // (an operand this probe leaves out) proves nothing.
+  if (own !== '' && prepared?.refusal?.code !== 'SCOPE_NOT_GRANTED') return [];
+  return asked.join() === own ? profileOf(declaration).authority : asked;
 }
 
-// What the real API runs at each path on both prefixes, by name and profile: a read by the
-// grants its path asks, a command by its declaration (its executor stubbed). Every executor
-// call is kept, bearer by bearer: a path runs one command once for each bearer it takes, the
-// agent prefix a session's and an agent credential's (API-2).
+// What the real API runs at each path on both prefixes, by name and the grants it asks. Every
+// executor call is kept, bearer by bearer: a path runs one command once for each bearer it
+// takes, the agent prefix a session's and an agent credential's (API-2).
 async function routedByApi() {
   const calls = [];
   const execute = (...args) => {
@@ -252,7 +297,7 @@ async function routedByApi() {
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
     if (runs === undefined || ran.some((one) => one.length !== 1 || one[0] !== name)) continue;
     // eslint-disable-next-line no-await-in-loop -- one route at a time
-    const authority = runs.kind === 'read' ? await askedBy(runs.name) : profileOf(runs).authority;
+    const authority = await askedBy(runs);
     routed.set(path, { name: runs.name, profile: { ...profileOf(runs), authority } });
   }
   return routed;
@@ -289,7 +334,7 @@ export function realSurfaces(uses) {
 }
 
 export function run(
-  files = new Map(sources(WEB).map((file) => [file, readFileSync(join(WEB, file), 'utf8')])),
+  files = new Map(SHIPPED.map((file) => [file, readFileSync(join(WEB, file), 'utf8')])),
 ) {
   const namespaces = new Set(COMMAND_SURFACE.map((one) => one.name.split('.')[0]));
   const unparsed = [];

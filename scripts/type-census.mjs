@@ -40,7 +40,10 @@ const TEXT = new Set([
   'letter-spacing',
   'text-transform',
 ]);
-/** At-rules whose blocks hold rules that apply; every other block (font faces, keyframes) is skipped. */
+/**
+ * At-rules whose blocks hold rules that apply, and keyframes, whose frames set
+ * text as a rule does; every other block (font faces) is skipped.
+ */
 const CONDITIONAL = new Set(['media', 'supports', 'container', 'layer', 'scope', 'starting-style']);
 const NUMBER = /^--type-num-/u;
 const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
@@ -68,11 +71,14 @@ function declOf(text) {
 function blockOf(prelude, parent) {
   const context = parent.context ?? '';
   if (parent.kind === 'skip') return { kind: 'skip' };
-  if (!prelude.startsWith('@'))
-    return { kind: 'rule', selector: prelude, context, decls: [], comments: [] };
+  if (!prelude.startsWith('@')) {
+    const keyframe = parent.keyframes === true;
+    return { kind: 'rule', selector: prelude, context, keyframe, decls: [], comments: [] };
+  }
   const name = prelude.slice(1).split(/[\s(]/u)[0].toLowerCase();
-  return CONDITIONAL.has(name)
-    ? { kind: 'at', context: `${context}${prelude} ` }
+  const keyframes = name.endsWith('keyframes');
+  return CONDITIONAL.has(name) || keyframes
+    ? { kind: 'at', context: `${context}${prelude} `, keyframes }
     : { kind: 'skip' };
 }
 
@@ -93,7 +99,8 @@ export function parseSheet(css) {
     const frame = top();
     if (text === '' || frame.kind !== 'rule') return;
     const decl = declOf(text);
-    if (decl !== undefined) frame.decls.push(decl);
+    // A keyframe ignores an important declaration (CSS Animations Level 1): the browser never applies it.
+    if (decl !== undefined && !(frame.keyframe && decl.important)) frame.decls.push(decl);
   };
   for (let i = 0; i < css.length; i += 1) {
     const ch = css[i];
