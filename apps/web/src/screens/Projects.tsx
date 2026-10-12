@@ -2,14 +2,13 @@
 import { useState, type ReactElement } from 'react';
 import { Icon, TabPanel, usePageToolbar } from '@launchastro/ui';
 import { createPortal } from 'react-dom';
-import type { ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import { useProjectBoardAddress } from './projects/board-address.ts';
-import { useProjectClient } from './projects/project-client.ts';
+import { NO_DOOR, type BoardDoor } from './projects/project-client.ts';
 
 export type { ProjectsProps };
 
@@ -19,9 +18,10 @@ export function Projects(props: ProjectsProps): ReactElement {
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
-  const [clients, setClients] = useState<readonly ClientView[]>([]);
-  // A selected project's own client, which every door on its board files.
-  const project = useProjectClient(props.client, props.grantKey, place.query);
+  // What the board's doors file, given only by the board read for this reader and place.
+  const doorOf = `${props.grantKey}:${place.query}:${String(place.generation)}`;
+  const [answered, onDoor] = useState<BoardDoor>(NO_DOOR);
+  const door = answered.of === doorOf ? answered : NO_DOOR;
   return (
     <div className="stack projects">
       {tab === 'board' ? (
@@ -29,8 +29,8 @@ export function Projects(props: ProjectsProps): ReactElement {
           inPanel={inPanel === true}
           canFileTask={canFileTask}
           address={place.view}
-          clients={clients}
-          project={project}
+          clients={door.clients}
+          project={door.project}
         />
       ) : null}
       <ViewSwitch tab={tab} select={select} toolbar={inPanel === true ? null : toolbar} />
@@ -39,8 +39,8 @@ export function Projects(props: ProjectsProps): ReactElement {
           canFileTask={canFileTask}
           hidden={tab !== 'board'}
           place={place}
-          onClients={setClients}
-          project={project}
+          doorOf={doorOf}
+          onDoor={onDoor}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

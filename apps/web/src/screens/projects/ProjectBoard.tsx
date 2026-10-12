@@ -10,7 +10,6 @@ import { ProjectsBoard, clientFiltersIn } from '@launchastro/ui';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from '../projects-row.ts';
 import type {
   ClientListResult,
-  ClientView,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
@@ -38,6 +37,7 @@ import { useBoardTarget } from './scoped-board-read.ts';
 import { todayOn } from '../task/due-dates.ts';
 import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-names.ts';
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
+import { NO_DOOR, useProjectClient, type BoardDoor } from './project-client.ts';
 
 import type { OperationsClient } from '../../operations/client.ts';
 
@@ -59,10 +59,10 @@ export function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & {
     readonly hidden: boolean;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
-    /** The clients the board's doors may name, for the page's own New task. */
-    readonly onClients: (clients: readonly ClientView[]) => void;
-    /** The selected project's own client, which the board's doors file. */
-    readonly project: ClientView | null;
+    /** The board read the page's own New task files from, which `onDoor` answers. */
+    readonly doorOf: string;
+    /** What the board's doors file, for the page's own New task. */
+    readonly onDoor: (door: BoardDoor) => void;
   },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
@@ -86,8 +86,8 @@ function ProjectBoardRead(
     readonly scope: BoardAddress;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
-    readonly onClients: (clients: readonly ClientView[]) => void;
-    readonly project: ClientView | null;
+    readonly doorOf: string;
+    readonly onDoor: (door: BoardDoor) => void;
   },
 ): ReactElement {
   const client = props.client;
@@ -166,21 +166,23 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  // The doors carry the view the board shows now, and name a Client filter's client.
+  // The doors carry the view the board shows now, and name a Client filter's client and
+  // the selected project's own, only while the board admits the reader.
   const known = useMemo(
-    () => doorClients(reached.state, admitted ? (answer?.tasks ?? []) : []),
+    () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NO_DOOR.clients),
     [reached.state, admitted, answer],
   );
-  const { onClients } = props;
+  const project = useProjectClient(client, grantKey, query, { admitted, denied });
+  const { doorOf, onDoor } = props;
   useEffect(() => {
-    onClients(known);
-  }, [onClients, known]);
+    onDoor({ of: doorOf, clients: known, project });
+  }, [onDoor, doorOf, known, project]);
   const door = {
     address: props.place.view,
     canFileTask: props.canFileTask === true,
     clients: known,
   };
-  const noTasks = <NoTasks {...door} project={props.project} />;
+  const noTasks = <NoTasks {...door} project={project} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
