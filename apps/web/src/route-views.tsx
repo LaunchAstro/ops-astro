@@ -20,7 +20,8 @@ import {
 } from './manifest.ts';
 import { isLegacy } from './legacy.ts';
 import { RAIL_GLYPHS } from './rail-glyphs.ts';
-import { decoded, matchRoute, pathTo, type RouteMatch } from './routes.ts';
+import { decoded } from './address-segment.ts';
+import { matchRoute, pathTo, type RouteMatch } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
 /**

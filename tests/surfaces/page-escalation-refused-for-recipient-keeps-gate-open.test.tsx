@@ -36,47 +36,48 @@ const GATE = {
   payloadDigest: 'digest-v-3',
 };
 
+const TASK = {
+  id: '44444444-4444-4444-8444-444444444444',
+  key: 'TSK-44',
+  title: 'A proposal at its bound',
+  description: null,
+  state: { id: 's1', key: 'active', label: 'Active', machineCategory: 'started' },
+  assignee: null,
+  due: null,
+  priority: null,
+  completedAt: null,
+  revision: 7,
+  history: [],
+  comments: [],
+  proposals: [
+    {
+      lineageId: 'l-1',
+      state: 'live',
+      decisions: [],
+      reservations: [],
+      versions: [
+        {
+          versionId: 'v-3',
+          version: 3,
+          purpose: 'synthetic_comment',
+          maximumMinor: 2_000,
+          currency: 'AUD',
+          payloadDigest: 'digest-v-3',
+          payload: { change: 'a team-only comment' },
+          supersededAt: null,
+          runId: null,
+          evidence: null,
+          gate: GATE,
+          checks: [],
+        },
+      ],
+    },
+  ],
+};
+
 /** One task at its revision bound; `task.decide` refused naming `names`. */
 function server(names: readonly string[]) {
   const decided: Record<string, unknown>[] = [];
-  const task = {
-    id: '44444444-4444-4444-8444-444444444444',
-    key: 'TSK-44',
-    title: 'A proposal at its bound',
-    description: null,
-    state: { id: 's1', key: 'active', label: 'Active', machineCategory: 'started' },
-    assignee: null,
-    due: null,
-    priority: null,
-    completedAt: null,
-    revision: 7,
-    history: [],
-    comments: [],
-    proposals: [
-      {
-        lineageId: 'l-1',
-        state: 'live',
-        decisions: [],
-        reservations: [],
-        versions: [
-          {
-            versionId: 'v-3',
-            version: 3,
-            purpose: 'synthetic_comment',
-            maximumMinor: 2_000,
-            currency: 'AUD',
-            payloadDigest: 'digest-v-3',
-            payload: { change: 'a team-only comment' },
-            supersededAt: null,
-            runId: null,
-            evidence: null,
-            gate: GATE,
-            checks: [],
-          },
-        ],
-      },
-    ],
-  };
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     if (at.endsWith('/person/list')) {
@@ -90,7 +91,7 @@ function server(names: readonly string[]) {
         }),
       );
     }
-    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/task/decide')) {
       decided.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
       return Promise.resolve(
