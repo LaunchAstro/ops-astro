@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "task.board, the rank helper and the family helper answer an upper-case UUID as its lower-case spelling"
+}

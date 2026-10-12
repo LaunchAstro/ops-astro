@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an invitation link that expires between the broker check and custody's dispatch never reaches the provider"
+}
