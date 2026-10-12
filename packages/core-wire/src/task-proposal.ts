@@ -48,8 +48,8 @@ export interface ProposalRead {
   readonly proposal: TaskProposal | null;
 }
 
-/** Anything a reader would take for a task block's opening: indented, tilde-fenced or with words after. */
-const OPENING = /^ {0,3}(?:```|~~~)[ \t]*task\b/mu;
+/** Anything a reader would take for a task block's opening: indented, any fence length, tildes or words after. */
+const OPENING = /^ {0,3}(?:`{3,}|~{3,})[ \t]*task\b/mu;
 /** The one block, closing the reply: its JSON, then only white space. */
 const CLOSING = /(?:^|\n)```task[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*\s*$/u;
 const KEYS = new Set(['action', 'title', 'description', 'due', 'estimate']);

@@ -107,9 +107,10 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
-  const { title, page, model } = store.chat(chat.key) ?? chat;
-  // A model chosen before the first question rides in the start, so the first
-  // answer is asked of it (CS-7.30); none chosen, the default.
+  // The tab as the question was asked: a model chosen before it rides in the
+  // start, so the first answer is asked of it (CS-7.30); none chosen, the
+  // default. A title, page or model chosen while it waits follows it in turn.
+  const { title, page, model } = chat;
   const chosen = model === null ? {} : { model };
   const settled = settle(
     await client.mutate('conversation.start', {
