@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a top-up whose answer was lost resends as the same attempt after the reread shows the raised maximum, so the envelope is raised once"
+}

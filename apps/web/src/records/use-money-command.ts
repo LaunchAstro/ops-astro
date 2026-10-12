@@ -67,16 +67,26 @@ type Send = (client: OperationsClient) => void;
 
 interface Pending {
   readonly send: Send;
-  readonly from: OperationsClient;
+  /** The sign-in the step-up returned: the only client the write goes on. */
+  readonly sessionId: string;
+  readonly businessKey: string;
   readonly generation: number;
 }
 
-/** Sent once, on the new sign-in's client, only while the session is the one that asked. */
-function resend(pending: RefObject<Pending | null>, held: Pending, next: OperationsClient): void {
+/**
+ * The one delivery of a held write, from the check's answer and from a client
+ * landing alike. It goes once, on the client for the sign-in the step-up
+ * returned, while the session that asked is current and the hold stands. A
+ * client for any other sign-in, the old one whose cookie is being cleared
+ * included, is passed over and the write waits for the right one.
+ */
+function deliver(pending: RefObject<Pending | null>, to: OperationsClient): void {
+  const held = pending.current;
+  if (held === null || to.sessionId !== held.sessionId) return;
   pending.current = null;
   if (held.generation !== sessionGeneration()) return;
-  if (next.businessKey !== held.from.businessKey) return;
-  held.send(next);
+  if (to.businessKey !== held.businessKey) return;
+  held.send(to);
 }
 
 interface Prompt {
@@ -103,12 +113,11 @@ function useResend(client: OperationsClient) {
   const round = useRef(0);
   // The resend waits for the client the application builds for the new sign-in.
   useEffect(() => {
-    const held = pending.current;
-    if (held !== null && client !== held.from) resend(pending, held, client);
+    deliver(pending, client);
   }, [client]);
   const check = (send: Send, attempt: () => Promise<StepUpResult>, passed: () => void): void => {
     if (checking) return;
-    const held = { send, from: latest.current, generation: sessionGeneration() };
+    const asked = { businessKey: latest.current.businessKey, generation: sessionGeneration() };
     const mine = round.current;
     setChecking(true);
     setBecause(null);
@@ -120,8 +129,8 @@ function useResend(client: OperationsClient) {
         return result;
       }
       passed();
-      if (latest.current === held.from) pending.current = held;
-      else resend(pending, held, latest.current);
+      pending.current = { send, sessionId: result.sessionId, ...asked };
+      deliver(pending, latest.current);
       return result;
     });
   };

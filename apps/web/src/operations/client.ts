@@ -125,6 +125,11 @@ export class OperationsClient {
     return this.#options.businessKey;
   }
 
+  /** The sign-in this client speaks for, fixed at construction; absent without one. */
+  get sessionId(): string | undefined {
+    return this.#options.sessionId;
+  }
+
   /** A fresh attempt identity. Held by the caller so a retry can present it again. */
   newOperationId(): string {
     const mint = this.#options.newOperationId;

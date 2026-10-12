@@ -126,6 +126,7 @@ import { HeldOperations, type Held } from './task/held-operations.ts';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { useTaskExecution } from '../views/task-execution.ts';
+import { TopUpScope, usePageTopUp } from '../views/top-up-hold.tsx';
 import { AgentSide } from './task/AgentSide.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
@@ -164,7 +165,12 @@ export interface TaskDetailProps {
  * under it. The key is the route's identity, never anything from an answer.
  */
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
-  return timerScreen(props, <TaskPage {...props} />);
+  return timerScreen(
+    props,
+    <TopUpScope client={props.client}>
+      <TaskPage {...props} />
+    </TopUpScope>,
+  );
 }
 
 function TaskPage(props: TaskDetailProps): ReactElement {
@@ -215,6 +221,8 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
   const [stepTitle, setStepTitle] = useHeld<string>(identity, denied);
   const [keep, setStepUp] = useKeep(held, identity, denied);
+  // The top-up's code prompt keeps the page under a reread, as the Agent pane's does.
+  const topUpAsks = (usePageTopUp()?.command.stepUp ?? null) !== null;
 
   return (
     <div className="stack">
@@ -231,7 +239,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
             state={state}
             subject="task"
             onRetry={reload}
-            keep={keep || live || timerRefresh}
+            keep={keep || topUpAsks || live || timerRefresh}
           >
             {(value) =>
               'sharedTask' in value ? (

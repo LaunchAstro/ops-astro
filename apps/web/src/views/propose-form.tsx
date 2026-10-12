@@ -10,6 +10,8 @@ import type { OperationsClient } from '../operations/client.ts';
 import type { TaskEnvelope } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 import { money } from './proposal-record.tsx';
+import { StepUpPrompt } from './step-up-prompt.tsx';
+import { useTopUp, type TopUpAttempt } from './top-up-hold.tsx';
 
 /** One minor unit of the currency, a number field's step: 0.01 AUD, 0.001 KWD, 1 JPY. */
 function stepOf(currency: string | null): string {
@@ -326,28 +328,32 @@ export function TopUp(props: {
   readonly onChanged: () => void;
 }): ReactElement {
   const { envelope, note } = props;
-  const command = useCommand();
+  // Held above the read (`top-up-hold.tsx`): a reread unmounts this control.
+  const hold = useTopUp(props.client);
+  const { command, lost } = hold;
   const [amount, setAmount] = useState('');
-  const submit = (): void => {
+  // A new attempt of the figures on the screen, or none for an amount that is not one.
+  const fresh = (): TopUpAttempt | null => {
     const minor = minorOf(plainDecimal(amount), envelope.currency);
-    if (command.locked || minor === null || minor <= 0) return;
-    command.run(
-      () =>
-        props.client.mutate('budget.top_up', {
-          recordId: props.recordId,
-          amountMinor: minor,
-          fromMaximumMinor: envelope.maximumMinor,
-        }),
-      (settlement) => {
-        // Held above the read: the reread below unmounts this control.
-        if (settlement.kind !== 'ok') props.onNote({ kind: 'refusal', said: settlement.because });
-        else if (settlement.value.detail?.['state'] === 'awaiting_second_approver') {
-          props.onNote({ kind: 'awaiting', said: AWAITING });
-        } else props.onNote(null);
-        if (settlement.kind === 'ok') setAmount('');
-        props.onChanged();
-      },
-    );
+    if (minor === null || minor <= 0) return null;
+    const { recordId } = props;
+    const payload = { recordId, amountMinor: minor, fromMaximumMinor: envelope.maximumMinor };
+    return { operationId: props.client.newOperationId(), payload };
+  };
+  const submit = (): void => {
+    if (command.locked) return;
+    const attempt = lost ?? fresh();
+    if (attempt === null) return;
+    hold.send(attempt, (settlement) => {
+      if (settlement.kind !== 'ok') props.onNote({ kind: 'refusal', said: settlement.because });
+      else if (settlement.value.detail?.['state'] === 'awaiting_second_approver') {
+        props.onNote({ kind: 'awaiting', said: AWAITING });
+      } else props.onNote(null);
+      if (settlement.kind === 'ok') setAmount('');
+      // No reread while the code prompt is open: the write waits on it.
+      const asked = settlement.kind === 'failed' && settlement.refusal.code === 'STEP_UP_REQUIRED';
+      if (!asked) props.onChanged();
+    });
   };
   return (
     <div className="sbact" data-top-up="section">
@@ -374,7 +380,7 @@ export function TopUp(props: {
         </label>
         <input
           className="input"
-          disabled={command.locked}
+          disabled={command.locked || lost !== null}
           id="top-up-amount"
           min="0"
           step={stepOf(envelope.currency)}
@@ -396,6 +402,12 @@ export function TopUp(props: {
           {command.busy ? 'Approving…' : 'Approve top-up'}
         </button>
       </div>
+      {command.busy || lost === null ? null : (
+        <p className="card__sub" data-top-up="unresolved">
+          We did not hear back about this top-up. Send it again to check.
+        </p>
+      )}
+      {command.stepUp === null ? null : <StepUpPrompt ask={command.stepUp} />}
     </div>
   );
 }
