@@ -348,16 +348,38 @@ function inFlightSignalCase() {
     }
     await outbox.close();
     const to = sink();
+    // The pass's own statements, seen as they run: the held signal commits
+    // after the replay has read the rows and before the burst's deletion runs,
+    // inside the pass, so the deletion is the one it races.
+    let replayed = false;
+    let committedBeforeDeletion = false;
+    const racing: typeof forwarderDb = {
+      ...forwarderDb,
+      transaction: async (run, options) =>
+        await forwarderDb.transaction(
+          async (execute) =>
+            await run(async (text, parameters) => {
+              if (text.includes('from ops.api_events') && text.includes('order by at, id')) {
+                replayed = true;
+              }
+              if (replayed && text.trimStart().startsWith('delete from ops.api_events')) {
+                gate.open();
+                await held;
+                committedBeforeDeletion = true;
+              }
+              return await execute(text, parameters);
+            }),
+          options,
+        ),
+    };
     const forward = createForwarder({
-      database: forwarderDb,
-      send: (event) => {
-        gate.open();
-        return held.then(() => void to.events.push(event));
-      },
+      database: racing,
+      send: to.send,
       where: 'staging', root: ROOT,
     });
     try {
       await forward.once();
+      expect(committedBeforeDeletion, 'the signal committed inside the pass').toBe(true);
       expect(to.alerts()).toEqual(['cross-scope-burst']);
       expect(await count()).toBe(1);
     } finally {
