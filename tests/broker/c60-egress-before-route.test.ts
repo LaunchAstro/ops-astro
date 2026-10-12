@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { reserveModelCall, sendReservedCall } from '../../packages/core-custody/src/index.ts';
 import { awaitParked, liveWork, racer, type Work } from '../runtime/schedules-harness.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import {
   CLOUD,
   LOCAL,
@@ -35,6 +36,14 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 useBrokerWorld('c60egress');
 
 /**
+ * Live work for `title`, picked up beside the client work an earlier case left
+ * the agent holding: an agent working for one client picks up none of another
+ * client's work (`agentReach`, pickup.ts).
+ */
+const workFor = async (title: string): Promise<Work> =>
+  await besideOtherWork(s.db.admin, s.agentActorId, async () => await liveWork(s, title, 2_000));
+
+/**
  * Link the task to a client as `task.set_party` stores it, by the owner: the
  * link lives in the record's data and the spine's client slot is projected
  * from it (0005's trigger recomputes every slot, so a slot written directly
@@ -55,7 +64,7 @@ async function forClient(work: Work): Promise<void> {
 }
 
 it('C60 egress before route: a task whose client has model use off reaches no route, and says why', async () => {
-  const work = await liveWork(s, 'c60 a client task', 2_000);
+  const work = await workFor('c60 a client task');
   await forClient(work);
   const calls = await callCount();
   const seen = world.provider.seen.length;
@@ -77,13 +86,13 @@ it('C60 egress before route: a task whose client has model use off reaches no ro
 }, 120_000);
 
 it('C60 egress before route: a task with no client is not stopped by the client check', async () => {
-  const work = await liveWork(s, 'c60 an internal task', 2_000);
+  const work = await workFor('c60 an internal task');
   const answer = await call(work, {}, withRoutes([CLOUD]));
   expect(answer).toMatchObject({ ok: true });
 }, 120_000);
 
 it('C60 race: a client put on the task between the hold and the start releases the call unsent', async () => {
-  const work = await liveWork(s, 'c60 gains a client after the hold', 2_000);
+  const work = await workFor('c60 gains a client after the hold');
   await stepOf(work);
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
@@ -113,7 +122,7 @@ it('C60 race: a client put on the task between the hold and the start releases t
 }, 120_000);
 
 it('C60 race: a call waits on a client link in flight, then refuses on it', async () => {
-  const work = await liveWork(s, 'c60 a link in flight', 2_000);
+  const work = await workFor('c60 a link in flight');
   await stepOf(work);
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
