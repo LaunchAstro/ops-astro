@@ -13,18 +13,19 @@ import { join } from 'node:path';
 import { afterAll, expect, it, vi } from 'vitest';
 import { directorySource } from '../../packages/core-runtime/src/instruction-root.ts';
 
-const swap = vi.hoisted(() => ({ before: (): void => undefined, after: (): void => undefined }));
+/** What runs once around the next `open`, then is gone. */
+const swap = vi.hoisted(() => ({ before: [] as (() => void)[], after: [] as (() => void)[] }));
 
 vi.mock('node:fs/promises', async (original) => {
   const real = await original<typeof import('node:fs/promises')>();
   return {
     ...real,
     open: async (...args: Parameters<typeof real.open>) => {
-      swap.before();
+      swap.before.shift()?.();
       try {
         return await real.open(...args);
       } finally {
-        swap.after();
+        swap.after.shift()?.();
       }
     },
   };
@@ -43,16 +44,14 @@ it('a directory swapped for a link to outside the root while the file opens read
   writeFileSync(join(outside, 'brief.md'), 'planted outside the root');
   const skills = join(root, 'skills');
   const kept = join(root, 'skills-kept');
-  swap.before = () => {
-    swap.before = () => undefined;
+  swap.before.push(() => {
     renameSync(skills, kept);
     symlinkSync(outside, skills);
-  };
-  swap.after = () => {
-    swap.after = () => undefined;
+  });
+  swap.after.push(() => {
     rmSync(skills);
     renameSync(kept, skills);
-  };
+  });
 
   const read = await directorySource(root).read('skills/brief.md');
 
