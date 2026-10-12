@@ -62,9 +62,8 @@ export function Versions(props: { readonly map: MapView }): ReactElement {
             <li className="sbact__row" key={entry.version} data-version={entry.version}>
               <span className="sb__state">Version {entry.version}</span>
               <span className="sbact__meta">
-                {/* The read carries the writer's id only, never a name to show. */}
-                <time dateTime={entry.at}>{stamp(entry.at)}</time> · by someone ·{' '}
-                {entry.changed.length} changed
+                {/* The read carries the writer's id only, never a name, so no writer is shown. */}
+                <time dateTime={entry.at}>{stamp(entry.at)}</time> · {entry.changed.length} changed
               </span>
             </li>
           ))}
