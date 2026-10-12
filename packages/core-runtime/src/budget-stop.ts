@@ -128,17 +128,22 @@ export async function observedRefusal(
   reservationId: string,
 ): Promise<RuntimeResult<never> | null> {
   if (reservationState !== 'held') return null;
-  const kept = await tx.query(
-    `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'`,
+  const [kept] = await tx.query<{ readonly trashed: boolean }>(
+    `select task.deleted_at is not null as trashed from public.attempts a
+       join public.planned_runs run on run.business_id = a.business_id and run.id = a.run_id
+       join public.records task on task.business_id = run.business_id and task.id = run.task_id
+      where a.business_id = $1 and a.reservation_id = $2 and a.state = 'liability_unknown'`,
     [tx.businessId, reservationId],
   );
-  if (kept.length === 0) return null;
+  if (kept === undefined) return null;
+  // The outcome does not reach a task in the trash (`budget.record_outcome`): restore it first.
   return refuse(
     'TRANSITION_NOT_PERMITTED',
     "this step's cost is not resolved yet: it ran above the hold, " +
       'or a call on it is still open or was lost',
-    'Record the step’s outcome first, then end the work.',
+    kept.trashed
+      ? 'Restore the task from the trash, record the step’s outcome, then end the work.'
+      : 'Record the step’s outcome first, then end the work.',
   );
 }
 
