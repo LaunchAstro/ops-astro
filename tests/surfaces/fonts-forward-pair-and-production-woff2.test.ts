@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* oxlint-disable max-lines-per-function, unicorn/consistent-function-scoping, unicorn/prefer-string-replace-all
-   -- the proof's body is kept as reviewed, byte for byte, but for where it builds. */
+   -- the proof's body is kept as reviewed, but for where it builds and the
+   walk over every path into head below. */
 //
 // It builds into a directory of its own, never apps/web/dist: under `pnpm
 // check` other tests copy that bundle in workers beside this one, and a
 // rebuild there empties it under them.
+//
+// Every commit after the anchor that changes the Funnel Sans face (its block
+// in the font sheet, or the pinned package its WOFF2 comes from) must be one
+// half of a forward red then green pair, on whatever path it reaches head: a
+// side branch forked before the anchor and merged later included.
 
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -22,6 +28,8 @@ const cssPath = 'packages/ui/src/styles/0-fonts.css';
 const fontFile = 'funnel-sans-latin-wght-normal.woff2';
 const bundledFont = /\/funnel-sans-latin-wght-normal-[^/]+\.woff2(?:\?|$)/u;
 const variableFace = /@font-face\s*\{\s*font-family:\s*'Funnel Sans';[\s\S]*?\n\}/u;
+const pinPath = 'packages/ui/package.json';
+const facePackage = '@fontsource-variable/funnel-sans';
 const outDir = mkdtempSync(join(tmpdir(), 'fonts-forward-pair-'));
 afterAll(() => {
   rmSync(outDir, { recursive: true, force: true });
@@ -68,6 +76,78 @@ it('MP-1-2 a forward red then green pair and a production woff2 request', async 
   expect(normalise(git('show', `${green}:${cssPath}`)), 'the green commit restores the face').toBe(
     normalise(beforeRed),
   );
+
+  // Every path into head, not the anchor's line alone: each commit that
+  // changes the face is a red removing it under the named test or the green
+  // after it that restores it, paired in order.
+  const shown = (commit: string, path: string): string => {
+    try {
+      return git('show', `${commit}:${path}`);
+    } catch {
+      return '';
+    }
+  };
+  const faceAt = (commit: string): string => {
+    let pinned: unknown;
+    try {
+      const manifest = JSON.parse(shown(commit, pinPath)) as {
+        dependencies?: Record<string, string>;
+      };
+      pinned = manifest.dependencies?.[facePackage];
+    } catch {
+      pinned = undefined;
+    }
+    return `${shown(commit, cssPath).match(variableFace)?.[0] ?? ''}\n${String(pinned)}`;
+  };
+  const onlySheet = (commit: string): boolean =>
+    git('diff-tree', '--no-commit-id', '--name-only', '-r', commit) === cssPath;
+  const removesUnderTest = (commit: string): boolean => {
+    const test = shown(commit, testPath);
+    const before = shown(`${commit}^`, cssPath);
+    return (
+      onlySheet(commit) &&
+      test.includes(fontFile) &&
+      test.includes('expect(face).toContain') &&
+      variableFace.test(before) &&
+      normalise(shown(commit, cssPath)) === normalise(before.replace(variableFace, ''))
+    );
+  };
+  const restores = (removed: string, commit: string): boolean => {
+    try {
+      git('merge-base', '--is-ancestor', removed, commit);
+    } catch {
+      return false;
+    }
+    return (
+      onlySheet(commit) &&
+      normalise(shown(commit, cssPath)) === normalise(shown(`${removed}^`, cssPath))
+    );
+  };
+  const changes = git(
+    'rev-list',
+    '--reverse',
+    '--full-history',
+    '--no-merges',
+    `${anchor}..${head}`,
+    '--',
+    cssPath,
+    pinPath,
+  )
+    .split('\n')
+    .filter(Boolean)
+    .filter((commit) => faceAt(`${commit}^`) !== faceAt(commit));
+  const unpaired: string[] = [];
+  let open: string | undefined;
+  for (const commit of changes) {
+    if (open === undefined && removesUnderTest(commit)) open = commit;
+    else if (open !== undefined && restores(open, commit)) open = undefined;
+    else unpaired.push(commit);
+  }
+  if (open !== undefined) unpaired.push(open);
+  expect(changes, 'the walk finds the pair it proves').toEqual(
+    expect.arrayContaining([red, green]),
+  );
+  expect(unpaired, 'every change to the face after the anchor has its forward pair').toEqual([]);
 
   const configFile = fileURLToPath(new URL('../../apps/web/vite.config.ts', import.meta.url));
   await build({ configFile, logLevel: 'silent', build: { outDir, emptyOutDir: true } });
