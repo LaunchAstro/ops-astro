@@ -81,3 +81,40 @@ it('a held provider answer cannot bypass client sign-off enabled before its comm
     await clientSignOff('false');
   }
 });
+
+it('client sign-off enabled during the provider call holds the comment until it clears', async () => {
+  const { taskId, credential } = await launched();
+  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+    await installBusinessSettings(tx);
+  });
+  let providerEffects = 0;
+  const worker = createWorker({
+    transport: throughApi,
+    businessKey: 'alpha',
+    credential: r.agentToken,
+    delegation: credential,
+    reporter: SYNTHETIC_USAGE,
+    provider: {
+      call: async () => {
+        providerEffects += 1;
+        // A person turns client sign-off on while the provider is answering.
+        await clientSignOff('true');
+        return { status: 200, body: '{}' };
+      },
+    },
+  });
+  try {
+    expect.soft(await worker.applyOnce(taskId)).toMatchObject({
+      refused: { code: 'CLIENT_SIGNOFF_REQUIRED' },
+    });
+    expect.soft(await appliedComments(taskId)).toEqual([{ n: '0' }]);
+    expect
+      .soft(await attempts(taskId))
+      .toMatchObject([{ state: 'dispatched', observed: false, held: 'held' }]);
+  } finally {
+    await clientSignOff('false');
+  }
+  expect(await worker.applyOnce(taskId)).toHaveProperty('applied');
+  expect(await appliedComments(taskId)).toEqual([{ n: '1' }]);
+  expect(providerEffects).toBe(1);
+});
