@@ -219,6 +219,41 @@ export async function waitsFirst(
   return (await reads(tx, session, taskId)) ? null : 'SCOPE_NOT_GRANTED';
 }
 
+/**
+ * The last earlier messages before the asked one, each person's with its
+ * answer, oldest first; only those of the conversation's current context
+ * epoch, which a purge of the task it was opened on bumps under the row lock
+ * every message write takes. A reply counts only when its question does too,
+ * so one kept after the purge to a question from before it is cut with it.
+ */
+async function earlierRows(
+  tx: TenantQuery,
+  asked: Asked,
+): Promise<readonly { readonly role: string; readonly body: string }[]> {
+  return await tx.query<{ readonly role: string; readonly body: string }>(
+    `select role, body from (
+       select m.role, m.body, m.created_at, m.id
+         from conversation_messages m
+         join conversation_messages a
+           on a.business_id = m.business_id and a.conversation_id = m.conversation_id
+         join conversations c on c.business_id = m.business_id and c.id = m.conversation_id
+         left join conversation_messages q
+           on q.business_id = m.business_id and q.id = m.answers_message_id
+        where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
+          and m.role in ('person', 'agent') and m.created_at < a.created_at
+          and m.context_epoch = c.context_epoch
+          and coalesce(q.context_epoch, m.context_epoch) = c.context_epoch
+          and (m.role = 'agent' or exists (
+            select 1 from conversation_messages r
+             where r.business_id = m.business_id and r.conversation_id = m.conversation_id
+               and r.answers_message_id = m.id))
+        order by m.created_at desc, m.id desc
+        limit $4) last
+      order by created_at, id`,
+    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT],
+  );
+}
+
 /** The page and earlier messages for the asked message, in the caller's transaction. */
 export async function contextOf(
   tx: TenantQuery,
@@ -233,23 +268,7 @@ export async function contextOf(
     return marked ? REFUSED : await markRefusedForPage(tx, session, asked, page);
   }
   if (marked) return REFUSED;
-  const rows = await tx.query<{ readonly role: string; readonly body: string }>(
-    `select role, body from (
-       select m.role, m.body, m.created_at, m.id
-         from conversation_messages m
-         join conversation_messages a
-           on a.business_id = m.business_id and a.conversation_id = m.conversation_id
-        where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
-          and m.role in ('person', 'agent') and m.created_at < a.created_at
-          and (m.role = 'agent' or exists (
-            select 1 from conversation_messages r
-             where r.business_id = m.business_id and r.conversation_id = m.conversation_id
-               and r.answers_message_id = m.id))
-        order by m.created_at desc, m.id desc
-        limit $4) last
-      order by created_at, id`,
-    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT],
-  );
+  const rows = await earlierRows(tx, asked);
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];
   if (page !== null) {

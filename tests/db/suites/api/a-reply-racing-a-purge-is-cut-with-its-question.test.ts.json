@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A model reply and a purge of its conversation's task at once, on two connections, in both orders: kept behind the purge in the new epoch, or ahead of it in the old, the reply is cut with its question; meeting the purge's hold on a covering grant, the reply rolls back and keeps nothing. Judged on a real migrated database, each side on its own connection, ordered by what pg_stat_activity reports."
+}

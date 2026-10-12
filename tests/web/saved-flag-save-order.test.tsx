@@ -27,6 +27,19 @@ function deferred() {
   return { promise, release };
 }
 
+function lateBody(response: Response): Response {
+  const body = response.arrayBuffer();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const bytes = new Uint8Array(await body);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: response.status, headers: response.headers });
+}
+
 function Fold({
   client,
   name,
@@ -63,6 +76,8 @@ for (const name of ['subtasks.showFinished', 'history.showTrail']) {
         );
         expect(response.status).toBe(200);
         if (ordinal === 2) secondSaved.release();
+        // Save 1's body lands late, so the next save leaves after this request settles.
+        if (ordinal === 1) return lateBody(response);
         if (path.endsWith('/preference/read')) readReady.release();
         return response;
       })();
@@ -92,6 +107,8 @@ for (const name of ['subtasks.showFinished', 'history.showTrail']) {
     } finally {
       await act(async () => {
         gate.release();
+        // Save 2 may leave only after save 1's answer is read; the read below waits for it.
+        await secondSaved.promise;
         while (pending.size > 0) await Promise.all([...pending]);
       });
     }
