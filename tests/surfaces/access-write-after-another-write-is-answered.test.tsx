@@ -92,7 +92,7 @@ describe('the delegation confirmation', () => {
     await settle();
     await settle();
     expect(revokes(api)).toHaveLength(1);
-    expect(view.find(CONFIRM)).toBeNull();
+    expect(view.find('[data-confirm="revoke-delegation"]')).toBeNull();
   });
 
   it('kept, then revoked, sends one revoke after the second confirmation only', async () => {
@@ -101,7 +101,7 @@ describe('the delegation confirmation', () => {
     await view.click('[data-revoke="d-1"] button');
     await view.click(`${CONFIRM} [data-act="keep"] button`);
     await settle();
-    expect(view.find(CONFIRM)).toBeNull();
+    expect(view.find('[data-confirm="revoke-delegation"]')).toBeNull();
     expect(api.sent).toHaveLength(0);
     await view.click('[data-revoke="d-1"] button');
     expect(api.sent).toHaveLength(0);
