@@ -94,6 +94,30 @@ export function useIsolationWorld(): void {
   afterAll(async () => await fixture?.drop());
 }
 
+/** A stored client of Alpha, and `taskId` linked to it on the record's spine. */
+async function underNewClient(taskId: string, by: Member): Promise<string> {
+  const client = randomUUID();
+  await fixture.db.admin.execute(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $3, $4)`,
+    [fixture.business, client, `made-up client ${client.slice(0, 8)}`, by.actorId],
+  );
+  await fixture.db.admin.execute(
+    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
+  return client;
+}
+
+/** The client a task is linked to on the record's spine. */
+export const clientOf = async (taskId: string): Promise<string | null> =>
+  (
+    await fixture.db.admin.execute<{ readonly client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [taskId],
+    )
+  )[0]?.client ?? null;
+
 /** Bravo with its writer and task, Alpha's two client tasks and their one-grant people. */
 async function seedClients(): Promise<string> {
   const bravo = await insertBusiness(fixture.db.app, 'bravo');
@@ -118,6 +142,10 @@ async function seedClients(): Promise<string> {
   ] as const) {
     labels.set(member.personId, `<${name} person>`).set(member.actorId, `<${name} person>`);
   }
+  // Each client task on a stored client of its own, so the client crossing
+  // crosses two real clients rather than two tasks with no client at all.
+  await underNewClient(task.client1, fixture.member);
+  await underNewClient(task.client2, fixture.member);
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
     await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Trace retention (#963, Sol PRV-oa-963-R3.1, the class; security re-read
-// of 6e6b1b3, M1): owed runs' sent spans, newest first, are read pass after
+// of its head, M1): owed runs' sent spans, newest first, are read pass after
 // pass in `owedAsks`' order (oldest turn, unanswered, run id), each from
 // where its last read stopped. The store answers `allowance` reads a pass
 // and unknown after, and never answers for some spans. Run R has a missing

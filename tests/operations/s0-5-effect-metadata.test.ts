@@ -131,6 +131,7 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   // (batch 3a join; an agent-path proof is owed, SOL-OWED).
   if ('exception' in prepared && AGENT_ONLY.has(name)) return [];
   if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
+  if (name === 'task.purge') await harness.world.db.admin.execute(TRASH_PAST_WINDOW);
   const before = await fingerprint(harness.world.db.admin);
   const answer = await harness.asPerson(name, prepared.body);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
@@ -177,14 +178,13 @@ const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
  * would be unproved.
  */
 const NO_CHANGE: Readonly<Record<string, string>> = {
-  'task.purge':
-    'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
   'session.end':
     'a sign-out writes only its audit event; the browser ends the credential (tests/commands/c23-session-end.test.ts)',
   'notifications.set_channel':
     'in-app is always on and email waits on AW-07b, so nothing is stored yet (tests/commands/inbox-escalation-settings.test.ts)',
 };
 
+const TRASH_PAST_WINDOW = `update records set deleted_at = now() - interval '9 years' where deleted_at is not null`;
 const detailOf = (answer: { readonly body: Record<string, unknown> }): Record<string, unknown> =>
   answer.body['detail'] as Record<string, unknown>;
 

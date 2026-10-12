@@ -359,19 +359,22 @@ describe('the read half of the surface', () => {
 describe('the read executor contract', () => {
   it('passes a read through without an operation identity or a revision', async () => {
     const seenRequests: Array<Readonly<Record<string, unknown>>> = [];
-    const passing: ReadExecutor = async (_database, _businessId, _presented, request) => {
+    const recording: ReadExecutor = async (_database, _businessId, _presented, request) => {
       seenRequests.push(request);
       return { ok: true, persons: [] };
     };
 
-    const answer = await passing(
-      stubDatabase([]),
-      ALPHA,
-      { provider: 'supabase', subject: MIA },
-      { read: 'person.list' },
+    const answer = await post(
+      build({ executeRead: recording }),
+      `/api/b/alpha${pathOf('person.list')}`,
+      {},
+      authorised(await tokenFor(MIA)),
     );
 
+    // The real route, with a body naming nothing: what the executor is handed
+    // and what the caller is shown are the read and its result alone.
+    expect(answer.status).toBe(200);
     expect(seenRequests).toEqual([{ read: 'person.list' }]);
-    expect(answer).toEqual({ ok: true, persons: [] });
+    expect(answer.body).toEqual({ ok: true, persons: [] });
   });
 });

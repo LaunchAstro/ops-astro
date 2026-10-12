@@ -1,5 +1,5 @@
 {
   "kind": "conformance",
   "isolation": false,
-  "why": "named in tests/db/named-suites/ before each suite had its own file; its reason is in tests/db/suites-history.json"
+  "why": "a file's database is a clone of one migrated template, so this proves the clone matches a migration from empty, catalogue entry for entry and privilege for privilege"
 }

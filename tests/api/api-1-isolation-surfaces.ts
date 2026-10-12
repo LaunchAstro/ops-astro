@@ -53,13 +53,29 @@ export const canonical = (value: unknown): string =>
       : field,
   );
 
+type Body = Record<string, unknown>;
+
+/**
+ * A crossing's body as its command takes it. `task.create` names no record of
+ * its own, so a `recordId` crossing files a complete new task under that one:
+ * the refusal is then the grant's, never the body's shape.
+ */
+const AS_TAKEN: Partial<Record<CatalogueRow['command'], (named: Body) => Body>> = {
+  'task.create': ({ recordId, ...rest }) => ({
+    ...rest,
+    fields: { title: 'made-up crossing task' },
+    parentId: recordId,
+  }),
+};
+
 /** One command through the app's client, the CLI and the API, as one caller. */
 export async function threeWays(
   row: CatalogueRow,
   member: Member,
   businessKey: string,
-  body: Record<string, unknown>,
+  named: Body,
 ): Promise<Heard[]> {
+  const body = 'recordId' in named ? (AS_TAKEN[row.command]?.(named) ?? named) : named;
   const token = await tokenFor(member.presented.subject);
   const heard: Heard[] = [];
   const recording = (async (url: string | URL, init?: RequestInit) => {
@@ -78,11 +94,12 @@ export async function threeWays(
     signedIn: true,
     fetch: asBrowser(token, async (url, init) => await recording(url, init)),
   });
-  const operationId = randomUUID();
   await (row.kind === 'read'
     ? app.read(row.command as never, body)
-    : app.mutate(row.command as never, body, { operationId, expectedRevision: 1 }));
-  const payload = row.kind === 'read' ? body : { ...body, operationId, expectedRevision: 1 };
+    : app.mutate(row.command as never, body, { operationId: randomUUID(), expectedRevision: 1 }));
+  // Each surface's own operation id: a shared one makes the CLI's and the API's answers replays.
+  const payload = (): Body =>
+    row.kind === 'read' ? body : { ...body, operationId: randomUUID(), expectedRevision: 1 };
   const cli = createCli({
     businessKey,
     credential: token,
@@ -93,11 +110,11 @@ export async function threeWays(
         body: sent,
       }),
   });
-  await cli.run(row.command, payload);
+  await cli.run(row.command, payload());
   await recording(row.api.person.replace(':businessKey', businessKey), {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload()),
   });
   return heard;
 }

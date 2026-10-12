@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "ending a person's access revokes a grant given to their acting identity as well as their own grants (catalogue #691)"
+}

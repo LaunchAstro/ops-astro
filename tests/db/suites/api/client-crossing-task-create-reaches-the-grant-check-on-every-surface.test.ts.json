@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a client-to-client task.create crossing reaches the grant check on the app's client, the CLI and the API alike, so the named isolation suite proves the grant, not the body shape"
+}

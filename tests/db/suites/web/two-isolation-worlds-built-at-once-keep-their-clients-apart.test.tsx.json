@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "two of the dock's isolation worlds built at once on their own databases each link their two reader tasks to two stored clients of their own, and share no client, record or actor"
+}

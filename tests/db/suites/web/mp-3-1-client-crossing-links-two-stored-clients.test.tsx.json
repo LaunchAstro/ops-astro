@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the dock's client crossing crosses two stored clients: each one-grant reader's task is linked to its own client, never two tasks with no client at all"
+}

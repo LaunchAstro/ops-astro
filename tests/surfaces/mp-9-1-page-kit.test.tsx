@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   Hint,
@@ -21,6 +22,7 @@ import {
   type TipPreferences,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
+import { statColumnsDrawn } from './kit-drawn.ts';
 import { tipShown } from './term-tip-drawn.ts';
 
 let mounted: Mounted | undefined;
@@ -215,7 +217,27 @@ describe('MP-9-1 stat row columns: stat rows follow the column rules at 1279, 90
     expect(at(sheet('2-primitives.css'), 640)).toMatch(
       /\.stat--row \.stat__num[^{]*\{[^}]*font: var\(--type-num-md\)/u,
     );
-  });
+    // Drawn: rows of two to six in Chromium, at full width, then three at most
+    // by 1279, two by 900 and one by 640, whichever rule a row's width reaches.
+    const declared = [2, 3, 4, 5, 6] as const;
+    const html = declared
+      .map((columns) =>
+        renderToStaticMarkup(
+          <StatRow columns={columns}>
+            {Array.from({ length: columns }, (_, n) => (
+              <Stat key={n} label={`L${String(n)}`} value={n} />
+            ))}
+          </StatRow>,
+        ),
+      )
+      .join('');
+    expect(await statColumnsDrawn(html, [1280, 1279, 900, 640])).toEqual({
+      1280: [2, 3, 4, 5, 6],
+      1279: [2, 3, 3, 3, 3],
+      900: [2, 2, 2, 2, 2],
+      640: [1, 1, 1, 1, 1],
+    });
+  }, 30_000);
 });
 
 describe('MP-9-1 no hint without action: no hint button ships without an action', () => {

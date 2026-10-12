@@ -700,13 +700,19 @@ live('S0-1 containment and resource limits, live', () => {
     // Log size: a flood through the main process's output is rotated away.
     const { 'max-size': maxSize, 'max-file': maxFile } = db.logging!.options!;
     const cap = bytes(maxSize!) * Number(maxFile);
-    inStaging(
+    const flood = inStaging(
       `head -c ${cap + 16 * 1024 ** 2} /dev/zero | tr '\\0' x | fold -w 200 > /proc/1/fd/1`,
     );
-    const kept = spawnSync('sh', ['-c', `docker logs ${project}-backups 2>&1 | wc -c`], {
-      encoding: 'utf8',
-    });
-    expect(Number(kept.stdout.trim())).toBeLessThanOrEqual(cap);
+    expect(flood.status).toBe(0);
+    const kept = Number(
+      spawnSync('sh', ['-c', `docker logs ${project}-backups 2>&1 | wc -c`], {
+        encoding: 'utf8',
+      }).stdout.trim(),
+    );
+    expect(kept).toBeLessThanOrEqual(cap);
+    // The newest rotated files are still there: half the rotated files' size at
+    // least, which the container's own start-up log never reaches.
+    expect(kept).toBeGreaterThan(((Number(maxFile) - 1) * bytes(maxSize!)) / 2);
     await productionGreen();
 
     // Staging itself rode every limit out: no container of it was restarted.

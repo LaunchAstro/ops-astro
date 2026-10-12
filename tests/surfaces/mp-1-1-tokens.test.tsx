@@ -16,6 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
 import { dockOf } from './dock-props.ts';
+import { lightOnly as lightOnlyIn } from './light-only-colours.ts';
 import { captureBuiltPages, withSignedInApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
 import { readPacket, themesOf } from '../visual/packet.ts';
@@ -93,8 +94,6 @@ const CONSTANT = new Set([
   '--warning-light',
   '--danger-light',
 ]);
-const COLOUR_PROPERTY =
-  /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
 const KIT_SHEETS = ['2-controls-and-marks', '2-primitives', '2-empty', '2-forms', '3-shell'];
 const SHEETS = [
   ...[
@@ -109,25 +108,8 @@ const SHEETS = [
   ].map((sheet) => `${styles}${sheet}.css`),
   `${root}apps/web/src/styles/6-slice.css`,
 ];
-const lightOnly = (sets: Sets, name: string, css: string): string[] => {
-  const problems: string[] = [];
-  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
-  for (const match of bare.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/gu)) {
-    const [, property = '', value = ''] = match;
-    if (!COLOUR_PROPERTY.test(property)) continue;
-    const where = `${name} ${property}: ${value.trim()}`;
-    if (/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|lab|lch)\(|\b(white|black)\b/iu.test(value)) {
-      problems.push(`literal colour in ${where}`);
-    }
-    for (const [, token = ''] of value.matchAll(/var\((--[\w-]+)/gu)) {
-      if (sets.light[token] === undefined) problems.push(`undeclared ${token} in ${where}`);
-      else if (sets.light[token] === sets.dark[token] && !CONSTANT.has(token)) {
-        problems.push(`${token} has no dark value, in ${where}`);
-      }
-    }
-  }
-  return problems;
-};
+const lightOnly = (sets: Sets, name: string, css: string): string[] =>
+  lightOnlyIn(sets, name, css, CONSTANT);
 
 describe('MP-1-1 tokens', () => {
   it('MP-1-1 every token paired', () => {
@@ -223,6 +205,16 @@ describe('MP-1-1 tokens', () => {
         '.x { background: #fff; color: var(--void-deep); border-color: var(--nope); }',
       ),
     ).toHaveLength(3);
+    // A named colour is as fixed as a hex one, whatever its name; a token named
+    // after a colour is not a literal.
+    expect(
+      lightOnly(
+        sets,
+        'planted',
+        '.y { color: red; border: 1px solid rebeccapurple; box-shadow: 0 0 0 2px Tomato; }',
+      ),
+    ).toHaveLength(3);
+    expect(lightOnly(sets, 'planted', '.z { color: var(--accent); }')).toEqual([]);
     expect(
       SHEETS.flatMap((sheet) => lightOnly(sets, sheet.slice(root.length), read(sheet))),
     ).toEqual([]);

@@ -196,7 +196,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
   }, 60_000);
 });
 describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
-  it('C58 end other sessions: a body, a session id that is no uuid and a stale sign-out are refused or ignored', async () => {
+  it('C58 end other sessions: a body and a session id that is no uuid are refused or ignored', async () => {
     const here = randomUUID();
     const token = await tokenFor(world.mia.subject, here);
     const before = await endedCount();

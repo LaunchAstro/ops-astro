@@ -121,13 +121,16 @@ it('MP-1-6 the header freshness marker is an indicator only, in five states, and
   ];
   for (const [freshness, words] of cases) {
     const out = html(<FreshnessMarker freshness={freshness} />);
-    const marker =
-      /<span class="fresh fresh--[a-z-]+" role="status">(.*?)<\/span><\/span>|<span class="fresh fresh--[a-z-]+" role="status">(.*?)<\/span>(<a|$)/u.exec(
-        out,
-      );
+    const drawn = document.createElement('div');
+    drawn.innerHTML = out;
+    const marker = drawn.querySelector('[role="status"]');
     expect(out, freshness.state).toContain(words);
-    // The marker itself holds no control and takes no focus.
-    expect(marker?.[0] ?? '', freshness.state).not.toMatch(/<button|<a |tabindex/u);
+    expect(marker?.textContent, freshness.state).toBe(words);
+    // The marker itself holds no control and takes no focus: neither it nor
+    // anything inside it is a control or carries a tab stop.
+    const focusable = 'a[href], button, input, select, textarea, [tabindex], [contenteditable]';
+    expect(marker?.matches(focusable), freshness.state).toBe(false);
+    expect(marker?.querySelectorAll(focusable).length, freshness.state).toBe(0);
   }
   expect(html(<FreshnessMarker freshness={cases[3]![0]} />)).toContain('href="/connections/"');
   // No hover, focus or press look anywhere on the marker.

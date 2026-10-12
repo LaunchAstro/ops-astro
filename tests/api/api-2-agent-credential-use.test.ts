@@ -80,6 +80,33 @@ needsServer(
   },
 );
 
+/**
+ * Until a backend waits on a row lock the transaction `holder` took: blocked
+ * by that backend's pid and waiting on its transaction id, on a connection of
+ * its own. A sleep would only hope the two overlapped.
+ */
+async function waitsBehind(holder: { readonly pid: number; readonly xid: string }): Promise<void> {
+  for (let tries = 0; tries < 400; tries += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polling the server
+    const [row] = await harness.world.db.admin.execute<{ readonly n: number }>(
+      `select count(*)::int as n
+         from pg_stat_activity a
+         join pg_locks l on l.pid = a.pid and not l.granted and l.locktype = 'transactionid'
+        where a.datname = current_database() and a.wait_event_type = 'Lock'
+          and $1::int = any(pg_blocking_pids(a.pid)) and l.transactionid::text = $2`,
+      [holder.pid, holder.xid],
+    );
+    if ((row?.n ?? 0) >= 1) return;
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 25);
+    });
+  }
+  throw new Error('no backend ever waited on the row lock the holder took');
+}
+
+const HOLDER = 'select pg_backend_pid() as pid, pg_current_xact_id()::text as xid';
+
 needsServer(
   'API-2 revocation under the lock: a call behind an open revocation waits for it and is refused',
   async () => {
@@ -87,19 +114,19 @@ needsServer(
     const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 1 });
     const hold = latch();
     const locked = latch();
+    let holder = { pid: -1, xid: '' };
     const revocation = wide.withBusiness(harness.world.alpha, async (tx) => {
       const held = await lockAgentCredential(tx, credential.id);
       if (held === undefined) throw new Error('the credential is not there');
       await revokeAgentCredential(tx, held, harness.world.ada.actorId as string);
+      const [me] = await tx.query<{ pid: number; xid: string }>(HOLDER);
+      if (me !== undefined) holder = me;
       locked.open();
       await hold.promise;
     });
     await locked.promise;
     const behind = comment(bearer(credential.secret));
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 300);
-    });
-    hold.open();
+    await waitsBehind(holder).finally(hold.open);
     await revocation.finally(async () => await wide.close());
     expect((await behind).code).toBe('DELEGATION_NOT_LIVE');
     expect(await agentComments(credential.id)).toBe(0);
