@@ -48,7 +48,7 @@ import { COMMAND_SURFACE, declarationOf, profileOf } from '../../../core-wire/sr
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { runRead } from '../reads/dispatch.ts';
 import type { ReadRequest, ReadResult } from '../reads/requests.ts';
-import { enter, retryOnce, runCommand } from './envelope.ts';
+import { enter, retryOnce, runCommand, type StillStanding } from './envelope.ts';
 import {
   asCallerVisible,
   isCommandRefusal,
@@ -239,7 +239,7 @@ async function attempt(
   const ran =
     declarationOf(request.command).kind === 'read'
       ? await runRead(tx, session, readOf(request))
-      : await runCommand(tx, session, 'api', request);
+      : await runCommand(tx, session, 'api', request, undefined, lapsedSince(standing));
   // Counted here, before the commit: calls let in at once all saw room at the
   // door, and the one that would pass the limit rolls back.
   if (held.slot !== undefined && !isCommandRefusal(ran) && !held.slot.handOut(ran)) {
@@ -247,6 +247,23 @@ async function attempt(
   }
   return ran;
 }
+
+/**
+ * The credential judged again once the command has done its work (#1011): its
+ * row is still held `for share` and the access lock with it, so no revocation,
+ * deactivation or ended membership has committed since it was resolved, and
+ * only its expiry can have passed, read on the database's clock now.
+ */
+const lapsedSince =
+  (standing: CredentialStanding): StillStanding =>
+  async (tx) => {
+    const [row] = await tx.query<{ readonly lapsed: boolean }>(
+      `select expires_at <= clock_timestamp() as lapsed from public.agent_credentials
+        where business_id = $1 and id = $2`,
+      [tx.businessId, standing.credentialId],
+    );
+    return row?.lapsed === false ? undefined : credentialNotLive();
+  };
 
 /** Thrown inside the transaction so an answer over the export limit applies nothing. */
 class ExportLimitReached extends Error {}
