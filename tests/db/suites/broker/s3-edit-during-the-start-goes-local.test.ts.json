@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's edit committed while a cloud call's start waits on the task's share lock must send the call local; the race needs two real connections and read committed."
+}

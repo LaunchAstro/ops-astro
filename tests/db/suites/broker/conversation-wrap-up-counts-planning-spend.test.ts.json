@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation's wrap-up cost item reads its planning ledger; settled priced replies and their spend must be counted from real model_calls rows."
+}

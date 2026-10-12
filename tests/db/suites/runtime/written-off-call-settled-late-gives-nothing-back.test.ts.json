@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A written-off call that settles late must give nothing back to an envelope that never carried it; the write-off, the top-up answer and the settle run on a real database."
+}
