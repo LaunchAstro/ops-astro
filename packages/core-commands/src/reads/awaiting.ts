@@ -12,14 +12,23 @@
 // Whether the wait is the caller's to end is `awaitingTheReader`'s question,
 // answered by `task.decide`'s own rules.
 
-import { readableScope, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  readableScope,
+  readableTaskIds,
+  readableTaskParams,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { Session, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { assignedTo, escalatedDecider, lockedInstant } from '../../../core-runtime/src/index.ts';
 
-/** The gates waiting on these tasks, each with whether it was escalated (T3a). */
+/**
+ * The gates waiting on these tasks, each with whether it was escalated (T3a),
+ * asked only of those `readers` may read now (`readableTaskIds`).
+ */
 async function openGates(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<
   readonly { readonly task_id: string; readonly id: string; readonly escalated: boolean }[]
 > {
@@ -38,17 +47,18 @@ async function openGates(
       where g.business_id = $1
         and g.state = 'pending' and g.expires_at > statement_timestamp()
         and l.state = 'live' and ver.superseded_at is null
-        and run.task_id = any($2::uuid[])`,
-    [tx.businessId, taskIds],
+        and run.task_id = any(${readableTaskIds('$2::uuid[]', 3)})`,
+    [tx.businessId, taskIds, ...readableTaskParams(readers)],
   );
 }
 
-/** The served tasks with a gate waiting for a decision. */
+/** The served tasks `readers` may still read with a gate waiting for a decision; null for every one. */
 export async function awaitingApproval(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlySet<string>> {
-  return new Set((await openGates(tx, taskIds)).map((gate) => gate.task_id));
+  return new Set((await openGates(tx, taskIds, readers)).map((gate) => gate.task_id));
 }
 
 /** Who asks the board, as `task.decide` would see them deciding. */
@@ -90,7 +100,7 @@ export async function awaitingTheReader(
   const granted = [...waiting].filter(
     (taskId) => reach.records === null || reach.records.includes(taskId),
   );
-  const gates = await openGates(tx, granted);
+  const gates = await openGates(tx, granted, reach.subjects);
   const ask = {
     subjects: reach.subjects,
     collection: 'task',

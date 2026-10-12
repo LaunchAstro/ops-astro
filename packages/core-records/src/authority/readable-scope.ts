@@ -92,10 +92,32 @@ export function readableTaskCondition(alias: string, firstParam: number): string
   });
 }
 
-/** The two parameters `readableTaskCondition` reads: the subjects asked of `task`/`read`. */
-export function readableTaskParams(subjects: readonly Subject[]): [string[], string[]] {
+/**
+ * The two parameters `readableTaskCondition` and `readableTaskIds` read: the
+ * subjects asked of `task`/`read`, or two nulls for a caller that has judged
+ * reach already (`readableTaskIds` then keeps every id).
+ */
+export function readableTaskParams(
+  subjects: readonly Subject[] | null,
+): [string[], string[]] | [null, null] {
+  if (subjects === null) return [null, null];
   const asked = askedFor(subjects, { collection: 'task', action: 'read' });
   return [asked.map((subject) => subject.kind), asked.map((subject) => subject.id)];
+}
+
+/**
+ * The tasks of the uuid array `ids` that are live and readable now by the
+ * subjects in `$firstParam` and `$firstParam + 1` (`readableTaskParams`), or
+ * every id when those are null. A statement that reads something of tasks
+ * already served (their gates, time, agents, tags, comments or client) asks
+ * it of this in place of `ids`, so a ticket that left its granted map, or
+ * whose map was retyped, since it was served has nothing more read for it.
+ */
+export function readableTaskIds(ids: string, firstParam: number): string {
+  return `(case when $${String(firstParam)}::text[] is null then ${ids}
+     else array(select rt.id from public.records rt
+                 where rt.id = any(${ids}) and rt.deleted_at is null
+                   and ${readableTaskCondition('rt', firstParam)}) end)`;
 }
 
 /**

@@ -471,7 +471,7 @@ function readBoardRows(
       tx.businessId,
       taskTypeId,
       aggregate ? null : board,
-      ...(readers === null ? [null, null] : readableTaskParams(readers)),
+      ...readableTaskParams(readers),
       aggregate,
       narrowed.person ?? null,
       narrowed.client ?? null,
@@ -483,10 +483,11 @@ async function withTodoEvidence(
   tx: TenantQuery,
   spine: TaskSpine,
   tasks: readonly BoardRead[],
+  readers: readonly Subject[] | null,
 ): Promise<readonly BoardRead[]> {
   const served = tasks.map((task) => task.id);
-  const moves = await movesOf(tx, served);
-  const extras = await extrasForTasks(tx, spine, served);
+  const moves = await movesOf(tx, served, readers);
+  const extras = await extrasForTasks(tx, spine, served, readers);
   return tasks.map((task): BoardRead => ({
     ...task,
     todo: {
@@ -524,15 +525,17 @@ export async function readBoardStamped(
   for (const row of rows) {
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
   }
-  // Asked only of the rows served, so a gate on a task outside the reader's
-  // scope is never read (MP-5-11, MP-5-12), nor a delegation on one (ruling
-  // point 9: the reader's own agents; none for an agent).
+  // Asked only of the rows served that the reader may still read, judged in
+  // each statement, so a gate on a task outside the reader's scope is never
+  // read (MP-5-11, MP-5-12), nor a delegation on one (ruling point 9: the
+  // reader's own agents; none for an agent), nor anything of a ticket that
+  // left its granted map since its row was read.
   const served = rows.map((row) => row.id);
-  const gated = await awaitingApproval(tx, served);
+  const gated = await awaitingApproval(tx, served, readers);
   const ranks = await readRanks(tx, taskTypeId, readers);
-  const actuals = await readActualMinutes(tx, served);
-  const agents = await readBoardAgents(tx, served, reader);
-  const comments = await readBoardComments(tx, served, reader);
+  const actuals = await readActualMinutes(tx, served, readers);
+  const agents = await readBoardAgents(tx, served, reader, readers);
+  const comments = await readBoardComments(tx, served, reader, readers);
   const decides = await awaitingTheReader(tx, gated, decidable);
   const tasks = rows.map((row): BoardRead =>
     Object.assign(summaryOf(row), {
@@ -548,7 +551,7 @@ export async function readBoardStamped(
       comments: comments.get(row.id) ?? NO_COMMENTS,
     }),
   );
-  const projected = spine === undefined ? tasks : await withTodoEvidence(tx, spine, tasks);
+  const projected = spine === undefined ? tasks : await withTodoEvidence(tx, spine, tasks, readers);
   return { tasks: projected, changedAt: newest?.toISOString() ?? null };
 }
 

@@ -46,11 +46,13 @@ export async function readTodos(
   const moves = await movesOf(
     tx,
     rows.map((row) => row.id),
+    null,
   );
   const extras = await extrasForTasks(
     tx,
     spine,
     rows.map((row) => row.id),
+    null,
   );
   const todos: TodoView[] = [];
   for (const row of rows) {

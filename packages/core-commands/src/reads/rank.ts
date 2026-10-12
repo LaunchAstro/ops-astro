@@ -210,7 +210,7 @@ export async function readTaskRank(
       tx.businessId,
       taskTypeId,
       recordId,
-      ...(pool.kind === 'task' ? [null, null] : readableTaskParams(pool.subjects)),
+      ...readableTaskParams(pool.kind === 'task' ? null : pool.subjects),
     ],
   );
   const own = rows.find((row) => row.id === recordId);

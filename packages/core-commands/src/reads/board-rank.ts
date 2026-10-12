@@ -41,7 +41,7 @@ export async function readRanks(
         and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and ($3::text[] is null or ${readableTaskCondition('r', 3)})`,
-    [tx.businessId, taskTypeId, ...(readers === null ? [null, null] : readableTaskParams(readers))],
+    [tx.businessId, taskTypeId, ...readableTaskParams(readers)],
   );
   const now = rows[0]?.now ?? new Date();
   const numbers = numberPool(

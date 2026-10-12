@@ -85,6 +85,7 @@ export {
   readableRecordIds,
   readableScope,
   readableTaskCondition,
+  readableTaskIds,
   readableTaskParams,
   type ReadableScope,
 } from './authority/readable-scope.ts';
