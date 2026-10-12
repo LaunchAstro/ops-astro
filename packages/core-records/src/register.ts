@@ -706,6 +706,13 @@ const ROWS_HEAD = [
     meaning: 'One preset names the same new field key more than once',
     source: 'spec D05',
   },
+  {
+    code: 'PRESET_FIELD_INVALID',
+    status: 422,
+    meaning:
+      'A preset field has a key, label, search setting or operation name a field cannot have',
+    source: 'spec D05',
+  },
 
   // Gates and proposals, T2.
   {
