@@ -13,7 +13,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const sort = (entries) =>
@@ -38,10 +38,7 @@ function safePath(path) {
 
 export function externalOutput(path, roots) {
   const absolute = resolve(path);
-  const canonical = join(
-    realpathSync(dirname(absolute)),
-    absolute.slice(dirname(absolute).length + 1),
-  );
+  const canonical = join(realpathSync(dirname(absolute)), basename(absolute));
   if (roots.some((root) => inside(root, canonical)) || existsSync(canonical)) {
     throw new Error('output must be a new file outside the subject directories');
   }
