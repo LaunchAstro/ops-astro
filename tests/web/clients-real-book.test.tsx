@@ -7,7 +7,6 @@
 // production.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MADE_UP_BOOK } from '../../apps/web/src/data/clients-book.ts';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 import { json, open } from './mp-2-1-support.tsx';
 import { ClientsScreen } from '../../apps/web/src/screens/Clients.tsx';
@@ -102,7 +101,6 @@ describe('the application draws the business’s own clients, never a made-up bo
     expect(names(view)).toStrictEqual(['Coral Coast Yoga', 'Riverbend Bakery']);
     const text = view.find('.clbook')?.textContent ?? '';
     expect(text).not.toContain('Sample data');
-    for (const made of MADE_UP_BOOK.clients) expect(text).not.toContain(made.name);
     expect(view.find('.clbook [data-provenance="mock"]')).toBeNull();
   });
 });

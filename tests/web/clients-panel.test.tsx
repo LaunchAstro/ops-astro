@@ -2,11 +2,9 @@
 // @vitest-environment jsdom
 //
 // The dock's Clients panel (DOCK.md section 2, SL06 p-clients, BUILDABLE-NOW
-// "The Clients panel"): the client book as a list. Client records (MP-10-1)
-// are not built: the application draws no book and says where clients are
-// added; a made-up book handed in carries the design system's mock mark. The
-// count counts the book (D-6), a search that finds nothing says so (D-6), and
-// a row's door obeys the dock's gesture law
+// "The Clients panel"): the client book as a list, the business's own clients
+// as `client.list` names them. The count counts the book (D-6), a search that
+// finds nothing says so (D-6), and a row's door obeys the dock's gesture law
 // (MP-3-4, the pattern of dock-gesture-law.test.tsx).
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,8 +13,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { App } from '../../apps/web/src/App.tsx';
 import { dockTabs, type PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
-import { MADE_UP_BOOK, type ClientBook } from '../../apps/web/src/data/clients-book.ts';
-import { ClientsScreen } from '../../apps/web/src/screens/Clients.tsx';
+import { clientFacetId } from '@launchastro/ui';
+import type { ClientView } from '../../packages/core-wire/src/index.ts';
+import { Book } from '../../apps/web/src/screens/Clients.tsx';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 import { open } from './mp-2-1-support.tsx';
 import { follow } from './frame-support.tsx';
@@ -29,8 +28,8 @@ afterEach(async () => {
   }
 });
 
-async function book(given: ClientBook = MADE_UP_BOOK): Promise<Mounted> {
-  const page = await mount(<ClientsScreen book={given} />);
+async function book(given: readonly ClientView[]): Promise<Mounted> {
+  const page = await mount(<Book clients={given} />);
   live.push(page);
   return page;
 }
@@ -39,14 +38,13 @@ const names = (page: Mounted): string[] =>
   page.all('.clbook__row .clbook__name').map((each) => each.textContent ?? '');
 const count = (page: Mounted): string => page.find('.clbook__count')?.textContent ?? '';
 
-const NOT_YET = 'Clients are added from the command line for now.';
+/** The first row's door: the board at the Client facet for Acme Dental. */
+const ACME_BOARD = `/projects/?${new URLSearchParams({ f: clientFacetId('Acme Dental') }).toString()}`;
 
-const SMALL: ClientBook = {
-  clients: [
-    { slug: 'zeta', name: 'Zeta Yoga', industry: 'Fitness', open: 3, waiting: 0 },
-    { slug: 'acme', name: 'Acme Dental', industry: 'Dental', open: 4, waiting: 0 },
-  ],
-};
+const SMALL: readonly ClientView[] = [
+  { clientId: 'c-zeta', name: 'Zeta Yoga' },
+  { clientId: 'c-acme', name: 'Acme Dental' },
+];
 
 describe('Clients panel registers and draws its tab in rank', () => {
   it('is the clients tab, after team and before Projects, on the users glyph, drawn at /clients/', () => {
@@ -57,88 +55,74 @@ describe('Clients panel registers and draws its tab in rank', () => {
     expect(tab?.route).toBe('agency:clients');
   });
 
-  it('opens from its tab on no made-up book, its head door landing on /clients/', async () => {
+  it('opens from its tab on the book, its head door landing on /clients/', async () => {
     const { view } = await open('/projects/');
     live.push(view);
     await press(view.find('.dock__tab[data-panel="clients"]'));
     const panel = view.find('[data-panel-id="clients"]');
     expect(panel?.querySelector('[data-act="door"]')?.getAttribute('href')).toBe('/clients/');
-    expect(panel?.querySelector('.clbook .clbook__empty')?.textContent).toBe(NOT_YET);
+    expect(panel?.querySelector('.clbook [data-client-add]')).not.toBeNull();
     expect(panel?.textContent).not.toContain('Sample data');
   });
 });
 
 describe('Clients panel reached from the rail and Back to Clients', () => {
-  it("the rail's Clients item lands on the Clients page, not the placeholder", async () => {
+  it("the rail's Clients item lands on the book, not the placeholder", async () => {
     const { view } = await open('/projects/');
     live.push(view);
     await follow(view, '.rail__item[href="/clients/"]');
-    expect(view.find('.content .clbook .clbook__empty')?.textContent).toBe(NOT_YET);
+    expect(view.find('.content .clbook [data-client-add]')).not.toBeNull();
     expect(view.find('[data-outcome="placeholder"]')).toBeNull();
   });
 
-  it("Back to Clients from a client's workspace lands on the Clients page", async () => {
+  it("Back to Clients from a client's workspace lands on the book", async () => {
     const { view } = await open('/clients/acme-dental/');
     live.push(view);
     await follow(view, '.rail .rail__back');
-    expect(view.find('.content .clbook .clbook__empty')?.textContent).toBe(NOT_YET);
+    expect(view.find('.content .clbook [data-client-add]')).not.toBeNull();
   });
 });
 
-describe('Clients panel made-up book', () => {
-  it('draws every client in the book A to Z inside the mock mark, and says the book is made up', async () => {
-    const page = await book();
-    expect(names(page)).toEqual(MADE_UP_BOOK.clients.map((each) => each.name).toSorted());
-    const region = page.find('.clbook [data-provenance="mock"]');
-    expect(region?.querySelector('.clbook__note summary')?.textContent).toBe('Sample data');
-    expect(region?.querySelectorAll('.clbook__row')).toHaveLength(MADE_UP_BOOK.clients.length);
-    expect(page.find('.clbook__note')?.textContent).toMatch(/made up/iu);
-  });
-
-  it('draws each row with its initials, name and industry', async () => {
+describe('Clients panel book', () => {
+  it('draws every client A to Z, each row with its initials and name', async () => {
     const page = await book(SMALL);
-    const first = page.find('.clbook__row');
-    expect(first?.querySelector('.clbook__tile')?.textContent).toBe('AD');
-    expect(first?.querySelector('.clbook__industry')?.textContent).toBe('Dental');
+    expect(names(page)).toEqual(['Acme Dental', 'Zeta Yoga']);
+    expect(page.find('.clbook__row .clbook__tile')?.textContent).toBe('AD');
   });
 });
 
 describe('Clients panel count counts the book', () => {
-  it('counts the rows the book holds, their open work and what waits on us', async () => {
-    const page = await book();
-    const all = MADE_UP_BOOK.clients;
-    const openWork = all.reduce((sum, each) => sum + each.open, 0);
-    const waiting = all.reduce((sum, each) => sum + each.waiting, 0);
-    expect(count(page)).toBe(
-      `${all.length} of ${all.length} clients · ${openWork} open · ${waiting} waiting on us`,
-    );
+  it('counts the rows the book holds', async () => {
+    const page = await book(SMALL);
+    expect(count(page)).toBe('2 of 2 clients');
   });
 
-  it('leaves the waiting clause out when nothing waits on us', async () => {
-    const page = await book(SMALL);
-    expect(count(page)).toBe('2 of 2 clients · 7 open');
+  it('says the book is empty in a sentence when it holds no client', async () => {
+    const page = await book([]);
+    expect(count(page)).toBe('0 of 0 clients');
+    expect(page.find('.clbook__empty')?.textContent).toBe('The book holds no clients yet.');
   });
 });
 
 describe('Clients panel search narrows the book', () => {
-  it('narrows by name or industry, whatever the case, and the count follows', async () => {
+  it('narrows by name, whatever the case, and the count follows', async () => {
     const page = await book(SMALL);
-    await page.type('.clbook input[type="search"]', 'DENTAL');
+    await page.type('.clbook__find input[type="search"]', 'DENTAL');
     expect(names(page)).toEqual(['Acme Dental']);
-    expect(count(page)).toBe('1 of 2 clients · 4 open');
-    await page.type('.clbook input[type="search"]', 'fitness');
+    expect(count(page)).toBe('1 of 2 clients');
+    await page.type('.clbook__find input[type="search"]', 'yoga');
     expect(names(page)).toEqual(['Zeta Yoga']);
   });
 
   it('says so in a sentence when nothing matches', async () => {
     const page = await book(SMALL);
     expect(page.find('.clbook__empty')).toBeNull();
-    await page.type('.clbook input[type="search"]', 'plumbing');
+    await page.type('.clbook__find input[type="search"]', 'plumbing');
     expect(names(page)).toEqual([]);
     expect(page.find('.clbook__empty')?.textContent).toBe(
       'No client in the book matches “plumbing”.',
     );
-    expect(count(page)).toBe('0 of 2 clients · 0 open');
+    expect(count(page)).toBe('0 of 2 clients');
   });
 });
 
@@ -204,17 +188,17 @@ const openIds = (page: Mounted): (string | undefined)[] =>
 async function rowDoor(page: Mounted): Promise<Element | null> {
   await press(page.find('.dock__tab[data-panel="settings"]'));
   const body = page.find('[data-panel-id="settings"] .dpanel__body') as HTMLElement;
-  body.insertAdjacentHTML('beforeend', renderToStaticMarkup(<ClientsScreen book={SMALL} />));
+  body.insertAdjacentHTML('beforeend', renderToStaticMarkup(<Book clients={SMALL} />));
   return body.querySelector('.clbook__item .clbook__door');
 }
 
 describe('Clients panel row doors follow the gesture law', () => {
-  it('a plain press on a row door solos the Projects panel at the board', async () => {
+  it('a plain press on a row door solos the Projects panel at the board filtered to that client', async () => {
     const page = await app(WITH_PROJECTS);
     await press(await rowDoor(page));
     expect(openIds(page)).toEqual(['todos']);
     expect(page.find('[data-panel-id="todos"] [data-act="door"]')?.getAttribute('href')).toBe(
-      '/projects/',
+      ACME_BOARD,
     );
   });
 
@@ -228,6 +212,6 @@ describe('Clients panel row doors follow the gesture law', () => {
     const went: string[] = [];
     const page = await app(WITHOUT_PROJECTS, went);
     await press(await rowDoor(page));
-    expect(went.at(-1)).toBe('/projects/');
+    expect(went.at(-1)).toBe(ACME_BOARD);
   });
 });
