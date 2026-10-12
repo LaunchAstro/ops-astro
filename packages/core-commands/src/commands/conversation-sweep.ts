@@ -41,6 +41,8 @@ export interface SweepRequest {
   /** The code revision the pass runs, recorded on each wrap-up. */
   readonly codeRevision: string;
   readonly lockTimeoutMs?: number;
+  /** Once aborted, the pass starts no further conversation; the one under way finishes. */
+  readonly signal?: AbortSignal;
 }
 
 export interface SweepReport {
@@ -140,6 +142,7 @@ export async function sweepConversations(
   const held: Held[] = [...found.held];
   const failed: { conversationId: string; stage: 'wrap_up' | 'purge' }[] = [];
   for (const { id } of found.quiet) {
+    if (request.signal?.aborted === true) break;
     try {
       // eslint-disable-next-line no-await-in-loop -- one conversation, one transaction, in turn
       const outcome = await database.withBusiness(businessId, async (tx) => {
@@ -153,6 +156,7 @@ export async function sweepConversations(
   }
   if (found.windowUnreadable) return { wrapped, purged, held, failed, windowUnreadable: true };
   for (const { id, last_activity_at: lastActivityAt } of found.purgeable) {
+    if (request.signal?.aborted === true) break;
     const operationId = sweepPurgeOperationId(id, lastActivityAt);
     let outcome;
     try {

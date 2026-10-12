@@ -10,7 +10,7 @@
 // restarts more often than the interval still sweeps. A business whose pass
 // throws is that business's failure and the round goes on to the next; a
 // round that cannot read its businesses is logged and the next tick tries
-// again. `stop` starts no round and no business after it, and resolves once a
+// again. `stop` starts no round, business or conversation after it, and resolves once a
 // pass in flight has ended, so the pool outlives every pass; a failure's
 // raise still running is not waited on.
 //
@@ -88,10 +88,27 @@ function failuresOf(businessId: string, report: SweepReport): SweepFailure[] {
   return failures;
 }
 
+/** A failure handed to `raise`; once stopped, a raise still running is not waited on: one may never answer. */
+function handOf(
+  raise: NonNullable<SweeperOptions['raise']>,
+  stopping: AbortSignal | undefined,
+): (failure: SweepFailure) => Promise<void> {
+  const stopped = new Promise<void>((resolve) => {
+    stopping?.addEventListener('abort', () => resolve(), { once: true });
+  });
+  return async (failure) => {
+    try {
+      await Promise.race([raise(failure), stopped]);
+    } catch {
+      console.error('conversation sweep: a failure could not be raised');
+    }
+  };
+}
+
 /**
  * One round's work, over `options.businesses()`, holding which causes are
  * open in each business from one round to the next. `stopping`, once aborted,
- * starts no further business.
+ * starts no further business, and the pass under way no further conversation.
  */
 export function sweepRound(
   database: Database,
@@ -99,19 +116,8 @@ export function sweepRound(
   stopping?: AbortSignal,
 ): () => Promise<void> {
   const open = new Map<string, ReadonlySet<SweepFailureCause>>();
-  const raise = options.raise ?? logSweepFailure;
   const sweep = options.sweep ?? sweepConversations;
-  // Once stopped, a raise still running is not waited on: one may never answer.
-  const stopped = new Promise<void>((resolve) => {
-    stopping?.addEventListener('abort', () => resolve(), { once: true });
-  });
-  const hand = async (failure: SweepFailure): Promise<void> => {
-    try {
-      await Promise.race([raise(failure), stopped]);
-    } catch {
-      console.error('conversation sweep: a failure could not be raised');
-    }
-  };
+  const hand = handOf(options.raise ?? logSweepFailure, stopping);
   const one = async (businessId: string): Promise<void> => {
     const before = open.get(businessId) ?? new Set<SweepFailureCause>();
     let failures: SweepFailure[];
@@ -121,6 +127,7 @@ export function sweepRound(
         businessId,
         codeRevision: options.codeRevision,
         ...(options.lockTimeoutMs === undefined ? {} : { lockTimeoutMs: options.lockTimeoutMs }),
+        ...(stopping === undefined ? {} : { signal: stopping }),
       });
       failures = failuresOf(businessId, report);
       now = new Set(failures.map((failure) => failure.cause));
