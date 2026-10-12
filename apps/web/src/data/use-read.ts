@@ -34,7 +34,13 @@ export interface UseReadOptions<T> {
   readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
   /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
   readonly rollup?: RollupFloor;
+  /** Which published answers break what the host admits; refused or out when absent. */
+  readonly breaks?: (state: ReadState<T>) => boolean;
 }
+
+/** An answer that drops the last one: refused or out. */
+export const dropsAnswer = (state: ReadState<unknown>): boolean =>
+  state.outcome === 'denied' || state.outcome === 'unavailable';
 
 export interface UseReadResult<T> {
   readonly state: ReadState<T>;
@@ -57,6 +63,11 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * a host that must not draw from it treats it as still loading.
    */
   readonly own: boolean;
+  /**
+   * How many published answers were breaks (`breaks`), counted as each lands,
+   * so a break React never draws, batched with its recovery, still counts.
+   */
+  readonly breaks: number;
 }
 
 /** The states a projection starts from: a first read, not a re-read of one. */
@@ -112,6 +123,9 @@ function untilAnswered(reload: () => void): () => void {
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const [held, setState] = useState<ReadState<T>>(() => opened<T>(options.grantKey));
+  const [breaks, setBreaks] = useState(0);
+  const breaksRef = useRef(options.breaks ?? dropsAnswer);
+  breaksRef.current = options.breaks ?? dropsAnswer;
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
   runRef.current = options.run;
@@ -146,10 +160,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   }, [reread]);
 
   useEffect(() => {
+    const onState = (next: ReadState<T>): void => {
+      setState(next);
+      if (breaksRef.current(next)) setBreaks((count) => count + 1);
+    };
     const projection = new AuthorisedRead<T>(
-      isEmpty === undefined
-        ? { grantKey, onState: setState }
-        : { grantKey, onState: setState, isEmpty },
+      isEmpty === undefined ? { grantKey, onState } : { grantKey, onState, isEmpty },
     );
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
@@ -188,6 +204,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     refresh,
     own,
     live: own && liveRef.current && state.outcome === 'loading',
+    breaks,
   };
 }
 
