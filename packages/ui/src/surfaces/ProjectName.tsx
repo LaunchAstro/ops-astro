@@ -145,6 +145,8 @@ function Rename(props: {
         setDraft(event.target.value);
       }}
       onKeyDown={(event) => {
+        // A key that confirms an input method's candidate is the method's.
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') finish(true);
         if (event.key === 'Escape') finish(false);
       }}
