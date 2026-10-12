@@ -31,6 +31,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { moveDecidedGate } from './decided-gate-move.ts';
+import { moveLineage, onOwnClients, readerOf } from './decided-lineage-task-move.ts';
 
 type Decision = 'approve' | 'reject' | 'request_changes';
 
@@ -274,5 +275,21 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
     }
 
     await expectIntegrityFault(current, taskId, /seq 1: gate .* is bound to version/u);
+  }, 60_000);
+
+  it("fails the read of another client's task that a decided lineage and its run were moved onto", async () => {
+    world = await createWorld('r2fr2');
+    const [taskA, taskB] = [await createTask(world), await createTask(world)];
+    await onOwnClients(world, [taskA, taskB]);
+    const on = await propose(world, taskA);
+    await decide(world, on, 'approve');
+    const reader = await readerOf(world, taskB);
+    await moveLineage(world, on.lineageId, taskB);
+
+    const read = { operationId: randomUUID(), recordId: taskB };
+    const answer = await call(world.api, personPath('alpha', '/task/read'), read, bearer(reader));
+    expect(answer.body['code'], "B's reader sees none of A's").toBe('DECISION_INTEGRITY');
+    expect(JSON.stringify(answer.body)).not.toContain('draft a reply');
+    await expectIntegrityFault(world, taskB, /seq 1: version .*'s task is not/u);
   }, 60_000);
 });

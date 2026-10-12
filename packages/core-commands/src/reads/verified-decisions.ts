@@ -66,7 +66,10 @@
 // version and pack; that version's pack must hold the digest the decision
 // signed, and its stored body must still hash to that digest; and the body's
 // version number, lineage, ceiling, currency, purpose and payload must be the
-// version row's, and the row's payload digest the one the body recomputes.
+// version row's, its task the task its lineage is on now, and the row's payload
+// digest the one the body recomputes. A lineage and its run moved onto another
+// task, perhaps another client's, fail there rather than show one task's
+// approved work on the other.
 // A gate moved onto another version, a pack body rewritten under its old
 // digest or a version's ceiling, purpose, payload or digest rewritten fails
 // as a broken link does. A gate is per version (`gates_version_idx`) and so
@@ -154,6 +157,7 @@ interface BoundEvidence {
   readonly dv_purpose: string | null;
   readonly dv_payload: unknown;
   readonly dv_payload_digest: string | null;
+  readonly dl_task_id: string | null;
   readonly dp_id: string | null;
   readonly dp_rendered: Record<string, unknown> | null;
   readonly dp_rendered_digest: string | null;
@@ -292,12 +296,13 @@ function splitShown({
   dv_purpose,
   dv_payload,
   dv_payload_digest,
+  dl_task_id,
   dp_id,
   dp_rendered,
   dp_rendered_digest,
   ...row
 }: ChainRow): readonly [VerifiedDecisionRow, BoundEvidence] {
-  const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id };
+  const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id, dl_task_id };
   const version = { dv_maximum_minor, dv_currency, dv_purpose, dv_payload, dv_payload_digest };
   return [row, { ...shown, ...version, dp_id, dp_rendered, dp_rendered_digest }];
 }
@@ -331,6 +336,7 @@ function unboundEvidence(row: VerifiedDecision, shown: BoundEvidence | undefined
   const fields = [
     ['version', shown.dv_version, rendered['version']],
     ['lineage_id', shown.dv_lineage_id, rendered['lineage']],
+    ['task', shown.dl_task_id, rendered['task']],
     ['maximum_minor', Number(shown.dv_maximum_minor), signed?.['maximumMinor']],
     ['currency', shown.dv_currency, signed?.['currency']],
     ['purpose', shown.dv_purpose, rendered['purpose']],
@@ -554,7 +560,7 @@ async function readSnapshot(
                 dv.version as dv_version, dv.lineage_id as dv_lineage_id,
                 dv.maximum_minor::text as dv_maximum_minor, dv.currency as dv_currency,
                 dv.purpose as dv_purpose, dv.payload as dv_payload,
-                dv.payload_digest as dv_payload_digest,
+                dv.payload_digest as dv_payload_digest, dl.task_id as dl_task_id,
                 dp.id as dp_id, dp.rendered as dp_rendered, dp.rendered_digest as dp_rendered_digest
            from public.gate_decisions d
            cross join wanted
@@ -565,6 +571,8 @@ async function readSnapshot(
            left join public.proposal_versions dv
              on dv.business_id = d.business_id and dv.id = d.version_id
             and d.lineage_id in (select lineage_id from lineages)
+           left join public.proposal_lineages dl
+             on dl.business_id = dv.business_id and dl.id = dv.lineage_id
            left join public.evidence_packs dp
              on dp.business_id = d.business_id and dp.version_id = d.version_id
             and d.lineage_id in (select lineage_id from lineages)
