@@ -243,7 +243,9 @@ describe('MP-5-9 open the task beside the board', () => {
       vi.useRealTimers();
     }
   });
+});
 
+describe('MP-5-9 a slow double-click renames', () => {
   it.each([
     ['with', true],
     ['without', false],
@@ -269,7 +271,7 @@ describe('MP-5-9 open the task beside the board', () => {
           await vi.advanceTimersByTimeAsync(1000);
         });
         expect(calls.opens).toStrictEqual([]);
-        expect(board.find(RENAME('open'))).not.toBeNull();
+        expect(one(board, RENAME('open'))).not.toBeNull();
       } finally {
         vi.useRealTimers();
       }

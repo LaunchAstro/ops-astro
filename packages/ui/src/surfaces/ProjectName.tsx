@@ -68,12 +68,7 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
   const { row, href, actions } = props;
   // The row as the rename opened on it: its name is typed over that one.
   const [renaming, setRenaming] = useState<ProjectRow | null>(null);
-  const opening = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopOpening = (): void => {
-    if (opening.current !== null) clearTimeout(opening.current);
-    opening.current = null;
-  };
-  useEffect(() => stopOpening, []);
+  const { opening, stopOpening } = useOpening();
 
   if (renaming !== null) {
     return (
@@ -96,12 +91,10 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
         const onOpen = actions?.onOpen;
         if (onOpen === undefined || followsLink(event)) return;
         event.preventDefault();
-        // A second click while the open waits, however slow, is a rename.
-        if (opening.current !== null && actions?.onRename !== undefined) {
-          stopOpening();
-          return setRenaming(row);
-        }
+        const waiting = opening.current !== null;
         stopOpening();
+        // A second click while the open waits, however slow, is a rename.
+        if (waiting && actions?.onRename !== undefined) return setRenaming(row);
         if (event.shiftKey) return onOpen(row, true);
         opening.current = setTimeout(() => {
           opening.current = null;
@@ -118,6 +111,17 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
       {row.name}
     </a>
   );
+}
+
+/** The open a plain click starts, waiting `OPEN_DELAY_MS`, and how to stop it. */
+function useOpening() {
+  const opening = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopOpening = (): void => {
+    if (opening.current !== null) clearTimeout(opening.current);
+    opening.current = null;
+  };
+  useEffect(() => stopOpening, []);
+  return { opening, stopOpening };
 }
 
 /**
