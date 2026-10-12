@@ -80,6 +80,11 @@ import {
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
 import { manifestPathIn, readIsolationSuites, readNamedSuites, suiteList } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
+// One verdict line per run item, the only lines the journey's protected
+// verdicts read. Kept beside its reader; exported here as the runner's own.
+import { verdictLine } from './local/journey-proofs.ts';
+
+export { verdictLine };
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
@@ -601,6 +606,7 @@ for (const { item, moved, readError, seconds } of results) {
       : `db-conformance: ${item} was not measured: a counter read failed.`,
   );
 }
+for (const result of results) console.log(verdictLine(result.item, { ...result, cost: selfCost }));
 
 const ofNamed =
   shard === undefined ? '' : `ran ${String(toRun.length)} of ${String(items.length)} item(s) from `;
