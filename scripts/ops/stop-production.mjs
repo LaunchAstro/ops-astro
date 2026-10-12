@@ -52,9 +52,16 @@ const errors = String(stopped.stderr ?? '')
   .split('\n')
   .filter((line) => line.trim() !== '');
 if (errors.length > 0) console.error(errors.join('\n'));
+// A stop ended by a signal, or one that never ran, did not complete, whatever
+// it printed first. Only then may an exit Docker itself reports (status 1)
+// whose every line names a missing container stand as the stop.
+const completed = stopped.signal === null && stopped.error === undefined;
 const onlyAbsent =
-  errors.length > 0 && errors.every((line) => /No such container: \S+$/u.test(line));
-if (stopped.status !== 0 && !onlyAbsent) {
+  completed &&
+  stopped.status === 1 &&
+  errors.length > 0 &&
+  errors.every((line) => /No such container: \S+$/u.test(line));
+if (!completed || (stopped.status !== 0 && !onlyAbsent)) {
   console.error(
     'stop-production: FAILED: docker stop did not complete; no record written. ' +
       'Check both containers with the service manager before anything else.',

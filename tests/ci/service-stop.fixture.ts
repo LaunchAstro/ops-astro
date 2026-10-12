@@ -74,9 +74,10 @@ export interface Fake {
  * the system's own folders, which hold no docker, so a call that escapes the
  * fake fails instead of reaching a live service. `inspect` answers with the
  * production containers running, as they are before the stop. `stop` writes
- * `stopErrors` to standard error, as Docker reports a container it cannot stop.
+ * `stopErrors` to standard error, as Docker reports a container it cannot stop,
+ * then exits with `stopExit`, or ends on SIGTERM for `'TERM'`.
  */
-export const fake = (stopExit = 0, stopErrors = ''): Fake => {
+export const fake = (stopExit: number | 'TERM' = 0, stopErrors = ''): Fake => {
   const bin = mkdtempSync(join(scratch, 'bin-'));
   const calls = join(bin, 'calls.log');
   const inspect = JSON.stringify(
@@ -88,7 +89,7 @@ export const fake = (stopExit = 0, stopErrors = ''): Fake => {
   );
   writeFileSync(
     join(bin, 'docker'),
-    `#!/bin/sh\necho "docker $*" >> '${calls}'\nif [ "$1" = stop ]; then printf '%s' '${stopErrors}' >&2; exit ${stopExit}; fi\nif [ "$1" = ps ]; then echo ${'a'.repeat(64)}; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nexit 2\n`,
+    `#!/bin/sh\necho "docker $*" >> '${calls}'\nif [ "$1" = stop ]; then printf '%s' '${stopErrors}' >&2; ${stopExit === 'TERM' ? 'kill -TERM $$' : `exit ${stopExit}`}; fi\nif [ "$1" = ps ]; then echo ${'a'.repeat(64)}; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nexit 2\n`,
   );
   writeFileSync(
     join(bin, 'launchctl'),

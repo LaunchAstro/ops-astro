@@ -244,6 +244,18 @@ function parkedStopCases() {
     expect(JSON.parse(records[0]!)).toMatchObject({ action: 'production stopped' });
   });
 
+  it('a stop ended by a signal fails, though it printed only a missing container', async () => {
+    const at = fake('TERM', 'Error response from daemon: No such container: ops-astro-worker\n');
+    const result = spawn(
+      STOP,
+      [],
+      environment(at, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
+    );
+    expect(result.status, result.out).toBe(1);
+    expect(result.out).toMatch(/FAILED/u);
+    expect(readdirSync(at.records)).toEqual([]);
+  });
+
   it('a stop that fails for any other reason fails, beside a missing container', async () => {
     const errors = [
       'Error response from daemon: No such container: ops-astro-worker',
