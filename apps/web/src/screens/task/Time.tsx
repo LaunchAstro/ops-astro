@@ -66,11 +66,13 @@ function EntryNote(props: {
     if (event.key === 'Escape') setDraft(null);
     if (event.key !== 'Enter' || draft === null) return;
     event.preventDefault();
+    const sent = draft;
     props.run(
-      () => props.client.mutate('time.set_note', { entryId: entry.id, note: draft }),
+      () => props.client.mutate('time.set_note', { entryId: entry.id, note: sent }),
       (settlement) => {
         if (settlement.kind !== 'ok') return;
-        setDraft(null);
+        // Words typed while it was saving are not this answer's to close.
+        setDraft((current) => (current === sent ? null : current));
         props.onChanged();
       },
     );
