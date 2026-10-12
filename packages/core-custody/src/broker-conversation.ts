@@ -19,7 +19,7 @@ import {
   WAIT_SECONDS,
   type ReservedCall,
 } from './broker-reserve.ts';
-import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
+import { closed, hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -180,7 +180,7 @@ async function sendAndSettle(
       const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
       return await hold(tx, called, observed, null, broker);
     }
-    await settlePriced(tx, called, settlement, broker);
+    if (!(await settlePriced(tx, called, settlement, broker))) return closed(callId);
     const { text } = settlement.answer;
     return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
   });
