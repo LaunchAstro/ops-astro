@@ -8,8 +8,10 @@
 // one into tickets through `map.graduate`, which retires the patch in the same
 // version. The open form and its lines are held above the read (`Drafts`), so
 // a graduate refused VERSION_STALE keeps them over the reread map; if the
-// reread map no longer has the form's patch, the lines stay on screen to copy
-// or dismiss, with no save offered against a patch that is gone.
+// reread map no longer has the form's patch, the lines it already holds as
+// tickets (a graduation whose answer was lost) are shown as graduated, and
+// only the others stay on screen to copy or dismiss, with no save offered
+// against a patch that is gone.
 
 import type { ReactElement } from 'react';
 import type { MapFrontierResult, MapView } from '../../../../../packages/core-wire/src/index.ts';
@@ -56,22 +58,36 @@ export function FrontierView(props: {
   );
 }
 
+/** A form's typed lines, split by whether the reread map already holds them as tickets. */
+function reconciled(map: MapView, lines: readonly Line[]) {
+  const held = new Set(map.tickets.map((ticket) => `${ticket.type}\u0000${ticket.title ?? ''}`));
+  const typed = lines.filter((line) => line.title.trim() !== '');
+  const stored = (line: Line): boolean => held.has(`${line.type}\u0000${line.title.trim()}`);
+  return {
+    done: typed.filter((line) => stored(line)),
+    owed: typed.filter((line) => !stored(line)),
+  };
+}
+
 export function FogView(props: FogProps): ReactElement {
   const { map } = props;
   const { graduating, setGraduating } = props.drafts;
   const gone = graduating !== null && !map.fog.some((patch) => patch.id === graduating.patch);
+  // What the server committed is shown as graduated; only what it did not is kept to copy.
+  const { done, owed } = gone ? reconciled(map, graduating.lines) : { done: [], owed: [] };
   // A form kept to copy, or over a stale save, is not replaced by another.
-  const held = gone || props.drafts.conflict === 'graduate';
+  const held = owed.length > 0 || props.drafts.conflict === 'graduate';
+  const dismiss = (): void => {
+    setGraduating(null);
+  };
   return (
     <Section name="fog-view" label="Fog">
-      {gone ? (
-        <GoneForm
-          lines={graduating.lines}
-          onDismiss={() => {
-            setGraduating(null);
-          }}
-        />
-      ) : null}
+      {done.length === 0 ? null : (
+        <p className="sbact__meta" data-graduate-done="">
+          Graduated into tickets: {done.map((line) => line.title.trim()).join(', ')}.
+        </p>
+      )}
+      {owed.length === 0 ? null : <GoneForm lines={owed} onDismiss={dismiss} />}
       {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
       <ul>
         {map.fog.map((patch) => (
