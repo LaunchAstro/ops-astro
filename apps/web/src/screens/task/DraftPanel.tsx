@@ -48,6 +48,8 @@ const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 interface Settled {
   readonly refusal: string | null;
   readonly missed: { readonly taskKey: string; readonly parts: readonly string[] } | null;
+  /** A held Create's retry was refused: the person may stop waiting for it. */
+  readonly mayLetGo?: boolean;
 }
 
 /** Each host's Create still out, by the hold it took; the draft's latest mount shows its answer. */
@@ -151,7 +153,27 @@ function DraftActions(props: {
           Cancel
         </button>
       </div>
+      <LetGo kept={kept} creating={creating} />
     </>
+  );
+}
+
+/**
+ * Stop waiting, offered once a held Create's retry was refused: the Create is
+ * let go by its id and the words stay, so the next Create is a new request.
+ */
+function LetGo(props: { readonly kept: Kept; readonly creating: Creating }): ReactElement | null {
+  const { kept, creating } = props;
+  const held = kept.attempt;
+  if (held === null || creating.busy || creating.mayLetGo !== true) return null;
+  const letGo = (): void => {
+    kept.settled(held.id);
+    creating.show({ refusal: null, missed: null });
+  };
+  return (
+    <button className="btn btn--secondary" type="button" data-draft="let-go" onClick={letGo}>
+      Stop waiting for this change
+    </button>
   );
 }
 
@@ -185,7 +207,8 @@ function DraftHead(props: {
 /** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
 function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
   if (outcome.kind !== 'unknown') kept.settled(at.id);
-  if (outcome.kind !== 'created') return { refusal: outcome.because, missed: null };
+  if (outcome.kind !== 'created')
+    return { refusal: outcome.because, missed: null, mayLetGo: outcome.retryRefused === true };
   dropDraft(props.storage, props.person);
   if (outcome.missed.length > 0) {
     return { refusal: null, missed: { taskKey: outcome.key, parts: outcome.missed } };
@@ -252,5 +275,5 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     }
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
   };
-  return { ...view, create };
+  return { ...view, create, show };
 }
