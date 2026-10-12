@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reset takes a place among open reset windows before its token is spent: a full room refuses with the token live, the token is judged after the room wait, and a window with its provider answer out still counts"
+}
