@@ -19,6 +19,14 @@ import { ci, ISOLATION_COUNT, LOCAL_COUNT } from './ci-shards.fixture.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
+// Each collection case spawns `vitest list` once whole and once per part, each spawn capped at
+// LIST_CAP_MS, so the case's own limit covers every spawn of the most-split suite: a busy shard
+// slows each spawn, and one limit for all of them timed out first (run 38254689100).
+const LIST_CAP_MS = 60_000;
+const MOST_PARTS = Math.max(
+  ...Object.values(readPlan(join(root, 'tests/db/shard-plan.json')).parts),
+);
+
 it('partition proofs exercise the shard counts CI actually runs', () => {
   expect(
     [LOCAL_COUNT, ISOLATION_COUNT],
@@ -124,7 +132,7 @@ it.each(['tests/acceptance/d06-agent.test.ts', 'tests/acceptance/d06-generated.t
           {
             cwd: root,
             encoding: 'utf8',
-            timeout: 30_000,
+            timeout: LIST_CAP_MS,
             env: {
               ...process.env,
               DATABASE_URL: 'postgres://unused@127.0.0.1:1/collection_only',
@@ -165,5 +173,5 @@ it.each(['tests/acceptance/d06-agent.test.ts', 'tests/acceptance/d06-generated.t
       rmSync(dir, { recursive: true, force: true });
     }
   },
-  120_000,
+  (MOST_PARTS + 1) * LIST_CAP_MS,
 );
