@@ -41,20 +41,25 @@ const resyncs = (writes: readonly { event: string }[]) =>
 
 it('a hidden inbox item cannot borrow a stale digest after a visible task resync', async () => {
   const personId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-  let shown = 'before title change';
+  const taskId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  // The visible task's title is in the task digest; the inbox stays the same.
+  let reach = 'visible tasks before title change';
   const board = rig({
     joinedAs: () => Promise.resolve(personId),
-    reach: () => Promise.resolve('same visible tasks'),
-    shown: () => Promise.resolve(shown),
+    reach: () => Promise.resolve(reach),
+    shown: () => Promise.resolve('same inbox'),
   });
   try {
     await vi.waitFor(() => expect(resyncs(board.writes)).toBe(1));
-    shown = 'after visible task title change';
-    board.emit({ kind: 'task', taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' });
+    reach = 'visible tasks after title change';
+    board.emit({ kind: 'task', taskId });
     await vi.waitFor(() => expect(resyncs(board.writes)).toBe(2));
     board.emit({ kind: 'inbox' }); // The hidden item changes nothing in `shown`.
     await new Promise((resolve) => { setTimeout(resolve, 20); });
     expect(resyncs(board.writes)).toBe(2);
+    // A frame says only that the reads moved: no data, no task named.
+    expect(board.writes.every((frame) => frame.data === '')).toBe(true);
+    expect(JSON.stringify(board.writes)).not.toContain(taskId);
   } finally {
     await board.stop();
   }
@@ -89,3 +94,4 @@ it('a remapped bearer hears no old-person task resync while reach is in flight',
     await board.stop();
   }
 });
+
