@@ -93,7 +93,8 @@ function credentialOf(key: string) {
 }
 
 // The runner takes the home before anything is written: a second start on a
-// live home is refused with the filed key still the one the first runner serves.
+// live home is refused with the filed key still the one the first runner serves,
+// and a start on a taken port lets the home go again.
 async function claimHome(
   settings: RunnerSettings,
   port: number,
@@ -102,12 +103,14 @@ async function claimHome(
   try {
     return { ok: true, runner: await createRunner(settings, print, port) };
   } catch (error) {
-    if (!String(error).includes('LOCAL_HOME_IN_USE')) throw error;
-    return {
-      ok: false,
-      code: 'LOCAL_HOME_IN_USE',
-      message: 'another runner holds this OPS_LOCAL_AGENT_HOME',
-    };
+    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      const message = 'OPS_LOCAL_AGENT_PORT is in use: set a free port, or unset it';
+      return { ok: false, code: 'PORT_IN_USE', message };
+    }
+    const why = /^LOCAL_HOME_IN_USE: (.*)$/u.exec(String((error as Error).message))?.[1];
+    if (why === undefined) throw error;
+    // In the lock's own words: a takeover left unfinished names the file to remove.
+    return { ok: false, code: 'LOCAL_HOME_IN_USE', message: why };
   }
 }
 

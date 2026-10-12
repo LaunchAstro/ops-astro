@@ -36,8 +36,11 @@ for. Staging has no real model yet.
 - A runner home someone else owns (`HOME_NOT_OWNED`) or that others can
   write to (`HOME_NOT_PRIVATE`; `chmod 700` it), a home or installation
   name holding a quote or line break, or a port that is not a port
-  (`SETTING_MALFORMED`), and a second start while a runner holds the home
-  (`LOCAL_HOME_IN_USE`).
+  (`SETTING_MALFORMED`), a set `OPS_LOCAL_AGENT_PORT` something else
+  already listens on (`PORT_IN_USE`; the home is let go, so a start on a free
+  port works), and a second start while a runner holds the home
+  (`LOCAL_HOME_IN_USE`; a takeover a stopped runner left unfinished names the
+  `runner.lock.takeover` file to remove).
 - A runner home whose Codex login is not the ChatGPT plan: an API-key login
   would bill per call, so `pnpm local-agent` stops with `CODEX_NOT_SIGNED_IN`.
 - **Chat about a client.** GPT is a cloud model, so the owner's rule on client
