@@ -285,21 +285,24 @@ const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
 async function serveComment(
   tx: TenantQuery,
-  { session, request, declaration }: AgentCall,
+  call: AgentCall,
   _operands: NoOperands,
   delegation: Delegation,
   taskId: string | undefined,
 ) {
-  // The agent's own picked-up task: `authorise` has already held the
-  // delegation's purpose scope to this record and its `comment` action to
-  // the delegating person's live grant. The task is locked by the person
-  // path's own `lockTask`, the same statement and filter, and the
+  // The agent's own picked-up task, held by `authorise` to the delegation's
+  // purpose scope and its `comment` action to the person's live grant. The
+  // task is locked by the person path's own `lockTask`, and authority asked
+  // again under it (#1009): a grant revoked during that wait refuses. The
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
+  const { session, request, declaration } = call;
   if (taskId === undefined) return NOT_FOUND();
   const spine = await readTaskSpine(tx);
   const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
+  const lapsed = await askedAgain(tx, call, delegation, task);
+  if (lapsed !== undefined) return refused(lapsed);
   return await writeTaskComment(
     tx,
     {
@@ -412,12 +415,13 @@ const serveCommentChange =
   };
 
 /**
- * The agent entry's authority asked again once the comment is locked, as
- * `authorise` asked it. The delegation and, for a helper, its parent are held
- * `for share` first, after the task (the global order's delegation class): a
- * `delegation.revoke` writes the row, so one that has not committed waits for
- * the change. A helper has no lease of its own and revoking it takes no task
- * lock, so nothing else orders that revocation with this change.
+ * The agent entry's authority asked again once its task, or its comment, is
+ * locked, as `authorise` asked it. The delegation and, for a helper, its
+ * parent are held `for share` first, after the task (the global order's
+ * delegation class): a `delegation.revoke` writes the row, so one that has
+ * not committed waits for the write. A helper has no lease of its own and
+ * revoking it takes no task lock, so nothing else orders that revocation
+ * with this write.
  */
 async function askedAgain(
   tx: TenantQuery,
@@ -463,16 +467,20 @@ const serveOwnedWrite =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof setScores>) =>
-  async (tx, { request }, _operands, delegation, taskId) => {
+  async (tx, call, _operands, delegation, taskId) => {
     // `authorise` has held the delegation to this task and its `write` action
-    // to the delegating person's live grant. The lock and the revision are the
+    // to the delegating person's live grant, and it is asked again under the
+    // task's lock (`askedAgain`, #1009). The lock and the revision are the
     // person envelope's (`prepareCommand`), so the two entries refuse a stale
     // write in the same words. `fields` is read here, after authority, so an
     // agent holding nothing is told that before it is told about its body.
+    const { request } = call;
     if (taskId === undefined) return NOT_FOUND();
     const spine = await readTaskSpine(tx);
     const target = await lockTask(tx, spine.taskTypeId, taskId);
     if (target === undefined) return NOT_FOUND();
+    const lapsed = await askedAgain(tx, call, delegation, target);
+    if (lapsed !== undefined) return refused(lapsed);
     if (expectedRevisionOf(request) !== target.revision) {
       return refused(
         refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
