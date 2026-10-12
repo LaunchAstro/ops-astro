@@ -13,7 +13,7 @@
 // so the isolation cases can look for it where it must not be.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -90,6 +90,16 @@ const pausing = (tx: TenantQuery, needle: string, before: () => Promise<void>): 
     },
   };
 };
+
+/** `ok`, or the SQLSTATE a write was refused with. */
+async function outcomeOf(write: () => Promise<unknown>): Promise<string> {
+  try {
+    await write();
+    return 'ok';
+  } catch (error) {
+    return String((error as { readonly code?: unknown }).code);
+  }
+}
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
@@ -193,6 +203,32 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
 
   const mandateRows = async (): Promise<number> =>
     await controls.count('select count(*) as n from public.standing_mandates', []);
+
+  /** Revokes a mandate as the case ends, red or green, if it is live then. */
+  const revokedAtEnd = (id: string): void => {
+    onTestFinished(async () => {
+      await controls.fixture.db.admin.execute(
+        `update public.standing_mandates
+            set revoked_at = clock_timestamp(), revoked_by_actor_id = authored_by_actor_id,
+                revision = revision + 1
+          where id = $1 and revoked_at is null`,
+        [id],
+      );
+    });
+  };
+
+  /** Runs one write as the application, inside the business, and names its outcome. */
+  const asApp = async (sql: string, parameters: readonly unknown[]): Promise<string> =>
+    await outcomeOf(
+      async () =>
+        await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+          await tx.query(sql, parameters);
+        }),
+    );
+
+  /** Runs one write as the database owner, who holds every column, and names its outcome. */
+  const asOwner = async (sql: string, parameters: readonly unknown[]): Promise<string> =>
+    await outcomeOf(async () => await controls.fixture.db.admin.execute(sql, parameters));
 
   async function seedClass(
     business: string,
@@ -790,18 +826,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     expect(row[0]?.revoked_at.getTime()).toBeGreaterThanOrEqual(started[0]?.at.getTime() ?? 0);
   });
 
-  it('MP-14-10a a mandate is written once: the application can revoke it, never edit, backdate or revive it', async () => {
+  it('MP-14-10a a mandate is written once: the application can only revoke it, and not even the owner can edit or backdate it', async () => {
     const id = await seedMandate({ classes: ['social.post'] });
-    const asApp = async (sql: string, parameters: readonly unknown[]): Promise<string> => {
-      try {
-        await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
-          await tx.query(sql, parameters);
-        });
-        return 'ok';
-      } catch (error) {
-        return String((error as { readonly code?: unknown }).code);
-      }
-    };
+    revokedAtEnd(id);
+    // The column grants keep the application to the revocation.
     expect(
       await asApp('update public.standing_mandates set label = $2 where id = $1', [id, 'x']),
     ).toBe('42501');
@@ -815,6 +843,41 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         [randomUUID(), clientA, admin.actorId],
       ),
     ).toBe('42501');
+    // The owner passes the grants, and on a live mandate stepped by one only
+    // the trigger refuses an edit or a backdating.
+    expect(
+      await asOwner(
+        'update public.standing_mandates set label = $2, revision = revision + 1 where id = $1',
+        [id, 'edited'],
+      ),
+    ).toBe('23001');
+    expect(
+      await asOwner(
+        `update public.standing_mandates
+            set created_at = created_at - interval '1 year', revision = revision + 1
+          where id = $1`,
+        [id],
+      ),
+    ).toBe('23001');
+    const after = await controls.fixture.db.admin.execute<{
+      readonly label: string;
+      readonly backdated: boolean;
+      readonly revision: string;
+    }>(
+      `select label, created_at < now() - interval '1 day' as backdated, revision
+         from public.standing_mandates where id = $1`,
+      [id],
+    );
+    expect(after[0]).toStrictEqual({
+      label: 'A standing approval',
+      backdated: false,
+      revision: '1',
+    });
+  });
+
+  it('MP-14-10a a mandate is written once: a revocation is never undone, even by a step of one', async () => {
+    const id = await seedMandate({ classes: ['social.post'] });
+    revokedAtEnd(id);
     expect(
       await asApp(
         `update public.standing_mandates
@@ -823,17 +886,23 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         [id, admin.actorId],
       ),
     ).toBe('ok');
+    // The undoing passes the grants and the step, so only the trigger refuses it.
     expect(
       await asApp(
-        'update public.standing_mandates set revoked_at = null, revoked_by_actor_id = null where id = $1',
+        `update public.standing_mandates
+            set revoked_at = null, revoked_by_actor_id = null, revision = revision + 1
+          where id = $1`,
         [id],
       ),
     ).toBe('23001');
-    const after = await controls.fixture.db.admin.execute<{ readonly revoked: boolean }>(
-      'select revoked_at is not null as revoked from public.standing_mandates where id = $1',
+    const after = await controls.fixture.db.admin.execute<{
+      readonly revoked: boolean;
+      readonly revision: string;
+    }>(
+      'select revoked_at is not null as revoked, revision from public.standing_mandates where id = $1',
       [id],
     );
-    expect(after[0]?.revoked).toBe(true);
+    expect(after[0]).toStrictEqual({ revoked: true, revision: '2' });
   });
 
   it('MP-14-10a the read and the scope bar add no audit event beyond the read operation row', async () => {
