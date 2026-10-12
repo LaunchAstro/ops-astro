@@ -100,9 +100,13 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
             run.id                as run_id,
             -- MP-6-2: the run's start, its first claim, and its end, a hand-back
             -- with no claim after it; both from this run's own events here.
-            (select min(e.created_at) from public.run_events e
+            -- First by position, the order claims took the task lock: a claim's
+            -- time is its transaction's start, so a later reclaim can carry an
+            -- earlier one.
+            (select e.created_at from public.run_events e
               where e.business_id = run.business_id and e.run_id = run.id
-                and e.kind = 'claimed') as run_started_at,
+                and e.kind = 'claimed'
+              order by e.position limit 1) as run_started_at,
             (select max(e.created_at) from public.run_events e
               where e.business_id = run.business_id and e.run_id = run.id
                 and e.kind = 'handed_back'

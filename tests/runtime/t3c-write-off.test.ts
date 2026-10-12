@@ -112,7 +112,7 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
       attempt_actual: '1000',
       reservation_state: 'actual',
       reservation_actual: '1000',
-      classified_cause: null,
+      classified_cause: 'written_off',
       envelope_held: '0',
       envelope_actual: '1000',
     });

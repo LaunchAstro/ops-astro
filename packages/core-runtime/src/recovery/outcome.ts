@@ -62,6 +62,8 @@ interface Replacement {
   readonly lease_id: string | null;
   readonly delegation_id: string | null;
   readonly marked: boolean;
+  /** A model call of its worker's is out at the provider, sent before its own dispatch. */
+  readonly calling: boolean;
 }
 
 async function discoverReplacements(
@@ -71,7 +73,10 @@ async function discoverReplacements(
   return await tx.query<Replacement>(
     `select res.id as reservation_id, att.id as attempt_id, res.envelope_id,
             res.held_minor::text as held_minor, l.id as lease_id, l.delegation_id,
-            att.dispatch_marker as marked
+            att.dispatch_marker as marked,
+            exists (select 1 from public.model_calls c
+                     where c.business_id = res.business_id and c.reservation_id = res.id
+                       and c.state in ('dispatched', 'liability_unknown')) as calling
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        left join public.leases l
@@ -94,7 +99,7 @@ const replacementLocks = (replacements: readonly Replacement[]): readonly LockRe
 
 /**
  * `happened` says the work is finished, so
- * a replacement not yet dispatched is stopped under the outcome's locks: its
+ * a replacement that has sent nothing is stopped under the outcome's locks: its
  * lease ends, its delegation is revoked and its hold goes back, by amount,
  * under the recorded outcome. It never dispatches.
  */
@@ -177,10 +182,11 @@ export async function recordOutcome(
       'Nothing was recorded. Read the task: its outcome is already settled or never was unknown.',
     );
   }
-  if (request.outcome === 'happened' && replacements.some((one) => one.marked)) {
+  // A replacement with a model call out owes that call: its hold stays until the call settles.
+  if (request.outcome === 'happened' && replacements.some((one) => one.marked || one.calling)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
-      'the replacement for this step has already dispatched, so the work ran again',
+      'the replacement for this step has already started, so the work ran again',
       'Nothing was recorded. Settle or reconcile the replacement, then record this attempt.',
     );
   }

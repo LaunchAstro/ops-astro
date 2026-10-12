@@ -83,7 +83,7 @@ it('a top-up after the stopped step was recorded as happened differently is refu
   // Nothing written: no answer, no approval, no fresh hold, the envelope and the run as they were.
   expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
   const [why] = refused === 'applied' ? [] : refused.fixes;
-  expect(why).toContain('recorded after the run stopped, so a top-up cannot apply');
+  expect(why).toContain('a person already settled this step, so a top-up would run it again');
   expect(why).not.toContain('finished');
 
   const unended = await fingerprint(s.db.admin);

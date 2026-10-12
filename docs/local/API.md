@@ -723,12 +723,14 @@ cannot hold reaches `business_settings`.
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
 hold. The author is the acting actor and the posting time is the server's;
-neither is a payload field. `mentions` lists person ids. Each person
-mentioned is raised an inbox item in the same transaction (INB-1). If one of
-them cannot read the task, or is an outside party named in an `internal`
-comment, the whole comment is refused before it saves. The register keeps
-that refusal naming each person by the identifier as sent, so a replay names
-nobody the author may no longer see.
+neither is a payload field. `mentions` lists at most 50 person ids; a longer
+list is refused `FIELD_VALUE_INVALID` naming `mentions` before anything is
+read or saved. Each person mentioned is raised an inbox item in the same
+transaction (INB-1). Whether each can read the task is asked in one query. If
+one of them cannot read the task, or is an outside party named in an
+`internal` comment, the whole comment is refused before it saves. The
+register keeps that refusal naming each person by the identifier as sent, so
+a replay names nobody the author may no longer see.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -2434,7 +2436,10 @@ any person holding it), and no agent route serves it
 (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held `liability_unknown`
 takes one; any other is `LIABILITY_NOT_UNKNOWN`. Nothing happened releases the
 whole hold and resumes the work on a new hold; it happened spends the whole
-hold; it happened differently spends it and reopens the work. A retry under the
+hold; it happened differently spends it and reopens the work. It happened stops
+a replacement the reconciliation reserved for the step, unless that replacement
+has dispatched or has a model call out at the provider: then it is
+`TRANSITION_NOT_PERMITTED` and nothing moves. A retry under the
 same `operationId` replays the stored answer.
 
 A planning reply (AW-04) held unknown has no task and no attempt: its form is
@@ -2461,7 +2466,9 @@ agent route serves it (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held
 amount settles the hold at that figure, with the attempt's outcome left
 `unknown`; nothing abandons it under the cause `written_off`. The envelope
 gives the whole hold back either way; no attempt, hold or envelope row is
-added and no work moves. When the hold is above the business's four-eyes
+added and no work moves. A top-up at the run's budget stop is then
+`TRANSITION_NOT_PERMITTED`, since a fresh hold would run a step whose effect is
+unknown. When the hold is above the business's four-eyes
 band, the first holder's call answers `awaiting_second_approver` and moves
 nothing; a different live holder naming the same attempt and amount applies
 it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same

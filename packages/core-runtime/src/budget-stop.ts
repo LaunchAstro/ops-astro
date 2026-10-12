@@ -199,24 +199,24 @@ export async function releaseUnstarted(
 }
 
 /**
- * A step settled `completed` in any transaction but the ask's own (a person's `happened` or
- * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
- * Both stamps are now(), each its transaction's start, which can invert across transactions,
- * so only equal stamps mark a settle and ask in one transaction, which would still top up;
- * no path raises that today.
+ * A step settled `completed` outside the ask's own transaction (a person's `happened` or
+ * `happened_differently`, a worker's observed `completed`; stamps are each transaction's now(),
+ * so only equal ones mark one transaction, which none does today), or one a person wrote off
+ * with its effect unknown (`write-off.ts`): a top-up would run it again, so only the end applies.
  */
 export async function recordedRefusal(
   tx: TenantQuery,
   stop: { readonly reservation_id: string; readonly ask_id: string },
 ): Promise<RuntimeResult<never> | null> {
   const done = await tx.query(
-    `select 1 from public.attempts a join public.budget_asks k on k.business_id = a.business_id
-      where a.business_id = $1 and a.reservation_id = $2 and k.id = $3 and a.state = 'settled'
-        and a.outcome = 'completed' and a.settled_at is distinct from k.raised_at`,
+    `select 1 from public.reservations r join public.attempts a on a.business_id = r.business_id
+        and a.reservation_id = r.id join public.budget_asks k on k.business_id = r.business_id
+      where r.business_id = $1 and r.id = $2 and k.id = $3 and (r.classified_cause = 'written_off'
+        or (a.state = 'settled' and a.outcome = 'completed' and a.settled_at <> k.raised_at))`,
     [tx.businessId, stop.reservation_id, stop.ask_id],
   );
   if (done.length === 0) return null;
-  const why = "this step's outcome was recorded after the run stopped, so a top-up cannot apply";
+  const why = 'a person already settled this step, so a top-up would run it again';
   return refuse('TRANSITION_NOT_PERMITTED', why, 'End the work instead.');
 }
 

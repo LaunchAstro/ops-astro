@@ -23,6 +23,7 @@ import {
   rows,
 } from './api-1-isolation-world.ts';
 import { asAgent, canonical } from './api-1-isolation-surfaces.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 
 export let foreignStep = '';
 let ownStep = '';
@@ -75,11 +76,16 @@ async function seedSteps(
     Number(held?.revision),
     'onboarding_step',
   );
-  const picked = await post(
-    api,
-    '/api/a/b/alpha/task/pickup',
-    { operationId: randomUUID(), reservationId },
-    authorised(agentToken),
+  const picked = await besideOtherWork(
+    fixture.db.admin,
+    fixture.agentActorId,
+    async () =>
+      await post(
+        api,
+        '/api/a/b/alpha/task/pickup',
+        { operationId: randomUUID(), reservationId },
+        authorised(agentToken),
+      ),
   );
   if (picked.status !== 200) throw new Error(JSON.stringify(picked));
   ownStepDelegation = String(detail(picked.body)['credential']);

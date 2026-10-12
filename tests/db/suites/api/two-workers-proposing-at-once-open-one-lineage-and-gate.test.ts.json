@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Two workers on one delegation proposing at once open one lineage and one gate, and a worker restarted after the gate is cleared recovers its queued work; the real worker through the served API on a real migrated database."
+}

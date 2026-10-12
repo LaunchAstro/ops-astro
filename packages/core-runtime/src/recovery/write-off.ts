@@ -113,6 +113,7 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
     { reservationId: row.reservation_id, envelopeId: row.envelope_id },
     { cause: 'written_off', causeId: row.attempt_id },
     charge,
+    { recordCause: true },
   );
   if (charge > 0n) {
     await raiseAlert(tx, {

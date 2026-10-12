@@ -31,7 +31,12 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import {
+  DELEGATION_STANDS,
+  DELEGATION_STANDS_AT_CHECK,
+  mintDelegation,
+  refuseCommand,
+} from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { leaseReason, personWriteLive } from './lease-ownership.ts';
@@ -58,22 +63,23 @@ export interface QueueEntry {
 }
 
 /**
- * The reading agent's reach over a queue row (`$2`, null for a person). While
- * the agent holds a live delegation it is working for that task's client, so
- * a row stays only when its task's client is a delegated task's client (#169).
- * It keys on the delegations the agent holds, not on the credential it
- * presents, so leaving the credential off does not widen it. With no live
- * delegation the row stays, as it does for a person.
+ * The agent's reach over a task row (`agent`, null for a person), its
+ * delegations judged standing by `stands`. While the agent holds a live
+ * delegation it is working for that task's client, so a task is within reach
+ * only when its client is a delegated task's client (#169). It keys on the
+ * delegations the agent holds, not on the credential it presents, so leaving
+ * the credential off does not widen it. With no live delegation every task is,
+ * as for a person. The queue asks it of each row, a pickup under its locks.
  */
-const AGENT_REACH = `($2::uuid is null
+const agentReach = (agent: string, stands: string): string => `(${agent}::uuid is null
    or not exists (select 1 from public.delegations d
-                   where d.business_id = res.business_id and d.agent_actor_id = $2
-                     and ${DELEGATION_STANDS})
+                   where d.business_id = task.business_id and d.agent_actor_id = ${agent}
+                     and ${stands})
    or exists (select 1 from public.delegations d
                 join public.records purpose on purpose.business_id = d.business_id
                                            and purpose.id = d.purpose_scope_id
-               where d.business_id = res.business_id and d.agent_actor_id = $2
-                 and ${DELEGATION_STANDS}
+               where d.business_id = task.business_id and d.agent_actor_id = ${agent}
+                 and ${stands}
                  and purpose.uuid_7 is not distinct from task.uuid_7))`;
 
 /**
@@ -84,7 +90,7 @@ const AGENT_REACH = `($2::uuid is null
  *
  * `agentActorId` is an agent's own read: under a live delegation its queue
  * never shows another client's task, purpose slug or held amount
- * (`AGENT_REACH`).
+ * (`agentReach`).
  */
 export async function queue(
   tx: TenantQuery,
@@ -121,7 +127,7 @@ export async function queue(
         and att.state = 'reserved'
         and not att.dispatch_marker
         and not att.observed
-        and ${AGENT_REACH}
+        and ${agentReach('$2', DELEGATION_STANDS)}
       order by res.created_at`,
     [tx.businessId, agentActorId ?? null],
   );
@@ -284,7 +290,7 @@ export async function pickup(
   // the locks, is the one instant every lease-expiry decision below and the new
   // lease's own expiry use.
   const lockedAt = await lockedInstant(tx);
-  const rechecked = await recheckClaim(tx, request.reservationId, lockedAt);
+  const rechecked = await recheckClaim(tx, request, lockedAt);
   if (!rechecked.ok) return rechecked;
   const { state, plan } = rechecked.value;
 
@@ -405,9 +411,10 @@ async function lockClaim(
 /** Re-check, under the locks: everything above was discovery. */
 async function recheckClaim(
   tx: TenantQuery,
-  reservationId: string,
+  request: PickupRequest,
   lockedAt: string,
 ): Promise<RuntimeResult<{ readonly state: ClaimState; readonly plan: ClaimPlan }>> {
+  const agent = request.claimant === 'agent' ? request.agentActorId : null;
   const claimable = await tx.query<ClaimState>(
     `select res.state, res.lease_id, res.held_minor::text as held_minor, run.state as run_state,
             exists (select 1 from public.handback_reports hr
@@ -425,7 +432,8 @@ async function recheckClaim(
             att.id as attempt_id, att.state as attempt_state,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
-            (bound.expires_at <= $3::timestamptz) as bound_lease_expired
+            (bound.expires_at <= $3::timestamptz) as bound_lease_expired,
+            ${agentReach('$4', DELEGATION_STANDS_AT_CHECK)} as within_reach
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
@@ -436,14 +444,14 @@ async function recheckClaim(
        join public.records task on task.business_id = run.business_id and task.id = run.task_id
                                and task.deleted_at is null
       where res.business_id = $1 and res.id = $2`,
-    [tx.businessId, reservationId, lockedAt],
+    [tx.businessId, request.reservationId, lockedAt, agent],
   );
   const state = claimable[0];
-  // Gone, or its task trashed while this waited on the task lock: the same
-  // answer as a reservation that never existed (#10).
-  if (state === undefined)
+  // Gone, its task trashed while this waited on the task lock, or another client's
+  // work to an agent working for one: as a reservation that never existed (#10).
+  if (state === undefined || !state.within_reach)
     return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
-  const plan = planClaim(state, reservationId);
+  const plan = planClaim(state, request.reservationId);
   if (plan.kind === 'refuse') return plan.refusal;
   return { ok: true, value: { state, plan } };
 }
@@ -610,9 +618,8 @@ async function fenceLiveLease(
  * Authorise the claimant, under the locks (T3 lines 62-64). A person: their
  * own live grants on this task, and nobody else's -- not the approver's, and
  * not a body's choice. The approval is the recorded authorisation and was
- * checked above; this is the claimant's authority. At the locked instant
- * a grant that lapsed while this waited on the
- * cap does not count.
+ * checked above; this is the claimant's authority. At the locked instant a
+ * grant that lapsed while this waited on the cap does not count.
  *
  * An agent: the delegation expires with the lease, minted against the
  * delegating person's live grants, which `mintDelegation` reads for itself;
@@ -862,6 +869,8 @@ interface ClaimState {
   readonly active_elsewhere: boolean;
   /** A later hold of the version and run exists: this one is history. */
   readonly replaced: boolean;
+  /** Within the claiming agent's reach (`agentReach`); always for a person. */
+  readonly within_reach: boolean;
 }
 
 /**
@@ -913,10 +922,9 @@ function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
  * asked whether that lease expired; refused first, the old identity would
  * never be fenced and its hold never classified, and the only other expiry
  * branch applies to a *different* unleased reservation on the same task. The
- * replacement is a fresh hold on
- * the still-approved version, which 0019 permits, because one active hold per
- * version is the accepted rule and one hold ever was not. Its approval is
- * checked here, before the caller writes anything.
+ * replacement is a fresh hold on the still-approved version, which 0019
+ * permits, because one active hold per version is the accepted rule and one
+ * hold ever was not. Its approval is checked here, before the caller writes anything.
  *
  * R5, the remainder. A hold that ended without settling -- the authority
  * behind its lease was lost, and replay classified it -- leaves approved work
@@ -972,15 +980,7 @@ function approvalNotCurrent(): RuntimeResult<never> {
 }
 
 /** An abandoned hold whose work was never settled and whose run is still open. */
-function replaceable(state: {
-  readonly state: string;
-  readonly attempt_state: string;
-  readonly run_state: string;
-  readonly settled: boolean;
-  readonly marked: boolean;
-  readonly active_elsewhere: boolean;
-  readonly replaced: boolean;
-}): boolean {
+function replaceable(state: ClaimState): boolean {
   // A hold the classifier settled at its calls' spend ended as one it abandoned:
   // its attempt is `abandoned`, where an observed or written-off cost settled it.
   const ended =

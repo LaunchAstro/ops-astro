@@ -17,6 +17,7 @@ import {
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { clientHere } from '../reads/client-rows.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -212,10 +213,7 @@ export async function c80World(part: string): Promise<C80World> {
         world,
         asIn,
         { business: world.business, by, sharer: people.admin },
-        {
-          title,
-          partyId,
-        },
+        { title, partyId },
       ),
   };
 }
@@ -253,10 +251,12 @@ async function pickUpUnder(
   ).detail;
   const reservationId = String(decided['reservationId']);
   const operationId = randomUUID();
-  const detail = need(
-    await world.asAgent({ command: 'task.pickup', operationId, reservationId }),
-    'task.pickup',
-  ).detail;
+  const picked = await besideOtherWork(
+    world.db.admin,
+    world.agentActorId,
+    async () => await world.asAgent({ command: 'task.pickup', operationId, reservationId }),
+  );
+  const detail = need(picked, 'task.pickup').detail;
   return {
     taskId,
     credential: String(detail['credential']),
