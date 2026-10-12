@@ -25,7 +25,6 @@ export function useTodoVocabulary(
   readonly refresh: () => void;
   readonly version: number;
   readonly recovering: boolean;
-  readonly withdrawn: boolean;
 } {
   const people = useBoardProjectionRead<PersonListResult>(
     client,
@@ -78,7 +77,6 @@ function useVocabularyPair(
       people.state.outcome === 'unavailable' ||
       clients.state.outcome === 'loading' ||
       clients.state.outcome === 'unavailable',
-    withdrawn: people.state.outcome === 'denied' || clients.state.outcome === 'denied',
     pending,
     people: !pending && people.state.outcome === 'ready' ? people.state.value.persons : [],
     clients: !pending && clients.state.outcome === 'ready' ? clients.state.value.clients : [],
