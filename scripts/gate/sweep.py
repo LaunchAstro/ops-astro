@@ -632,8 +632,11 @@ def policy_key(path: Path) -> str:
 
 
 def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, reveal: bool) -> int:
+    # The target as given is printed only as the evidence prints any path:
+    # withheld when its own text carries a denied term or shape.
+    named = WITHHELD if scan_text(str(target), hashes, shapes) else str(target)
     if not target.exists():
-        die(f"no such path: {target}")
+        die(f"no such path: {named}")
     found: list[Path] = []
     # A folder that cannot be listed was never inspected, so the sweep is
     # incomplete and must not report clean.
@@ -654,7 +657,7 @@ def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, 
     violations += path_violations([(shown[r], r) for r in rels], patterns)
     items = [(shown[rel], rel, read_path(path)) for path, rel in zip(found, rels)]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
-    return report(violations, reveal, f"{len(found)} file(s) under {target}")
+    return report(violations, reveal, f"{len(found)} file(s) under {named}")
 
 
 def mode_self_test(hashes, shapes, exemptions) -> int:
