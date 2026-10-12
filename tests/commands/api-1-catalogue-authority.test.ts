@@ -32,6 +32,7 @@ const DUPLICATE = COMMAND_SURFACE.find(
 describe('API-1 command catalogue', () => {
   replacesDiscovery();
   agentDecideAndPersonOnly();
+  stricterSurfacesAndReadsOnAnyGrant();
 });
 
 function replacesDiscovery(): void {
@@ -123,6 +124,42 @@ function agentDecideAndPersonOnly(): void {
     });
     expect(checkParity(rows, { ...surfaces, api }, declarations)).toEqual([
       'API task.duplicate drops the person-only marker and admits an agent',
+    ]);
+  });
+}
+
+function stricterSurfacesAndReadsOnAnyGrant(): void {
+  it('a read is discovered on any one of the grants its rule admits on: the owner and the read-any holder', () => {
+    const rows = buildCatalogue([]);
+    const finds = (key: string): boolean =>
+      reachableBy(rows, {
+        kind: 'person',
+        member: true,
+        grants: [{ key, scope: { kind: 'business', id: null } }],
+      }).some((one) => one.command === 'conversation.read');
+    expect({
+      owner: finds('conversation:write'),
+      readAny: finds('conversation:read'),
+      neither: finds('task:read'),
+    }).toStrictEqual({ owner: true, readAny: true, neither: false });
+  });
+
+  it('a surface stricter than the owning command fails parity: an added grant or an added person-only marker', () => {
+    const rows = buildCatalogue([]);
+    const surfaces = realSurfaces([]);
+    const update = surfaces.cli.get('task.update');
+    expect(update?.personOnly).toBe(false);
+    if (update === undefined) return;
+    const cli = new Map(surfaces.cli).set('task.update', {
+      ...update,
+      authority: [...update.authority, 'task:manage'],
+    });
+    expect(checkParity(rows, { ...surfaces, cli })).toEqual([
+      'CLI task.update adds the grant check task:manage the app does not make',
+    ]);
+    const api = new Map(surfaces.api).set('task.update', { ...update, personOnly: true });
+    expect(checkParity(rows, { ...surfaces, api })).toEqual([
+      'API task.update adds the person-only marker and refuses an agent the app admits',
     ]);
   });
 }

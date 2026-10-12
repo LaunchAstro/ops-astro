@@ -116,9 +116,19 @@ function compare(surface: string, command: string, owned: Profile, asked: Profil
     ...owned.authority.flatMap((key) =>
       asked.authority.includes(key) ? [] : [`${at} skips the grant check ${key} the app makes`],
     ),
+    // Same on every surface means stricter fails too: a surface that asks more
+    // refuses callers its equivalents admit (#772).
+    ...asked.authority.flatMap((key) =>
+      owned.authority.includes(key)
+        ? []
+        : [`${at} adds the grant check ${key} the app does not make`],
+    ),
     ...(asked.authorisedOn === owned.authorisedOn ? [] : [scope]),
     ...(owned.personOnly && !asked.personOnly
       ? [`${at} drops the person-only marker and admits an agent`]
+      : []),
+    ...(!owned.personOnly && asked.personOnly
+      ? [`${at} adds the person-only marker and refuses an agent the app admits`]
       : []),
     ...(asked.rule === owned.rule
       ? []
@@ -178,7 +188,8 @@ export interface HeldGrant {
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
 // A person's writes pass the envelope's own standing check (`member`, from the session). A row
 // asking no grant: a self-scoped write needs none; a read (the inbox, session.capabilities) is
-// served only to a holder of some live grant.
+// served only to a holder of some live grant. A read naming several grants is
+// admitted on any one of them, by its rule (`conversation.read`); a write needs them all.
 export function reachableBy(
   rows: readonly CatalogueRow[],
   principal:
@@ -201,7 +212,9 @@ export function reachableBy(
         (agent && row.agent === 'before-pickup') ||
         (row.authority.length === 0
           ? (row.kind === 'write' && row.authorisedOn === 'self') || principal.grants.length > 0
-          : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
+          : row.kind === 'read'
+            ? row.authority.some((key) => holds(key, row.authorisedOn === 'business'))
+            : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({
       command: row.command,

@@ -268,7 +268,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
-  read('conversation.read', CONVERSATION_COLLECTION),
+  // Its rule admits the owner on `conversation:write` and anyone else on the
+  // read-any `conversation:read`, so the catalogue names both (API-1); a read
+  // is reached on any one of the grants it names (`reachableBy`).
+  read('conversation.read', CONVERSATION_COLLECTION, {
+    authority: ['conversation:write', 'conversation:read'],
+  }),
   // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
   // The list is the caller's own conversations and nobody else's, whatever
   // read-any grant they hold; its rule is the read's own, like the read's.
