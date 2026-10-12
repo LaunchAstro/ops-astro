@@ -140,7 +140,8 @@ export const SCREENS: {
       </p>
     </>
   ),
-  'agency:password': () => <PasswordChangeScreen />,
+  // Keyed on the grant, so a change of business or person drops what the form holds.
+  'agency:password': (context) => <PasswordChangeScreen key={context.grantKey} />,
   'agency:inbox': (context) => (
     <InboxScreen
       client={context.client}

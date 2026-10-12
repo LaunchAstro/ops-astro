@@ -61,6 +61,32 @@ and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
+**A sign-in service's link opens nothing.** Hosted Supabase's own invite and
+recovery mail lands with `access_token`, `refresh_token` and `type=invite` or
+`type=recovery` in the address's fragment. Invitations and resets are the
+product's own links (C39-T, C40, not built yet), so the app opens no session
+with these. `Root` clears such a fragment from the address bar and the tab's
+history entry before it first reads the address (`session/sign-in-link.ts`),
+and the page draws as it would without it: sign-in, for someone signed out.
+A fragment with no sign-in token in it stays.
+`tests/web/sign-in-link-fragment-never-signs-in.test.tsx` holds it.
+
+### Changing your password
+
+Settings ▸ General links to `/settings/password/`
+(`screens/settings/password.tsx`, `session/password-change.ts`). The current
+password is confirmed by the password grant, and the new one, 12 to 72 bytes,
+is set at GoTrue with `PUT /user` and that token. GoTrue refuses that below
+`aal2` for a login with an authenticator app (`insufficient_aal`), so the page
+then asks for the code. The code is checked on the tab's own sign-in through
+`/account/factor/verify`, which counts it, and the set is made with the `aal2`
+token that answers. The token that set it is traded for a new cookie and the
+tab moves to it. `/account/sessions/end-others` then ends every other session,
+here and at GoTrue, and the old cookie is cleared. A confirming sign-in the
+tab will not hold is signed out at GoTrue. A wrong current password, a new
+password GoTrue refuses (its words are shown) or a missing code changes
+nothing. `tests/web/password-change-signed-in.test.tsx` holds the ways.
+
 ### Signing out
 
 The person menu (C23) is the circle at the far right of the app strip, on both
