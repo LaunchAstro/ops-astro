@@ -5,8 +5,11 @@
 // the title. A link to a client that is being written when the exchange
 // reads the task makes it wait, and once that link commits the exchange
 // sees the client and asks no model, so a title that was a client's when
-// it was read is never sent. Through a fresh Postgres and the replay
-// stand-in on loopback, the link written by `task.set_party` itself.
+// it was read is never sent. The share lock ends when that read's
+// transaction commits, before the model is asked: a link committed after
+// it is the accepted admission window (OWNER-3), not covered here. Through
+// a fresh Postgres and the replay stand-in on loopback, the link written by
+// `task.set_party` itself.
 //
 // A person whose read of the page was revoked before they ask is refused
 // before the task is read: their exchange never waits behind the task's

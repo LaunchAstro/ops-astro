@@ -231,8 +231,7 @@ async function setAndEnd(
     }
     ended = true;
   } finally {
-    await database.withBusiness(found.business, async (tx) => {
-      if (set === 'set') await waitForNextSecond(tx);
+    const settle = async (tx: TenantQuery): Promise<void> => {
       // The settle ends sessions signed in after the window's bound too, so it
       // takes the login's ending keys: a write that read one live commits
       // before it (C52-A). After the wait, so no key is held through it; before
@@ -241,7 +240,10 @@ async function setAndEnd(
       await endIn(tx, own.session, unset());
       if (ended && set === 'set') await audited(tx, own.session);
       await settleResetWindow(tx, window);
-    });
+    };
+    await (set === 'set'
+      ? waitForNextSecond(database, found.business, settle)
+      : database.withBusiness(found.business, settle));
   }
   return set;
 }
