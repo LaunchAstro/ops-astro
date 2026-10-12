@@ -23,6 +23,7 @@ import {
   claimedSystemFields,
   irrelevantIdentifiers,
 } from '../commands/prepare.ts';
+import { READ_IDENTIFIER_FIELDS } from '../commands/operands.ts';
 import { writeAuditEvent } from '../commands/audit.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './catalogue.ts';
@@ -177,7 +178,7 @@ async function admit<K extends ReadName>(
   // as on the command path, before anything is looked up: the refusal is the
   // same for an own, a foreign and a fabricated identifier, so it tells the
   // caller nothing about any of them.
-  const irrelevant = irrelevantIdentifiers(body, row.identifiers);
+  const irrelevant = irrelevantIdentifiers(body, row.identifiers, READ_IDENTIFIER_FIELDS);
   if (irrelevant.length > 0) {
     return {
       outcome: refuseCommand('COMMAND_BODY_INVALID', irrelevant, READ_BODY_FIXES),

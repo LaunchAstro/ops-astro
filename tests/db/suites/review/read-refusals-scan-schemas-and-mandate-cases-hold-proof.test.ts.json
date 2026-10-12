@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Mutation runs over copies of the read-refusal, scan-schema and mandate suites: each one fails when the behaviour it proves is undone."
+}
