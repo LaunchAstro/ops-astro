@@ -59,6 +59,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
     command: FieldCommand,
     fields: Readonly<Record<string, unknown>>,
     revision = props.task.revision,
+    onNotStored?: () => void,
   ): void => {
     run(
       () =>
@@ -70,6 +71,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
         }),
       (settlement) => {
         if (settlement.kind === 'ok') props.onChanged();
+        else onNotStored?.();
       },
     );
   };
@@ -90,15 +92,19 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
   // The name being typed and the revision the rename opened at: a re-read
   // keeps the panel mounted, and a colleague's change since answers stale.
   const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null);
+  // A name the server did not store, offered again when Rename reopens.
+  const [unsaved, setUnsaved] = useState<string | null>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {
       setDraft(null);
+      setUnsaved(null);
     } else if (event.key === 'Enter' && draft !== null) {
       event.preventDefault();
       const name = draft.text.trim();
       setDraft(null);
+      setUnsaved(null);
       if (name !== '' && name !== task.title) {
-        write('task.update', { title: name }, draft.revision);
+        write('task.update', { title: name }, draft.revision, () => setUnsaved(name));
       }
     }
   };
@@ -111,7 +117,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           data-panel-field="name"
           disabled={busy}
           title="Rename"
-          onClick={() => setDraft({ text: task.title ?? '', revision: task.revision })}
+          onClick={() => setDraft({ text: unsaved ?? task.title ?? '', revision: task.revision })}
         >
           {task.title}
         </button>

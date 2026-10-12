@@ -10,6 +10,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
+import { PanelName } from '../../apps/web/src/screens/task/PanelFields.tsx';
+import type { InternalTaskDetail } from '../../packages/core-wire/src/index.ts';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, press, typeInto, unmountAll } from './perspective-support.tsx';
 
@@ -84,5 +86,30 @@ describe('the panel rename under a re-read', () => {
       updates[0]?.['expectedRevision'],
       "the rename was sent at the re-read's revision, over the colleague's name",
     ).toBe(4);
+  });
+});
+
+describe('a rename the server refuses', () => {
+  it.each([
+    [
+      'refused as stale',
+      () => json({ refused: true, code: 'VERSION_STALE', names: [], fixes: [] }, 409),
+    ],
+    ['unanswered', () => new Response(null, { status: 503 })],
+  ])('keeps the typed name when %s, so reopening Rename shows it', async (_, answer) => {
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: () => Promise.resolve(answer()),
+    });
+    const shown = task({ title: 'Original', revision: 4 }) as unknown as InternalTaskDetail;
+    const view = await mount(<PanelName client={client} task={shown} onChanged={ignore} />);
+    await view.click('[data-panel-field="name"]');
+    await typeInto(view, '#panel-field-name', 'The new name');
+    await press(view, '#panel-field-name', 'Enter');
+    await tick();
+    await view.click('[data-panel-field="name"]');
+    expect((view.find('#panel-field-name') as HTMLInputElement | null)?.value).toBe('The new name');
   });
 });

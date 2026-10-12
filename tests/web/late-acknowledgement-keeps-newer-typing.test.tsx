@@ -104,3 +104,46 @@ it('a time-log acknowledgement preserves a newer unsent duration', async () => {
   await tick();
   expect(input.value).toBe(writable ? '15m' : '');
 });
+
+it('a late time-note acknowledgement keeps the note box open with words typed after the save', async () => {
+  let release: ((response: Response) => void) | undefined;
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'alpha',
+    signedIn: true,
+    fetch: async () =>
+      await new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  });
+  const entry = {
+    id: 'a',
+    startedAt: '2026-09-30T01:00:00.000Z',
+    endedAt: '2026-09-30T02:00:00.000Z',
+    minutes: 60,
+    note: 'Original',
+    adHoc: false,
+    source: 'log',
+  } as const;
+  const view = await mount(
+    <TimeLog
+      client={client}
+      taskId="task"
+      time={{ entries: [entry], running: null, totalMinutes: 60 }}
+      estimateMinutes={null}
+      showAll={false}
+      onShowAll={() => {}}
+      onChanged={() => {}}
+    />,
+  );
+  await view.click('[data-time-note="a"]');
+  await typeInto(view, 'input[data-time-note-edit]', 'First edit');
+  await press(view, 'input[data-time-note-edit]', 'Enter');
+  await typeInto(view, 'input[data-time-note-edit]', 'Second edit');
+  await act(() => {
+    release?.(json({ recordId: null, revision: null }));
+  });
+  await tick();
+  const box = view.host.querySelector<HTMLInputElement>('input[data-time-note-edit]');
+  expect(box?.value, 'the answer belongs to First edit, not the newer words').toBe('Second edit');
+});
