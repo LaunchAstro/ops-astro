@@ -9,9 +9,11 @@
 // the flagged code included) fails until the exception is reviewed again. A
 // file hash says nothing about callers in other files: an exported function's
 // new caller elsewhere is left to the expiry and the review. Unlisted findings,
-// scanner errors, empty scans, missing reports and exceptions that lack a field,
-// are past or over a year out, or match nothing all fail. It prints rule, file
-// and line, never the matched text or its hash: for p/secrets that is the secret.
+// unknown severities, scanner errors, empty scans (an audit counting no
+// dependencies, a Semgrep report naming no scanned path), missing reports and
+// exceptions that lack a field, are past or over a year out, or match nothing
+// all fail. It prints rule, file and line, never the matched text or its hash:
+// for p/secrets that is the secret.
 //
 // Usage: node scripts/security-gate.mjs audit|semgrep --report <file>
 //          [--exceptions <file>] [--root <dir>] [--today YYYY-MM-DD]
@@ -29,6 +31,7 @@ const root = resolve(flag('root', resolve(import.meta.dirname, '..')));
 const today = flag('today', new Date().toISOString().slice(0, 10));
 const inAYear = new Date(Date.parse(today) + 366 * 86_400_000).toISOString().slice(0, 10);
 const FIELDS = ['reason', 'impact', 'owner', 'control', 'expires'];
+const SEVERITIES = new Set(['info', 'low', 'moderate', 'high', 'critical']);
 // 2026-02-30 compares as a string and would never lapse on time.
 const isDay = (day) =>
   /^\d{4}-\d{2}-\d{2}$/u.test(day) && new Date(Date.parse(day) || 0).toISOString().startsWith(day);
@@ -73,9 +76,13 @@ const used = new Set();
 if (kind === 'audit' && report !== undefined) {
   if (typeof report.advisories !== 'object' || report.advisories === null)
     refuse('the audit report carries no advisories object; the audit did not complete');
+  const total = report.metadata?.totalDependencies;
+  if (total !== undefined && !(total > 0))
+    refuse('the audit report counted no dependencies; the audit did not complete');
   for (const a of Object.values(report.advisories ?? {})) {
     const id = a.github_advisory_id ?? String(a.id);
     const where = `${a.module_name} ${id} (${a.severity})`;
+    if (!SEVERITIES.has(a.severity)) refuse(`${where}: an unknown severity fails the gate`);
     if (a.severity === 'high' || a.severity === 'critical')
       refuse(`${where}: a ${a.severity} advisory fails the gate; no exception covers it`);
     if (a.severity !== 'moderate') continue;
@@ -106,7 +113,13 @@ if (kind === 'semgrep' && report !== undefined) {
   const errors = (report.errors ?? []).filter((e) => e.level !== 'warn');
   if (errors.length > 0) refuse(`Semgrep reported ${errors.length} error(s); a failed scan fails`);
   if (!Array.isArray(report.results)) refuse('the Semgrep report carries no results list');
-  if ((report.paths?.scanned ?? []).length === 0) refuse('Semgrep scanned no file');
+  const scanned = report.paths?.scanned;
+  if (
+    !Array.isArray(scanned) ||
+    scanned.length === 0 ||
+    !scanned.every((p) => p && typeof p === 'string')
+  )
+    refuse('the Semgrep report names no file it scanned');
   const results = Array.isArray(report.results) ? report.results : [];
   const groups = Map.groupBy(results, (r) => `${r.check_id}\n${r.path}`);
   for (const [key, found] of groups) {
