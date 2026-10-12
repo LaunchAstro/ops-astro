@@ -39,18 +39,30 @@ export function ownedSources(root) {
     .toSorted();
 }
 
+/** The line comment a source of this kind opens with: `--` is code in a script, `#` in TypeScript. */
+const commentOf = (path) => {
+  const kind = extname(path);
+  if (kind === '.sql') return '--';
+  return kind === '.py' || kind === '.sh' || kind === '' ? '#' : '//';
+};
+
 export function headerErrors(root) {
   return ownedSources(root).filter((path) => {
-    // The header is in the leading comments: a line after code, or inside a
-    // string that code opened, is not a header.
+    // The header is in the leading comments of the file's own syntax: a line
+    // after code, or inside a string that code opened, is not a header.
+    const comment = commentOf(path);
     const lines = readFileSync(resolve(root, path), 'utf8').split(/\r?\n/u).slice(0, 6);
-    const code = lines.findIndex((line) => !/^(?:#!|\/\/|#|--|\/\*.*\*\/\s*$|\s*$)/u.test(line));
+    const leading = (line, at) =>
+      line.startsWith(comment) ||
+      (at === 0 && line.startsWith('#!')) ||
+      (comment === '//' && /^\/\*.*\*\/\s*$/u.test(line)) ||
+      /^\s*$/u.test(line);
+    const code = lines.findIndex((line, at) => !leading(line, at));
     const markers = lines
       .slice(0, code === -1 ? lines.length : code)
-      .filter((line) => /^(?:\/\/|#|--)\s*SPDX-License-Identifier:/u.test(line));
+      .filter((line) => line.startsWith(comment) && /^\S+\s*SPDX-License-Identifier:/u.test(line));
     return (
-      markers.length !== 1 ||
-      !/^(?:\/\/|#|--) SPDX-License-Identifier: AGPL-3\.0-only$/u.test(markers[0])
+      markers.length !== 1 || markers[0] !== `${comment} SPDX-License-Identifier: AGPL-3.0-only`
     );
   });
 }

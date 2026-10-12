@@ -238,11 +238,13 @@ async function main() {
   const fresh = await call(mia.token, 'alpha', '/task/read', { recordId });
   /**
    * The task as `task.read` answers it after a write, or null unless the write
-   * applied and the read shows its revision: a write's HTTP 200 is only its claim.
+   * applied and a read that itself succeeded shows its revision: a write's HTTP
+   * 200 is only its claim, and a failed read's body proves nothing.
    */
   const readBack = async (write) => {
     if (write.status !== 200) return null;
-    const task = (await call(mia.token, 'alpha', '/task/read', { recordId })).body?.task;
+    const read = await call(mia.token, 'alpha', '/task/read', { recordId });
+    const task = read.status === 200 ? read.body?.task : undefined;
     return task?.revision === write.body.revision ? task : null;
   };
 
