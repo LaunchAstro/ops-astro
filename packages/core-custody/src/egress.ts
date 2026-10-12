@@ -114,6 +114,8 @@ export interface OutboundRequest {
   readonly body: string;
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
+  /** Epoch ms the caller's lease ends by: custody sends nothing past it and ends the call by it. */
+  readonly notAfter?: number;
 }
 
 export type OutboundFault =
@@ -162,13 +164,10 @@ async function within<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   signal.throwIfAborted();
   const done = new AbortController();
   const aborted = new Promise<never>((_resolve, reject) => {
-    signal.addEventListener(
-      'abort',
-      () => {
-        reject(signal.reason);
-      },
-      { once: true, signal: done.signal },
-    );
+    signal.addEventListener('abort', () => reject(signal.reason), {
+      once: true,
+      signal: done.signal,
+    });
   });
   try {
     return await Promise.race([work, aborted]);

@@ -16,7 +16,8 @@
 // 2. Send, through custody, a request the adapter built from the declared
 //    fields. The body carries one address, the item's or the inbox's, and
 //    never a decision. A send that paused past the fence since its ask was
-//    reserved sends nothing and records `failed`, `expired` (`lapsed`).
+//    reserved sends nothing and records `failed`, `expired` (`lapsed`), and
+//    custody sends nothing past the ask's place under the ceiling (`sendOnce`).
 // 3. Record what came back as each item's next observation: `accepted`
 //    with the provider's message id (`mock:` before it over the loopback
 //    mock, never `provider:`), or `failed` with the fault's kind. No answer
@@ -35,7 +36,7 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { SenderReport } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute } from './broker-email-route.ts';
+import { sendOnce, sendRoute } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 import { holdItem } from './email-item-lock.ts';
 import {
@@ -52,7 +53,6 @@ import {
   windowSpent,
   type Room,
 } from './email-class.ts';
-import { isLoopbackMock } from './email-mock-custody.ts';
 
 export { recordAsked, stillReadable, type CheckedItem, type Room } from './email-class.ts';
 
@@ -211,7 +211,7 @@ export async function deliver<R extends string>(
 ): Promise<Delivered<R>> {
   const found = sendRoute(broker, mail);
   if (typeof found === 'string') return { ok: false, code: found };
-  const { operation, route, adapter } = found;
+  const { operation, adapter } = found;
   const asked = await database.withBusiness(
     businessId,
     async (tx) => await ask(tx, roomFor(tx, operation)),
@@ -222,18 +222,7 @@ export async function deliver<R extends string>(
   const built = adapter.build({ to: asked.to, from: mail.from, address });
   const seen = lapsed(asked.reserved)
     ? ({ state: 'failed', evidence: 'expired' } as const)
-    : observed(
-        await broker.custody.dispatch(route.credentialRef, {
-          destination: operation.destination,
-          path: built.path,
-          method: built.method,
-          body: built.body,
-          timeoutMs: operation.timeoutMs,
-          maxResponseBytes: operation.maxResponseBytes,
-        }),
-        operation,
-        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
-      );
+    : await sendOnce(broker, found, built, asked.reserved);
   const attemptIds = await database.withBusiness(businessId, async (tx) => {
     const ids: string[] = [];
     for (const itemId of asked.itemIds) {

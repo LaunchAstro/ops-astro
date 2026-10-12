@@ -32,6 +32,13 @@ export type CustodyOutcome =
   | { readonly kind: 'refused'; readonly started: false; readonly code: string }
   | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' };
 
+/**
+ * A dispatch's `notAfter` for a call under a lease `leaseMs` long that began no
+ * earlier than `at` (epoch ms, this host's clock): custody sends nothing past it
+ * and ends the call by it, 5 s before the lease, which leaves the answer's write.
+ */
+export const endBy = (at: number, leaseMs: number): number => at + leaseMs - 5_000;
+
 export interface Carrier {
   readonly credentialKind: StorableKind;
   readonly account: string | null;
