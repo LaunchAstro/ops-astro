@@ -111,7 +111,7 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, owed, deferrals, buried, html, prose } = readBody(body);
+const { stated, record, owed, deferrals, buried, html, prose, claims } = readBody(body);
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
@@ -275,7 +275,7 @@ if (
     owed.length > 0 ||
     Object.values(record).some((values) => values.length > 0) ||
     /\b(?:approve[ds]?|approval|accepted|reviewed|no\s+findings|all\s+closed|reviews?\s+(?:complete[ds]?|passed))\b/iu.test(
-      prose,
+      claims,
     ))
 ) {
   failures.push('review deferral cannot carry review outcomes, records or approval claims.');
@@ -434,13 +434,15 @@ const companiesOf = (model) =>
 const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 if (deferring) {
-  // Retain the old debt label only for pasted markers already in flight.
-  if (
-    !computedDeferral &&
-    (!labels.has('unreviewed') || (!labels.has('needs-sol') && !labels.has('needs-second-model')))
-  ) {
+  // Each company that built part of the range owes the other's review. Only a
+  // pasted marker still in flight carries these labels; needs-sol keys a computed range.
+  const debts = [
+    ...(builtBy.has('OpenAI') ? ['needs-second-model'] : []),
+    ...(builtBy.has('OpenAI') && !builtBy.has('Anthropic') ? [] : ['needs-sol']),
+  ];
+  if (!computedDeferral && (!labels.has('unreviewed') || debts.some((d) => !labels.has(d)))) {
     failures.push(
-      'legacy review deferral requires current labels unreviewed and needs-sol or needs-second-model.',
+      `legacy review deferral requires current labels unreviewed and ${debts.join(' and ')}.`,
     );
   }
   if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
