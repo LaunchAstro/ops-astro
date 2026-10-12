@@ -94,4 +94,3 @@ it('a remapped bearer hears no old-person task resync while reach is in flight',
     await board.stop();
   }
 });
-
