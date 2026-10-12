@@ -113,6 +113,30 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 duplicate carries only the shel
     await expectShellOnly(taskId);
   });
 
+  it("MP-4-8 duplicate carries no live correction: it is pinned to the old task's client", async () => {
+    const old = await taskFor(alpha, owner, 'Corrected launch', clientA);
+    await db.app.withBusiness(alpha, async (tx) => {
+      await tx.query(
+        `insert into public.live_corrections
+           (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+            target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
+            version_id, version_digest)
+         values ($1, gen_random_uuid(), $2, $3, $4, $5, 'src/pages/about.md', 'friendly',
+                 'welcoming', 'https://agency.example/about/', 'sha256:pre', 'rev-1', 'seam',
+                 gen_random_uuid(), 'sha256:v')`,
+        [alpha, clientA, old, owner.actorId, owner.personId],
+      );
+    });
+    const { taskId } = newTaskOf(
+      await duplicate(owner, { recordId: old, client: clientB, title: 'Autumn', stepNames: [] }),
+    );
+    const carried = await db.admin.execute<{ readonly task: string }>(
+      `select task_id::text as task from public.live_corrections where task_id = any($1::uuid[])`,
+      [[old, taskId]],
+    );
+    expect(carried.map((row) => row.task)).toStrictEqual([old]);
+  });
+
   it.each(NAME_FIELDS)(
     'MP-4-8 carried name field %s: its canary goes only where sent',
     async (field) => {
