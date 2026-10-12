@@ -75,22 +75,29 @@ describe('the Ollama adapter', () => {
     expect(system?.content).not.toContain('b1d0f3a2');
   });
 
+  it('keeps earlier words it cannot read as turns out of the request', () => {
+    const { messages } = bodyOf({ earlier: 'not json', message: 'Hi' });
+    expect(messages.map((message) => message.role)).toStrictEqual(['system', 'user']);
+    expect(JSON.stringify(messages)).not.toContain('not json');
+  });
+});
+
+describe('the agent’s instructions', () => {
   it('tells the model it only proposes, and never to say it has done anything', () => {
     const [system] = bodyOf({ message: 'Make a task' }).messages;
     expect(system?.content).toContain('you must never say or suggest that you have');
     expect(system?.content).toContain('Nothing happens until the person clicks');
   });
 
+  it('tells the model today’s date, so a due date lands in the right year', () => {
+    const [system] = bodyOf({ message: 'Make a task' }).messages;
+    expect(system?.content).toContain(`Today is ${new Date().toLocaleDateString('en-CA')}.`);
+  });
+
   it('names the optional due date and estimate keys the card reads', () => {
     const [system] = bodyOf({ message: 'Make a task' }).messages;
     expect(system?.content).toContain('"due", the date it is due as YYYY-MM-DD');
     expect(system?.content).toContain('"estimate", the work it needs in whole minutes');
-  });
-
-  it('keeps earlier words it cannot read as turns out of the request', () => {
-    const { messages } = bodyOf({ earlier: 'not json', message: 'Hi' });
-    expect(messages.map((message) => message.role)).toStrictEqual(['system', 'user']);
-    expect(JSON.stringify(messages)).not.toContain('not json');
   });
 });
 

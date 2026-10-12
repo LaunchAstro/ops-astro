@@ -17,9 +17,14 @@ const INSTRUCTIONS = [
   'Use "create" for a new task, or "edit" to change the task the person has open, giving only the keys to change. Two keys are optional: "due", the date it is due as YYYY-MM-DD (never put the date in the description), and "estimate", the work it needs in whole minutes. The title is at most 200 characters and the description at most 4,000. Write at most one block. Nothing happens until the person clicks the button under it.',
 ].join('\n\n');
 
-/** The system message: the instructions, then the title of the task the chat is open on, if any. */
-export function conversationInstructions(pageTitle: string | null): string {
-  return pageTitle === null
-    ? `${INSTRUCTIONS}\n\nThe person has no task open.`
-    : `${INSTRUCTIONS}\n\nThe person has this task open: ${JSON.stringify(pageTitle)}.`;
+/** Today on this machine's clock, as YYYY-MM-DD, so a due date the model writes lands in the right year. */
+const today = (now: Date): string => now.toLocaleDateString('en-CA');
+
+/** The system message: the instructions, today's date, then the title of the task the chat is open on, if any. */
+export function conversationInstructions(pageTitle: string | null, now: Date = new Date()): string {
+  const page =
+    pageTitle === null
+      ? 'The person has no task open.'
+      : `The person has this task open: ${JSON.stringify(pageTitle)}.`;
+  return `${INSTRUCTIONS}\n\nToday is ${today(now)}. ${page}`;
 }
