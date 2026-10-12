@@ -91,8 +91,13 @@ const isBaselines = (value: unknown): value is Baselines =>
   Object.keys(value).every((id) => isUuid(id)) &&
   Object.values(value).every((each) => isBaseline(each));
 
+/** The session's own slot; with no session, none, so nothing is kept (as `kept.ts`). */
 const baselineSlot = (grantKey: string | undefined) =>
-  jsonSlot(tabStorage(), `ops-astro:proposal-baselines:${grantKey ?? ''}`, isBaselines);
+  jsonSlot(
+    grantKey === undefined ? null : tabStorage(),
+    `ops-astro:proposal-baselines:${grantKey ?? ''}`,
+    isBaselines,
+  );
 
 /** The chat's task read before its question is sent; none off a task, or unread. */
 export async function baselineOf(client: OperationsClient, chat: Chat): Promise<Baseline | null> {
