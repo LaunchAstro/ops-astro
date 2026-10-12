@@ -19,8 +19,9 @@
 // **New task on every page (DOCK T-17, DP-02).** The To-dos panel's head New
 // (`dock-props.tsx`) opens a draft filed from the page; the rail keeps the
 // registry's doors (R34), so the Task tab shows only while the panel holds
-// something. Any `[data-new-task]` control opens a draft too, prefilled from
-// the door, through the gesture law (a shift press opens it beside).
+// something. Any `[data-new-task]` control on the agency face opens a draft
+// too, prefilled from the door, through the gesture law (a shift press opens
+// it beside). The client face draws no dock, so its doors open nothing.
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
@@ -46,8 +47,11 @@ export interface TaskDock {
 
 const LABEL = 'Task';
 
-/** Keeps `task` in the dock's open set exactly while the task panel holds something. */
-export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
+/**
+ * Keeps `task` in the dock's open set exactly while the task panel holds
+ * something. `agency`: the dock is drawn, so a door opens a draft in it.
+ */
+export function useTaskDock(dock: DockModel, task: TaskDock | null, agency: boolean): void {
   const open = task?.open ?? false;
   // A task opened by Shift (CS-7.29) sits beside what is open, as a door's shift press does.
   const taskBeside = task?.beside ?? false;
@@ -55,7 +59,7 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const last = useRef({ open: false, docked: false });
   const { change } = dock;
   const closeTask = task?.close;
-  const file = task?.file ?? null;
+  const file = agency ? (task?.file ?? null) : null;
   // A door's shift press opens the panel beside what is open. A task open from
   // the first frame is the one kept across a reload: it comes back beside the
   // panels the dock kept, never in their place.
