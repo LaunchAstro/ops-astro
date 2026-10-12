@@ -7,9 +7,10 @@
 // What is kept is the `rail.collapsed` and `rail.width` keys of MP-2-11's one
 // preference store (layout-store.ts), handed in before the first render so the
 // shell draws it before paint. Only the width under a moving grip is held here,
-// and only for the owner (business and person) the drag started under: a
-// switch with the pointer still held ends the drag, and its release saves
-// nothing into the next owner's preferences.
+// and only for the owner (business and person) the drag started under. A
+// switch drops it, and the shell keys the grip on `owner`, so a drag held
+// across the switch ends at the grip: its release saves nothing into the next
+// owner's preferences.
 
 import { useState } from 'react';
 import { RAIL_DEFAULT, RAIL_MAX, RAIL_MIN, RAIL_STRIP } from '@launchastro/ui';
@@ -21,6 +22,8 @@ export interface RailPreference {
 }
 
 export interface RailModel extends RailPreference {
+  /** The business and person the rail is drawn for. */
+  readonly owner: string;
   /** The width it is drawn at: the strip's while folded. */
   readonly drawn: number;
   readonly fold: () => void;
@@ -52,9 +55,10 @@ export function useRail(
   owner: string,
 ): RailModel {
   const [held, setHeld] = useState<{ readonly owner: string; readonly width: number }>();
-  const moving = held?.owner === owner ? held : undefined;
-  const width = moving?.width ?? stored.width;
+  if (held !== undefined && held.owner !== owner) setHeld(undefined);
+  const width = held?.owner === owner ? held.width : stored.width;
   return {
+    owner,
     collapsed: stored.collapsed,
     width,
     drawn: stored.collapsed ? RAIL_STRIP : width,
@@ -66,7 +70,7 @@ export function useRail(
     },
     keep: (next) => {
       setHeld(undefined);
-      if (held === undefined || held.owner === owner) save('rail.width', clampRail(next));
+      save('rail.width', clampRail(next));
     },
   };
 }
