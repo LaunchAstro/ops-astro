@@ -21,6 +21,7 @@ import {
   standsOnShares,
 } from '../../../core-records/src/index.ts';
 import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
+import { declarationOf, EXTERNAL_WRITES } from '../../../core-wire/src/index.ts';
 import type {
   AccessAgent,
   AccessPermission,
@@ -102,6 +103,9 @@ interface DelegationRow {
   readonly purpose_scope_kind: 'record';
   readonly purpose_scope_id: string;
   readonly expires_at: Date;
+  readonly minted_by_actor_id: string;
+  /** Minted by a Launch, or a helper of one: it draws on the minting identity too. */
+  readonly launch: boolean;
 }
 
 /**
@@ -112,7 +116,10 @@ interface DelegationRow {
 async function standingDelegations(tx: TenantQuery): Promise<readonly DelegationRow[]> {
   return await tx.query<DelegationRow>(
     `select d.id, d.agent_actor_id, p.id as person_id, p.display_name, d.purpose, d.collections,
-            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at
+            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at, d.minted_by_actor_id,
+            exists (select 1 from public.task_launches l
+                     where l.business_id = d.business_id
+                       and l.delegation_id = coalesce(d.parent_delegation_id, d.id)) as launch
        from public.delegations d
        join public.actors a
          on a.business_id = d.business_id and a.id = d.agent_actor_id and a.active
@@ -139,12 +146,15 @@ async function standingDelegations(tx: TenantQuery): Promise<readonly Delegation
  * reads this business's grants alone.
  *
  * Each preview is `heldPermissions`, the grant check's own walk, without
- * dormant grants, for a person
- * sign-in would admit: one with standing and an active acting identity. The
- * grant check runs only behind sign-in, so a person it refuses (for instance
- * `ACTOR_INACTIVE`) is shown no permission. It cannot say more than the check
- * grants. Each previewed permission carries `stepUp`, the command path's own
- * `asksMoneyStepUp`, so a money key is not shown usable on any sign-in.
+ * dormant grants, for a person sign-in would admit: one with standing, an
+ * active login mapping and an active acting identity, as `resolveLogin` asks.
+ * The grant check runs only behind sign-in, so a person it refuses (for
+ * instance `ACTOR_INACTIVE`) is shown no permission. It cannot say more than
+ * the check grants. A client's preview also passes the envelope's
+ * no-membership gate (R4, `admitsSelfWrite`): reads, and the writes
+ * `EXTERNAL_WRITES` declares. Each previewed permission carries `stepUp`, the
+ * command path's own `asksMoneyStepUp`, so a money key is not shown usable on
+ * any sign-in.
  */
 export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult, 'ok'>> {
   const team = await listPeople(tx);
@@ -156,7 +166,11 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     if (!members.has(personId) && (await standsOnShares(tx, personId))) outside.push(personId);
   }
   const acting = await tx.query<{ readonly person_id: string }>(
-    `select person_id from public.actors where business_id = $1 and kind = 'person' and active`,
+    `select a.person_id from public.actors a
+      where a.business_id = $1 and a.kind = 'person' and a.active
+        and exists (select 1 from public.person_logins pl
+                     where pl.business_id = a.business_id and pl.person_id = a.person_id
+                       and pl.active)`,
     [tx.businessId],
   );
   const admitted = new Set(acting.map((row) => row.person_id));
@@ -171,45 +185,58 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     tx,
     held.filter((permission) => !permission.dormant),
   );
-  const withPreview = (person: PersonView): AccessPerson => ({
+  const withPreview = (person: PersonView, member: boolean): AccessPerson => ({
     ...person,
-    permissions: admitted.has(person.personId) ? preview(person.personId) : [],
+    permissions: admitted.has(person.personId) ? preview(person.personId, member) : [],
     grants: held
       .filter((permission) => permission.personId === person.personId)
       .map(({ grantId, collection, action, scope }) => ({ grantId, collection, action, scope })),
   });
   return {
-    team: team.map((person) => withPreview(person)),
-    clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name })),
+    team: team.map((person) => withPreview(person, true)),
+    clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name }, false)),
     agents: delegations.map((row) => agentOf(row, held)),
     clientRecords: await listAllClients(tx),
     clientPrivacy: await listClientPrivacy(tx),
   };
 }
 
+/** The keys a person without a membership may write on: `EXTERNAL_WRITES`' own declarations. */
+const EXTERNAL_KEYS = new Set(
+  EXTERNAL_WRITES.map((command) => {
+    const { collection, action } = declarationOf(command);
+    return `${collection}:${action}`;
+  }),
+);
+
 /**
  * A person's preview: their held permissions once each, every one marked with
- * `asksMoneyStepUp`, the command path's own answer, asked once per key.
+ * `asksMoneyStepUp`, the command path's own answer, asked once per key. A
+ * client's keeps only the reads and the keys `EXTERNAL_KEYS` names.
  */
 async function previewsOf(
   tx: TenantQuery,
   held: readonly HeldPermission[],
-): Promise<(personId: string) => AccessPreview[]> {
+): Promise<(personId: string, member: boolean) => AccessPreview[]> {
   const asked = new Map<string, boolean>();
   for (const { collection, action } of held) {
     const key = `${collection}:${action}`;
     // oxlint-disable-next-line no-await-in-loop
     if (!asked.has(key)) asked.set(key, await asksMoneyStepUp(tx, { collection, action }));
   }
-  return (personId) =>
-    once(held.filter((permission) => permission.personId === personId)).map(
-      ({ collection, action, scope }) => ({
-        collection,
-        action,
-        scope,
-        stepUp: asked.get(`${collection}:${action}`) === true,
-      }),
-    );
+  return (personId, member) =>
+    once(
+      held.filter(
+        ({ personId: holder, collection, action }) =>
+          holder === personId &&
+          (member || action === 'read' || EXTERNAL_KEYS.has(`${collection}:${action}`)),
+      ),
+    ).map(({ collection, action, scope }) => ({
+      collection,
+      action,
+      scope,
+      stepUp: asked.get(`${collection}:${action}`) === true,
+    }));
 }
 
 /** Each permission once, whether the grant names the person or their acting identity. */
@@ -224,15 +251,17 @@ function once(held: readonly AccessPermission[]): AccessPermission[] {
 /**
  * What `checkDelegatedAuthority` grants the agent: each collection and action
  * its purpose carries, except `decide`, that its person holds by a grant
- * naming them, at business scope or on the delegation's one record; and only
- * ever on that record.
+ * naming them (or, for a Launch's, the acting identity it was minted on, as
+ * `delegatingSubjects` says), at business scope or on the delegation's one
+ * record; and only ever on that record.
  */
 function agentOf(row: DelegationRow, held: readonly HeldPermission[]): AccessAgent {
   const scope = { kind: row.purpose_scope_kind, id: row.purpose_scope_id };
   const drawn = held.filter(
     (permission) =>
       permission.personId === row.person_id &&
-      permission.direct &&
+      (permission.direct ||
+        (row.launch && !permission.dormant && permission.actorId === row.minted_by_actor_id)) &&
       permission.action !== 'decide' &&
       row.collections.includes(permission.collection) &&
       row.actions.includes(permission.action) &&
