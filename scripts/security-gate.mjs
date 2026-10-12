@@ -74,10 +74,10 @@ for (const [i, e] of listed.entries()) {
 const used = new Set();
 
 if (kind === 'audit' && report !== undefined) {
-  if (typeof report.advisories !== 'object' || report.advisories === null)
+  const { advisories } = report;
+  if (typeof advisories !== 'object' || advisories === null || Array.isArray(advisories))
     refuse('the audit report carries no advisories object; the audit did not complete');
-  const total = report.metadata?.totalDependencies;
-  if (total !== undefined && !(total > 0))
+  if (!(report.metadata?.totalDependencies > 0))
     refuse('the audit report counted no dependencies; the audit did not complete');
   for (const a of Object.values(report.advisories ?? {})) {
     const id = a.github_advisory_id ?? String(a.id);
