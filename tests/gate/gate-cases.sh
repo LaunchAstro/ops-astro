@@ -398,6 +398,24 @@ else
 fi
 rm -rf "$dir"
 
+echo "S. a denied folder at the repository root is denied in either path form"
+# Path rules are written against repository-relative paths, so a rule for a
+# folder anywhere must also hold when that folder sits at the root.
+dir="$(new_repo)"
+for folder in client-data os-mirror; do
+  mkdir -p "$dir/$folder"
+  printf 'neutral\n' > "$dir/$folder/note.txt"
+  for target in "$folder" "$dir/$folder"; do
+    status="$(gate_status "$dir" --path "$target")"
+    if [ "$status" = "1" ]; then
+      pass "a root $folder folder is denied, given as ${target%%/$folder}... (exit 1)"
+    else
+      fail "a root $folder folder is denied, given as $target" "expected exit 1, got $status"
+    fi
+  done
+done
+rm -rf "$dir"
+
 echo "K. gitleaks exclusions are anchored"
 # The allowlist entries are regexes matched against the whole path. An
 # unanchored LICENSE also matches src/LICENSE-private-config.json, which is a

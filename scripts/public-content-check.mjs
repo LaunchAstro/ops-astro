@@ -39,7 +39,17 @@ const rules = [
 // The final label must be alphabetic. Without that, an npm specifier such as
 // a scoped package at a three-part version reads as an address and every
 // lockfile in the repository becomes a finding.
-const addressPattern = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+//
+// The local part is taken whole. Punctuation a local part may carry, such as
+// `!` or `'`, joins it when letters or digits sit on both sides, so an
+// unlisted address can no longer be read as the approved address it ends in.
+// Leading punctuation is read as a quote or delimiter, as in `'name@host'`.
+const addressPattern =
+  /[\p{L}\p{N}._%+-]+(?:[!#$&'*/=?^`{|}~]+[\p{L}\p{N}._%+-]+)*@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+// A match with an address character touching either end is part of a longer
+// address, so no exact allowance applies to it.
+const touchesBefore = /[@\p{L}\p{N}]$/u;
+const touchesAfter = /^(?:[@\p{L}\p{N}_-]|\.[a-z0-9-])/iu;
 
 // Provenance only. Allowed as a commit identity; a finding inside a blob.
 const provenanceIdentities = [
@@ -62,10 +72,10 @@ const provenanceIdentities = [
 // password `example` before a host, which read as addresses; those strings alone.
 const publishedAddresses = [
   /^security@launchastro\.com$/u,
-  /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^[^@]+@example\.(?:invalid|test|localhost)$/u,
   // owner@ is the synthetic pooler login Sol's staging-logins proof names (ORCH76 D1ALLOW).
   /^(?:example@(?:production-db\.example\.test|aws-0-ap-southeast-2\.pooler\.supabase\.com)|owner@aws-0-ap-southeast-2\.pooler\.supabase\.com)$/u,
-  /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
+  /^[^@]+@example\.(?:com|net|org)$/u,
   /^ada@alpha\.local$/u,
   /^mia@alpha\.local$/u,
   /^noah@alpha\.local$/u,
@@ -97,11 +107,15 @@ const approvedShapeDigests = new Set([
 
 export function addressRules(text, scope) {
   const found = new Set();
-  for (const [address] of text.matchAll(addressPattern)) {
+  for (const { 0: address, index } of text.matchAll(addressPattern)) {
     const value = address.toLowerCase();
-    if (publishedAddresses.some((allowed) => allowed.test(value))) continue;
+    const end = index + address.length;
+    const whole =
+      !touchesBefore.test(text.slice(Math.max(0, index - 2), index)) &&
+      !touchesAfter.test(text.slice(end, end + 2));
+    if (whole && publishedAddresses.some((allowed) => allowed.test(value))) continue;
     if (scope === 'commit') {
-      if (provenanceIdentities.some((allowed) => allowed.test(value))) continue;
+      if (whole && provenanceIdentities.some((allowed) => allowed.test(value))) continue;
       found.add('unlisted-commit-identity');
       continue;
     }

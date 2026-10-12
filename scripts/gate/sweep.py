@@ -283,11 +283,16 @@ def decode(data: bytes) -> str | None:
 # ---------------------------------------------------------------------------
 # Git
 
+# A push sends the objects themselves. A `git replace` ref changes what this
+# clone reads in their place and is never what the remote receives, so every
+# read here ignores replacements.
+GIT = ["git", "--no-replace-objects"]
+
 
 def git(args: list[str], cwd: Path | None = None) -> bytes:
     try:
         return subprocess.run(
-            ["git", *args],
+            [*GIT, *args],
             cwd=cwd or REPO,
             check=True,
             capture_output=True,
@@ -316,7 +321,7 @@ def staged_blob(path: str) -> bytes | None:
     """The bytes git will commit, read out of the index."""
     try:
         return subprocess.run(
-            ["git", "show", f":{path}"],
+            [*GIT, "show", f":{path}"],
             cwd=REPO,
             check=True,
             capture_output=True,
@@ -328,7 +333,7 @@ def staged_blob(path: str) -> bytes | None:
 def cat_blob(sha: str) -> bytes | None:
     try:
         return subprocess.run(
-            ["git", "cat-file", "blob", sha],
+            [*GIT, "cat-file", "blob", sha],
             cwd=REPO,
             check=True,
             capture_output=True,
@@ -610,18 +615,38 @@ def mode_tracked(hashes, shapes, patterns, binary_allow, exemptions, reveal: boo
     return report(violations, reveal, f"{len(rels)} tracked file(s)")
 
 
+def policy_key(path: Path) -> str:
+    """The path the rules are written against: relative to the repository
+    when the file is inside it, however the target was given, and as given
+    otherwise. Only the folder is resolved, so a symlink is still judged as
+    the link itself."""
+    full = Path(os.path.realpath(path.parent)) / path.name
+    try:
+        return full.relative_to(REPO).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, reveal: bool) -> int:
     if not target.exists():
         die(f"no such path: {target}")
     found: list[Path] = []
+    # A folder that cannot be listed was never inspected, so the sweep is
+    # incomplete and must not report clean.
+    unlisted: list[str] = []
     if target.is_file():
         found = [target]
     else:
-        for dirpath, dirnames, filenames in os.walk(target):
+        def note(error: OSError) -> None:
+            unlisted.append(policy_key(Path(error.filename)))
+
+        for dirpath, dirnames, filenames in os.walk(target, onerror=note):
             dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
             found.extend(Path(dirpath) / n for n in filenames)
-    rels = [str(p) for p in found]
-    shown, violations = path_texts([("", r) for r in rels], hashes, shapes)
+    rels = [policy_key(p) for p in found]
+    shown, violations = path_texts([("", r) for r in rels + unlisted], hashes, shapes)
+    unlisted_reason = "the gate could not list this folder"
+    violations += [(shown[d], "unreadable", unlisted_reason, unlisted_reason) for d in unlisted]
     violations += path_violations([(shown[r], r) for r in rels], patterns)
     items = [(shown[rel], rel, read_path(path)) for path, rel in zip(found, rels)]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
@@ -692,8 +717,14 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
             )
     print(f"gate: {len(exemptions)} exempt path(s), all matching an approved digest")
 
-    absent = Path("/nonexistent/gate-terms-that-are-not-there.txt")
-    code = literal_sweep_status(absent)
+    # Run the literal sweep itself, as a hook would, with the list missing.
+    absent = "/nonexistent/gate-terms-that-are-not-there.txt"
+    code = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--literal"],
+        cwd=REPO,
+        env={**os.environ, LITERAL_LIST_ENV: absent},
+        capture_output=True,
+    ).returncode
     print(f"gate: a missing private list exits {code}")
     if code != 2:
         failures.append(f"a missing private list exited {code}, not 2")
@@ -710,10 +741,6 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
         return 1
     print("gate: self-test passed")
     return 0
-
-
-def literal_sweep_status(listfile: Path) -> int:
-    return 2 if not listfile.is_file() else 0
 
 
 def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
