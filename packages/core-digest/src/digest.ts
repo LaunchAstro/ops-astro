@@ -57,8 +57,10 @@ function write(value: unknown, path: string): string {
   const object = value as object;
   if (Array.isArray(object)) {
     // Order is kept. Two clients sending the same members in a different order
-    // have sent different requests, and a list of subtasks proves it.
-    return `[${object.map((member, index) => write(member, `${path}[${index}]`)).join(',')}]`;
+    // have sent different requests, and a list of subtasks proves it. A hole
+    // is read as undefined and refused: `map` would skip it, spelling `[ , ]`
+    // as `[]` and `[ , , ]` as `[,]`.
+    return `[${Array.from(object, (member, index) => write(member, `${path}[${index}]`)).join(',')}]`;
   }
   if (!isPlainObject(object)) throw unsupported(object, path);
 
