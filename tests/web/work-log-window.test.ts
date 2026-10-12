@@ -78,10 +78,11 @@ describe('reading the window', () => {
 
 describe('an earlier page joining the window', () => {
   const drawn = windowOf(FIRST);
-  const asking = { epoch: 3, zone: 'UTC', boundary: '2026-09-22' };
+  const asking = { epoch: 3, failures: 1, zone: 'UTC', boundary: '2026-09-22' };
+  const since = { epoch: 3, failures: 1 };
 
   it('joins the window it left from, below its days', () => {
-    expect(joins(asking, 3, drawn)).toBe(true);
+    expect(joins(asking, since, drawn)).toBe(true);
     expect(extend(drawn, SECOND).ledger.days.map((each) => each.day)).toEqual([
       '2026-09-28',
       '2026-09-22',
@@ -89,9 +90,10 @@ describe('an earlier page joining the window', () => {
     ]);
   });
 
-  it('is dropped by a later epoch, another zone or another last day', () => {
-    expect(joins(asking, 4, drawn)).toBe(false);
-    expect(joins(asking, 3, windowOf(FIRST, 'Australia/Brisbane'))).toBe(false);
-    expect(joins(asking, 3, extend(drawn, SECOND))).toBe(false);
+  it('is dropped by a later epoch, a failure since, another zone or another last day', () => {
+    expect(joins(asking, { ...since, epoch: 4 }, drawn)).toBe(false);
+    expect(joins(asking, { ...since, failures: 2 }, drawn)).toBe(false);
+    expect(joins(asking, since, windowOf(FIRST, 'Australia/Brisbane'))).toBe(false);
+    expect(joins(asking, since, extend(drawn, SECOND))).toBe(false);
   });
 });

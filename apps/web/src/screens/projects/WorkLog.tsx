@@ -131,27 +131,16 @@ function useWindow(client: OperationsClient, grantKey: string, query: string | n
     rollup: tabRollupFloor(),
     coalesce: true,
   });
-  return { read, epoch: useEpoch(grantKey, query, read.state, through), through };
+  return { read, epoch: useEpoch(grantKey, query, through), through };
 }
 
-/**
- * The window's epoch: a new reader or search starts another, and sends the
- * window back to its first page; a refusal or an outage starts another too, so
- * nothing sent before it joins what is drawn after.
- */
-function useEpoch(
-  grantKey: string,
-  query: string | null,
-  state: ReadState<LedgerRead>,
-  through: { current: string | null },
-): number {
-  const seen = useRef({ grantKey, query, failure: null as ReadState<LedgerRead> | null, epoch: 0 });
+/** The window's epoch: a new reader or search starts another, from the first page. */
+function useEpoch(grantKey: string, query: string | null, through: { current: string | null }) {
+  const seen = useRef({ grantKey, query, epoch: 0 });
   const last = seen.current;
-  const failure = state.outcome === 'denied' || state.outcome === 'unavailable' ? state : null;
-  const reset = last.grantKey !== grantKey || last.query !== query;
-  if (reset) through.current = null;
-  if (reset || (failure !== null && failure !== last.failure)) {
-    seen.current = { grantKey, query, failure: failure ?? last.failure, epoch: last.epoch + 1 };
+  if (last.grantKey !== grantKey || last.query !== query) {
+    through.current = null;
+    seen.current = { grantKey, query, epoch: last.epoch + 1 };
   }
   return seen.current.epoch;
 }
@@ -166,32 +155,34 @@ interface EarlierDays {
  * The page before the window, one at a time: `Load earlier days` is disabled
  * while one is on its way, whatever a refresh does. A failure withdraws the
  * window as a refresh's would, and retires the refresh in flight. A page joins
- * only the window it left from; one that joins while a refresh is in flight
- * starts the refresh again, since that one reads only the days before it.
+ * only the window it left from, with no failure landed since; one that joins
+ * while a refresh is in flight starts the refresh again, since that one reads
+ * only the days before it.
  */
 function useEarlierDays(client: OperationsClient, log: WindowRead): EarlierDays {
   const [asking, setAsking] = useState<Asking | null>(null);
   const { read, epoch, through } = log;
-  const now = useRef({ epoch, state: read.state });
-  now.current = { epoch, state: read.state };
+  const epochNow = useRef(epoch);
+  epochNow.current = epoch;
 
   const loadEarlier = async (from: LedgerRead): Promise<void> => {
     const boundary = from.ledger.days.at(-1)?.day;
     if (boundary === undefined) return;
-    const sent: Asking = { epoch, zone: from.zone, boundary };
+    const sent: Asking = { epoch, failures: read.now().failures, zone: from.zone, boundary };
     setAsking(sent);
     const result = await readPage(client, from.zone, boundary, from.query);
     setAsking((held) => (held === sent ? null : held));
-    const current = now.current;
+    // The read as it stands, not as last drawn: an answer may have landed since.
+    const { state, failures } = read.now();
     if (isRefusal(result) || isUnavailable(result)) {
-      if (sent.epoch === current.epoch) read.land(result);
+      if (sent.epoch === epochNow.current) read.land(result);
       return;
     }
-    const drawn = drawnOf(current.state);
-    if (drawn === null || !joins(sent, current.epoch, drawn)) return;
+    const drawn = state === null ? null : drawnOf(state);
+    if (drawn === null || !joins(sent, { epoch: epochNow.current, failures }, drawn)) return;
     through.current = result.value.days.at(-1)?.day ?? through.current;
     read.land({ ok: true, value: extend(drawn, result.value) });
-    if (current.state.outcome === 'loading') read.reload();
+    if (state?.outcome === 'loading') read.reload();
   };
   return { loading: asking?.epoch === epoch, loadEarlier };
 }

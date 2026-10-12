@@ -37,9 +37,14 @@ export interface LedgerRead {
   readonly ledger: TaskLedgerResult;
 }
 
-/** An earlier page on its way: the window it left from, and the day it reads before. */
-export interface Asking {
+/** Where the window stands: a new reader or search, or a failure, moves it on. */
+export interface Since {
   readonly epoch: number;
+  readonly failures: number;
+}
+
+/** An earlier page on its way: the window it left from, and the day it reads before. */
+export interface Asking extends Since {
   readonly zone: string;
   readonly boundary: string;
 }
@@ -115,9 +120,10 @@ export async function readWindow(
   return { ok: true, value: { zone, query, ledger: { ...first.value, days, earlier } } };
 }
 
-/** Whether an earlier page that left as `asking` may join `drawn`, at `epoch`. */
-export const joins = (asking: Asking, epoch: number, drawn: LedgerRead): boolean =>
-  asking.epoch === epoch &&
+/** Whether an earlier page that left as `asking` may join `drawn`, the window now at `since`. */
+export const joins = (asking: Asking, since: Since, drawn: LedgerRead): boolean =>
+  asking.epoch === since.epoch &&
+  asking.failures === since.failures &&
   drawn.zone === asking.zone &&
   lastDay(drawn.ledger.days) === asking.boundary;
 

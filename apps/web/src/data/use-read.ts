@@ -62,6 +62,8 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * in flight is retired, and a refusal raises the floor as one of its own would.
    */
   readonly land: (result: CallResult<T>) => void;
+  /** The read now, ahead of the render that draws it, and how many refusals or outages it has had. */
+  readonly now: () => { readonly state: ReadState<T> | null; readonly failures: number };
   /**
    * True while the read in flight was started by the live channel, so a host
    * can keep its last answer drawn through an ordinary live change (MP-6-3).
@@ -185,11 +187,19 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     [grantKey],
   );
 
+  const failures = useRef(0);
+  const now = useCallback(
+    () => ({ state: readRef.current?.state ?? null, failures: failures.current }),
+    [],
+  );
+
   useEffect(() => {
+    const onState = (next: ReadState<T>): void => {
+      if (next.outcome === 'denied' || next.outcome === 'unavailable') failures.current += 1;
+      setState(next);
+    };
     const projection = new AuthorisedRead<T>(
-      isEmpty === undefined
-        ? { grantKey, onState: setState }
-        : { grantKey, onState: setState, isEmpty },
+      isEmpty === undefined ? { grantKey, onState } : { grantKey, onState, isEmpty },
     );
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
@@ -226,6 +236,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     reload,
     refresh,
     land,
+    now,
     own,
     live: own && liveRef.current && state.outcome === 'loading',
   };
