@@ -108,11 +108,12 @@ function columnGeometry(props: ColumnProps, width: number, height: number): Colu
   const onRight = line?.axis === 'right';
   const plot = plotOf(width, height, onRight);
   const onLeft = line !== undefined && !onRight ? [...props.bars, line] : props.bars;
-  const slot = props.labels.length === 0 ? 0 : plot.w / props.labels.length;
+  const count = props.labels.length;
+  const slot = count === 0 ? 0 : plot.w / count;
   return {
     plot,
-    left: axisFor(onLeft, plot.y, plot.h, props.stacked === true),
-    right: line !== undefined && onRight ? axisFor([line], plot.y, plot.h) : null,
+    left: axisFor(onLeft, plot.y, plot.h, props.stacked === true, count),
+    right: line !== undefined && onRight ? axisFor([line], plot.y, plot.h, false, count) : null,
     slot,
     xOf: (i) => plot.x + slot * i + slot / 2,
   };

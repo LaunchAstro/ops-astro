@@ -72,7 +72,7 @@ export function Meter(props: MeterProps): ReactElement {
       aria-label={props.label}
       aria-valuemin={0}
       aria-valuemax={props.max}
-      aria-valuenow={props.value}
+      aria-valuenow={Math.min(props.max, Math.max(0, props.value))}
     >
       <span
         className="meter__fill"
