@@ -72,15 +72,17 @@ const subjectsOfSharer = (sharer: Sharer): readonly Subject[] => [
  *
  * Idempotent: a live share of the same record with the same person is
  * returned rather than issued twice, so a repeated share, or two at once,
- * leaves one row to revoke. Authority is checked before existence, so a
- * sharer with no `share` learns nothing about whether the record or the
- * person is there.
+ * leaves one row to revoke. The share's lock is taken first and authority
+ * judged after it, so a `share` that ends while this waits shares nothing.
+ * Authority is checked before existence, so a sharer with no `share` learns
+ * nothing about whether the record or the person is there.
  */
 export async function shareRecord(
   tx: TenantQuery,
   sharer: Sharer,
   request: ShareRequest,
 ): Promise<ShareDecision<string>> {
+  await lockShare(tx, request);
   const refused = await refuseShare(tx, sharer, request, 'live');
   if (refused !== undefined) return refused;
   return { ok: true, value: await issueShare(tx, sharer.actorId, request) };
@@ -122,6 +124,7 @@ export async function revokeShare(
   // A trashed record's shares can still be withdrawn: the share outlives the
   // trash until a purge revokes it, so refusing here would leave its holder
   // standing with nobody able to take it back.
+  await lockShare(tx, request);
   const refused = await refuseShare(tx, sharer, request, 'live or trashed');
   if (refused !== undefined) return refused;
   return { ok: true, value: await withdrawShares(tx, request) };
@@ -191,6 +194,17 @@ async function refuseShare(
 }
 
 /**
+ * The share's own lock, per business, record and person, held to commit. A
+ * share or withdrawal takes it before it judges the sharer's authority, so
+ * the judgement reads the clock and the grants after any wait on it; taking
+ * it again in the same transaction waits for nothing.
+ */
+async function lockShare(tx: TenantQuery, request: ShareRequest): Promise<void> {
+  const key = `record-share:${tx.businessId}:${request.recordId}:${request.personId}`;
+  await advisoryLock(tx, key.toLowerCase());
+}
+
+/**
  * This record's live share rows with this person, read under the share's own
  * lock for the rest of the transaction, so two shares or withdrawals of it run
  * one after the other. `standing` keeps only those whose whole chain is live
@@ -203,8 +217,7 @@ async function liveShares(
   request: ShareRequest,
   standing = false,
 ): Promise<readonly string[]> {
-  const key = `record-share:${tx.businessId}:${request.recordId}:${request.personId}`;
-  await advisoryLock(tx, key.toLowerCase());
+  await lockShare(tx, request);
   const rows = await tx.query<{ readonly id: string }>(
     `${standing ? EFFECTIVE : ''}
      select id from ${standing ? 'effective' : 'public.grants'}
