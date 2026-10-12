@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { App } from '../../apps/web/src/App.tsx';
 import { dockTabs, type PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
-import { clientFacetId } from '@launchastro/ui';
+import { clientFacetId } from '../../packages/ui/src/board/project-facets.ts';
 import type { ClientView } from '../../packages/core-wire/src/index.ts';
 import { Book } from '../../apps/web/src/screens/Clients.tsx';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
