@@ -86,6 +86,9 @@ const readDefinition = (environment: DeployEnvironment): StagingDefinition =>
   JSON.parse(readFileSync(definitionPath(environment), 'utf8')) as StagingDefinition;
 const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
 
+/** A backup or drill run's name after its unit's prefix (container-run.mjs, drill-restore.mjs). */
+const RUN_NAME = /^(?:(?:store|backup)-[0-9a-f]{16}|drill-[0-9a-f]{8})$/u;
+
 /**
  * The unit's own services, which its deploy may restart: staging's by its
  * prefix, as the service report has always judged; production's only the
@@ -100,11 +103,12 @@ export function unitOf(environment: DeployEnvironment): Unit {
   const containers = new Set(
     Object.entries(definition.services).map(([key, s]) => s.container_name ?? key),
   );
-  const prefix = definition['x-ops-astro'].ownPrefix;
-  const run = new RegExp(`^${prefix}-(?:(?:store|backup)-[0-9a-f]{16}|drill-[0-9a-f]{8})$`, 'u');
+  const prefix = `${definition['x-ops-astro'].ownPrefix}-`;
+  const run = (name: string): boolean =>
+    name.startsWith(prefix) && RUN_NAME.test(name.slice(prefix.length));
   return {
     name: environment,
-    owns: (name, manager) => manager === 'docker' && (containers.has(name) || run.test(name)),
+    owns: (name, manager) => manager === 'docker' && (containers.has(name) || run(name)),
   };
 }
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
