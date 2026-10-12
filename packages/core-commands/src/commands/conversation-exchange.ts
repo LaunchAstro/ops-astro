@@ -174,8 +174,9 @@ async function keep(
   const inserted = await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
-        created_at)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz)
+        created_at, context_epoch)
+     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz,
+             (select context_epoch from conversations where business_id = $1 and id = $3))
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
@@ -183,12 +184,17 @@ async function keep(
     [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
+  await activeAt(tx, asked.conversationId, at);
+  return { id, body };
+}
+
+/** The conversation's last activity moved up to `at`, never back. */
+async function activeAt(tx: TenantQuery, conversationId: string, at: string): Promise<void> {
   await tx.query(
     `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
-    [tx.businessId, asked.conversationId, at],
+    [tx.businessId, conversationId, at],
   );
-  return { id, body };
 }
 
 /** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */

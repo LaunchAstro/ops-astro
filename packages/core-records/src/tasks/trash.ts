@@ -572,12 +572,12 @@ export async function purgeTrashedRecords(
   // also loses the subject, which carries the task's title, and a title taken
   // from that subject goes back to 'New conversation' (core-commands'
   // DEFAULT_TITLE, which this package may not import): with no scope left,
-  // the reads have no task to check a reader against. Its context starts
-  // again at the purge (`context_from`), so nothing said about the task is
-  // sent to a model with a later question.
+  // the reads have no task to check a reader against. Its context epoch is
+  // bumped under the row lock this update takes, so nothing said about the
+  // task before the purge is sent to a model with a later question.
   await tx.query(
     `update public.conversations
-        set scope_kind = null, scope_record_id = null, subject = null, context_from = now(),
+        set scope_kind = null, scope_record_id = null, subject = null, context_epoch = context_epoch + 1,
             title = case when title = subject then 'New conversation' else title end
       where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
