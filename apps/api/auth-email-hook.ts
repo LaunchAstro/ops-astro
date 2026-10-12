@@ -13,7 +13,9 @@
 // sent or not: the provider's caller (a reset asked for an unknown address,
 // say) learns nothing of who has an account or an invitation. A refused
 // signature is 401, a malformed verified body 400, a replay 409, a fault 503;
-// an answer carries a code and nothing else, and nothing is logged.
+// an answer carries a code and nothing else, and nothing is logged. Each
+// refused signature is a webhook-signature-failed signal for the security
+// alerts, naming this source and no business (the hook runs outside any).
 //
 // A replayed message id is refused twice over: by this process for any
 // message it took inside the timestamp window, and by the database for a
@@ -35,6 +37,7 @@ import {
   type MailSettings,
 } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
+import type { SecuritySignal } from './alerts/detect.ts';
 
 export const AUTH_EMAIL_HOOK_PATH = '/api/hooks/auth-email';
 
@@ -73,7 +76,16 @@ export interface AuthEmailHookOptions {
   readonly mail: MailSettings;
   /** The clock, in milliseconds; a test moves it. */
   readonly now?: () => number;
+  /** The security detections, where the deployment has an alert sink. */
+  readonly observe?: (signal: SecuritySignal) => void;
 }
+
+/** A refused signature, as the security detections count it: the source, no business. */
+const REFUSED: SecuritySignal = {
+  kind: 'webhook-signature-failed',
+  business: '',
+  source: 'auth-email-hook',
+};
 
 /** Mount the hook on `server`, the way `composeApi` does. */
 export function mountAuthEmailHook(
@@ -101,7 +113,10 @@ export function mountAuthEmailHook(
         at,
         STANDARD_WEBHOOK_HEADERS,
       );
-      if (!verdict.ok) return context.json({ code: verdict.code }, 401);
+      if (!verdict.ok) {
+        options.observe?.(REFUSED);
+        return context.json({ code: verdict.code }, 401);
+      }
       const message = readAuthMessage(raw);
       if (message === undefined) return context.json({ code: 'HOOK_MALFORMED' }, 400);
       for (const [held, since] of taken) {
