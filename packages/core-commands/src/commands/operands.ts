@@ -146,6 +146,22 @@ export const IDENTIFIER_FIELDS: readonly string[] = [
 ];
 
 /**
+ * What a read counts as an identifier: the commands' list and the ones only
+ * reads take. A read whose row does not name one refuses it like any other
+ * target it does not take, rather than its parse dropping it and the read
+ * answering about something else.
+ */
+export const READ_IDENTIFIER_FIELDS: readonly string[] = [
+  ...IDENTIFIER_FIELDS,
+  'person',
+  'client',
+  'runId',
+  'attemptId',
+  'incidentId',
+  'correctionId',
+];
+
+/**
  * A body field the row does not describe is refused `COMMAND_BODY_INVALID`,
  * before any command code runs, after authority on both prefixes: a caller
  * without the right, a person or an agent, is told that first. A command
