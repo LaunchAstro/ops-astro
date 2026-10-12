@@ -33,6 +33,7 @@ import {
   useColumnDrag,
   useFunnelMenu,
   useMeasuredWidth,
+  useViewport,
 } from './board-hooks.ts';
 import { ChipRow } from './BoardChips.tsx';
 import { CommandBar } from './BoardCommandBar.tsx';
@@ -93,8 +94,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const held = heldOf(facets, props.facets.length, machine.view.ids);
   const bare = props.nothing !== undefined && isBare(props.rows, machine.view);
   const available = useMeasuredWidth(card, props.width, !bare);
-  const viewport =
-    props.viewport ?? (typeof window === 'undefined' ? available : window.innerWidth);
+  const viewport = useViewport(props.viewport, available);
   const drag = useColumnDrag(props.columns, { viewport, available }, machine.view.widths, dispatch);
   const menu = useFunnelMenu();
   const chipRow = useRef<HTMLDivElement>(null);
