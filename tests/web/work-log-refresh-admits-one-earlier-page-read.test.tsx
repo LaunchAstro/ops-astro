@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
 // Proofs from the independent review of the Work log refresh, retitled by what they prove; their bodies are as written; each first asserts the refreshed first-page request before the second press.
+/* oxlint-disable max-lines-per-function, require-await -- the review's proofs, kept as written */
 
 import { act } from 'react';
 import { expect, it, vi } from 'vitest';

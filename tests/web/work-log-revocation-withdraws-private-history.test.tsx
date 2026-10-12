@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Proof from the independent review of the Work log refresh, retitled by what it proves; its body is as written.
 // @vitest-environment jsdom
+/* oxlint-disable max-lines-per-function, require-await -- the review's proof, kept as written */
 import { act } from 'react';
 import { expect, it, vi } from 'vitest';
 import { mount } from '../surfaces/mount.tsx';

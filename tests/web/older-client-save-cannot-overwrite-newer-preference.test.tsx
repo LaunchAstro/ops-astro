@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Proof from the independent review of the preference saves, retitled by what it proves; its body is as written.
 // @vitest-environment jsdom
+/* oxlint-disable max-lines-per-function, require-await -- the review's proofs, kept as written */
 
 import { act } from 'react';
 import { expect, it } from 'vitest';

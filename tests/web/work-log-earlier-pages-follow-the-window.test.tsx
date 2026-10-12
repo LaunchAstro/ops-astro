@@ -70,7 +70,7 @@ it('a refresh that succeeds after an earlier-page refusal draws nothing', async 
     await view.click('.act__more');
     await settle(30_000);
     expect(api.asked.map((body) => body['before'])).toEqual([null, '2026-09-22', null]);
-    await act(async () => {
+    act(() => {
       earlier.release(refused('SCOPE_NOT_GRANTED', ['task']));
     });
     await settle();
