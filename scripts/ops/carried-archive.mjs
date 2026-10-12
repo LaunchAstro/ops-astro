@@ -209,6 +209,8 @@ const orNull = (test) => (v) => v === null || test(v);
 const isTime = (v) => typeof v === 'string' && ISO.test(v);
 const STAGES = new Set(['scope', 'fetch', 'open', 'start', 'target', 'restore', 'check']);
 const TIMED = new Set(['fetch', 'open', 'start', 'restore', 'check']);
+/** The stages a drill can fail at before it has read an archive to name. */
+const BEFORE_THE_ARCHIVE = new Set(['scope', 'fetch']);
 
 /** Each field's one shape: a carried drill writes nothing else, and nothing is echoed. */
 const RECEIPT_SHAPE = {
@@ -220,8 +222,8 @@ const RECEIPT_SHAPE = {
   productionMajor: isInteger,
   sourceMajor: orNull(isInteger),
   targetMajor: orNull(isInteger),
-  archiveTakenAt: isTime,
-  archiveId: (v) => typeof v === 'string' && ID.test(v),
+  archiveTakenAt: orNull(isTime),
+  archiveId: orNull((v) => typeof v === 'string' && ID.test(v)),
   tables: orNull(isInteger),
   readAs: (v) => v === null || v === 'ops_astro_app',
   timings: (v) =>
@@ -243,8 +245,11 @@ const RECEIPT_SHAPE = {
  */
 export function readCarriedReceipt(file, operator) {
   const receipt = exactly(readOwn(file, 'receipt file'), RECEIPT_KEYS, 'receipt');
+  // Only a drill that failed before it read the archive names none.
+  const early = receipt.outcome === 'failed' && BEFORE_THE_ARCHIVE.has(receipt.stage);
   for (const field of RECEIPT_KEYS) {
-    if (!RECEIPT_SHAPE[field](receipt[field])) {
+    const unnamed = (field === 'archiveId' || field === 'archiveTakenAt') && !early;
+    if ((unnamed && receipt[field] === null) || !RECEIPT_SHAPE[field](receipt[field])) {
       throw new Error(`the receipt's ${field} is not one a carried drill writes`);
     }
   }

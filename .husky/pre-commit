@@ -21,6 +21,11 @@ python3 scripts/gate/sweep.py --staged
 # 3. Secrets, in what is staged.
 gitleaks protect --staged --no-banner --redact --config .gitleaks.toml
 
+# 3b. The lockfile, which gitleaks' default allowlist skips by path.
+if git diff --cached --name-only | grep -qx 'pnpm-lock.yaml'; then
+  git show :pnpm-lock.yaml | gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml
+fi
+
 # 4. Lint and format, on what is staged.
 pm exec lint-staged
 
