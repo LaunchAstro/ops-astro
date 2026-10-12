@@ -248,10 +248,17 @@ export const CARRY_ENDED_SESSIONS: readonly string[] = [
    end $$`,
   'select ops_astro_reset.carry_ended_sessions()',
 ];
+/**
+ * Put back in one transaction. Each subject's ending keeps its time: the
+ * trigger that sets a new ending's time at commit is off for this one insert,
+ * and on again before the commit, so it never sees the rows put back.
+ */
 export const RESTORE_ENDED_SESSIONS: readonly string[] = [
   `insert into ops.ended_provider_sessions (session_id, ended_at)
      select session_id, ended_at from ops_astro_reset.ended_provider_sessions`,
+  'alter table ops.ended_subject_sessions disable trigger ended_subject_sessions_at_commit',
   `insert into ops.ended_subject_sessions (subject_digest, kept_session, ended_before)
      select subject_digest, kept_session, ended_before from ops_astro_reset.ended_subject_sessions`,
+  'alter table ops.ended_subject_sessions enable trigger ended_subject_sessions_at_commit',
   'drop schema ops_astro_reset cascade',
 ];
