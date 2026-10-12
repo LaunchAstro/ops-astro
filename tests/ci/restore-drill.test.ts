@@ -738,6 +738,7 @@ async function carriedRestore(
       operator: { personId: randomUUID(), business: 'made-up' },
       records,
       recordSignIn: () => Promise.resolve(),
+      holdingGrant: <T>(during: (release: () => void) => Promise<T>) => during(() => {}),
     };
     const drill = '../../scripts/ops/restore-drill.mjs';
     const { drillAsOperator } = (await import(

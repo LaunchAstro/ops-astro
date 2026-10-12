@@ -113,6 +113,7 @@ export async function drill(
     operator: { personId: randomUUID(), business: 'made-up' },
     records,
     recordSignIn: () => Promise.resolve(),
+    holdingGrant: <T>(during: (release: () => void) => Promise<T>) => during(() => {}),
     recordTestedRestore: async () => await writer.recordTestedRestore?.(adminUrl(harness)),
   };
   try {

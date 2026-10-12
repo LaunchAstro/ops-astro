@@ -39,7 +39,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { oneHost } from './one-host.ts';
-import { businessOf, holdingGrant, recordSignIn } from './operator-runtime.ts';
+import { businessOf, expiryOf, holdingGrant, recordSignIn } from './operator-runtime.ts';
 import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -53,14 +53,17 @@ export type Gate =
       readonly ok: true;
       readonly operator: Operator;
       readonly records: string;
-      /** Commits the operator's sign-in attempt (I13); called only after the act. */
+      /** Commits the operator's sign-in attempt (I13) for the admitted person; called only after the act. */
       readonly recordSignIn: () => Promise<void>;
       /** Dates a pass the store took for the operations view (tested-restore.ts); drills only. */
       readonly recordTestedRestore: () => Promise<string>;
       /** Asks the gate again, now; rejects unless it admits the same person (store reads). */
       readonly stillOperator: () => Promise<void>;
-      /** Runs `during` with the operator's own grant held until it calls `release` (store reads). */
-      readonly holdingGrant: <T>(during: (release: () => void) => Promise<T>) => Promise<T>;
+      /** Runs `during` with the operator's admission held and judged again until it calls `release` (operator-runtime.ts). */
+      readonly holdingGrant: <T>(
+        during: (release: () => void) => Promise<T>,
+        budgetMs?: number,
+      ) => Promise<T>;
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -180,15 +183,17 @@ function afterTheAct(
   presented: VerifiedSubject,
   ask: () => Promise<Gate>,
 ): Omit<Extract<Gate, { ok: true }>, 'ok' | 'operator' | 'records'> {
+  const admitted = { ...held, presented, expiresAt: expiryOf(env['OPS_ASTRO_TOKEN']!) };
   return {
-    recordSignIn: async () => await recordSignIn(env['DATABASE_URL']!, held.businessId, presented),
+    recordSignIn: async () =>
+      await recordSignIn(env['DATABASE_URL']!, held.businessId, presented, held.personId),
     recordTestedRestore: async () => await recordTestedRestore(env['DATABASE_ADMIN_URL']!),
     stillOperator: async () => {
       const now = await ask();
       if (!now.ok || now.operator.personId !== held.personId) throw new Error(NO_LONGER);
     },
-    holdingGrant: async (during) =>
-      await holdingGrant(env['DATABASE_URL']!, held.businessId, held.personId, during),
+    holdingGrant: async (during, budgetMs) =>
+      await holdingGrant(env['DATABASE_URL']!, admitted, during, budgetMs),
   };
 }
 
@@ -266,10 +271,13 @@ export async function requireOperatingOperator(
 }
 
 /**
- * Once the act is done: append its record (what was done, by which person, in
- * which business and when), then commit the operator's sign-in attempt (I13).
- * Never called on a refusal. The record carries no credential: the operator is
- * named by their person identifier.
+ * Once the act is done, under the gate's hold (`holdingGrant`), so a sign-in
+ * ended, a grant revoked or a login remapped during the act refuses here and
+ * records nothing: commit the operator's sign-in attempt (I13), then append the
+ * act's record (what was done, by which person, in which business and when),
+ * before the hold's own transaction can end. Never called on a refusal. The
+ * record carries no credential: the operator is named by their person
+ * identifier.
  */
 export async function recordDeployment(
   gate: Extract<Gate, { ok: true }>,
@@ -282,7 +290,10 @@ export async function recordDeployment(
     at: new Date().toISOString(),
   };
   mkdirSync(gate.records, { recursive: true, mode: 0o700 });
-  appendFileSync(join(gate.records, RECORD_FILE), `${JSON.stringify(record)}\n`, { mode: 0o600 });
-  await gate.recordSignIn();
+  await gate.holdingGrant(async (release) => {
+    await gate.recordSignIn();
+    release();
+    appendFileSync(join(gate.records, RECORD_FILE), `${JSON.stringify(record)}\n`, { mode: 0o600 });
+  });
   return record;
 }
