@@ -70,7 +70,7 @@ it('AW-05 one click ends the work at the budget stop and parks the task', async 
   const ended = await end(as(people.second, runId));
   expect(ended).toMatchObject({
     ok: true,
-    value: { releasedMinor: UNDER_ONE_CALL, spentMinor: 0 },
+    value: { releasedMinor: String(UNDER_ONE_CALL), spentMinor: '0' },
   });
   expect(await moneyOf(runId)).toMatchObject({
     run: 'cancelled',
@@ -109,7 +109,7 @@ it('AW-05 ending keeps the spend to date counted and releases only the rest', as
   const before = await moneyOf(runId);
   expect(await end(as(people.second, runId))).toMatchObject({
     ok: true,
-    value: { releasedMinor: 500 - Number(spent), spentMinor: Number(spent) },
+    value: { releasedMinor: String(500 - Number(spent)), spentMinor: String(spent) },
   });
   expect(await moneyOf(runId)).toMatchObject({
     envelope_actual: String(Number(before.envelope_actual) + Number(spent)),
@@ -211,7 +211,7 @@ it('AW-05 a cancelled lineage takes no top-up, and one click still ends the run'
   // Nothing is left held, so ending releases nothing and still ends the run.
   expect(await end(as(people.second, runId))).toMatchObject({
     ok: true,
-    value: { releasedMinor: 0 },
+    value: { releasedMinor: '0' },
   });
   expect(await moneyOf(runId)).toMatchObject({
     run: 'cancelled',

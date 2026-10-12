@@ -31,7 +31,7 @@ it('criterion 4: a late answer after sweep gives back the counted maximum once',
       s.business,
       async (tx) => await endAtBudgetStop(tx, decider(s, await runOf(work))),
     );
-    expect(ended).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+    expect(ended).toMatchObject({ ok: true, value: { spentMinor: '500' } });
     expect(await envelopeActual(work)).toBe(before + 500);
     // The lease ended at the budget stop while custody still has the call.
     expect(

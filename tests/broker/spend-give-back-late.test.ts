@@ -142,7 +142,7 @@ it('an open call settling lower after a top-up gives the difference back once', 
 it('an open call settling lower after the run stopped at its budget gives the difference back once', async () => {
   const stopped = await stoppedOpen(s);
   const { work, before } = stopped;
-  expect(await end(s, work)).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+  expect(await end(s, work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
 
   const came = await settled(stopped);
