@@ -205,8 +205,14 @@ function NightSection(props: { readonly signal: ConnectionSignalResult }): React
   );
 }
 
-/** How often the sections redraw on their own, so a countdown moves while a read waits. */
-const REDRAW_MS = 30_000;
+/** Redraw every 30 s, so what is drawn from the clock moves while a read waits. */
+export function useRedraw(): void {
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const timer = setInterval(redraw, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+}
 
 /** Nothing on the ledger at all: no grant, no tripwire, no round and no agent. */
 const isEmpty = (signal: ConnectionSignalResult): boolean =>
@@ -230,11 +236,7 @@ export function SignalSections(props: {
     ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
     deps: [],
   });
-  const [, redraw] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => {
-    const timer = setInterval(redraw, REDRAW_MS);
-    return () => clearInterval(timer);
-  }, []);
+  useRedraw();
   return (
     <div className="secs" data-signal>
       <RecordState
