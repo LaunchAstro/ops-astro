@@ -3,9 +3,10 @@
 //
 // The dock's Clients panel (DOCK.md section 2, SL06 p-clients, BUILDABLE-NOW
 // "The Clients panel"): the client book as a list. Client records (MP-10-1)
-// are not built, so the book is made up behind the read's shape and carries the
-// design system's mock mark. The count counts the book (D-6), a search that
-// finds nothing says so (D-6), and a row's door obeys the dock's gesture law
+// are not built: the application draws no book and says where clients are
+// added; a made-up book handed in carries the design system's mock mark. The
+// count counts the book (D-6), a search that finds nothing says so (D-6), and
+// a row's door obeys the dock's gesture law
 // (MP-3-4, the pattern of dock-gesture-law.test.tsx).
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -28,7 +29,7 @@ afterEach(async () => {
   }
 });
 
-async function book(given?: ClientBook): Promise<Mounted> {
+async function book(given: ClientBook = MADE_UP_BOOK): Promise<Mounted> {
   const page = await mount(<ClientsScreen book={given} />);
   live.push(page);
   return page;
@@ -37,6 +38,8 @@ async function book(given?: ClientBook): Promise<Mounted> {
 const names = (page: Mounted): string[] =>
   page.all('.clbook__row .clbook__name').map((each) => each.textContent ?? '');
 const count = (page: Mounted): string => page.find('.clbook__count')?.textContent ?? '';
+
+const NOT_YET = 'Clients are added from the command line for now.';
 
 const SMALL: ClientBook = {
   clients: [
@@ -54,30 +57,31 @@ describe('Clients panel registers and draws its tab in rank', () => {
     expect(tab?.route).toBe('agency:clients');
   });
 
-  it('opens from its tab on the made-up book, its head door landing on /clients/', async () => {
+  it('opens from its tab on no made-up book, its head door landing on /clients/', async () => {
     const { view } = await open('/projects/');
     live.push(view);
     await press(view.find('.dock__tab[data-panel="clients"]'));
     const panel = view.find('[data-panel-id="clients"]');
     expect(panel?.querySelector('[data-act="door"]')?.getAttribute('href')).toBe('/clients/');
-    expect(panel?.querySelector('.clbook .clbook__note summary')?.textContent).toBe('Sample data');
+    expect(panel?.querySelector('.clbook .clbook__empty')?.textContent).toBe(NOT_YET);
+    expect(panel?.textContent).not.toContain('Sample data');
   });
 });
 
 describe('Clients panel reached from the rail and Back to Clients', () => {
-  it("the rail's Clients item lands on the labelled book, not the placeholder", async () => {
+  it("the rail's Clients item lands on the Clients page, not the placeholder", async () => {
     const { view } = await open('/projects/');
     live.push(view);
     await follow(view, '.rail__item[href="/clients/"]');
-    expect(view.find('.content .clbook .clbook__note')).not.toBeNull();
+    expect(view.find('.content .clbook .clbook__empty')?.textContent).toBe(NOT_YET);
     expect(view.find('[data-outcome="placeholder"]')).toBeNull();
   });
 
-  it("Back to Clients from a client's workspace lands on the labelled book", async () => {
+  it("Back to Clients from a client's workspace lands on the Clients page", async () => {
     const { view } = await open('/clients/acme-dental/');
     live.push(view);
     await follow(view, '.rail .rail__back');
-    expect(view.find('.content .clbook .clbook__note')).not.toBeNull();
+    expect(view.find('.content .clbook .clbook__empty')?.textContent).toBe(NOT_YET);
   });
 });
 

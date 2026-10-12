@@ -10,7 +10,6 @@ import { ACCESS } from './access.ts';
 import { AGENT_PANE } from './agent-pane.ts';
 import { BOARD } from './board.ts';
 import { CONVERSATION } from './conversation.ts';
-import { CLIENTS } from './clients.ts';
 import { CONNECTIONS_COSTING } from './connections-costing.ts';
 import { CONNECTIONS } from './connections.ts';
 import { DOCK } from './dock.ts';
@@ -33,6 +32,9 @@ import type { LookScreen } from './probe.ts';
 
 export { RULED_PAINT, type LookPrep, type LookProbe, type LookScreen } from './probe.ts';
 
+// The Clients panel is not measured while the application draws no client
+// book (RELAYWALK0244): its probes in clients.ts measure the book's rows,
+// which return when the book reads client.list.
 export const LOOK_SCREENS: readonly LookScreen[] = [
   SHELL,
   RAIL,
@@ -44,7 +46,6 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   STATES_SCREEN,
   ACCESS,
   TELEMETRY,
-  CLIENTS,
   DOCK,
   TODOS,
   TASK_PANEL,
