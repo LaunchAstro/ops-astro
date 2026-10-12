@@ -122,14 +122,7 @@ function batch(
   bound: Bound,
   bind: (personId: string) => void,
 ): (signal: BoardSignal | 'check') => void {
-  const pending = { heard: false, check: false, any: false, chats: new Set<string>() };
-  /** A run the provider could not answer: its signals wait for the next signal or check. */
-  const owe = (heard: boolean, check: boolean, chats: readonly string[] | 'any'): void => {
-    pending.heard ||= heard;
-    pending.check ||= check;
-    if (chats === 'any') pending.any = true;
-    else for (const chat of chats) pending.chats.add(chat);
-  };
+  const pending: Pending = { heard: false, check: false, any: false, chats: new Set<string>() };
   const drain = async (): Promise<void> => {
     while (!stream.aborted && (pending.heard || pending.check || pending.chats.size > 0)) {
       const { heard, check } = pending;
@@ -140,20 +133,14 @@ function batch(
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const joined = heard || check ? await rule(stream, ask, bound, bind, check) : 'same';
       if (joined === 'closed') return;
-      if (joined === 'unanswered') {
-        owe(heard, check, chats);
-        return;
-      }
+      if (joined === 'unanswered') return owe(pending, heard, check, chats);
       // A rebind the recheck found is told by that recheck, from the new person's reads.
       if (joined === 'rebound' && check) pending.check = true;
       const toTell = chats === 'any' || chats.length > 0;
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const said = toTell ? await told(stream, ask, bound, bind, chats) : 'same';
       if (said === 'closed') return;
-      if (said === 'unanswered') {
-        owe(false, false, chats);
-        return;
-      }
+      if (said === 'unanswered') return owe(pending, false, false, chats);
     }
   };
   let queued = false;
@@ -177,6 +164,27 @@ function batch(
     }
     wake();
   };
+}
+
+/** What the stream has heard and not yet run the rule for. */
+interface Pending {
+  heard: boolean;
+  check: boolean;
+  any: boolean;
+  readonly chats: Set<string>;
+}
+
+/** A run the provider could not answer: its signals wait for the next signal or check. */
+function owe(
+  pending: Pending,
+  heard: boolean,
+  check: boolean,
+  chats: readonly string[] | 'any',
+): void {
+  pending.heard ||= heard;
+  pending.check ||= check;
+  if (chats === 'any') pending.any = true;
+  else for (const chat of chats) pending.chats.add(chat);
 }
 
 /** A frame, unless the stream ended while a question before it was asked. */

@@ -39,6 +39,7 @@ import {
   sweepLostWorkers,
   withProviderCalls,
 } from '../../packages/core-runtime/src/index.ts';
+import { every } from './every.ts';
 import type {
   Classification,
   EffectLookup,
@@ -222,39 +223,21 @@ export function describeRecovered(business: RecoveredBusiness): string {
 export const SWEEP_INTERVAL_MS = 60_000;
 
 /**
- * Run `pass` every `everyMs`, one pass at a time: a pass still running when
- * the next is due is skipped rather than stacked. A business whose pass fails
- * is logged with its problem and the next one runs anyway. `stop` ends the
- * interval and resolves once the running pass has ended, so the server closes
- * no pool under it.
+ * Run `pass` every `everyMs`, one pass at a time (`every`). A business whose
+ * pass fails is logged with its problem and the next one runs anyway. `stop`
+ * resolves once the running pass has ended, so the server closes no pool under it.
  */
 export function startSweeper(
   pass: () => Promise<readonly RecoveryOutcome[]>,
   everyMs: number = SWEEP_INTERVAL_MS,
 ): { readonly stop: () => Promise<void> } {
-  let running: Promise<void> | undefined;
-  const once = async (): Promise<void> => {
-    try {
-      for (const outcome of await pass()) {
-        if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
-        else console.error(`api: ${outcome.problem}`);
-      }
-    } catch (cause) {
-      console.error(`api: sweep failed: ${cause instanceof Error ? cause.message : 'unknown'}`);
-    } finally {
-      running = undefined;
+  const stop = every(everyMs, 'sweep', async () => {
+    for (const outcome of await pass()) {
+      if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
+      else console.error(`api: ${outcome.problem}`);
     }
-  };
-  const timer = setInterval(() => {
-    running ??= once();
-  }, everyMs);
-  timer.unref();
-  return {
-    stop: async () => {
-      clearInterval(timer);
-      await running;
-    },
-  };
+  });
+  return { stop };
 }
 
 /** One line per business the sweep changed, after its transaction committed. */
