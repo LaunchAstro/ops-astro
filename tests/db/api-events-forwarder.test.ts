@@ -670,7 +670,7 @@ function alertLogRollbackCase() {
 function alertLogRetentionCase() {
   it('the security alert log keeps ninety days: a pass deletes older rows and keeps newer ones', async () => {
     await clear();
-    const marker = `retention-${randomBytes(4).toString('hex')}`.replace(/[0-9]/gu, 'x');
+    const marker = `retention-${randomBytes(4).toString('hex')}`.replaceAll(/[0-9]/gu, 'x');
     await fixture.db.admin.execute(
       `insert into ops.security_alert_log (kind, at) values
          ($1, now() - interval '90 days 1 minute'), ($1, now() - interval '89 days 23 hours')`,
