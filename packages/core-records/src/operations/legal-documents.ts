@@ -220,10 +220,20 @@ export async function publishLegalVersion(
   return undefined;
 }
 
-/** The version of `document` published most recently, if any. */
+/** A version and the digest of its words, as `legalVersionPath` pins them. */
+export interface LegalPin {
+  readonly version: string;
+  readonly digest: string;
+}
+
+/**
+ * The version of `document` published most recently, if any; or, given a
+ * `pin`, that published version while its words still have the pinned digest.
+ */
 export async function readPublishedLegal(
   tx: TenantQuery,
   document: LegalDocument,
+  pin?: LegalPin,
 ): Promise<PublishedVersion | undefined> {
   const rows = await tx.query<{
     readonly version: string;
@@ -236,9 +246,10 @@ export async function readPublishedLegal(
     `select version, body, body_digest, published_at, register, data_classes
        from public.legal_document_versions
       where business_id = $1 and document = $2 and published_at is not null
+        and ($3::text is null or (version = $3 and body_digest = $4))
       order by published_at desc, drafted_at desc
       limit 1`,
-    [tx.businessId, document],
+    [tx.businessId, document, pin?.version ?? null, pin?.digest ?? null],
   );
   const row = rows[0];
   return row === undefined

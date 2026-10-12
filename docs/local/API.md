@@ -3171,6 +3171,10 @@ was made. `overdue` is true while an incident is open past `assessBy`, judged
 on the database's clock (C81 breach drill). `breachRunbook` is what every
 incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
+The runbook's evidence link (`/settings/operations/?runbook=<v>&digest=<sha256>`)
+sends `runbookVersion` and `runbookDigest`, both or neither (one alone is
+`FIELD_VALUE_INVALID` 422 naming the other): `breachRunbook` is then that
+published version while its words have that digest, and `null` otherwise.
 `unattended` is INB-1's list, read for the same caller: exactly what
 `inbox.unattended` answers them, built by the same read (no second list).
 
@@ -3291,9 +3295,11 @@ another business and a made-up one are both `NOT_FOUND` 404.
 
 `GET /api/public/b/<businessKey>/legal/<document>` needs no sign-in. It answers
 the version of `client-terms`, `privacy-policy` or `data-handling` published
-most recently, as `{ document, version, body, digest, publishedAt }`. No such
-business, nothing published, the breach runbook and any other name all answer
-`{ code: 'NOT_FOUND' }` 404. The privacy policy's answer also carries
+most recently, as `{ document, version, body, digest, publishedAt }`. An
+evidence link's `?version=<v>&digest=<sha256>` asks for that published version
+instead, answered while its words have that digest. No such business, nothing
+published, the breach runbook, any other name, half a pin and a pin naming no
+published version with those words all answer `{ code: 'NOT_FOUND' }` 404. The privacy policy's answer also carries
 `services`: the overseas-services register's rows in use when that version was
 drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
 register's order, and `dataClasses`: the data-class register's classes in use

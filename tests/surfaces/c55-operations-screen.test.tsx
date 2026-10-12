@@ -134,6 +134,37 @@ async function open(
   return view;
 }
 
+describe("the breach runbook's evidence link", () => {
+  /** The operations reads' bodies, with the frame's own reads answered aside. */
+  function reads(answer: unknown) {
+    const bodies: unknown[] = [];
+    const fetch = ((url: string | URL, init?: RequestInit) => {
+      const frame = frameAnswer(String(url));
+      if (frame !== undefined) return Promise.resolve(frame);
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return Promise.resolve(json(answer));
+    }) as unknown as typeof globalThis.fetch;
+    return { fetch, bodies };
+  }
+
+  it('asks the operations read for the runbook version and digest the link names', async () => {
+    const api = reads(READ);
+    const view = await open(api.fetch, '/settings/operations/?runbook=1.0&digest=sha256%3Amade-up');
+    expect(api.bodies).toEqual([
+      expect.objectContaining({ runbookVersion: '1.0', runbookDigest: 'sha256:made-up' }),
+    ]);
+    expect(view.find('[data-runbook]')?.textContent).toContain('version 1.0');
+  });
+
+  it('says the linked version is not published with those words when the read has none', async () => {
+    const api = reads({ ...READ, breachRunbook: null });
+    const view = await open(api.fetch, '/settings/operations/?runbook=1.0&digest=sha256%3Aother');
+    expect(view.find('[data-runbook]')?.textContent).toBe(
+      'The breach runbook version this link names is not published with those words.',
+    );
+  });
+});
+
 describe('C55 the operations view page', () => {
   it('C55 operations view contents: unattended items, privacy incidents with the runbook, and service health, from one read', async () => {
     const api = server(() => json(READ));

@@ -101,6 +101,21 @@ describe('C81 public legal page, published', () => {
   });
 });
 
+describe('a pinned legal evidence link', () => {
+  it('asks the public read for the version and digest its address names, and draws that version', async () => {
+    const terms = { ...POLICY, document: 'client-terms', digest: 'sha256:terms 1.0' };
+    const api = server(() => json(terms));
+    const view = await open(
+      '/legal/alpha/client-terms/?version=1.0&digest=sha256%3Aterms%201.0',
+      api.fetch,
+    );
+    expect(api.asked.map((each) => each.url)).toEqual([
+      '/api/public/b/alpha/legal/client-terms?version=1.0&digest=sha256%3Aterms+1.0',
+    ]);
+    expect(view.find('[data-screen="legal"]')?.textContent).toContain('Version 1.0');
+  });
+});
+
 /** What the page says at `path` when the public read answers its one 404. */
 async function notPublishedAt(path: string): Promise<string> {
   const api = server(() => json({ code: 'NOT_FOUND' }, 404));

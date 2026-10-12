@@ -29,6 +29,20 @@ import type {
 export interface OperationsScreenProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** The page's address: the breach runbook's evidence link pins a version in its query. */
+  readonly address?: string | undefined;
+}
+
+/** The runbook version and digest an evidence link pins (`legalVersionPath`), or none. */
+function runbookPinOf(
+  address: string | undefined,
+): { readonly runbookVersion: string; readonly runbookDigest: string } | null {
+  const query = new URL(address ?? '/', 'http://here').searchParams;
+  const runbookVersion = query.get('runbook');
+  const runbookDigest = query.get('digest');
+  return runbookVersion === null || runbookDigest === null
+    ? null
+    : { runbookVersion, runbookDigest };
 }
 
 /** What each unattended item is owed for, said of its recipient. */
@@ -104,14 +118,19 @@ function Unattended(props: { readonly items: readonly UnattendedView[] }): React
   );
 }
 
-function Incidents(props: { readonly result: OperationsReadResult }): ReactElement {
+function Incidents(props: {
+  readonly result: OperationsReadResult;
+  readonly pinned: boolean;
+}): ReactElement {
   const { privacyIncidents, breachRunbook } = props.result;
   return (
     <div data-section="incidents">
       <Card title="Privacy incidents" sub="Each is assessed within 30 days of being found">
         <p className="card__sub" data-runbook={breachRunbook?.version ?? 'none'}>
           {breachRunbook === null
-            ? 'No breach runbook is published.'
+            ? props.pinned
+              ? 'The breach runbook version this link names is not published with those words.'
+              : 'No breach runbook is published.'
             : `Breach runbook version ${breachRunbook.version}, published ${breachRunbook.publishedAt}.`}
         </p>
         {breachRunbook === null ? null : (
@@ -139,10 +158,11 @@ function Incidents(props: { readonly result: OperationsReadResult }): ReactEleme
 
 export function OperationsScreen(props: OperationsScreenProps): ReactElement {
   const { client, grantKey } = props;
+  const pin = runbookPinOf(props.address);
   const { state, reload } = useRead<OperationsReadResult>({
     grantKey,
-    run: () => client.read<OperationsReadResult>('operations.read', {}),
-    deps: [client],
+    run: () => client.read<OperationsReadResult>('operations.read', pin ?? {}),
+    deps: [client, pin?.runbookVersion, pin?.runbookDigest],
   });
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
@@ -156,7 +176,7 @@ export function OperationsScreen(props: OperationsScreenProps): ReactElement {
           <>
             <Unattended items={result.unattended} />
             <HeldSections result={result} />
-            <Incidents result={result} />
+            <Incidents result={result} pinned={pin !== null} />
             <RecordIncident client={client} onRecorded={reload} />
             <Health result={result} />
           </>
