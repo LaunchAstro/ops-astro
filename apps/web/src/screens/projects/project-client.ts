@@ -4,8 +4,9 @@
 // project takes only that client's work, and the address the app writes for a
 // project (`?board=<id>`) names no client. Read with the board's own reads, so
 // a change to the project's client reaches the doors when it reaches the
-// board (a live change, or a task panel change while the board admits the
-// reader), and given only while the board admits the reader. A board denial,
+// board (a live change, or a task panel change unless a denial withdrew it,
+// unsettling it from the commit that reports the change), and given only
+// while the board admits the reader. A board denial,
 // or a board with no answer past its opening read (as a denial or an outage
 // leaves it, even one no render drew), withdraws it, and only a read begun
 // once the board admits the reader again gives it back. While a reread is in
@@ -18,7 +19,6 @@
 import { useState } from 'react';
 import type { ClientView, TaskReadResult } from '../../../../../packages/core-wire/src/index.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
-import { useRereadOn } from '../task/reread-on.ts';
 import {
   isRefusal,
   isUnavailable,
@@ -45,7 +45,6 @@ async function readProjectClient(
   };
 }
 
-const skip = (): void => {};
 /** A board that is no selected project of its own has no project client to wait for. */
 const NOT_SELECTED = { client: null, settled: true };
 const UNSETTLED = { client: null, settled: false };
@@ -62,24 +61,30 @@ export function useProjectClient(
     /** Whether the board's read is its opening one, which nothing has answered yet. */
     readonly opening: boolean;
   },
-  /** The task panel's count of changes, each a reread while the board admits the reader. */
+  /** The task panel's count of changes, each a fresh read unless a denial withdrew the client. */
   changes: number,
 ): { readonly client: ClientView | null; readonly settled: boolean } {
   const scope = addressScope(query);
   // A board scoped to a client already names it.
   const boardId = scope?.kind === 'selected' && scope.client === undefined ? scope.boardId : null;
-  // Each admission after a withdrawal is a new read, so no answer read across it is given.
-  const [since, setSince] = useState({ admissions: 0, withdrawn: false });
+  // Each admission after a withdrawal, and each panel change outside one, is a fresh read
+  // in the render that sees it, so no answer read across either is given.
+  const [since, setSince] = useState({ reads: 0, withdrawn: false, changes });
   const withdraw = board.denied || (!board.answered && !board.opening);
-  if (withdraw && !since.withdrawn) setSince({ admissions: since.admissions, withdrawn: true });
-  else if (board.admitted && since.withdrawn)
-    setSince({ admissions: since.admissions + 1, withdrawn: false });
-  const { state, own, reload } = useBoardProjectionRead<ClientView | null>(client, {
+  const readmitted = !withdraw && board.admitted && since.withdrawn;
+  const changed = changes !== since.changes && !since.withdrawn && !withdraw;
+  const next = {
+    reads: since.reads + (readmitted || changed ? 1 : 0),
+    withdrawn: withdraw || (since.withdrawn && !readmitted),
+    changes,
+  };
+  if (next.reads !== since.reads || next.withdrawn !== since.withdrawn || changes !== since.changes)
+    setSince(next);
+  const { state, own } = useBoardProjectionRead<ClientView | null>(client, {
     grantKey,
     run: () => readProjectClient(client, boardId),
-    deps: [client, boardId, since.admissions],
+    deps: [client, boardId, since.reads],
   });
-  useRereadOn(changes, board.admitted ? reload : skip);
   if (boardId === null) return NOT_SELECTED;
   if (!board.admitted || since.withdrawn || !own || state.outcome !== 'ready') return UNSETTLED;
   return { client: state.value, settled: true };

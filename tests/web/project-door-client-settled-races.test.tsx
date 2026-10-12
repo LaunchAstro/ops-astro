@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
 //
-// Races against a selected project's settled client at a Client filter: until
-// the project's own read answers since its last start, and while the board
-// admits the reader, neither door names a client from any source, the
-// filter's included. Checked at every commit and through `doorContext`, which
-// is what a click copies into a draft.
+// A selected project's client at a Client filter, under races: until its own read answers, no
+// door names a client from any source. Every commit, and `doorContext` (what a click drafts).
 
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
