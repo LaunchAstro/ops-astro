@@ -19,8 +19,9 @@ export function CommentCustodyProvider(props: {
   readonly children: ReactNode;
 }) {
   const generation = tabOwnerGeneration();
+  // No tab storage (site data blocked): recovery is kept in memory for this tab.
   const custody = useMemo(
-    () => new CommentCustody(props.client, props.grantKey, props.storage),
+    () => new CommentCustody(props.client, props.grantKey, props.storage, props.storage === null),
     [props.grantKey, props.storage, generation],
   );
   useLayoutEffect(() => {
