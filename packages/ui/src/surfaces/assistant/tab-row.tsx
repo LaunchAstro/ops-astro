@@ -6,9 +6,9 @@
 // renames in place and carries its own close: a tab strip whose tabs are also
 // editors and doors. The keyboard is the strip's (register candidate C5): left
 // and right move and wrap, Home and End jump, and focus follows the move, so
-// only the selected tab sits in the tab order. F2 renames the focused tab, the
-// keyboard's way to the field a double-click opens; Enter or Escape ends the
-// rename and hands focus back to the tab.
+// only the selected tab sits in the tab order. The rename key (the one the tab's
+// aria-keyshortcuts names) opens the field a double-click opens; Enter or
+// Escape ends the rename and hands focus back to the tab.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { AssistantChat } from './types.ts';
@@ -53,7 +53,7 @@ function Renaming(props: {
       aria-label={`Rename ${props.chat.title}`}
       maxLength={TAB_TITLE_LIMIT}
       value={value}
-      // oxlint-disable-next-line jsx-a11y/no-autofocus -- the double-click or F2 that opened the field asked for it
+      // oxlint-disable-next-line jsx-a11y/no-autofocus -- the double-click or rename key that opened the field asked for it
       autoFocus
       onChange={(event) => {
         setValue(event.target.value);
