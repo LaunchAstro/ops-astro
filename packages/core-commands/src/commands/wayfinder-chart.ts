@@ -82,7 +82,12 @@ function chartTickets(value: unknown): readonly ChartTicket[] | undefined {
     const blockedBy = entry.blockedBy ?? [];
     if (!Array.isArray(blockedBy)) return undefined;
     if (blockedBy.some((ref) => !refs.includes(ref) || ref === entry.ref)) return undefined;
-    tickets.push({ ...(base[index] as NewTicket), ref: entry.ref as string, blockedBy });
+    // A set, as `task.set_blocking` takes it: a ref named twice is one edge.
+    tickets.push({
+      ...(base[index] as NewTicket),
+      ref: entry.ref as string,
+      blockedBy: [...new Set(blockedBy as readonly string[])],
+    });
   }
   // Kahn's order: every ticket placed means no cycle.
   const placed = new Set<string>();
