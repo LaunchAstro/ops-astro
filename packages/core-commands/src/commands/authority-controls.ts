@@ -389,8 +389,15 @@ export async function revokeDelegationAsManager(
     delegationIds: [delegationId],
     actorId: context.session.actorId,
     revoke: async () => {
+      // Locked first and judged after, on the statement's clock: a delegation
+      // that expired while this waited on its row is not live.
+      await tx.query(
+        `select 1 from public.delegations where business_id = $1 and id = $2 for update`,
+        [tx.businessId, delegationId],
+      );
       const live = await tx.query<{ readonly live: boolean }>(
-        `select (revoked_at is null and settled_at is null and expires_at > now()) as live
+        `select (revoked_at is null and settled_at is null and expires_at > clock_timestamp())
+                as live
            from public.delegations where business_id = $1 and id = $2`,
         [tx.businessId, delegationId],
       );
@@ -426,7 +433,9 @@ export async function revokeDelegationAsManager(
 
 /**
  * The person's live grants, locked in id order, and the live delegations they
- * gave. Discovery for `endPersonAuthority`; the grant rows stay locked.
+ * gave. Discovery for `endPersonAuthority`; the grant rows stay locked. An
+ * expired delegation is already ended by its own column, so it is neither
+ * revoked again nor counted.
  */
 async function heldAndGiven(
   tx: TenantQuery,
@@ -448,7 +457,7 @@ async function heldAndGiven(
     given: await ids(
       `select id from public.delegations
         where business_id = $1 and delegate_person_id = $2::uuid
-          and revoked_at is null and settled_at is null
+          and revoked_at is null and settled_at is null and expires_at > clock_timestamp()
         order by id`,
     ),
   };
@@ -496,7 +505,8 @@ export interface EndedAuthority {
  * `access.end` (C58): every live grant the person holds, as themselves or as
  * their acting identity, and every delegation they gave an agent, ended in one
  * authority-loss classification, so the work they carried is classified
- * exactly as a revocation classifies it.
+ * exactly as a revocation classifies it, and each quarantined hold raises its
+ * incident to the task's managers as a revocation's does.
  *
  * The caller holds the access lock. The person's grant rows are locked next,
  * all of them and in id order, before any runtime lock: the order a single
@@ -545,6 +555,7 @@ export async function endPersonAuthority(
       return written;
     },
   });
+  await raiseIncident(tx, loss.classified);
   return {
     grantsRevoked: loss.value,
     delegationsRevoked,

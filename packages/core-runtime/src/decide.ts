@@ -41,7 +41,7 @@ import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
 import { affectedByVersions, checkAuthorityAt, classifyVersions } from './recovery.ts';
 import type { LockSet } from './locks.ts';
-import { lockRediscovered } from './rediscovery.ts';
+import { AffectedSetChanged, lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
   LINK_VERSION,
@@ -432,10 +432,9 @@ interface Rechecked {
 /**
  * Re-check under the locks. Between discovery and here another transaction
  * could have revoked the grant, decided this gate, superseded this version or
- * rejected this lineage. "Check current decide grant" (T2) first, now that no
- * revocation of a covering grant can commit around it, and at the locked
- * instant, so a grant that lapsed while this
- * waited on the chain or the cap no longer counts.
+ * rejected this lineage. "Check current decide grant" (T2) first, at the locked
+ * instant, so a grant that lapsed during the waits no longer counts, and on held
+ * grants only: one issued after the hold would not hold off its revocation.
  */
 async function recheckDecision(
   tx: TenantQuery,
@@ -459,6 +458,9 @@ async function recheckDecision(
       'the decide grant this decision rested on ended before it could be recorded',
       'A person with decide authority on this task decides it.',
     );
+  }
+  if (current.value.some((grant) => !found.held_grants.includes(grant.id))) {
+    throw new AffectedSetChanged('decide: a decide grant appeared after the grant hold');
   }
   const gate = await recheckGate(tx, request, locked.lockedAt);
   if (!gate.ok) return gate;

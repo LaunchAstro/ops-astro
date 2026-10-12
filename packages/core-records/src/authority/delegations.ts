@@ -480,6 +480,14 @@ export const DELEGATION_STANDS: string = standsAt('now()');
  */
 export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
 
+/** Lock one delegation row, in a statement of its own, before it is judged. */
+async function lockDelegationRow(tx: TenantQuery, id: string, lock: 'for share'): Promise<void> {
+  await tx.query(`select 1 from public.delegations where business_id = $1 and id = $2 ${lock}`, [
+    tx.businessId,
+    id,
+  ]);
+}
+
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
  * never a token's claims), its expiry judged on the statement's clock, as
@@ -489,12 +497,17 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
  * cause. The holder presented a live
  * child credential, so the parent's state is named, not folded into
  * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
+ *
+ * A held parent is locked by a statement of its own before it is read: a
+ * locking select computes its columns before it waits, so an expiry read in
+ * the same statement would be the clock from before the wait.
  */
 async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',
 ): Promise<DelegationDecision<Delegation>> {
+  if (lock !== '') await lockDelegationRow(tx, parentId, lock);
   const rows = await tx.query<
     DelegationRow & {
       readonly settled: boolean;
@@ -506,7 +519,7 @@ async function parentStanding(
     `select ${delegationColumns()}, settled_at is not null as settled,
             expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
             revocation_cause as cause
-       from public.delegations where business_id = $1 and id = $2 ${lock}`,
+       from public.delegations where business_id = $1 and id = $2`,
     [tx.businessId, parentId],
   );
   const found = rows[0];
@@ -569,12 +582,22 @@ export async function resolveDelegation(
   agentActorId: string,
   credential: string,
 ): Promise<DelegationDecision<Delegation>> {
+  return await resolveAt(tx, agentActorId, credential, 'clock_timestamp()');
+}
+
+/** `resolveDelegation` with expiry judged at `clock`, a SQL instant. */
+async function resolveAt(
+  tx: TenantQuery,
+  agentActorId: string,
+  credential: string,
+  clock: 'clock_timestamp()' | 'now()',
+): Promise<DelegationDecision<Delegation>> {
   const rows = await tx.query<
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
   >(
     `select ${delegationColumns()},
-            (revoked_at is null and settled_at is null and expires_at > clock_timestamp()) as live,
-            (revoked_at is not null and settled_at is null and expires_at > clock_timestamp()
+            (revoked_at is null and settled_at is null and expires_at > ${clock}) as live,
+            (revoked_at is not null and settled_at is null and expires_at > ${clock}
              and revocation_cause = 'authority_lost') as narrowed
        from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3`,
@@ -663,6 +686,11 @@ export async function resolveHistoricalDelegation(
  * person's grants no longer cover it. The caller's refusal code is not
  * consulted; it is recomputed.
  *
+ * The credential's expiry is judged on the transaction's start, which is no
+ * later than the live answer `resolveDelegation` gave earlier in this
+ * transaction, so an expiry passing between the two statements never loses
+ * the report: the same rule `resolveHistoricalDelegation` keeps.
+ *
  * Read-only, like its sibling, and it permits nothing. The delegation stays
  * live and unrevoked; nothing is recorded for it, and nothing it answers
  * changes what the credential reaches.
@@ -673,7 +701,7 @@ export async function resolveNarrowedDelegation(
   credential: string,
   request: ScopeRequest,
 ): Promise<{ readonly id: string } | undefined> {
-  const resolved = await resolveDelegation(tx, agentActorId, credential);
+  const resolved = await resolveAt(tx, agentActorId, credential, 'now()');
   if (!resolved.ok) return undefined;
   const reach = await checkDelegatedAuthority(tx, resolved.value, request);
   if (reach.ok || reach.refusal.code !== 'DELEGATION_NARROWED') return undefined;
@@ -681,8 +709,8 @@ export async function resolveNarrowedDelegation(
 }
 
 /**
- * This agent's own live delegation, by its id: unexpired, unrevoked and
- * unsettled. `delegationId` must already be a UUID.
+ * This agent's own live delegation, by its id: unexpired at the statement's
+ * clock, unrevoked and unsettled. `delegationId` must already be a UUID.
  *
  * A pickup's replay, whose lost response carried the credential, has only the
  * id its receipt names to reach the delegation by (root ruling 6).
@@ -696,7 +724,7 @@ export async function resolveLiveById(
     `select ${delegationColumns('d')}
        from public.delegations d
       where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
-        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is null and d.expires_at > clock_timestamp()`,
     [tx.businessId, agentActorId, delegationId],
   );
   const row = rows[0];
@@ -705,8 +733,8 @@ export async function resolveLiveById(
 
 /**
  * This agent's settled delegation, through the lease it settled and the
- * credential it was minted with: unexpired and unrevoked. `leaseId` must
- * already be a UUID.
+ * credential it was minted with: unexpired at the statement's clock and
+ * unrevoked. `leaseId` must already be a UUID.
  *
  * A handback settles its own delegation, so its replay cannot resolve the
  * credential as live; this is the binding it is released to instead.
@@ -723,7 +751,8 @@ export async function resolveSettledByLease(
        join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
       where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
         and d.credential_hash = $4
-        and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is not null
+        and d.expires_at > clock_timestamp()`,
     [tx.businessId, agentActorId, leaseId, digestOf(credential)],
   );
   const row = rows[0];
