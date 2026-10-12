@@ -37,13 +37,8 @@ import type { StepUpAsk } from '../../records/use-money-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
-import {
-  Drafts,
-  MandateForm,
-  useChosen,
-  usePromoting,
-  type MandateFiling,
-} from './graduation-forms.tsx';
+import { Drafts, useChosen, usePromoting } from './graduation-drafts.ts';
+import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
 import { ConfirmRevokeMandate, GraduationRow, Mandate, promoted } from './graduation-rows.tsx';
 import { promotionOf, useSend, type Drop, type Send } from './graduation-send.ts';
 
@@ -209,42 +204,40 @@ function Shown(props: {
   readonly stepUp: StepUpAsk | null;
 }): ReactElement | null {
   const { region, send, locked } = props;
-  const [chosen, choose] = useChosen(region.clients[0]?.id ?? '');
-  const client = region.clients.find((one) => one.id === chosen) ?? region.clients[0];
+  const [chosen, choose, drafts] = useChosen(
+    region.clients.map((one) => one.id),
+    props.drop,
+  );
+  const client = region.clients.find((one) => one.id === chosen);
   if (client === undefined) return null;
   const rows = region.rows.filter((one) => one.clientId === client.id);
   const mandates = region.mandates.filter((one) => one.clientId === client.id);
   const scoped = <span data-scope-client>{client.label}</span>;
   return (
     <>
-      <ScopeBar
-        clients={region.clients}
-        chosen={client.id}
-        choose={(id) => {
-          props.drop();
-          choose(id);
-        }}
-      />
+      <ScopeBar clients={region.clients} chosen={client.id} choose={choose} />
       <section className="gradsec" data-section="010" id="graduation">
         <SectionHead index="010" title="Graduation" right={scoped} />
         <Notices said={props.said} stepUp={props.stepUp} />
-        <Graduation
-          key={client.id}
-          client={client}
-          rows={rows}
-          mandates={mandates}
-          send={send}
-          drop={props.drop}
-          locked={locked}
-        />
-        <StandingApprovals
-          key={`approvals-${client.id}`}
-          client={client}
-          mandates={mandates}
-          rows={rows}
-          send={send}
-          locked={locked}
-        />
+        <Drafts.Provider value={drafts}>
+          <Graduation
+            key={client.id}
+            client={client}
+            rows={rows}
+            mandates={mandates}
+            send={send}
+            drop={props.drop}
+            locked={locked}
+          />
+          <StandingApprovals
+            key={`approvals-${client.id}`}
+            client={client}
+            mandates={mandates}
+            rows={rows}
+            send={send}
+            locked={locked}
+          />
+        </Drafts.Provider>
       </section>
       <ClientMocks scoped={scoped} />
     </>

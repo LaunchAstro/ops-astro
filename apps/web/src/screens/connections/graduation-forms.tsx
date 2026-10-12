@@ -6,61 +6,12 @@
 // and files nothing (AG-C54). The sentence is the mandate's label; the classes
 // come from the client's scope list, and a refusal carries no ceiling.
 //
-// What is typed is kept in the region's drafts, above its read, so a reread
-// that fails and takes the forms off the page gives them back as they were.
+// What is typed is kept in the chosen client's drafts (`graduation-drafts.ts`),
+// above the region's read, so a reread that fails and takes the forms off the
+// page gives them back as they were, and never under another client.
 
-import {
-  createContext,
-  useContext,
-  useRef,
-  useState,
-  type ReactElement,
-  type RefObject,
-} from 'react';
-
-/** The region's typed values by field, held above its read; a new grant starts a new one. */
-export const Drafts = createContext(new Map<string, unknown>());
-
-/**
- * A field's value, kept in the region's drafts under `key` from its first draw,
- * so what comes back after an outage is what was on screen: the chosen client
- * included, even one never chosen by hand.
- */
-export function useDraft<T>(key: string, initial: T): readonly [T, (next: T) => void] {
-  const drafts = useContext(Drafts);
-  const [value, setValue] = useState(() => {
-    if (!drafts.has(key)) drafts.set(key, initial);
-    return drafts.get(key) as T;
-  });
-  const set = (next: T): void => {
-    drafts.set(key, next);
-    setValue(next);
-  };
-  return [value, set];
-}
-
-/** The chosen client, kept in the drafts; another client starts with empty forms. */
-export function useChosen(first: string): readonly [string, (id: string) => void] {
-  const drafts = useContext(Drafts);
-  const [chosen, setChosen] = useDraft('client', first);
-  const choose = (id: string): void => {
-    drafts.clear();
-    setChosen(id);
-  };
-  return [chosen, choose];
-}
-
-/** The row whose promotion form is open; opening or closing one forgets what was typed in it. */
-export function usePromoting(): readonly [string | null, (id: string | null) => void] {
-  const drafts = useContext(Drafts);
-  const [promoting, setPromoting] = useDraft<string | null>('promoting', null);
-  const open = (id: string | null): void => {
-    drafts.delete('promote:ceiling');
-    drafts.delete('promote:expiry');
-    setPromoting(id);
-  };
-  return [promoting, open];
-}
+import { useRef, type ReactElement, type RefObject } from 'react';
+import { useDraft } from './graduation-drafts.ts';
 
 /** The business currency record is not built; ceilings are Australian dollars. */
 export const CURRENCY = 'AUD';
