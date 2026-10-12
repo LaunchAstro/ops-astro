@@ -156,6 +156,27 @@ describe('MP-5-9 double-click rename with the Enter, Escape and blur rules', () 
   });
 });
 
+describe('MP-5-9 rename through an input method', () => {
+  it('Enter that confirms an input-method candidate saves nothing and keeps the input open', async () => {
+    const { board, calls } = await open();
+    await dbl(board, 'open');
+    await board.type(RENAME('open'), '東京');
+    await fire(
+      one(board, RENAME('open')),
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(calls.renames, 'confirming a candidate must not save the name').toStrictEqual([]);
+    expect((one(board, RENAME('open')) as HTMLInputElement | null)?.value).toBe('東京');
+    await key(board, 'open', 'Enter');
+    expect(calls.renames).toStrictEqual([['open', '東京']]);
+  });
+});
+
 describe('MP-5-9 reopen restores', () => {
   it('the tick completes an open task and reopens a completed one', async () => {
     const { board, calls } = await open();
