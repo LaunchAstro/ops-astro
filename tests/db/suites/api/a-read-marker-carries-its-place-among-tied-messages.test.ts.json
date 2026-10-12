@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a read marker after one of two same-millisecond messages reads before the second, and after both once both are read"
+}
