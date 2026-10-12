@@ -10,8 +10,14 @@ import { isIdentifier } from './operands.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 
+/**
+ * The most people one comment names. Each runs an access walk inside the
+ * task's lock, so the cap, not the route's body limit, bounds that work.
+ */
+export const MENTIONS_LIMIT = 25;
+
 const MENTIONS_FIXES: readonly string[] = [
-  'Send mentions as a list of person ids, or leave it out.',
+  `Send mentions as a list of at most ${String(MENTIONS_LIMIT)} person ids, or leave it out.`,
 ];
 
 /**
@@ -45,10 +51,17 @@ export async function unreadableMentions(
   };
 }
 
-/** The people a comment names, or its refusal: a list of person ids, absent meaning none. */
+/**
+ * The people a comment names, or its refusal: a list of person ids, absent
+ * meaning none, naming at most `MENTIONS_LIMIT` people in any letter case.
+ */
 export function mentionsOf(mentions: unknown): readonly string[] | HandlerOutcome {
   const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id): id is string => isIdentifier(id))) {
+  if (
+    !Array.isArray(named) ||
+    !named.every((id): id is string => isIdentifier(id)) ||
+    new Set(named.map((id) => id.toLowerCase())).size > MENTIONS_LIMIT
+  ) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
   }
   return named;
