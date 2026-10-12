@@ -52,12 +52,13 @@ const comment = async (id: string) => ({
   audience: 'internal',
 });
 
-/** The records and both gate tables, as one digest: a refusal must leave it. */
+/** The records, the clients and both gate tables, as one digest: a refusal must leave it. */
 async function digest(): Promise<string> {
   const [row] = await admin<{ d: string }>(
     gate,
     `select md5(
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from public.records t) ||
+       (select coalesce(string_agg(t::text, '|' order by t::text), '') from public.clients t) ||
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from ops.installation t) ||
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from ops.gate_items t)) as d`,
   );
