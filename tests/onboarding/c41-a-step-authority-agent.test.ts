@@ -14,6 +14,7 @@ import { agentPath, PROPOSAL } from '../api/controls-fixture.ts';
 import { issueBody } from '../api/api-2-agent-credential-world.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
 import { byPerson, lockHold, pause, type Sent } from './c41-a-lock-hold.ts';
@@ -83,7 +84,13 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
       by,
     );
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
-    return String((await controls.pickup(String(detail(decided)['reservationId'])))['credential']);
+    const { db, agentActorId } = controls.fixture;
+    const picked = await besideOtherWork(
+      db.admin,
+      agentActorId,
+      async () => await controls.pickup(String(detail(decided)['reservationId'])),
+    );
+    return String(picked['credential']);
   };
 
   const byAgent = async (taskId: string, credential: string): Promise<Sent> => ({
