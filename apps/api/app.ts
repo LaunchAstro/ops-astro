@@ -425,7 +425,8 @@ export function createApi(options: ApiOptions): Hono {
         const admitted = await admit(options, context, entry, true, quota);
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
-        observeAnswer(options, context, declaration.name);
+        const sent = admitted instanceof Response ? undefined : admitted.body['operationId'];
+        observeAnswer(options, context, declaration.name, typeof sent === 'string' ? sent : undefined);
         return response;
       });
     }
@@ -902,8 +903,13 @@ const BESIDE_THE_SURFACE = [
  * One answer to the detector: its security signal, unless the request tried no
  * credential, and (security line 9, download volume) the records it handed out.
  */
-function observeAnswer(options: ApiOptions, context: Context, command: string): void {
-  const outcome = outcomeOf(context, command);
+function observeAnswer(
+  options: ApiOptions,
+  context: Context,
+  command: string,
+  operationId?: string,
+): void {
+  const outcome = { ...outcomeOf(context, command), ...(operationId === undefined ? {} : { operationId }) };
   const tried = context.get(NO_CREDENTIAL) !== true;
   const signal = options.observe && tried && signalOf(outcome);
   if (signal) options.observe?.(signal);
