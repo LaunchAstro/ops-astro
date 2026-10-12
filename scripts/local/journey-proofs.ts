@@ -51,8 +51,8 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
     'migrations',
     [
       'tests/tenancy/migration-prefixes.test.ts',
-      'tests/tenancy/final-r6-runner-guard.test.ts',
-      'tests/runtime/final-r1-fr1-migrations.test.ts',
+      'tests/tenancy/migration-runner-guard.test.ts',
+      'tests/runtime/storage-backstop-migrations.test.ts',
     ],
   ],
   [
@@ -63,6 +63,7 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
       'tests/reads/verified-decisions.test.ts',
     ],
   ],
+  ['queue and delivery', ['tests/db/inbox-conformance.test.ts']],
 ];
 
 /**
@@ -70,16 +71,6 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
  * fails the command until the part lands here (Rebase notes on the pull request).
  */
 export const UNRUN: readonly (readonly [string, string, Readonly<Record<string, string>>])[] = [
-  [
-    'T2g: request changes, the revision round, journey_parity_cli',
-    'T2g (#136) is not on this base; the re-baseline brings it',
-    { owner: 'T2g', pr: '#136' },
-  ],
-  [
-    'T3a: escalate at the bound, reject, cancel and restart',
-    'T3a (#153) is not on this base; the re-baseline brings it',
-    { owner: 'T3a', pr: '#153' },
-  ],
   [
     'T4c: the pinned-mockup comparison at 1480, 900 and 390',
     'T4c (#134) is not on this base; the re-baseline brings it',
@@ -92,7 +83,7 @@ export const UNRUN: readonly (readonly [string, string, Readonly<Record<string, 
   ],
   [
     'keyboard-only and 390-wide passes over the whole journey (T4-R9)',
-    'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
+    'they drive the browser, which needs GoTrue on this stack',
     { owner: 'T4b2' },
   ],
 ];
@@ -106,12 +97,13 @@ export function protectedVerdicts(
   const failed = new Set(
     [...output.matchAll(/FAIL\s+(tests\/\S+?\.test\.tsx?)/gu)].map((m) => m[1]),
   );
+  // A suite run in parts prints one line per part, `<path>#i/k`.
   const reached = new Set(
-    [...output.matchAll(/db-conformance: (\S+) moved the database counter by (\d+)\./gu)]
+    [...output.matchAll(/db-conformance: ([^\s#]+)\S* moved the database counter by (\d+) in /gu)]
       .filter((m) => Number(m[2]) > 0)
       .map((m) => m[1] as string),
   );
-  const verdicts = PROTECTED.map(([component, suites]): CaseLine => {
+  return PROTECTED.map(([component, suites]): CaseLine => {
     const problems = suites.flatMap((suite) => {
       if (!named.has(suite)) return [`${suite} is not named in the manifest`];
       if (failed.has(suite)) return [`${suite} failed`];
@@ -126,9 +118,6 @@ export function protectedVerdicts(
       detail,
     };
   });
-  const later = 'queue and delivery join the protected set once INB-1 lands';
-  const queue: CaseLine = { case: 'protected: queue and delivery', status: 'unrun', detail: later };
-  return [...verdicts, queue];
 }
 
 /** The last line a check printed, which is where each of them says what it found. */

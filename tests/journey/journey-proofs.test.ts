@@ -12,6 +12,7 @@ import { PROTECTED, protectedVerdicts, UNRUN } from '../../scripts/local/journey
 import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
+const named = readNamedSuites(ROOT);
 const suites = PROTECTED.flatMap(([, files]) => files);
 const manifest = { invariant: suites, conformance: [] };
 // The line scripts/db-conformance.mjs prints for each suite it measured.
@@ -19,7 +20,7 @@ const moved = (files: readonly string[]): string =>
   files
     .map((file) => `db-conformance: ${file} moved the database counter by 12 in 1.2s.`)
     .join('\n');
-const verdicts = (output: string, named = manifest) => protectedVerdicts(output, named);
+const verdicts = (output: string, given = manifest) => protectedVerdicts(output, given);
 
 describe('the protected set, one verdict per component from the same run', () => {
   it('names the five components', () => {
@@ -49,7 +50,6 @@ describe('the protected set, one verdict per component from the same run', () =>
   });
 
   it('passes every component against the real manifest when its suites all reached the database', () => {
-    const named = readNamedSuites(ROOT);
     expect(suites.filter((file) => !existsSync(resolve(ROOT, file)))).toStrictEqual([]);
     expect(
       protectedVerdicts(moved(suites), named).filter((verdict) => verdict.status !== 'pass'),
@@ -70,7 +70,6 @@ describe('the protected set, one verdict per component from the same run', () =>
 
 describe('what the journey reports it could not run', () => {
   it('names no capability whose suites the manifest already runs', () => {
-    const named = readNamedSuites(ROOT);
     const all = [...(named.invariant ?? []), ...(named.conformance ?? [])];
     const landed = UNRUN.map(([name]) => name).filter((name) => {
       const owner = /^(T\d[a-z]\d?)\b/u.exec(name)?.[1]?.toLowerCase();
