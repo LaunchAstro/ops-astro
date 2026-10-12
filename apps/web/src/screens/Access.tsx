@@ -20,8 +20,9 @@
 // an agent's, by its delegation, also once confirmed. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
-// One write is out at a time, and one whose answer was lost goes again under
-// the same operation id (`holding`), so the server replays what it stored.
+// One write is out at a time. The last write whose answer was lost goes again
+// under its operation id only when the same act is pressed again, so the
+// server replays what it stored; any other act, or a known answer, ends it.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
@@ -39,7 +40,6 @@ import {
 } from './access/acts.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
-import { holding, type Held } from './task/held-operations.ts';
 
 export interface AccessScreenProps {
   readonly client: OperationsClient;
@@ -114,7 +114,8 @@ function usePending(act: Act) {
   const send = confirmedWith(act);
   const confirmations = (result: AccessReadResult): ReactElement => (
     <>
-      {delegation === null ? null : (
+      {delegation === null ||
+      !result.agents.some((agent) => agent.delegationId === delegation.delegationId) ? null : (
         <ConfirmRevokeDelegation
           agent={delegation}
           onKeep={() => setDelegation(null)}
@@ -192,27 +193,24 @@ function AccessLists(props: {
   );
 }
 
-export function AccessScreen(props: AccessScreenProps): ReactElement {
-  const { client, grantKey } = props;
-  const { state, reload } = useRead<AccessReadResult>({
-    grantKey,
-    run: () => client.read<AccessReadResult>('access.read', {}),
-    deps: [client],
-  });
+/** One write at a time, its outcome line, and the list read again after a success. */
+function useAct(client: OperationsClient, reload: () => void) {
   const [busy, setBusy] = useState(false);
   // One write at a time: a second press before the answer sends nothing.
   const sending = useRef(false);
   const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const held = useRef<Held>({});
+  // The last write whose answer was lost: its act and its operation id.
+  const held = useRef<{ readonly act: string; readonly id: string } | null>(null);
   const act: Act = (command, body, done) => {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
-    const hold = holding(held.current, command, body, () => client.newOperationId());
+    const words = JSON.stringify([command, body]);
+    const id = held.current?.act === words ? held.current.id : client.newOperationId();
+    held.current = { act: words, id };
     void (async () => {
-      const answer = await client.mutate(command, body, { operationId: hold.id });
-      // A known answer ends every held write: the same words later are a new act.
-      if (settle(answer).kind !== 'unknown') held.current = {};
+      const answer = await client.mutate(command, body, { operationId: id });
+      if (settle(answer).kind !== 'unknown') held.current = null;
       const failure = describeFailure(answer);
       sending.current = false;
       setBusy(false);
@@ -220,6 +218,17 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
       if (failure === null) reload();
     })();
   };
+  return { busy, outcome, act };
+}
+
+export function AccessScreen(props: AccessScreenProps): ReactElement {
+  const { client, grantKey } = props;
+  const { state, reload } = useRead<AccessReadResult>({
+    grantKey,
+    run: () => client.read<AccessReadResult>('access.read', {}),
+    deps: [client],
+  });
+  const { busy, outcome, act } = useAct(client, reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
