@@ -111,6 +111,10 @@ async function build(w: World, name: string): Promise<void> {
   );
   expect(typeof (await w.controls.pickup(reservation))['credential']).toBe('string');
 
+  // Each reader's task on a stored client of its own, so the client crossing
+  // crosses two real clients rather than two tasks with no client at all.
+  await underNewClient(w, w.taskOne);
+  await underNewClient(w, taskTwo);
   w.clientOne = await enrol(w.fixture.db.app, w.fixture.business, 'client-one');
   w.clientTwo = await enrol(w.fixture.db.app, w.fixture.business, 'client-two');
   w.both = await enrol(w.fixture.db.app, w.fixture.business, 'both');
@@ -127,6 +131,25 @@ async function build(w: World, name: string): Promise<void> {
     const there = await enrolIn(tx, w.both);
     await grantTo(tx, there, 'read');
   });
+}
+
+/** A stored client of Alpha, and `taskId` linked to it on the record's spine. */
+async function underNewClient(w: World, taskId: string): Promise<void> {
+  const client = randomUUID();
+  await w.fixture.db.admin.execute(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $3, $4)`,
+    [
+      w.fixture.business,
+      client,
+      `made-up client ${client.slice(0, 8)}`,
+      w.controls.manager.actorId,
+    ],
+  );
+  await w.fixture.db.admin.execute(
+    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
 }
 
 /** A reader as a suite signs them in: the sign-in the browser's cookie carries. */
