@@ -17,7 +17,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { enrol, grantTo, installSpine, shareWithClient, type Member } from '../commands/fixture.ts';
+import {
+  addClient,
+  enrol,
+  grantTo,
+  installSpine,
+  shareWithClient,
+  type Member,
+} from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { authorised, post, tokenFor, type Answer } from './fixture.ts';
 import { checksWorld, pickedUpOn, type PickedUp } from './mp-6-1-checks-fixture.ts';
@@ -44,7 +51,10 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
   let taskTwo = '';
   let readerOfTwo: Member;
   let readerOfOne: Member;
+  let partyOfTwo: Member;
   let both: Member;
+  const clientOne = randomUUID();
+  const clientTwo = randomUUID();
 
   const foreign = (): readonly string[] => [canary, title, subject, conversationId, 'decider'];
   const carriesNothing = (answer: Answer | { body: unknown }): void => {
@@ -58,8 +68,18 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     ({ c } = await checksWorld('aw_03_isolation'));
     w = await conversationWorld(c);
     work = await pickedUpOn(c, 'conversation_crossing');
-    taskOne = (await c.createTask('client one')).id;
-    taskTwo = (await c.createTask('client two')).id;
+    // Two real clients of the business, one task on each: the crossing below
+    // is between clients, not only between two clientless tasks.
+    for (const client of [clientOne, clientTwo]) {
+      // eslint-disable-next-line no-await-in-loop -- two rows, one at a time
+      await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
+    }
+    // Linking a task to a client is `task:share`'s (`task.set_party`).
+    await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+      await grantTo(tx, c.manager, 'share');
+    });
+    taskOne = (await c.createTask('client one', clientOne)).id;
+    taskTwo = (await c.createTask('client two', clientTwo)).id;
     conversationId = await started(w, w.owner, {
       scope: { kind: 'task', id: taskOne },
       title,
@@ -69,10 +89,12 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     const { db, business } = w.fixture;
     readerOfOne = await enrol(db.app, business, 'reader-one');
     readerOfTwo = await enrol(db.app, business, 'reader-two');
+    partyOfTwo = await enrol(db.app, business, 'party-two');
     both = await enrol(db.app, business, 'both');
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, readerOfOne, 'read', { kind: 'record', id: taskOne }, false, CONVERSATION);
       await grantTo(tx, readerOfTwo, 'read', { kind: 'record', id: taskTwo }, false, CONVERSATION);
+      await grantTo(tx, partyOfTwo, 'read', { kind: 'party', id: clientTwo }, false, CONVERSATION);
       await grantTo(tx, w.owner, 'share');
     });
     const bravo = await insertBusiness(db.app, 'bravo');
@@ -142,10 +164,23 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
   });
 
   it('AW-03 isolation: another client in the same business: a read-any grant on client two does not reach client one', async () => {
-    const wrongClient = await readAs(readerOfTwo);
-    expect(wrongClient.status).toBe(403);
-    expect(wrongClient.body['code']).toBe('SCOPE_NOT_GRANTED');
-    carriesNothing(wrongClient);
+    const [one, two] = await w.fixture.db.admin.execute<{ readonly client: string | null }>(
+      `select uuid_7::text as client from public.records
+        where business_id = $1 and id = any($2::uuid[])
+        order by array_position($2::uuid[], id)`,
+      [w.fixture.business, [taskOne, taskTwo]],
+    );
+    expect({ one: one?.client, two: two?.client }).toStrictEqual({
+      one: clientOne,
+      two: clientTwo,
+    });
+    for (const reader of [readerOfTwo, partyOfTwo]) {
+      // eslint-disable-next-line no-await-in-loop -- one reader at a time
+      const wrongClient = await readAs(reader);
+      expect(wrongClient.status).toBe(403);
+      expect(wrongClient.body['code']).toBe('SCOPE_NOT_GRANTED');
+      carriesNothing(wrongClient);
+    }
     const rightClient = await readAs(readerOfOne);
     expect(rightClient.status).toBe(200);
     expect(JSON.stringify(rightClient.body)).toContain(title);
