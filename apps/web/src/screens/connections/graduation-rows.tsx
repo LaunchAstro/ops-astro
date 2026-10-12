@@ -5,9 +5,10 @@
 //
 // Every row carries the same switch, including the rows that can never move:
 // a disabled switch with its reason beside it answers "why not" where a
-// missing control only raises it. The record is three counts, never a score.
-// A refusal is drawn differently from an approval, because reading one as
-// the other is the expensive mistake.
+// missing control only raises it. A promoted class a refusal holds keeps its
+// switch on, so it can still be demoted. The record is three counts, never a
+// score. A refusal is drawn differently from an approval, because reading one
+// as the other is the expensive mistake. Dates are the reader's own day.
 
 import type { ReactElement } from 'react';
 import { Button, Card } from '@launchastro/ui';
@@ -38,11 +39,18 @@ const TONE: Readonly<Record<State, string>> = {
   none: 'is-idle',
 };
 
-/** Why the switch is dead, in the fewest words that are still true. */
-function why(row: GraduationRowView): string {
+/** Whether the class runs unattended under a standing mandate, held by a refusal or not. */
+export const promoted = (row: GraduationRowView): boolean =>
+  row.state === 'promoted' || (row.state === 'held' && row.promotedAt !== null);
+
+/** A time's calendar day where the reader is, as YYYY-MM-DD. */
+const dayOf = (at: string): string => new Date(at).toLocaleDateString('en-CA');
+
+/** Why the switch is dead, in the fewest words that are still true; `holder` is the holding refusal's sentence. */
+function why(row: GraduationRowView, holder: string | null): string {
   switch (row.state) {
     case 'held':
-      return `Held by ${row.heldBy ?? 'a sentence'} below`;
+      return holder === null ? 'Held by a sentence below' : `Held by "${holder}" below`;
     case 'short':
       return `${row.approved} approved so far`;
     case 'mixed':
@@ -63,17 +71,19 @@ const money = (ceiling: NonNullable<MandateView['ceiling']>): string =>
 
 function GraduationSwitch(props: {
   readonly row: GraduationRowView;
+  readonly holder: string | null;
   readonly clientLabel: string;
   readonly flip: () => void;
   readonly locked: boolean;
 }): ReactElement {
   const { row } = props;
-  const on = row.state === 'promoted';
+  const on = promoted(row);
   const live = on || row.state === 'ready';
   const dead = !live || props.locked;
-  let said = why(row);
-  if (on) said = `Auto since ${row.promotedAt?.slice(0, 10) ?? ''}`;
-  else if (live) said = 'Promote to auto';
+  const since = row.promotedAt === null ? '' : dayOf(row.promotedAt);
+  let said = why(row, props.holder);
+  if (row.state === 'promoted') said = `Auto since ${since}`;
+  else if (row.state === 'ready') said = 'Promote to auto';
   return (
     <div className="grad__act">
       <button
@@ -123,6 +133,8 @@ function GraduationRecord(props: { readonly row: GraduationRowView }): ReactElem
 
 export function GraduationRow(props: {
   readonly row: GraduationRowView;
+  /** The sentence of the refusal holding this class, or null. */
+  readonly holder: string | null;
   readonly clientLabel: string;
   readonly promoting: boolean;
   readonly locked: boolean;
@@ -148,6 +160,7 @@ export function GraduationRow(props: {
       </div>
       <GraduationSwitch
         row={row}
+        holder={props.holder}
         clientLabel={props.clientLabel}
         flip={props.flip}
         locked={props.locked}
@@ -177,7 +190,7 @@ export function Mandate(props: {
     mandate.id.slice(0, 8),
     mandate.classes.map((one) => (one === '*' ? 'all classes' : one)).join(', '),
     mandate.ceiling === null ? null : `up to ${money(mandate.ceiling)}`,
-    `${mandate.expired ? 'expired' : 'until'} ${mandate.expiresAt.slice(0, 10)}`,
+    `${mandate.expired ? 'expired' : 'until'} ${dayOf(mandate.expiresAt)}`,
     `by ${mandate.authoredBy.slice(0, 8)}`,
     mandate.refuses ? 'refusal' : null,
   ].filter((part) => part !== null);

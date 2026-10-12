@@ -18,9 +18,12 @@
 // reads the region again; a form clears only once its write succeeds. A write
 // held for that sign-in is withdrawn when the scope bar moves or the form that
 // sent it is cancelled, and one whose answer was lost goes again under its
-// operation.
+// operation. The chosen client, the open promotion and what is typed are kept
+// above the read (`Drafts`), so a reread outage that swaps the region for its
+// banner gives them back once the region reads again; a new grant, or another
+// client, starts empty.
 
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { Empty, SectionHead } from '@launchastro/ui';
 import type {
   ConnectionGraduationResult,
@@ -34,8 +37,14 @@ import type { StepUpAsk } from '../../records/use-money-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
-import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
-import { ConfirmRevokeMandate, GraduationRow, Mandate } from './graduation-rows.tsx';
+import {
+  Drafts,
+  MandateForm,
+  useChosen,
+  usePromoting,
+  type MandateFiling,
+} from './graduation-forms.tsx';
+import { ConfirmRevokeMandate, GraduationRow, Mandate, promoted } from './graduation-rows.tsx';
 import { promotionOf, useSend, type Drop, type Send } from './graduation-send.ts';
 
 type Client = ConnectionGraduationResult['clients'][number];
@@ -119,14 +128,15 @@ function StandingApprovals(props: {
 function Graduation(props: {
   readonly client: Client;
   readonly rows: readonly GraduationRowView[];
+  readonly mandates: readonly MandateView[];
   readonly send: Send;
   readonly drop: Drop;
   readonly locked: boolean;
 }): ReactElement {
   const { client, send } = props;
-  const [promoting, setPromoting] = useState<string | null>(null);
+  const [promoting, setPromoting] = usePromoting();
   const flip = (row: GraduationRowView): void => {
-    if (row.state === 'promoted') send('graduation.demote', { classId: row.id }, row.revision);
+    if (promoted(row)) send('graduation.demote', { classId: row.id }, row.revision);
     else setPromoting(row.id);
   };
   return (
@@ -136,6 +146,7 @@ function Graduation(props: {
           <GraduationRow
             key={row.id}
             row={row}
+            holder={props.mandates.find((one) => one.id === row.heldBy)?.label ?? null}
             clientLabel={client.label}
             promoting={promoting === row.id}
             locked={props.locked}
@@ -198,10 +209,11 @@ function Shown(props: {
   readonly stepUp: StepUpAsk | null;
 }): ReactElement | null {
   const { region, send, locked } = props;
-  const [chosen, choose] = useState(region.clients[0]?.id ?? '');
+  const [chosen, choose] = useChosen(region.clients[0]?.id ?? '');
   const client = region.clients.find((one) => one.id === chosen) ?? region.clients[0];
   if (client === undefined) return null;
   const rows = region.rows.filter((one) => one.clientId === client.id);
+  const mandates = region.mandates.filter((one) => one.clientId === client.id);
   const scoped = <span data-scope-client>{client.label}</span>;
   return (
     <>
@@ -220,6 +232,7 @@ function Shown(props: {
           key={client.id}
           client={client}
           rows={rows}
+          mandates={mandates}
           send={send}
           drop={props.drop}
           locked={locked}
@@ -227,7 +240,7 @@ function Shown(props: {
         <StandingApprovals
           key={`approvals-${client.id}`}
           client={client}
-          mandates={region.mandates.filter((one) => one.clientId === client.id)}
+          mandates={mandates}
           rows={rows}
           send={send}
           locked={locked}
@@ -252,31 +265,34 @@ export function GraduationRegion(props: {
     deps: [],
   });
   const { command, send, drop } = useSend(client, reload);
+  const drafts = useMemo(() => new Map<string, unknown>(), [props.grantKey]);
   return (
     <div className="secs" data-graduation>
-      <RecordState
-        state={state}
-        subject="per-client region"
-        onRetry={reload}
-        keep
-        empty={
-          <Empty
-            title="No client you can see yet."
-            description="Each client joins the scope bar once it is created."
-          />
-        }
-      >
-        {(region) => (
-          <Shown
-            region={region}
-            send={send}
-            drop={drop}
-            said={command.because}
-            locked={command.locked}
-            stepUp={command.stepUp}
-          />
-        )}
-      </RecordState>
+      <Drafts.Provider value={drafts}>
+        <RecordState
+          state={state}
+          subject="per-client region"
+          onRetry={reload}
+          keep
+          empty={
+            <Empty
+              title="No client you can see yet."
+              description="Each client joins the scope bar once it is created."
+            />
+          }
+        >
+          {(region) => (
+            <Shown
+              region={region}
+              send={send}
+              drop={drop}
+              said={command.because}
+              locked={command.locked}
+              stepUp={command.stepUp}
+            />
+          )}
+        </RecordState>
+      </Drafts.Provider>
     </div>
   );
 }
