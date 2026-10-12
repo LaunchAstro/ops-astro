@@ -42,6 +42,7 @@ describe('INB-1 live identity rebind', () => {
         return () => {};
       },
       listening: true,
+      hears: async () => await Promise.resolve(true),
       close: () => Promise.resolve(),
     };
     let current = first;
@@ -103,6 +104,7 @@ describe('INB-1 live identity rebind', () => {
         return () => {};
       },
       listening: true,
+      hears: async () => await Promise.resolve(true),
       close: () => Promise.resolve(),
     };
     let current = first;

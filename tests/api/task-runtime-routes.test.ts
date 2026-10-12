@@ -863,7 +863,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
     it('finishes on a second composition root reading the same database', async () => {
       // **This is an in-process restart.** The second instance below is a fresh
       // composition root over the same database: a new `createApi`, a new
-      // verifier, a new business resolver with an empty cache, and the gate key
+      // verifier, a new business resolver, and the gate key
       // read out of `process.env` again. It is not an operating-system restart
       // of the served API — that one is the coordinator's browser run against
       // the API on port 8790, where the process really is stopped and started.

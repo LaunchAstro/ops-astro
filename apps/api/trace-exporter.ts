@@ -215,20 +215,30 @@ export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts 
   };
 }
 
-/** One tick: every business until caught up, a gap, or its batch allowance. */
+/**
+ * One tick: every business until caught up, a gap, or its batch allowance.
+ * A business that fails ends its own turn; the next still has its own.
+ */
 export async function exportDeployment(
   database: TraceDatabase,
   businesses: () => Promise<readonly string[]>,
   key: Buffer,
   deliver: Deliver,
 ): Promise<void> {
+  let failed: { readonly cause: unknown } | undefined;
   for (const businessId of await businesses()) {
-    for (let batch = 0; batch < BATCHES_PER_TICK; batch += 1) {
-      // eslint-disable-next-line no-await-in-loop -- one batch after another, in order
-      const outcome = await exportOnce(database, businessId, key, deliver);
-      if (outcome.kind !== 'delivered') break;
+    try {
+      for (let batch = 0; batch < BATCHES_PER_TICK; batch += 1) {
+        // eslint-disable-next-line no-await-in-loop -- one batch after another, in order
+        const outcome = await exportOnce(database, businessId, key, deliver);
+        if (outcome.kind !== 'delivered') break;
+      }
+    } catch (cause) {
+      failed ??= { cause };
     }
   }
+  // The tick still fails, after every business has had its turn.
+  if (failed !== undefined) throw failed.cause;
 }
 
 /** One retention pass over every business; one business's failure does not stop the next. */
@@ -251,23 +261,27 @@ export async function retainDeployment(
   if (failed !== undefined) throw failed.cause;
 }
 
-/** A job on an interval that never overlaps itself and logs a failure by its kind only. */
-function every(ms: number, what: string, job: () => Promise<void>): NodeJS.Timeout {
-  let running = false;
+/**
+ * A job on an interval that never overlaps itself and logs a failure by its
+ * kind only. Stopping it ends the interval and resolves once the running job has ended.
+ */
+function every(ms: number, what: string, job: () => Promise<void>): () => Promise<void> {
+  let running: Promise<void> | undefined;
   const timer = setInterval(() => {
-    if (running) return;
-    running = true;
-    void job()
+    running ??= job()
       .catch((cause: unknown) => {
         // A listed code only: a database error's text, or a custom name, can carry a value.
         console.error(`api: ${what} failed: ${faultCode(cause)}`);
       })
       .finally(() => {
-        running = false;
+        running = undefined;
       });
   }, ms);
   timer.unref();
-  return timer;
+  return async () => {
+    clearInterval(timer);
+    await running;
+  };
 }
 
 /** Custody's own process for the target, started, and the export and retention intervals over it. */
@@ -283,7 +297,7 @@ export async function startTraceExporter(
   });
   const deliver = deliverThrough(custody);
   const ports = expiryThrough(custody);
-  const timers = [
+  const jobs = [
     every(everyMs, 'trace export', async () => {
       await exportDeployment(database, businesses, settings.key, deliver);
     }),
@@ -292,8 +306,9 @@ export async function startTraceExporter(
     }),
   ];
   return {
+    // Custody stops only once no job is between reading a batch and dispatching it.
     stop: async () => {
-      for (const timer of timers) clearInterval(timer);
+      await Promise.allSettled(jobs.map(async (stop) => await stop()));
       await custody.stop();
     },
   };
