@@ -99,6 +99,26 @@ export function projectRefs(
   return { own, other, ref, otherRef };
 }
 
+/**
+ * Why the database address in `name` is not production's: on staging's
+ * project, or on any but production's (PRODUCTION_PROJECT_REF,
+ * STAGING_PROJECT_REF). Named by setting, never by value.
+ */
+export function productionAddressRefusal(
+  environment: Environment,
+  name = 'DATABASE_ADMIN_URL',
+): string | undefined {
+  try {
+    const { other, ref, otherRef } = projectRefs(environment, true);
+    const project = databaseProject(name, environment[name] ?? '');
+    if (project === otherRef) return `${name} reaches ${other}'s project`;
+    return project === ref ? undefined : `${name} is not production's project`;
+  } catch (error) {
+    if (error instanceof Refusal) return error.message;
+    throw error;
+  }
+}
+
 /** The project a database address reaches, read from its login or its direct host. */
 export function databaseProject(name: string, value: string): string {
   const url = URL.parse(value);

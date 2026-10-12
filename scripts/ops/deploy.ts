@@ -35,10 +35,11 @@ import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
-import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
+import { productionAddressRefusal } from './staging-reset.ts';
+
+export { productionAddressRefusal } from './staging-reset.ts';
 
 export type DeployEnvironment = 'staging' | 'production';
-type Environment = Readonly<Record<string, string | undefined>>;
 
 /** The staging definition, as the deploy reads it. */
 export interface StagingDefinition {
@@ -85,21 +86,29 @@ const readDefinition = (environment: DeployEnvironment): StagingDefinition =>
   JSON.parse(readFileSync(definitionPath(environment), 'utf8')) as StagingDefinition;
 const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
 
+/** A backup or drill run's name after its unit's prefix (container-run.mjs, drill-restore.mjs). */
+const RUN_NAME = /^(?:(?:store|backup)-[0-9a-f]{16}|drill-[0-9a-f]{8})$/u;
+
 /**
  * The unit's own services, which its deploy may restart: staging's by its
  * prefix, as the service report has always judged; production's only the
- * Docker containers its Compose definition names, so a launchd job or any
- * other `ops-astro-*` service stays a live one.
+ * Docker containers its Compose definition names and the throwaway runs its
+ * backups and drill start (container-run.mjs, drill-restore.mjs), so a
+ * launchd job or any other `ops-astro-*` service stays a live one.
  */
 export function unitOf(environment: DeployEnvironment): Unit {
   if (environment === 'staging')
     return { name: environment, owns: (name) => name.startsWith(STAGING_PREFIX) };
+  const definition = readDefinition(environment);
   const containers = new Set(
-    Object.entries(readDefinition(environment).services).map(([key, s]) => s.container_name ?? key),
+    Object.entries(definition.services).map(([key, s]) => s.container_name ?? key),
   );
+  const prefix = `${definition['x-ops-astro'].ownPrefix}-`;
+  const run = (name: string): boolean =>
+    name.startsWith(prefix) && RUN_NAME.test(name.slice(prefix.length));
   return {
     name: environment,
-    owns: (name, manager) => manager === 'docker' && containers.has(name),
+    owns: (name, manager) => manager === 'docker' && (containers.has(name) || run(name)),
   };
 }
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
@@ -155,22 +164,6 @@ async function preflightOn(judge: (admin: OwnerQuery) => Promise<string[]>): Pro
 /** Staging's preflight: the made-up-only judgement. */
 export function stagingSigns(): Promise<string[]> {
   return preflightOn(productionSigns);
-}
-
-/**
- * Why `DATABASE_ADMIN_URL` is not production's database: on staging's project,
- * or on any but production's (PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF).
- */
-export function productionAddressRefusal(env: Environment): string | undefined {
-  try {
-    const { other, ref, otherRef } = projectRefs(env, true);
-    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
-    if (project === otherRef) return `DATABASE_ADMIN_URL reaches ${other}'s project`;
-    return project === ref ? undefined : "DATABASE_ADMIN_URL is not production's project";
-  } catch (error) {
-    if (error instanceof Refusal) return error.message;
-    throw error;
-  }
 }
 
 /** Production's preflight: its own database, and no sign that the made-up seed ever ran there. */

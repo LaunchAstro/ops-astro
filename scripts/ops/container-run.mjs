@@ -46,10 +46,17 @@ const REMOVE_PAUSE_MS = 500;
 
 /**
  * `docker run` arguments for `command` in staging's pinned Postgres image on
- * `network`, named for `role`, the environment names in `names` passed by
- * name only, never their values on the command line.
+ * `network`, named for `role` under the unit's `prefix` (staging's unless
+ * given; production's runs carry production's), the environment names in
+ * `names` passed by name only, never their values on the command line.
  */
-export function containerArgs(role, network, names, command, { stdin = false } = {}) {
+export function containerArgs(
+  role,
+  network,
+  names,
+  command,
+  { stdin = false, prefix = staging['x-ops-astro'].ownPrefix } = {},
+) {
   return [
     'run',
     '--rm',
@@ -58,7 +65,7 @@ export function containerArgs(role, network, names, command, { stdin = false } =
     '--init',
     // Attached output still streams; nothing it prints goes to a log on the host's disk.
     '--log-driver=none',
-    `--name=${staging['x-ops-astro'].ownPrefix}-${role}-${randomBytes(8).toString('hex')}`,
+    `--name=${prefix}-${role}-${randomBytes(8).toString('hex')}`,
     `--network=${network}`,
     ...names.map((name) => `--env=${name}`),
     staging.services.backups.image,
@@ -72,10 +79,10 @@ export function containerArgs(role, network, names, command, { stdin = false } =
  * it. Answers the child, `exited` (settles once with whether it succeeded)
  * and `stop()`.
  */
-export function runContainer(role, network, env, command, { stdin = false } = {}) {
+export function runContainer(role, network, env, command, { stdin = false, prefix } = {}) {
   const folder = mkdtempSync(join(tmpdir(), 'ops-astro-run-'));
   const cidfile = join(folder, 'cid');
-  const args = containerArgs(role, network, Object.keys(env), command, { stdin });
+  const args = containerArgs(role, network, Object.keys(env), command, { stdin, prefix });
   // Docker refuses to run if the file exists already.
   args.splice(1, 0, `--cidfile=${cidfile}`);
   const child = spawn('docker', args, {

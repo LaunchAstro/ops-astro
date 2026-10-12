@@ -5,8 +5,7 @@
 // pinned Postgres image, handed on as it prints, so the job never holds a dump
 // whole (REV158S criterion 5).
 
-import { readFileSync } from 'node:fs';
-import { reachEnv } from './backup-store-reach.mjs';
+import { reachEnv, routeOf } from './backup-store-reach.mjs';
 import { runContainer } from './container-run.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
@@ -28,12 +27,9 @@ export function schemasFrom(host) {
   return HOSTED.test(host.toLowerCase()) ? SCHEMAS.filter((schema) => schema !== 'auth') : SCHEMAS;
 }
 
-const staging = JSON.parse(
-  readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
-);
-
 /**
- * pg_dump in a throwaway container on staging's network, as the backup
+ * pg_dump in a throwaway container on the unit's network (staging's unless
+ * `environment` is production), named as that unit's own, as the backup
  * identity. The login reaches it as psql's does (`reachEnv`, the database
  * name decoded, TLS required), through the environment, never the command
  * line, and pg_dump's own messages are discarded. It answers once pg_dump has
@@ -41,15 +37,17 @@ const staging = JSON.parse(
  * pg_dump failed, with a `stop()` for a reader that gives up. A pg_dump that
  * prints nothing fails.
  */
-export function pgDump(sourceUrl) {
+export function pgDump(sourceUrl, environment = 'staging') {
   plainDatabase(sourceUrl);
   const login = reachEnv(sourceUrl);
-  const run = runContainer('backup', staging.networks.staging.name, login, [
+  const { network, prefix } = routeOf(environment);
+  const dump = [
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,
     ...schemasFrom(login.PGHOST).map((schema) => `--schema=${schema}`),
-  ]);
+  ];
+  const run = runContainer('backup', network, login, dump, { prefix });
   return printed(run);
 }
 
