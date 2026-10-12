@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A budget-stop top-up raises the hold past 2^53 in minor units; the hold and the envelope must stay exact in the real database, never through a float."
+}

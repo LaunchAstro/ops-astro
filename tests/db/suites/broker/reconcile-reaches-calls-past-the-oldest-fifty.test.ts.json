@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Reconciliation must reach a call past the oldest fifty unproved calls on a later pass; the rotation is the real selector over real rows."
+}
