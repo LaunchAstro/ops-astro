@@ -2,8 +2,10 @@
 //
 // The OpenAPI document the API scan reads (S0-5 item 7), derived from
 // COMMAND_SURFACE as the routes are (`docs/local/API.md`, "Routes"), operands
-// typed, so a command added later is scanned the day it lands. The person
-// prefix only: the agent prefix needs an agent credential.
+// typed, so a command added later is scanned the day it lands. A write's
+// operands are on its row; a read's are in `read-operands.ts`, held to the
+// read's own parse by its test. The person prefix only: the agent prefix needs
+// an agent credential.
 
 import {
   COMMAND_SURFACE,
@@ -12,7 +14,9 @@ import {
   PREFIX,
   type CommandDeclaration,
   type Operand,
+  type OperandSpec,
 } from '../../packages/core-wire/src/surface.ts';
+import { READ_OPERANDS } from '../../packages/core-wire/src/read-operands.ts';
 
 export class DefinitionRefused extends Error {}
 
@@ -76,20 +80,36 @@ function operandSchema(operand: Operand): { schema: Schema; required: boolean } 
   return { schema, required: !operand.includes('?') };
 }
 
+/** An object of these operands beside any the envelope reads; `required` only when one is. */
+function objectOf(
+  properties: Record<string, Schema>,
+  required: string[],
+  operands: OperandSpec,
+): Schema {
+  for (const [name, operand] of Object.entries(operands)) {
+    const typed = operandSchema(operand);
+    properties[name] = typed.schema;
+    if (typed.required) required.push(name);
+  }
+  return required.length === 0
+    ? { type: 'object', properties }
+    : { type: 'object', properties, required };
+}
+
 function bodyOf(command: CommandDeclaration): Schema {
-  if (command.kind === 'read') return { type: 'object' };
+  if (command.kind === 'read') {
+    const operands = READ_OPERANDS[command.name];
+    if (operands === undefined)
+      throw new DefinitionRefused(`a read declares no operands: ${command.name}`);
+    return objectOf({}, [], operands);
+  }
   const properties: Record<string, Schema> = { operationId: KIND_SCHEMA['id'] ?? {} };
   const required = ['operationId'];
   if (command.targetsExistingRecord && !NEEDS_NO_EXPECTED_REVISION.has(command.name)) {
     properties['expectedRevision'] = { type: 'integer' };
     required.push('expectedRevision');
   }
-  for (const [name, operand] of Object.entries(command.operands ?? {})) {
-    const typed = operandSchema(operand);
-    properties[name] = typed.schema;
-    if (typed.required) required.push(name);
-  }
-  return { type: 'object', properties, required };
+  return objectOf(properties, required, command.operands ?? {});
 }
 
 function postOf(command: CommandDeclaration): Post {
