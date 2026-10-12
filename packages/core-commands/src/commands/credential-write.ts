@@ -21,15 +21,18 @@
 // the field alone: the purpose and the secret are in no refusal or detail.
 
 import {
+  advisoryLock,
   checkAuthority,
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,
   digestOf,
+  ENDED_FIXES,
   issueAgentCredential,
   isUuid,
   lockAccess,
   lockAgentCredential,
   revokeAgentCredential,
+  sessionEndedSince,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
@@ -101,8 +104,8 @@ export async function issueCredential(
   if (keys === undefined) return invalid('scope');
   const never = refuseNeverCarried(keys);
   if (never !== undefined) return refused(never);
-  // On the clock that stamps `issued_at` (the transaction's `now()`), so the
-  // ceiling is 90 days of the row's own issue, as the database holds it.
+  // Its shape and ceiling before any lock, on the transaction's clock; the
+  // database holds the ceiling again against the issue it stamps at insert.
   const expiresAt = expiryOf(request.expiresAt, await databaseClock(tx, 'now()'));
   if (expiresAt === undefined) return invalid('expiresAt');
   const { purpose } = request;
@@ -113,6 +116,10 @@ export async function issueCredential(
   await lockAccess(tx);
   const scopeRefusal = await refuseScope(tx, session, keys);
   if (scopeRefusal !== undefined) return refused(scopeRefusal);
+  // An expiry that passed while the issue waited on the access lock mints nothing.
+  if (expiresAt.getTime() <= (await databaseClock(tx, 'clock_timestamp()'))) {
+    return invalid('expiresAt');
+  }
   const held = delegationCredentialKeys();
   if (!held.ok) return refused(NO_KEY);
   const issued = await issueAgentCredential(tx, held.keys, {
@@ -191,6 +198,12 @@ export async function replayIssue(
   const scope = storedKeys(held.scope);
   const refusal = refuseNeverCarried(scope) ?? (await refuseScope(tx, session, scope));
   if (refusal !== undefined) return refusal;
+  // The session asked again after the waits, its ending keys held to commit
+  // after the audit chain's (`ending-keys.ts`): no secret for a signed-out caller.
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (await sessionEndedSince(tx, session)) {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
+  }
   const keys = delegationCredentialKeys();
   const credential = keys.ok
     ? deriveAgentCredential(keys.keys, held.keyId, tx.businessId, held)
