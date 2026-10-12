@@ -16,6 +16,8 @@ const EFFECT = { kind: 'synthetic_comment', payload: {} };
 const SMALL_CEILING = 400;
 /** Long enough to dispatch under across a slow link, short enough to wait out. */
 const LOST_LEASE_SECONDS = 30;
+/** The helper's hour, the longest lease a pickup may name (MAXIMUM_LEASE_SECONDS). */
+const HELPER_SECONDS = 3_600;
 
 /** A purpose of its own: an agent holds one live delegation per purpose. */
 function purpose(w) {
@@ -23,8 +25,11 @@ function purpose(w) {
   return `click_through_${String(Date.now())}_${String(w.purposes)}`;
 }
 
-/** Proposed by the admin, approved by her, and picked up by the agent. */
-async function working(w, id, step = COMPOSE, ceiling = 2_000) {
+/**
+ * Proposed by the admin, approved by her, and picked up by the agent, on the
+ * server's default lease unless `leaseSeconds` names one.
+ */
+async function working(w, id, step = COMPOSE, ceiling = 2_000, leaseSeconds) {
   const proposal = await w.as(w.admin, {
     command: 'task.propose',
     recordId: id,
@@ -39,6 +44,7 @@ async function working(w, id, step = COMPOSE, ceiling = 2_000) {
   return await w.asAgent(undefined, {
     command: 'task.pickup',
     reservationId: approved.reservationId,
+    ...(leaseSeconds === undefined ? {} : { leaseSeconds }),
   });
 }
 
@@ -110,9 +116,12 @@ export async function sweepLost(w, lost) {
   await w.database.withBusiness(w.cast.businessId, (tx) => sweepExpiredLeases(tx));
 }
 
-/** The agent hands reading the task to a helper agent of the business. */
+/**
+ * The agent hands reading the task to a helper agent of the business, for the
+ * hour: the helper's read ends with the lease, so the lease runs the hour too.
+ */
 export async function handToHelper(w, id) {
-  const picked = await working(w, id);
+  const picked = await working(w, id, COMPOSE, 2_000, HELPER_SECONDS);
   await w.asAgent(picked.credential, {
     command: 'run.delegate_child',
     leaseId: picked.leaseId,
@@ -121,7 +130,7 @@ export async function handToHelper(w, id) {
     purpose: 'click_through_helper',
     collections: ['task'],
     actions: ['read'],
-    expiresInSeconds: 3_600,
+    expiresInSeconds: HELPER_SECONDS,
   });
 }
 
