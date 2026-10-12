@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's comment or owned field write holds the delegating person's grant it was asked again on, so a grant revocation on a second connection either commits first and refuses the write or waits until the write has committed; judged on a real migrated database."
+}
