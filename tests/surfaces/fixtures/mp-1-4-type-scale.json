@@ -277,6 +277,30 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".rq__say",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rq__figs",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__title",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__label",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__text",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rq__agent",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".dtp .sb__name",
       "ruling": "R20261012"
     },

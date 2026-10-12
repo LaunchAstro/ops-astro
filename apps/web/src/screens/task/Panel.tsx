@@ -162,7 +162,7 @@ function PanelBody(
   props: Body & AgentSideProps & { readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
-  const [perspective, setPerspective] = useState<Perspective>('team');
+  const [perspective, setPerspective] = usePanelPerspective(props.opening);
   const body = useSubtaskDoor(props.opening, task.id, perspective, setPerspective);
   const counts = perspectiveCounts({
     steps: stepMarks(task.steps),
@@ -277,4 +277,15 @@ function PanelFacts(props: SideProps): ReactElement {
       </details>
     </div>
   );
+}
+
+/** The Agent and reply doors pick the perspective; a re-read of the same opening keeps the chosen one. */
+function usePanelPerspective(opening: PanelOpening) {
+  const { taskKey, door, tab } = opening;
+  const [perspective, setPerspective] = useState<Perspective>(door === 'agent' ? 'agent' : 'team');
+  useEffect(() => {
+    if (door === 'agent') setPerspective('agent');
+    if (door === 'reply') setPerspective('team');
+  }, [taskKey, door, tab]);
+  return [perspective, setPerspective] as const;
 }

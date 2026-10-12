@@ -39,7 +39,7 @@ export {
   type StepMark,
 } from './perspective-counts.ts';
 
-export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply';
+export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply' | 'agent';
 
 /** The conversation's three tabs (MP-4-5); the reply door hands the one showing to the panel. */
 export type ConversationTab = 'internal' | 'client' | 'all';
@@ -48,6 +48,7 @@ export type ConversationTab = 'internal' | 'client' | 'all';
 export type PanelOpener = (door: PanelDoor, tab?: ConversationTab) => void;
 
 const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
+  agent: 'Review the plan in the task panel',
   open: 'Open this task in the panel',
   tick: 'Tick these off in the task panel',
   'add-first': 'Add the first one in the task panel',
