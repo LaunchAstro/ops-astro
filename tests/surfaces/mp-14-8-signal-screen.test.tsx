@@ -138,6 +138,19 @@ const NOTHING: ConnectionSignalResult = {
 const LIVE_ONLY = [grant('live', 'live', 37), grant('fleetx', 'live', 300)];
 const ALL = [...LIVE_ONLY, grant('unused', 'ran_out', -60), grant('fleet-taken', 'taken_back', 90)];
 
+const EMPTY_FLEET = {
+  ok: true,
+  connections: [],
+  counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
+};
+
+/** A server whose signal read answers as `signal` does, and whose every other read is an empty fleet. */
+const serverOf = (signal: () => Promise<Response>): typeof fetch =>
+  ((url: string | URL): Promise<Response> =>
+    String(url).endsWith('/connection/signal')
+      ? signal()
+      : Promise.resolve(json(EMPTY_FLEET))) as typeof fetch;
+
 /** What the stub answers `connection.signal` with. */
 type Answer = ConnectionSignalResult | 'refused' | 'down';
 
@@ -171,13 +184,7 @@ async function open(
       }
       return json(signal);
     }
-    if (at.endsWith('/connection/fleet')) {
-      return json({
-        ok: true,
-        connections: [],
-        counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
-      });
-    }
+    if (at.endsWith('/connection/fleet')) return json(EMPTY_FLEET);
     return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
   };
   const client = new OperationsClient({
@@ -204,6 +211,10 @@ afterEach(async () => {
 });
 
 const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
+
+/** What the tooltip describing a focusable mark says. */
+const reasonOf = (mark: Element | null | undefined): string | null | undefined =>
+  document.querySelector(`[id="${mark?.getAttribute('aria-describedby') ?? ''}"]`)?.textContent;
 
 const outcome = (page: Mounted): string | undefined =>
   (page.find('[data-signal] [data-outcome]') as HTMLElement | null)?.dataset['outcome'];
@@ -291,8 +302,8 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     for (const id of ['never', 'dead']) {
       expect(page.find(`[data-tripwire="${id}"]`)?.textContent).not.toMatch(/\b0\b/u);
     }
-    expect(text(page, '[data-grant="unused"] [data-grant-reads]')).toBe('Never redeemed');
-    expect(text(page, '[data-grant="live"] [data-grant-reads]')).toBe('112 reads');
+    expect(text(page, '[data-grant="unused"] [data-grant-calls]')).toBe('Never redeemed');
+    expect(text(page, '[data-grant="live"] [data-grant-calls]')).toBe('112 calls');
     expect(text(page, '[data-tripwire="quiet"] [data-tripwire-filed]')).toBe(
       'Filed nothing: already queued',
     );
@@ -319,15 +330,29 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 filed tripwires carry their feed link, drawn unavailable until MP-14-4 builds the attention feed', async () => {
+  it('MP-14-8 a filed tripwire names its item, and its link into the attention feed is unavailable with a reason a keyboard reaches', async () => {
     const { page } = await open(signalBody(ALL));
     const filed = page.find(
-      '[data-tripwire="fired"] [data-tripwire-filed] [data-feed-link]',
+      '[data-tripwire="fired"] [data-tripwire-filed] .unavail',
     ) as HTMLElement | null;
-    expect(filed?.textContent).toContain('AT-10');
-    expect(filed?.getAttribute('aria-disabled')).toBe('true');
-    expect(filed?.getAttribute('href')).toBeNull();
-    expect(filed?.title).toContain('MP-14-4');
+    expect(filed?.querySelector('button')?.textContent).toBe('Filed AT-10 in the one feed');
+    expect(filed?.querySelector('button')?.disabled).toBe(true);
+    expect(filed?.querySelector('a')).toBeNull();
+    expect(filed?.tabIndex).toBe(0);
+    expect(reasonOf(filed)).toBe('The attention feed is not available yet');
+    await page.unmount();
+  });
+
+  it('MP-14-8 each Ceiling mark is unavailable with a reason a keyboard reaches', async () => {
+    const { page } = await open(signalBody(ALL));
+    const marks = page.all('[data-grant] .unavail, [data-roster] .unavail');
+    expect(marks).toHaveLength(ALL.length + 1);
+    for (const mark of marks) {
+      expect(mark.querySelector('button')?.textContent).toBe('Ceiling');
+      expect(mark.querySelector('button')?.disabled).toBe(true);
+      expect((mark as HTMLElement).tabIndex).toBe(0);
+      expect(reasonOf(mark)).toBe('The clearance document is not available yet');
+    }
     await page.unmount();
   });
 
@@ -339,7 +364,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     const before = sent.length;
     for (const selector of [
       '[data-night-step="grant"] [data-night-cite]',
-      '[data-tripwire="fired"] [data-feed-link]',
+      '[data-tripwire="fired"] [data-tripwire-filed] .unavail',
     ]) {
       // eslint-disable-next-line no-await-in-loop -- one click at a time
       await page.click(selector);
@@ -368,14 +393,11 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
   });
 
   it('MP-14-8 the read draws loading, then the sections, and nothing of them before it lands', async () => {
-    const opener: { release?: () => void } = {};
-    const hold = new Promise<void>((resolve) => {
-      opener.release = resolve;
-    });
-    const { page } = await open(signalBody(ALL), hold);
+    const held = gate();
+    const { page } = await open(signalBody(ALL), held.hold);
     expect(outcome(page)).toBe('loading');
     expect(page.find('#grants')).toBeNull();
-    opener.release?.();
+    held.release();
     await tick();
     expect(outcome(page)).toBe('ready');
     expect(page.find('#grants')).not.toBeNull();
@@ -410,7 +432,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B.1 a client label is drawn isolated, and a fleet grant is marked apart from any name', async () => {
+  it('MP-14-8 a client label is drawn isolated, and a fleet grant is marked apart from any name', async () => {
     const label = `${String.fromCodePoint(0x202e)}Acme`;
     const spoof: GrantView = { ...grant('spoof', 'live', 90), client: { id: 'k-s', label } };
     const named: GrantView = {
@@ -429,7 +451,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B.2 the heads and lede claim no reach the read does not state', async () => {
+  it('MP-14-8 the heads and lede claim no reach the read does not state', async () => {
     const { page } = await open(signalBody(ALL));
     for (const right of page.all('[data-signal] .sec__right')) {
       expect(right.textContent).not.toMatch(/fleet/iu);
@@ -439,26 +461,19 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B.3 a change of grant draws loading, then only the new grant rows', async () => {
-    const answerOf = (body: ConnectionSignalResult, hold?: Promise<void>) =>
-      (async (url: string | URL): Promise<Response> => {
-        const at = String(url);
-        if (at.endsWith('/connection/signal')) {
-          await hold;
-          return json(body);
-        }
-        return json({
-          ok: true,
-          connections: [],
-          counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
-        });
-      }) as typeof fetch;
-    const opener: { release?: () => void } = {};
-    const hold = new Promise<void>((resolve) => {
-      opener.release = resolve;
-    });
-    const alpha = clientOf('alpha', answerOf(signalBody([grant('alpha-only', 'live', 90)])));
-    const bravo = clientOf('bravo', answerOf(signalBody([grant('bravo-only', 'live', 90)]), hold));
+  it('MP-14-8 a change of grant draws loading, then only the new grant rows', async () => {
+    const held = gate();
+    const alpha = clientOf(
+      'alpha',
+      serverOf(() => Promise.resolve(json(signalBody([grant('alpha-only', 'live', 90)])))),
+    );
+    const bravo = clientOf(
+      'bravo',
+      serverOf(async () => {
+        await held.hold;
+        return json(signalBody([grant('bravo-only', 'live', 90)]));
+      }),
+    );
     const page = await mount(
       <ConnectionsScreen client={alpha} grantKey="alpha:a@x:0" now={() => NOW} />,
     );
@@ -469,7 +484,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await tick();
     expect(outcome(page)).toBe('loading');
     expect(page.find('[data-grant="alpha-only"]')).toBeNull();
-    opener.release?.();
+    held.release();
     await tick();
     expect(page.all('[data-grant]').map((row) => (row as HTMLElement).dataset['grant'])).toEqual([
       'bravo-only',
@@ -477,21 +492,12 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B.3 a re-read refused after a ready answer draws denied and none of the earlier rows', async () => {
+  it('MP-14-8 a re-read refused after a ready answer draws denied and none of the earlier rows', async () => {
     const answers: (() => Response)[] = [
       () => json(signalBody(ALL)),
       () => json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403),
     ];
-    const scripted = ((url: string | URL): Promise<Response> =>
-      Promise.resolve(
-        String(url).endsWith('/connection/signal')
-          ? (answers.shift() as () => Response)()
-          : json({
-              ok: true,
-              connections: [],
-              counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
-            }),
-      )) as typeof fetch;
+    const scripted = serverOf(() => Promise.resolve((answers.shift() as () => Response)()));
     const refreshers: (() => void)[] = [];
     const rollup: RollupFloor = {
       follow: (onRefresh) => {
@@ -499,14 +505,13 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
         return () => null;
       },
     };
-    const client = new OperationsClient({
-      origin: '',
-      businessKey: 'alpha',
-      signedIn: true,
-      fetch: scripted,
-    });
     const page = await mount(
-      <ConnectionsScreen client={client} grantKey="alpha:a@x:0" now={() => NOW} rollup={rollup} />,
+      <ConnectionsScreen
+        client={clientOf('alpha', scripted)}
+        grantKey="alpha:a@x:0"
+        now={() => NOW}
+        rollup={rollup}
+      />,
     );
     opened.push(page);
     await tick();
@@ -521,16 +526,18 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B.4 a task cite links only a task key, and a task cite with no key is flat text', async () => {
+  it('MP-14-8 a task cite links only a task key, and a task cite with no key is flat text', async () => {
     const body = signalBody(ALL);
     const round = body.nightRound as NonNullable<ConnectionSignalResult['nightRound']>;
     const steps = [
       ...round.steps,
       step('odd', 'plain', { kind: 'task', ref: '../settings', label: 'Odd' }),
+      step('led', 'plain', { kind: 'task', ref: 'xT-7', label: 'Led' }),
+      step('trailed', 'plain', { kind: 'task', ref: 'T-7/../settings', label: 'Trailed' }),
       step('keyless', 'plain', { kind: 'task', ref: null, label: 'Keyless' }),
     ];
     const { page } = await open({ ...body, nightRound: { ...round, steps } });
-    for (const id of ['odd', 'keyless']) {
+    for (const id of ['odd', 'led', 'trailed', 'keyless']) {
       const cite = page.find(`[data-night-step="${id}"] [data-night-cite]`) as HTMLElement | null;
       expect(cite?.tagName).toBe('SPAN');
       expect(cite?.title).not.toContain('exceptions');
@@ -637,7 +644,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     }
   });
 
-  it('MP-14-8 SEC-P04B.6 a live grant under a minute from its end never reads Ran out', async () => {
+  it('MP-14-8 a live grant under a minute from its end never reads Ran out', async () => {
     const closing: GrantView = {
       ...grant('closing', 'live', 0),
       expiresAt: new Date(NOW + 30_000).toISOString(),
@@ -653,17 +660,16 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB1 a fleet grant wears a chip, which no client name can draw', async () => {
+  it('MP-14-8 a fleet grant wears a chip, which no client name can draw', async () => {
     const { page } = await open(signalBody(ALL));
-    const mark = page.find('[data-grant="fleetx"] [data-grant-fleet]');
-    expect(mark?.classList.contains('chip')).toBe(true);
+    expect(page.find('[data-grant="fleetx"] [data-grant-fleet] > .chip')).not.toBeNull();
     expect(page.find('[data-grant="live"] [data-grant-client]')?.classList.contains('chip')).toBe(
       false,
     );
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB1.1 each absence says what the reader can see, never the whole ledger', async () => {
+  it('MP-14-8 each absence says what the reader can see, never the whole ledger', async () => {
     const { page } = await open({ ...NOTHING, roster: signalBody([]).roster });
     expect(text(page, '#grants')).toContain('No grants you can see.');
     expect(text(page, '#tripwires')).toContain('No checks you can see are watching.');
@@ -674,19 +680,12 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB1.3 an answer for the earlier grant that lands after the change draws nothing', async () => {
+  it('MP-14-8 an answer for the earlier grant that lands after the change draws nothing', async () => {
     const late = (body: ConnectionSignalResult, hold: Promise<void>): typeof fetch =>
-      (async (url: string | URL): Promise<Response> => {
-        if (String(url).endsWith('/connection/signal')) {
-          await hold;
-          return json(body);
-        }
-        return json({
-          ok: true,
-          connections: [],
-          counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
-        });
-      }) as typeof fetch;
+      serverOf(async () => {
+        await hold;
+        return json(body);
+      });
     const a = gate();
     const b = gate();
     const alpha = clientOf('alpha', late(signalBody([grant('alpha-only', 'live', 90)]), a.hold));
@@ -709,22 +708,26 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB2 the fleet mark wears the warn tone, and a client named like it reads as a client', async () => {
+  it('MP-14-8 the fleet mark wears the warn tone, and a client named like it reads as a client', async () => {
     const named: GrantView = {
       ...grant('named', 'live', 90),
       client: { id: 'k-n', label: 'Fleet · every client' },
     };
     const { page } = await open(signalBody([named, ...LIVE_ONLY]));
-    const mark = page.find('[data-grant="fleetx"] [data-grant-fleet]');
+    const mark = page.find('[data-grant="fleetx"] [data-grant-fleet] > .chip');
     expect(mark?.classList.contains('is-warn')).toBe(true);
     const client = page.find('[data-grant="named"] [data-grant-client]');
     expect(client?.classList.contains('chip')).toBe(false);
-    expect(page.find('[data-grant="named"] .visually-hidden')?.textContent).toBe('Client: ');
+    // A screen reader hears "Client: " and then the name, in that order.
+    const said = page.find('[data-grant="named"] .visually-hidden');
+    expect(said?.textContent).toBe('Client: ');
+    expect(said?.nextElementSibling).toBe(client);
+    expect(client?.tagName).toBe('BDI');
     expect(page.find('[data-grant="fleetx"] .visually-hidden')).toBeNull();
     await page.unmount();
   });
 
-  it('MP-14-8 CR-P04B.P1 each night step wears its tone as a mark, and a step that went wrong says so in words', async () => {
+  it('MP-14-8 each night step wears its tone as a mark, and a step that went wrong says so in words', async () => {
     const { page } = await open(signalBody(ALL));
     const node = (id: string): Element | null => page.find(`[data-night-step="${id}"] .snode`);
     expect(node('bad-0')?.classList.contains('is-bad')).toBe(true);
@@ -740,13 +743,13 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 CR-P04B.S1 sections 006 to 008 keep the page section gap', async () => {
+  it('MP-14-8 sections 006 to 008 keep the page section gap', async () => {
     const { page } = await open(signalBody(ALL));
     expect(page.find('[data-signal]')?.classList.contains('secs')).toBe(true);
     await page.unmount();
   });
 
-  it('MP-14-8 CR-P04B.S3 step times are on the business clock the window is stated in', async () => {
+  it('MP-14-8 step times are on the business clock the window is stated in', async () => {
     const body = signalBody(ALL);
     const round = body.nightRound as NonNullable<ConnectionSignalResult['nightRound']>;
     const late: NightStepView = { ...step('late', 'plain', null), at: '2026-09-28T13:00:00Z' };
@@ -767,7 +770,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     }
   });
 
-  it('MP-14-8 CR-P04B.P2 the grants lede says only what the read gives, in the right number', async () => {
+  it('MP-14-8 the grants lede says only what the read gives, in the right number', async () => {
     const one = await open(signalBody([grant('onex', 'live', 90)]));
     expect(text(one.page, '.grl__lede')).toBe(
       '1 grant live that you can see. 1 of them carries execute access.',
@@ -779,7 +782,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await none.page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB4.1 each of sections 006 to 008 sits directly in a spaced column', async () => {
+  it('MP-14-8 each of sections 006 to 008 sits directly in a spaced column', async () => {
     const { page } = await open(signalBody(ALL));
     for (const section of ['#grants', '#tripwires', '#night-round']) {
       expect(page.find(`${section}`)?.parentElement?.classList.contains('secs')).toBe(true);
@@ -787,7 +790,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB4.2 a ledger of ended grants says nothing is live', async () => {
+  it('MP-14-8 a ledger of ended grants says nothing is live', async () => {
     const { page } = await open(
       signalBody([grant('gone', 'ran_out', -60), grant('fleet-back', 'taken_back', 90)]),
     );
@@ -796,7 +799,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await page.unmount();
   });
 
-  it('MP-14-8 SEC-P04B-RB4.4 stamps read on the business clock, and many exec grants carry', async () => {
+  it('MP-14-8 stamps read on the business clock, and many exec grants carry', async () => {
     const zone = process.env['TZ'];
     process.env['TZ'] = 'Pacific/Auckland';
     try {
@@ -812,5 +815,86 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
       if (zone === undefined) delete process.env['TZ'];
       else process.env['TZ'] = zone;
     }
+  });
+
+  it('MP-14-8 each mark wears its tone through the kit chip', async () => {
+    const { page } = await open(signalBody(ALL));
+    const tone = (selector: string): readonly string[] =>
+      [...(page.all(selector)[0]?.classList ?? [])].filter((name) => name.startsWith('is-'));
+    expect(tone('[data-grant-group="live"] .grl__banner > .chip')).toStrictEqual(['is-ok']);
+    expect(tone('[data-grant-group="ran_out"] .grl__banner > .chip')).toStrictEqual(['is-idle']);
+    expect(tone('[data-grant-group="taken_back"] .grl__banner > .chip')).toStrictEqual(['is-warn']);
+    expect(tone('[data-tripwire="never"] p > .chip')).toStrictEqual(['is-ok']);
+    expect(tone('[data-tripwire="dead"] p > .chip')).toStrictEqual(['is-warn']);
+    await page.unmount();
+  });
+
+  it('MP-14-8 a grant taken back says its cause in words, an unnamed cause plainly, and none as none', async () => {
+    const back = (id: string, cause: string | null): GrantView => ({
+      ...grant(id, 'taken_back', 90),
+      revocationCause: cause,
+    });
+    const { page } = await open(
+      signalBody([
+        back('lost', 'authority_lost'),
+        back('paused', 'owner_paused'),
+        back('silent', null),
+        ...LIVE_ONLY,
+      ]),
+    );
+    expect(text(page, '[data-grant="lost"] .t-2')).toBe(
+      'Taken back: the delegating person lost the authority',
+    );
+    expect(text(page, '[data-grant="paused"] .t-2')).toBe('Taken back: owner paused');
+    expect(text(page, '[data-grant="silent"] .t-2')).toBe('Taken back: no cause recorded');
+    await page.unmount();
+  });
+
+  it('MP-14-8 the tripwires lede counts the checks that cannot be armed', async () => {
+    const { page } = await open(signalBody(ALL));
+    expect(text(page, '.tw__lede')).toMatch(/^3 checks armed, and 1 that cannot be\. /u);
+    await page.unmount();
+  });
+
+  it('MP-14-8 a group banner sets its count apart from the sentence after it', async () => {
+    const { page } = await open(signalBody(ALL));
+    expect(text(page, '[data-grant-group="live"] .grl__banner')).toBe(
+      'Live 2 grants. Held now; each runs out when its countdown ends.',
+    );
+    expect(text(page, '[data-grant-group="ran_out"] .grl__banner')).toMatch(
+      /^Ran out 1 grant\. Expired or settled\./u,
+    );
+    expect(text(page, '#grants')).not.toContain('its own clock');
+    await page.unmount();
+  });
+
+  it('MP-14-8 the use count is called calls, writes included, never reads', async () => {
+    const { page } = await open(signalBody(ALL));
+    expect(text(page, '[data-grant="fleetx"] [data-grant-calls]')).toBe('112 calls');
+    expect(text(page, '#grants .approval__meta')).toMatch(/writes included/u);
+    expect(text(page, '#grants')).not.toMatch(/\breads\b/u);
+    await page.unmount();
+  });
+
+  it('MP-14-8 an agent shortened to eight characters shows its whole id to a keyboard', async () => {
+    const { page } = await open(signalBody(ALL));
+    for (const selector of [
+      '[data-grant="live"] .term',
+      '[data-roster="live-agent-0000-0000-000000000000"] .term',
+    ]) {
+      const agent = page.all(selector)[0] as HTMLElement | undefined;
+      expect(agent?.firstElementChild?.textContent).toBe('live-age');
+      expect(agent?.tabIndex).toBe(0);
+      expect(reasonOf(agent)).toBe('live-agent-0000-0000-000000000000');
+    }
+    await page.unmount();
+  });
+
+  it('MP-14-8 a night step time carries its machine-readable instant', async () => {
+    const { page } = await open(signalBody(ALL));
+    expect(page.find('[data-night-step="open"] time')?.getAttribute('datetime')).toBe(
+      minutesFromNow(-600),
+    );
+    await page.unmount();
   });
 });
