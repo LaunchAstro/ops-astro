@@ -172,3 +172,17 @@ describe("production's scheduled jobs", () => {
     expect(expected).not.toMatch(/staging/iu);
   });
 });
+
+describe("production's deploy counts its own backup runs as its own", () => {
+  it('a store, dump or drill run named as production’s is production’s; staging’s and launchd’s are not', async () => {
+    const { unitOf } = await import('../../scripts/ops/deploy.ts');
+    const unit = unitOf('production');
+    const hex = 'a1b2c3d4e5f60718';
+    expect(unit.owns(`ops-astro-store-${hex}`, 'docker')).toBe(true);
+    expect(unit.owns(`ops-astro-backup-${hex}`, 'docker')).toBe(true);
+    expect(unit.owns('ops-astro-drill-a1b2c3d4', 'docker')).toBe(true);
+    expect(unit.owns(`ops-astro-staging-store-${hex}`, 'docker')).toBe(false);
+    expect(unit.owns(`ops-astro-store-${hex}`, 'launchd')).toBe(false);
+    expect(unit.owns('ops-astro-store-latest', 'docker')).toBe(false);
+  });
+});

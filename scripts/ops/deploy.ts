@@ -89,18 +89,22 @@ const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
 /**
  * The unit's own services, which its deploy may restart: staging's by its
  * prefix, as the service report has always judged; production's only the
- * Docker containers its Compose definition names, so a launchd job or any
- * other `ops-astro-*` service stays a live one.
+ * Docker containers its Compose definition names and the throwaway runs its
+ * backups and drill start (container-run.mjs, drill-restore.mjs), so a
+ * launchd job or any other `ops-astro-*` service stays a live one.
  */
 export function unitOf(environment: DeployEnvironment): Unit {
   if (environment === 'staging')
     return { name: environment, owns: (name) => name.startsWith(STAGING_PREFIX) };
+  const definition = readDefinition(environment);
   const containers = new Set(
-    Object.entries(readDefinition(environment).services).map(([key, s]) => s.container_name ?? key),
+    Object.entries(definition.services).map(([key, s]) => s.container_name ?? key),
   );
+  const prefix = definition['x-ops-astro'].ownPrefix;
+  const run = new RegExp(`^${prefix}-(?:(?:store|backup)-[0-9a-f]{16}|drill-[0-9a-f]{8})$`, 'u');
   return {
     name: environment,
-    owns: (name, manager) => manager === 'docker' && containers.has(name),
+    owns: (name, manager) => manager === 'docker' && (containers.has(name) || run.test(name)),
   };
 }
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
