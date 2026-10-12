@@ -48,6 +48,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  advisoryLock,
   holdSubjectEnding,
   lockLoginFactors,
   loginHasVerifiedFactor,
@@ -67,6 +68,7 @@ import {
   type Broker,
   type LoginPasswordSet,
 } from '../../../core-custody/src/index.ts';
+import { AUTH_UPDATE_USER_PASSWORD } from '../../../core-connectors/src/index.ts';
 import { audited, endIn } from './account-password-steps.ts';
 
 export { RESET_COMMAND } from './account-password-steps.ts';
@@ -79,6 +81,9 @@ export const RESET_TOKEN_MINUTES = 30;
 
 /** A token: 32 random bytes, base64url, 43 characters. */
 const TOKEN = /^[\w-]{43}$/u;
+
+/** The installation's reset room's lock: every reset's spend, and nothing else, takes it. */
+const RESET_ROOM = 'reset_dispatch_room';
 
 /** A business-less transaction's business: the lookup reads no tenant's rows. */
 const NO_BUSINESS = '00000000-0000-0000-0000-000000000000';
@@ -168,17 +173,40 @@ async function mappedIn(
   return found;
 }
 
+/** The reset room's size: the lower of the operation's concurrency and its route's ceiling. */
+function roomOf(broker: Broker): number {
+  const operation = broker.operations.get(AUTH_UPDATE_USER_PASSWORD.key);
+  const route = broker.routes.find((entry) => entry.provider === operation?.provider);
+  return operation === undefined || route === undefined
+    ? 0
+    : Math.min(operation.concurrency, route.ceiling);
+}
+
+/** Whether one more open window fits the room, counted at the clock under the room's lock. */
+async function roomLeft(tx: TenantQuery, size: number): Promise<boolean> {
+  if (!Number.isSafeInteger(size) || size < 1) return false;
+  const [open] = await tx.query<{ n: number }>(
+    `select count(*)::int as n from ops.subject_resets
+      where settled_at is null and open_until > clock_timestamp()`,
+  );
+  return (open?.n ?? 0) < size;
+}
+
 /** Step 4: the window's id and its end (wall-clock ms) once spent, or why not. */
 async function spend(
   tx: TenantQuery,
   found: Found,
-): Promise<{ readonly window: string; readonly endsAt: number } | 'invalid' | 'factored'> {
+  size: number,
+): Promise<{ readonly window: string; readonly endsAt: number } | 'invalid' | 'factored' | 'full'> {
   await lockLoginFactors(tx, found.subject);
   const [held] = await tx.query<{ login_id: string }>(
     `select login_id from password_reset_tokens where business_id = $1 and id = $2 for update`,
     [tx.businessId, found.tokenId],
   );
   if (held === undefined) return 'invalid';
+  // The installation's reset room, one key held to commit, before the token is judged: the
+  // token's life and the open windows are read after this wait, never before it.
+  await advisoryLock(tx, RESET_ROOM);
   // Read once the lock is held, at that moment, not when the wait began.
   const [state] = await tx.query<{ live: boolean }>(
     `select spent_at is null and expires_at > clock_timestamp() as live
@@ -187,6 +215,7 @@ async function spend(
   );
   if (state?.live !== true) return 'invalid';
   if (await loginHasVerifiedFactor(tx, found.subject)) return 'factored';
+  if (!(await roomLeft(tx, size))) return 'full';
   await tx.query(
     `update password_reset_tokens set spent_at = now()
       where business_id = $1 and login_id = $2 and spent_at is null`,
@@ -283,7 +312,12 @@ export async function setPasswordByToken(
   if (mapped === 'factored') return refused('RESET_NEEDS_SUPPORT');
   const own = mapped.find((one) => one.business === found.business);
   if (own === undefined) return refused('RESET_LINK_INVALID');
-  const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
+  const size = roomOf(dependencies.broker);
+  const spent = await database.withBusiness(
+    found.business,
+    async (tx) => await spend(tx, found, size),
+  );
+  if (spent === 'full') return refused('RESET_UNAVAILABLE');
   if (spent === 'factored') return refused('RESET_NEEDS_SUPPORT');
   if (spent === 'invalid') return refused('RESET_LINK_INVALID');
   const set = await setAndEnd(
