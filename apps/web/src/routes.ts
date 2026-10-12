@@ -22,6 +22,7 @@
 // Every address the working slice serves is registered here, a conversation's
 // `/agent/:conversation` (C36) included.
 
+import { decoded } from './address-segment.ts';
 import type { MatchIn, ParamsIn, StaticIn } from './route-params.ts';
 import { PAGE_ROUTES } from './routes-pages.ts';
 
@@ -261,11 +262,8 @@ export function matchRoute(path: string): RouteMatch | null {
     const params: Record<string, string> = {};
     let matched = true;
     for (const [index, part] of pattern.entries()) {
-      const given = asked[index];
-      if (given === undefined) {
-        matched = false;
-        break;
-      }
+      // The lengths match, so every part has its segment.
+      const given = asked[index] ?? '';
       const value = part.startsWith(':') ? decoded(given) : null;
       if (value !== null) params[part.slice(1)] = value;
       else if (part.startsWith(':') || part !== given) {
@@ -296,15 +294,6 @@ export function pathTo<Id extends RouteId>(
     path = path.replace(`:${name}`, encodeURIComponent(value));
   }
   return path;
-}
-
-/** One address segment decoded, or null for a broken escape, which names nothing. */
-export function decoded(segment: string): string | null {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return null;
-  }
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');
