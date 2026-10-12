@@ -157,6 +157,8 @@ describe('Envelope bounds: nesting depth, long runs and Markdown reference label
         '[a\\] friendly]: https://studio.example/\n',
         'See [friendly][] here.\n\n[friendly]: https://studio.example/\n',
         'See [friendly] here.\n\n[friendly]: https://studio.example/\n',
+        'See [our studio][the <b> friendly one].\n\n[the <b> friendly one]: https://s.example/\n',
+        'See [our studio][the {x} friendly one].\n\n[the {x} friendly one]: https://s.example/\n',
       ],
       page,
     );
