@@ -15,7 +15,7 @@ import { startLiveTopics } from '../../apps/api/live.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { AdminConnection, Database, Listener } from '../../packages/core-records/src/index.ts';
-import { ISSUER } from './fixture.ts';
+import { TEST_ISSUER as ISSUER } from '../support/sign-in.ts';
 
 /** A listener the test can cut off, and the runtime pool that notifies through it. */
 function channel() {
