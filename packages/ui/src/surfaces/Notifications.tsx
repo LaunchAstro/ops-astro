@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The dock's Notifications panel, `/inbox/` and the bell (MP-7-3, CS-7.28,
-// CS-7.29, CS-7.39): the designed face of INB-1's inbox.
-//
-// It draws `inbox.read` and `inbox.count` as they arrive and changes nothing:
-// no mark-read, no clear, no dismiss. Opening the panel, switching tabs,
-// opening the closed items or scrolling leave every count where it was. The
-// owed figure is always `inbox.count`'s, never a tally of the rows drawn.
+// The dock's Notifications panel, `/inbox/` and the bell (MP-7-3, CS-7.28, CS-7.29, CS-7.39): the
+// designed face of INB-1's inbox. A row opens its task, or a chat mention's conversation. It draws
+// `inbox.read` and `inbox.count` as they arrive and changes nothing: no mark-read, no clear, no
+// dismiss. Opening the panel, switching tabs, opening the closed items or scrolling leave every
+// count where it was. The owed figure is always `inbox.count`'s, never a tally of the rows drawn.
 
 import { useState, type ReactElement } from 'react';
 import { Empty } from '../primitives/Absence.tsx';
@@ -16,6 +14,7 @@ import { follow, type OpenHow } from './gesture.ts';
 import {
   bandHeads,
   bandOf,
+  doorOf,
   groupsOf,
   liveCount,
   type DrawnItem,
@@ -36,6 +35,8 @@ export interface NotificationsProps {
   readonly groupOf: (item: InboxItem) => InboxGroupRef;
   readonly taskHref: (key: string) => string;
   readonly onOpenTask: (key: string, how: OpenHow) => void;
+  readonly conversationHref: (conversationId: string) => string;
+  readonly onOpenConversation: (conversationId: string, how: OpenHow) => void;
   readonly onOpenClient: (key: string, how: OpenHow) => void;
 }
 
@@ -87,20 +88,19 @@ const when = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' }
 
 function Row(props: { readonly item: DrawnItem; readonly list: NotificationsProps }): ReactElement {
   const { item, list } = props;
-  const at = item.closedAt ?? item.raisedAt;
+  const [at, door] = [item.closedAt ?? item.raisedAt, doorOf(item)];
+  const open = door.to === 'task' ? list.onOpenTask : list.onOpenConversation;
   return (
     <a
       className={`nt__row nt__row--${bandOf(item)}`}
-      href={list.taskHref(item.task.key)}
+      href={door.to === 'task' ? list.taskHref(door.key) : list.conversationHref(door.key)}
       onClick={(event) => {
-        follow(event, (how) => {
-          list.onOpenTask(item.task.key, how);
-        });
+        follow(event, (how) => open(door.key, how));
       }}
     >
       <KindMark reason={item.reason} />
       <span className="nt__body">
-        <span className="nt__text">{item.task.title ?? item.task.key}</span>
+        <span className="nt__text">{door.text}</span>
         <span className="nt__meta">
           <span className="nt__on">{REASON[item.reason]}</span>{' '}
           <time className="nt__when" dateTime={at}>

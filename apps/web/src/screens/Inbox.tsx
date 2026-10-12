@@ -15,6 +15,8 @@
 // Clients panel has a tab the head is a link the application follows. The
 // reader's own work is a name. A task row goes to the task's page; Shift
 // opens it in the dock's Task panel beside the rest, where there is a dock.
+// A chat mention's row opens the Team panel by the same law. The panel takes
+// no conversation by address yet, so it opens on the first unread one (R36).
 
 import type { ReactElement } from 'react';
 import {
@@ -71,6 +73,7 @@ function groupsByEntry(items: Inbox['items']): (item: { readonly id: string }) =
 }
 
 const taskHref = (key: string): string => pathTo('agency:task-detail', { key });
+const teamHref = (): string => pathTo('agency:team');
 
 interface Inbox {
   readonly items: InboxReadResult['inbox'];
@@ -115,6 +118,9 @@ export function InboxScreen(props: {
     const place = clientsAt(clientId);
     if (openPanel?.('clients', how.beside, place) !== true) navigate(place);
   };
+  const onOpenConversation = (_: string, how: OpenHow): void => {
+    if (openPanel?.('team', how.beside, teamHref()) !== true) navigate(teamHref());
+  };
   // A live re-read keeps the list drawn, so the tab the person chose holds (C4 live-sync 4).
   return (
     <RecordState state={state} subject="inbox" onRetry={reload} keep>
@@ -126,6 +132,8 @@ export function InboxScreen(props: {
           taskHref={taskHref}
           onOpenTask={onOpenTask}
           onOpenClient={onOpenClient}
+          conversationHref={teamHref}
+          onOpenConversation={onOpenConversation}
         />
       )}
     </RecordState>

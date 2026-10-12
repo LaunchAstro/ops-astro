@@ -9,7 +9,12 @@
 import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Bell, InboxPage, NotificationsPanel } from '../../packages/ui/src/index.ts';
+import {
+  Bell,
+  InboxPage,
+  NotificationsPanel,
+  type InboxItem,
+} from '../../packages/ui/src/index.ts';
 import { ITEMS, item, pane, press, props, rowKeys, tabBadge } from './inbox-fixture.tsx';
 import { mount, type Mounted } from './mount.tsx';
 
@@ -76,6 +81,41 @@ describe('MP-7-3 open by gesture law', () => {
     expect(p.opened).toEqual([
       { kind: 'task', key: 'T-b1', beside: false },
       { kind: 'task', key: 'T-b2', beside: true },
+    ]);
+  });
+});
+
+const mention = (id: string, conversation: NonNullable<InboxItem['conversation']>) =>
+  item(id, { group: 'internal', reason: 'mention', task: undefined, conversation });
+
+describe('MP-7-3 a chat mention opens its conversation', () => {
+  it('an owed mention in a conversation is a row that opens it, so the count and the rows agree', async () => {
+    const p = props({
+      items: [
+        mention('m1', { conversationId: 'conv-shoot', kind: 'group', name: 'Shoot crew' }),
+        mention('m2', { conversationId: 'conv-bo', kind: 'direct', name: null }),
+      ],
+      owedCount: 2,
+    });
+    mounted = await mount(<NotificationsPanel {...p} />);
+    const owed = pane(mounted, 'owed');
+    expect(owed?.querySelector('.empty')).toBeNull();
+    expect(rowKeys(owed)).toEqual([
+      '/team/?conversation=conv-shoot',
+      '/team/?conversation=conv-bo',
+    ]);
+    expect([...(owed?.querySelectorAll('.nt__text') ?? [])].map((t) => t.textContent)).toEqual([
+      'Shoot crew',
+      'A direct message',
+    ]);
+    expect(owed?.querySelector('.nt__on')?.textContent).toBe('Mentioned you');
+    expect(await press(mounted, 'a[href="/team/?conversation=conv-shoot"]')).toBe(true);
+    expect(await press(mounted, 'a[href="/team/?conversation=conv-bo"]', { shiftKey: true })).toBe(
+      true,
+    );
+    expect(p.opened).toEqual([
+      { kind: 'conversation', key: 'conv-shoot', beside: false },
+      { kind: 'conversation', key: 'conv-bo', beside: true },
     ]);
   });
 });
