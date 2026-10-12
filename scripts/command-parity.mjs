@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the one parity check: the app's scan and the surfaces' probes */
 // The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -15,6 +16,7 @@ import {
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
+import { prepareCommand } from '../packages/core-commands/src/commands/prepare.ts';
 import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
@@ -190,8 +192,10 @@ const OPERANDS = {
   'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
-// The grants a read really asks: the real read path on a transaction that holds none.
-async function askedBy(read) {
+// The grants a command really asks, on a transaction that holds none: a read by its real read
+// path, a write by its real preparation (prepare.ts; the handler not run). Preparation asks a
+// write's own key, or none when self-scoped; its handler asks any other its declaration names.
+async function askedBy(declaration) {
   const asked = [];
   const spine = [
     { key: 'task', id: 't' },
@@ -205,47 +209,49 @@ async function askedBy(read) {
     },
   };
   const session = { personId: 'p', actorId: 'a', roleKey: 'member' };
-  await runRead(tx, session, { ...OPERANDS[read], read }).catch(() => null);
-  return asked;
+  const { name, kind, authorisedOn, collection, action } = declaration;
+  if (kind === 'read') {
+    await runRead(tx, session, { ...OPERANDS[name], read: name }).catch(() => null);
+    return asked;
+  }
+  await prepareCommand(tx, session, 'api', { command: name }, declaration).catch(() => null);
+  const own = authorisedOn === 'self' ? '' : `${collection}:${action}`;
+  return asked.join() === own ? profileOf(declaration).authority : asked;
 }
 
-// What the real API runs at each path on both prefixes, by name and profile: a read by the
-// grants its path asks, a command by its declaration (its executor stubbed).
+// What the real API runs at each path on both prefixes, by name and the grants it asks. Every
+// executor call is kept: a path runs one command, the same for each bearer it takes, the agent
+// prefix a session's and an agent credential's (API-2).
 async function routedByApi() {
-  let ran;
-  let asked;
-  const command = (...args) => (
-    (ran = args[4].command),
-    Promise.resolve({ recordId: 'r', revision: 1 })
-  );
+  const calls = [];
+  const execute = (...args) => {
+    calls.push(args.at(-1).read ?? args.at(-1).command);
+    return Promise.resolve({ recordId: 'r', revision: 1 });
+  };
   const api = createApi({
     database: {},
     verify: () => Promise.resolve({ subject: 'parity' }),
     resolveBusiness: () => Promise.resolve('business'),
-    executeRead: async (...args) => ((ran = args[3].read), (asked = await askedBy(ran)), {}),
-    executeCommand: command,
-    executeAgentCommand: command,
+    executeRead: execute,
+    executeCommand: execute,
+    executeAgentCommand: execute,
+    executeCredentialCommand: execute,
   });
   const routed = new Map();
   for (const path of [...under(ROOT), ...under(AGENT)]) {
-    ran = undefined;
-    asked = undefined;
-    // A bearer, as every caller sends: the agent prefix reads nothing else (API-2).
-    const headers = {
-      'content-type': 'application/json',
-      authorization: 'Bearer parity.probe.token',
-    };
-    const init = { method: 'POST', headers, body: '{}' };
-    // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
-    await api.fetch(new Request(`http://parity${path}`, init));
-    const name = ran;
+    const bearers = ['parity.probe.token', ...(path.startsWith(AGENT) ? ['c'.repeat(43)] : [])];
+    for (const bearer of bearers) {
+      const headers = { 'content-type': 'application/json', authorization: `Bearer ${bearer}` };
+      // eslint-disable-next-line no-await-in-loop -- one route at a time, its calls recorded
+      await api.fetch(new Request(`http://parity${path}`, { method: 'POST', headers, body: '{}' }));
+    }
+    const [name, ...more] = calls.splice(0);
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
-    if (runs === undefined) continue;
-    const profile = profileOf(runs);
-    routed.set(path, {
-      name,
-      profile: asked === undefined ? profile : { ...profile, authority: asked },
-    });
+    if (runs === undefined || more.length !== bearers.length - 1 || more.some((n) => n !== name))
+      continue;
+    // eslint-disable-next-line no-await-in-loop -- one route at a time
+    const authority = await askedBy(runs);
+    routed.set(path, { name: runs.name, profile: { ...profileOf(runs), authority } });
   }
   return routed;
 }

@@ -47,7 +47,10 @@ describe('command parity probes the real write paths', () => {
     expect(baseline.status, baseline.stdout + baseline.stderr).toBe(0);
   }, 120_000);
   afterAll(() => rmSync(copy, { recursive: true, force: true }));
+  plantedCases();
+});
 
+function plantedCases(): void {
   it('fails when the write grant check admits everything', () => {
     const result = plantedParity(
       'packages/core-commands/src/commands/prepare.ts',
@@ -89,4 +92,4 @@ describe('command parity probes the real write paths', () => {
     expect(result.status, 'parity passed a redirect on the credential path').toBe(1);
     expect(result.stdout).toContain('task.read');
   }, 120_000);
-});
+}
