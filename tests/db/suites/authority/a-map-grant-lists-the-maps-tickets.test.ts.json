@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a record grant on a map gives the shared list helpers the map's tickets, as task.read admits them, and never a second map's ticket or a nested map"
+}
