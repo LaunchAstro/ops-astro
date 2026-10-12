@@ -196,6 +196,18 @@ describe('Connections & signal: skill costing', () => {
     );
   });
 
+  it('a process run in two currencies counts once in the lede, its rows kept', async () => {
+    const usd = { ...MEAN, currency: 'USD' };
+    const { page } = await open({
+      ...COSTING,
+      costing: { ...COSTING.costing, skills: [MEAN, usd, ONE] },
+    } as SkillCostsResult);
+    expect(page.all('[data-skill="mean"]')).toHaveLength(2);
+    expect(text(page, '[data-costing-lede]')).toBe(
+      '2 processes have run at least once, and 1 of them not often enough to average.',
+    );
+  });
+
   it('attribution buckets add back to the total', async () => {
     const { page } = await open(COSTING);
     const foot = '[data-split="AUD"]';
