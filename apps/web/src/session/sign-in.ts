@@ -212,6 +212,8 @@ async function toApi(
       method: 'POST',
       headers,
       ...(body === undefined ? {} : { body }),
+      // A redirect is not followed: it would carry the bearer, or the body, to another origin.
+      redirect: 'error',
     });
     return response.ok ? response : undefined;
   } catch {

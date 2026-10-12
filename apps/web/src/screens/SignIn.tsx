@@ -41,7 +41,7 @@
 // to the emptied password. Left while its first read is out, the page ends that sign-in at once,
 // and no answer the read gives later opens it.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { buildStamp } from '../app-state.ts';
 import { pathTo } from '../routes.ts';
@@ -101,8 +101,14 @@ export function SignIn(props: SignInProps): ReactElement {
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const route = { apiOrigin: props.apiOrigin, fetch: props.fetch };
+  // Who was submitted: the form stays editable while the sign-in is out, and an edit names
+  // nobody the API signed in.
+  const submitted = useRef({ businessKey, email });
   const opened = (sessionId: string | undefined): void => {
-    props.onSignedIn({ businessKey, email, ...(sessionId === undefined ? {} : { sessionId }) });
+    props.onSignedIn({
+      ...submitted.current,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
   };
   const step = useCodeStep(route, opened);
 
@@ -114,6 +120,7 @@ export function SignIn(props: SignInProps): ReactElement {
     }
     setBecause(null);
     setBusy(true);
+    submitted.current = { businessKey, email };
     void (async (sent: number) => {
       const result = await openSignIn({
         gotrueUrl: props.gotrueUrl,
