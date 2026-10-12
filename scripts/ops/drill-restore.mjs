@@ -96,7 +96,6 @@ export async function restoreDrill({
     await timed('open', () => checkSealedFile(sealed, privateKey));
     const dump = () => openSealedFile(sealed, privateKey);
     await timed('start', async () => {
-      started = true;
       // No network and no published port: nothing outside can reach it, and it
       // can reach nothing. Local trust is safe for the same reason. The data
       // directory is memory only, so restored rows never reach the disk, and
@@ -105,6 +104,8 @@ export async function restoreDrill({
       const container = `-d --rm --network none --log-driver none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
       await must(run(['run', ...`${container} ${env}`.split(' '), image]));
+      // Only once Docker made it: a name another drill holds is not this one's to remove.
+      started = true;
       let ready = false;
       for (let i = 0; i < 120 && !ready; i += 1) {
         // Over TCP, not the socket: the image's init server listens on the socket only.
@@ -184,8 +185,16 @@ export async function restoreDrill({
   } catch {
     record.stage = stage;
   } finally {
-    // With its volumes: an image's declared volume outlives `rm -f` alone.
-    if (started) await run(['rm', '-f', '-v', name]);
+    // With its volumes: an image's declared volume outlives `rm -f` alone. A
+    // copy still running is no pass; the store's stages have no removal of
+    // their own, so it fails as the start's, and the operator is told its name.
+    if (started && (await run(['rm', '-f', '-v', name])).code !== 0) {
+      record.outcome = 'failed';
+      record.stage ??= 'start';
+      process.stderr.write(
+        `restore-drill: remove the drill's container: docker rm -f -v ${name}\n`,
+      );
+    }
     rmSync(folder, { recursive: true, force: true });
   }
   return record;

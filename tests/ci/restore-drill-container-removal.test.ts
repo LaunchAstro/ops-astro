@@ -24,8 +24,14 @@ type DrillModule = {
 };
 const DRILL = '../../scripts/ops/drill-restore.mjs';
 const SEAL = '../../scripts/ops/archive-seal.mjs';
-const { restoreDrill } = (await import(/* @vite-ignore */ DRILL)) as DrillModule;
-const { sealArchive } = (await import(/* @vite-ignore */ SEAL)) as {
+const { restoreDrill } = (await import(
+  /* @vite-ignore */
+  DRILL
+)) as DrillModule;
+const { sealArchive } = (await import(
+  /* @vite-ignore */
+  SEAL
+)) as {
   sealArchive: (dump: Buffer, publicKey: string) => Buffer;
 };
 
@@ -59,7 +65,7 @@ function standIn(calls: string[][], fault: (args: string[]) => number | undefine
 
 const drill = (docker: Docker) =>
   restoreDrill({
-    fetchArchive: async () => ({ takenAt: '2026-10-01T00:00:00.000Z', body: sealed }),
+    fetchArchive: () => Promise.resolve({ takenAt: '2026-10-01T00:00:00.000Z', body: sealed }),
     privateKey: keys.privateKey,
     scope: { business: randomUUID(), client: randomUUID(), person: randomUUID() },
     docker,
@@ -68,7 +74,7 @@ const drill = (docker: Docker) =>
 describe('the restore drill and its own container', () => {
   it('passes a healthy drill that removed its container', async () => {
     const calls: string[][] = [];
-    const record = await drill(standIn(calls, () => undefined));
+    const record = await drill(standIn(calls, () => 0));
     expect(record).toMatchObject({ outcome: 'passed', tables: 1 });
     expect(calls.at(-1)?.slice(0, 3)).toEqual(['rm', '-f', '-v']);
   });
@@ -77,12 +83,13 @@ describe('the restore drill and its own container', () => {
     const calls: string[][] = [];
     const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const record = await drill(standIn(calls, (args) => (args[0] === 'rm' ? 1 : undefined)));
+    const told = said.mock.calls.join('');
     said.mockRestore();
     const name = calls[0]?.[calls[0].indexOf('--name') + 1] ?? '';
     expect(record['outcome'], 'a pass recorded while the restored copy still runs').toBe('failed');
     // The store's stages have no removal of their own: the container is the start's.
     expect(record['stage']).toBe('start');
-    expect(said.mock.calls.join('')).toContain(`docker rm -f -v ${name}`);
+    expect(told).toContain(`docker rm -f -v ${name}`);
   });
 
   it('removes nothing when Docker refused to start the container under its name', async () => {
