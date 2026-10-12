@@ -70,6 +70,7 @@ export async function factorCaller(
     if (verified) {
       const factor = await recordFactorEnrolled(tx, {
         personId,
+        subject,
         provider: 'supabase',
         providerFactorId: `factor-${randomUUID()}`,
       });

@@ -121,6 +121,7 @@ async function verifiedFactor(who: Caller): Promise<void> {
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     const factor = await recordFactorEnrolled(tx, {
       personId: who.personId as string,
+      subject: who.subject,
       provider: 'supabase',
       providerFactorId: randomUUID(),
     });
@@ -197,6 +198,7 @@ async function verifiedThroughBravo(): Promise<() => Promise<void>> {
     await insertMapping(tx, login, personId, world.bea.actorId as string);
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject: world.ada.subject,
       provider: 'supabase',
       providerFactorId: randomUUID(),
     });

@@ -199,7 +199,7 @@ export async function checkCode(
   if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
   const locked = await wrongCodeLock(tx, caller.presented.subject);
   if (locked !== undefined) return locked;
-  seen.factor = await liveFactor(tx, session.personId);
+  seen.factor = await liveFactor(tx, session.personId, caller.presented.subject);
   if (seen.factor !== undefined) return await enrolledElsewhere(tx, caller, seen.factor);
   seen.held = await loginVerifiedFactors(tx, caller.presented.subject);
   return seen.held.length > 0

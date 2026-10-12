@@ -65,6 +65,7 @@ async function loginInBoth(): Promise<Readonly<Record<string, FactorCaller>>> {
       await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
       const enrolled = await recordFactorEnrolled(tx, {
         personId,
+        subject,
         provider: 'supabase',
         providerFactorId,
       });

@@ -64,6 +64,7 @@ async function member(business: BusinessId, subject: string, factor?: string): P
     if (factor !== undefined) {
       const row = await recordFactorEnrolled(tx, {
         personId,
+        subject,
         provider: 'supabase',
         providerFactorId: factor,
       });
