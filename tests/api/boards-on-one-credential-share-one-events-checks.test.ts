@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function, no-promise-executor-return -- a reviewer's proof, its body kept as written */
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';

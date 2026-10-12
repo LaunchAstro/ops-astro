@@ -33,6 +33,7 @@
 // flight, so none reaches a pool that closes after it.
 
 import type { SSEStreamingApi } from 'hono/streaming';
+import { performance } from 'node:perf_hooks';
 import { UNANSWERED, type BoardSignal, type LiveTopics, type Unanswered } from './live.ts';
 
 export interface BoardQuestions {
@@ -42,8 +43,12 @@ export interface BoardQuestions {
   readonly reach: (personId: string) => Promise<string | undefined>;
   /** A digest of what `inbox.read` shows `personId` now; undefined when refused. */
   readonly shown: (personId: string) => Promise<string | undefined>;
-  /** Called as each run starts: the questions of one run may share one check of the bearer. */
-  readonly newRun?: () => void;
+  /**
+   * Called as each run starts, with when the first signal it answers was heard
+   * (`performance.now()`), or undefined for the stream's own check: the
+   * questions of one run may share one check of the bearer.
+   */
+  readonly newRun?: (since: number | undefined) => void;
   /** Whether `personId` is a current member of any of these (`any`: of any) now; absent, never. */
   readonly hears?: (
     personId: string,
@@ -122,25 +127,22 @@ function batch(
   bound: Bound,
   bind: (personId: string) => void,
 ): (signal: BoardSignal | 'check') => void {
-  const pending: Pending = { heard: false, check: false, any: false, chats: new Set<string>() };
+  const pending: Pending = { heard: false, check: false, any: false, chats: new Set() };
   const drain = async (): Promise<void> => {
     while (!stream.aborted && (pending.heard || pending.check || pending.chats.size > 0)) {
-      const { heard, check } = pending;
-      const chats = pending.any ? 'any' : [...pending.chats];
-      pending.heard = pending.check = pending.any = false;
-      pending.chats.clear();
-      ask.newRun?.();
+      const { heard, check, chats, since } = take(pending);
+      ask.newRun?.(since);
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const joined = heard || check ? await rule(stream, ask, bound, bind, check) : 'same';
       if (joined === 'closed') return;
-      if (joined === 'unanswered') return owe(pending, heard, check, chats);
+      if (joined === 'unanswered') return owe(pending, heard, check, chats, since);
       // A rebind the recheck found is told by that recheck, from the new person's reads.
       if (joined === 'rebound' && check) pending.check = true;
       const toTell = chats === 'any' || chats.length > 0;
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const said = toTell ? await told(stream, ask, bound, bind, chats) : 'same';
       if (said === 'closed') return;
-      if (said === 'unanswered') return owe(pending, false, false, chats);
+      if (said === 'unanswered') return owe(pending, false, false, chats, since);
     }
   };
   let queued = false;
@@ -158,6 +160,7 @@ function batch(
     if (signal === 'check') pending.check = true;
     else if (signal.kind === 'conversation') pending.chats.add(signal.conversationId);
     else {
+      pending.since ??= performance.now();
       pending.heard = true;
       // A reconnect may have lost a conversation's signal: ask of every one.
       pending.any ||= signal.kind === 'resync';
@@ -172,6 +175,22 @@ interface Pending {
   check: boolean;
   any: boolean;
   readonly chats: Set<string>;
+  /** When the first signal not yet run for was heard. */
+  since?: number | undefined;
+}
+
+/**
+ * What a run answers, taken from `pending` and cleared there: `since`, when its
+ * first signal was heard, is undefined for a run of the stream's own check.
+ */
+function take(pending: Pending) {
+  const { heard, check } = pending;
+  const chats: readonly string[] | 'any' = pending.any ? 'any' : [...pending.chats];
+  const since = heard ? pending.since : undefined;
+  pending.heard = pending.check = pending.any = false;
+  pending.chats.clear();
+  pending.since = undefined;
+  return { heard, check, chats, since };
 }
 
 /** A run the provider could not answer: its signals wait for the next signal or check. */
@@ -180,7 +199,9 @@ function owe(
   heard: boolean,
   check: boolean,
   chats: readonly string[] | 'any',
+  since: number | undefined,
 ): void {
+  if (heard) pending.since ??= since;
   pending.heard ||= heard;
   pending.check ||= check;
   if (chats === 'any') pending.any = true;

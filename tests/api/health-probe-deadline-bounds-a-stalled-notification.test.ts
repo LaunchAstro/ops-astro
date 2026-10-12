@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable require-await -- a reviewer's proof, its body kept as written */
 import { expect, it } from 'vitest';
 import { startLiveTopics, PROBE_MS } from '../../apps/api/live.ts';
 import { composeApi } from '../../apps/api/server.ts';

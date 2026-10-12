@@ -196,15 +196,14 @@ function createProber() {
       // Two parts, so every hand on the channel, this one included, takes it for no topic.
       const payload = `probe:${randomUUID()}`;
       let timer: NodeJS.Timeout | undefined;
+      // The deadline bounds the notification's own transaction too: a send that stalls is not heard.
       const heard = new Promise<boolean>((resolve) => {
         waiting.set(payload, () => resolve(true));
         timer = setTimeout(() => resolve(false), withinMs);
+        notify(payload).catch(() => resolve(false));
       });
       try {
-        await notify(payload);
         return await heard;
-      } catch {
-        return false;
       } finally {
         clearTimeout(timer);
         waiting.delete(payload);
