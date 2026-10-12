@@ -160,6 +160,21 @@ class LiteralHistoryCases(unittest.TestCase):
         self.commit()
         self.scan(1)
 
+    def test_local_replacement_does_not_make_new_commit_historical(self):
+        # Git publishes the anchor itself, not a local stand-in that adds a new
+        # line of commits as a parent, so those commits stay outside history.
+        self.git("checkout", "-q", "--orphan", "new")
+        self.write(self.path, self.old)
+        self.commit()
+        self.write(self.path, "clean again\n")
+        self.commit()
+        new = self.git("rev-parse", "HEAD")
+        stand_in = self.git(
+            "commit-tree", self.anchor + "^{tree}", "-p", self.anchor + "^", "-p", new, "-m", "stand-in"
+        )
+        self.git("replace", self.anchor, stand_in)
+        self.scan(1, rev=new)
+
     def test_approved_old_blob_at_historical_current_tip_refused(self):
         self.git("checkout", "-q", self.anchor + "^")
         self.bind_receipt()
