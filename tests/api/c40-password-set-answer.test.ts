@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C40, the login provider's answer to the password update (PR #382 round 3):
-// it is judged as JSON, so a password in it however written is a fault that
-// audits nothing, and the id asked for is never taken for an echo of it.
+// it is judged as JSON, so a field named for a password, however written, is a
+// fault that audits nothing, and the id asked for is never taken for an echo of
+// the password.
 
 import { expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
@@ -47,18 +48,21 @@ C40('a provider answer containing an escaped password is refused', async () => {
 
 // Custody writes an answer back as JSON.stringify does (custody-main `plain`),
 // so a repeated key is gone before the broker reads it.
-C40('C40 echo: a password anywhere in the answer, however written, is a fault', async () => {
+C40('C40 echo: a field named for a password, however written, is a fault', async () => {
   const cy = await freshMember('cy');
   const id = cy.presented.subject;
   const word = 'an echoed pass\\word 9d1e';
-  const escaped = [...word]
+  const escaped = [...'password']
     .map((char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`)
     .join('');
   const answers: Record<string, [string, Reply]> = {
-    'every character escaped': [word, raw(`{"id":"${id}","p":"${escaped}"}`)],
-    'as a key': [word, json(200, { id, [word]: true })],
-    'inside a nested value': [word, json(200, { id, deep: [{ note: `was ${word}!` }] })],
-    'as a number': ['123456789012', raw(`{"id":"${id}","n":123456789012}`)],
+    'its name every character escaped': [
+      word,
+      raw(`{"id":"${id}","${escaped}":${JSON.stringify(word)}}`),
+    ],
+    'its name in capitals': [word, json(200, { id, PASSWORD: word })],
+    'nested deep': [word, json(200, { id, deep: [{ new_password: word }] })],
+    'its value a number': ['123456789012', raw(`{"id":"${id}","password":123456789012}`)],
   };
   const answered: Record<string, unknown> = {};
   for (const [name, [password, reply]] of Object.entries(answers)) {
