@@ -5,11 +5,11 @@
 // the machine.
 //
 // Usage (the runbook sets the environment, the operator runs it):
-//   node scripts/ops/deploy.mjs --version <id> --artefacts <store> [--production [--worker]]
+//   node scripts/ops/deploy.mjs --version <id> --artefacts <store> [--production]
 //
 // `--production` starts production's unit (deploy/production/compose.json)
 // after production's preflight (deploy/production/README.md), with its worker
-// parked; `--worker` adds the worker (deploy/production/worker.json).
+// parked (deploy/production/worker.json is not started).
 //
 // The installation's operator gate (`operator.ts`, requireOperatingOperator:
 // operations:manage in the installation's operating business, since the
@@ -46,7 +46,6 @@ try {
       version: { type: 'string' },
       artefacts: { type: 'string' },
       production: { type: 'boolean' },
-      worker: { type: 'boolean' },
     },
   }));
 } catch (error) {
@@ -54,11 +53,10 @@ try {
 }
 const { version, artefacts: store } = values;
 const environment = values.production ? 'production' : 'staging';
-const worker = values.worker === true;
 if (version === undefined || store === undefined)
   usage('--version and --artefacts are both needed');
 
-const definition = readDefinition(environment, worker);
+const definition = readDefinition(environment);
 const containers = Object.entries(definition.services).map(([n, s]) => s.container_name ?? n);
 
 const effects = {
@@ -99,7 +97,7 @@ const effects = {
 
 let outcome;
 try {
-  outcome = await deploy({ version, store, worker }, effects, undefined, environment);
+  outcome = await deploy({ version, store }, effects, undefined, environment);
 } catch (error) {
   // A service manager that cannot be read, a build or a Compose run that
   // fails: say so plainly; no record is written.

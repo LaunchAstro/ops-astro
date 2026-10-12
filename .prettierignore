@@ -185,7 +185,6 @@ tests/gate/pre-push-double-url-rewrite-scans-history.test.mjs
 tests/gate/pre-push-relative-url-naming-remote-scans-history.test.mjs
 tests/gate/pre-push-ssh-transport-scans-history.test.mjs
 
-# Sol's PR #1357 round-two and round-three proofs, committed byte for byte as
-# the review held them.
+# Sol's PR #1357 round-two proof, its remaining cases committed byte for byte
+# as the review held them.
 tests/ci/production-unit-liveness-and-parked-stop.proof.test.ts
-tests/review/production-deploy-fails-on-a-paused-worker-proof.test.ts

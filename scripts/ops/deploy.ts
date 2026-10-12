@@ -2,8 +2,8 @@
 //
 // The M5 deploy (ticket S0-6, `deploy recorded`): staging's unit, or
 // production's with `deploy.mjs --production` (deploy/production/compose.json,
-// staging's definition renamed, its worker parked in worker.json until
-// `--worker` adds it). Each judges its own definition, preflight and
+// staging's definition renamed, its worker parked in worker.json, which no
+// deploy starts). Each judges its own definition, preflight and
 // containers, and counts the other's containers among the live services.
 //
 // A person's act under `operations:manage`: `deploy.mjs` asks the operator gate
@@ -86,12 +86,6 @@ export function definitionPath(environment: DeployEnvironment): string {
 /** Production's worker, apart from its unit so a parked unit needs no worker setting. */
 const WORKER_PATH = new URL('../../deploy/production/worker.json', import.meta.url).pathname;
 
-/** The Compose files a deploy starts, in order: production's worker file only when asked. */
-export function unitFiles(environment: DeployEnvironment, worker: boolean): string[] {
-  const base = definitionPath(environment);
-  return environment === 'production' && worker ? [base, WORKER_PATH] : [base];
-}
-
 /** `base` with each service of the worker file merged in, as Compose merges a second file. */
 export function withWorker(
   base: StagingDefinition,
@@ -104,7 +98,7 @@ export function withWorker(
 }
 
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
-/** The unit a deploy starts: its definition, with production's worker merged in when asked. */
+/** The unit's definition; `worker` merges production's parked worker in, as the unit's own. */
 export const readDefinition = (
   environment: DeployEnvironment,
   worker = false,
@@ -223,22 +217,14 @@ function imageProblems(effects: DeployEffects, definition: StagingDefinition): s
 }
 
 export async function deploy(
-  request: { version: string; store: string; worker?: boolean },
+  request: { version: string; store: string },
   effects: DeployEffects,
   preflight?: () => Promise<string[]>,
   environment: DeployEnvironment = 'staging',
 ): Promise<DeployOutcome> {
   const selected = storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return { kind: 'refused', reason: selected };
-  const worker = request.worker === true;
-  if (worker && environment === 'staging') {
-    return {
-      kind: 'refused',
-      reason:
-        "--worker is production's alone: staging's worker is in its unit. Nothing was started.",
-    };
-  }
-  const definition = readDefinition(environment, worker);
+  const definition = readDefinition(environment);
   const pins = imagePinProblems(definition, pinRecord);
   if (pins.length > 0) {
     return {
@@ -256,7 +242,7 @@ export async function deploy(
   }
 
   const before = effects.snapshot();
-  effects.up(unitFiles(environment, worker));
+  effects.up([definitionPath(environment)]);
 
   const problems = imageProblems(effects, definition);
   const compared = effects.compare(before, effects.snapshot(), unitOf(environment));

@@ -4,39 +4,29 @@
 // a container Docker reports as running, not one that stopped after Compose
 // waited, waits in restart backoff or was paused. Each case runs deploy.mjs's
 // own effects against a docker whose `inspect` answers with `.State.Status`
-// (Sol's PR #1357 findings).
+// (Sol's PR #1357 findings), for the forwarder of production's parked unit.
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
-  type DeployEffects,
-  deploy,
-  type StagingDefinition,
-  withWorker,
-} from '../../scripts/ops/deploy.ts';
+import { type DeployEffects, deploy, type StagingDefinition } from '../../scripts/ops/deploy.ts';
 import { clean, live, snapshot, STAGED, store } from './staging-deploy.fixture.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
-const whole = withWorker(
-  JSON.parse(read('deploy/production/compose.json')) as StagingDefinition,
-  JSON.parse(read('deploy/production/worker.json')) as Pick<StagingDefinition, 'services'>,
+const unit = JSON.parse(read('deploy/production/compose.json')) as StagingDefinition;
+const images: Record<string, string> = Object.fromEntries(
+  Object.values(unit.services).map((s) => [s.container_name, String(s.image)]),
 );
-const containersOf = (definition: StagingDefinition): Record<string, string> =>
-  Object.fromEntries(
-    Object.values(definition.services).map((s) => [s.container_name, String(s.image)]),
-  );
 
-/** A deploy whose Docker reports every container on its pinned image, the worker in `state`. */
-async function deployWithWorker(state: string) {
-  const containers = Object.values(whole.services).map((s) => String(s.container_name));
+/** A deploy whose Docker reports every container on its pinned image, the forwarder in `status`. */
+async function deployWithForwarder(status: string) {
+  const containers = Object.keys(images);
   // deploy.mjs's own effects; Docker answers `inspect` with `.State.Status`.
   const body = /const effects = (\{[\s\S]*?\n\});/u.exec(read('scripts/ops/deploy.mjs'))?.[1];
   const inspect = containers
-    .map((name) => {
-      const running = name === 'ops-astro-worker' ? state : 'running';
-      return `/${name} ${containersOf(whole)[name]} ${running}`;
-    })
+    .map(
+      (name) => `/${name} ${images[name]} ${name === 'ops-astro-forwarder' ? status : 'running'}`,
+    )
     .join('\n');
   const docker = (_command: string, args: string[]) =>
     args[0] === 'inspect' ? { status: 0, stdout: `${inspect}\n` } : { status: 1, stdout: '' };
@@ -55,7 +45,7 @@ async function deployWithWorker(state: string) {
     containers,
   ) as DeployEffects;
   return await deploy(
-    { version: STAGED, store: store(), worker: true },
+    { version: STAGED, store: store() },
     { ...machine, imageId: (ref) => ref },
     clean,
     'production',
@@ -63,22 +53,16 @@ async function deployWithWorker(state: string) {
 }
 
 describe("the deploy reads each container's running state", () => {
-  it('records the unit when the worker has a live process', async () => {
-    expect(await deployWithWorker('running')).toMatchObject({ kind: 'deployed' });
+  it('records the parked unit when every container runs', async () => {
+    expect(await deployWithForwarder('running')).toMatchObject({ kind: 'deployed' });
   });
 
-  it('fails when the worker stopped after Compose waited, though its image matches', async () => {
-    const outcome = await deployWithWorker('exited');
-    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
-  });
-
-  it('fails when the worker waits in restart backoff', async () => {
-    const outcome = await deployWithWorker('restarting');
-    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
-  });
-
-  it('fails when the worker was paused after Compose waited', async () => {
-    const outcome = await deployWithWorker('paused');
-    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
-  });
+  for (const status of ['exited', 'restarting', 'paused']) {
+    it(`fails when a container is ${status} after Compose waited, though its image matches`, async () => {
+      const outcome = await deployWithForwarder(status);
+      expect(outcome.kind === 'failed' && outcome.reason).toContain(
+        'ops-astro-forwarder runs nothing',
+      );
+    });
+  }
 });

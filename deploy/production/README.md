@@ -113,25 +113,20 @@ worker and forwarder containers are `ops-astro-worker` and
 
 ```sh
 node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production
-node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production --worker
 ```
 
-Without `--worker` the worker is parked: Compose reads `compose.json` alone,
-so no `PRODUCTION_WORKER_*` setting is needed and no worker sign-in is made
-in the business. A profile cannot park it, because Compose requires every
-`${...:?}` setting in a file, profile or not. `--worker` adds `worker.json`
-and its settings, and then the worker must run too. A deploy without it
-leaves a worker that is already running alone. `--worker` is production's
-only: staging's worker is in its own unit. A deploy records the unit only
-when Docker reports each of its containers as `running`, so a worker that
-stopped, waits in restart backoff or was paused fails it. `stop-production.mjs` stops
-a parked unit's forwarder and records the stop: a worker that is not there
-is stopped already.
+The worker is parked: the deploy reads `compose.json` alone, so no
+`PRODUCTION_WORKER_*` setting is needed and no worker sign-in is made in the
+business. A profile cannot park it, because Compose requires every
+`${...:?}` setting in a file, profile or not. No deploy starts `worker.json`
+yet. A deploy records the unit only when Docker reports each of its
+containers as `running`, so one that stopped, waits in restart backoff or
+was paused fails it. `stop-production.mjs` stops a parked unit's forwarder
+and records the stop: a worker that is not there is stopped already.
 
 The deploy reads this definition, checks every image against its pin row and
 runs production's preflight, as the web deploy does. Then it starts the unit
-with `docker compose --file deploy/production/compose.json up`, adding
-`--file deploy/production/worker.json` with `--worker`. It takes the
+with `docker compose --file deploy/production/compose.json up`. It takes the
 service report's snapshot before and after. Production's own containers are
 left out of the compare, and staging's count as live services, so a
 production deploy that restarts staging fails. A staging deploy likewise

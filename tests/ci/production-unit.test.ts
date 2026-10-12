@@ -2,8 +2,8 @@
 //
 // Production's M5 unit (deploy/production/compose.json): the forwarder, the
 // backup store and the two egress hops, beside staging's, with its worker in a
-// file of its own (deploy/production/worker.json) that the deploy adds only
-// with `--worker`. Together the two files are staging's definition with only
+// file of its own (deploy/production/worker.json) that no deploy starts: the
+// worker stays parked. Together the two files are staging's definition with only
 // the names changed, so every containment rule, limit, image pin and command
 // staging's suites prove holds for it too (staging-containment.test.ts,
 // staging-egress.test.ts). No production name or setting is staging's, and its
@@ -19,7 +19,6 @@ import {
   imagePinProblems,
   productionAddressRefusal,
   type StagingDefinition,
-  unitFiles,
   unitOf,
   withWorker,
 } from '../../scripts/ops/deploy.ts';
@@ -112,17 +111,8 @@ describe('the M5 deploy selects the unit by environment', () => {
   });
 });
 
-describe("production's worker starts only when asked", () => {
-  it("adds production's worker file only when the worker is asked for", () => {
-    expect(unitFiles('production', false)).toStrictEqual([definitionPath('production')]);
-    expect(unitFiles('production', true)).toStrictEqual([
-      definitionPath('production'),
-      expect.stringMatching(/\/deploy\/production\/worker\.json$/u),
-    ]);
-    expect(unitFiles('staging', false)).toStrictEqual([definitionPath('staging')]);
-  });
-
-  it('starts production parked: its own containers but the worker, and records production', async () => {
+describe("production's deploy starts the unit with its worker parked", () => {
+  it('starts its own containers but the worker, from compose.json alone, and records production', async () => {
     const files: string[][] = [];
     const outcome = await deploy(
       { version: STAGED, store: store() },
@@ -131,42 +121,11 @@ describe("production's worker starts only when asked", () => {
       'production',
     );
     expect(outcome).toMatchObject({ kind: 'deployed', record: { environment: 'production' } });
-    expect(files).toStrictEqual([unitFiles('production', false)]);
-  });
-
-  it('starts the worker too when asked, and fails when it does not run', async () => {
-    const files: string[][] = [];
-    const whole = withWorker(production(), workerFile());
-    const started = await deploy(
-      { version: STAGED, store: store(), worker: true },
-      effects({ runningImages: () => containersOf(whole), up: (f) => files.push(f) }),
-      clean,
-      'production',
-    );
-    expect(started).toMatchObject({ kind: 'deployed', record: { environment: 'production' } });
-    expect(files).toStrictEqual([unitFiles('production', true)]);
-    const parked = await deploy(
-      { version: STAGED, store: store(), worker: true },
-      effects({ runningImages: () => containersOf(production()) }),
-      clean,
-      'production',
-    );
-    expect(parked.kind === 'failed' && parked.reason).toContain('ops-astro-worker runs nothing');
+    expect(files).toStrictEqual([[definitionPath('production')]]);
   });
 });
 
 describe('the M5 deploy checks its own environment', () => {
-  it('refuses the worker flag for staging, whose worker is in its unit', async () => {
-    const watched = effects();
-    const outcome = await deploy({ version: STAGED, store: store(), worker: true }, watched, clean);
-    expect(outcome).toStrictEqual({
-      kind: 'refused',
-      reason:
-        "--worker is production's alone: staging's worker is in its unit. Nothing was started.",
-    });
-    expect(watched.calls).toStrictEqual([]);
-  });
-
   it("fails when production's containers are not up, though staging's are", async () => {
     const outcome = await deploy(
       { version: STAGED, store: store() },
