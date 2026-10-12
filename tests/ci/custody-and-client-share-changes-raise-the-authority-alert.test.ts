@@ -30,3 +30,14 @@ for (const command of [
     expect(signalOf({ ...outcome, command, refusal: 'NOT_FOUND' })).toBeUndefined();
   });
 }
+
+it("one caller's operation is one change, and another caller's same operation id is its own", () => {
+  const raised: string[] = [];
+  const detector = createDetector((kind) => raised.push(kind));
+  const sent = { ...outcome, command: 'secret.set', refusal: undefined, operationId: 'op-1' };
+  detector.observe(signalOf(sent)!);
+  detector.observe(signalOf(sent)!);
+  expect(raised, 'a replay of the same operation').toEqual(['authority-changed']);
+  detector.observe(signalOf({ ...sent, person: 'supabase\u0000ada' })!);
+  expect(raised, "another caller's change").toEqual(['authority-changed', 'authority-changed']);
+});

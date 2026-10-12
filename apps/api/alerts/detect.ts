@@ -18,7 +18,12 @@ import type { AlertKind } from './catalogue.ts';
 
 export type SecuritySignal =
   | { readonly kind: 'sign-in-failed'; readonly business: string; readonly person: string }
-  | { readonly kind: 'authority-changed'; readonly business: string }
+  | {
+      readonly kind: 'authority-changed';
+      readonly business: string;
+      /** The caller and the operation id that made the change, when it came with one. */
+      readonly operation?: string;
+    }
   | { readonly kind: 'secret-scan-failed' }
   | { readonly kind: 'cross-scope-refusal'; readonly business: string; readonly person: string }
   | {
@@ -44,6 +49,8 @@ export interface Outcome {
   readonly command: string;
   /** Records a read handed out; zero for anything else. */
   readonly items: number;
+  /** The operation id the command was sent with, if it had one. */
+  readonly operationId?: string;
 }
 
 const SIGN_IN_FAILED = new Set(['AUTH_UNKNOWN_LOGIN', 'ACTOR_INACTIVE']);
@@ -74,9 +81,15 @@ export function signalOf({
   person,
   refusal,
   command,
+  operationId,
 }: Outcome): SecuritySignal | undefined {
   if (refusal === undefined) {
-    return AUTHORITY.has(command) ? { kind: 'authority-changed', business } : undefined;
+    if (!AUTHORITY.has(command)) return undefined;
+    // A replayed or doubled operation answers 200 again but changes nothing:
+    // the detector counts each caller's operation once (`observe`).
+    return operationId === undefined || operationId === ''
+      ? { kind: 'authority-changed', business }
+      : { kind: 'authority-changed', business, operation: JSON.stringify([person, operationId]) };
   }
   if (SIGN_IN_FAILED.has(refusal)) return { kind: 'sign-in-failed', business, person };
   if (CROSS_SCOPE.has(refusal)) return { kind: 'cross-scope-refusal', business, person };
@@ -158,6 +171,13 @@ export function createDetector(
   function observe(signal: SecuritySignal): void {
     const rule = RULES[signal.kind];
     const at = now();
+    // One change is one alert: the same caller's operation again inside the
+    // window is its replay or its duplicate, and raises nothing.
+    if (signal.kind === 'authority-changed' && signal.operation !== undefined) {
+      const once = `${signal.kind}\u0001${JSON.stringify([signal.business, signal.operation])}`;
+      if (seen.get(once)?.some((event) => at - event.at < rule.windowMs) === true) return;
+      seen.set(once, [{ at, weight: 0 }]);
+    }
     const key = `${signal.kind}\u0001${scopeOf(signal)}`;
     const events = (seen.get(key) ?? []).filter((event) => at - event.at < rule.windowMs);
     events.push({ at, weight: signal.kind === 'export' ? signal.items : 1 });
