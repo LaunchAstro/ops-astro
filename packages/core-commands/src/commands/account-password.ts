@@ -34,8 +34,9 @@
 // 5. Set the password at the provider through custody (`setLoginPassword`,
 //    `auth.update_user_password`), never with a key this process holds. A
 //    no to the password itself is `RESET_PASSWORD_REFUSED`; a fault is
-//    `RESET_UNAVAILABLE`. Either way the token is spent, and the person asks
-//    for a new link.
+//    `RESET_UNAVAILABLE`, and so is a call that would reach the provider only
+//    after the window's end, or wait past it for room under the operation's
+//    limits. Either way the token is spent, and the person asks for a new link.
 // 6. Set or not, each business the login is mapped in ends the sessions it
 //    has seen, one transaction each. Last, whatever happened, one transaction
 //    in the token's business ends its own, settles the window (a sign-in
@@ -167,11 +168,11 @@ async function mappedIn(
   return found;
 }
 
-/** Step 4: the window's id once spent, or why not. */
+/** Step 4: the window's id and its end (wall-clock ms) once spent, or why not. */
 async function spend(
   tx: TenantQuery,
   found: Found,
-): Promise<{ readonly window: string } | 'invalid' | 'factored'> {
+): Promise<{ readonly window: string; readonly endsAt: number } | 'invalid' | 'factored'> {
   await lockLoginFactors(tx, found.subject);
   const [held] = await tx.query<{ login_id: string }>(
     `select login_id from password_reset_tokens where business_id = $1 and id = $2 for update`,
@@ -191,7 +192,15 @@ async function spend(
       where business_id = $1 and login_id = $2 and spent_at is null`,
     [tx.businessId, held.login_id],
   );
-  return { window: await openResetWindow(tx, found.subject) };
+  const window = await openResetWindow(tx, found.subject);
+  // The window's end on this host's clock, read before the database's, so it falls no later.
+  const at = Date.now();
+  const [open] = await tx.query<{ left_ms: number }>(
+    `select (extract(epoch from open_until - clock_timestamp()) * 1000)::float8 as left_ms
+       from ops.subject_resets where id = $1`,
+    [window],
+  );
+  return { window, endsAt: at + (open?.left_ms ?? 0) };
 }
 
 /** What steps 5 and 6 need once the token is spent. */
@@ -200,13 +209,14 @@ interface Spent {
   readonly mapped: readonly Mapped[];
   readonly own: Mapped;
   readonly window: string;
+  readonly endsAt: number;
 }
 
 /** Steps 5 and 6: the provider's answer, the sessions ended, the window settled. */
 async function setAndEnd(
   database: Database,
   broker: Broker,
-  { found, mapped, own, window }: Spent,
+  { found, mapped, own, window, endsAt }: Spent,
   password: string,
 ): Promise<LoginPasswordSet> {
   let set: LoginPasswordSet = 'fault';
@@ -214,7 +224,7 @@ async function setAndEnd(
   const unset = () => (set === 'set' ? undefined : found.subject);
   try {
     try {
-      set = await setLoginPassword(broker, found.subject, password);
+      set = await setLoginPassword(broker, found.subject, password, endsAt);
     } finally {
       // Set or not, the sessions each business saw end there, so its list
       // agrees with its door; the token's business's
@@ -279,7 +289,7 @@ export async function setPasswordByToken(
   const set = await setAndEnd(
     database,
     dependencies.broker,
-    { found, mapped, own, window: spent.window },
+    { found, mapped, own, ...spent },
     reset.password,
   );
   if (set === 'set') return { ok: true };

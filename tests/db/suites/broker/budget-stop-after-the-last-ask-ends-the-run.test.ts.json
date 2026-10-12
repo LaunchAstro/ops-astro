@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A call past the ceiling after the third ask ends the run, its lease and delegation, and raises the alert; judged on real runs, asks and alerts."
+}

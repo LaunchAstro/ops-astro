@@ -11,21 +11,96 @@
 // names another user, carries the password however written, or is oversized,
 // redirected, malformed or slow, is a `fault`: the password may or may not be
 // set.
+//
+// At most the catalogued concurrency, and the route's ceiling, are with the
+// provider at once from this process: a reset over either waits for room, up
+// to its deadline. The deadline is the reset window's end, which custody
+// holds too (`notAfter`), so a call paused past it is never sent: after the
+// window lapses, a session opened with the old password is no longer ended.
 
 import {
   AUTH_UPDATE_USER_PASSWORD,
   PASSWORD_REFUSED_STATUS,
   type AdapterRequest,
+  type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import type { Broker } from './broker-types.ts';
+import type { Broker, BrokerRoute } from './broker-types.ts';
 
 export type LoginPasswordSet = 'set' | 'refused' | 'fault';
 
-/** Set the password of the login whose provider id is `id`: set, refused, or a fault. */
+/** The resets each custody has with the provider now, and the resets waiting for room. */
+const sending = new WeakMap<object, { count: number; waiting: (() => void)[] }>();
+
+/** A place among `limit` at once before `deadline` (wall-clock ms), and its release; or none. */
+async function placeFor(
+  custody: object,
+  limit: number,
+  deadline: number,
+): Promise<(() => void) | undefined> {
+  if (!Number.isSafeInteger(limit) || limit < 1) return undefined;
+  const gate = sending.get(custody) ?? { count: 0, waiting: [] };
+  sending.set(custody, gate);
+  while (gate.count >= limit) {
+    const left = deadline - Date.now();
+    if (left <= 0) return undefined;
+    // oxlint-disable-next-line no-await-in-loop -- each wake asks for room again
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, left);
+      gate.waiting.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+  gate.count += 1;
+  return () => {
+    gate.count -= 1;
+    for (const wake of gate.waiting.splice(0)) wake();
+  };
+}
+
+type Outcome = Awaited<ReturnType<Broker['custody']['dispatch']>>;
+
+/** The built call through custody once it has a place, or undefined when none comes by its deadline. */
+async function dispatchInPlace(
+  broker: Broker,
+  sent: {
+    readonly operation: ModelOperation;
+    readonly route: BrokerRoute;
+    readonly built: AdapterRequest;
+  },
+  notAfter: number | undefined,
+): Promise<Outcome | undefined> {
+  const { operation, route, built } = sent;
+  const deadline = notAfter ?? Date.now() + operation.timeoutMs;
+  const limit = Math.min(operation.concurrency, route.ceiling);
+  const release = await placeFor(broker.custody, limit, deadline);
+  if (release === undefined) return undefined;
+  try {
+    return await broker.custody.dispatch(route.credentialRef, {
+      destination: operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: operation.timeoutMs,
+      maxResponseBytes: operation.maxResponseBytes,
+      ...(notAfter === undefined ? {} : { notAfter }),
+    });
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Set the password of the login whose provider id is `id`: set, refused, or a
+ * fault. `notAfter` (wall-clock ms) is the reset window's end: no call goes
+ * after it.
+ */
 export async function setLoginPassword(
   broker: Broker,
   id: string,
   password: string,
+  notAfter?: number,
 ): Promise<LoginPasswordSet> {
   const operation = broker.operations.get(AUTH_UPDATE_USER_PASSWORD.key);
   const route = broker.routes.find((entry) => entry.provider === operation?.provider);
@@ -37,15 +112,8 @@ export async function setLoginPassword(
   } catch {
     return 'fault';
   }
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
-  if (outcome.kind !== 'answered') return 'fault';
+  const outcome = await dispatchInPlace(broker, { operation, route, built }, notAfter);
+  if (outcome === undefined || outcome.kind !== 'answered') return 'fault';
   const { outbound } = outcome;
   if (!outbound.ok) {
     return outbound.fault === 'status' && outbound.status === PASSWORD_REFUSED_STATUS

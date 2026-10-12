@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation grant revoked between the question's read and the call's row must stop the call; the recheck runs in the real transaction that writes the row."
+}

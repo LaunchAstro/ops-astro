@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A planning-cap setter whose billing grant lapses while it waits on the cap row is refused; the race needs two real connections and the database clock."
+}

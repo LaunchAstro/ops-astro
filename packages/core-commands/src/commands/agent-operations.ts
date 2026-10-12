@@ -285,7 +285,7 @@ const NOT_FOUND = (): Refused => refused(refuseNotFound());
 
 async function serveComment(
   tx: TenantQuery,
-  { session, request, declaration }: AgentCall,
+  call: AgentCall,
   _operands: NoOperands,
   delegation: Delegation,
   taskId: string | undefined,
@@ -296,10 +296,17 @@ async function serveComment(
   // path's own `lockTask`, the same statement and filter, and the
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
+  const { session, request, declaration } = call;
   if (taskId === undefined) return NOT_FOUND();
+  // Grants held `for share` before the task, as `grant.revoke` takes its grant
+  // then the agent's work (this task too), and asked again after the task's
+  // wait: one committed first refuses, one still to come waits for the comment.
+  await holdCoveringGrants(tx, await delegatingSubjects(tx, delegation), declaration.collection);
   const spine = await readTaskSpine(tx);
   const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
+  const lost = await askedAgain(tx, call, delegation, task);
+  if (lost !== undefined) return refused(lost);
   return await writeTaskComment(
     tx,
     {

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation grant revoked or lapsed while the call waits on its ceiling lock must stop the call; needs a second connection holding the real advisory lock and the database clock."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent comment raced by a delegation or grant revoke, a crash at its re-check, or its own resend is written once or not at all, never after a revoke committed"
+}

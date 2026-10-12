@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-04's planning budget (U10, migration 0107): every planning reply before
-// the accept is priced, against a small budget of its own. The business's
-// planning cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a
-// person moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes
-// that default as the business's row. Each conversation spends through one
-// planning envelope.
+// AW-04's planning budget (U10, migration 0107): every planning reply before the
+// accept is priced, against a small budget of its own. The business's planning
+// cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a person
+// moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes that
+// default as the business's row. Each conversation has one planning envelope.
 // A reply holds its operation's priced maximum as its own call row, under the
 // cap's row lock, as a task call holds out of its reservation (0191); it then
 // settles at its price, is released on proof nothing happened, or stays held
@@ -19,10 +18,13 @@ import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import {
+  CONVERSATION_CALL_LIFE_MS,
+  conversationOperation,
   localRoute,
   outsideFields,
   ownsConversation,
   refused,
+  sendAndSettle,
   type ConversationCallRequest,
 } from './broker-conversation.ts';
 import {
@@ -32,14 +34,8 @@ import {
   type ReservedCall,
 } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
-import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
-import type {
-  Broker,
-  BrokerRoute,
-  ModelCaller,
-  ModelCallResult,
-  ResolvedField,
-} from './broker-types.ts';
+import { endBy } from './custody.ts';
+import type { Broker, BrokerRoute, ModelCaller, ModelCallResult } from './broker-types.ts';
 
 /** The planning cap of a business nobody has moved it for: AUD 50, in minor units. */
 export const PLANNING_CAP_DEFAULT = { limitMinor: 5_000, currency: 'AUD' } as const;
@@ -190,50 +186,6 @@ async function holdPlanning(
   };
 }
 
-/** Through custody, then settled at its price within the hold, released, or held for a person. */
-async function sendPlanning(
-  database: Database,
-  businessId: BusinessId,
-  reserved: ReservedCall,
-  fields: readonly ResolvedField[],
-  broker: Broker,
-): Promise<ModelCallResult> {
-  const { callId, operation, route, reservedMinor } = reserved;
-  const adapter = broker.providers.get(operation.provider);
-  if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
-  const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
-  // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId);
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
-  const settlement = settlementOf(outcome, operation, adapter);
-  return await database.withBusiness(businessId, async (tx) => {
-    if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
-    if (settlement.kind === 'nothing')
-      return await release(tx, reserved, settlement.reason, broker);
-    const { costMinor } = settlement;
-    if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
-      const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
-      return await hold(tx, reserved, observed, null, broker);
-    }
-    await settlePriced(tx, reserved, settlement, broker);
-    return {
-      ok: true,
-      callId,
-      text: settlement.answer.text,
-      reservedMinor,
-      actualMinor: costMinor,
-      releasedMinor: reservedMinor - costMinor,
-    };
-  });
-}
-
 /**
  * A priced planning reply from the owner's own conversation. The conversation
  * seam's checks first (the owner, the catalogue, a local route under AW-03's
@@ -247,20 +199,21 @@ export async function callModelForPlanning(
   broker: Broker,
 ): Promise<ModelCallResult> {
   if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
-  const operation = broker.operations.get(request.operation);
-  if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
-  if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  const operation = conversationOperation(broker, request);
+  if (typeof operation === 'string') return refused(operation);
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
   const account = await sendingAccount(broker, route, operation.destination);
+  const notAfter = endBy(Date.now(), CONVERSATION_CALL_LIFE_MS);
   const held = await database.withBusiness(
     businessId,
     async (tx) => await holdPlanning(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
-  return await sendPlanning(database, businessId, held.reserved, fields, broker);
+  const sent = { model: request.model, notAfter };
+  return await sendAndSettle(database, businessId, held.reserved, fields, broker, sent);
 }
 
 /**

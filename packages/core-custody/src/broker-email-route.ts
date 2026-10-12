@@ -2,13 +2,17 @@
 //
 // What every broker email send shares (the inbox item's in `broker-email.ts`,
 // C39-T's invitation in `broker-invitation.ts`): the sender check, the
-// catalogued `email.send` and its route, and the one reading of what the
-// provider answered. Nothing here sends or writes.
+// catalogued `email.send` and its route, the one send through custody, and
+// the one reading of what the provider answered. Nothing here writes.
 
-import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
+import type {
+  AdapterRequest,
+  ModelOperation,
+  SenderReport,
+} from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
-import type { Custody, CustodyOutcome } from './custody.ts';
-import type { DeliverRefusal } from './email-class.ts';
+import { endBy, type Custody, type CustodyOutcome } from './custody.ts';
+import { IN_FLIGHT_GRACE_MS, type DeliverRefusal, type Reading } from './email-class.ts';
 import { isLoopbackMock } from './email-mock-custody.ts';
 
 /** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
@@ -100,4 +104,27 @@ export function observed(
   const answer = operation.answer(body);
   if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
   return { state: 'accepted', evidence: `${source}:${answer.text}` };
+}
+
+/**
+ * One email through custody, its answer read as `observed` reads it. Custody sends nothing past
+ * the ask's place under the ceiling (`roomFor`'s bound, from `reserved`), so a send that waited
+ * on its way out after its fence (`lapsed`) never goes beside the email that took its place.
+ */
+export async function sendOnce(
+  broker: Broker,
+  { operation, route }: Routed,
+  built: AdapterRequest,
+  reserved: Reading,
+): Promise<ReturnType<typeof observed>> {
+  const outcome = await broker.custody.dispatch(route.credentialRef, {
+    destination: operation.destination,
+    path: built.path,
+    method: built.method,
+    body: built.body,
+    timeoutMs: operation.timeoutMs,
+    maxResponseBytes: operation.maxResponseBytes,
+    notAfter: endBy(reserved.wall, operation.timeoutMs + IN_FLIGHT_GRACE_MS),
+  });
+  return observed(outcome, operation, isLoopbackMock(broker.custody) ? 'mock' : 'provider');
 }

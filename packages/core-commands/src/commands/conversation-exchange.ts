@@ -53,9 +53,13 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
+import {
+  checkAuthorityAt,
+  holdCoveringGrants,
+  lockedInstant,
+} from '../../../core-runtime/src/index.ts';
 import { contextOf, type Context } from './conversation-context.ts';
-import { bounded, holdsOwnConversations } from './conversations.ts';
+import { bounded, holdsOwnConversations, OWN_WRITE } from './conversations.ts';
 import { askedModel } from './conversation-model.ts';
 import {
   answered,
@@ -192,6 +196,17 @@ async function keep(
   return { id, body };
 }
 
+/**
+ * At the call, after the broker's ceiling wait and before its row is written:
+ * the session has not ended and a conversation grant still covers the caller
+ * at the clock read after that wait. No grant is held past the row's commit,
+ * since the send comes after it; `keep` judges the reply under its own holds.
+ */
+async function stillHeld(tx: TenantQuery, session: Session): Promise<boolean> {
+  if (session.roleKey === null || (await sessionEndedSince(tx, session))) return false;
+  return (await checkAuthorityAt(tx, subjectsOf(session), OWN_WRITE, await lockedInstant(tx))).ok;
+}
+
 /** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */
 function heldElsewhere(cause: unknown): undefined {
   if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
@@ -223,6 +238,7 @@ async function answerOnce(
         { name: 'message', source: 'outside', value: question.body },
       ],
       ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+      stillHeld: async (tx) => await stillHeld(tx, session),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );

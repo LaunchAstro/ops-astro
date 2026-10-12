@@ -14,11 +14,13 @@
 //    attempt is recorded `asked` against it. A refusal writes nothing.
 // 2. Send, through custody, the adapter's message: the address the invitation
 //    names and one link, the enrolment page carrying the token. A sender that
-//    paused past the fence since its ask (`lapsed`) calls nothing and records
-//    `failed`, evidence `expired`, as the inbox send does.
+//    paused past the fence since its ask (`lapsed`), or past the token's
+//    expiry on either host clock (`outlived`), calls nothing and records
+//    `failed`, evidence `expired`, as the inbox send does; custody sends
+//    nothing past the ask's place under the ceiling (`sendOnce`).
 // 3. Record what came back as the attempt's next observation, read as the
-//    inbox send reads it; an answer holding anything token-shaped is
-//    malformed. Nothing returned or written holds a token.
+//    inbox send reads it; a message id long enough to hold a token is kept
+//    as its SHA-256. Nothing returned or written holds a token.
 //
 // The concurrency ceiling is the catalogued one, and the inbox send's own
 // (`roomFor`): one limit, under one lock, counts every email in flight
@@ -44,11 +46,10 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute, type Routed } from './broker-email-route.ts';
+import { sendOnce, sendRoute, type Routed } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
 import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
-import { isLoopbackMock } from './email-mock-custody.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -57,10 +58,12 @@ export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'in
 export const ENROL_PATH = '/enrol/';
 
 /**
- * A run of base64url as long as an enrolment token (32 random bytes, 43 characters): evidence
- * holding one may hold a live link, whichever send or business minted it.
+ * A run of base64url as long as an enrolment token (32 random bytes, 43 characters) or longer:
+ * evidence holding one may hold a live link, whichever send or business minted it. A provider's
+ * message id may be as long (up to 64 characters), so such a run is kept as its SHA-256, which
+ * still names the message and is what a token's own row keeps of it.
  */
-const TOKEN_SHAPED = /[\w-]{43}/u;
+const TOKEN_SHAPED = /[\w-]{43,}/gu;
 
 export type InvitationSendRefusal =
   DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING' | 'REPLAYED';
@@ -80,8 +83,10 @@ interface Asked {
   readonly tokenId: string;
   readonly to: string;
   readonly token: string;
-  /** The host's clocks just before the `asked` attempt was written: the fence counts from here. */
+  /** The host's clocks just before the token was minted: the fence counts from here. */
   readonly reserved: Reading;
+  /** How long the token had left when it was minted, on the database's clock. */
+  readonly lifeMs: number;
 }
 
 /**
@@ -190,16 +195,35 @@ async function ask(
     hookId === undefined ? undefined : await claimHookMessage(tx, invitationId, hookId);
   if (unclaimed !== undefined) return unclaimed;
   const token = randomBytes(32).toString('base64url');
-  const [minted] = await tx.query<{ id: string }>(
+  const reserved = readClocks();
+  const [minted] = await tx.query<{ id: string; life_ms: number }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
-     values ($1, gen_random_uuid(), $2, $3, $4) returning id`,
+     values ($1, gen_random_uuid(), $2, $3, $4)
+     returning id, (extract(epoch from expires_at - clock_timestamp()) * 1000)::float8 as life_ms`,
     [tx.businessId, invitationId, createHash('sha256').update(token).digest('hex'), act.expires],
   );
-  const reserved = readClocks();
-  const asked = { invitationId, tokenId: minted?.id ?? '', to: act.address, token, reserved };
+  const lifeMs = minted?.life_ms ?? 0;
+  const asked = {
+    invitationId,
+    tokenId: minted?.id ?? '',
+    to: act.address,
+    token,
+    reserved,
+    lifeMs,
+  };
   const evidence = hookId === undefined ? null : `hook:${hookId}`;
   await recordAttempt(tx, asked, { state: 'asked', evidence });
   return asked;
+}
+
+/**
+ * Whether either host clock has run past the token's expiry since it was minted: the token's
+ * lifetime counted on the host from its own reading, so the database's clock is read only once,
+ * by the statement that minted it, after every lock the send waited on.
+ */
+function outlived({ reserved, lifeMs }: Asked): boolean {
+  const now = readClocks();
+  return now.monotonic - reserved.monotonic >= lifeMs || now.wall - reserved.wall >= lifeMs;
 }
 
 /** Steps 2 and 3: the message through custody, and what came back as the next observation. */
@@ -207,31 +231,25 @@ async function deliver(
   database: Database,
   businessId: BusinessId,
   broker: Broker,
-  { operation, route, adapter }: Routed,
+  routed: Routed,
   sent: { readonly mail: MailSettings; readonly asked: Asked },
 ): Promise<InvitationSendResult> {
   const { mail, asked } = sent;
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
-  const built = adapter.build({ to: asked.to, from: mail.from, address: link });
-  const read = lapsed(asked.reserved)
+  const built = routed.adapter.build({ to: asked.to, from: mail.from, address: link });
+  const stale = lapsed(asked.reserved) || outlived(asked);
+  const read = stale
     ? ({ state: 'failed', evidence: 'expired' } as const)
-    : observed(
-        await broker.custody.dispatch(route.credentialRef, {
-          destination: operation.destination,
-          path: built.path,
-          method: built.method,
-          body: built.body,
-          timeoutMs: operation.timeoutMs,
-          maxResponseBytes: operation.maxResponseBytes,
-        }),
-        operation,
-        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
-      );
+    : await sendOnce(broker, routed, built, asked.reserved);
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
-  const seen = TOKEN_SHAPED.test(read.evidence)
-    ? ({ state: 'failed', evidence: 'malformed' } as const)
-    : read;
+  const seen = {
+    ...read,
+    evidence: read.evidence.replace(
+      TOKEN_SHAPED,
+      (run) => `sha256:${createHash('sha256').update(run).digest('hex')}`,
+    ),
+  };
   const attemptId = await database.withBusiness(
     businessId,
     async (tx) => await recordAttempt(tx, asked, seen),

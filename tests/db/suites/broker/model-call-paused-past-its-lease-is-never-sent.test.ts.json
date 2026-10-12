@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A model call that waits past its real lease is refused by custody and reaches no provider; the lease is a real row."
+}

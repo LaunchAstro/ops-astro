@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Planning cap setters racing on the cap row or a first row in flight, a grant revoked in that wait, and a setter's commit reply cut then retried, set the cap once; the races need separate real connections and a cut relay."
+}

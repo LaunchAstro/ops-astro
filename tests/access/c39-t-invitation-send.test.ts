@@ -3,11 +3,12 @@
 // C39-T, piece P1: the invitation's send keeps AW-07b's rules for every
 // broker email. It leaves only from the installation's verified sending
 // subdomain, and what the provider answers is never a place the link's token
-// is kept: an answer that carries it is read as malformed, and nothing stored
-// holds it. A mock setup report verifies the send only over the loopback mock
-// custody core-custody started, and that send is recorded `mock:<id>`, never
-// `provider:<id>`; over any other custody it is refused before a token is
-// minted. The send's acts and records are `c39-t-invitations.test.ts`.
+// is kept: a message id that carries it is kept as its SHA-256, and nothing
+// stored holds it. A mock setup report verifies the send only over the
+// loopback mock custody core-custody started, and that send is recorded
+// `mock:<id>`, never `provider:<id>`; over any other custody it is refused
+// before a token is minted. The send's acts and records are
+// `c39-t-invitations.test.ts`.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -121,7 +122,7 @@ describe.skipIf(noDatabase)('C39-T invitation send', () => {
     const id = await invite(c.admin);
     const sent = await sendInvitation(w.db.app, w.alpha, id, { ...w.broker, custody }, MAIL);
     expect(echoed, 'the answer echoed the link token').not.toBe('');
-    expect(sent).toMatchObject({ ok: false, code: 'EMAIL_FAILED' });
+    expect(sent).toMatchObject({ ok: true, state: 'accepted' });
     expect((await storedText()).includes(echoed)).toBe(false);
   });
   it('C39-T mock sender: a mock report sends over the loopback mock custody core-custody started, recorded mock:<id>', async () => {

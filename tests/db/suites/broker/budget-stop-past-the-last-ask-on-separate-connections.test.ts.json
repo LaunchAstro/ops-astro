@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Two calls past a run's last ask meeting behind its lease, and one whose commit is cut and then made again, end the run once with one alert and nothing sent; the races need separate real connections and a cut relay."
+}
