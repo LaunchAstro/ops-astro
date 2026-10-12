@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two runs on one approved occurrence at once leave one, a run cannot rest on an uncommitted occurrence, an activation writer does not hold up the origin check, and a cut or retried run insert leaves one run"
+}
