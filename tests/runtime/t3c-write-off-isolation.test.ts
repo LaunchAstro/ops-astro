@@ -61,6 +61,8 @@ describe('T3 no machine path: one caller of the write-off', () => {
       'packages/core-runtime/src/budget-stop.ts',
       // AW-10: records the write-off on the step's held broker calls, called only by the write-off.
       'packages/core-runtime/src/recovery/broker-effect.ts',
+      // Reads it only: a written-off step still takes its outcome, moving no money.
+      'packages/core-runtime/src/recovery/outcome.ts',
       'packages/core-runtime/src/recovery/write-off.ts',
     ]);
   });
