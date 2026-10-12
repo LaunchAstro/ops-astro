@@ -301,6 +301,31 @@ run_case "an image: with no value on its line fails" 1 "jobs:
         image:
 $STEPS"
 
+# A double-quoted key may spell `uses` with escapes, and a tagged key is still
+# the key; the line reader decodes neither, so both are refused outright.
+run_case "an escaped quoted uses key with a movable tag fails" 1 'jobs:
+  a:
+    steps:
+      - "us\u0065s": actions/checkout@v4'
+run_case "a hex-escaped quoted image key fails" 1 'jobs:
+  a:
+    services:
+      db:
+        "\x69mage": postgres:18
+'"$STEPS"
+run_case "a tagged uses key fails" 1 'jobs:
+  a:
+    steps:
+      - !!str uses: actions/checkout@v4'
+run_case "an escaped quoted key that is not one of the three still fails: it is not read" 1 "jobs:
+  a:
+    \"n\\u0061me\": x
+$STEPS"
+run_case "a plain double-quoted uses key is still read and passes" 0 "jobs:
+  a:
+    steps:
+      - \"uses\": $ACTION"
+
 echo
 echo "pins-check cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
