@@ -37,9 +37,9 @@
 // plain or quoted, with space before its colon, and with its value on the same
 // line or the next. It refuses a line where such a key follows `{` or `[`
 // outside quotes and before a comment, and any explicit `? ` key line. Other
-// key forms are not guaranteed to be read: a tagged key (`!!str uses:`), an
-// escaped quoted key, and a key inside a flow collection, or a quoted scalar,
-// that spans lines. The flow scan does not know block scalars either, so a
+// key forms are refused too: a tagged key (`!!str uses:`) and a double-quoted
+// key with an escape. A key inside a flow collection, or a quoted scalar, that
+// spans lines is not guaranteed to be read. The flow scan does not know block scalars either, so a
 // `run: |` line holding an unquoted `{` or `[` followed by a `uses:`, `image:`
 // or `container:` string can be refused: a false red, not a pin getting
 // through (Sol's recheck of 022034a). The follow-up is to parse the workflows
@@ -95,6 +95,10 @@ const flowKey = (line) => {
   return bracket !== -1 && FLOW_KEY.test(line.slice(bracket + 1, end));
 };
 const EXPLICIT_KEY = /^\s*(?:-\s+)?\?(?:\s|$)/u;
+// A double-quoted key with an escape (`"us\u0065s"`) or a tagged key
+// (`!!str uses`) is still a key, and this reader decodes neither, so such a
+// line is refused rather than skipped.
+const UNREAD_KEY = /^\s*(?:-\s+)?(?:"(?:[^"\\]|\\.)*\\(?:[^"\\]|\\.)*"[ \t]*:|!)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
 /** A value without its comment and its quotes. */
@@ -133,6 +137,14 @@ for (const file of workflows) {
         `${where}: a \`uses\`, \`image\` or \`container\` key in flow style, or an\n` +
           '        explicit `? ` key. This check reads block style only. Write the key\n' +
           '        on its own line: `uses: owner/action@<40 hex>`.',
+      );
+      continue;
+    }
+    if (UNREAD_KEY.test(line)) {
+      failures.push(
+        `${where}: a key written with an escape or a tag. This check does not\n` +
+          '        decode either, so it cannot tell whether the key is `uses`, `image`\n' +
+          '        or `container`. Write the key plainly.',
       );
       continue;
     }
