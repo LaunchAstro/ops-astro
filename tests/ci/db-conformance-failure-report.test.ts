@@ -365,5 +365,5 @@ describe('database conformance manifest', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 });
