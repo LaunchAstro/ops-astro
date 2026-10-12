@@ -1,19 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect } from 'vitest';
-import { mergeAndFind, proposeSource } from '../../packages/core-connectors/src/index.ts';
+import {
+  mergeAndFind,
+  proposeSource,
+  revertForward,
+  siteBindingFor,
+} from '../../packages/core-connectors/src/index.ts';
 import {
   AFTER,
   APPROVED,
   BEFORE,
+  HEAD,
   MERGED,
   PAGE,
   PROJECT,
   REPOSITORY,
   SEAM,
+  VERSION_PIN,
   binding,
   json,
   line,
+  partySite,
   proposed,
   proposal,
 } from './c80-site-provider.ts';
@@ -113,4 +121,27 @@ export async function refusesChangedBytes(): Promise<void> {
     ),
   ).toEqual({ kind: 'refused', code: 'PROPOSAL_SUPERSEDED' });
   expect(site.sent).toEqual([]);
+}
+
+/** A binding of these bytes, made with the approved version's pin and digest. */
+const boundWith = (before: string, after: string) =>
+  siteBindingFor(partySite, proposal.correction, {
+    proposal: { request: '17', head: HEAD, versionDigest: APPROVED.versionDigest },
+    change: { before, after },
+    version: VERSION_PIN,
+  });
+
+/** After a publish, a binding whose bytes are not the approved version's never reverts to them. */
+export async function revertsApprovedPreImage(): Promise<void> {
+  const site = proposed();
+  expect(await mergeAndFind(binding, APPROVED, site.deps)).toMatchObject({ kind: 'ok' });
+  const forged = boundWith('<script>unapprovedCode()</script>\n', AFTER);
+  if (forged.ok) await revertForward(forged.binding, { seam: SEAM }, site.deps);
+  expect(site.state.content).toBe(AFTER);
+  expect(forged).toEqual({ ok: false, code: 'PROPOSAL_SUPERSEDED' });
+  expect(boundWith(BEFORE, 'unapproved proposal')).toEqual({
+    ok: false,
+    code: 'PROPOSAL_SUPERSEDED',
+  });
+  expect(boundWith(BEFORE, AFTER).ok).toBe(true);
 }

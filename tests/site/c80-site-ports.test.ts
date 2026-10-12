@@ -238,7 +238,7 @@ describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approv
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
     const id = await approved({ before, after });
-    const { site, ports } = await bound(id, { change: { before, after } });
+    const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);
     const write = site.sent.find((sent) => sent.method === 'PUT');
