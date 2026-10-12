@@ -112,7 +112,9 @@ describe('MP-4-13 draft kept until create or cancel', () => {
     const again = await draft({ storage });
     expect(valueOf(again.view, '#panel-draft-name')).toBe('');
   });
+});
 
+describe('MP-4-13 an unreadable saved draft', () => {
   it('Cancel discards a saved draft that cannot be read, so the next New task can create', async () => {
     const storage = store();
     storage.setItem(`ops-astro.task-draft.${ADA}`, '{"title":null}');

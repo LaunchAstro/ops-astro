@@ -92,7 +92,6 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
   // The name being typed and the revision the rename opened at: a re-read
   // keeps the panel mounted, and a colleague's change since answers stale.
   const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null);
-  // A name the server did not store, offered again when Rename reopens.
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {

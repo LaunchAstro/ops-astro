@@ -196,9 +196,9 @@ describe('C32 agents on Settings ▸ Access', () => {
     });
     const held = ((url: string | URL, init?: RequestInit) => {
       if (!String(url).endsWith('/delegation/revoke')) return api.fetch(url, init);
-      return new Promise<Response>((resolve) => releases.push(resolve)).then(() =>
-        api.fetch(url, init),
-      );
+      return new Promise<Response>((resolve) => {
+        releases.push(resolve);
+      }).then(() => api.fetch(url, init));
     }) as typeof globalThis.fetch;
     const view = await open(held);
     await view.click('[data-revoke="d-1"] button');

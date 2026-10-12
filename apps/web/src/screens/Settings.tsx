@@ -51,7 +51,6 @@ import {
 import { PlanningCapSection } from './settings/planning-cap.tsx';
 import { seesTriggers, TriggersPanel } from './settings/triggers.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
-import type { Draft } from './settings/confirmed.ts';
 import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
@@ -114,8 +113,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
     );
   };
 
-  // A row whose draft moves on after the conflict hands in `current`, which is then what is written.
-  const conflictFor = (which: Which, current?: Draft): ReactElement | null =>
+  const conflictFor = (which: Which, current?: readonly string[]): ReactElement | null =>
     model.conflict === null || model.conflict.which !== which ? null : (
       <ConflictBlock
         conflict={current === undefined ? model.conflict : { ...model.conflict, draft: current }}
