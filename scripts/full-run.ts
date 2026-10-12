@@ -111,7 +111,11 @@ export async function testedBy({
   }
 }
 
-/** Whether the merge queue into main holds an entry, or a group of it is being tested. */
+/**
+ * Whether the merge queue into main holds an entry, by the queue's own count. A queue it cannot
+ * read holds none, so the push takes the full set: a run still going cannot tell a live group from
+ * one already merged through a later group, and is only named in the log.
+ */
 export async function queueBusyNow({
   api,
   graphql,
@@ -135,7 +139,7 @@ export async function queueBusyNow({
     entries = undefined;
   }
   // The queue's own count decides. A merged group's run can still be going after the queue empties
-  // (two groups built at once merge through the later one), so runs are read only without it.
+  // (two groups built at once merge through the later one), so a run going is no count.
   if (typeof entries === 'number') return entries > 0;
   const going = await Promise.all(
     ['queued', 'in_progress'].map(
@@ -145,7 +149,15 @@ export async function queueBusyNow({
         ),
     ),
   );
-  return going.some((page) => Number(field(page, 'total_count') ?? 0) > 0);
+  const runs = going.reduce<number>(
+    (sum, page) => sum + Number(field(page, 'total_count') ?? 0),
+    0,
+  );
+  console.log(
+    `full run: the merge queue could not be read (${String(runs)} merge group run(s) queued or ` +
+      'going, which may be merged already); the full set runs',
+  );
+  return false;
 }
 
 function client(token: string, base: string): { api: Api; graphql: GraphQL } {

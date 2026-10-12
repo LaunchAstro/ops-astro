@@ -158,11 +158,11 @@ describe('whether the queue holds more', () => {
     expect(await queueBusyNow({ api: runs(0, 1), graphql: queue(0), repo: REPO })).toBe(false);
   });
 
-  it('reads a group queued or under test only when the queue cannot be read', async () => {
-    expect(await queueBusyNow({ api: runs(1, 0), graphql: broken, repo: REPO })).toBe(true);
-    expect(await queueBusyNow({ api: runs(0, 1), graphql: broken, repo: REPO })).toBe(true);
+  it('holds none when the queue cannot be read, whatever runs are going', async () => {
+    expect(await queueBusyNow({ api: runs(1, 0), graphql: broken, repo: REPO })).toBe(false);
+    expect(await queueBusyNow({ api: runs(0, 1), graphql: broken, repo: REPO })).toBe(false);
     expect(await queueBusyNow({ api: runs(0, 0), graphql: broken, repo: REPO })).toBe(false);
-    expect(await queueBusyNow({ api: runs(0, 1), graphql: unread, repo: REPO })).toBe(true);
+    expect(await queueBusyNow({ api: runs(0, 1), graphql: unread, repo: REPO })).toBe(false);
   });
 });
 

@@ -145,7 +145,7 @@ A push to `main` runs the full set only when it has to. When a green merge
 group of `ci.yml` already tested the pushed tree and the queue still holds
 entries, the push runs the light set and the three aggregates pass, naming
 the merge group. When nothing tested that tree, or the queue is empty (the
-end of a batch), the push runs the full set. Pushes to `main` never cancel
+end of a batch) or cannot be read, the push runs the full set. Pushes to `main` never cancel
 each other.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
