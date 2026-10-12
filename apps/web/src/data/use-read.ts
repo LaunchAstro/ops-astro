@@ -14,9 +14,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
+import { dropsAnswer } from './read-breaks.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
-import type { CallResult } from '../operations/client.ts';
+import { isRefusal, type CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
   readonly grantKey: string;
@@ -34,6 +35,8 @@ export interface UseReadOptions<T> {
   readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
   /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
   readonly rollup?: RollupFloor;
+  /** Which published answers break what the host admits; refused or out when absent. */
+  readonly breaks?: (state: ReadState<T>) => boolean;
 }
 
 export interface UseReadResult<T> {
@@ -57,6 +60,8 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * a host that must not draw from it treats it as still loading.
    */
   readonly own: boolean;
+  /** Breaks (`breaks`, and refusals of superseded reads) counted as each lands, drawn or not. */
+  readonly breaks: number;
 }
 
 /** The states a projection starts from: a first read, not a re-read of one. */
@@ -81,9 +86,11 @@ async function offer<T>(
   generation: number,
   run: () => Promise<CallResult<T>>,
   grantKey: string,
+  refusedLate: () => void,
 ): Promise<void> {
   try {
-    projection.accept(generation, await run(), grantKey);
+    const result = await run();
+    if (!projection.accept(generation, result, grantKey) && isRefusal(result)) refusedLate();
   } catch {
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
@@ -112,10 +119,12 @@ function untilAnswered(reload: () => void): () => void {
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const [held, setState] = useState<ReadState<T>>(() => opened<T>(options.grantKey));
+  const [breaks, setBreaks] = useState(0);
+  const breaksRef = useRef(options.breaks ?? dropsAnswer);
+  breaksRef.current = options.breaks ?? dropsAnswer;
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
   runRef.current = options.run;
-
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
   const first = useMemo(() => opened<T>(grantKey), [grantKey]);
@@ -126,6 +135,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const waitedFrom = useRef<number | null>(null);
   /** The grant and dependencies the projection in `readRef` was built for. */
   const built = useRef<readonly unknown[]>([]);
+  const refusedLate = useCallback(
+    (projection: AuthorisedRead<T>) => () => {
+      if (readRef.current === projection) setBreaks((count) => count + 1);
+    },
+    [],
+  );
   const reread = useCallback(
     (live: boolean) => {
       const projection = readRef.current;
@@ -133,9 +148,9 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
       liveRef.current = live;
       waitedFrom.current = null;
       const generation = projection.begin();
-      void offer(projection, generation, runRef.current, grantKey);
+      void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
     },
-    [grantKey],
+    [grantKey, refusedLate],
   );
   const reload = useCallback(() => {
     reread(false);
@@ -146,10 +161,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   }, [reread]);
 
   useEffect(() => {
+    const onState = (next: ReadState<T>): void => {
+      setState(next);
+      if (breaksRef.current(next)) setBreaks((count) => count + 1);
+    };
     const projection = new AuthorisedRead<T>(
-      isEmpty === undefined
-        ? { grantKey, onState: setState }
-        : { grantKey, onState: setState, isEmpty },
+      isEmpty === undefined ? { grantKey, onState } : { grantKey, onState, isEmpty },
     );
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
@@ -158,7 +175,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
-    void offer(projection, generation, runRef.current, grantKey);
+    void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
     return () => {
       // Retire it, do not merely forget it. Clearing the reference stops the
       // next `reload` from finding it and stops nothing else: the read this
@@ -188,6 +205,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     refresh,
     own,
     live: own && liveRef.current && state.outcome === 'loading',
+    breaks,
   };
 }
 

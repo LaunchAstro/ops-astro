@@ -60,6 +60,8 @@ export function useProjectClient(
     readonly answered: boolean;
     /** Whether the board's read is its opening one, which nothing has answered yet. */
     readonly opening: boolean;
+    /** Every break the board's admission took, counted as each landed, drawn or not. */
+    readonly breaks: number;
   },
   /** The task panel's count of changes, each a fresh read unless a denial withdrew the client. */
   changes: number,
@@ -69,16 +71,24 @@ export function useProjectClient(
   const boardId = scope?.kind === 'selected' && scope.client === undefined ? scope.boardId : null;
   // Each admission after a withdrawal, and each panel change outside one, is a fresh read
   // in the render that sees it, so no answer read across either is given.
-  const [since, setSince] = useState({ reads: 0, withdrawn: false, changes });
+  // A break counted since the last render withdraws too, though no render drew it.
+  const [since, setSince] = useState({ reads: 0, withdrawn: false, changes, breaks: board.breaks });
   const withdraw = board.denied || (!board.answered && !board.opening);
-  const readmitted = !withdraw && board.admitted && since.withdrawn;
-  const changed = changes !== since.changes && !since.withdrawn && !withdraw;
+  const owed = since.withdrawn || board.breaks !== since.breaks;
+  const readmitted = !withdraw && board.admitted && owed;
+  const changed = changes !== since.changes && !owed && !withdraw;
   const next = {
     reads: since.reads + (readmitted || changed ? 1 : 0),
-    withdrawn: withdraw || (since.withdrawn && !readmitted),
+    withdrawn: withdraw || (owed && !readmitted),
     changes,
+    breaks: board.breaks,
   };
-  if (next.reads !== since.reads || next.withdrawn !== since.withdrawn || changes !== since.changes)
+  if (
+    next.reads !== since.reads ||
+    next.withdrawn !== since.withdrawn ||
+    changes !== since.changes ||
+    next.breaks !== since.breaks
+  )
     setSince(next);
   const { state, own } = useBoardProjectionRead<ClientView | null>(client, {
     grantKey,
