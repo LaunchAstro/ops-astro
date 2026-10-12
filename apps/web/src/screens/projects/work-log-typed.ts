@@ -50,6 +50,8 @@ export function useTyped(
  */
 export function usePeopleSeen(grantKey: string) {
   const [seen, setSeen] = useState({ grantKey, names: [] as readonly string[] });
+  // Another reader starts with nobody, and leaves nobody behind for a return.
+  if (seen.grantKey !== grantKey) setSeen({ grantKey, names: [] });
   const names = seen.grantKey === grantKey ? seen.names : [];
   const see = (days: readonly LedgerDayView[]): void => {
     const known = [...new Set([...names, ...actorsIn(days)])];
