@@ -15,7 +15,8 @@
 // take the same keys in one order (`ending-keys.ts`, C52-A).
 
 import { randomUUID } from 'node:crypto';
-import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
+import { setTimeout as delay } from 'node:timers/promises';
+import { advisoryLock, type Database, type TenantQuery } from '../tenancy/database.ts';
 import { holdEnding, sessionKey, subjectKey } from './ending-keys.ts';
 import {
   SESSION_ABSOLUTE_SECONDS,
@@ -48,11 +49,11 @@ const LISTED = 50;
 const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
 
 /**
- * Less the sessions an ending of the login's other sessions (0063) covers:
- * first served here at or before it. Login resolution refuses those (a
- * session's sign-in is no later than its first serving plus the minute of
- * clock), so the list follows what the door serves, but for a request served
- * in the instant the ending takes to commit, which stays listed.
+ * What the door still serves. Sign-in is no later than first serving, so a
+ * session first served over the limit plus the clock minute ago is past it
+ * (its servings span at most the limit, so twice the window holds them all).
+ * An ending of the login's other sessions (0063) covers one first served at or
+ * before it: a later one may carry a sign-in stamp past the door's minute.
  */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
@@ -62,17 +63,17 @@ const SEEN = `
      and a.person_id = $2
      and a.outcome = 'resolved'
      and a.session_id is not null
-     and a.at > now() - make_interval(secs => $3)
+     and a.at > now() - make_interval(secs => 2 * $3)
      and not exists (
        select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
    group by a.session_id, l.subject
-  having not exists (
+  having min(a.at) > now() - make_interval(secs => $3)
+     and not exists (
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to(l.subject, 'UTF8')), 'hex')
           and s.kept_session is distinct from a.session_id
           and min(a.at) <= s.ended_before)
-   order by max(a.at) desc, a.session_id
-   limit $4`;
+   order by max(a.at) desc, a.session_id limit $4`;
 
 /** The person's live sessions, newest first; `current` marks the one asking. */
 export async function listSeenSessions(
@@ -158,17 +159,27 @@ export async function openResetWindow(tx: TenantQuery, subject: string): Promise
 }
 
 /**
- * Wait, on the database's clock, into its next whole second (C40). GoTrue
- * stamps a sign-in in whole seconds, rounded down, and a settled window
- * refuses only a stamp whose whole second had passed, so a reset that set the
- * password waits here before it settles: a sign-in stamped up to the
- * provider's set is then a whole second before the settle and refused, and one
- * with the new password after the answer is served. A sign-in the provider
- * checked against the old password before the set but stamped after it is
- * not covered (#752).
+ * Wait into the database clock's next whole second, then `run` in a
+ * transaction of its own (C40): a reset that set the password settles there,
+ * so a sign-in GoTrue stamped up to the provider's set (whole seconds,
+ * rounded down) is a whole second before the settle and refused, and one with
+ * the new password is served; one checked against the old password but
+ * stamped after the set is not covered (#752). The wait holds no connection;
+ * `run`'s transaction waits on the clock first, normally not at all.
  */
-export async function waitForNextSecond(tx: TenantQuery): Promise<void> {
-  await tx.query(`select pg_sleep(1 - extract(epoch from clock_timestamp()) % 1)`);
+export async function waitForNextSecond<T>(
+  database: Database,
+  businessId: string,
+  run: (tx: TenantQuery) => Promise<T>,
+): Promise<T> {
+  const clock = 'extract(epoch from clock_timestamp())::float8';
+  const read = async (tx: TenantQuery) => await tx.query<{ at: number }>(`select ${clock} as at`);
+  const at = (await database.withBusiness(businessId, read))[0]?.at ?? 0;
+  await delay((1 - (at % 1)) * 1000);
+  return await database.withBusiness(businessId, async (tx) => {
+    await tx.query(`select pg_sleep(greatest(0, $1 - ${clock}))`, [Math.floor(at) + 1]);
+    return await run(tx);
+  });
 }
 
 /** Settle the window: a sign-in from this moment is served. */

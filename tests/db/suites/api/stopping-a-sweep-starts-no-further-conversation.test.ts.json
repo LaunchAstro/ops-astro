@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "stopping a running conversation sweep lets the current conversation finish and starts no further one, and the database closes after the sweep"
+}

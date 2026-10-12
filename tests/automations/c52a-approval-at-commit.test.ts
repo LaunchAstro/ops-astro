@@ -179,13 +179,12 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
           w.bravo,
           async (tx) => await openResetWindow(tx, presented.subject),
         );
-        await bravo.withBusiness(w.bravo, async (tx) => {
-          await waitForNextSecond(tx);
+        await waitForNextSecond(bravo, w.bravo, async (tx) => {
           await settleResetWindow(tx, reset);
-          // A whole second past the settle on the database's clock, so the next
-          // race's sign-in, stamped by this process's clock, is not before it.
-          await waitForNextSecond(tx);
         });
+        // A whole second past the settle on the database's clock, so the next
+        // race's sign-in, stamped by this process's clock, is not before it.
+        await waitForNextSecond(bravo, w.bravo, async () => {});
         return reset.length > 0;
       },
     ],

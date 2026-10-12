@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the forwarder's pass judges a security alert log row's ninety days when it deletes, after the forwarder lock, not when its transaction began"
+}
