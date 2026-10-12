@@ -185,9 +185,10 @@ export function createDetector(
       // One alert per burst: the count starts again after it is raised.
       seen.delete(key);
       raise(rule.alert);
-      return;
+    } else {
+      seen.set(key, events);
     }
-    seen.set(key, events);
+    // Every path: a raised authority change leaves an operation memory behind.
     if (seen.size > most) sweep(at);
   }
 
