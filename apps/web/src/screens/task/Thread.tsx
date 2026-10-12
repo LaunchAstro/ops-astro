@@ -22,8 +22,11 @@
 // Reply owed, Not acknowledged or Answered, with a title saying what it means.
 // Seen waits on the portal's read receipt.
 
-import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import type { ReactElement } from 'react';
+import { BUSINESS_CLOCK } from './due-dates.ts';
+import { isUuid } from '../../session/storage-slot.ts';
+import { EditBox } from './CommentEditBox.tsx';
+import { Avatar, Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { editOf, parentOf, threadOf, type RowEdit } from './thread-shape.ts';
 
@@ -31,6 +34,7 @@ export type { RowEdit };
 
 /** What a row can ask of the conversation around it. */
 export interface RowActions {
+  readonly authors?: ReadonlyMap<string, string>;
   readonly onReply: (commentId: string) => void;
   readonly onEdit: (comment: InternalCommentView, body: string) => void;
   readonly onDelete: (commentId: string) => void;
@@ -89,54 +93,69 @@ function Row(props: {
   const { comment, actions } = props;
   const edit = actions.editing?.commentId === comment.id ? actions.editing : null;
   const isReply = parentOf(comment) !== null;
+  const author =
+    actions.authors?.get(comment.author) ?? (isUuid(comment.author) ? 'Someone' : comment.author);
   return (
     <article
       className={`msg msg--${comment.audience}`}
       data-comment-id={comment.id}
       data-audience={comment.audience}
     >
-      <RowMeta comment={comment} />
-      {edit === null ? (
-        <p className="card__body">{comment.body}</p>
-      ) : (
-        <EditBox
-          saved={comment.body}
-          body={edit.body}
-          busy={actions.busy}
-          onText={(body) => actions.onEditing({ ...edit, body })}
-          onDone={(next) => {
-            if (next === null) actions.onEditing(null);
-            else actions.onEdit(comment, next);
+      <span className="msg__avatar" aria-hidden="true">
+        <Avatar name={author} />
+      </span>
+      <div className="msg__body">
+        <RowMeta comment={comment} author={author} />
+        {edit === null ? (
+          <p className="card__body">{comment.body}</p>
+        ) : (
+          <EditBox
+            saved={comment.body}
+            body={edit.body}
+            busy={actions.busy}
+            onText={(body) => actions.onEditing({ ...edit, body })}
+            onDone={(next) => {
+              if (next === null) actions.onEditing(null);
+              else actions.onEdit(comment, next);
+            }}
+          />
+        )}
+        <RowActs
+          comment={comment}
+          reply={isReply}
+          editing={edit !== null}
+          actions={actions}
+          onEditing={() => {
+            actions.onEditing(editOf(comment));
           }}
         />
-      )}
-      <RowActs
-        comment={comment}
-        reply={isReply}
-        editing={edit !== null}
-        actions={actions}
-        onEditing={() => {
-          actions.onEditing(editOf(comment));
-        }}
-      />
-      {props.children}
+        {props.children}
+      </div>
     </article>
   );
 }
 
 /** Who may read a row, what it is, who wrote it and when, and a client message's signal. */
-function RowMeta(props: { readonly comment: InternalCommentView }): ReactElement {
+function RowMeta(props: {
+  readonly comment: InternalCommentView;
+  readonly author: string;
+}): ReactElement {
   return (
-    <div className="sbact__meta">
-      {/* The audience is drawn on every comment, because "who may read
-            this" is the one thing a person writing the next one needs to
-            know and the one thing a colour cannot say. */}
-      <span className="sb__state" data-comment-audience={props.comment.audience}>
+    <div className="msg__meta" title={props.comment.comment_type}>
+      <b>{props.author}</b>
+      <time className="msg__at" dateTime={props.comment.posted_at} title={props.comment.posted_at}>
+        {new Date(props.comment.posted_at).toLocaleString('en-AU', {
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: BUSINESS_CLOCK,
+        })}
+        {props.comment.edited_at === null ? '' : ' · edited'}
+      </time>
+      <span className="msg__audience" data-comment-audience={props.comment.audience}>
         {audienceWord(props.comment.audience)}
       </span>
-      <span> · {props.comment.comment_type}</span>
-      <span> · {props.comment.author}</span>
-      <span> · {props.comment.posted_at}</span>
       <Signal signal={props.comment.signal ?? null} />
     </div>
   );
@@ -205,62 +224,6 @@ function Act(props: {
     >
       {props.children}
     </button>
-  );
-}
-
-/**
- * The box a row's words are edited in, showing `body` and handing each
- * keystroke up. It hands back the new words, or null when nothing is to be
- * stored: Esc, words the same as the stored ones (`saved`), or an emptied box.
- */
-function EditBox(props: {
-  readonly saved: string;
-  readonly body: string;
-  readonly busy: boolean;
-  readonly onText: (body: string) => void;
-  readonly onDone: (next: string | null) => void;
-}): ReactElement {
-  // Esc or a commit ends the edit once; the blur that can follow the box
-  // leaving the page must not end it a second time. A refusal reopens it.
-  const ended = useRef(false);
-  useEffect(() => {
-    if (!props.busy) ended.current = false;
-  }, [props.busy]);
-  const end = (next: string | null): void => {
-    if (ended.current || props.busy) return;
-    ended.current = true;
-    props.onDone(next === null || next.trim() === '' || next === props.saved ? null : next);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      end(null);
-      return;
-    }
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      end(props.body);
-    }
-  };
-  return (
-    <textarea
-      className="input"
-      aria-label="Edit your message"
-      data-comment-edit=""
-      rows={3}
-      readOnly={props.busy}
-      aria-busy={props.busy}
-      // oxlint-disable-next-line jsx-a11y/no-autofocus -- the pencil was pressed to write here
-      autoFocus
-      value={props.body}
-      onKeyDown={onKeyDown}
-      onBlur={() => {
-        end(props.body);
-      }}
-      onChange={(event) => {
-        props.onText(event.target.value);
-      }}
-    />
   );
 }
 
