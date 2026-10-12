@@ -190,7 +190,7 @@ describe('B6 sign in, signed out and with no shell', () => {
     expect(view.find('.signin .signin__brand .brand--wordmark')).not.toBeNull();
     expect(view.find('form.signin__form.card h1.card__title')?.textContent).toBe('Sign in');
     expect(view.all('.signin__form .field > label.field__label')).toHaveLength(3);
-    expect(view.all('.signin__form input.tf')).toHaveLength(2);
+    expect(view.all('.signin__form input.tf')).toHaveLength(3);
     expect(view.find('.signin__form button.btn.btn--primary[type="submit"]')).not.toBeNull();
     const stamp = view.all(BUILD_SELECTOR)[0] as HTMLElement | undefined;
     expect(stamp?.dataset['build']).toBe('0123456789ab');

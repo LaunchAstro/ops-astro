@@ -207,6 +207,7 @@ async function expectSignedOutWithNoDraft(
 async function signInAgainFindsNoDraft(view: Mounted, reopen = false): Promise<void> {
   await view.type('#signin-email', 'mia@alpha.local');
   await view.type('#signin-password', 'whatever-it-is');
+  await view.choose('#signin-business', 'alpha');
   await view.click('form.signin__form button[type="submit"]');
   await settle();
   await settle();

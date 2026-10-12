@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "OA-ReadyWalk STEP 1: a business other than the seeds signs in by its key, the page names no business, and a key the login cannot open fails as a wrong password does"
+}

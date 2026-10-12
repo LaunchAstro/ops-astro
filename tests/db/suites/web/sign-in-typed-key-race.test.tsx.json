@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "OA-ReadyWalk STEP 1 race attack: a typed key the router never serves fails and keeps no cookie, and a late session rewrite cannot put back a refused sign-in's cookie"
+}

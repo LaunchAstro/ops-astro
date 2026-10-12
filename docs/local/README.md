@@ -200,7 +200,7 @@ The public content check allows exactly these six by name
 (`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a seventh
 invented login until that login is added here and to that list.
 
-There are two businesses, keys `alpha` and `bravo`. The business selector on
+There are two businesses, keys `alpha` and `bravo`. The business you type on
 the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a
 route. The API resolves who you are and what you may see on the server.
 [DATA.md](DATA.md) names which identities carry which negative case.

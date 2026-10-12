@@ -100,6 +100,7 @@ it('a newly enrolled person can enter their authenticator code on the next web s
   try {
     await opened.view.type('#signin-email', 'mia@alpha.local');
     await opened.view.type('#signin-password', 'test-password');
+    await opened.view.choose('#signin-business', 'alpha');
     await opened.view.click('[data-screen="sign-in"] button[type="submit"]');
     // The password credential is real and the API correctly requires aal2.
     // The web app must offer the next factor rather than strand the person

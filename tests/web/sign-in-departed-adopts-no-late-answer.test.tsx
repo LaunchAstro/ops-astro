@@ -38,6 +38,7 @@ it.each(['served', 'unavailable'])(
     );
     await view.type('#signin-email', 'ada@example.test');
     await view.type('#signin-password', 'password');
+    await view.choose('#signin-business', 'alpha');
     await view.click('button[type="submit"]');
     await settle();
     expect(sent).toContain('/api/b/alpha/session/person abandoned');

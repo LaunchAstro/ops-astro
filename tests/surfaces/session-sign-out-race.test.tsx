@@ -71,6 +71,7 @@ describe('S0-6 session cookie', () => {
 
     await page.type('#signin-email', 'second@example.test');
     await page.type('#signin-password', 'password');
+    await page.choose('#signin-business', 'alpha');
     await page.click('form.signin__form button[type="submit"]');
     await settle();
     expect(sessions.session?.email).toBe('second@example.test');

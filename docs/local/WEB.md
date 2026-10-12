@@ -33,9 +33,11 @@ Email and password go to GoTrue's own `/token?grant_type=password`. The
 application never mints or inspects a token. It hands it to `POST /api/session`,
 which keeps it as an `HttpOnly` cookie no script reads (S0-6c, `API.md`, "Who
 is calling"). The built page's content policy runs only this origin's scripts.
-The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
-is a routing choice, not a claim, so picking `bravo` with an alpha-only account
-gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
+The business key the person types chooses the `/api/b/<key>` prefix. The page
+lists no business, because a page anyone can open names no tenant. The key is a
+routing choice, not a claim: typing `bravo` with an alpha-only account gets
+`AUTH_NO_MEMBERSHIP`, and the page fails that sign-in with the words a wrong
+password gets, whether or not a business holds the key.
 
 **A login with an authenticator app gives its code before anything opens
 (C59).** The password grant is only `aal1`, and the API refuses it
@@ -215,7 +217,7 @@ and starts the set-up again once the new sign-in's client is in hand.
 
 | Address                | What it draws                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`             | Credentials and the business selector                                                                                                                                                                                                                                                                                                                               |
+| `/sign-in`             | Credentials and the business key                                                                                                                                                                                                                                                                                                                                    |
 | `/projects/`           | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip`                                   |
 | `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                                                    |
 | `/task/`               | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                                                             |
