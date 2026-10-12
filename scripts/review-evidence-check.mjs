@@ -111,7 +111,7 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, owed, deferrals, buried, html, prose } = readBody(body);
+const { stated, record, owed, deferrals, buried, html, prose, claims } = readBody(body);
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
@@ -253,7 +253,7 @@ if (deferring) {
     owed.length > 0 ||
     Object.values(record).some((values) => values.length > 0) ||
     /\b(?:approve[ds]?|approval|accepted|reviewed|no\s+findings|all\s+closed|reviews?\s+(?:complete[ds]?|passed))\b/iu.test(
-      prose,
+      claims,
     )
   ) {
     failures.push('review deferral cannot carry review outcomes, records or approval claims.');
@@ -414,9 +414,13 @@ const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 if (deferring) {
   const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
-  const debtLabel = builtBy.has('OpenAI') ? 'needs-second-model' : 'needs-sol';
-  if (!labels.has('unreviewed') || !labels.has(debtLabel)) {
-    failures.push(`review deferral requires current labels unreviewed and ${debtLabel}.`);
+  // Each company that built part of the range owes the other's review.
+  const debts = [
+    ...(builtBy.has('OpenAI') ? ['needs-second-model'] : []),
+    ...(builtBy.has('OpenAI') && !builtBy.has('Anthropic') ? [] : ['needs-sol']),
+  ];
+  if (!labels.has('unreviewed') || debts.some((debt) => !labels.has(debt))) {
+    failures.push(`review deferral requires current labels unreviewed and ${debts.join(' and ')}.`);
   }
   if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
 }
