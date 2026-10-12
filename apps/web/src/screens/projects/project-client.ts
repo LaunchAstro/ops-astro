@@ -2,13 +2,38 @@
 //
 // A selected project's own client, for the board's New task doors: a client's
 // project takes only that client's work, and the address the app writes for a
-// project (`?board=<id>`) names no client. Read once per project; a refused or
-// failed read, or a project with no client the reader can name, gives none.
+// project (`?board=<id>`) names no client. Read with the board's own reads, so
+// a change to the project's client or a denial reaches the doors when it
+// reaches the board; a refused or failed read, or a project with no client the
+// reader can name, gives none.
 
-import { useEffect, useState } from 'react';
 import type { ClientView, TaskReadResult } from '../../../../../packages/core-wire/src/index.ts';
-import type { OperationsClient } from '../../operations/client.ts';
+import { useBoardProjectionRead } from '../../data/board-live.ts';
+import {
+  isRefusal,
+  isUnavailable,
+  type CallResult,
+  type OperationsClient,
+} from '../../operations/client.ts';
 import { addressScope } from './board-address.ts';
+
+async function readProjectClient(
+  client: OperationsClient,
+  boardId: string | null,
+): Promise<CallResult<ClientView | null>> {
+  if (boardId === null) return { ok: true, value: null };
+  const read = await client.read<TaskReadResult>('task.read', { recordId: boardId });
+  if (isRefusal(read) || isUnavailable(read)) return read;
+  const task = 'task' in read.value ? read.value.task : null;
+  const summary = task?.clientSummary;
+  return {
+    ok: true,
+    value:
+      typeof task?.client === 'string' && summary?.kind === 'readable'
+        ? { clientId: task.client, name: summary.name }
+        : null,
+  };
+}
 
 export function useProjectClient(
   client: OperationsClient,
@@ -18,23 +43,10 @@ export function useProjectClient(
   const scope = addressScope(query);
   // A board scoped to a client already names it.
   const boardId = scope?.kind === 'selected' && scope.client === undefined ? scope.boardId : null;
-  const of = `${grantKey}:${boardId ?? ''}`;
-  const [held, setHeld] = useState<{ readonly of: string; readonly client: ClientView } | null>(
-    null,
-  );
-  useEffect(() => {
-    if (boardId === null) return;
-    let live = true;
-    void client.read<TaskReadResult>('task.read', { recordId: boardId }).then((read) => {
-      const task = 'value' in read && 'task' in read.value ? read.value.task : null;
-      const summary = task?.clientSummary;
-      if (live && typeof task?.client === 'string' && summary?.kind === 'readable')
-        setHeld({ of, client: { clientId: task.client, name: summary.name } });
-      return read;
-    });
-    return () => {
-      live = false;
-    };
-  }, [client, of]);
-  return held?.of === of ? held.client : null;
+  const { state, own } = useBoardProjectionRead<ClientView | null>(client, {
+    grantKey,
+    run: () => readProjectClient(client, boardId),
+    deps: [client, boardId],
+  });
+  return own && state.outcome === 'ready' ? state.value : null;
 }
