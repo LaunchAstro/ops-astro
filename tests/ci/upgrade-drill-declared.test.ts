@@ -146,7 +146,6 @@ const STATE_OWNERS: Planted = {
 describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill, declared changes', () => {
   declaredCases1();
   declaredCases2();
-  declaredCases3();
 });
 
 /** An undeclared change, and the four declared ones. */
@@ -221,53 +220,5 @@ function declaredCases2() {
     );
     expect(status).toBe(2);
     expect(output).toMatch(/9996_planted_marks\.changes\.json/u);
-  }, 180_000);
-}
-
-/** Each migration answers for its own change, and only its own. */
-function declaredCases3() {
-  it('turns red when a later declaration names a change an earlier migration made undeclared', () => {
-    const { changes: _declared, ...undeclared } = MARKS;
-    const { status, result, output } = drill(
-      withPlanted([
-        { ...undeclared, version: '9996_planted_undeclared' },
-        { ...MARKS, version: '9997_planted_noop', sql: 'select 1' },
-      ]),
-    );
-    expect(result, output).toBeDefined();
-    expect(status).toBe(1);
-    expect(result?.differences).toContainEqual(
-      expect.objectContaining({ table: 'ops.slots', changedOrLost: 3 }),
-    );
-    expect(output).toMatch(/9997_planted_noop: declared change to ops\.slots did not happen/u);
-  }, 180_000);
-
-  it('stays green when two declared migrations change the same rows one after the other', () => {
-    // Two columns of one row, then one column of a row twice.
-    const label: Planted = {
-      version: '9996_planted_comment_label',
-      sql: `update public.field_defs f set label = 'Reply'
-              from public.record_types t
-             where t.business_id = f.business_id and t.id = f.record_type_id
-               and t.key = 'task_comment' and f.key = 'body' and f.origin = 'core'`,
-      changes: [{ ...COMMENT_OWNERS.changes![0]!, columns: ['label'] }],
-    };
-    const remarked: Planted = {
-      ...MARKS,
-      version: '9999_planted_remarked',
-      sql: `update ops.slots set reservation = 'task_marks' where slot in ('num_3', 'num_4', 'num_5')`,
-    };
-    const { status, result, output } = drill(
-      withPlanted([label, { ...MARKS, version: '9997_planted_marks' }, COMMENT_OWNERS, remarked]),
-    );
-    expect(result?.differences, output).toStrictEqual([]);
-    const rows = (migration: string): number =>
-      result?.declared.find((one) => one.migration === migration)?.rows ?? 0;
-    expect(rows(label.version)).toBeGreaterThan(0);
-    expect(rows(COMMENT_OWNERS.version)).toBe(rows(label.version));
-    expect(rows('9997_planted_marks')).toBe(3);
-    expect(rows(remarked.version)).toBe(3);
-    expect(result?.ok).toBe(true);
-    expect(status).toBe(0);
   }, 180_000);
 }

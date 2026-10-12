@@ -186,24 +186,22 @@ async function snapshot(admin, before) {
 }
 
 /**
- * The upgrade itself, the application stopped, run by run (`changes.runsOf`).
- * With no declaration it is the runner's one run.
+ * The upgrade itself, the application stopped: the declarations of the
+ * migrations it applies are read and their rows picked first, then every
+ * migration is applied and the snapshots compared.
  */
 async function upgrade(db, directory, all, at, before) {
   const declarations = changes.readDeclarations(directory, all.slice(at + 1), before, Refused);
-  const applied = [];
-  const differences = [];
-  let kept = before;
-  for (const run of changes.runsOf(all, at, declarations)) {
-    // oxlint-disable-next-line no-await-in-loop -- each run builds on the last
-    await changes.declaredRows(db.admin, run.declarations, before);
-    // oxlint-disable-next-line no-await-in-loop
-    applied.push(...(await applyMigrations(db.admin, all.slice(0, run.through))).applied);
-    // oxlint-disable-next-line no-await-in-loop
-    const after = await snapshot(db.admin, before);
-    kept = changes.compare(kept, after, run.declarations, differences);
-  }
-  return { applied, differences, declared: changes.declaredOf(declarations) };
+  await changes.declaredRows(db.admin, declarations);
+  const { applied } = await applyMigrations(db.admin, all);
+  const differences = changes.compare(before, await snapshot(db.admin, before), declarations);
+  const declared = declarations.map(({ migration, table, columns, rows }) => ({
+    migration,
+    table,
+    columns,
+    rows,
+  }));
+  return { applied, differences, declared };
 }
 
 async function drill({ url, from, directory, base }) {
