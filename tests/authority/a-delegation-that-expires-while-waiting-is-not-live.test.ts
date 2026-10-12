@@ -11,7 +11,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   mintChildDelegation,
   mintDelegation,
+  resolveDelegation,
   resolveLiveById,
+  resolveNarrowedDelegation,
   type Delegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
@@ -143,6 +145,47 @@ describe.skipIf(serverUrl === undefined)(
       } finally {
         await held.letGo();
       }
+    });
+
+    it('a delegation answered narrowed is still found narrowed after it expires later in the same transaction', async () => {
+      const { world } = harness;
+      const task = { kind: 'record' as const, id: harness.alphaTask.id };
+      const minted = await world.db.app.withBusiness(
+        world.alpha,
+        async (tx) =>
+          await mintDelegation(tx, {
+            agentActorId: String(world.agent.actorId),
+            delegatePersonId: String(world.mia.personId),
+            mintedByActorId: String(world.mia.actorId),
+            purpose: `narrowed_${randomUUID().slice(0, 8)}`,
+            collections: ['task'],
+            actions: ['write'],
+            purposeScope: task,
+            expiresAt: new Date(Date.now() + 2000),
+          }),
+      );
+      if (!minted.ok) throw new Error(`the delegation was refused ${minted.refusal.code}`);
+      const { delegation, credential } = minted.value;
+      // Mia's write lapses: the delegation stays live and draws on nothing.
+      await world.db.admin.execute(
+        `update public.grants set revoked_at = greatest(now(), granted_at)
+          where collection = 'task' and action = 'write' and revoked_at is null
+            and (subject_id = $1 or subject_id = $2)`,
+        [world.mia.personId, world.mia.actorId],
+      );
+      const deadline = await expiryOf(delegation.id);
+      const agent = String(world.agent.actorId);
+      const found = await beganBefore(async (tx) => {
+        const live = await resolveDelegation(tx, agent, credential);
+        expect(live.ok, 'the delegation is live when first resolved').toBe(true);
+        await waitPast(world.db, deadline);
+        return await resolveNarrowedDelegation(tx, agent, credential, {
+          collection: 'task',
+          action: 'write',
+          scope: task,
+        });
+      });
+      expect(found).toEqual({ id: delegation.id });
     });
   },
 );
