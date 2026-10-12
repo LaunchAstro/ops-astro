@@ -212,8 +212,8 @@ describe.skipIf(serverUrl === undefined)(
       expect(rows.map((row) => row.status)).toEqual(['unverified']);
       expect(await factorOf(clientD)).toMatchObject({ status: 'unverified' });
       expect((await appliedOf()) - appliedBefore).toBe(1);
-      // The refused enrolment's provider factor is reported as an orphan.
-      expect((await eventsFor('account.factor_orphaned')).length - orphanedBefore).toBe(1);
+      // The refused enrolment's provider factor is removed there, so no orphan is reported.
+      expect((await eventsFor('account.factor_orphaned')).length - orphanedBefore).toBe(0);
     });
   },
 );
