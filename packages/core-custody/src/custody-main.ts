@@ -135,6 +135,41 @@ function redactedValue(decoded: unknown, redactText: (text: string) => string): 
 }
 
 /**
+ * The text JSON.stringify writes for a parsed value, from custody's own list rather than the
+ * call stack, for an answer nested deeper than the engine's JSON.stringify reaches (5,000
+ * levels on Node 24). Pending text is written as it comes; a pending object or array is opened
+ * into its text, each object or array inside it left pending in its place.
+ */
+function writtenDeep(decoded: unknown): string {
+  let out = '';
+  const pending: (string | object)[] = [
+    typeof decoded === 'object' && decoded !== null ? decoded : JSON.stringify(decoded),
+  ];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    if (typeof next === 'string') {
+      out += next;
+      continue;
+    }
+    const list = Array.isArray(next);
+    const pieces: (string | object)[] = [];
+    let text = list ? '[' : '{';
+    for (const [at, [key, item]] of Object.entries(next).entries()) {
+      if (at > 0) text += ',';
+      if (!list) text += `${JSON.stringify(key)}:`;
+      if (typeof item === 'object' && item !== null) {
+        pieces.push(text, item);
+        text = '';
+      } else {
+        text += JSON.stringify(item);
+      }
+    }
+    pieces.push(`${text}${list ? ']' : '}'}`);
+    for (const piece of pieces.toReversed()) pending.push(piece);
+  }
+  return out;
+}
+
+/**
  * Remove every spelling of the credential a provider might echo back: the
  * value, and a Basic pair's secret half alone, each as itself, as JSON text
  * spells it, percent-escaped in either case, or in base64 or base64url,
@@ -155,27 +190,35 @@ function redact(text: string, credential: StoredCredential): string {
   } catch {
     return redactText(text);
   }
+  const redacted = redactedValue(decoded, redactText);
   try {
-    return JSON.stringify(redactedValue(decoded, redactText));
+    return JSON.stringify(redacted);
   } catch {
-    // Too deep to write back: no body, which the broker reads as no answer.
-    return '';
+    // Deeper than the engine's writer reaches: written from custody's own list instead.
+    return writtenDeep(redacted);
   }
 }
 
 /** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
 const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
 
+/** The longest delay a timer keeps: past it, or below one, a deadline is no request. */
+const LONGEST_DEADLINE_MS = 2_147_483_647;
+
 function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
+  const deadline = shape['timeoutMs'];
   return (
     Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
     typeof shape['body'] === 'string' &&
-    typeof shape['timeoutMs'] === 'number' &&
+    typeof deadline === 'number' &&
+    Number.isInteger(deadline) &&
+    deadline >= 1 &&
+    deadline <= LONGEST_DEADLINE_MS &&
     typeof shape['maxResponseBytes'] === 'number'
   );
 }
