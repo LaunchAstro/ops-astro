@@ -3,8 +3,12 @@
 // AW-12 authorities, A6 (provider independence, TEST.md 2 and 4.5): the
 // framework stand-in runs its own loop over the four fakes with every egress
 // denied, and needs none. A tool the framework registers that reaches for the
-// network (a vendor's telemetry, a call home) is refused at the network layer
-// and recorded, so the catalogue is not the only barrier. No database.
+// network (a vendor's telemetry, a call home) through this process's socket,
+// DNS or fetch is refused and recorded, so the catalogue is not the only
+// barrier. The guard swaps those methods in this process: a tool holding one
+// it saved before the guard, or a child process, is outside it, and is part
+// two's (deny-egress.ts), the candidate's own environment with no network.
+// No database.
 
 import dns from 'node:dns';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -57,7 +61,7 @@ function onTheFakes() {
 }
 
 describe('AW-12 authorities: a framework holds none of the eight authorities', () => {
-  it('A6 provider independence: all egress is denied to the four fakes', async () => {
+  it("A6 provider independence: the four fakes need no egress, and a tool's call through this process is refused", async () => {
     const { clock, lines, model, effect, framework } = onTheFakes();
     // The whole loop on the fakes: plan, read the corpus a window at a time, write, wait.
     framework.plan(
