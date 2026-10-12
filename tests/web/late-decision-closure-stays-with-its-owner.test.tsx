@@ -12,7 +12,11 @@ import { afterEach, expect, it } from 'vitest';
 import type { WireRefusal } from '../../apps/web/src/operations/client.ts';
 import type { Settlement } from '../../apps/web/src/records/use-command.ts';
 import { useHeld } from '../../apps/web/src/screens/task/held-state.ts';
-import { DecisionClosures, useSharedNote } from '../../apps/web/src/views/decision-closures.tsx';
+import {
+  DecisionClosures,
+  useForgetOnDenial,
+  useSharedNote,
+} from '../../apps/web/src/views/decision-closures.tsx';
 import {
   keepsClosure,
   settled,
@@ -44,7 +48,8 @@ function View(props: ViewProps): ReactElement {
     props.denied === true,
     keepsClosure,
   );
-  const shared = useSharedNote(props.taskId, own, setOwn);
+  useForgetOnDenial(props.taskId, props.denied === true);
+  const shared = useSharedNote({ id: props.taskId, key: props.taskId }, own, setOwn);
   drawn.set(props.name, shared.onDecided);
   return <i data-view={props.name} data-closed={String(shared.note?.closed === true)} />;
 }

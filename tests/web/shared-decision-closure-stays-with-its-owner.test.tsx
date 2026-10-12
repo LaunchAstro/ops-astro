@@ -29,7 +29,7 @@ const ignore = (): void => {
 
 /** One view of the task: it can be refused, and it says whether it is closed. */
 function View(props: { readonly name: string }): ReactElement {
-  const shared = useSharedNote(TASK, null, ignore);
+  const shared = useSharedNote({ id: TASK, key: 'TSK-1' }, null, ignore);
   return (
     <button
       data-view={props.name}
