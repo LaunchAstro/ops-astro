@@ -163,19 +163,25 @@ describe('MP-6-5 token panel', () => {
   });
 
   it('MP-6-5 per-run rows match the ledger: a settled or released reservation holds nothing, whatever amount it kept', async () => {
-    // The runtime settles a hold by moving the reservation to `actual` (or
-    // `abandoned`) and taking its amount off the envelope, but leaves the
-    // reservation's own held amount as it was reserved.
-    for (const state of ['actual', 'abandoned']) {
+    // The runtime settles a hold `actual` at its cost, or releases it
+    // `abandoned` with nothing spent and a cause, taking it off the envelope
+    // either way; the reservation keeps the amount it reserved.
+    const ends = [
+      { state: 'actual', actualMinor: 900, classifiedCause: null },
+      { state: 'abandoned', actualMinor: null, classifiedCause: 'handback_completed' },
+    ] as const;
+    for (const end of ends) {
       const settled = reservation({
         runId: 'run-2',
-        state,
+        ...end,
         heldMinor: 2_500,
-        actualMinor: 900,
         lease: { state: 'released' },
         attempt: { state: 'settled', outcome: 'completed' },
       });
-      const shown = world({ envelope: { heldMinor: 0, actualMinor: 900 }, runs: [settled] });
+      const shown = world({
+        envelope: { heldMinor: 0, actualMinor: end.actualMinor ?? 0 },
+        runs: [settled],
+      });
       expect(tokenStory(shown.ledger, shown.lineages)).toMatchObject({
         runs: [{ heldMinor: 0 }],
       });
