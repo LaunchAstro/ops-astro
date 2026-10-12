@@ -50,6 +50,7 @@ function gate(kind: string, report: unknown, exceptions: object = {}, today = '2
 }
 const advisory = (severity: string) => ({
   advisories: { 1: { github_advisory_id: GHSA, module_name: 'planted', severity } },
+  metadata: { totalDependencies: 1 },
 });
 /** A finding on one whole line of a.ts, at the byte offsets Semgrep reports. */
 function hit(line = 1, check_id = 'r.x', path = 'a.ts', lines = LINES) {
@@ -92,7 +93,7 @@ describe('CQ-15 security gate', () => {
       ['moderate, unlisted', 'audit', advisory('moderate'), {}, 1],
       ['moderate, listed', 'audit', advisory('moderate'), MOD, 0],
       ['low', 'audit', advisory('low'), {}, 0],
-      ['none', 'audit', { advisories: {} }, {}, 0],
+      ['none', 'audit', { advisories: {}, metadata: { totalDependencies: 1 } }, {}, 0],
       ['not a report', 'audit', 'ERR_PNPM_AUDIT_BAD_RESPONSE', {}, 1],
     ]);
   });
@@ -285,7 +286,11 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-15 isolation', (
         'semgrep',
         ...scratch(scan([hit(1, 'r.x', 'a.ts', source)]), {}, source[0]),
       ]),
-      await node([GATE, 'audit', ...scratch({ advisories: {} }, {})]),
+      await node([
+        GATE,
+        'audit',
+        ...scratch({ advisories: {}, metadata: { totalDependencies: 1 } }, {}),
+      ]),
     ];
     listener.close();
     const named = [...parties, 'charlie-client'].some((x) => runs.join('').includes(x));

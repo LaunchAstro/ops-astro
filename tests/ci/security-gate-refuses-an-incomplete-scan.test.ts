@@ -2,7 +2,7 @@
 //
 // The security gate reads a scanner that failed quietly as a refusal, never as
 // a clean scan. With no exception recorded, an audit that counted no
-// dependencies, an advisory whose severity the gate does not know, and a
+// dependencies or carries no count, advisories that are not keyed by id, an advisory whose severity the gate does not know, and a
 // Semgrep report whose scanned field is anything but a list of paths are each
 // refused. The real gate runs on each report, beside a complete report that
 // passes.
@@ -40,6 +40,8 @@ it('an audit that counted no dependencies, or names an unknown severity, is refu
     'a complete audit': gate('audit', audit(812)),
     'a low advisory': gate('audit', audit(812, 'low')),
     'no dependencies counted': gate('audit', audit(0)),
+    'no dependency count at all': gate('audit', { advisories: {} }),
+    'advisories as a list': gate('audit', { ...audit(812), advisories: [] }),
     'an unknown severity': gate('audit', audit(812, 'urgent')),
     'a severity in capitals': gate('audit', audit(812, 'HIGH')),
   };
@@ -47,6 +49,8 @@ it('an audit that counted no dependencies, or names an unknown severity, is refu
     'a complete audit': 0,
     'a low advisory': 0,
     'no dependencies counted': 1,
+    'no dependency count at all': 1,
+    'advisories as a list': 1,
     'an unknown severity': 1,
     'a severity in capitals': 1,
   });
