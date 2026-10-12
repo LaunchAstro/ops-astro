@@ -95,7 +95,11 @@ function readAlert(
   info: Listed[],
 ): void {
   const code = alert['riskcode'];
-  const mapped = typeof code === 'string' ? SEVERITY_BY_RISK_CODE[code] : undefined;
+  // Own keys only: a code such as `toString` names an inherited value, not a severity.
+  const mapped =
+    typeof code === 'string' && Object.hasOwn(SEVERITY_BY_RISK_CODE, code)
+      ? SEVERITY_BY_RISK_CODE[code]
+      : undefined;
   const name = text(alert['name']) || text(alert['alert']) || '(no name given)';
   const read = typeof code === 'string' ? JSON.stringify(code) : 'none';
   const rule = redact(
