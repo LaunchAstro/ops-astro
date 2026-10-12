@@ -46,7 +46,8 @@ it('AW-13 retention isolation: another business', async () => {
   const bravoBefore = (await batchesOf(t.bravo)).length;
   clearSeen();
 
-  const passes = await pass(t.alpha);
+  // One absence confirms nothing: the next pass reads it gone again and confirms it.
+  const passes = [...(await pass(t.alpha)), ...(await pass(t.alpha))];
   expect(passes.at(-1)).toMatchObject({ code: null });
   // Alpha's pass deletes alpha's run alone, and records nothing in bravo.
   expect(deletedIds()).toContain(traceOf(t.alpha, alphaRun));

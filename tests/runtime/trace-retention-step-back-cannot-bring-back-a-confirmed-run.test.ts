@@ -74,6 +74,8 @@ it("a retention rewind must not resurrect another pass's confirmed expired trace
       );
     });
     await drain(t.alpha);
+    // Deleted and read gone, then read gone again and confirmed.
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     expect((await batchesOf(t.alpha)).flatMap((batch) => batch.expired_run_ids)).toContain(
       otherRun,
@@ -83,6 +85,10 @@ it("a retention rewind must not resurrect another pass's confirmed expired trace
     releaseDelete.release();
     await slow;
   }
+  // Two more passes read the selected run gone in turns one after the other
+  // (the held pass read it first, in the earliest turn) and step back.
+  await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
+  await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
   await drain(t.alpha);
   expect(t.target.stored.has(selectedTrace), 'the fresh selected run is restored').toBe(true);
   await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);

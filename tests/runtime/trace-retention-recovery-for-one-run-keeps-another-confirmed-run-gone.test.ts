@@ -55,7 +55,9 @@ it.skipIf(noDatabase)(
         expect(codeOf(freshA)).toBe('applied');
         await drain(t.alpha);
         expect(await cursorOf(t.alpha)).not.toBe(c0);
-        // Retention B: deletes and confirms B; recent A is excluded.
+        // Retention B: deletes B and reads it gone, then reads it gone again
+        // and confirms it; recent A is excluded.
+        await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
         const passB = await expireOnce(
           t.alpha.db.app,
           t.alpha.business,
@@ -74,7 +76,10 @@ it.skipIf(noDatabase)(
     };
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, held);
 
-    // Recovery: drain the export, then retention again.
+    // Recovery: two more passes read A gone in turns one after the other (the
+    // held pass read it first, in the earliest turn), then the export drains.
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await drain(t.alpha);
     // A's fresh handback's own span, not only some span under A's trace id.
     expect(

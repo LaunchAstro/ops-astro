@@ -82,6 +82,9 @@ it.skipIf(noDatabase)(
     await age(runId, TRACE_WINDOW_DAYS + 1);
     expect(t.target.stored.has(traceId)).toBe(true);
     await exportDuringDelete(work, traceId);
+    // One absence moves nothing; the next pass reads the run gone again and
+    // steps the cursor back.
+    await retainDeployment(t.alpha.db.app, alphaOnly, TRACE_KEY, t.target.expiry, 1);
     // Give a recovery strategy another tick; the current head's cursor
     // already passed the fresh event, so this does not restore its trace.
     await exportDeployment(t.alpha.db.app, alphaOnly, TRACE_KEY, t.target.deliver);
@@ -119,6 +122,8 @@ it.skipIf(noDatabase)(
     await drain(t.alpha);
     await age(runId, TRACE_WINDOW_DAYS + 1);
     await exportDuringDelete(work, traceId);
+    // One absence moves nothing; the next pass reads the run gone again.
+    await retainDeployment(t.alpha.db.app, alphaOnly, TRACE_KEY, t.target.expiry, 1);
     await drain(t.alpha);
     expect(t.target.stored.has(traceId), 'the fresh event is exported again').toBe(true);
     const confirmed = (await batchesOf(t.alpha)).flatMap((batch) => batch.expired_run_ids);

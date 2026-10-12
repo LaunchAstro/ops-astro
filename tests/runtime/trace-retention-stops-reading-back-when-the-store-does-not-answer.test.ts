@@ -34,14 +34,17 @@ async function agedRuns(
 }
 
 /** A read port that answers `unknown` for the reads `silent` picks, counting every read. */
-function reading(silent: (read: number) => boolean): { ports: ExpiryPorts; reads: () => number } {
+function reading(silent: (read: number, traceId: string) => boolean): {
+  ports: ExpiryPorts;
+  reads: () => number;
+} {
   let reads = 0;
   return {
     ports: {
       expire: (ids) => t.target.expiry.expire(ids),
       present: (traceId) => {
         reads += 1;
-        return silent(reads)
+        return silent(reads, traceId)
           ? Promise.resolve('unknown' as const)
           : t.target.expiry.present(traceId);
       },
@@ -87,13 +90,33 @@ it.skipIf(noDatabase)(
 it.skipIf(noDatabase)(
   'Trace retention: after a delete, one unanswered read does not stop the rest of the page',
   async () => {
-    await agedRuns('trace retention silent read after delete', 2);
-    const first = reading((read) => read === 1);
+    const works = await agedRuns('trace retention silent read after delete', 2);
+    // The owed runs are read before the page: the page's first read is the silent one.
+    const page = new Set(
+      works.map((work) =>
+        derivedId(TRACE_KEY, ['trace', t.alpha.business, String(work.picked['runId'])], 32),
+      ),
+    );
+    let pageReads = 0;
+    const first = reading((_read, traceId) => {
+      if (!page.has(traceId)) return false;
+      pageReads += 1;
+      return pageReads === 1;
+    });
     const passes = await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, first.ports);
     expect(passes[0], 'the page is read whole after its delete').toMatchObject({
       runs: 2,
-      confirmed: 1,
+      confirmed: 0,
       code: 'expiry_unconfirmed',
+    });
+    expect(pageReads, 'both runs of the page are read').toBe(2);
+    // The run read gone is read gone again by the next pass, and confirmed.
+    expect(
+      await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry),
+    ).toContainEqual({
+      runs: 1,
+      confirmed: 1,
+      code: null,
     });
   },
 );

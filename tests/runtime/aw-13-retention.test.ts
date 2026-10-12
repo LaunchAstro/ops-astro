@@ -50,8 +50,7 @@ it('AW-13 retention: a past-window run’s trace is deleted by its derived id th
   await drain(t.alpha);
   expect(t.target.stored.has(traceOf(t.alpha, old))).toBe(true);
   clearSeen();
-  const passes = await pass(t.alpha);
-  expect(passes.at(-1)).toMatchObject({ code: null });
+  expect((await pass(t.alpha)).at(-1)).toMatchObject({ code: 'expiry_unconfirmed' });
   expect(deletedIds()).toContain(traceOf(t.alpha, old));
   expect(deletedIds()).not.toContain(traceOf(t.alpha, fresh));
   expect(t.target.stored.has(traceOf(t.alpha, old))).toBe(false);
@@ -60,6 +59,9 @@ it('AW-13 retention: a past-window run’s trace is deleted by its derived id th
   expect(t.target.methods[0]).toBe('DELETE');
   expect(t.target.methods).toContain('GET');
   expect(new Set(t.target.ingestion)).toEqual(new Set(['4']));
+  // One absence confirms nothing: the next pass reads it gone again and confirms it.
+  const passes = await pass(t.alpha);
+  expect(passes.at(-1)).toMatchObject({ code: null });
   const batch = (await batchesOf(t.alpha)).find((one) => one.expired_run_ids.includes(old));
   expect(batch).toMatchObject({ window_days: TRACE_WINDOW_DAYS, code: null });
   expect(batch?.expired_run_ids).not.toContain(fresh);
@@ -77,10 +79,11 @@ it('AW-13 retention trusts no success reply: a delete the target skipped stays f
   const unconfirmed = await batchesOf(t.alpha);
   expect(unconfirmed.some((one) => one.expired_run_ids.includes(old))).toBe(false);
   expect(unconfirmed.at(-1)).toMatchObject({ code: 'expiry_unconfirmed' });
-  // The next pass deletes it again and confirms it.
+  // The next pass deletes it again, and the one after reads it gone again and confirms it.
   clearSeen();
   await pass(t.alpha);
   expect(deletedIds()).toContain(traceOf(t.alpha, old));
+  await pass(t.alpha);
   expect((await batchesOf(t.alpha)).some((one) => one.expired_run_ids.includes(old))).toBe(true);
 });
 
@@ -162,6 +165,8 @@ it('AW-13 retention leaves a run with events not yet exported, and a run inside 
 
 it('AW-13 retention: two passes at once both finish, and the run’s trace is gone', async () => {
   const old = await oldRun(t.alpha);
+  // One pass reads it gone once; the two at once each read it again.
+  await pass(t.alpha);
   const both = await Promise.all([pass(t.alpha), pass(t.alpha)]);
   for (const passes of both) {
     for (const batch of passes) expect(batch.code).toBeNull();

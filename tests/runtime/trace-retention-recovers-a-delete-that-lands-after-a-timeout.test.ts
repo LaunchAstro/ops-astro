@@ -69,7 +69,9 @@ it.skipIf(noDatabase)(
     await queued();
 
     // Export and retention again, the fresh event still inside the window.
+    // Two passes: one absence moves nothing, the second steps the cursor back.
     await exportFor(t.alpha);
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await exportFor(t.alpha);
     // The fresh handback's own span, not only some span under R's trace id.

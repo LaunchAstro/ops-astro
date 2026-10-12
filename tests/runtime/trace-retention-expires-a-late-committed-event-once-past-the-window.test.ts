@@ -100,7 +100,11 @@ it.skipIf(noDatabase)(
     try {
       await Promise.race([written, held]);
 
-      // The whole pass while T is open: delete, read-back, confirmation, both resends.
+      // Two passes while T is open: the delete and a read-back, then a second
+      // read-back that confirms, with both resends.
+      expect(await expireOnce(s.db.app, s.business, TRACE_KEY, t.target.expiry)).toEqual([
+        { runs: 1, confirmed: 0, code: 'expiry_unconfirmed' },
+      ]);
       const batches = await expireOnce(s.db.app, s.business, TRACE_KEY, t.target.expiry);
       expect(batches).toEqual([{ runs: 1, confirmed: 1, code: null }]);
       expect((await batchesOf(s)).at(-1)?.expired_run_ids).toContain(runId);

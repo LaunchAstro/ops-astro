@@ -56,6 +56,8 @@ it.skipIf(noDatabase)(
       // eslint-disable-next-line no-await-in-loop -- one run after another
       await age(runOf(work), TRACE_WINDOW_DAYS + 1);
     }
+    // Deleted and read gone in one pass, read gone again and confirmed in the next.
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     const first = await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     expect(first.at(-1)).toMatchObject({ runs: 4, confirmed: 4, code: null });
     await handBack([a, u1, u2, u3]);
@@ -109,7 +111,8 @@ it.skipIf(noDatabase)(
           : t.target.expiry.present(traceId, spanId);
       },
     };
-    for (let round = 0; round < 3; round += 1) {
+    // Four rounds: D's second absence, which recovers it, comes a pass after its first.
+    for (let round = 0; round < 4; round += 1) {
       // eslint-disable-next-line no-await-in-loop -- retention, then export, in turn
       await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, ports);
       // eslint-disable-next-line no-await-in-loop -- retention, then export, in turn
