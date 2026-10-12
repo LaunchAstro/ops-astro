@@ -14,9 +14,7 @@
 // label event, so neither is ever held. Anything this cannot read runs the
 // checks in full: a mistake here costs runner time, never a check.
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { readFileSync, realpathSync } from 'node:fs';
 
 export const LABEL = 'sent-back';
 
@@ -48,6 +46,7 @@ function main() {
   return 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   process.exit(main());
 }

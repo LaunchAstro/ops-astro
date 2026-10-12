@@ -3,7 +3,7 @@
 /* eslint-disable max-lines -- the one parity check: the app's scan and the surfaces' probes */
 // The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseSync } from '@swc/core';
 import {
@@ -310,7 +310,8 @@ export function run(
   return { rows, failures };
 }
 
-if (process.argv[1] === import.meta.filename) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   const { rows, failures } = run();
   if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
   else process.stdout.write(renderReport(rows, failures));

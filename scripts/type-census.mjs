@@ -21,7 +21,7 @@
 //
 //   node scripts/type-census.mjs [--json] [--tokens <file>] [--css <file>]... [--tsx <file>]...
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -257,7 +257,8 @@ const files = (dir, endings) =>
     .map((entry) => join(entry.parentPath, entry.name))
     .toSorted();
 
-if (process.argv[1] === import.meta.filename) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   const args = process.argv.slice(2);
   const all = (flag) => args.flatMap((arg, at) => (arg === flag ? [args[at + 1]] : []));
   const css = all('--css');

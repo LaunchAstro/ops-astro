@@ -15,7 +15,7 @@
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseSheet } from './type-census.mjs';
 
@@ -87,7 +87,8 @@ export function diffTokens(css, expected) {
   return problems;
 }
 
-if (process.argv[1] === import.meta.filename) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   const args = process.argv.slice(2);
   const option = (flag, fallback) => {
     const at = args.indexOf(flag);

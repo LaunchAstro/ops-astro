@@ -14,7 +14,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const sort = (entries) =>
@@ -198,7 +197,8 @@ export function options(args, names) {
   return result;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   try {
     const [command, ...args] = process.argv.slice(2);
     const opts = options(args, ['repo', 'candidate', 'manifest']);
