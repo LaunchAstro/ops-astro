@@ -13,7 +13,8 @@
 // - `config.json`: every `/api` answer sent `private, no-store`; `/api` goes to
 //   the function before any static file is looked for, so none can shadow it,
 //   and every other path to a static file, so no page response is made from
-//   records. No middleware, nothing prerendered.
+//   records, sent with the headers that refuse another site a frame
+//   (`framing-headers.ts`). No middleware, nothing prerendered.
 // - `build.json` at the root: the web build's stamp and the output's digest,
 //   so a deploy and a promotion can check they hold the same bytes. The
 //   digest covers every file, `build.json` included without its own digest.
@@ -27,6 +28,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
 import { readStamp } from '../../apps/web/build-stamp.ts';
+import { FRAMING_HEADERS } from '../../apps/web/framing-headers.ts';
 import { buildOutputProblems, outputDigest, stampOutput } from './build-output.ts';
 
 export { outputDigest };
@@ -45,6 +47,7 @@ const CONFIG = {
   routes: [
     { src: '^/api(?:/.*)?$', headers: NO_STORE, continue: true },
     { src: '^/api(?:/.*)?$', dest: '/api' },
+    { src: '^/.*$', headers: FRAMING_HEADERS, continue: true },
     { handle: 'filesystem' },
     { src: '^/.*$', dest: '/index.html' },
   ],
