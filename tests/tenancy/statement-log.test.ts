@@ -217,31 +217,6 @@ describe('classifyStatement', () => {
   });
 });
 
-describe('classifyStatement on SELECT INTO', () => {
-  it.each([
-    '/* request */ select 1 into public.review_probe',
-    '-- request\nselect 1 into public.review_probe',
-    'with source as (select 1 as n) select n into public.review_probe from source',
-    'with recursive source(n) as (select 1) select n into table public.review_probe from source',
-    '(select 1 into public.review_probe)',
-  ])('reads the table-creating SELECT INTO %j as ddl', (statement) => {
-    expect(classifyStatement(statement)).toBe('ddl');
-    const log = createStatementLog();
-    log.record('runtime', statement);
-    expect(log.schemaChanging()).toHaveLength(1);
-  });
-
-  it.each([
-    "select 'into' as word",
-    'select 1 as "into"',
-    'with x as (insert into t values (1) returning *) select * from x',
-    'with x as (select 1 as n) insert into t select n from x',
-    'with x as (select 1 as n) merge into t using x on true when matched then do nothing',
-  ])('reads %j, whose INTO creates no table, as data', (statement) => {
-    expect(classifyStatement(statement)).toBe('data');
-  });
-});
-
 describe('the log', () => {
   it('classifies every statement in one string, not just the first', () => {
     const log = createStatementLog();

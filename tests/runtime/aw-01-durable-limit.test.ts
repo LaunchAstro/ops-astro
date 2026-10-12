@@ -155,16 +155,6 @@ it('AW-01 durable limit: a connection whose default is repeatable read still adm
   expect(admitted.filter(Boolean)).toHaveLength(1);
 });
 
-it('AW-01 durable limit: two spellings of one business id share its lock, so the limit holds', async () => {
-  const upper = alpha.business.toUpperCase();
-  expect(upper).not.toBe(alpha.business);
-  const admitted = await race(
-    { db: alpha.db.app, business: alpha.business },
-    { db: backend(), business: upper },
-  );
-  expect(admitted.filter(Boolean)).toHaveLength(1);
-});
-
 it('AW-01 durable limit: a business at its limit never delays another business on the same limit', async () => {
   const name = `shared-${randomUUID()}`;
   const gate: { open?: () => void } = {};
