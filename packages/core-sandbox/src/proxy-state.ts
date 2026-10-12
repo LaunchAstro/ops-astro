@@ -139,7 +139,9 @@ export class ProxyState {
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
-    if (op.kind === 'start' && reply.status === NO_CONTENT) this.#started = op.id;
+    // A start answered for a container since replaced is that container's, never the next one's.
+    const current = 'id' in op && this.#containers.container?.id === op.id;
+    if (op.kind === 'start' && reply.status === NO_CONTENT && current) this.#started = op.id;
     const at = this.#ports.now();
     if (op.kind === 'wait') {
       const late = this.#reached(op.id, at);
