@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A task created from a conversation is activity there. Here it races the
-// conversation's system operations, each on a connection of its own, in both
-// orders, on a fresh Postgres. What holds after both commit: the wrap-up does
-// not cover the conversation, or it lists the task; a purge never lets a body
-// go whose conversation gained a task its wrap-up does not list; and no task
-// names a purged conversation as its origin.
-//
-// The wrap-up or the purge holds the conversation's row `for update` on its
-// own connection while the create, through the mounted API, is seen waiting on
-// it. For the other order, the create is stopped after its write to the
-// conversation: its audit event waits on the audit chain's lock, held on a
-// third connection, and the wrap-up or purge is then seen waiting on the
-// create. Every wait is read from `pg_stat_activity`, never assumed after a
-// sleep.
+// wrap-up and the purge, each on a connection of its own, in both orders.
+// After both commit, the wrap-up does not cover the conversation or lists the
+// task, a purge never lets go a body whose new task its wrap-up misses, and
+// no task names a purged conversation. Every wait is read from
+// `pg_stat_activity`, never assumed after a sleep; for the create-first
+// order, the create is stopped after its write by holding the audit chain's
+// lock on a third connection.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -46,9 +40,11 @@ if (serverUrl === undefined) {
 }
 
 interface ServedWrapUp {
-  readonly version: number;
   readonly items: readonly { key: string; pointers: readonly { id: string }[] }[];
 }
+const written = (version: number) => ({ ok: true, version, written: true });
+const NOT_QUIET = { ok: false, reason: 'not_quiet' };
+const STALE = { ok: false, code: 'WRAP_UP_ABSENT' };
 
 // eslint-disable-next-line max-lines-per-function -- one world, every order on it
 describe.skipIf(serverUrl === undefined)('a task created while its conversation is held', () => {
@@ -69,11 +65,6 @@ describe.skipIf(serverUrl === undefined)('a task created while its conversation 
     );
   const create = async (conversationId: string, title: string): Promise<Answer> =>
     await w.as(w.owner, 'task.create', { fields: { title }, conversationId });
-  const messages = async (conversationId: string): Promise<number> =>
-    await w.count(
-      'select count(*) as n from public.conversation_messages where conversation_id = $1',
-      [conversationId],
-    );
   /** Tasks whose creation names the conversation as its origin. */
   const originTasks = async (conversationId: string): Promise<number> =>
     await w.count(
@@ -173,11 +164,7 @@ describe.skipIf(serverUrl === undefined)('a task created while its conversation 
   async function wrappedAndDue(body: string): Promise<string> {
     const conversationId = await started(w, w.owner, { body });
     await w.age(conversationId, 8);
-    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual({
-      ok: true,
-      version: 1,
-      written: true,
-    });
+    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual(written(1));
     return conversationId;
   }
 
@@ -205,20 +192,10 @@ describe.skipIf(serverUrl === undefined)('a task created while its conversation 
     expect(race.first).toEqual({ ok: true, version: 1, written: true });
     expect(race.created.status, JSON.stringify(race.created.body)).toBe(200);
     const taskId = (race.created.body as { recordId: string }).recordId;
-    expect(await purgeOn(w.fixture.db.app, conversationId)).toEqual({
-      ok: false,
-      code: 'WRAP_UP_ABSENT',
-    });
-    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual({
-      ok: false,
-      reason: 'not_quiet',
-    });
+    expect(await purgeOn(w.fixture.db.app, conversationId)).toEqual(STALE);
+    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual(NOT_QUIET);
     await w.age(conversationId, 8);
-    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual({
-      ok: true,
-      version: 2,
-      written: true,
-    });
+    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual(written(2));
     expect(await tasksCreated(conversationId)).toEqual([taskId]);
   });
 
@@ -232,13 +209,9 @@ describe.skipIf(serverUrl === undefined)('a task created while its conversation 
     );
     expect(race.created.status, JSON.stringify(race.created.body)).toBe(200);
     const taskId = (race.created.body as { recordId: string }).recordId;
-    expect(race.racer).toEqual({ ok: false, reason: 'not_quiet' });
+    expect(race.racer).toEqual(NOT_QUIET);
     await w.age(conversationId, 8);
-    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual({
-      ok: true,
-      version: 1,
-      written: true,
-    });
+    expect(await wrapUpOn(w.fixture.db.app, conversationId)).toEqual(written(1));
     expect(await tasksCreated(conversationId)).toEqual([taskId]);
   });
 
@@ -269,8 +242,13 @@ describe.skipIf(serverUrl === undefined)('a task created while its conversation 
       async () => await purgeOn(second, conversationId),
     );
     expect(race.created.status, JSON.stringify(race.created.body)).toBe(200);
-    expect(race.racer).toEqual({ ok: false, code: 'WRAP_UP_ABSENT' });
-    expect(await messages(conversationId)).toBe(1);
+    expect(race.racer).toEqual(STALE);
+    expect(
+      await w.count(
+        'select count(*) as n from public.conversation_messages where conversation_id = $1',
+        [conversationId],
+      ),
+    ).toBe(1);
     expect(await originTasks(conversationId)).toBe(1);
   });
 
