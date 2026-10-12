@@ -610,8 +610,20 @@ function ensureGateKey() {
     if (cause.code !== 'EEXIST') throw cause;
     const { GATE_SIGNING_KEY_ID: keptId, GATE_SIGNING_SECRET: kept } = readEnvFile(gateFile);
     if (keptId && kept) return { id: keptId, secret: kept, fresh: false };
-    // A file there that holds no key is replaced, as it always was.
-    renameSync(staging, gateFile);
+    // A file there that holds no key is replaced, under an exclusive lock and
+    // only while it still holds none: another seed that replaced it first has
+    // already handed its key out, so that key is the one kept and returned.
+    const lock = `${gateFile}.lock`;
+    writeFileSync(lock, '', { flag: 'wx' });
+    try {
+      const now = readFileSync(gateFile, 'utf8');
+      const field = (name) => new RegExp(`^${name}=(.+)$`, 'mu').exec(now)?.[1];
+      const [nowId, nowSecret] = [field('GATE_SIGNING_KEY_ID'), field('GATE_SIGNING_SECRET')];
+      if (nowId && nowSecret) return { id: nowId, secret: nowSecret, fresh: false };
+      renameSync(staging, gateFile);
+    } finally {
+      rmSync(lock, { force: true });
+    }
   } finally {
     rmSync(staging, { force: true });
   }
