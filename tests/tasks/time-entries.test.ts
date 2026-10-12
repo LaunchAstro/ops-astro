@@ -2,12 +2,12 @@
 //
 // MP-4-6: the time entry store, against a real database (CS-4.1, CS-4.28 to
 // CS-4.31). A person has one running timer: the database holds it with a
-// partial unique index, so two starts at once leave one running entry and the
-// other is told so. Stopping logs whole minutes, rounded up, never fewer than
-// one, so elapsed time is never dropped. A new entry takes its task's Ad hoc
-// mark. Notes and deletes reach only the person's own entries, and a running
-// entry is stopped before it can be deleted. The commands over this store
-// come next (MP-4-6's command step).
+// partial unique index, so a second start is told so (two starts at once, on
+// two connections, are in timer-races.test.ts). Stopping logs whole minutes,
+// rounded up, never fewer than one, so elapsed time is never dropped. A new
+// entry takes its task's Ad hoc mark. Notes and deletes reach only the
+// person's own entries, and a running entry is stopped before it can be
+// deleted. The commands over this store come next (MP-4-6's command step).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -169,26 +169,6 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 one running timer per person', 
     expect(second).toStrictEqual({ kind: 'running' });
     expect(await running(noah)).toBe(1);
     await inAlpha(async (tx) => await stopTimer(tx, { taskId: tasks['site'] ?? '', ...who(noah) }));
-  });
-
-  it('two starts at once leave exactly one running entry', async () => {
-    const both = await Promise.all(
-      ['site', 'other'].map(
-        async (name) =>
-          await inAlpha(
-            async (tx) => await startTimer(tx, { taskId: tasks[name] ?? '', ...who(ada) }),
-          ),
-      ),
-    );
-    expect(both.map((answer) => answer.kind).toSorted()).toStrictEqual(['running', 'started']);
-    expect(await running(ada)).toBe(1);
-    const stopAll = async (tx: TenantQuery) => {
-      for (const name of ['site', 'other']) {
-        // eslint-disable-next-line no-await-in-loop -- one stop at a time
-        await stopTimer(tx, { taskId: tasks[name] ?? '', ...who(ada) });
-      }
-    };
-    await inAlpha(stopAll);
   });
 });
 
