@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Seven storage guards that let a row past what they promise, each closed
+-- Eight storage guards that let a row past what they promise, each closed
 -- here, since an applied migration is history and does not change.
 --
 -- 1. A CHECK passes when it evaluates to NULL. Four name a nullable column in
@@ -37,6 +37,8 @@
 --    statement, so the database holds it too. The trigger reads occurrences
 --    and activations, which that role may not, so it is a definer, pinned,
 --    and it writes nothing.
+--
+-- 8. A client's name and a connection's label refuse hidden characters (below).
 --
 -- Every new trigger function is revoked from PUBLIC and executed by no role.
 
@@ -420,3 +422,46 @@ create constraint trigger planned_runs_origin_is_approved
   after insert on public.planned_runs
   for each row when (new.origin_occurrence_id is not null)
   execute function public.planned_runs_origin_is_approved();
+
+-- 8. A client's name and a connection's label are drawn on screens every
+--    member with the key can open, so neither may hide text or pass for
+--    another (#1000). A connection's label takes the signal grammar
+--    (`signal_text`, 20261005201200) in place of 20261005153051's deny-list.
+--    A client's name stays open to every script, as `drawn_name`: it refuses
+--    control (Cc), format (Cf: direction controls, zero-width and tag
+--    characters), private-use (Co) and unassigned (Cn, `unicode_assigned`)
+--    characters, line and paragraph separators, variation selectors, and a
+--    leading mark from the combining blocks that stack on any letter. A stored row either refuses is named by
+--    id and fails this migration; no row is rewritten.
+
+create domain public.drawn_name as text
+  constraint drawn_name_shape check (
+    unicode_assigned(value)
+    and value !~ '[\u0001-\u001F\u007F-\u009F\u00AD\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u180B-\u180F\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uFE00-\uFE0F\uFEFF\uFFF9-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0000-\U000E0FFF\uE000-\uF8FF\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]'
+    and value !~ '^[\u0300-\u036F\u0483-\u0489\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]'
+  );
+
+do $$
+declare
+  named_clients text;
+  named_connections text;
+begin
+  select string_agg(id::text, ', ' order by id) into named_clients
+    from (select id from public.clients
+           where not pg_input_is_valid(name, 'public.drawn_name') order by id limit 20) c;
+  select string_agg(id::text, ', ' order by id) into named_connections
+    from (select id from public.connections
+           where not pg_input_is_valid(label, 'public.signal_text') order by id limit 20) c;
+  if named_clients is not null or named_connections is not null then
+    raise exception 'drawn names: rename these rows first; clients %, connections %',
+      coalesce(named_clients, 'none'), coalesce(named_connections, 'none')
+      using errcode = 'check_violation';
+  end if;
+end;
+$$;
+
+alter table public.clients alter column name type public.drawn_name;
+
+alter table public.connections
+  drop constraint connections_label_shape,
+  alter column label type public.signal_text;

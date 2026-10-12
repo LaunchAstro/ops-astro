@@ -258,7 +258,6 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ['scope', ''],
     ['read_components', ['campaigns', 'spend_daily']],
     ['label', 'Café Ads (AU)'],
-    ['label', 'Ads 👩\u200D💻'],
   ];
   const GRAMMAR_REFUSED: readonly (readonly [Parameters<typeof writeConnection>[0], unknown])[] = [
     ['auth_method', '<img src=x onerror=alert(1)>'],
@@ -279,6 +278,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ['label', '\u3164'],
     ['label', 'Linked\u2062In'],
     ['label', '\u200DLinkedIn'],
+    // A connection's label is signal_text: no emoji and no joiner (20261012052116).
+    ['label', 'Ads 👩\u200D💻'],
   ];
   const repairRows = async (): Promise<number> =>
     await controls.count('select count(*) as n from public.connection_repairs', []);

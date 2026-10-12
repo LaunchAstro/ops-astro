@@ -138,7 +138,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands, security f
 
   it('SEC-P05B-PR.1 a promote label never carries what the label guard refuses: such a name is shown by its identifier', async () => {
     const spoofed = await w.controls.fixture.db.app.withBusiness(w.alpha, async (tx) => {
-      const made = await createClient(tx, `Client ${at(0x202e)}C`, w.admin.actorId);
+      // Storage refuses a direction override in a name (drawn_name); a braille
+      // blank it keeps, and the label guard refuses.
+      const made = await createClient(tx, `Client ${at(0x2800)}C`, w.admin.actorId);
       if (!made.ok) throw new Error('sec-p05b: the client was not made');
       return made.value;
     });
