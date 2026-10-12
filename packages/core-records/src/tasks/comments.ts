@@ -92,8 +92,16 @@ export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T
  * A conversation message's time and place, read under its lock (conversations.ts):
  * the wall clock, so a send that waited is stamped after the one before, and
  * `created_at`, a strict order of writes that ranks one millisecond's messages.
+ * Both only move forward: a clock that steps back stamps the message in the
+ * millisecond of the conversation's last message or furthest read marker, where
+ * its rank places it after both, so it never hides behind a marker already set.
  */
-const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CLOCK_TEXT = `to_char(greatest(date_trunc('milliseconds', clock_timestamp()),
+  (select max(c.ts_1) from records c where c.business_id = $1 and c.record_type_id = $3
+      and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null),
+  (select date_trunc('milliseconds', max(m.last_read_at)) from public.team_conversation_members m
+    where m.business_id = $1 and m.conversation_id = ($11::text)::uuid))
+  at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
   from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 
