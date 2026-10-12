@@ -28,6 +28,7 @@ import type {
   ServiceHealthState,
   ServiceHealthView,
 } from '../../../core-wire/src/index.ts';
+import { readableText } from '../commands/values.ts';
 
 /** One service as a source reports it. */
 export interface ServiceObservation {
@@ -177,8 +178,8 @@ function isObservation(value: unknown, now: Date): boolean {
     typeof name === 'string' &&
     name.trim().length > 0 &&
     name.length <= NAME_LIMIT &&
-    // No control characters: a name is shown as text, on one line.
-    [...name].every((char) => char >= ' ' && char !== '\u007F') &&
+    // A name is shown as text, on one line.
+    readableText(name) &&
     (scope === 'installation' || scope === 'client-site') &&
     (up === null || typeof up === 'boolean') &&
     (observedAt === null ||
