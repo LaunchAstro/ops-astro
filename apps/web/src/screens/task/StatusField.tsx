@@ -11,8 +11,8 @@
 // **One completion transition.** Complete (the completed category) is
 // `task.complete`, never `task.set_state`, which refuses it (MP-4-13). Leaving
 // Complete is `task.reopen` first, with its reason, which lands in the
-// unstarted state; the chosen state then goes through `task.set_state` at the
-// revision the reopen answered, unless the unstarted state was the choice. Each
+// first unstarted state; the chosen state then goes through `task.set_state` at
+// the revision the reopen answered, unless that state was the choice. Each
 // write is at the revision read; a landed one is counted (`onChanged`) and a
 // refusal is quoted in the server's words.
 
@@ -48,6 +48,7 @@ export interface StatusFieldProps {
 async function sendState(
   client: OperationsClient,
   task: Task,
+  states: readonly TaskStateView[],
   target: TaskStateView,
   onReopened: () => void,
 ): Promise<CallResult<CommandOutcome>> {
@@ -64,7 +65,9 @@ async function sendState(
     );
     if (isRefusal(reopened) || isUnavailable(reopened)) return reopened;
     onReopened();
-    if (target.machineCategory === 'unstarted') return reopened;
+    // The reopen lands in the first unstarted state, in the order the states were read.
+    const landed = states.find((each) => each.machineCategory === 'unstarted');
+    if (target.id === landed?.id) return reopened;
     revision = reopened.value.revision;
   }
   return await client.mutate(
@@ -87,7 +90,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
     let reopened = false;
     run(
       () =>
-        sendState(client, task, target, () => {
+        sendState(client, task, states, target, () => {
           reopened = true;
         }),
       (settlement) => {
