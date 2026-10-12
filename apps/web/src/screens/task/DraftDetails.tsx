@@ -17,7 +17,8 @@
 //
 // **A client's project holds only that client's work.** The list offers the
 // agency's own projects and the draft's client's, as `task.move` admits them,
-// and choosing another client drops a project of a different one.
+// and choosing another client drops a project the list names under a
+// different one. A project the list has not answered for stays.
 
 import { useEffect, useState, type ReactElement } from 'react';
 import {
@@ -163,12 +164,15 @@ function useClients(client: OperationsClient, asked: boolean) {
   return answer;
 }
 
-/** Whether the chosen project still takes the client's work: none chosen, or the agency's own. */
-function projectKept(projects: Projects, boardId: string | null): boolean {
-  if (boardId === null) return true;
-  return (
-    Array.isArray(projects) && projects.some((one) => one.id === boardId && one.client === null)
-  );
+/**
+ * Whether the chosen project goes once `clientId` is chosen: only when the
+ * project list has answered and names it under another client. An unanswered
+ * or failed list proves nothing, so the project stays and `task.move` judges
+ * it at Create, where a refusal stops everything after it.
+ */
+function projectDropped(projects: Projects, boardId: string | null, clientId: string | null) {
+  const project = Array.isArray(projects) ? projects.find((one) => one.id === boardId) : undefined;
+  return project !== undefined && project.client !== null && project.client !== clientId;
 }
 
 function DraftClient(props: Props & { readonly projects: Projects }): ReactElement {
@@ -194,9 +198,9 @@ function DraftClient(props: Props & { readonly projects: Projects }): ReactEleme
         }}
         onChoose={(clientId) => {
           props.put(
-            projectKept(props.projects, props.draft.boardId)
-              ? { clientId }
-              : { clientId, boardId: null },
+            projectDropped(props.projects, props.draft.boardId, clientId)
+              ? { clientId, boardId: null }
+              : { clientId },
           );
         }}
       />
