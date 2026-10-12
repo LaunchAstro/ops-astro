@@ -76,6 +76,9 @@ export function DraftPanel(props: DraftPanelProps): ReactElement {
   );
 }
 
+/** The fields the admission sentence names: once one is edited, it no longer claims the guesses. */
+const GUESSED = ['due', 'category', 'owner', 'priority'] as const;
+
 type Kept = ReturnType<typeof useKeptDraft>;
 type Creating = ReturnType<typeof useCreate>;
 
@@ -96,7 +99,9 @@ function DraftBody(
       <DraftFields
         client={props.client}
         draft={kept.draft}
-        put={kept.put}
+        put={(next) => {
+          kept.put(GUESSED.some((field) => field in next) ? { ...next, why: null } : next);
+        }}
         name={kept.name}
         locked={creating.busy || unsettled}
       />
