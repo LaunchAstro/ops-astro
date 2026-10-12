@@ -3,9 +3,9 @@
 // The Projects board's name cell (MP-5-9, BOARDS P-30, P-32, P-33). The tick
 // completes or reopens through the page's one completion transition; on a
 // task the reader's agent holds it says it sends the work to review. A plain
-// click opens the task after 260ms, the window a double-click needs; a
-// double-click renames in place, Enter or blur saving, Escape cancelling, a
-// blank or unchanged name saving nothing. The hover box holds the timer (only
+// click opens the task after 500ms, the window a double-click needs; a second
+// click inside it, however slow, renames in place instead, Enter or blur
+// saving, Escape cancelling, a blank or unchanged name saving nothing. The hover box holds the timer (only
 // when the page can start one), add subtask, and the door to where the work
 // lives with its in-app or external mark. Modified clicks keep the link's own
 // behaviour, so middle-click still opens the page.
@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { ProjectRow, RowActions } from '../board/projects.ts';
 import { Icon } from '../primitives/Icon.tsx';
 
-const OPEN_DELAY_MS = 260;
+const OPEN_DELAY_MS = 500;
 const followsLink = (
   event: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'altKey'>,
 ): boolean => event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey;
@@ -96,6 +96,11 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
         const onOpen = actions?.onOpen;
         if (onOpen === undefined || followsLink(event)) return;
         event.preventDefault();
+        // A second click while the open waits, however slow, is a rename.
+        if (opening.current !== null && actions?.onRename !== undefined) {
+          stopOpening();
+          return setRenaming(row);
+        }
         stopOpening();
         if (event.shiftKey) return onOpen(row, true);
         opening.current = setTimeout(() => {

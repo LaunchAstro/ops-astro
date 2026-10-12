@@ -101,7 +101,7 @@ const NAME = (id: string): string => `tr[data-row="${id}"] .cbd__nm`;
 const press = async (target: Element | null): Promise<void> => {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(600);
   });
 };
 
