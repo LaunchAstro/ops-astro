@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a receipt's settlement reads the reservation's spend, so a hold with a settled model call reports what the observation and the ledger report"
+}
