@@ -117,6 +117,8 @@ interface Opening {
   /** The refusal code, stale by default; `once` refuses only the first matching call. */
   readonly code?: string;
   readonly once?: boolean;
+  /** The refusal's names, the stale revision by default. */
+  readonly names?: readonly string[];
   /** How many matching calls are answered before the refusing starts; none by default. */
   readonly after?: number;
   /** Commands wait on this before they are answered. */
@@ -164,6 +166,7 @@ function answer(
   refusing: () => boolean,
   code: string,
   region: ConnectionGraduationResult,
+  names: readonly string[] = ['revision=4'],
 ): Response {
   if (at.endsWith('/connection/graduation')) return json(region);
   if (at.endsWith('/connection/fleet')) return json(FLEET);
@@ -172,7 +175,7 @@ function answer(
       {
         refused: true,
         code,
-        names: ['revision=4'],
+        names,
         fixes: ['Read the region again and act on the revision it is at now.'],
       },
       409,
@@ -294,7 +297,13 @@ async function open(
     }
     const reply =
       (await register.answer(at, call)) ??
-      answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
+      answer(
+        at,
+        () => refusing(at),
+        opening.code ?? 'VERSION_STALE',
+        stored.region(),
+        opening.names,
+      );
     if (COMMAND.test(at) && reply.ok) stored.keep(at, bodyOf(call));
     if (opening.lose?.test(at) === true && lost++ === 0) throw new TypeError('Failed to fetch');
     return reply;
@@ -1273,6 +1282,24 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     const [refused, retried] = filingsIn(stale.sent);
     expect(refused?.['draftId']).toMatch(UUID);
     expect(retried?.['draftId']).toBe(refused?.['draftId']);
+  });
+
+  it('a filing refused because its draft was filed with other values keeps the form and files it under a new draft', async () => {
+    const { page, sent } = await open(/\/mandate\/file$/u, {
+      code: 'FIELD_VALUE_INVALID',
+      names: ['draftId'],
+      once: true,
+    });
+    await fillApproval(page);
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(valueOf(page, '[data-mandate-label]')).toBe('Approve posts');
+    await page.click('[data-mandate-add]');
+    await tick();
+    const [refused, again] = filingsIn(sent);
+    expect(again?.['label']).toBe('Approve posts');
+    expect(again?.['draftId']).toMatch(UUID);
+    expect(again?.['draftId']).not.toBe(refused?.['draftId']);
   });
 
   it('Client A’s draft is never sent for Client B', async () => {
