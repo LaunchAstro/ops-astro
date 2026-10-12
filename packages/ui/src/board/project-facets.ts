@@ -107,15 +107,14 @@ export function projectFacets(
 /**
  * How many client filters an address has on (the Client column's rule, P-23).
  * An earlier slugged id is no filter: the board drops it, so it hides no column.
- * Given the board's facets, an id none of them offers is dropped the same way.
+ * Given the board's facets, an id none of them offers is dropped the same way,
+ * and an id written twice counts once, as the board keeps it once (readView).
  */
 export function clientFiltersIn(address: string, offered?: readonly Facet<ProjectRow>[]): number {
   const ids = new URLSearchParams(address.startsWith('?') ? address.slice(1) : address).get('f');
-  return (ids ?? '')
-    .split(',')
-    .filter(
-      (id) =>
-        /^client:".*"$/u.test(id) &&
-        (offered === undefined || offered.some((facet) => facet.id === id)),
-    ).length;
+  return [...new Set((ids ?? '').split(','))].filter(
+    (id) =>
+      /^client:".*"$/u.test(id) &&
+      (offered === undefined || offered.some((facet) => facet.id === id)),
+  ).length;
 }
