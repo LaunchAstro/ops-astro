@@ -55,8 +55,40 @@ function kitClasses(): ReadonlySet<string> {
 // Every selector a stylesheet holds, read by a real CSS parser (jsdom's
 // CSSOM): comments, strings and at-rule blocks are the parser's, and a nested
 // rule is read with its parent's selector in front, and each selector keeps
-// the properties its rule declares.
+// the properties its rule declares. The parser is handed the source with its
+// string line continuations already taken out (`continued`), since jsdom
+// re-serialises one as a space where a browser reads nothing.
 const { window } = new JSDOM('') as { window: { CSSStyleSheet: typeof CSSStyleSheet } };
+
+// The source as CSS Syntax reads it: inside a quoted string a backslash and
+// a newline (\n, \r\n, \r or \f) are a line continuation, which adds nothing,
+// so `[class~="ter\<newline>m__tip"]` names `term__tip`. Comments, other
+// escapes and everything outside strings are kept as written.
+function continued(css: string): string {
+  let out = '';
+  let quote = '';
+  for (let index = 0; index < css.length; index += 1) {
+    const character = css[index] ?? '';
+    if (quote === '' && css.startsWith('/*', index)) {
+      const end = css.indexOf('*/', index + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      out += css.slice(index, stop);
+      index = stop - 1;
+    } else if (character === '\\') {
+      const newline = /^(?:\r\n|[\n\r\f])/u.exec(css.slice(index + 1))?.[0];
+      if (quote !== '' && newline !== undefined) index += newline.length;
+      else {
+        out += css.slice(index, index + 2);
+        index += 1;
+      }
+    } else {
+      if (quote === '' && (character === '"' || character === "'")) quote = character;
+      else if (character === quote || /[\n\r\f]/u.test(character)) quote = '';
+      out += character;
+    }
+  }
+  return out;
+}
 interface Parsed {
   readonly selectorText?: string;
   readonly cssRules?: Iterable<Parsed>;
@@ -68,7 +100,7 @@ interface Ruled {
 }
 function selectorsOf(css: string): readonly Ruled[] {
   const sheet = new window.CSSStyleSheet();
-  sheet.replaceSync(css);
+  sheet.replaceSync(continued(css));
   const found: Ruled[] = [];
   const walk = (rules: Iterable<Parsed>, parents: readonly string[]): void => {
     for (const rule of rules) {
@@ -266,6 +298,7 @@ describe('MP-9-1 primitives placed not restyled', () => {
       '.host:has(> .term__tip) .y { x: 1 }',
       '.host :not(.term) .y { x: 1 }',
       '.x\\ .term__tip { margin: 0 }',
+      '.host [class~="ter\\\nm__tip"] { visibility: hidden; }',
     ];
     for (const css of planted) expect(restyled(css, kit), css).not.toEqual([]);
     expect(restyled('.statrow > .stat { x: 1 } .statrow .stat__num { x: 1 }', kit)).toEqual([]);

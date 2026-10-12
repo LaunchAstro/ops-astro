@@ -2,10 +2,12 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { expect, it, vi } from 'vitest';
+import type { Mounted } from '../surfaces/mount.tsx';
 import {
   Harness,
   PEOPLE,
   deferredResponse,
+  key,
   mentionAda,
   open,
   refusal,
@@ -18,6 +20,15 @@ const online = () =>
     window.dispatchEvent(new Event('online'));
   });
 
+/**
+ * A new at-sign query with Enter, as a person picks the first name offered:
+ * the body is unchanged when the composer offers no name.
+ */
+async function pickFirstOffered(view: Mounted): Promise<void> {
+  await view.type('#comment-body', '@Ada Synthetic @B');
+  await key(view, '#comment-body', 'Enter');
+}
+
 it('same-owner refresh hides previous names while pending and retires a superseded late answer', async () => {
   const server = transport();
   const held = deferredResponse();
@@ -29,9 +40,10 @@ it('same-owner refresh hides previous names while pending and retires a supersed
     expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic ');
     server.answers.people = () => held.promise;
     await online();
-    expect(
-      view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '',
-    ).not.toContain('Ada Synthetic');
+    // Pending, the last answer's names are not offered: no option, and Enter
+    // completes no name.
+    await pickFirstOffered(view);
+    expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic @B');
     expect(view.text()).not.toContain('Bea Synthetic');
     expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
     expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', true);
@@ -48,9 +60,9 @@ it('same-owner refresh hides previous names while pending and retires a supersed
     await act(() => {
       held.resolve(response(PEOPLE));
     });
-    expect(
-      view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '',
-    ).not.toContain('Ada Synthetic');
+    // The superseded late answer offers no names either.
+    await pickFirstOffered(view);
+    expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic @B');
     expect(view.text()).not.toContain('Bea Synthetic');
     expect(view.find('[data-internal-task-mentions] [role=option]')).toBeNull();
     expect(server.posts()).toEqual([]);
@@ -73,9 +85,9 @@ it('same-client grant change drops selected names and retires a late post withou
   await view.click('[data-comment="post"]');
   server.answers.people = () => Promise.resolve(refusal('SCOPE_NOT_GRANTED'));
   await view.render(<Harness client={server.client} grantKey="after" />);
-  expect(view.find('[data-internal-task-mentions] .tf__tagvalue')?.textContent ?? '').not.toContain(
-    'Ada Synthetic',
-  );
+  // The new composer holds no selected name: a held one, with the new grant's
+  // people refused, would draw Clear mentions and hold the post.
+  expect(view.find('[data-mention-clear]')).toBeNull();
   expect(view.find('#comment-body')).toHaveProperty('value', '');
   await view.type('#comment-body', 'New grant note');
   await act(() => {
@@ -84,4 +96,10 @@ it('same-client grant change drops selected names and retires a late post withou
   expect(view.find('#comment-body')).toHaveProperty('value', 'New grant note');
   expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', false);
   expect(server.posts()).toHaveLength(1);
+  // The new composer's post carries none of the old grant's mention ids.
+  server.answers.comment = () => Promise.resolve(response({ recordId: 'task-one', revision: 5 }));
+  await view.click('[data-comment="post"]');
+  expect(server.posts()).toHaveLength(2);
+  expect(server.posts()[1]?.body).toMatchObject({ body: 'New grant note', audience: 'internal' });
+  expect(server.posts()[1]?.body).not.toHaveProperty('mentions');
 });

@@ -39,7 +39,14 @@ it('keyboard person selection sends structured internal mentions without writing
     '/api/b/alpha/person/list',
     '/api/b/alpha/task/comment',
   ]);
-  expect(view.find('[data-mention-person]')).toBeNull();
+  // Posted, the composer holds no selection: a held one, absent from the
+  // emptied body, would draw Clear mentions. Nor does the sent mention carry
+  // into the next note, even one that names the same person in text.
+  expect(view.find('[data-mention-clear]')).toBeNull();
+  await view.type('#comment-body', '@Ada Synthetic named again, not chosen');
+  await view.click('[data-comment="post"]');
+  expect(server.posts()[1]?.body).toMatchObject({ body: '@Ada Synthetic named again, not chosen' });
+  expect(server.posts()[1]?.body).not.toHaveProperty('mentions');
 });
 
 it('punctuation around a chosen occurrence preserves its recipient', async () => {

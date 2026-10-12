@@ -33,6 +33,12 @@ import {
   type PageShot,
 } from './report.ts';
 
+// Read at run time, as report.ts reads it: the web app's own types sit outside this program.
+const registry = new URL('../../apps/web/src/routes.ts', import.meta.url).href;
+const { ROUTES } = (await import(registry)) as {
+  ROUTES: Record<string, { title: string }>;
+};
+
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
   // No API behind it on any machine: its proxy points at a closed port, never at
@@ -193,15 +199,30 @@ export function captureBuiltPages(options: {
   };
   return eachBuiltPage({ ...options, route }, async ({ id, name, width, theme, page }) => {
     // The intended screen is checked before the picture counts.
-    const intended = intendedScreen(id);
     const drew = await page.evaluate(screenOf);
+    const wrongScreen = wrongScreenOf(id, drew, await page.evaluate(topBarTitle));
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));
     const picture = shot === undefined ? null : join(options.out, `${name}.page.png`);
     if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
-    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
+    const wrong = wrongScreen === undefined ? {} : { wrongScreen };
     return { page: id, width, theme, picture, overflow, ...wrong };
   });
+}
+
+/**
+ * Why a built page's capture drew another screen than its own, or undefined
+ * when it drew its own: its intended screen, and for the page itself, its own
+ * route's title in the app's top bar.
+ */
+function wrongScreenOf(id: string, drew: string, titled: string | null): string | undefined {
+  const intended = intendedScreen(id);
+  if (drew !== intended) return `drew ${drew}, not ${intended}`;
+  const own = ROUTES[id]?.title ?? null;
+  if (drew === 'the page' && titled !== own) {
+    return `drew the page titled ${String(titled)}, not ${String(own)}`;
+  }
+  return undefined;
 }
 
 /** Each read named answers its made-up body; a route added last is asked first. */
@@ -225,5 +246,15 @@ export function screenOf(): string {
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';
+  // The page itself is the app's: its shell draws the route's title in the top
+  // bar. Anything else served at the address (a gallery, a stray document) is not.
+  if (document.querySelector('.shell .topbar__default-title') === null) {
+    return 'a document that is not the app';
+  }
   return 'the page';
+}
+
+/** The route title the app's top bar names, or null when no top bar is drawn. */
+export function topBarTitle(): string | null {
+  return document.querySelector('.shell .topbar__default-title')?.textContent ?? null;
 }

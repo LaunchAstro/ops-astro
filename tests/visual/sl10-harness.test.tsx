@@ -182,6 +182,9 @@ const SURFACES: Readonly<Record<string, readonly [string, ReactElement][]>> = {
   ],
 };
 
+/** An empty surface, captured beside the rest: what a component that draws nothing looks like. */
+const BLANK = 'blank-surface';
+
 let out: string;
 let shots: PageShot[];
 beforeAll(async () => {
@@ -190,16 +193,23 @@ beforeAll(async () => {
   for (const own of ['8-notifications.css', '9-ledger.css', '10-team.css', '7-page-kit.css'])
     expect(loaded).toContain(own);
   out = mkdtempSync(join(tmpdir(), 'sl10-harness-'));
-  const all: Surface[] = Object.values(SURFACES).flatMap((list) =>
-    list.map(([id, element]) => ({ id, markup: renderToStaticMarkup(element) })),
-  );
+  const all: Surface[] = [
+    ...Object.values(SURFACES).flatMap((list) =>
+      list.map(([id, element]) => ({ id, markup: renderToStaticMarkup(element) })),
+    ),
+    { id: BLANK, markup: '' },
+  ];
   shots = await captureSurfaces(all, join(out, 'captures'));
 }, 600_000);
 afterAll(() => {
   rmSync(out, { recursive: true, force: true });
 });
 
-/** The ticket's surfaces on the harness: every picture there, none sideways, dark drawn dark. */
+/**
+ * The ticket's surfaces on the harness: every picture there, none sideways,
+ * dark drawn dark, and each surface drawn at all: its picture is not the
+ * empty surface's at the same width and theme.
+ */
 function captured(ticket: string): void {
   const pages = (SURFACES[ticket] ?? []).map(([id]) => id);
   const packet = readPacket();
@@ -209,10 +219,14 @@ function captured(ticket: string): void {
     readFileSync(join(out, 'captures', `${page}@${width}-${theme}.page.png`));
   for (const page of pages)
     for (const width of WIDTHS) {
-      for (const theme of ['light', 'dark'])
+      for (const theme of ['light', 'dark']) {
         expect(all.lines).toContain(
           `ok ${page}@${width}-${theme}: ${page}@${width}-${theme}.page.png; no sideways scroll`,
         );
+        const drawn = `${page}@${width}-${theme}`;
+        const blank = comparePng(drawn, file(BLANK, width, theme), file(page, width, theme));
+        expect(blank.pass, `${drawn} draws nothing: ${blank.line}`).toBe(false);
+      }
       const name = `${page}@${width}`;
       const same = comparePng(name, file(page, width, 'light'), file(page, width, 'dark'));
       expect(same.pass, `${name} dark draws the same as light`).toBe(false);

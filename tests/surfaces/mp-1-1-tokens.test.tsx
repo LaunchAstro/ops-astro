@@ -109,6 +109,31 @@ const SHEETS = [
   ].map((sheet) => `${styles}${sheet}.css`),
   `${root}apps/web/src/styles/6-slice.css`,
 ];
+/** CSS's 148 named colours: each paints the same in both themes, as a hex literal does. */
+const NAMED_COLOURS: ReadonlySet<string> = new Set(
+  `
+  aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue
+  blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue
+  cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey
+  darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon
+  darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet
+  deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen
+  fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew
+  hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon
+  lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey
+  lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey
+  lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine
+  mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen
+  mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite
+  navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen
+  paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple
+  rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell
+  sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan
+  teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen
+  `
+    .trim()
+    .split(/\s+/u),
+);
 const lightOnly = (sets: Sets, name: string, css: string): string[] => {
   const problems: string[] = [];
   const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
@@ -116,7 +141,15 @@ const lightOnly = (sets: Sets, name: string, css: string): string[] => {
     const [, property = '', value = ''] = match;
     if (!COLOUR_PROPERTY.test(property)) continue;
     const where = `${name} ${property}: ${value.trim()}`;
-    if (/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|lab|lch)\(|\b(white|black)\b/iu.test(value)) {
+    // A token or file name may hold a colour word (`var(--red)`); the words outside them may not.
+    const words = value
+      .replaceAll(/var\([^)]*\)|url\([^)]*\)/giu, ' ')
+      .toLowerCase()
+      .split(/[^a-z]+/u);
+    if (
+      /#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|hwb|oklch|oklab|lab|lch|color)\(/iu.test(value) ||
+      words.some((word) => NAMED_COLOURS.has(word))
+    ) {
       problems.push(`literal colour in ${where}`);
     }
     for (const [, token = ''] of value.matchAll(/var\((--[\w-]+)/gu)) {
@@ -223,6 +256,16 @@ describe('MP-1-1 tokens', () => {
         '.x { background: #fff; color: var(--void-deep); border-color: var(--nope); }',
       ),
     ).toHaveLength(3);
+    // A named colour is as fixed as a hex one, whatever its name; a token named
+    // after a colour is not a literal.
+    expect(
+      lightOnly(
+        sets,
+        'planted',
+        '.y { color: red; border: 1px solid rebeccapurple; box-shadow: 0 0 0 2px Tomato; }',
+      ),
+    ).toHaveLength(3);
+    expect(lightOnly(sets, 'planted', '.z { color: var(--accent); }')).toEqual([]);
     expect(
       SHEETS.flatMap((sheet) => lightOnly(sets, sheet.slice(root.length), read(sheet))),
     ).toEqual([]);

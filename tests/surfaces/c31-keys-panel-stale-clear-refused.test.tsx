@@ -7,13 +7,7 @@ import { generateSealingPair } from '../../packages/core-records/src/custody/ind
 import { grantTo } from '../commands/fixture.ts';
 import { createControls } from '../api/controls-fixture.ts';
 import { mount } from './mount.tsx';
-import { act } from 'react';
-
-const tick = async () => {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  });
-};
+import { until } from '../web/screen-until.tsx';
 
 it('stale Clear does not erase a key replaced by another administrator', async () => {
   const controls = await createControls('sol374', { custody: generateSealingPair('sol374').key });
@@ -39,25 +33,29 @@ it('stale Clear does not erase a key replaced by another administrator', async (
     });
     const first = await controls.asPerson('secret.set', { name: 'stale.key', value: 'old-canary' });
     expect(first.status).toBe(200);
+    // Each command the panel sends, with the status it was answered with.
+    const answered: { readonly command: string; readonly status: number }[] = [];
     const fetcher: typeof fetch = async (url, init) => {
       const command = String(url).split('/').slice(-2).join('.');
       const body: unknown = JSON.parse(String(init?.body));
       if (typeof body !== 'object' || body === null) throw new Error('invalid test body');
       const answer = await controls.asPerson(command, body as Record<string, unknown>);
+      answered.push({ command, status: answer.status });
       return new Response(JSON.stringify(answer.body), {
         status: answer.status,
         headers: { 'content-type': 'application/json' },
       });
     };
-    page = await mount(
+    const view = await mount(
       <KeysPanel
         client={
           new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch: fetcher })
         }
       />,
     );
-    await tick();
-    expect(page.find('[data-secret="stale.key"]')).not.toBeNull();
+    page = view;
+    // The first read lands when it lands: wait for the row, not a fixed time.
+    await until(view, () => view.find('[data-secret="stale.key"]') !== null, 'the stale.key row');
     const second = await controls.asPerson(
       'secret.set',
       {
@@ -69,7 +67,16 @@ it('stale Clear does not erase a key replaced by another administrator', async (
     );
     expect(second.status).toBe(200);
     await page.click('[data-secret="stale.key"] button');
-    await tick();
+    // The stale Clear has been answered before the key is read back, so a
+    // write still in flight cannot pass for one refused.
+    await until(
+      view,
+      () => answered.some(({ command }) => command === 'secret.clear'),
+      'the answer to the stale Clear',
+    );
+    expect(
+      answered.filter(({ command }) => command === 'secret.clear').map(({ status }) => status),
+    ).not.toContain(200);
     const listing = await controls.asPerson('secret.list', {});
     expect(listing.body['secrets']).toEqual(
       expect.arrayContaining([

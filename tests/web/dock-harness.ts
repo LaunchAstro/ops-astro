@@ -41,28 +41,45 @@ export async function onDockSides(
     readFileSync(new URL('../visual/states.json', import.meta.url), 'utf8'),
   ) as Catalogue;
   await fetchAssets(readAssets(), packet);
-  // No browser, no capture: the launch fails the test, never skips it.
+  // No browser, no capture: the launch fails the test, never skips it. Each
+  // thing started is stopped in its own `finally`, nested in the order they
+  // started, so a failed start or stop still stops everything started before it.
   const browser = await launchChromium(MODE);
-  const { app, close } = await serveApp();
-  const scratch = mkdtempSync(join(tmpdir(), 'dock-harness-'));
   try {
-    const session = madeUpSession(app, scratch);
-    for (const width of widths) {
-      for (const theme of themes) {
-        // oxlint-disable-next-line no-await-in-loop -- one width and theme at a time, in order
-        const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-        try {
-          // oxlint-disable-next-line no-await-in-loop -- as above
-          await each({ side, packet, app, width, theme, mask });
-        } finally {
-          // oxlint-disable-next-line no-await-in-loop -- as above
-          await side.context.close();
-        }
+    const { app, close } = await serveApp();
+    try {
+      const scratch = mkdtempSync(join(tmpdir(), 'dock-harness-'));
+      try {
+        const session = madeUpSession(app, scratch);
+        await inTurn(widths, themes, async (width, theme) => {
+          const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+          try {
+            await each({ side, packet, app, width, theme, mask });
+          } finally {
+            await side.context.close();
+          }
+        });
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
       }
+    } finally {
+      await close();
     }
   } finally {
     await browser.close();
-    await close();
-    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** Runs `run` at every width in every theme, one at a time, in order. */
+async function inTurn(
+  widths: readonly number[],
+  themes: readonly Theme[],
+  run: (width: number, theme: Theme) => Promise<void>,
+): Promise<void> {
+  for (const width of widths) {
+    for (const theme of themes) {
+      // oxlint-disable-next-line no-await-in-loop -- one width and theme at a time, in order
+      await run(width, theme);
+    }
   }
 }
