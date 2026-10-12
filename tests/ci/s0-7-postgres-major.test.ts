@@ -123,14 +123,9 @@ function ciOnTheCases1() {
       'scripts/local/auth-up.sh': assigned('scripts/local/auth-up.sh', 'PG_IMAGE'),
       'scripts/local/journey-stack.ts': [JOURNEY_IMAGE],
     };
-    expect(places).toStrictEqual({
-      'ci.yml database conformance': [want],
-      'ci.yml isolation tests': [want],
-      'scripts/local/db-up.sh': [want],
-      'scripts/local/restart-proof.sh': [want],
-      'scripts/local/auth-up.sh': [want],
-      'scripts/local/journey-stack.ts': [want],
-    });
+    expect(places).toStrictEqual(
+      Object.fromEntries(Object.keys(places).map((place) => [place, [want]])),
+    );
     // The pins record says which tag the digest was read from.
     expect(read('docs/supply-chain-pins.md')).toMatch(
       new RegExp(`\\| \`postgres\` +\\| \`17-alpine\` +\\| \`sha256:${DIGEST}\` \\|`, 'u'),
