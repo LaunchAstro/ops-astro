@@ -19,7 +19,6 @@ import {
   outage,
   toolbarDoor,
   leaks,
-  leaksPastFirstCommit,
   named,
   projectsPage,
   denyWithProjectHeld,
@@ -99,7 +98,7 @@ describe('two board reads in flight answering in the hostile order', () => {
     await tick();
     await tick();
     expect(page.view.find('[data-outcome="denied"]')).not.toBeNull();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
   });
 
@@ -136,7 +135,7 @@ describe('a project answer and the board’s denial answering in either order', 
     project.release(ON_B);
     await tick();
     await tick();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(named(page.commits, from + 1)).toEqual([]);
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
   });
@@ -156,7 +155,7 @@ describe('a project answer and the board’s denial answering in either order', 
     board.release(DENIED);
     await tick();
     await tick();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
   });
 });
@@ -210,7 +209,7 @@ describe('a project answer minted before a denial and landing after a Retry re-a
     across.release(ON_A);
     await tick();
     await tick();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(named(page.commits, from).filter((one) => one === CLIENT)).toEqual([]);
     expect(settled()).toEqual({ toolbar: OTHER, toolbarName: 'Client B', empty: OTHER });
   });

@@ -19,7 +19,7 @@ import {
   rejected,
   steeredApi,
   toolbarDoor,
-  leaksPastFirstCommit,
+  leaks,
   named,
   projectsPage,
   denyWithProjectHeld,
@@ -42,7 +42,7 @@ describe('a board read that crashes, and its retry', () => {
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
     page.serve.board = answer(EMPTY);
     await page.retry();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(settled()).toEqual({ toolbar: CLIENT, toolbarName: 'Client A', empty: CLIENT });
   });
 
@@ -60,7 +60,7 @@ describe('a board read that crashes, and its retry', () => {
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
     page.serve.board = answer(EMPTY);
     await page.invalidate();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(named(page.commits, from).filter((one) => one === CLIENT)).toEqual([]);
     expect(settled()).toEqual({ toolbar: OTHER, toolbarName: 'Client B', empty: OTHER });
   });
@@ -73,7 +73,7 @@ describe('a board read that crashes, and its retry', () => {
     await page.panelChange();
     await page.invalidate();
     expect(page.view.find('[data-outcome="loading"]')).not.toBeNull();
-    expect(leaksPastFirstCommit(page.commits, from)).toEqual([]);
+    expect(leaks(page.commits.slice(from))).toEqual([]);
     expect(named(page.commits, from)).toEqual([]);
     page.serve.board = answer(EMPTY);
     page.serve.project = answer(ON_B);
@@ -170,7 +170,7 @@ describe('a business or person switch mid-flight', () => {
 });
 
 describe('the toolbar door and the empty-board door', () => {
-  it('the toolbar door never names a client the empty-board door did not name in that commit or the one before', async () => {
+  it('the toolbar door names the client the empty-board door names, in every commit', async () => {
     const page = await projectsPage();
     const across = await denyWithProjectHeld(page);
     page.serve.board = answer(EMPTY);
@@ -180,14 +180,9 @@ describe('the toolbar door and the empty-board door', () => {
     await tick();
     page.serve.project = answer(ON_A);
     await page.invalidate();
-    const strays = page.commits.filter((commit, at) => {
-      const before = page.commits[at - 1];
-      return (
-        commit.board === 'empty' &&
-        commit.toolbar !== commit.empty &&
-        commit.toolbar !== before?.empty
-      );
-    });
+    const strays = page.commits.filter(
+      (commit) => commit.board === 'empty' && commit.toolbar !== commit.empty,
+    );
     expect(strays).toEqual([]);
     expect(settled()).toEqual({ toolbar: CLIENT, toolbarName: 'Client A', empty: CLIENT });
   });

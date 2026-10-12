@@ -142,20 +142,6 @@ export const emptyNames = (commit: Commit): boolean =>
 export const leaks = (commits: readonly Commit[]): readonly Commit[] =>
   commits.filter((commit) => unadmitted(commit) && (toolbarNames(commit) || emptyNames(commit)));
 
-/**
- * As `leaks` from commit `from` on, with the toolbar door held from the second
- * unadmitted commit on.
- * The toolbar's first commit behind the board is its own proof above, so the
- * other proofs fail only on what they attack.
- */
-export const leaksPastFirstCommit = (commits: readonly Commit[], from: number): readonly Commit[] =>
-  commits.filter((commit, at) => {
-    if (at < from || !unadmitted(commit)) return false;
-    const before = commits[at - 1];
-    const toolbarHeld = before === undefined || unadmitted(before);
-    return emptyNames(commit) || (toolbarHeld && toolbarNames(commit));
-  });
-
 /** Every client either door named from commit `from` on. */
 export const named = (commits: readonly Commit[], from = 0): readonly string[] =>
   commits
