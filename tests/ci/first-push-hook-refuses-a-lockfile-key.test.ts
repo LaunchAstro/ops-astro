@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- the second model's first-push proof, kept as written */
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
