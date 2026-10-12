@@ -131,7 +131,7 @@ export async function writeAppliedEvents(
     await writeAuditEvent(tx, {
       ...applied,
       subjectRecordId: other.recordId,
-      fieldChanges: other.fieldChanges,
+      fieldChanges: other.fieldChanges ?? null,
     });
   }
 }

@@ -311,6 +311,22 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     }
   });
 
+  it('C41-A every change recorded: each step task laid out by the start has its own applied event naming it', async () => {
+    const taskIds = stepsOf(startedA).map((one) => one.taskId);
+    const events = await controls.fixture.db.admin.execute<{
+      readonly subject_record_id: string;
+      readonly actor_id: string;
+      readonly command: string;
+    }>(
+      `select subject_record_id::text, actor_id::text, command from public.audit_events
+        where subject_record_id = any($1::uuid[]) and outcome = 'applied'
+          and command = 'onboarding.start'`,
+      [taskIds],
+    );
+    expect(events.map((one) => one.subject_record_id).toSorted()).toStrictEqual(taskIds.toSorted());
+    expect(new Set(events.map((one) => one.actor_id))).toStrictEqual(new Set([admin.actorId]));
+  });
+
   it('C41-A same transaction: a second start for the same client, or an unknown template, writes nothing', async () => {
     const before = [await tableRows('onboardings'), await tableRows('onboarding_steps')];
     const tasksBefore = await tableRows('records');

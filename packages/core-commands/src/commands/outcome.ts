@@ -56,10 +56,13 @@ export const FIELD_WRITES: readonly CommandName[] = [
   'task.restore',
 ];
 
-/** A record a command changed besides the one it names, and what changed. */
+/**
+ * A record a command changed or created besides the one it names, and what changed: absent
+ * where the command is no field writer (`FIELD_WRITES`), as for the tasks a start lays out.
+ */
 export interface CarriedWrite {
   readonly recordId: string;
-  readonly fieldChanges: FieldChanges;
+  readonly fieldChanges?: FieldChanges;
 }
 
 export interface Applied {

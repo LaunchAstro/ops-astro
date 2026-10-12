@@ -83,6 +83,10 @@ async function checkStart(
   return template;
 }
 
+/**
+ * Lay the template out as tasks. Each task carries an applied event of its own
+ * (`Applied.carried`), so its history shows its creation.
+ */
 export async function startOnboarding(
   tx: TenantQuery,
   context: CommandContext,
@@ -116,19 +120,22 @@ export async function startOnboarding(
   const steps = await insertSteps(tx, onboardingId, laid);
   const ready = steps.filter((one) => one.state === 'ready').map((one) => one.key);
   await raiseStepMoves(tx, onboardingId, ready);
-  return applied(clientId, null, {
-    onboardingId,
-    templateKey: template.key,
-    templateVersion: template.version,
-    steps: steps.map((one) => ({
-      key: one.key,
-      phase: one.phase,
-      kind: one.kind,
-      taskId: one.taskId,
-      dependsOn: one.dependsOn,
-      state: one.state,
-    })),
-  });
+  return {
+    ...applied(clientId, null, {
+      onboardingId,
+      templateKey: template.key,
+      templateVersion: template.version,
+      steps: steps.map((one) => ({
+        key: one.key,
+        phase: one.phase,
+        kind: one.kind,
+        taskId: one.taskId,
+        dependsOn: one.dependsOn,
+        state: one.state,
+      })),
+    }),
+    carried: laid.map((one) => ({ recordId: one.taskId })),
+  };
 }
 
 const STEP_FIXES: Readonly<Record<string, string>> = {
