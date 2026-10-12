@@ -70,4 +70,17 @@ describe.skipIf(serverUrl === undefined)('the side panel on the local GPT runner
       provider: 'local_gpt',
     });
   });
+
+  it('tells the owner to wait for the plan to reset when the ChatGPT plan is at its limit', async () => {
+    laptop.knobs({ limit: true });
+    const opened = await w.as(w.owner, 'conversation.start', { body: 'What is due today?' });
+    expect(opened.status).toBe(200);
+    expect((opened.body as Record<string, unknown>)['reply']).toEqual({
+      answered: false,
+      code: 'LOCAL_PLAN_LIMIT',
+      words:
+        'The ChatGPT plan is at its usage limit, so there is no answer. ' +
+        'Your message is kept; ask again once the plan resets.',
+    });
+  });
 });

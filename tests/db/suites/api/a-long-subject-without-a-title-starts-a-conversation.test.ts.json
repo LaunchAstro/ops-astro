@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation started with a long subject and no title opens with a title cut to fit"
+}
