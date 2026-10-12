@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A ticket that leaves its granted map after its gate is read has no later assignee read for the board reader's own decision"
+}
