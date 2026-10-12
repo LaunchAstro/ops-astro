@@ -207,3 +207,33 @@ it.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+it.skipIf(serverUrl === undefined)(
+  'an agent credential expiring during the read audit wait serves no task',
+  async () => {
+    const task = await aTask('credential read canary');
+    await db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, ada, 'read', WHOLE_BUSINESS);
+      await grantTo(tx, ada, 'write', WHOLE_BUSINESS, false, 'credential');
+    });
+    const issued = await send(ada, {
+      command: 'credential.issue',
+      operationId: randomUUID(),
+      scope: [{ collection: 'task', action: 'read' }],
+      purpose: 'read waits on the audit chain',
+      expiresAt: new Date(Date.now() + 3_000).toISOString(),
+    });
+    if (isCommandRefusal(issued)) throw new Error(`credential.issue refused ${issued.code}`);
+    const credential = issued.detail['credential'];
+    if (typeof credential !== 'string') throw new Error('no credential');
+    const answer = await waitingOnTheChain(
+      async (writer) =>
+        await executeCredentialCommand(writer, alpha as never, { credential, now: new Date() }, {
+          command: 'task.read',
+          recordId: task.id,
+        } as never),
+      async () => await pastExpiry('agent_credentials', String(issued.recordId)),
+    );
+    expect(codeOf(answer)).toBe('DELEGATION_NOT_LIVE');
+  },
+);
