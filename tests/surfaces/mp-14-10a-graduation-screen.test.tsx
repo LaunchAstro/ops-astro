@@ -125,6 +125,7 @@ interface Opening {
   readonly after?: number;
   /** Commands wait on this before they are answered. */
   readonly hold?: Promise<void>;
+  readonly resendHold?: Promise<void>;
   /** A step-up the page may call, where the case needs one. */
   readonly stepUp?: (code: string) => Promise<{ ok: true; sessionId: string }>;
   /** The first matching command is stored, then its answer is lost on the way back. */
@@ -147,6 +148,7 @@ interface Opening {
   readonly ahead?: number;
   /** While `down` is true, every read of the region fails on the way. */
   readonly outage?: { down: boolean };
+  readonly readRegion?: () => ConnectionGraduationResult;
 }
 
 const STEP_UP = { refused: true, code: 'STEP_UP_REQUIRED', names: [], fixes: [] };
@@ -276,6 +278,7 @@ async function open(
   const sent: string[] = [];
   const refusing = refuser(refuse, opening);
   let lost = 0;
+  let commandCount = 0;
   const stored = stubStore();
   const register = registerStub(opening, stored.region);
   const fetch = (async (url: string | URL, init?: RequestInit) => {
@@ -283,7 +286,13 @@ async function open(
     const call = `${at} ${String(init?.body ?? '')}`;
     sent.push(call);
     if (readDown(opening, at)) throw new TypeError('Failed to fetch');
-    if (COMMAND.test(at)) await opening.hold;
+    if (at.endsWith('/connection/graduation') && opening.readRegion !== undefined) {
+      return json(opening.readRegion());
+    }
+    if (COMMAND.test(at)) {
+      await opening.hold;
+      if (++commandCount === 2) await opening.resendHold;
+    }
     const reply =
       (await register.answer(at, call)) ??
       answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
@@ -366,6 +375,74 @@ function gated(): { readonly hold: Promise<void>; readonly release: () => void }
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('Connections & signal: client scope bar, graduation and standing approvals', () => {
+  /* eslint-disable oxc/no-map-spread, unicorn/no-array-reverse -- Sol's proof, kept as written */
+  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
+  it('an outage cannot restore Client A approval fields into Client B and file them there', async () => {
+    const outage = { down: false };
+    let region = BODY;
+    const { page, sent } = await open(/\/mandate\/file$/u, {
+      once: true,
+      outage,
+      readRegion: () => region,
+    });
+    await page.type('[data-mandate-label]', 'Authority for Client A only');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    outage.down = true;
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(sentTo(sent, '/mandate/file')).toMatchObject({
+      clientId: 'k-a',
+      label: 'Authority for Client A only',
+    });
+    expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
+    region = {
+      ...BODY,
+      clients: BODY.clients
+        .map((client) =>
+          client.id === 'k-b' ? { ...client, label: 'A newly alphabetised client' } : client,
+        )
+        .reverse(),
+    };
+    outage.down = false;
+    await page.click('[data-graduation] [data-outcome="unavailable"] button');
+    await tick();
+    await page.click('[data-mandate-add]');
+    await tick();
+    const transferred = commands(sent).filter((call) => {
+      const body = bodyOf(call);
+      return (
+        call.includes('/mandate/file') &&
+        body['clientId'] === 'k-b' &&
+        body['label'] === 'Authority for Client A only'
+      );
+    });
+    expect(transferred, 'Restored financial authority must stay with Client A').toEqual([]);
+  });
+  /* eslint-enable oxc/no-map-spread, unicorn/no-array-reverse */
+
+  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
+  it('a withdrawn step-up resend cannot draw its late refusal under another client', async () => {
+    const gate = gated();
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      stepUp: steppedUp,
+      resendHold: gate.hold,
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    expect(operationsTo(sent, '/graduation/demote')).toHaveLength(2);
+    await page.choose('[data-client-scope] select', 'k-b');
+    expect(page.find('[data-region-said]')).toBeNull();
+    gate.release();
+    await tick();
+    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
+    expect(page.find('[data-region-said]'), 'The withdrawn resend belongs to Client A').toBeNull();
+  });
+
   it('owner check: choose a client, file a standing approval with a limit and expiry, then revoke it', async () => {
     const { page, sent } = await open();
     await page.choose('[data-client-scope] select', 'k-b');
