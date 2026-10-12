@@ -13,7 +13,8 @@
 // hook answers a first read's loading state, never the old grant's state.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AuthorisedRead, dropsAnswer, initialState, type ReadState } from './authorised-read.ts';
+import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
+import { dropsAnswer } from './read-breaks.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
 import { isRefusal, type CallResult } from '../operations/client.ts';
@@ -124,7 +125,6 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
   runRef.current = options.run;
-
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
   const first = useMemo(() => opened<T>(grantKey), [grantKey]);

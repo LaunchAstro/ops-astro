@@ -5,7 +5,8 @@ import type {
   PersonListResult,
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { dropsAnswer, type ReadState } from '../../data/authorised-read.ts';
+import type { ReadState } from '../../data/authorised-read.ts';
+import { dropsAnswer } from '../../data/read-breaks.ts';
 import type { BoardAddress } from './scoped-board.ts';
 import type { Vocabulary } from '../todos/typed-scope.ts';
 import { readingOf, scoped, type Chip } from '../todos/todo-list.ts';

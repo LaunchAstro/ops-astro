@@ -83,10 +83,6 @@ export type ReadState<T> =
       readonly grantKey: string;
     };
 
-/** An answer that drops the last one: refused or out. */
-export const dropsAnswer = (state: ReadState<unknown>): boolean =>
-  state.outcome === 'denied' || state.outcome === 'unavailable';
-
 export function initialState<T>(grantKey: string): ReadState<T> {
   return { outcome: 'loading', previous: null, refusal: null, because: null, grantKey };
 }
