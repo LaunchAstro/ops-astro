@@ -223,27 +223,44 @@ describe.skipIf(serverUrl === undefined)('an escalation rests on held grants onl
       gate: { to: null, state: 'pending' },
     });
   });
+});
 
+/** A decide grant on one task for `decider`, ending three seconds from now on the database clock. */
+async function shortLivedDecide(decider: Member, taskId: string): Promise<string> {
+  return await s.db.app.withBusiness(s.business, async (tx) => {
+    const [clock] = await tx.query<{ readonly at: Date }>(
+      `select clock_timestamp() + interval '3 seconds' as at`,
+    );
+    const issued = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: decider.personId },
+      scope: { kind: 'record', id: taskId },
+      collection: 'task',
+      action: 'decide',
+      expiresAt: clock?.at ?? null,
+      parentGrantId: null,
+      grantedByActorId: s.decider.actorId,
+    });
+    if (!issued.ok) throw new Error(`the short-lived grant was refused ${issued.refusal.code}`);
+    return issued.value;
+  });
+}
+
+/** The decision's answer, retried once on a rolled-back schedule as the command entry does. */
+async function decidedOnce(first: Promise<string>, version: Detail, decider: Member) {
+  try {
+    return await first;
+  } catch (cause) {
+    if (!isRetryableViolation(cause)) throw cause;
+    return await decideAs(s.db.app, version, decider, { decision: 'request_changes' }, []);
+  }
+}
+
+describe.skipIf(serverUrl === undefined)('a decision rests on held grants only', () => {
   it('never records a decision resting on a decide grant issued after the hold and revoked before the write', async () => {
     const taskId = await createTask(s, `decide late grant ${randomUUID()}`);
     const version = await propose(s, taskId);
     const decider = await enrol(s.db.app, s.business, `late-decider-${randomUUID()}`);
-    const shortLived = await s.db.app.withBusiness(s.business, async (tx) => {
-      const [clock] = await tx.query<{ readonly at: Date }>(
-        `select clock_timestamp() + interval '3 seconds' as at`,
-      );
-      const issued = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: decider.personId },
-        scope: { kind: 'record', id: taskId },
-        collection: 'task',
-        action: 'decide',
-        expiresAt: clock?.at ?? null,
-        parentGrantId: null,
-        grantedByActorId: s.decider.actorId,
-      });
-      if (!issued.ok) throw new Error(`the short-lived grant was refused ${issued.refusal.code}`);
-      return issued.value;
-    });
+    const shortLived = await shortLivedDecide(decider, taskId);
     const afterHold = stopAt((sql) => afterFirstGrantHold.at(sql));
     const afterCheck = stopAt(liveAtLockedInstant);
     const deciding = racer(s);
@@ -273,13 +290,7 @@ describe.skipIf(serverUrl === undefined)('an escalation rests on held grants onl
       grantId: granted['grantId'],
     });
     afterCheck.resume.release();
-    let decided: string;
-    try {
-      decided = await first;
-    } catch (cause) {
-      if (!isRetryableViolation(cause)) throw cause;
-      decided = await decideAs(s.db.app, version, decider, { decision: 'request_changes' }, []);
-    }
+    const decided = await decidedOnce(first, version, decider);
     expect({ decided, gate: await gateNow(version) }).toEqual({
       decided: 'SCOPE_NOT_GRANTED',
       gate: { to: null, state: 'pending' },

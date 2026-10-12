@@ -432,10 +432,9 @@ interface Rechecked {
 /**
  * Re-check under the locks. Between discovery and here another transaction
  * could have revoked the grant, decided this gate, superseded this version or
- * rejected this lineage. "Check current decide grant" (T2) first, now that no
- * revocation of a covering grant can commit around it, and at the locked
- * instant, so a grant that lapsed while this
- * waited on the chain or the cap no longer counts.
+ * rejected this lineage. "Check current decide grant" (T2) first, at the locked
+ * instant, so a grant that lapsed during the waits no longer counts, and on held
+ * grants only: one issued after the hold would not hold off its revocation.
  */
 async function recheckDecision(
   tx: TenantQuery,
@@ -460,8 +459,6 @@ async function recheckDecision(
       'A person with decide authority on this task decides it.',
     );
   }
-  // A covering grant issued after the hold is not held, so its revocation would
-  // not wait for this write: roll back, and the retry holds it.
   if (current.value.some((grant) => !found.held_grants.includes(grant.id))) {
     throw new AffectedSetChanged('decide: a decide grant appeared after the grant hold');
   }

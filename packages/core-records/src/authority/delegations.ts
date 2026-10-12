@@ -480,6 +480,14 @@ export const DELEGATION_STANDS: string = standsAt('now()');
  */
 export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
 
+/** Lock one delegation row, in a statement of its own, before it is judged. */
+async function lockDelegationRow(tx: TenantQuery, id: string, lock: 'for share'): Promise<void> {
+  await tx.query(`select 1 from public.delegations where business_id = $1 and id = $2 ${lock}`, [
+    tx.businessId,
+    id,
+  ]);
+}
+
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
  * never a token's claims), its expiry judged on the statement's clock, as
@@ -499,12 +507,7 @@ async function parentStanding(
   parentId: string,
   lock: 'for share' | '',
 ): Promise<DelegationDecision<Delegation>> {
-  if (lock !== '') {
-    await tx.query(`select 1 from public.delegations where business_id = $1 and id = $2 ${lock}`, [
-      tx.businessId,
-      parentId,
-    ]);
-  }
+  if (lock !== '') await lockDelegationRow(tx, parentId, lock);
   const rows = await tx.query<
     DelegationRow & {
       readonly settled: boolean;
