@@ -23,6 +23,7 @@ import type { TaskSpine } from '../commands/context.ts';
 import { extrasForTasks, movesOf, OPEN_TODO_SQL, type TodoScope } from './todo-evidence.ts';
 
 import {
+  canonicalUuid,
   commentSignals,
   externalCommentProjection,
   readTaskComments,
@@ -410,7 +411,7 @@ export async function readSharedTask(
     // `revision` is `bigint`, which this driver hands back as a string.
     revision: Number(row['revision']),
     fields,
-    comments: await commentsFor(tx, commentTypeId, recordId, { internal: false }),
+    comments: await commentsFor(tx, commentTypeId, canonicalUuid(recordId), { internal: false }),
   };
 }
 

@@ -13,6 +13,7 @@
 
 import { askedFor, EFFECTIVE, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { canonicalUuid } from '../tenancy/ids.ts';
 
 export interface FamilyRow {
   readonly id: string;
@@ -118,8 +119,9 @@ export async function readTaskFamily(
     ],
   );
   const family = rows.map((row) => familyRow(row));
+  const parent = canonicalUuid(parentId);
   return {
-    parent: family.find((row) => row.id === parentId),
-    children: family.filter((row) => row.id !== parentId),
+    parent: family.find((row) => row.id === parent),
+    children: family.filter((row) => row.id !== parent),
   };
 }
