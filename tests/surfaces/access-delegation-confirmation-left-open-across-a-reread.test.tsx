@@ -42,7 +42,7 @@ it('a delegation confirmation left open across a reread that drops it sends no r
   await settle();
   expect(record.reads).toBe(2);
   expect(view.find('[data-revoke="d-1"]')).toBeNull();
-  if (view.find(CONFIRM) !== null) {
+  if (view.find('[data-confirm="revoke-delegation"]') !== null) {
     await view.click(`${CONFIRM} [data-act="revoke"] button`);
     await settle();
     await settle();
