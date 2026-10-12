@@ -182,13 +182,18 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
+    // One spelling of the id, the one Postgres prints, so a key built from
+    // `tx.businessId` (a limiter's lock) is the same key in either letter case.
+    const business = businessId.toLowerCase() as BusinessId;
+    // Read committed whatever the login's or database's default, so a count
+    // read after a lock sees what the lock's last holder committed (`hasRoom`).
     // `begin` unwraps a promise-shaped result in its own types; the cast
     // restores the caller's type and nothing else.
-    return (await sql.begin(async (tx) => {
+    return (await sql.begin('isolation level read committed', async (tx) => {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
-      await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
-      return await run(handleOn(tx, businessId));
+      await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
+      return await run(handleOn(tx, business));
     })) as T;
   };
 }
