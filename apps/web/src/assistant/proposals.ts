@@ -41,7 +41,7 @@ import { settle } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
-import { assign, assigned, useTeam } from './assignees.ts';
+import { assign, assigned, keptAssignee, useTeam } from './assignees.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
@@ -250,7 +250,11 @@ export function useProposalCards(
   store: ProposalStore & { state: AssistantState },
 ) {
   const team = useTeam(view.client, store.state.chats);
-  const chats = useMemo(() => assigned(store.state.chats, team), [store.state.chats, team]);
+  const { grantKey } = view;
+  const chats = useMemo(
+    () => assigned(store.state.chats, team, (line) => keptAssignee(grantKey, sourceOf(line))),
+    [store.state.chats, team, grantKey],
+  );
   const onPropose = (key: string, id: string): void =>
     void sendProposal({ ...view, team }, store, { key, id });
   return { chats, onPropose };

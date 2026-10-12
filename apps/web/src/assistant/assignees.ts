@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Who a chat card's new task goes to (the owner's call on chat-made tasks):
-// whoever clicks Create, unless the reply's block names one person on the
-// team. Names are matched against `team.list` alone, the business's own
-// staff, read once a new task's card is drawn; the card shows the match before
-// the click. Once the create answers, the click's `task.assign` gives the task
-// to that person at the revision the create returned (`proposals.ts`).
+// whoever clicks Create, unless the reply's block names one person on the team
+// (`team.list`, read again as each new task's card is drawn). The card shows
+// who before the click; after the create, `task.assign` gives it to them at
+// the create's revision, and the tab keeps who was sent so a retry sends the same.
 
 import { useEffect, useState } from 'react';
 import type { AssistantProposal } from '@launchastro/ui';
 import { proposalAssign, type TeamListResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
+import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import type { Chat } from './chats.ts';
 
 export const NOT_ON_TEAM =
@@ -23,12 +23,6 @@ const NOT_ASSIGNED = 'The task was created but not assigned:';
 const spoken = (name: string): string =>
   name.trim().replaceAll(/\s+/gu, ' ').toLocaleLowerCase('en-AU');
 
-export interface Assignee {
-  readonly personId: string;
-  readonly name: string;
-  readonly note: string | null;
-}
-
 /**
  * Who a new task goes to: the one teammate the block names, by whole name or
  * by a first name no one else on the team has, else whoever clicks. Matched
@@ -36,8 +30,8 @@ export interface Assignee {
  * person of another business, a client's login, nobody, two people) falls
  * back in the same words and reveals nothing.
  */
-export function assigneeOf(named: string | undefined, team: TeamListResult): Assignee {
-  const you = { personId: team.you.toLowerCase(), name: 'you', note: null };
+export function assigneeOf(named: string | undefined, team: TeamListResult) {
+  const you = { personId: team.you.toLowerCase(), name: 'you', note: null as string | null };
   if (named === undefined) return you;
   const wanted = spoken(named);
   const whole = team.people.filter((each) => spoken(each.name) === wanted);
@@ -54,55 +48,108 @@ export async function teamOf(client: OperationsClient): Promise<TeamListResult |
   return read.kind === 'ok' ? read.value : null;
 }
 
-/** The tabs hold a card for a new task: who it goes to needs the team. */
-const creating = (chats: readonly Chat[]): boolean =>
-  chats.some((chat) => chat.messages.some((each) => each.proposal?.action === 'create'));
+/** Each new task's card in the tabs, by line: each one drawn asks for the team as it is then. */
+const creating = (chats: readonly Chat[]): string =>
+  chats
+    .flatMap((chat) => chat.messages.filter((each) => each.proposal?.action === 'create'))
+    .map((each) => each.id)
+    .join(' ');
 
-/** The team, read once a new task's card is drawn: who each such card's task goes to. */
+/** The team, read again as each new task's card is drawn: who that card's task goes to. */
 export function useTeam(client: OperationsClient, chats: readonly Chat[]): TeamListResult | null {
   const [team, setTeam] = useState<TeamListResult | null>(null);
-  const wanted = creating(chats);
+  const cards = creating(chats);
   useEffect(() => {
     let live = true;
     const read = async (): Promise<void> => {
       const found = await teamOf(client);
       if (live) setTeam(found);
     };
-    if (wanted) void read();
+    if (cards !== '') void read();
     return () => {
       live = false;
     };
-  }, [client, wanted]);
+  }, [client, cards]);
   return team;
 }
 
+/** At most this many first-sent assignees are kept in a tab, the newest. */
+const KEPT_LIMIT = 32;
+
+const isKept = (value: unknown): value is Readonly<Record<string, string>> =>
+  isRecord(value) &&
+  Object.keys(value).length <= KEPT_LIMIT &&
+  Object.entries(value).every(([id, person]) => isUuid(id) && isUuid(person));
+
+/**
+ * The person each reply's click first sent its assignment to, by the reply's
+ * message id, so every retry of that click, a reload's included, sends the
+ * same body under its one operation id. Ids only, as `kept.ts` keeps the tabs;
+ * with no session, none.
+ */
+const keptSlot = (grantKey: string | undefined) =>
+  jsonSlot(
+    grantKey === undefined ? null : tabStorage(),
+    `ops-astro:proposal-assignees:${grantKey ?? ''}`,
+    isKept,
+  );
+
+export const keptAssignee = (grantKey: string | undefined, source: string | null) =>
+  source === null ? undefined : keptSlot(grantKey).read()?.[source];
+
+/** Who a card shows: the one its click first sent, where kept, else who the team matches. */
+function shownTo(team: TeamListResult, named: string | undefined, kept: string | undefined) {
+  const fresh = assigneeOf(named, team);
+  if (kept === undefined || kept === fresh.personId) return { name: fresh.name, note: fresh.note };
+  const held = team.people.find((each) => each.personId.toLowerCase() === kept);
+  return held === undefined ? undefined : { name: held.name, note: null };
+}
+
 /** The tabs as drawn: each new task's card says who it goes to, once the team is read. */
-export function assigned(chats: readonly Chat[], team: TeamListResult | null): Chat[] {
+export function assigned(
+  chats: readonly Chat[],
+  team: TeamListResult | null,
+  keptFor: (line: string) => string | undefined,
+): Chat[] {
   if (team === null) return [...chats];
-  const shown = (proposal: AssistantProposal): AssistantProposal => {
+  const shown = (line: string, proposal: AssistantProposal): AssistantProposal => {
     if (proposal.action !== 'create') return proposal;
-    const { name, note } = assigneeOf(proposal.assignee, team);
-    return { ...proposal, assignedTo: { name, note } };
+    const { assignedTo: _drawn, ...rest } = proposal;
+    const to = shownTo(team, proposal.assignee, keptFor(line));
+    return to === undefined ? rest : { ...rest, assignedTo: to };
   };
   return chats.map((chat) => ({
     ...chat,
     messages: chat.messages.map((each) =>
-      each.proposal === undefined ? each : { ...each, proposal: shown(each.proposal) },
+      each.proposal === undefined ? each : { ...each, proposal: shown(each.id, each.proposal) },
     ),
   }));
 }
 
 /** The new task's assignment under the reply's own id: null once kept, else how the card settles. */
 export async function assign(
-  view: { readonly client: OperationsClient; readonly team?: TeamListResult | null },
+  view: {
+    readonly client: OperationsClient;
+    readonly team?: TeamListResult | null;
+    readonly grantKey?: string | undefined;
+  },
   proposal: AssistantProposal,
   source: string,
   task: { readonly recordId: string; readonly revision: number },
 ): Promise<Pick<AssistantProposal, 'state' | 'refusal'> | null> {
-  const team = view.team ?? (await teamOf(view.client));
-  if (team === null)
-    return { state: 'made', refusal: `${NOT_ASSIGNED} the team could not be read.` };
-  const write = proposalAssign(source, task, assigneeOf(proposal.assignee, team).personId);
+  const slot = keptSlot(view.grantKey);
+  let personId = slot.read()?.[source];
+  if (personId === undefined) {
+    const team = view.team ?? (await teamOf(view.client));
+    if (team === null) {
+      return { state: 'made', refusal: `${NOT_ASSIGNED} the team could not be read.` };
+    }
+    personId = assigneeOf(proposal.assignee, team).personId;
+    // Kept before it is sent: the click's intent, whatever the team becomes.
+    const kept = Object.entries({ ...slot.read(), [source]: personId });
+    slot.write(Object.fromEntries(kept.slice(-KEPT_LIMIT)));
+  }
+  const write = proposalAssign(source, task, personId);
   const settled = settle(
     await view.client.mutate('task.assign', write.body, {
       operationId: write.operationId,
