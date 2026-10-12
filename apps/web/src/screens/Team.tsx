@@ -12,13 +12,14 @@
 // they first answer, so it opens on the first unread (R36). A teammate's name
 // as the door to their work waits on a view of a person's work: plain for now.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { TeamPanel, type AvailabilityChange, type Teammate } from '@launchastro/ui';
 import type { TeamListResult, TeamMemberView } from '../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
+import { availabilitySaver } from './team/availability-saves.ts';
 import { talkOf, useChat } from './team/chat.ts';
 
 /** A member as the panel draws them: the first name under the face. */
@@ -31,33 +32,23 @@ function teammate(member: TeamMemberView): Teammate {
   };
 }
 
-/** What the panel asks for, as the command's body: away carries the reason, available carries none. */
-const bodyOf = (change: AvailabilityChange): Readonly<Record<string, unknown>> =>
-  change.away ? { state: 'away', reason: change.reason } : { state: 'available' };
-
-const settled = (): void => {};
-
 /**
- * The reader's own availability changes. Each leaves once the last one has
- * answered, so the server stores them in the order the person made them and
- * the last choice is the one kept.
+ * The reader's own availability changes, through this screen's queue
+ * (`team/availability-saves.ts`): the person's last choice is the one stored.
  */
 function useSetAvailability(
   client: OperationsClient,
   say: (because: string | null) => void,
   reload: () => void,
 ): (change: AvailabilityChange) => void {
-  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const [save] = useState(() => availabilitySaver(client));
   return (change) => {
     say(null);
-    const sent = saving.current.then(async () => await client.setAvailability(bodyOf(change)));
-    saving.current = sent.then(settled, settled);
-    void (async () => {
-      const result = await sent;
+    save(change, (result) => {
       if (isRefusal(result)) say(describeRefusal(result));
       else if (isUnavailable(result)) say(result.because);
       else reload();
-    })();
+    });
   };
 }
 
