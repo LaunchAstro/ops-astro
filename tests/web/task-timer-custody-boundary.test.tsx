@@ -25,7 +25,7 @@ for (const corrupted of ['task', 'operation', 'guard', 'entry'] as const) {
     await first.view.unmount();
     const before = world.writes().length;
     const second = await realm(world.fetch, storage, '/projects');
-    expect(second.view.find(strip)?.textContent).toBe('Select task to time');
+    expect(second.view.find(strip)?.textContent).toBe('Start timer');
     expect(second.view.find('[data-task-timer-retry]')).toBeNull();
     expect(world.writes()).toHaveLength(before);
   });

@@ -14,7 +14,6 @@ import type { LookProbe } from './probe.ts';
 import {
   APP,
   APP_PANEL,
-  bothThemes,
   FAINT_DARK,
   GATE_NOTE_RULED,
   PAGE,
@@ -41,16 +40,8 @@ const SELECT = [
 // the shell's, the panel's width the dock's); the gaps and the frame are ours.
 const GRID = ['display', 'column-gap', 'row-gap'] as const;
 
-/**
- * The field label (`.tf__k`): the mockup draws it Mono 12/1.55 400, which
- * TOKENS' type map drops to DS-TOK-126 `--type-eyebrow` (row 8, drift); its
- * dark ink is the folded faint ink (DR-10).
- */
-const LABEL_RULED: Ruled = [
-  ...bothThemes('font-weight', '300', 'TOKENS type row 8, DS-TOK-126'),
-  ...bothThemes('line-height', '16.8px', 'TOKENS type row 8, DS-TOK-126'),
-  { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' },
-];
+/** Dark faint ink retains the existing DR-10 colour treatment. */
+const LABEL_RULED: Ruled = FAINT_DARK;
 
 const select = (
   id: string,
@@ -60,9 +51,17 @@ const select = (
 ): LookProbe =>
   probe({
     id,
-    mockup: { ...PANEL, selector: `.dpanel .sb__fields select[data-sb="${sb}"]` },
+    mockup: {
+      ...PANEL,
+      selector: `.dpanel .sb__fields .sel:has(select[data-sb="${sb}"]) .sel__btn`,
+    },
     app: { ...open, selector: app },
     props: SELECT,
+    ruled: (['light', 'dark'] as const).map((theme) => ({
+      at: `font-size@${theme}`,
+      want: '14.4px',
+      why: 'R20261012 drawn reference select, canonical-states',
+    })),
   });
 
 export const FIELD_PROBES: readonly LookProbe[] = [
@@ -109,10 +108,10 @@ export const FIELD_PROBES: readonly LookProbe[] = [
     props: TYPE,
     ruled: LABEL_RULED,
   }),
-  select('task.panel-project', 'board', 'aside.dtp #panel-field-board'),
-  select('task.panel-stage', 'stage', 'aside.dtp #panel-field-stage'),
-  select('task.panel-status', 'status', 'aside.dtp #panel-field-status'),
-  select('task.page-status', 'status', '#task-field-status', APP),
+  select('task.panel-project', 'board', 'aside.dtp #panel-field-board-control'),
+  select('task.panel-stage', 'stage', 'aside.dtp #panel-field-stage-control'),
+  select('task.panel-status', 'status', 'aside.dtp #panel-field-status-control'),
+  select('task.page-status', 'status', '#task-field-status-control', APP),
   // S2, DT-09: the burn bar. The mockup's agent row folds its time track,
   // so its drawn height is read from the style, not the box.
   probe({
@@ -156,7 +155,7 @@ export const FIELD_PROBES: readonly LookProbe[] = [
   probe({
     id: 'task.panel-link-label',
     mockup: { ...PANEL, selector: '.dpanel .sb__linkrow:has([data-sb-at]) .tf__k' },
-    app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link .tf__k' },
+    app: { ...APP_PANEL, selector: 'aside.dtp .tf__row:has(.dtp__link) .tf__k' },
     props: TYPE,
     ruled: LABEL_RULED,
   }),

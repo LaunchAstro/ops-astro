@@ -212,7 +212,7 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
-      progress={<StepCount value={task.steps.length === 0 ? null : stepProgress(task.steps)} />}
+      progress={<StepCount value={stepProgress(task.steps)} />}
       list={
         <SubtaskList
           client={props.client}

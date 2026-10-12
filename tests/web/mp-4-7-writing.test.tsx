@@ -149,7 +149,7 @@ async function dockFonts(): Promise<Record<string, string | null>> {
   );
 }
 
-describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD field (R60)', () => {
+describe('MP-4-7 read prose is sans and drawer editors are mono (R20261012)', () => {
   const css = readFileSync(
     join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'),
     'utf8',
@@ -167,7 +167,7 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     return new RegExp(`${style}:[^;]*var\\((--font-[a-z]+)\\)\\s*;`, 'u').exec(tokens)?.[1];
   };
 
-  it('the description field and prose are sans; the brief field alone is mono', async () => {
+  it('read prose is sans and both drawer editors use the reference mono stack', async () => {
     const { client, onSaved } = field();
     const view = await mount(
       <>
@@ -189,7 +189,7 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     // Drawn: in the dock task panel, under the app's whole cascade.
     const fonts = await dockFonts();
     expect(fonts['sans']).not.toBe(fonts['mono']);
-    expect([fonts['description'], fonts['brief']]).toEqual([fonts['sans'], fonts['mono']]);
+    expect([fonts['description'], fonts['brief']]).toEqual([fonts['mono'], fonts['mono']]);
   }, 30_000);
 
   it('the page draws the description and the rendered brief as sans prose', async () => {

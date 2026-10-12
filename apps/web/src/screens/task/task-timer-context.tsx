@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react';
 import { TaskTimerSelection } from './task-timer-selection.tsx';
+import { Icon } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { tabOwnerGeneration } from '../../session/token.ts';
 import { TaskTimer, type TimerTask } from './task-timer.ts';
@@ -163,7 +164,8 @@ export function TaskTimerButton(props: {
       disabled={props.busy || blocked}
       onClick={() => (running ? timer?.stop(props.task.id) : timer?.start(props.task))}
     >
-      {running ? '■ Stop' : 'Start timer'}
+      <Icon name={running ? 'stop' : 'play'} size="xs" />
+      {running ? 'Stop' : 'Start timer'}
     </button>
   );
 }
@@ -193,13 +195,23 @@ export function TaskTimerStrip(props: { readonly onSelect: () => void }): ReactE
         className="appbar__timer"
         type="button"
         data-timer
+        title={binding === null ? 'Select task to time' : undefined}
+        aria-label={binding === null ? 'Start timer: select a task' : undefined}
         data-running={binding !== null}
         disabled={timer === null || state.attempt !== null}
         onClick={() => (binding === null ? props.onSelect() : timer?.stop())}
       >
-        {binding === null
-          ? 'Select task to time'
-          : `■ Stop · ${binding.task.title ?? binding.task.key ?? 'Task unavailable'}`}
+        {binding === null ? (
+          <>
+            <Icon name="play" size="xs" />
+            Start timer
+          </>
+        ) : (
+          <>
+            <Icon name="stop" size="xs" />
+            Stop · {binding.task.title ?? binding.task.key ?? 'Task unavailable'}
+          </>
+        )}
       </button>
       {binding?.running === null || binding === null ? null : (
         <Elapsed startedAt={binding.running.startedAt} />

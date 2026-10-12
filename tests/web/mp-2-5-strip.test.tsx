@@ -139,7 +139,7 @@ describe('MP-2-5 unwired controls stay disabled; App offers task selection and t
     const { view } = await open('/projects/');
     const timer = view.find('.appbar .appbar__timer') as HTMLButtonElement | null;
     expect(timer?.disabled).toBe(false);
-    expect(timer?.textContent).toBe('Select task to time');
+    expect(timer?.textContent).toBe('Start timer');
     await view.click('.appbar__timer');
     expect(view.find('[role="dialog"][aria-label="Search"]')).not.toBeNull();
     await view.unmount();

@@ -4,7 +4,7 @@
 import type { ReactElement } from 'react';
 import { useTaskTimerSelection } from './task-timer-selection.tsx';
 import { stopTimer, timedMinutes, type TaskDraft } from './task-draft.ts';
-import { minutesText } from './Time.tsx';
+import { minutesText } from './time-format.ts';
 
 const startedAt = (iso: string): string =>
   new Date(iso).toLocaleTimeString('en-AU', {

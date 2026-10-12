@@ -8,34 +8,16 @@
 // note edits inline by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
+import { LATEST_TIME_ENTRIES, minutesText } from './time-format.ts';
+import { Totals, Fold } from './TimeSummary.tsx';
 import { TaskTimerButton } from './task-timer-context.tsx';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import { useSignedInName } from '../../app-state.ts';
+import { Avatar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { holding, useHeldOperations } from './held-operations.ts';
-
-/** The entries shown before the fold (CS-4.31). */
-const LATEST = 3;
-
-/** "5m", "1h", "1h 30m". */
-export function minutesText(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${String(rest)}m`;
-  return rest === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(rest)}m`;
-}
-
-/** How far the total has burned into the estimate; danger only past it. None without one. */
-export function burnOf(
-  totalMinutes: number,
-  estimateMinutes: number | null,
-): { readonly percent: number; readonly danger: boolean } | null {
-  if (estimateMinutes === null || estimateMinutes <= 0) return null;
-  const percent = Math.min(100, Math.round((totalMinutes / estimateMinutes) * 100));
-  return { percent, danger: totalMinutes > estimateMinutes };
-}
 
 const loggedOn = (at: string): string =>
   new Date(at).toLocaleDateString('en-AU', {
@@ -132,20 +114,23 @@ function EntryRow(props: {
   };
   return (
     <li className="sb__step" data-time-entry={entry.id}>
-      <span className="sb__step-title">
-        {entry.minutes === null ? 'Running' : minutesText(entry.minutes)} ·{' '}
-        {loggedOn(entry.startedAt) + (who === null ? '' : ` · ${who}`)}
-      </span>
+      {who === null ? <span aria-hidden="true" /> : <Avatar name={who} />}
+      <span className="sb__step-title">{loggedOn(entry.startedAt)}</span>
       <EntryNote {...props} />
+      <span className="ttime__duration">
+        {entry.minutes === null ? 'Running' : minutesText(entry.minutes)}
+      </span>
       {entry.minutes === null ? null : (
         <button
           type="button"
-          className="btn btn--ghost"
+          className="row-remove"
+          aria-label="Delete time entry"
+          title="Delete time entry"
           data-time-delete={entry.id}
           disabled={props.busy}
           onClick={remove}
         >
-          Delete
+          ×
         </button>
       )}
     </li>
@@ -170,12 +155,12 @@ function LogBox(props: {
     });
   };
   return (
-    <div className="sb__steplist">
+    <div className="ttime__log">
       <input
         className="field__input"
         data-time-log
         aria-label="Log time"
-        placeholder="1h 30m, 90m or 90"
+        placeholder={'eg "1h 30m"'}
         value={typed}
         onChange={(event) => setTyped(event.target.value)}
         onKeyDown={(event) => {
@@ -191,42 +176,6 @@ function LogBox(props: {
   );
 }
 
-function Totals(props: { readonly total: number; readonly estimate: number | null }): ReactElement {
-  const burn = burnOf(props.total, props.estimate);
-  return (
-    <>
-      <span className="card__sub" data-time-total>
-        {minutesText(props.total)} logged on this task
-      </span>
-      {burn === null ? null : (
-        <div className="sb__burn" data-time-burn data-danger={burn.danger} aria-hidden="true">
-          <span style={{ width: `${String(burn.percent)}%` }} />
-        </div>
-      )}
-    </>
-  );
-}
-
-/** The latest three, then every entry on request (CS-4.31); nothing to fold at three or fewer. */
-function Fold(props: {
-  readonly count: number;
-  readonly open: boolean;
-  readonly onOpen: (value: boolean) => void;
-}): ReactElement | null {
-  if (props.count <= LATEST) return null;
-  return (
-    <button
-      type="button"
-      className="btn btn--ghost"
-      data-time-fold
-      aria-expanded={props.open}
-      onClick={() => props.onOpen(!props.open)}
-    >
-      {props.open ? 'Show latest three' : `Show all (${String(props.count)})`}
-    </button>
-  );
-}
-
 function timerTask(props: {
   readonly taskId: string;
   readonly taskKey?: string;
@@ -239,7 +188,7 @@ function timerTask(props: {
   };
 }
 
-export function TimeLog(props: {
+interface TimeLogProps {
   readonly client: OperationsClient;
   readonly taskId: string;
   readonly taskKey?: string;
@@ -249,7 +198,9 @@ export function TimeLog(props: {
   readonly showAll: boolean;
   readonly onShowAll: (value: boolean) => void;
   readonly onChanged: () => void;
-}): ReactElement {
+}
+
+export function TimeLog(props: TimeLogProps): ReactElement {
   const { client, taskId, time } = props;
   const { busy, because, run } = useCommand();
   const after = (done?: (kind: string) => void) => (settlement: { readonly kind: string }) => {
@@ -258,12 +209,17 @@ export function TimeLog(props: {
   };
   const log = (duration: string, operationId: string, done: (kind: string) => void): void =>
     run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
-  const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
+  const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST_TIME_ENTRIES);
   return (
     <div className="sb__steplist" data-time-log-section>
-      <TaskTimerButton task={timerTask(props)} busy={busy} />
-      <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />
+      <TimeControls
+        task={timerTask(props)}
+        busy={busy}
+        taskId={taskId}
+        mint={() => client.newOperationId()}
+        log={log}
+      />
       <ul className="sb__steps">
         {shown.map((entry) => (
           <EntryRow
@@ -282,6 +238,28 @@ export function TimeLog(props: {
           {because}
         </p>
       )}
+    </div>
+  );
+}
+
+function TimeControls(props: {
+  readonly task: ReturnType<typeof timerTask>;
+  readonly busy: boolean;
+  readonly taskId: string;
+  readonly mint: () => string;
+  readonly log: (duration: string, operationId: string, done: (kind: string) => void) => void;
+}): ReactElement {
+  const { busy, taskId, log } = props;
+  return (
+    <div className="ttime__controls">
+      <div className="ttime__timer">
+        <span className="ttime__label">Timer</span>
+        <TaskTimerButton task={props.task} busy={busy} />
+      </div>
+      <div className="ttime__logging">
+        <span className="ttime__label">Log time</span>
+        <LogBox key={taskId} busy={busy} mint={props.mint} log={log} />
+      </div>
     </div>
   );
 }

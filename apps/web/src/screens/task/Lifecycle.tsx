@@ -8,7 +8,7 @@
 // unsaved, and the page decides that; these only draw it.
 
 import type { ReactElement } from 'react';
-import { Skeleton } from '@launchastro/ui';
+import { Skeleton, StyledSelect } from '@launchastro/ui';
 import type {
   InternalTaskDetail as Task,
   PersonListResult,
@@ -96,7 +96,7 @@ export function Assignee(props: AssigneeProps): ReactElement {
         placeholder={<Skeleton shape="field" />}
       >
         {(value) => (
-          <select
+          <StyledSelect
             className="input"
             aria-label="Assignee"
             disabled={props.disabled}
@@ -111,7 +111,7 @@ export function Assignee(props: AssigneeProps): ReactElement {
                 {person.name}
               </option>
             ))}
-          </select>
+          </StyledSelect>
         )}
       </RecordState>
     </section>

@@ -41,11 +41,6 @@ const probe = (
   ...(ruled === undefined ? {} : { ruled }),
 });
 
-// TP-06: the title is DS-TOK-107 --type-display; the mockup's 600 weight,
-// 1.15 leading and -0.01em tracking are drift (TASK-PAGE.md S5).
-const DISPLAY = (['light', 'dark'] as const).flatMap((theme) => [
-  { at: `font-weight@${theme}`, want: '500', why: 'TP-06' },
-]);
 // DS-TASK-1 and DS-TASK-7: labels snap to DS-TOK-126 --type-eyebrow (300);
 // the mockup's 400 is drift (TASK-PAGE.md S4).
 const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
@@ -53,34 +48,26 @@ const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
   want: '300',
   why: 'DS-TASK-1',
 }));
-// TP-01: the crumb's door link is DS-TOK-124 (mono 12); the mockup drew 13.
-const DOOR = (['light', 'dark'] as const).map((theme) => ({
-  at: `font-size@${theme}`,
-  want: '12px',
-  why: 'TP-01',
-}));
 
 export const TASK: LookScreen = {
   id: 'task',
   probes: [
     probe('crumb', { ...MOCK, selector: '.tpr__crumb' }, '.tpr__crumb', [...TYPE, 'column-gap']),
-    probe(
-      'crumb-door',
-      { ...MOCK, selector: '.tpr__crumb a.sb__addr' },
-      '.tpr__crumb a.sb__addr',
-      ['font-family', 'font-size', 'color', 'text-decoration-line'],
-      DOOR,
-    ),
+    probe('crumb-door', { ...MOCK, selector: '.tpr__crumb a.sb__addr' }, '.tpr__crumb a.sb__addr', [
+      'font-family',
+      'font-size',
+      'color',
+      'text-decoration-line',
+    ]),
     probe('state', { ...MOCK, selector: '.tpr__crumb .spill' }, '.tpr__crumb .spill', [
       'font-size',
     ]),
-    probe(
-      'title',
-      { ...MOCK, selector: '.tpr__title' },
-      '.tpr__title',
-      ['font-family', 'font-size', 'font-weight', 'color'],
-      DISPLAY,
-    ),
+    probe('title', { ...MOCK, selector: '.tpr__title' }, '.tpr__title', [
+      'font-family',
+      'font-size',
+      'font-weight',
+      'color',
+    ]),
     probe('runline', { ...MOCK, selector: '.tpr .card__sub' }, '.tpr .card__sub', [
       'font-size',
       'color',
@@ -98,13 +85,11 @@ export const TASK: LookScreen = {
       'row-gap',
       'column-gap',
     ]),
-    probe(
-      'fact-key',
-      { ...MOCK, selector: '.tpr__facts .tf__k' },
-      '.tpr__facts .tf__k',
-      [...TYPE, 'text-transform', 'letter-spacing'],
-      EYEBROW,
-    ),
+    probe('fact-key', { ...MOCK, selector: '.tpr__facts .tf__k' }, '.tpr__facts .tf__k', [
+      ...TYPE,
+      'text-transform',
+      'letter-spacing',
+    ]),
     probe('fact-value', { ...MOCK, selector: '.tpr__facts .sb__state' }, '.tpr__facts .sb__state', [
       ...TYPE,
       'padding-top',
@@ -149,7 +134,6 @@ export const TASK: LookScreen = {
       { ...AGENT, selector: '.gatebox .sout__row .tf__k' },
       '.gatebox .sout__row .tf__k',
       TYPE,
-      EYEBROW,
     ),
     probe('gate-rows', { ...AGENT, selector: '.gatebox .sout__box' }, '.gatebox .sout__box', [
       'border-top-color',
@@ -205,13 +189,10 @@ export const TASK: LookScreen = {
       'row-gap',
       'column-gap',
     ]),
-    probe(
-      'strip-key',
-      { ...MOCK, selector: '.mstrip .mstrip__k' },
-      '.mstrip .mstrip__k',
-      [...TYPE, 'text-transform'],
-      EYEBROW,
-    ),
+    probe('strip-key', { ...MOCK, selector: '.mstrip .mstrip__k' }, '.mstrip .mstrip__k', [
+      ...TYPE,
+      'text-transform',
+    ]),
     probe(
       'strip-move',
       { ...MOCK, selector: '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v' },
@@ -241,7 +222,6 @@ export const TASK: LookScreen = {
       { ...LIVE, selector: '.sout .sout__row .tf__k' },
       '.sout .sout__row .tf__k',
       TYPE,
-      EYEBROW,
     ),
     probe('receipt-value', { ...LIVE, selector: '.sout .sout__v' }, '.sout .sout__v', [
       'font-family',

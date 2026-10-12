@@ -12,6 +12,15 @@
   gap: var(--s-3);
   margin-bottom: var(--s-4);
 }
+.content .readstate[data-outcome='ready']:has(> [data-task]) {
+  padding: 0;
+}
+.stack[data-task] {
+  gap: 0;
+}
+.tpr__facts {
+  margin-bottom: 0;
+}
 .tpr__crumb {
   display: flex;
   align-items: center;
@@ -22,15 +31,20 @@
   text-transform: var(--type-body-case);
   color: var(--text-muted);
 }
-/* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
-   and the same door out of a gate or an empty page. */
+/* Task addresses share the measured reference type across their three hosts. */
 .tpr__crumb .sb__addr,
-.empty__action .sb__addr {
+.empty__action .sb__addr,
+.tpr__facts .sb__addr {
+  /* type-exception R20261012: reference task addresses use 13px mono. */
   font: var(--type-data);
+  font-size: 13px;
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--text);
   text-decoration: none;
+}
+.tpr__facts .sb__addr--none {
+  color: var(--text-muted);
 }
 .tpr__crumb .sb__addr:hover,
 .tpr__crumb .sb__addr:focus-visible,
@@ -38,16 +52,45 @@
 .empty__action .sb__addr:focus-visible {
   color: var(--accent);
 }
-/* TP-06: DS-TOK-107 --type-display (the mockup's 600 weight is drift). */
+/* TP-06: the canonical display title, measured at 44px and weight 600. */
+.tpr__board {
+  color: inherit;
+  text-decoration: none;
+}
+.tpr__board:is(:hover, :focus-visible) {
+  text-decoration: underline;
+}
 .tpr__title {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
   margin: 0;
   font: var(--type-display);
-  letter-spacing: var(--type-display-tracking);
-  text-transform: var(--type-display-case);
+
   /* A long name wraps at 390 rather than clipping (MP-4-1). */
   overflow-wrap: anywhere;
+
+  letter-spacing: var(--type-display-tracking);
+  text-transform: var(--type-display-case);
+  font-weight: 600;
+  font-size: var(--text-display);
+  line-height: 1.15;
 }
 /* Refresh sits outside the read (TaskDetail.tsx says why), at the page's end. */
+.tpr__revision {
+  font: var(--type-small);
+  color: var(--text-muted);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tpr__crumb [data-copy] {
+  min-height: 0;
+  height: auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
 .tpr__refresh {
   display: flex;
   justify-content: flex-end;
@@ -64,11 +107,19 @@
 }
 /* The rank's calculation, under the fact strip (MP-4-2). */
 .tpr__calc {
-  margin: 0;
+  /* type-exception R20261012: the reference rank calculation is 12/1.5. */
+  margin: calc(var(--s-4) * -1) 0 var(--s-4);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tpr__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 /* Inert on the task page: the strip's ticks say what the record says and do
    nothing, so the cursor is the default one, never the pointer (MP-4-2, D-08).
@@ -145,35 +196,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
-   control pairs, two to a line, one below 641; a field that is more than a
-   pair (Assign to AI, the tags, a refusal) takes the whole line. */
-.dtp__fields {
-  display: grid;
-  grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem minmax(0, 1fr);
-  align-items: center;
-  gap: 0.4rem var(--s-3);
-}
-@media (width <= 640px) {
-  .dtp__fields {
-    grid-template-columns: 4.4rem minmax(0, 1fr);
-  }
-}
-.dtp__fields > :is(.field, .tf__tags, .field__error, p) {
-  grid-column: 1 / -1;
-}
-/* DS-PRIM-5, the field select, on the panel and the page's Status: 37 tall. */
-.dtp__fields select.input,
-[data-task-status] select.input {
-  box-sizing: border-box;
-  block-size: 2.3125rem;
-  padding: 0 var(--s-3);
-  background: var(--paper);
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-
 /* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. The
    Agent side column's sit closer under their rule (DS-TASK-15). */
 [data-task] > .sb__sect,
@@ -201,7 +223,7 @@
 .mstrip__c {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--s-1);
   min-width: 0;
 }
 .mstrip__k {
@@ -304,24 +326,6 @@
   min-width: 0;
 }
 
-/* -- The Agent tab's two columns (S4) ------------------------------------ */
-.tpg {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--s-5);
-  align-items: start;
-}
-.tpg__main,
-.tpg__side {
-  display: grid;
-  gap: var(--s-5);
-  min-width: 0;
-}
-@media not all and (max-width: 1278px) {
-  .tpg {
-    grid-template-columns: minmax(0, 1fr) 21rem;
-  }
-}
 .sb__sect {
   display: grid;
   gap: var(--s-2);
@@ -474,45 +478,6 @@
   }
 }
 
-/* -- The gate. The mark is the ONE place a fill is allowed, and only when
-      armed. Everything else is a line. ------------------------------------ */
-.gate {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-4);
-  padding: var(--s-4) var(--s-5);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--text-muted);
-  background: var(--surface);
-}
-.gate--armed {
-  border-left-color: var(--warning);
-}
-.gate__mark {
-  flex: none;
-  width: 0.7rem;
-  height: 0.7rem;
-  margin-top: 0.3rem;
-  border: 1px solid var(--text-muted);
-}
-.gate--armed .gate__mark {
-  border-color: var(--warning);
-  background: var(--warning);
-}
-.gate__word {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-  color: var(--text);
-}
-.gate__say {
-  margin: 0.3rem 0 0;
-  max-width: 74ch;
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  color: var(--text-2);
-}
 .gatebox {
   display: grid;
   gap: var(--s-2);
@@ -587,9 +552,9 @@
 }
 .sb__gate-note {
   margin-inline-start: auto;
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -605,9 +570,11 @@
    One font rule (R60): the description is sans on every surface, and so is
    the rendered brief; mono is kept for the brief's markdown field alone. --- */
 .tt__prose {
+  /* type-exception R20261012: reference rendered prose uses 1.6 leading. */
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
+  line-height: 1.6;
   color: var(--text-2);
 }
 .md p,
@@ -640,7 +607,7 @@
    the × revealed on hover or keyboard focus, and at rest below 900px where
    there is no hover (DT-17); the client message signal a label (DT-19). */
 .msg__replies {
-  margin: var(--s-2) 0 0 var(--s-4);
+  margin: var(--s-3) 0 0;
   padding-left: var(--s-3);
   border-left: 1px solid var(--border);
 }
@@ -650,13 +617,17 @@
 }
 .msg__acts {
   display: flex;
-  gap: var(--s-2);
+  position: absolute;
+  top: calc(var(--s-1) * -1);
+  right: 0;
+  gap: 0.2rem;
 }
 .msg__acts [data-comment-act='edit'],
 .msg__acts [data-comment-act='delete'] {
   opacity: 0;
 }
-.msg:hover > .msg__acts [data-comment-act],
+.msg:hover .msg__acts [data-comment-act],
+.msg:focus-within .msg__acts [data-comment-act],
 .msg__acts [data-comment-act]:focus-visible {
   opacity: 1;
 }
@@ -697,4 +668,238 @@
 }
 .dtp__action[data-task-pin][aria-pressed='true'] {
   color: var(--accent);
+}
+
+.dtp .sel__btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  background: var(--paper);
+  font-size: 0.9rem;
+}
+.dtp__fields .sel__btn {
+  min-height: 0;
+  padding: 0.55rem var(--s-3);
+}
+.dtp__fields .sel__btn:has(> .av) {
+  height: 41.2px;
+}
+.dtp__fields .sel__native {
+  padding: 0;
+}
+
+/* Conversation, inline recipients and quiet row controls share one task dialect. */
+
+.sb__step-title {
+  /* type-exception R20261012: measured reference child titles use 14px sans with 1.35 leading. */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  line-height: 1.35;
+}
+
+/* Shared conversation rows for the full task page and drawer (R20261012). */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+.msg {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s-2);
+  position: relative;
+}
+.msg__avatar .av {
+  width: 22px;
+  height: 22px;
+  font: inherit;
+}
+.msg--deleted {
+  display: block;
+}
+.msg__avatar {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font: var(--type-badge);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  font-size: 9px;
+}
+.msg__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.msg__body > .card__body {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--type-body);
+  overflow-wrap: anywhere;
+
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  line-height: 1.45;
+}
+.msg__meta {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font: var(--type-small);
+  color: var(--text-muted);
+
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  line-height: 1rem;
+}
+.msg__meta b {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  color: var(--text);
+  font-weight: 500;
+}
+.msg__at {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font-size: 12px;
+}
+.msg__audience {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-data);
+  font-size: 9px;
+  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-data-tracking);
+}
+.msg__acts .btn {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  padding: 0.2rem;
+  min-height: 20px;
+  height: 20px;
+  font-size: 11px;
+  background: var(--paper);
+}
+
+/* Full-page editing is retained in the toolbar, beside the drawer door. */
+.task-controls {
+  position: relative;
+}
+.task-controls > summary {
+  list-style: none;
+}
+.task-controls > summary::-webkit-details-marker {
+  display: none;
+}
+.task-controls__body {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 55;
+  width: min(360px, calc(100vw - var(--s-6)));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--s-4);
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+.task-controls[open] > .task-controls__body {
+  display: grid;
+  gap: var(--s-4);
+}
+.task-controls__body .tf__grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.topbar:has(.task-controls) {
+  position: relative;
+}
+.topbar .task-controls {
+  position: static;
+}
+.topbar:has(.task-controls) .topbar__bar {
+  position: static;
+}
+.topbar .task-controls__body {
+  right: var(--s-6);
+  width: min(360px, calc(100% - var(--s-6) * 2));
+}
+
+[data-step-add] {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+[data-step-add]:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+[data-writing] > .empty--inline {
+  padding: 0;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+
+.sb__step {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font: var(--type-body);
+
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+[data-step] .sb__step-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+[data-step] .sb__step-title:hover {
+  color: var(--accent);
+}
+.sb__step .av {
+  /* type-exception R20261012: reference row initials use 9px mono with 1.55 leading. */
+  width: 1.35rem;
+  height: 1.35rem;
+  font: var(--type-data);
+  font-size: 0.5625rem;
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
+}
+
+.sb__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sb__steps:has(> [data-step]) {
+  display: grid;
+  gap: 0.1rem;
+}
+.sb__steps > [data-step]:last-child {
+  border-bottom: 0;
+}
+
+[data-time-total] {
+  position: absolute;
+  right: 0;
+  top: calc(-1 * (1.05rem + var(--s-3)));
 }

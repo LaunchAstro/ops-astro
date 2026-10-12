@@ -61,7 +61,7 @@ it('the actual signed-in App server-renders a neutral timer without issuing requ
   const world = timerWorld();
   const page = await serverApp(world.fetch, draftTab());
   expect(page.html).toContain('class="shell"');
-  expect(page.html).toContain('Select task to time');
+  expect(page.html).toContain('Start timer');
   expect(page.html).not.toContain('data-task-timer-retry');
   expect(world.sent).toEqual([]);
 });
@@ -82,7 +82,7 @@ it('server HTML hides restored custody, then hydration keeps the original guarde
   world.deny();
   const before = world.writes().length;
   const page = await serverApp(world.fetch, storage);
-  expect(page.html).toContain('Select task to time');
+  expect(page.html).toContain('Start timer');
   for (const privateValue of [A, START, String(original.body['operationId']), 'Alpha work']) {
     expect(page.html).not.toContain(privateValue);
   }
