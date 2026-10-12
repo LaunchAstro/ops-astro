@@ -4173,12 +4173,26 @@ on one character, and at least one character that draws); each refusal names its
 field. A promote's label shows the class and client by name, or by identifier
 where a name would not pass that rule.
 
-| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                                                                  |
-| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                                                                       |
-| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                       |
-| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                 |
-| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state }`, `state` the class's derived state after the revoke; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
+A filing is filed once (#1427). `draftId` is the one id the screen makes for a
+filing intent and sends on every retry of it, under any operation id. Under the
+client's lock, a draft already bound to a mandate answers with that mandate
+(`repeat: true`) when the values match, and is refused
+`TRANSITION_NOT_PERMITTED` (`state=revoked` or `state=expired`) once the mandate
+is revoked or expired, or `FIELD_VALUE_INVALID` (`draftId`) when the values
+differ. An unbound draft is answered with the client's identical live mandate
+if there is one (classes as a set, every other value whole), and only otherwise
+files one; either way the draft is bound to it (`standing_mandate_drafts`, its
+key through the client, written once). A repeat is answered only while its
+mandate is still live after the last wait, else the filing is refused
+`expiresAt`. The database refuses a second live identical mandate from any
+writer (`standing_mandates_one_live_filing`, 23505).
+
+| Operation            | Route                 | Body                                                                                                             | Answer or refusals                                                                                                                                                                                                                                                  |
+| -------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `draftId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses, repeat? }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (draft already filed, mandate revoked or expired), `FIELD_VALUE_INVALID` 422                                            |
+| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                                  | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                       |
+| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                            | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                 |
+| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                                    | `detail: { classId, mandateId, state }`, `state` the class's derived state after the revoke; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
 
 ## What agent runs cost (MP-14-9, MP-14-6)
 

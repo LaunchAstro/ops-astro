@@ -164,12 +164,13 @@ export const CONNECTIONS: LookScreen = {
       'background-color',
     ]),
     region('knob', GRAD, '.autosw__k', ['box.width', 'border-top-color', 'background-color']),
-    // A held-by label carries a mandate's id, a UUID that has no space to break at.
+    // A held-by label carries the holding mandate's sentence, up to 500 characters, which may
+    // hold a word with no space to break at.
     region('switch-said', GRAD, '.autosw__lbl', ['font-size', 'color', 'overflow-wrap'], {
       ruled: (['light', 'dark'] as const).map((theme) => ({
         at: `overflow-wrap@${theme}`,
         want: 'anywhere',
-        why: 'a held-by id is a UUID',
+        why: 'a held-by sentence may hold an unbroken word',
       })),
     }),
     region('count-n', GRAD, '.grad__n b', TYPE),
