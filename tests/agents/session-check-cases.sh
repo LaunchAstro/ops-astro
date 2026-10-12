@@ -157,6 +157,8 @@ fi
 # .codex/skills must resolve to .claude/skills itself, not merely be a link.
 CHECKOUT="$TMP/checkout"
 git clone -q --shared "$REPO_ROOT" "$CHECKOUT"
+# The check reads the repository it sits in, so the clone runs its own copy.
+cp "$CHECK" "$CHECKOUT/scripts/agent-session-check.sh"
 for link in dangling elsewhere same; do
   rm -f "$CHECKOUT/.codex/skills"
   case "$link" in
@@ -164,7 +166,7 @@ for link in dangling elsewhere same; do
     elsewhere) mkdir -p "$TMP/other-skills" && ln -s "$TMP/other-skills" "$CHECKOUT/.codex/skills" ;;
     same) ln -s ../.claude/skills "$CHECKOUT/.codex/skills" ;;
   esac
-  output="$( cd "$CHECKOUT" && HUB_CODEX_GLOBAL="$TMP/harmless.md" bash "$CHECK" 2>&1 )"
+  output="$(HUB_CODEX_GLOBAL="$TMP/harmless.md" bash "$CHECKOUT/scripts/agent-session-check.sh" 2>&1)"
   if printf '%s\n' "$output" | grep -q 'PROBLEM.*\.codex/skills'; then refused=yes; else refused=no; fi
   if { [ "$link" = same ] && [ "$refused" = no ]; } || { [ "$link" != same ] && [ "$refused" = yes ]; }; then
     pass ".codex/skills ($link) is judged by where it resolves"
