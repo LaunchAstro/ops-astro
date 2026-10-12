@@ -14,7 +14,8 @@ What it inspects, and why each mode exists
 - **Before a push**, it reads *every blob in every outgoing commit*, on both
   sides of every change, so a file added and later deleted is still caught.
   A working-tree scan can never see that, and once it is pushed it is public
-  for good.
+  for good. Each commit's author, committer and message are read too, by
+  both the hashed and the literal sweep, and so is every path's own text.
 - **Path rules run first, on every path, with no exclusions.** A directory
   the content scan skips must not become a place to hide a denied path.
 - **It fails closed.** Anything it cannot read as text is a violation until
@@ -419,12 +420,17 @@ def _raw_pairs(args: list[str]) -> list[tuple[str, str]]:
     return found
 
 
-def commit_identities(commit: str) -> list[tuple[str, str]]:
-    raw = git(["show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", commit])
-    parts = raw.decode("utf-8", "replace").rstrip("\n").split("\0")
-    if len(parts) < 4:
+def commit_text(commit: str) -> list[tuple[str, str]]:
+    """What a commit publishes besides its blobs: who made it, and its message."""
+    raw = git(["show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce%x00%B", commit])
+    parts = raw.decode("utf-8", "replace").split("\0", 4)
+    if len(parts) < 5:
         return []
-    return [("author", f"{parts[0]} {parts[1]}"), ("committer", f"{parts[2]} {parts[3]}")]
+    return [
+        ("author", f"{parts[0]} {parts[1]}"),
+        ("committer", f"{parts[2]} {parts[3]}"),
+        ("message", parts[4]),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +476,27 @@ def path_violations(paths, patterns: list[str]) -> list[Violation]:
                 out.append((where, "denied path", pattern, pattern))
                 break
     return out
+
+
+WITHHELD = "<withheld path>"
+
+
+def path_texts(paths, hashes: set[str], shapes) -> tuple[dict[str, str], list[Violation]]:
+    """Each path as the evidence prints it, and what the path's own text carries.
+
+    A file name is published as surely as the blob it names, so a denied term
+    or shape in it is a violation, and that path is withheld wherever the
+    report would print it. paths: (prefix, rel), the first prefix naming it.
+    """
+    shown: dict[str, str] = {}
+    out: list[Violation] = []
+    for prefix, rel in paths:
+        if rel in shown:
+            continue
+        hits = scan_text(rel, hashes, shapes)
+        shown[rel] = WITHHELD if hits else rel
+        out += [(f"{prefix}{shown[rel]}", f"{kind}, in the path", fingerprint(v), v) for kind, v in hits]
+    return shown, out
 
 
 def content_violations(
@@ -536,8 +563,9 @@ def mode_staged(hashes, shapes, patterns, binary_allow, exemptions, reveal: bool
     if not rels:
         print("gate: nothing staged")
         return 0
-    violations = path_violations([(r, r) for r in rels], patterns)
-    items = [(rel, rel, staged_blob(rel)) for rel in rels]
+    shown, violations = path_texts([("", r) for r in rels], hashes, shapes)
+    violations += path_violations([(shown[r], r) for r in rels], patterns)
+    items = [(shown[rel], rel, staged_blob(rel)) for rel in rels]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
     return report(violations, reveal, f"{len(rels)} staged blob(s)")
 
@@ -553,16 +581,18 @@ def mode_range(revs, hashes, shapes, patterns, binary_allow, exemptions, reveal:
         short = commit[:9]
         for path, sha in commit_blobs(commit):
             pairs.setdefault((path, sha), short)
-        for role, identity in commit_identities(commit):
-            for kind, value in scan_text(identity, hashes, shapes):
+        for role, text in commit_text(commit):
+            for kind, value in scan_text(text, hashes, shapes):
                 violations.append(
                     (f"{short} ({role})", kind, fingerprint(value), value)
                 )
+    shown, found = path_texts([(f"{where}:", path) for (path, _sha), where in pairs.items()], hashes, shapes)
+    violations += found
     violations += path_violations(
-        [(f"{where}:{path}", path) for (path, _sha), where in pairs.items()], patterns
+        [(f"{where}:{shown[path]}", path) for (path, _sha), where in pairs.items()], patterns
     )
     items = [
-        (f"{where}:{path}", path, cat_blob(sha))
+        (f"{where}:{shown[path]}", path, cat_blob(sha))
         for (path, sha), where in pairs.items()
     ]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
@@ -573,8 +603,9 @@ def mode_range(revs, hashes, shapes, patterns, binary_allow, exemptions, reveal:
 
 def mode_tracked(hashes, shapes, patterns, binary_allow, exemptions, reveal: bool) -> int:
     rels = tracked_files()
-    violations = path_violations([(r, r) for r in rels], patterns)
-    items = [(rel, rel, read_path(REPO / rel)) for rel in rels]
+    shown, violations = path_texts([("", r) for r in rels], hashes, shapes)
+    violations += path_violations([(shown[r], r) for r in rels], patterns)
+    items = [(shown[rel], rel, read_path(REPO / rel)) for rel in rels]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
     return report(violations, reveal, f"{len(rels)} tracked file(s)")
 
@@ -590,8 +621,9 @@ def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, 
             dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
             found.extend(Path(dirpath) / n for n in filenames)
     rels = [str(p) for p in found]
-    violations = path_violations(list(zip(rels, rels)), patterns)
-    items = [(rel, rel, read_path(path)) for path, rel in zip(found, rels)]
+    shown, violations = path_texts([("", r) for r in rels], hashes, shapes)
+    violations += path_violations([(shown[r], r) for r in rels], patterns)
+    items = [(shown[rel], rel, read_path(path)) for path, rel in zip(found, rels)]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
     return report(violations, reveal, f"{len(found)} file(s) under {target}")
 
@@ -713,38 +745,58 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
         refused_tips = history.refused_tips()
     except (OSError, ValueError, subprocess.TimeoutExpired):
         raise GateBroken("invalid or unreadable historical literal approval") from None
+    needles = [(term, " ".join(normalise(term))) for term in terms]
+
+    def literals(text: str) -> list[tuple[str, str]]:
+        haystack = " ".join(normalise(text))
+        return [(term, needle) for term, needle in needles if needle and needle in haystack]
+
     pairs: dict[tuple[str, str], set[str]] = {}
+    violations: list[Violation] = []
     for commit in commits:
         for path, sha in commit_blobs(commit):
             pairs.setdefault((path, sha), set()).add(commit)
-    violations: list[Violation] = [
+        # A name or message is published with the commit, and no historical
+        # approval covers one: those are for blobs.
+        for role, text in commit_text(commit):
+            violations += [
+                (f"{commit[:9]} ({role})", "denied term, literal", fingerprint(term), term)
+                for term, _needle in literals(text)
+            ]
+    violations += [
         (f"{tip[:9]}:{path}", "historical literal at candidate tip", "approved historical blob retained", "approved historical blob retained")
         for tip, path in refused_tips
     ]
+    shown: dict[str, str] = {}
+    for (path, _sha), occurrences in pairs.items():
+        if path not in shown:
+            hits = literals(path)
+            shown[path] = WITHHELD if hits else path
+            violations += [
+                (f"{min(occurrences)[:9]}:{WITHHELD}", "denied term, literal, in the path", fingerprint(term), term)
+                for term, _needle in hits
+            ]
     violations += path_violations(
-        [(f"{min(occurrences)[:9]}:{path}", path) for (path, _s), occurrences in pairs.items()], patterns
+        [(f"{min(occurrences)[:9]}:{shown[path]}", path) for (path, _s), occurrences in pairs.items()], patterns
     )
     for (path, sha), occurrences in pairs.items():
-        where = min(occurrences)[:9]
+        where = f"{min(occurrences)[:9]}:{shown[path]}"
         data = cat_blob(sha)
         text = decode(data) if data is not None else None
         if text is None:
             violations.append(
-                (f"{where}:{path}", "unreadable", "not readable as text", "not readable as text")
+                (where, "unreadable", "not readable as text", "not readable as text")
             )
             continue
-        haystack = " ".join(normalise(text))
-        for term in terms:
-            needle = " ".join(normalise(term))
-            if needle and needle in haystack:
-                try:
-                    if history.permits(path, sha, needle, occurrences):
-                        continue
-                except (OSError, ValueError, subprocess.TimeoutExpired):
-                    raise GateBroken("cannot verify historical literal approval") from None
-                violations.append(
-                    (f"{where}:{path}", "denied term, literal", fingerprint(term), term)
-                )
+        for term, needle in literals(text):
+            try:
+                if history.permits(path, sha, needle, occurrences):
+                    continue
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                raise GateBroken("cannot verify historical literal approval") from None
+            violations.append(
+                (where, "denied term, literal", fingerprint(term), term)
+            )
     return report(
         violations,
         reveal,
