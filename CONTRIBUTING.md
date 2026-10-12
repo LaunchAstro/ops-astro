@@ -124,9 +124,28 @@ the full test run; the full test run,
 and `database conformance` passes on the shards' skip when the contamination
 gate passed (a failed gate fails it). The full set runs in the
 merge queue, which tests each pull request on top of `main` and is the only
-way into it, so nothing reaches `main` untested; a push to `main` runs it too.
+way into it, so nothing reaches `main` untested.
 A green pull request is therefore not a full run: builders run the full
 `pnpm check` locally before declaring a change ready.
+
+Those pull request checks run in full only on a pull request next in line
+(owner, 12 October 2026). The orchestrator adds the `ci-next` label when a
+pull request is next for Sol or the merge queue. Without it, every push still
+runs the cheap checks (the contamination gate, gitleaks, licences, commit messages,
+size, dependency audit, static analysis and the database conformance gate),
+but `full checks` and every job behind it are skipped, and `local checks`,
+`isolation tests` and `database conformance` fail with "the full set waits
+for the ci-next label". Adding the label starts the run; removing it runs the
+light set again. A label change on a closed or merged pull request runs
+nothing. `review evidence for this revision` is its own workflow and runs on
+every event, label or not (`scripts/full-run.ts`).
+
+A push to `main` runs the full set only when it has to. When a green merge
+group of `ci.yml` already tested the pushed tree and the queue still holds
+entries, the push runs the light set and the three aggregates pass, naming
+the merge group. When nothing tested that tree, or the queue is empty (the
+end of a batch), the push runs the full set. Pushes to `main` never cancel
+each other.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. A branch need not be up to date

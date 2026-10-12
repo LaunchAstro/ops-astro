@@ -38,8 +38,13 @@ permissions:
 # cancelled by a newer run (CI-SPEED): it may hold several pull requests, and
 # the queue drops a group whose checks were cancelled. Each group's ref is
 # its own anyway, so this guards the rule rather than changing a run.
+#
+# A push to main is grouped by its own commit, so no push cancels another
+# (queue hygiene, owner, 12 October 2026): each decides for itself whether its
+# tree needs the full set (scripts/full-run.ts), and an end-of-batch run is
+# never cancelled by the next batch's first push.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 # CI-LOCAL (owner, 6 October 2026: CI runs on our own machines). With the
@@ -70,6 +75,15 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
     # Its slowest green run in the day to 1 October 2026: 5.2 min.
     timeout-minutes: 15
+    # `actions: read` lets the scope step below read the merge group runs on a
+    # push to main; the merge queue is read with the same token. Both read only.
+    permissions:
+      contents: read
+      actions: read
+    # Full or light (scripts/full-run.ts): `full checks` runs unless this is
+    # `light`, so an empty or unreadable value runs the full set.
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,6 +103,15 @@ jobs:
       # other events pass (scripts/queue-head-check.mjs).
       - name: A pull request never runs its checks on a merge-queue commit
         run: node scripts/queue-head-check.mjs
+      # Queue hygiene (owner, 12 October 2026): a merge group always takes the
+      # full set; a pull request only with the `ci-next` label; a push to main
+      # only when no green merge group tested its tree or the queue is empty.
+      - name: Which set this run takes, full or light
+        id: scope
+        env:
+          # On a push to main alone; no other event reads the API.
+          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
+        run: node scripts/full-run.ts
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -174,6 +197,22 @@ jobs:
       - name: Scan every commit, not just the diff
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
 
+  full:
+    # Queue hygiene (owner, 12 October 2026): the heavy jobs wait on this one,
+    # so a light run (the gate's `scope` output, scripts/full-run.ts) skips
+    # them and takes no runner for them. It runs unless the scope is `light`,
+    # which is never so on a merge group. The three required aggregates read
+    # the scope: a light push passes (its merge group tested the tree), a light
+    # pull request fails until the orchestrator adds `ci-next`.
+    name: full checks
+    needs: [gate]
+    if: needs.gate.outputs.scope != 'light'
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: The full set runs on this event
+        run: echo "The full set runs on this event"
+
   check:
     # `local checks` in shards (CI-SHARDS-2). Run whole it took 35 of the merge
     # queue's 38 minutes, so each shard runs the build, its share of the test
@@ -183,7 +222,7 @@ jobs:
     # one shard. It runs on every event the job ran on whole. `local checks`
     # below is the required check, and it passes only when every shard did.
     name: local checks shard ${{ matrix.shard }}
-    needs: [gate]
+    needs: [gate, full]
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # The whole job's slowest green run in the 10 merge groups of 5 October
     # 2026 was 36.4 min; a third of it is about 12 min.
@@ -308,17 +347,27 @@ jobs:
     # job would be skipped, and a skipped required check reads as passed. The
     # shards run on pull requests too, so no skip passes anywhere.
     name: local checks
-    needs: [gate, check]
+    needs: [gate, full, check]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
-      - name: Every shard succeeded
+      - name: Every shard succeeded, or a push whose tree its merge group tested
         env:
           SHARDS: ${{ needs.check.result }}
           GATE: ${{ needs.gate.result }}
+          SCOPE: ${{ needs.gate.outputs.scope }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "local checks shards: $SHARDS, contamination gate: $GATE"
+          echo "local checks shards: $SHARDS, contamination gate: $GATE, scope: $SCOPE"
+          if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+            if [ "$EVENT" = push ]; then
+              echo "local checks: a green merge group tested this tree"
+              exit 0
+            fi
+            echo "local checks: the full set waits for the ci-next label"
+            exit 1
+          fi
           test "$SHARDS" = success
 
   database-gate:
@@ -379,7 +428,7 @@ jobs:
     # manifest (rules 2 and 3). `database conformance` below is the required
     # check, and it passes only when every shard did.
     name: database conformance shard ${{ matrix.shard }}
-    needs: [gate]
+    needs: [gate, full]
     # CI-SPEED, light pull requests: the shards run in the merge queue, the
     # only way into main, and on a push; a pull request skips them, and the
     # aggregate below passes that skip on a pull request whose contamination
@@ -476,7 +525,7 @@ jobs:
     # fails everywhere. docs/agents/database-conformance.md holds what the
     # check means.
     name: database conformance
-    needs: [gate, database-shard]
+    needs: [gate, full, database-shard]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
@@ -488,8 +537,17 @@ jobs:
           GATE: ${{ needs.gate.result }}
           # The event reaches the script as a value, never as script text.
           EVENT: ${{ github.event_name }}
+          SCOPE: ${{ needs.gate.outputs.scope }}
         run: |
-          echo "database conformance shards: $SHARDS, contamination gate: $GATE"
+          echo "database conformance shards: $SHARDS, contamination gate: $GATE, scope: $SCOPE"
+          if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+            if [ "$EVENT" = push ]; then
+              echo "database conformance: a green merge group tested this tree"
+              exit 0
+            fi
+            echo "database conformance: the full set waits for the ci-next label"
+            exit 1
+          fi
           if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             echo "database conformance: the shards run in the merge queue, the only way into main"
             exit 0
@@ -618,7 +676,7 @@ jobs:
     # suite and step runs in exactly one shard (tests/ci/ci-shards*.test.ts).
     # `isolation tests` below is the required check.
     name: isolation tests shard ${{ matrix.shard }}
-    needs: [gate]
+    needs: [gate, full]
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # The whole job's slowest green run in the 10 merge groups of 5 October
     # 2026 was 30.9 min; half of it is about 15 min.
@@ -689,23 +747,33 @@ jobs:
     # The required check: one name over every `isolation tests` shard, on the
     # same terms as `local checks` above.
     name: isolation tests
-    needs: [gate, isolation]
+    needs: [gate, full, isolation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
-      - name: Every shard succeeded
+      - name: Every shard succeeded, or a push whose tree its merge group tested
         env:
           SHARDS: ${{ needs.isolation.result }}
           GATE: ${{ needs.gate.result }}
+          SCOPE: ${{ needs.gate.outputs.scope }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "isolation tests shards: $SHARDS, contamination gate: $GATE"
+          echo "isolation tests shards: $SHARDS, contamination gate: $GATE, scope: $SCOPE"
+          if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+            if [ "$EVENT" = push ]; then
+              echo "isolation tests: a green merge group tested this tree"
+              exit 0
+            fi
+            echo "isolation tests: the full set waits for the ci-next label"
+            exit 1
+          fi
           test "$SHARDS" = success
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.
     name: command parity
-    needs: [gate]
+    needs: [gate, full]
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 0.8 min.
     timeout-minutes: 10
@@ -727,7 +795,7 @@ jobs:
     # `ciRenderer` pins the rest. The page, control, token and theme are the
     # catalogue's `appDrift` (tests/visual/states.json).
     name: visual drift
-    needs: [gate]
+    needs: [gate, full]
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 13.4 min.
     timeout-minutes: 25
