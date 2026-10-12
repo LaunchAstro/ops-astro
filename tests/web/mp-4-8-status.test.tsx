@@ -103,6 +103,17 @@ describe('MP-4-8 Status select: Complete is the one completion transition', () =
     await view.unmount();
   });
 
+  it('a task whose state is not among the states read keeps it as itself', async () => {
+    const odd = { id: 's-odd', key: 'legacy', label: 'Legacy', machineCategory: 'started' };
+    const view = await panel(serving({ state: odd }, [], [], STATES).client);
+    const select = view.find('#panel-field-status') as HTMLSelectElement | null;
+    expect(optionsOf(select).at(-1)).toStrictEqual(['s-odd', 'Legacy']);
+    expect(select?.value).toBe('s-odd');
+    await view.unmount();
+  });
+});
+
+describe('MP-4-8 Status select: reopening into a chosen not-started state', () => {
   it('leaving Complete for a second unstarted state reopens, then sets that state', async () => {
     const ready = { id: 's-ready', key: 'ready', label: 'Ready', machineCategory: 'unstarted' };
     const states = [REVIEW, ready, DONE].filter((one) => one !== undefined);
@@ -120,15 +131,6 @@ describe('MP-4-8 Status select: Complete is the one completion transition', () =
       ['/task/reopen', undefined],
       ['/task/set_state', 's-ready'],
     ]);
-    await view.unmount();
-  });
-
-  it('a task whose state is not among the states read keeps it as itself', async () => {
-    const odd = { id: 's-odd', key: 'legacy', label: 'Legacy', machineCategory: 'started' };
-    const view = await panel(serving({ state: odd }, [], [], STATES).client);
-    const select = view.find('#panel-field-status') as HTMLSelectElement | null;
-    expect(optionsOf(select).at(-1)).toStrictEqual(['s-odd', 'Legacy']);
-    expect(select?.value).toBe('s-odd');
     await view.unmount();
   });
 });
