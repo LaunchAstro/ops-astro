@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "marking a conversation read with its id in upper case waits on the same lock as a send into it, so the marker counts the message the send commits"
+}
