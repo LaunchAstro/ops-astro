@@ -4,7 +4,7 @@
 // Escape in the board's search closes its suggestions and nothing else: the
 // field is a native search input, whose own Escape action (Chromium clears
 // the field) is held back, so the typed words stay and Enter still commits.
-// With no suggestions shown, Escape is left to the page (a drawer closes).
+// On an empty field, Escape is left to the page (a drawer closes).
 
 import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -51,10 +51,19 @@ it('Escape closes the suggestions, keeps the typed words from the browser, and E
   expect(onCommit).toHaveBeenCalledWith('zeb');
 });
 
-it('Escape with no suggestions shown is left to the page', async () => {
-  mounted = await mount(search(vi.fn()));
+it('Escape with words typed but no suggestions keeps the words', async () => {
+  const onCommit = vi.fn();
+  mounted = await mount(search(onCommit));
   await mounted.type('[data-board-search]', 'quokka');
   const field = mounted.find('[data-board-search]') as HTMLInputElement;
   expect(field.getAttribute('aria-expanded')).toBe('false');
+  expect((await press(field, 'Escape')).defaultPrevented).toBe(true);
+  await press(field, 'Enter');
+  expect(onCommit).toHaveBeenCalledWith('quokka');
+});
+
+it('Escape on an empty search is left to the page', async () => {
+  mounted = await mount(search(vi.fn()));
+  const field = mounted.find('[data-board-search]') as HTMLInputElement;
   expect((await press(field, 'Escape')).defaultPrevented).toBe(false);
 });
