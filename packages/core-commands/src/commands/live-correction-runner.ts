@@ -255,7 +255,7 @@ async function dispatch(
   const observations: Observations = {
     ...pinnedObservations(correction, ports.refusals()),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
-    ...notAccepted(outcome),
+    ...notAccepted(outcome, ports.refusals()),
   };
   const state = outcome.state === 'refused' ? 'failed' : outcome.state;
   return await record(db, run, { step: 'publish', outcome: state, observations }, ports);
