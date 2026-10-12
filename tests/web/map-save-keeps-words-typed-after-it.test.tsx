@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines-per-function -- one suite over one world */
+/* eslint-disable max-lines, max-lines-per-function -- one suite over one world */
 //
 // Words typed on the map page are never lost to a save: text typed while an
 // earlier save is still on its way stays in the editor once that save
 // applies, and a graduate form whose fog patch someone else removed stays on
 // screen, explained, to copy or dismiss, without offering a save it cannot
-// make. Dropping words without saving them drops their conflict too.
+// make. A graduation that applied keeps only the titles changed after it
+// was sent, and a form held over a stale save is not replaced by another
+// patch's. Dropping words without saving them drops their conflict too.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -159,6 +161,33 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     expectGoneWording(page);
   });
 
+  it("after the reader's own graduation applies, the kept form lists only the titles changed after sending", async () => {
+    const m = await chart(
+      w,
+      lead,
+      'partly changed graduate',
+      [{ ref: 'a', title: 'a', type: 'task' }],
+      ['partly changed patch'],
+    );
+    const { page, stored, release } = await openHeld(lead, m.key, 'map.graduate');
+    await page.click('[role="tab"][id="map-tab-fog"]');
+    const patch = (page.find('[data-patch]') as HTMLElement).dataset['patch'] as string;
+    await page.click(`button[data-graduate="${patch}"]`);
+    await page.type('input[name="ticket-title-0"]', 'graduated as sent');
+    await page.click('button[data-add-ticket]');
+    await page.type('input[name="ticket-title-1"]', 'sent then changed');
+    await page.click('button[data-graduate-save]');
+    await stored;
+    await page.type('input[name="ticket-title-1"]', 'changed after sending');
+    const after = await w.revisionOf(m.map);
+    release();
+    await until(page, () => revisionShown(page) === String(after), 'the graduation and its reread');
+
+    const gone = page.find('[data-graduate-gone]')?.textContent ?? 'no form kept';
+    expect(gone).toContain('changed after sending');
+    expect(gone).not.toContain('graduated as sent');
+  });
+
   /**
    * The lead's graduate form on the first of `patches`, two titles typed;
    * `other` retires that patch; the lead's Graduate comes back VERSION_STALE
@@ -220,6 +249,39 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     expect(gone?.textContent).toContain('my first ticket');
     expect(gone?.textContent).toContain('my second ticket');
     expect(page.find('input[name="ticket-title-0"]')).toBeNull();
+  });
+
+  it('while a stale graduate form is held, another patch cannot open a form over it', async () => {
+    const m = await chart(
+      w,
+      lead,
+      'stale form held',
+      [{ ref: 'a', title: 'a', type: 'task' }],
+      ['patch with a stale form', 'patch left alone'],
+    );
+    const page = await openMap(w, open, lead, m.key);
+    await page.click('[role="tab"][id="map-tab-fog"]');
+    const [first, second] = page
+      .all('[data-patch]')
+      .map((one) => (one as HTMLElement).dataset['patch'] as string);
+    await page.click(`button[data-graduate="${first ?? ''}"]`);
+    await page.type('input[name="ticket-title-0"]', 'my kept ticket');
+    const at = { recordId: m.map, expectedRevision: await w.revisionOf(m.map) };
+    must(await w.as(other, { command: 'map.revise', ...at, notes: 'elsewhere' }), 'map.revise');
+    const latest = await w.revisionOf(m.map);
+    await page.click('button[data-graduate-save]');
+    await until(
+      page,
+      () => page.find('[data-map-conflict]') !== null && revisionShown(page) === String(latest),
+      'the conflict and the reread',
+    );
+
+    const button = page.find(`button[data-graduate="${second ?? ''}"]`) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    await page.click(`button[data-graduate="${second ?? ''}"]`);
+    expect(value(page, 'input[name="ticket-title-0"]')).toBe('my kept ticket');
+    expect(page.find(`[data-patch="${first ?? ''}"] form`)).not.toBeNull();
+    expect(page.find('[data-map-conflict]')).not.toBeNull();
   });
 
   it('a stale notes save cancelled drops its conflict with its words', async () => {

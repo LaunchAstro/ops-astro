@@ -50,9 +50,20 @@ export interface MapScreenProps {
   readonly mapKey: string;
 }
 
-/** Whether two graduate forms hold the same patch and lines. */
-const sameForm = (one: Drafts['graduating'], two: Drafts['graduating']) =>
-  JSON.stringify(one) === JSON.stringify(two);
+/**
+ * What of the graduate form `now` an applied graduation of `sent` left
+ * ungraduated: its typed lines that were not sent as they stand. Null when
+ * nothing is left, so the gone form never lists a title that was graduated.
+ */
+function unsent(now: Drafts['graduating'], sent: Drafts['graduating']): Drafts['graduating'] {
+  if (now === null || sent === null || now.patch !== sent.patch) return now;
+  const lines = now.lines.filter(
+    (line) =>
+      line.title.trim() !== '' &&
+      !sent.lines.some((one) => one.title === line.title && one.type === line.type),
+  );
+  return lines.length === 0 ? null : { ...now, lines };
+}
 
 /** What a `SCOPE_NOT_GRANTED` closes: the command's key on that one record. */
 const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${recordId}`;
@@ -61,7 +72,8 @@ const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${
  * The typed words, held above the read, and the slot whose save came back
  * stale. `sending(slot)` notes what a save sends and answers its two steps:
  * `applied` drops the slot only if it still holds that, so words typed while
- * the save was on its way stay in the editor; `stale` draws the conflict only
+ * the save was on its way stay in the editor (a graduate form keeps only its
+ * lines changed since); `stale` draws the conflict only
  * if those words were not dropped meanwhile. Words dropped unsaved (Cancel,
  * Dismiss, an emptied line) take their conflict with them, a late one
  * included: nothing is kept, so nothing is offered to save again.
@@ -95,7 +107,7 @@ function useDrafts() {
       return {
         stale,
         applied: () => {
-          setGraduating((now) => (sameForm(now, sentForm) ? null : now));
+          setGraduating((now) => unsent(now, sentForm));
         },
       };
     }

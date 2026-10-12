@@ -56,6 +56,8 @@ export function FogView(props: FogProps): ReactElement {
   const { map } = props;
   const { graduating, setGraduating } = props.drafts;
   const gone = graduating !== null && !map.fog.some((patch) => patch.id === graduating.patch);
+  // A form kept to copy, or over a stale save, is not replaced by another.
+  const held = gone || props.drafts.conflict === 'graduate';
   return (
     <Section name="fog-view" label="Fog">
       {gone ? (
@@ -69,7 +71,7 @@ export function FogView(props: FogProps): ReactElement {
       {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
       <ul>
         {map.fog.map((patch) => (
-          <PatchRow key={patch.id} {...props} patch={patch} gone={gone} />
+          <PatchRow key={patch.id} {...props} patch={patch} held={held} />
         ))}
       </ul>
     </Section>
@@ -85,7 +87,7 @@ interface FogProps {
 
 /** One patch: its text, and its graduate form when open, else the button that opens it. */
 function PatchRow(
-  props: FogProps & { readonly patch: MapView['fog'][number]; readonly gone: boolean },
+  props: FogProps & { readonly patch: MapView['fog'][number]; readonly held: boolean },
 ): ReactElement {
   const { map, patch } = props;
   const { graduating, setGraduating } = props.drafts;
@@ -112,8 +114,8 @@ function PatchRow(
           className="btn"
           type="button"
           data-graduate={patch.id}
-          // Opening another form would replace a kept one whose patch is gone.
-          disabled={props.busy || props.gone}
+          // Opening another form would replace one held to copy or to save again.
+          disabled={props.busy || props.held}
           onClick={() => {
             setGraduating({ patch: patch.id, lines: [{ title: '', type: 'task' }] });
           }}
