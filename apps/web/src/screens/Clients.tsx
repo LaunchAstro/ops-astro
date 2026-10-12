@@ -147,12 +147,14 @@ function useAddClient(props: AddClientProps) {
   const [name, setName] = useState('');
   const { busy, because, run } = useCommand();
   // Each typed name's attempt id, kept until that attempt is answered.
-  const held = useRef<Record<string, string | undefined>>({});
+  // A Map, so a name like `constructor` never finds an inherited value.
+  const held = useRef(new Map<string, string>());
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const wanted = name.trim();
     if (wanted === '' || busy) return;
-    const operationId = (held.current[wanted] ??= props.client.newOperationId());
+    const operationId = held.current.get(wanted) ?? props.client.newOperationId();
+    held.current.set(wanted, operationId);
     run(
       async () => {
         const answer = await props.client.mutate(
@@ -160,12 +162,13 @@ function useAddClient(props: AddClientProps) {
           { name: wanted },
           { operationId },
         );
-        if (!isUnavailable(answer)) held.current[wanted] = undefined;
+        if (!isUnavailable(answer)) held.current.delete(wanted);
         return answer;
       },
       (settlement) => {
         if (settlement.kind !== 'ok') return;
-        setName('');
+        // Only the name it sent: one typed while it was out stays.
+        setName((now) => (now.trim() === wanted ? '' : now));
         props.onAdded();
       },
     );
