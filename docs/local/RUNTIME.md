@@ -2033,9 +2033,7 @@ and codes, never a sentence, to a trace target an operator reads.
   secret required from the run), and the model they render to, which is what
   runs. `node scripts/local/trace-target.ts check | up <port> | down` checks the
   pin and a fresh render, starts it with generated secrets in
-  `.local/trace-target.env` without pulling (an `up` again keeps that file's
-  secrets, as the volumes do, and changes only the port), and destroys it with
-  its volumes.
+  `.local/trace-target.env` without pulling, and destroys it with its volumes.
   The blob store's start command sets the raw event bucket's lifecycle rule,
   14 days on the prefix the worker writes, chained so the store stops if it
   cannot be set: on the OpenTelemetry path nothing else ever deletes a raw

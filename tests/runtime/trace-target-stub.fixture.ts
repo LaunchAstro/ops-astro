@@ -19,8 +19,6 @@ type Settings = Readonly<Record<string, string | undefined>>;
 export interface TraceTarget {
   /** Runs `node trace-target.ts <args>` in the copy with `env` added. */
   readonly run: (args: readonly string[], env?: Readonly<Record<string, string>>) => void;
-  /** The settings file the last `up` wrote. */
-  readonly settings: () => Settings;
   /** The environment the last `compose up` was given. */
   readonly upEnvironment: () => Settings;
   /** Removes the copy. */
@@ -56,7 +54,6 @@ export function traceTarget(): TraceTarget {
         stdio: 'pipe',
       });
     },
-    settings: () => readEnvFile(join(root, '.local', 'trace-target.env'), { required: true }),
     upEnvironment: () => readEnvFile(seen, { required: true }),
     remove: () => rmSync(root, { recursive: true, force: true }),
   };

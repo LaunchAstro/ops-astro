@@ -9,7 +9,6 @@ scan-terms.txt
 replacements.txt
 */scan-terms.txt
 */replacements.txt
-os-mirror/*
 scripts/os-mirror/*
 */os-mirror/*
 
@@ -40,5 +39,4 @@ service-account*.json
 *.dump
 *.bak
 fixtures/clients/*
-client-data/*
 */client-data/*

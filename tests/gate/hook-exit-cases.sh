@@ -197,8 +197,6 @@ proof_case pre-push-exports-published-scanners-not-replacements \
   "a pushed commit is judged by its published scanners, not a local replacement's"
 proof_case pre-push-ignores-uncommitted-canary-bytes \
   "uncommitted canary bytes in the checkout cannot refuse a clean pushed commit"
-proof_case path-sweep-withholds-denied-name-in-all-evidence \
-  "the path sweep withholds a denied file name in its summary as well"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \

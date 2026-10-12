@@ -13,7 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -229,35 +229,25 @@ function checked(): void {
 
 const hex = (bytes: number): string => randomBytes(bytes).toString('hex');
 
-/**
- * A run's own secrets and first-start keys, in a file only its owner may read;
- * an `up` again keeps them, as Compose keeps the volumes, and changes the port.
- */
+/** A run's own secrets and first-start keys, in a file only its owner may read. */
 function runSettings(port: number): string {
-  const kept = existsSync(ENV_FILE)
-    ? readFileSync(ENV_FILE, 'utf8')
-        .split('\n')
-        .filter((line) => line !== '' && !line.startsWith('TRACE_TARGET_PORT='))
-    : undefined;
   const lines = [
     `TRACE_TARGET_PORT=${String(port)}`,
-    ...(kept ?? [
-      ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
-        (store) => `TRACE_TARGET_${store}_PASSWORD=${hex(16)}`,
-      ),
-      `TRACE_TARGET_SALT=${hex(16)}`,
-      `TRACE_TARGET_ENCRYPTION_KEY=${hex(32)}`,
-      `TRACE_TARGET_NEXTAUTH_SECRET=${hex(32)}`,
-      'LANGFUSE_INIT_ORG_ID=aw13-local',
-      'LANGFUSE_INIT_ORG_NAME=aw13-local',
-      'LANGFUSE_INIT_PROJECT_ID=aw13-local',
-      'LANGFUSE_INIT_PROJECT_NAME=aw13-local',
-      `LANGFUSE_INIT_PROJECT_PUBLIC_KEY=pk-lf-${hex(12)}`,
-      `LANGFUSE_INIT_PROJECT_SECRET_KEY=sk-lf-${hex(24)}`,
-      'LANGFUSE_INIT_USER_EMAIL=operator@example.invalid',
-      'LANGFUSE_INIT_USER_NAME=operator',
-      `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
-    ]),
+    ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
+      (store) => `TRACE_TARGET_${store}_PASSWORD=${hex(16)}`,
+    ),
+    `TRACE_TARGET_SALT=${hex(16)}`,
+    `TRACE_TARGET_ENCRYPTION_KEY=${hex(32)}`,
+    `TRACE_TARGET_NEXTAUTH_SECRET=${hex(32)}`,
+    'LANGFUSE_INIT_ORG_ID=aw13-local',
+    'LANGFUSE_INIT_ORG_NAME=aw13-local',
+    'LANGFUSE_INIT_PROJECT_ID=aw13-local',
+    'LANGFUSE_INIT_PROJECT_NAME=aw13-local',
+    `LANGFUSE_INIT_PROJECT_PUBLIC_KEY=pk-lf-${hex(12)}`,
+    `LANGFUSE_INIT_PROJECT_SECRET_KEY=sk-lf-${hex(24)}`,
+    'LANGFUSE_INIT_USER_EMAIL=operator@example.invalid',
+    'LANGFUSE_INIT_USER_NAME=operator',
+    `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
   ];
   mkdirSync(dirname(ENV_FILE), { recursive: true });
   writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
