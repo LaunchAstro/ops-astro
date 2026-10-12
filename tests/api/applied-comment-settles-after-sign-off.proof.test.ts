@@ -5,6 +5,7 @@ import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { linkClient } from '../runtime/closed-stop-answer-world.ts';
 import { attempts, HOST, launched, linking, r, useReceiptWorld } from './aw-08-receipt-world.ts';
 
 useReceiptWorld('prv942r21');
@@ -37,6 +38,17 @@ const clientSignOff = async (value: 'true' | 'false') =>
     [r.fixture.business],
   );
 
+/** A launched task on a client, with the client sign-off setting installed and off. */
+async function launchedOnClient(): Promise<{ taskId: string; credential: string }> {
+  const work = await launched();
+  await linkClient(r.fixture, work.taskId);
+  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+    await installBusinessSettings(tx);
+  });
+  await clientSignOff('false');
+  return work;
+}
+
 /** The worker on this world's agent login and the launched task's delegation. */
 const workerOn = (transport: Transport, delegation: string, provider: Provider) =>
   createWorker({
@@ -49,11 +61,7 @@ const workerOn = (transport: Transport, delegation: string, provider: Provider) 
   });
 
 it('an applied comment is still observed and settled after client sign-off turns on', async () => {
-  const { taskId, credential } = await launched();
-  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
-    await installBusinessSettings(tx);
-  });
-  await clientSignOff('false');
+  const { taskId, credential } = await launchedOnClient();
   const link = `https://${HOST}/effects/${randomUUID()}`;
   const linked = linking(link);
   let providerCalls = 0;
@@ -100,11 +108,7 @@ it('an applied comment is still observed and settled after client sign-off turns
 });
 
 it('a provider answer whose comment answer was lost is kept through a sign-off refusal and settles once', async () => {
-  const { taskId, credential } = await launched();
-  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
-    await installBusinessSettings(tx);
-  });
-  await clientSignOff('false');
+  const { taskId, credential } = await launchedOnClient();
   const link = `https://${HOST}/effects/${randomUUID()}`;
   const linked = linking(link);
   let providerCalls = 0;
@@ -145,11 +149,7 @@ it('a provider answer whose comment answer was lost is kept through a sign-off r
 });
 
 it('an applied comment is observed and settled while client sign-off stays on', async () => {
-  const { taskId, credential } = await launched();
-  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
-    await installBusinessSettings(tx);
-  });
-  await clientSignOff('false');
+  const { taskId, credential } = await launchedOnClient();
   const link = `https://${HOST}/effects/${randomUUID()}`;
   const linked = linking(link);
   let loseObserve = true;

@@ -227,14 +227,16 @@ export async function answerCodes(
 }
 
 /** Link the task to a client the way `task.set_party` stores it; the slot read back. */
-export async function linkClient(s: Schedules, taskId: string): Promise<string | null> {
+export async function linkClient(
+  s: Pick<Schedules, 'db' | 'business'>,
+  taskId: string,
+): Promise<string | null> {
   await s.db.admin.execute(
     `update public.records set data = data || jsonb_build_object('client', $2::text)
       where business_id = $1 and id = $3`,
     [s.business, randomUUID(), taskId],
   );
-  const [linked] = await rows<{ client: string | null }>(
-    s,
+  const [linked] = await s.db.admin.execute<{ client: string | null }>(
     'select uuid_7::text as client from public.records where business_id = $1 and id = $2',
     [s.business, taskId],
   );

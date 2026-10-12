@@ -2,7 +2,7 @@
 //
 // `AW-08 client sign-off`: where the business requires the client's sign-off
 // (`client_sign_off_required`), agency approval alone never releases the
-// effect. The launch cannot decide, and a setting turned on after the launch
+// effect on a task with a client, so each task here is put on one. The launch cannot decide, and a setting turned on after the launch
 // is seen by the effect-time recheck. A change in flight is waited for at both.
 // Both refuse `CLIENT_SIGNOFF_REQUIRED` with nothing written or marked. The client's own
 // sign-off is MP-11-5's (phase 8); before the portal exists the work stays held.
@@ -10,6 +10,7 @@
 
 import { expect, it as vitestIt } from 'vitest';
 import { acceptAs, acceptRequest, gateOf, noDatabase, useAw04World, w } from './aw-04-world.ts';
+import { linkClient } from './closed-stop-answer-world.ts';
 import { approveBody, asPerson, barrier, codeOf, racer, rows } from './schedules-harness.ts';
 import {
   dispatchAs,
@@ -68,7 +69,8 @@ it('AW-08 client sign-off: where the business requires it, the launch cannot dec
   await setSignOff(w.alpha, true);
   try {
     // The launch: the accept of a handed-back successor, the reviewed output.
-    const { proposal } = await reviewed(w.alpha);
+    const { taskId, proposal } = await reviewed(w.alpha);
+    await linkClient(w.alpha, taskId);
     const answer = await asPerson(w.alpha, approveBody(proposal));
     expect(codeOf(answer)).toBe('CLIENT_SIGNOFF_REQUIRED');
     expect(await gateOf(w.alpha, proposal['gateId'])).toStrictEqual({
@@ -88,6 +90,7 @@ it('AW-08 client sign-off: where the business requires it, the launch cannot dec
 
 it('AW-08 client sign-off: agency approval alone never releases the effect: required after the launch, dispatch refuses and marks nothing', async () => {
   const work = await leased(w.alpha, 'launch');
+  await linkClient(w.alpha, work.taskId);
   await setSignOff(w.alpha, true);
   try {
     expect(codeOf(await dispatchAs(w.alpha, work))).toBe('CLIENT_SIGNOFF_REQUIRED');
@@ -101,6 +104,7 @@ it('AW-08 client sign-off: agency approval alone never releases the effect: requ
 
 it('AW-08 client sign-off: a setting change in flight is waited for at dispatch and then seen', async () => {
   const work = await leased(w.alpha, 'launch');
+  await linkClient(w.alpha, work.taskId);
   await setSignOff(w.alpha, false);
   const rival = await turningOn();
   try {
@@ -118,7 +122,8 @@ it('AW-08 client sign-off: a setting change in flight is waited for at dispatch 
 }, 30_000);
 
 it('AW-08 client sign-off: a sign-off setting change in flight is waited for at the launch decision', async () => {
-  const { proposal } = await reviewed(w.alpha);
+  const { taskId, proposal } = await reviewed(w.alpha);
+  await linkClient(w.alpha, taskId);
   await setSignOff(w.alpha, false);
   const rival = await turningOn();
   try {
