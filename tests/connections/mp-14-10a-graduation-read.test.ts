@@ -342,7 +342,20 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
 
   it('MP-14-10a one select drives all three sections: one read carries every client and its scope list', async () => {
     const result = await region(admin);
-    expect(result.clients.map((one) => [one.id, one.label])).toStrictEqual([
+    // Every client of the business, whichever case made it: the list is the
+    // business's, so a client another case adds first is in it too.
+    const everyClient = await controls.fixture.db.admin.execute<{ readonly id: string }>(
+      'select id from public.clients where business_id = $1',
+      [alpha],
+    );
+    expect(result.clients.map((one) => one.id).toSorted()).toStrictEqual(
+      everyClient.map((one) => one.id).toSorted(),
+    );
+    expect(
+      result.clients
+        .filter((one) => one.id === clientA || one.id === clientB)
+        .map((one) => [one.id, one.label]),
+    ).toStrictEqual([
       [clientA, clientALabel],
       [clientB, clientBLabel],
     ]);
@@ -624,7 +637,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   });
 
   it('MP-14-10a core: expiry is judged on the database clock after the lock wait', async () => {
-    const mandateId = await seedMandate({ classes: ['email.send'], expires: '4 seconds' });
+    // Twenty seconds: room for a loaded host to stall between filing the
+    // mandate and taking the lock, and still find it live while the check waits.
+    const mandateId = await seedMandate({ classes: ['email.send'], expires: '20 seconds' });
     const locked = deferred();
     const release = deferred();
     let holder = 0;
@@ -651,8 +666,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       // The check is parked on the lock while the mandate is still live ...
       await blockedBy(holder, 'standing_mandates');
       expect(await liveNow()).toBe(1);
-      // ... and is let go only once it has expired.
-      await pause(4000);
+      // ... and is let go only once it has expired, polled rather than slept.
+      const deadline = Date.now() + 40_000;
+      // oxlint-disable-next-line no-await-in-loop -- one probe at a time until it expires
+      while ((await liveNow()) > 0 && Date.now() < deadline) await pause(250);
       expect(await liveNow()).toBe(0);
     } finally {
       // A failed step still lets the check go, so the case fails rather than hangs.
@@ -663,7 +680,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     // past its expiry: it is judged expired, not covered.
     expect(await checking).toStrictEqual({ covered: false, reason: 'expired', mandateId });
     await revoke(mandateId);
-  });
+  }, 90_000);
 
   it('MP-14-10a revoking stops pre-approval at once, and an effect already past its check is not undone', async () => {
     const mandateId = await seedMandate({ classes: ['email.send'] });
