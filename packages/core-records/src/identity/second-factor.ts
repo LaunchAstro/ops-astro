@@ -184,6 +184,45 @@ export async function loginVerifiedFactors(
   return rows.map((row) => row.factor_digest);
 }
 
+/**
+ * The digests of the provider factors the login's record holds removed,
+ * through any business (0064). Removed is final: the application may only
+ * insert here, and a removed factor is never verified again, so a factor in
+ * this list may go at the provider whatever happens after this read.
+ */
+export async function loginRemovedFactors(
+  tx: TenantQuery,
+  subject: string,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly factor_digest: string }>(
+    `select distinct factor_digest from ops.second_factor_subjects
+      where subject_digest = ${DIGEST('$1')} and state = 'removed'`,
+    [subject],
+  );
+  return rows.map((row) => row.factor_digest);
+}
+
+/**
+ * A factor the provider issued to the login that no business recorded and
+ * none will: held removed for the login, under its lock, so it may go at the
+ * provider now or on the login's next proven code.
+ */
+export async function recordStrayRemoved(
+  tx: TenantQuery,
+  stray: { readonly subject: string; readonly providerFactorId: string },
+): Promise<void> {
+  await lockLoginFactors(tx, stray.subject);
+  await tx.query(
+    `insert into ops.second_factor_subjects (subject_digest, factor_digest, state)
+     select ${DIGEST('$1')}, ${DIGEST('$2')}, 'removed'
+      where not exists (
+        select 1 from ops.second_factor_subjects
+         where subject_digest = ${DIGEST('$1')} and factor_digest = ${DIGEST('$2')}
+           and state = 'removed')`,
+    [stray.subject, stray.providerFactorId],
+  );
+}
+
 /** Whether the login has a factor verified, and not removed, through any business (0064). */
 export async function loginHasVerifiedFactor(tx: TenantQuery, subject: string): Promise<boolean> {
   return (await loginVerifiedFactors(tx, subject)).length > 0;
