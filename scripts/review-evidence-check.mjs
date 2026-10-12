@@ -84,13 +84,19 @@ const nonEmptyLines = (text) =>
 // rename detection, so a file moved out of the surface still counts as a
 // removal from it.
 const changed =
-  process.env['CHANGED_FILES'] !== undefined
-    ? nonEmptyLines(process.env['CHANGED_FILES'])
-    : base === ''
+  process.env['CHANGED_FILES'] === undefined
+    ? base === ''
       ? []
-      : git('diff', '--name-only', '-z', '--no-renames', `${git('merge-base', base, head).trim()}...${head}`)
+      : git(
+          'diff',
+          '--name-only',
+          '-z',
+          '--no-renames',
+          `${git('merge-base', base, head).trim()}...${head}`,
+        )
           .split('\0')
-          .filter(Boolean);
+          .filter(Boolean)
+    : nonEmptyLines(process.env['CHANGED_FILES']);
 
 // The builder's models: every commit's `Agent-model:` trailer in the range.
 const builders = (
