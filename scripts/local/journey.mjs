@@ -8,9 +8,9 @@
 //                       [--evidence DIR] [--only journey] [--remove]
 //   pnpm verify:journey --self-test [--pg-port N] [--remove]
 //
-// It refuses another stack's port, a port in use and a pinned Postgres image
-// not already on this machine before starting anything (it never pulls,
-// RN-03), starts that image as its own container, migrates it, and prints one
+// It refuses another stack's port, a port in use, two of its own ports that
+// are the same and a pinned Postgres image not already on this machine before
+// starting anything (it never pulls, RN-03), starts that image as its own container, migrates it, and prints one
 // line per case: the journey (`tests/journey/run.ts`, a process, since scripts
 // may not import tests) twice with its facts compared, its separation, live
 // update, CLI declarations, restart and replay; T3d2's restart legs; the named
@@ -18,7 +18,8 @@
 // the worker's structure; and `unrun` with its reason for what this base
 // cannot run. Any line that is not `pass` fails the command. It then prints
 // the budgets and writes the evidence bundle (T4d). The database is kept
-// unless `--remove`. What the run started is stopped by the process groups it
+// unless `--remove`, which removes only the container this run created, by
+// its id. What the run started is stopped by the process groups it
 // created, each checked for a journey command first: never by name, never by
 // a plain pid, which may be another process's by then.
 // `--self-test` (T4e) runs instead the mutations showing each check fails on
@@ -248,13 +249,15 @@ mkdirSync(evidence, { recursive: true });
 const refusals = await refusalsBeforeStarting(ports, container);
 for (const refusal of refusals) say(`refused: ${refusal}`);
 if (refusals.length > 0) process.exit(2);
-let removed = false;
+// The container this run created, by id; nothing else is ever removed.
+let created;
+const made = (id) => (created = id);
 const finish = () => {
   stopStarted(pidfile, say);
-  if (args.includes('--remove') && !removed) {
-    removed = true;
-    run(DOCKER, ['rm', '-f', '-v', container]);
+  if (args.includes('--remove') && created !== undefined) {
+    run(DOCKER, ['rm', '-f', '-v', created]);
     say(`removed ${container}`);
+    created = undefined;
   }
 };
 process.once('SIGINT', () => {
@@ -266,7 +269,7 @@ process.once('SIGTERM', () => {
   process.exit(143);
 });
 try {
-  const stack = await startPostgres({ container, password, port: pg, admin });
+  const stack = await startPostgres({ container, password, port: pg, admin, created: made });
   carried.measures.migrateMs = stack.migrateMs;
   record(
     'stack: Postgres from the pinned digest, migrated at this head',
