@@ -20,7 +20,8 @@ import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
 import { availabilitySaver } from './team/availability-saves.ts';
-import { talkOf, useChat } from './team/chat.ts';
+import { talkFor } from './team/asked.ts';
+import { useChat } from './team/chat.ts';
 
 /** A member as the panel draws them: the first name under the face. */
 function teammate(member: TeamMemberView): Teammate {
@@ -56,6 +57,8 @@ function useSetAvailability(
 export function TeamScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** The whole address the screen is drawn at: the page's, or the dock panel's place. */
+  readonly address?: string;
 }): ReactElement {
   const { client } = props;
   const { state, reload } = useRead<TeamListResult>({
@@ -78,7 +81,7 @@ export function TeamScreen(props: {
             me={value.you}
             onSetAvailability={onSetAvailability}
             work={null}
-            conversations={chat.settled ? talkOf(chat, value.you) : null}
+            conversations={talkFor(chat, value.you, props.address)}
           />
         )}
       </RecordState>

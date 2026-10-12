@@ -58,6 +58,8 @@ export interface TeamConversations {
   readonly groups: readonly GroupThread[];
   /** A group action; resolves whether the server took it, as `onSend` does. */
   readonly onGroup: (action: GroupAction) => Promise<boolean>;
+  /** The conversation the address asked for (a notification's door), opened first when present. */
+  readonly asked?: Selected;
 }
 
 export interface TeamPanelProps {
@@ -77,6 +79,7 @@ type Selected = { readonly kind: 'person' | 'group'; readonly id: string } | nul
 
 function opening(talk: TeamConversations | null, me: string): Selected {
   if (talk === null) return null;
+  if (talk.asked !== undefined && talk.asked !== null) return talk.asked;
   const person = openingThread(talk.threads, me);
   if (person !== null) return { kind: 'person', id: person };
   const group = openingGroup(talk.groups, me);
