@@ -61,7 +61,7 @@ export function useDockShell(
     store.save,
     grantKeyOf(session),
   );
-  const layout = useDockLayout(dock, registry, nav.drawn, store);
+  const layout = useDockLayout(dock, registry, nav.drawn, store, task?.close);
   useTaskDock(dock, task);
   // The bell's and the Team tab's figures with the first frame, on the agency face only.
   const owed = useOwedCount(client, session, agency);
