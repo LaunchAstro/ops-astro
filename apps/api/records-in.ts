@@ -5,11 +5,13 @@
 // length, a frontier is its tickets and its fog, a map is its tickets and
 // its components, and the signal sections are their grants, tripwires,
 // night round steps and roster. A leveled task is one; a board page, its length.
+// The cost log is its runs; the skill costing, its skills and splits.
 
 import type {
   ConnectionSignalResult,
   MapFrontierResult,
   MapViewResult,
+  SkillCostsResult,
 } from '../../packages/core-wire/src/index.ts';
 
 export function recordsIn(read: object): number {
@@ -21,7 +23,11 @@ export function recordsIn(read: object): number {
     const { frontier, fog } = read as MapFrontierResult;
     return frontier.length + fog.length;
   }
-  const lists = ['tasks', 'persons', 'queue', 'hits', 'connections', 'page'].map(
+  if ('costing' in read) {
+    const { costing } = read as SkillCostsResult;
+    return (costing?.skills.length ?? 0) + (costing?.split.length ?? 0);
+  }
+  const lists = ['tasks', 'persons', 'queue', 'hits', 'connections', 'page', 'runs'].map(
     (key) => (read as Record<string, unknown>)[key],
   );
   const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
