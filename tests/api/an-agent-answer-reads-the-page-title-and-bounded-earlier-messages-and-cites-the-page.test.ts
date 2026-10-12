@@ -16,12 +16,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  contextOf,
-  EARLIER_LIMIT,
-} from '../../packages/core-commands/src/commands/conversation-context.ts';
+import { EARLIER_LIMIT } from '../../packages/core-commands/src/commands/conversation-context.ts';
 import { LOCAL_GPT_BODY_LIMIT, localGptAdapter } from '../../packages/core-connectors/src/index.ts';
-import { revokeGrant, withSession } from '../../packages/core-records/src/index.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { addClient, enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -250,7 +247,7 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
   });
 
   it('two businesses: a task in another business is never read, sent or cited, and cannot be a page', async () => {
-    const { db, business, member } = w.fixture;
+    const { db } = w.fixture;
     const bravo = await insertBusiness(db.app, `bravo-${randomUUID().slice(0, 8)}`);
     const spine = await installSpine(db.app, bravo);
     const foreignTitle = `Bravo secret ${randomUUID()}`;
@@ -267,23 +264,8 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
         [conversationId, foreign],
       ),
     ).rejects.toThrow(/foreign key/u);
-    const [asked] = await db.admin.execute<{ readonly id: string }>(
-      `select id from public.conversation_messages where conversation_id = $1`,
-      [conversationId],
-    );
-    const context = await withSession(
-      db.app,
-      business,
-      member.presented,
-      async (tx, session) =>
-        await contextOf(
-          tx,
-          session,
-          { conversationId, messageId: String(asked?.id), body: 'mine' },
-          foreign,
-        ),
-    );
-    expect(context).toEqual({ refused: true, fields: [], cites: [] });
+    // The page is the conversation's own scope, read by `contextOf` from the row:
+    // the foreign key above is what keeps another business's task from being one.
     expect(JSON.stringify(model.provider.seen)).not.toContain(foreignTitle);
   });
 });

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a conversation's question, page and earlier messages are read only by its owner, with the owner's grant held and judged after every wait, no refusal mark written on a stale answer, and a purge seen whole"
+}

@@ -100,16 +100,18 @@ describe.skipIf(serverUrl === undefined)(
       const second = connect(w.fixture.db.appUrl, { source: 'runtime' });
       let replying: ReturnType<LocalModel['exchange']> | undefined;
       try {
-        // The revocation holds the conversation's row lock and commits only
-        // once the exchange, past the model, waits on that lock to keep the reply.
+        // The revocation holds the conversation's row lock, and revokes and
+        // commits only once the exchange, past the model, waits on that lock to
+        // keep the reply. (A revocation in flight before the context read is
+        // waited on there, and asks no model at all.)
         await second.withBusiness(w.fixture.business, async (tx) => {
           await tx.query(
             'select id from conversations where business_id = $1 and id = $2 for update',
             [tx.businessId, asked.conversationId],
           );
-          await revokeConversationWrite(tx);
           replying = model.exchange(w.fixture.db.app, w.fixture.business, w.owner.presented, asked);
           await someoneWaits();
+          await revokeConversationWrite(tx);
         });
         expect(await replying).toBeNull();
         expect(model.provider.seen.length).toBe(sent + 1);
