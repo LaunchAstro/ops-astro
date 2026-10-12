@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A purge or a question that fails part way, rolled back or with its backend ended, keeps nothing: no epoch bump without the scope dropped and the task gone, no question without its epoch. Its retry with the same operation id applies once and replays after. Judged on a real migrated database through the API."
+}
