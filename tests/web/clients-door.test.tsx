@@ -153,9 +153,9 @@ describe('CS-7.29 Clients panel at a named client', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0]?.querySelector('.clbook__name')?.textContent).toBe('Zenith Physio');
     expect(marked[0]?.closest('.is-mock')).toBeNull();
-    // The made-up book still draws below it, under its mark.
-    expect(page.find('.clbook__note summary')?.textContent).toBe('Sample data');
-    expect(page.find('.clbook__list')).not.toBeNull();
+    // No made-up book draws below it: a sentence says where clients are added.
+    expect(page.find('.clbook__note')).toBeNull();
+    expect(page.text()).toContain('Clients are added from the command line for now.');
   });
 
   it('says in a sentence when the named client is not in the book', async () => {

@@ -4,10 +4,11 @@
 // as a list kept beside any page, and at `/clients/` that list in full-page
 // form until MP-8-5's CRM board takes the address.
 //
-// Client records (MP-10-1) are not built, so the book is made up
-// (`data/clients-book.ts`), drawn under the design system's mock mark, and a
-// line says so. The count counts the book it draws, never a second total, and
-// a search that finds nothing says so in a sentence (D-6).
+// Client records (MP-10-1) are not built. The application draws no book, only
+// a sentence saying where clients are added for now; a made-up book
+// (`data/clients-book.ts`) is drawn under the design system's mock mark only
+// where a caller hands it in. The count counts the book it draws, never a
+// second total, and a search that finds nothing says so in a sentence (D-6).
 //
 // A row carries only the doors this application serves. The one drawn is
 // Projects: a link to the board that the dock's gesture law takes when the
@@ -37,7 +38,7 @@
 import { useState, type ReactElement } from 'react';
 import { Count, Icon, MockRegion, clientFacetId } from '@launchastro/ui';
 import type { ClientListResult } from '../../../../packages/core-wire/src/index.ts';
-import { MADE_UP_BOOK, type BookClient, type ClientBook } from '../data/clients-book.ts';
+import type { BookClient, ClientBook } from '../data/clients-book.ts';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -181,8 +182,25 @@ const opened = ({ client, grantKey, at }: ClientsProps): ReactElement | null =>
     <OpenedClient key={at} client={client} grantKey={grantKey} clientId={at} />
   );
 
+/** Where clients are added until the book reads `client.list`. */
+const NOT_YET = 'Clients are added from the command line for now.';
+
 export function ClientsScreen(props: ClientsProps): ReactElement {
-  const book = props.book ?? MADE_UP_BOOK;
+  // The made-up book is drawn only where a caller hands it in (the gallery and
+  // its tests); the application draws none, so no install shows sample clients.
+  if (props.book === undefined) {
+    return (
+      <div className="clbook">
+        {opened(props)}
+        <p className="clbook__empty">{NOT_YET}</p>
+      </div>
+    );
+  }
+  return <MadeUpBook {...props} book={props.book} />;
+}
+
+function MadeUpBook(props: ClientsProps & { readonly book: ClientBook }): ReactElement {
+  const { book } = props;
   const [query, setQuery] = useState('');
   const shown = search(book, query);
   const asked = query.trim();
