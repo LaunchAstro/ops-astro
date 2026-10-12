@@ -133,10 +133,11 @@ export const CONNECTIONS: LookScreen = {
         ...snapped('font-weight', '500'),
       ],
     }),
+    // The group heading's ground is what both sides draw; neither draws a border.
     probe('grants-group', '.grl__banner', '[data-section="006"] .grl__banner', [
       'padding-top',
       'padding-left',
-      'border-bottom-color',
+      'background-color',
     ]),
     probe('tripwire-row', '.tw__row', '[data-section="007"] .tw__row', [
       'padding-top',
