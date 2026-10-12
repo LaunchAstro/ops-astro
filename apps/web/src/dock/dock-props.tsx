@@ -12,7 +12,7 @@ import { matchRoute, pathTo } from '../routes.ts';
 import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
 import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
-import type { Session, StorageLike } from '../session/token.ts';
+import { grantKeyOf, type Session, type StorageLike } from '../session/token.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useOwedCount, useTeamUnread } from '../data/dock-counts.ts';
 import { useLayoutStore } from '../shell/layout-store.ts';
@@ -59,6 +59,7 @@ export function useDockShell(
   const nav = useRail(
     railFrom({ collapsed: kept['rail.collapsed'], width: kept['rail.width'] }),
     store.save,
+    grantKeyOf(session),
   );
   const layout = useDockLayout(dock, registry, nav.drawn, store);
   useTaskDock(dock, task);
