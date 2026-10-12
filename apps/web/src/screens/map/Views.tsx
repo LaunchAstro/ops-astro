@@ -2,7 +2,8 @@
 //
 // The four views of a map (WF-4): Map, Tickets, Frontier and Fog, as tabs.
 // The view and the filters are held by the screen above the read, so moving
-// between the views, and the reread after a write, keep both. Moving is
+// between the views, and the reread after a write, keep both. The filter bar
+// shows only on the two views it narrows, Tickets and Frontier. Moving is
 // navigation, which is exempt from agent parity (CS-15.18); the writes are
 // `map.revise`, `map.graduate` and `task.set_blocking`, each sent by the
 // screen with its target's revision.
@@ -29,6 +30,9 @@ const TABS = [
   { id: 'frontier', label: 'Frontier' },
   { id: 'fog', label: 'Fog' },
 ] as const;
+
+/** The views the filters narrow. */
+const FILTERED: ReadonlySet<MapViewName> = new Set(['tickets', 'frontier']);
 
 export interface MapViewsProps {
   readonly map: MapView;
@@ -63,7 +67,9 @@ export function MapViews(props: MapViewsProps): ReactElement {
           props.onView(id as MapViewName);
         }}
       />
-      <FilterBar filters={props.filters} onFilters={props.onFilters} />
+      {FILTERED.has(view) ? (
+        <FilterBar filters={props.filters} onFilters={props.onFilters} />
+      ) : null}
       {panel('map', () => (
         <MapSections
           map={map}
