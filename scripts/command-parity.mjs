@@ -47,9 +47,12 @@ const TRANSPORTS = new Map([
   ['session/provider-key.ts', ['fetcher: typeof fetch', '): typeof fetch {', 'as typeof fetch']],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
-// first occurrence in code counts; one on a comment line is passed over (at worst, a false alarm).
-const inComment = (text, at) =>
-  /\/\/|^\s*\*|\/\*/u.test(text.slice(text.lastIndexOf('\n', at) + 1, at));
+// first occurrence in code counts; one after `//` or a `/*` still open on its line, or on a
+// comment line, is passed over (at worst, a false alarm).
+const inComment = (text, at) => {
+  const line = text.slice(text.lastIndexOf('\n', at) + 1, at);
+  return /\/\/|^\s*\*/u.test(line) || line.lastIndexOf('/*') > line.lastIndexOf('*/');
+};
 const withoutNamed = (text, file) =>
   (TRANSPORTS.get(file) ?? []).reduce((rest, call) => {
     let at = rest.indexOf(call);
