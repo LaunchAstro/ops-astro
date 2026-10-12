@@ -91,8 +91,10 @@ export function gitPush(version: string, env: Environment): string | undefined {
       encoding: 'utf8',
     },
   );
+  // A git that cannot start leaves no output to read.
+  if (made.status !== 0) return undefined;
   const commit = made.stdout.trim();
-  if (made.status !== 0 || !VERSION.test(commit)) return undefined;
+  if (!VERSION.test(commit)) return undefined;
   const result = spawnSync('git', pushArgs(commit), {
     env: gitEnvironment(env),
     stdio: 'inherit',
