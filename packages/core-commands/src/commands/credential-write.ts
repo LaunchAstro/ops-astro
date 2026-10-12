@@ -193,17 +193,19 @@ export async function replayIssue(
   ) {
     return stored;
   }
-  // The secret again is an issue again: its keys judged as an issue's are,
-  // against the issuer's grants as they are now, under the access lock.
-  const scope = storedKeys(held.scope);
-  const refusal = refuseNeverCarried(scope) ?? (await refuseScope(tx, session, scope));
-  if (refusal !== undefined) return refusal;
-  // The session asked again after the waits, its ending keys held to commit
-  // after the audit chain's (`ending-keys.ts`): no secret for a signed-out caller.
+  // The session and the keys asked again after the last wait, the audit
+  // chain's key, its ending keys held to commit after it (`ending-keys.ts`):
+  // no secret for a signed-out caller. The secret again is an issue again:
+  // its keys judged as an issue's are, under the access lock, against the
+  // issuer's grants as they stand after that wait, so a grant that ran out
+  // while it waited refuses the replay.
   await advisoryLock(tx, tx.businessId.toLowerCase());
   if (await sessionEndedSince(tx, session)) {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
   }
+  const scope = storedKeys(held.scope);
+  const refusal = refuseNeverCarried(scope) ?? (await refuseScope(tx, session, scope));
+  if (refusal !== undefined) return refusal;
   const keys = delegationCredentialKeys();
   const credential = keys.ok
     ? deriveAgentCredential(keys.keys, held.keyId, tx.businessId, held)
