@@ -13,6 +13,7 @@
 #   M  the same file force-added is scanned, and the run is refused
 #   N  a tracked file carrying a key is refused
 #   O  an empty file list is refused rather than passed
+#   P  a key in LICENSE is refused: an exempt path is a place to hide one
 #
 # Usage:  tests/gate/secrets-scan-cases.sh
 # Exit 0 when every case passes, 1 when any case fails.
@@ -134,6 +135,19 @@ if [ "$status" -ne 0 ] && grep -q 'empty' "$dir/scan.out"; then
   pass "an empty file list is refused, not passed"
 else
   fail "an empty file list is refused, not passed" \
+    "exit $status; output: $(tr '\n' ' ' < "$dir/scan.out")"
+fi
+rm -rf "$dir"
+
+# P. LICENSE is tracked like any other file, and a key added to it is refused.
+dir="$(new_repo)"
+write_key "$dir/LICENSE"
+git -C "$dir" add LICENSE
+status="$(scan_status "$dir")"
+if [ "$status" -ne 0 ] && grep -q 'leak' "$dir/scan.out"; then
+  pass "a key added to LICENSE is refused"
+else
+  fail "a key added to LICENSE is refused" \
     "exit $status; output: $(tr '\n' ' ' < "$dir/scan.out")"
 fi
 rm -rf "$dir"
