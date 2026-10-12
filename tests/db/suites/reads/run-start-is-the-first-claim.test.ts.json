@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A run's start is its first claim by position, so a later reclaim from an earlier transaction cannot replace it; judged on a real migrated database."
+}
