@@ -107,13 +107,16 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // every business, taken first in a factor route's check transaction.
   'packages/core-commands/src/commands/account-factor-checks.ts',
   // C52-A: a change's last ask after its session takes the business's audit
-  // chain key before `sessionEndedSince`, so no ending commits between them.
+  // chain key before `sessionEndedSince`, so no ending commits between them;
+  // availability's own entry point and an issue replay ask it the same way.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  'packages/core-commands/src/commands/availability.ts',
   // #1088 (Sol PRV-oa-1088-SC1, SEC1-1): a question's keep takes the audit
   // chain's key after its page task's share lock, so
   // its grant and page-read re-asks come after every wait.
   'packages/core-commands/src/commands/conversation-context.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
+  'packages/core-commands/src/commands/credential-write.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
   // C80 (#1002 F3-F6): a correction write takes the audit chain's key after
