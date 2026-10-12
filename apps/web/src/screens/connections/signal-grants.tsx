@@ -7,7 +7,7 @@
 // grant whose client has no `clients` row is an unnamed client, never fleet.
 
 import type { ReactElement } from 'react';
-import { Chip, SectionHead, Term, Unavailable } from '@launchastro/ui';
+import { Chip, Countdown, SectionHead, Term, Unavailable } from '@launchastro/ui';
 import type {
   ConnectionSignalResult,
   GrantView,
@@ -80,7 +80,11 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
         </span>{' '}
         <Ceiling />{' '}
         <span data-grant-ttl data-tone={ttl.tone} title={`Issued ${stamp(grant.grantedAt)}`}>
-          {ttl.words}
+          {'minutesLeft' in ttl ? (
+            <Countdown minutesLeft={ttl.minutesLeft} />
+          ) : (
+            <span className={ttl.tone === 'warn' ? 'ttl is-soon' : 'ttl'}>{ttl.words}</span>
+          )}
         </span>{' '}
         <span data-grant-calls>
           {grant.redemptions === 0 ? 'Never redeemed' : plural(grant.redemptions, 'call')}
