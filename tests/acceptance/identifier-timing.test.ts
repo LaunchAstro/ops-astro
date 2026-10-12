@@ -462,6 +462,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
     byAda('mandate.file', 'clientId', f.clientId, (clientId) => ({
       clientId,
+      draftId: randomUUID(),
       classes: ['social.post'],
       ceiling,
       expiresAt,

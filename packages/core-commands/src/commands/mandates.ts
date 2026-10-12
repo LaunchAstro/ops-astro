@@ -59,6 +59,7 @@ const FIXES: Readonly<Record<string, string>> = {
   expiresAt: 'Send expiresAt as an ISO 8601 UTC time with milliseconds, at least a minute ahead.',
   label: 'Send label as the sentence, 1 to 500 characters.',
   expectedRevision: 'Send expectedRevision as the whole number the region showed, or leave it out.',
+  draftId: 'Send draftId as the one id the form made for this filing, on every retry of it.',
 };
 
 const invalid = (field: string): HandlerOutcome =>
@@ -89,6 +90,7 @@ export async function fileMandate(
   context: CommandContext,
   request: {
     readonly clientId: string;
+    readonly draftId: string;
     readonly classes?: unknown;
     readonly refuses?: unknown;
     readonly ceiling?: unknown;
@@ -101,6 +103,7 @@ export async function fileMandate(
   const client = isUuid(request.clientId) && (await lockClientForWrite(tx, request.clientId));
   if (!(await stillManagesMandates(tx, context))) return notGranted();
   if (!client) return refused(refuseNotFound());
+  if (!isUuid(request.draftId)) return invalid('draftId');
   // A client with no graduation rows yet is offered the whole account only.
   const own = await clientClasses(tx, request.clientId);
   const classes = classesOf(request.classes, scopeChoices(own));

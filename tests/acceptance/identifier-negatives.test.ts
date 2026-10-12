@@ -94,6 +94,7 @@ function mandateCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof
       'mandate.file',
       pair('clientId', f.clientId, (clientId) => ({
         clientId,
+        draftId: randomUUID(),
         classes: ['social.post'],
         ceiling,
         expiresAt,

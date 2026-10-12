@@ -168,6 +168,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
         'mandate.file',
         {
           clientId: w.clientA,
+          draftId: randomUUID(),
           classes: ['social.post'],
           ceiling: AUD(100),
           expiresAt: inDays(1),
@@ -215,7 +216,11 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
   it('MP-14-10a a grant revoked while a mandate command holds the audit chain: neither waits on the other', async () => {
     const { bearer } = await signedIn(holder);
     const { stopped, release } = armed('chain');
-    const answer = send(bearer, 'mandate.file', { ...FILING, clientId: w.clientA });
+    const answer = send(bearer, 'mandate.file', {
+      ...FILING,
+      clientId: w.clientA,
+      draftId: randomUUID(),
+    });
     await stopped;
     // A covering grant committed after the command held its grants, then
     // revoked: the revocation waits at its door on C32's access lock, which the
@@ -238,7 +243,12 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
   it('MP-14-10a signed out through bravo while waiting on the audit chain: nothing files, and the attempt is kept as a scope refusal', async () => {
     const { presented, bearer } = await signedIn(signer);
     const before = await w.mandateRows();
-    const body = { ...FILING, clientId: w.clientA, operationId: randomUUID() };
+    const body = {
+      ...FILING,
+      clientId: w.clientA,
+      draftId: randomUUID(),
+      operationId: randomUUID(),
+    };
     const chained = await hold(w.controls.fixture.db.appUrl, w.alpha, async (tx) => {
       await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
         w.alpha.toLowerCase(),
@@ -270,7 +280,11 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
     const { presented, bearer } = await signedIn(signer);
     const { stopped, release } = armed('session');
     const before = await w.mandateRows();
-    const answer = send(bearer, 'mandate.file', { ...FILING, clientId: w.clientA });
+    const answer = send(bearer, 'mandate.file', {
+      ...FILING,
+      clientId: w.clientA,
+      draftId: randomUUID(),
+    });
     await stopped;
     let finished = false;
     const caller = {
