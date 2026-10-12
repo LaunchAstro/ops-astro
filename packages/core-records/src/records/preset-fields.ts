@@ -4,7 +4,14 @@
 // the same rules `field_defs` holds as constraints. Split from `preset-plan.ts`
 // to keep that file under the line limit.
 
-import type { PresetField } from './preset-plan.ts';
+/** What the checks read of a preset field (`PresetField`, not imported: that module imports this one). */
+interface CheckedField {
+  readonly key: string;
+  readonly label: string;
+  readonly valueType: string;
+  readonly searchable?: boolean;
+  readonly owningOperations?: readonly string[];
+}
 
 const FIELD_KEY = /^[a-z][a-z0-9_]{0,62}$/u;
 const OPERATION_NAME = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
@@ -17,7 +24,7 @@ const OPERATION_NAME = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
  * and an owning operation that is not an operation name
  * (`field_defs_operation_names_are_operations`).
  */
-export function invalidFields(fields: readonly PresetField[]): readonly string[] {
+export function invalidFields(fields: readonly CheckedField[]): readonly string[] {
   return fields
     .filter(
       (field) =>
