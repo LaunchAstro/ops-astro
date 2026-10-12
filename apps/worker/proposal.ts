@@ -4,13 +4,14 @@
 // task its delegation is for, and the agent identity it proposes as. A
 // proposal sent with no answer may have committed, so it is kept and sent
 // again under its own operation id, which replays it rather than opening a
-// second lineage and gate. A worker that restarted, or a second copy on the
+// second lineage and gate. That id comes from the work itself, so a second
+// worker on the same delegation, or a restarted one, names the same operation. A worker that restarted, or a second copy on the
 // same delegation, knows nothing it sent: it looks in the queue first for its
 // own approved proposal, and while an earlier one still waits for a person the
 // server refuses another (`TRANSITION_NOT_PERMITTED`), which reads as nothing
 // to do yet. Like the rest of the worker, this only shapes calls to the API.
 
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { Answered, Call, Unanswered } from './agent-call.ts';
 import type { UsageReporter } from './usage.ts';
 
@@ -84,6 +85,24 @@ interface LineageSeen {
   readonly versions?: readonly { readonly payload?: { readonly proposalId?: unknown } }[];
 }
 
+/**
+ * One proposal's operation identity, from the work it proposes: the agent, the
+ * task, the revision it read and the step. Every worker and every retry on the
+ * same work names the same operation, so the register replays the first and
+ * two in flight open one lineage and one gate. Nothing secret goes in.
+ */
+function proposalIdentity(
+  actorId: string,
+  taskId: string,
+  revision: unknown,
+  kind: string,
+): string {
+  const hex = createHash('sha256')
+    .update(`proposal:${actorId}:${taskId}:${String(revision)}:${kind}`)
+    .digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 /** A proposal with no answer, or one whose refusal proves nothing, is sent again as it was. */
 async function proposeAlone(
   call: Call,
@@ -105,7 +124,7 @@ async function proposeAlone(
     const read = await call('task.read', { recordId });
     if (!('body' in read)) return read;
     const task = read.detail['task'] as { revision?: unknown } | undefined;
-    const operationId = randomUUID();
+    const operationId = proposalIdentity(mine.actorId, recordId, task?.revision, step.kind);
     mine.unanswered = {
       operationId,
       recordId,
