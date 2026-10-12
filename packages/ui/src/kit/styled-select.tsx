@@ -44,14 +44,16 @@ function useNativeSelect(props: StyledSelectProps) {
     );
   });
   useEffect(() => {
-    const form = native.current?.form;
-    if (!form) return;
+    const page = native.current?.ownerDocument;
+    if (!page) return;
     // A reset restores the select after its event, without a render or change event.
-    const reset = (): void => {
+    // It bubbles, so the page hears it from whichever form owns the select now.
+    const reset = (event: Event): void => {
+      if (event.target !== native.current?.form) return;
       setTimeout(() => setValue(native.current?.value ?? ''));
     };
-    form.addEventListener('reset', reset);
-    return () => form.removeEventListener('reset', reset);
+    page.addEventListener('reset', reset);
+    return () => page.removeEventListener('reset', reset);
   }, []);
   const choose = (next: string): void => {
     if (native.current === null || next === native.current.value) return;
