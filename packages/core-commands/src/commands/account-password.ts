@@ -216,8 +216,9 @@ async function spend(
   if (state?.live !== true) return 'invalid';
   if (await loginHasVerifiedFactor(tx, found.subject)) return 'factored';
   if (!(await roomLeft(tx, size))) return 'full';
+  // Stamped after the waits: a token minted meanwhile is not spent before it was made.
   await tx.query(
-    `update password_reset_tokens set spent_at = now()
+    `update password_reset_tokens set spent_at = clock_timestamp()
       where business_id = $1 and login_id = $2 and spent_at is null`,
     [tx.businessId, held.login_id],
   );

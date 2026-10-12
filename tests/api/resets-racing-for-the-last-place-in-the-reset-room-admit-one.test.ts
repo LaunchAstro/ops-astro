@@ -4,8 +4,9 @@
 // first holds the room's key from its count to its commit, so the second waits
 // behind it and counts only after that wait: it sees the first's window when
 // the first commits, and the first's place when the first dies before it
-// commits. A window that lapses during the wait is no longer counted. A reset
-// retried after its answer was lost opens no second window and sends nothing.
+// commits. A window that lapses during the wait is no longer counted, and a
+// token minted during it is spent no earlier than it was made. A reset retried
+// after its answer was lost opens no second window and sends nothing.
 
 import { randomUUID } from 'node:crypto';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -219,6 +220,46 @@ LIVE(
       await room.letGo();
     }
     expect(await pending).toEqual({ ok: true });
+  },
+  30_000,
+);
+
+LIVE(
+  'a token minted while a reset waits for the room is spent no earlier than it was made',
+  async () => {
+    const member = await freshMember('race-minted');
+    const token = await mintToken(member.presented.subject);
+    const own = connect(world.db.appUrl);
+    const room = await hold(world.db, async (execute) => {
+      await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        'reset_dispatch_room',
+      ]);
+    });
+    let pending: ReturnType<typeof reset> | undefined;
+    try {
+      pending = reset(own, token, 'a minted while waiting password');
+      await waiterOf(world.db, room);
+      // The person asks again while the first link's reset waits: a second token, made now.
+      await mintToken(member.presented.subject);
+    } finally {
+      await room.letGo();
+    }
+    try {
+      expect(await pending).toEqual({ ok: true });
+    } finally {
+      await own.close();
+    }
+    const tokens = await world.db.admin.execute<{ spent: boolean; after: boolean }>(
+      `select t.spent_at is not null as spent, t.spent_at >= t.created_at as after
+       from public.password_reset_tokens t
+       join public.logins l on l.business_id = t.business_id and l.id = t.login_id
+      where l.subject = $1`,
+      [member.presented.subject],
+    );
+    expect(tokens).toEqual([
+      { spent: true, after: true },
+      { spent: true, after: true },
+    ]);
   },
   30_000,
 );
