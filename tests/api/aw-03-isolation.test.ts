@@ -7,8 +7,9 @@
 // write` for the owner's own, `conversation:read` the read-any grant nobody
 // holds on install). The crossings: another business (the same login in
 // Bravo, answered exactly as a made-up id is, and audited); another client in
-// the same business (a read-any grant on client two's task does not reach a
-// conversation scoped to client one's); another person under a live
+// the same business (a read-any grant on client two, or on client two's task,
+// does not reach a conversation on client one's task, and one on client one
+// does); another person under a live
 // delegation (the owner's own agent, working under the owner's delegation,
 // reaches nothing of the owner's conversation). Each checks the status and
 // that no body carries the conversation's title, subject, owner name, id or
@@ -73,7 +74,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
   let taskTwo = '';
   let readerOfTwo: Member;
   let readerOfOne: Member;
-  let partyOfTwo: Member;
+  let recordOfTwo: Member;
   let both: Member;
   const clientOne = randomUUID();
   const clientTwo = randomUUID();
@@ -100,12 +101,12 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     const { db, business } = w.fixture;
     readerOfOne = await enrol(db.app, business, 'reader-one');
     readerOfTwo = await enrol(db.app, business, 'reader-two');
-    partyOfTwo = await enrol(db.app, business, 'party-two');
+    recordOfTwo = await enrol(db.app, business, 'record-two');
     both = await enrol(db.app, business, 'both');
     await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, readerOfOne, 'read', { kind: 'record', id: taskOne }, false, CONVERSATION);
-      await grantTo(tx, readerOfTwo, 'read', { kind: 'record', id: taskTwo }, false, CONVERSATION);
-      await grantTo(tx, partyOfTwo, 'read', { kind: 'party', id: clientTwo }, false, CONVERSATION);
+      await grantTo(tx, readerOfOne, 'read', { kind: 'party', id: clientOne }, false, CONVERSATION);
+      await grantTo(tx, readerOfTwo, 'read', { kind: 'party', id: clientTwo }, false, CONVERSATION);
+      await grantTo(tx, recordOfTwo, 'read', { kind: 'record', id: taskTwo }, false, CONVERSATION);
       await grantTo(tx, w.owner, 'share');
     });
     const bravo = await insertBusiness(db.app, 'bravo');
@@ -185,7 +186,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
       one: clientOne,
       two: clientTwo,
     });
-    for (const reader of [readerOfTwo, partyOfTwo]) {
+    for (const reader of [readerOfTwo, recordOfTwo]) {
       // eslint-disable-next-line no-await-in-loop -- one reader at a time
       const wrongClient = await readAs(reader);
       expect(wrongClient.status).toBe(403);
@@ -195,6 +196,21 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     const rightClient = await readAs(readerOfOne);
     expect(rightClient.status).toBe(200);
     expect(JSON.stringify(rightClient.body)).toContain(title);
+  });
+
+  it('AW-03 isolation: both client readers hold party-scoped conversation grants', async () => {
+    const rows = await w.fixture.db.admin.execute(
+      `select subject_id::text as person, scope_kind, scope_id::text as client
+         from public.grants where business_id = $1 and collection = $2
+           and action = 'read' and subject_id = any($3::uuid[])
+         order by array_position($3::uuid[], subject_id)`,
+      [w.fixture.business, CONVERSATION, [readerOfOne.personId, readerOfTwo.personId]],
+    );
+    const grants = structuredClone(rows);
+    expect(grants).toStrictEqual([
+      { person: readerOfOne.personId, scope_kind: 'party', client: clientOne },
+      { person: readerOfTwo.personId, scope_kind: 'party', client: clientTwo },
+    ]);
   });
 
   it('AW-03 isolation: another person under a live delegation: the owner’s agent reaches nothing of the conversation', async () => {
