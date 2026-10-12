@@ -240,11 +240,7 @@ export async function proposeFor(
   const planRecordId = plan?.planRecordId ?? null;
   const result = await proposeUnderLocks(tx, { ...proposal, planRecordId }, held);
   if (!result.ok) return refused(result.refusal);
-  // An agent's waiting proposal answered again (`proposeUnderLocks`) already
-  // has its decision raised.
-  if (result.value.reused !== true) {
-    await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
-  }
+  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

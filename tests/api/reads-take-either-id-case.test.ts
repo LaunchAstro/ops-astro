@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A worker restarted after its proposal was decided finds that proposal again
-// rather than opening a second one, and the reads that name a record by id
-// answer the same for either letter case of the id: a receipt by its attempt,
-// and a board scoped to one record.
+// The reads that name a record by id answer the same for either letter case
+// of the id: a receipt by its attempt, and a board scoped to one record.
 
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -59,7 +57,7 @@ const workerOn = (delegation: string) =>
 async function approved() {
   const created = await person('task.create', {
     operationId: randomUUID(),
-    fields: { title: `restart proof ${randomUUID()}` },
+    fields: { title: `id case ${randomUUID()}` },
   });
   expect(created.status).toBe(200);
   const taskId = String(created.body['recordId']);
@@ -68,7 +66,7 @@ async function approved() {
       agentActorId: fixture.agentActorId,
       delegatePersonId: fixture.member.personId,
       mintedByActorId: fixture.member.actorId,
-      purpose: `restart_${randomUUID().slice(0, 8)}`,
+      purpose: `id_case_${randomUUID().slice(0, 8)}`,
       collections: ['task'],
       actions: ['read', 'comment', 'write'],
       purposeScope: { kind: 'record', id: taskId },
@@ -97,7 +95,7 @@ async function approved() {
 
 beforeAll(async () => {
   if (databaseUrlFromEnvironment() === undefined) return;
-  fixture = await createApiFixture('restart_case');
+  fixture = await createApiFixture('id_case');
   api = fixture.compose(undefined, readIdentity(resolve(import.meta.dirname, '../..')));
   personToken = await tokenFor(fixture.member.presented.subject);
   agentToken = await tokenFor(fixture.agent.subject);
@@ -107,55 +105,45 @@ afterAll(async () => {
   await fixture?.db.drop();
 });
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'a restarted worker, and reads given either id case',
-  () => {
-    it('a restarted propose-then-apply worker recovers its approved proposal', async () => {
-      const { credential, proposed } = await approved();
-      const restarted = workerOn(credential);
-      const recovered = await restarted.proposeOnce();
-      expect(recovered).toStrictEqual(proposed);
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('reads given either id case', () => {
+  it('an observed receipt reads identically with an uppercase attempt UUID', async () => {
+    const { taskId, worker } = await approved();
+    await launchThrough(worker, taskId, async (body) => {
+      const launch = await person('task.decide', body);
+      expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+      return launch.body['detail'] as Record<string, unknown>;
     });
+    const applied = await worker.applyOnce(taskId);
+    if (!('applied' in applied)) throw new Error(JSON.stringify(applied));
+    const id = applied.applied.attemptId;
+    expect(id).not.toBe(id.toUpperCase());
+    const lower = await person('task.receipt', { attemptId: id });
+    expect(lower.status).toBe(200);
+    const upper = await person('task.receipt', { attemptId: id.toUpperCase() });
+    expect(upper.body).toStrictEqual(lower.body);
+  });
 
-    it('an observed receipt reads identically with an uppercase attempt UUID', async () => {
-      const { taskId, worker } = await approved();
-      await launchThrough(worker, taskId, async (body) => {
-        const launch = await person('task.decide', body);
-        expect(launch.status, JSON.stringify(launch.body)).toBe(200);
-        return launch.body['detail'] as Record<string, unknown>;
-      });
-      const applied = await worker.applyOnce(taskId);
-      if (!('applied' in applied)) throw new Error(JSON.stringify(applied));
-      const id = applied.applied.attemptId;
-      expect(id).not.toBe(id.toUpperCase());
-      const lower = await person('task.receipt', { attemptId: id });
-      expect(lower.status).toBe(200);
-      const upper = await person('task.receipt', { attemptId: id.toUpperCase() });
-      expect(upper.body).toStrictEqual(lower.body);
+  it('a record-scoped board read accepts either UUID spelling', async () => {
+    const made = await person('task.create', {
+      operationId: randomUUID(),
+      fields: { title: 'scoped board' },
     });
-
-    it('a record-scoped board read accepts either UUID spelling', async () => {
-      const made = await person('task.create', {
-        operationId: randomUUID(),
-        fields: { title: 'scoped board' },
-      });
-      expect(made.status).toBe(200);
-      const id = String(made.body['recordId']);
-      expect(id).not.toBe(id.toUpperCase());
-      const reader = await enrol(fixture.db.app, fixture.business, 'scoped-reader');
-      await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-        await grantTo(tx, reader, 'read', { kind: 'record', id });
-      });
-      const lower = await executeRead(fixture.db.app, fixture.business, reader.presented, {
-        read: 'task.board',
-        board: id,
-      });
-      expect(lower).toHaveProperty('tasks');
-      const upper = await executeRead(fixture.db.app, fixture.business, reader.presented, {
-        read: 'task.board',
-        board: id.toUpperCase(),
-      });
-      expect(upper).toStrictEqual(lower);
+    expect(made.status).toBe(200);
+    const id = String(made.body['recordId']);
+    expect(id).not.toBe(id.toUpperCase());
+    const reader = await enrol(fixture.db.app, fixture.business, 'scoped-reader');
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await grantTo(tx, reader, 'read', { kind: 'record', id });
     });
-  },
-);
+    const lower = await executeRead(fixture.db.app, fixture.business, reader.presented, {
+      read: 'task.board',
+      board: id,
+    });
+    expect(lower).toHaveProperty('tasks');
+    const upper = await executeRead(fixture.db.app, fixture.business, reader.presented, {
+      read: 'task.board',
+      board: id.toUpperCase(),
+    });
+    expect(upper).toStrictEqual(lower);
+  });
+});

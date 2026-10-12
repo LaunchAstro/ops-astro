@@ -104,42 +104,6 @@ export interface Proposal {
   readonly evidencePackId: string;
   readonly gateId: string;
   readonly payloadDigest: string;
-  /** True when this is an agent's waiting proposal answered again, nothing written. */
-  readonly reused?: true;
-}
-
-/**
- * An agent's live lineage of the request's purpose on its task that still
- * waits (its gate pending and unexpired, or its decided work held), as the
- * proposal it was. Asked under the locks, after authority, with the clock read
- * there: a worker restarted mid-propose or after the decision, or a second
- * copy on one delegation, finds it rather than opening a second gate.
- */
-async function waitingProposal(
-  tx: TenantQuery,
-  request: ProposeRequest,
-): Promise<Proposal | undefined> {
-  const rows = await tx.query<Omit<Proposal, 'reused'>>(
-    `select g.lineage_id as "lineageId", g.version_id as "versionId", v.version,
-            g.run_id as "runId", g.step_id as "stepId", g.evidence_pack_id as "evidencePackId",
-            g.id as "gateId", g.payload_digest as "payloadDigest"
-       from public.proposal_lineages l
-       join public.actors a
-         on a.business_id = l.business_id and a.id = l.opened_by_actor_id and a.kind = 'agent'
-       join public.proposal_versions v
-         on v.business_id = l.business_id and v.lineage_id = l.id and v.superseded_at is null
-       join public.gates g on g.business_id = v.business_id and g.version_id = v.id
-      where l.business_id = $1 and l.task_id = $2 and l.opened_by_actor_id = $3
-        and l.state = 'live' and v.purpose = $4
-        and ((g.state = 'pending' and g.expires_at > clock_timestamp())
-             or exists (select 1 from public.reservations r
-                         where r.business_id = v.business_id and r.version_id = v.id
-                           and r.state = 'held'))
-      order by g.created_at desc limit 1`,
-    [tx.businessId, request.taskId, request.proposedByActorId, request.purpose],
-  );
-  const row = rows[0];
-  return row === undefined ? undefined : { ...row, reused: true };
 }
 
 interface LineageRow {
@@ -285,10 +249,6 @@ export async function proposeUnderLocks(
   if (readable !== null) return readable;
   const writable = await requires(tx, request, 'write');
   if (writable !== null) return writable;
-  if (lineageId === null && restarts === null) {
-    const waiting = await waitingProposal(tx, request);
-    if (waiting !== undefined) return { ok: true, value: waiting };
-  }
 
   if (!Number.isSafeInteger(request.maximumMinor) || request.maximumMinor <= 0) {
     return refuse(
