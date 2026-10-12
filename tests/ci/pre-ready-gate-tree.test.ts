@@ -50,8 +50,10 @@ const plant = (files: Record<string, string>): string => {
   git('commit', '-q', '--no-verify', '-m', `test: planted case\n\n${TRAILERS}`);
   return git('rev-parse', 'HEAD');
 };
+// The preflight refuses a detached head, as a lane's ticket has its own branch.
+const BRANCH = `pre-ready-case-${String(process.pid)}`;
 const at = (name: string) => {
-  git('checkout', '-q', '--detach', commits[name] ?? '');
+  git('checkout', '-q', '-B', BRANCH, commits[name] ?? '');
   return { cwd: tree, tools: tree, base, head: commits[name] ?? '' };
 };
 
@@ -86,6 +88,7 @@ afterAll(() => {
   rmSync(join(tree, 'node_modules'), { force: true });
   execFileSync('git', ['-C', root, 'worktree', 'remove', '--force', tree]);
   execFileSync('git', ['-C', root, 'worktree', 'prune']);
+  spawnSync('git', ['-C', root, 'branch', '-q', '-D', BRANCH]);
 });
 
 it(

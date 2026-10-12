@@ -349,6 +349,7 @@
       "local:cases": 18.9,
       "merge:policy": 0.0,
       "migrations:cases": 0.5,
+      "node:cases": 4.0,
       "pins": 0.1,
       "pins:cases": 1.7,
       "promotion dry run": 1.0,
