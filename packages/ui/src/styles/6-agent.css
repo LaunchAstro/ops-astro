@@ -9,6 +9,7 @@
   display: grid;
   gap: var(--s-3);
   min-width: 0;
+  container-type: inline-size;
 }
 
 /* MP-6-2: the run in main, what it was given in a side column after it; 21rem
@@ -16,10 +17,11 @@
    app.css:12696). A side section opens on a rule. */
 .tpg {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-5);
   min-width: 0;
 }
-@media (width >= 1279px) {
+@container (min-width: 1000px) {
   .tpg {
     grid-template-columns: minmax(0, 1fr) 21rem;
     align-items: start;
@@ -63,9 +65,12 @@
   background: var(--warning);
 }
 .gate__word {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  /* type-exception R20261012: the reference gate label uses regular mono at 12px. */
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--text);
 }
 .gate__say {
@@ -88,8 +93,8 @@
 }
 .sout__where {
   font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--ink-faint);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -119,8 +124,8 @@
 }
 .sout__meta {
   font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--ink-faint);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -149,7 +154,7 @@
 }
 .sout__d {
   display: grid;
-  gap: 0.25rem;
+  gap: var(--s-1);
   padding-left: var(--s-3);
   border-left: 2px solid var(--border);
 }
@@ -176,7 +181,7 @@
 }
 .sout__ad {
   display: grid;
-  gap: 0.25rem;
+  gap: var(--s-1);
 }
 .sout__adname {
   font: var(--type-small);
@@ -204,6 +209,48 @@
   gap: var(--s-2);
   min-width: 0;
 }
+.trs__lead {
+  display: grid;
+  align-content: start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.trs__details > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.trs[data-summary-layout='compact'] .trs__details > summary {
+  display: none;
+}
+@container (min-width: 1000px) {
+  .trs[data-summary-layout='full'] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0;
+    gap: 0;
+  }
+  .trs[data-summary-layout='full'] .trs__lead {
+    padding: var(--s-4);
+  }
+  .trs[data-summary-layout='full'] .trs__details {
+    margin-top: var(--s-1);
+  }
+  .tpg__main {
+    gap: var(--s-5);
+  }
+  .trs[data-summary-layout='full'] .tph__stats {
+    grid-template-columns: repeat(2, minmax(7.5rem, auto));
+    gap: 0;
+  }
+  .trs[data-summary-layout='full'] .tph__stat {
+    border-bottom: 1px solid var(--border);
+  }
+  .trs[data-summary-layout='full'] .tph__stat:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
 .trs[data-tone='gate'] {
   border-left-color: var(--warning);
 }
@@ -224,9 +271,6 @@
   min-width: 0;
 }
 .trs__say {
-  font: var(--type-small-strong);
-  letter-spacing: var(--type-small-strong-tracking);
-  text-transform: var(--type-small-strong-case);
   margin: 0;
   color: var(--text);
   font: var(--type-small-strong);
@@ -586,7 +630,7 @@
 }
 .tokpanel .tt__bar {
   height: 4px;
-  margin: 0.25rem 0 0.15rem;
+  margin: var(--s-1) 0 0.15rem;
   background: color-mix(in oklch, var(--ink) 12%, transparent);
 }
 .tt__fill {
@@ -615,7 +659,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.25rem 0.55rem;
+  gap: var(--s-1) 0.55rem;
   padding: 0.38rem 0;
   border-top: 1px solid var(--rule-faint);
 }
@@ -653,7 +697,7 @@
 .tokrun__io {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.25rem;
+  gap: var(--s-1);
   margin-left: auto;
 }
 .tokrun__k,
@@ -726,4 +770,31 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   white-space: pre-wrap;
+}
+
+.tph__stat .tf__k {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+.trs[data-summary-layout='full'] .trs__top {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.trs[data-summary-layout='full'] .trs__top > .spill {
+  order: -1;
+}
+
+.trs[data-summary-layout='full'] .trs__say {
+  /* type-exception R20261012: Nathan requires the measured Hub typography; see VISUAL-PARITY.md. */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
 }

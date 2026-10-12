@@ -41,14 +41,6 @@ const probe = (
   ...(ruled === undefined ? {} : { ruled }),
 });
 
-// DS-TASK-1 and DS-TASK-7: labels snap to DS-TOK-126 --type-eyebrow (300);
-// the mockup's 400 is drift (TASK-PAGE.md S4).
-const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
-  at: `font-weight@${theme}`,
-  want: '300',
-  why: 'DS-TASK-1',
-}));
-
 export const TASK: LookScreen = {
   id: 'task',
   probes: [
@@ -119,13 +111,10 @@ export const TASK: LookScreen = {
       'padding-top',
       'padding-left',
     ]),
-    probe(
-      'gate-word',
-      { ...AGENT, selector: '.gatebox .gate__word' },
-      '.gatebox .gate__word',
-      [...TYPE, 'text-transform'],
-      EYEBROW,
-    ),
+    probe('gate-word', { ...AGENT, selector: '.gatebox .gate__word' }, '.gatebox .gate__word', [
+      ...TYPE,
+      'text-transform',
+    ]),
     probe('gate-say', { ...AGENT, selector: '.gatebox .gate__say' }, '.gatebox .gate__say', [
       ...TYPE,
     ]),
