@@ -85,9 +85,12 @@ jobs:
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
     steps:
+      # No token left in .git/config, where the pull request's own scripts run
+      # below could read it; the gate's fetches read a public repository.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -365,7 +368,7 @@ jobs:
               echo "local checks: a green merge group tested this tree"
               exit 0
             fi
-            echo "local checks: the full set waits for the ci-next label"
+            echo "local checks: the full set waits for the ci-next label; a run that started before it was added stays light, so add it again"
             exit 1
           fi
           test "$SHARDS" = success
@@ -545,7 +548,7 @@ jobs:
               echo "database conformance: a green merge group tested this tree"
               exit 0
             fi
-            echo "database conformance: the full set waits for the ci-next label"
+            echo "database conformance: the full set waits for the ci-next label; a run that started before it was added stays light, so add it again"
             exit 1
           fi
           if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
@@ -765,7 +768,7 @@ jobs:
               echo "isolation tests: a green merge group tested this tree"
               exit 0
             fi
-            echo "isolation tests: the full set waits for the ci-next label"
+            echo "isolation tests: the full set waits for the ci-next label; a run that started before it was added stays light, so add it again"
             exit 1
           fi
           test "$SHARDS" = success

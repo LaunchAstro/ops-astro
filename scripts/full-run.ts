@@ -134,8 +134,9 @@ export async function queueBusyNow({
   } catch {
     entries = undefined;
   }
-  if (typeof entries === 'number' && entries > 0) return true;
-  // Without the queue's own answer, a group still under test says it holds an entry.
+  // The queue's own count decides. A merged group's run can still be going after the queue empties
+  // (two groups built at once merge through the later one), so runs are read only without it.
+  if (typeof entries === 'number') return entries > 0;
   const going = await Promise.all(
     ['queued', 'in_progress'].map(
       async (status) =>

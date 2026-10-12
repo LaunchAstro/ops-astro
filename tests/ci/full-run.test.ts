@@ -45,6 +45,8 @@ const runs =
 /** The merge queue's own count of entries. */
 const queue = (count: number) => () =>
   Promise.resolve({ data: { repository: { mergeQueue: { entries: { totalCount: count } } } } });
+/** A merge queue answer with no queue in it. */
+const unread = () => Promise.resolve({ data: { repository: { mergeQueue: null } } });
 /** A merge queue read the token may not make. */
 const broken = () => Promise.reject(new Error('graphql: 403'));
 
@@ -149,11 +151,18 @@ describe('whether the queue holds more', () => {
     expect(await queueBusyNow({ api: runs(0, 0), graphql: queue(0), repo: REPO })).toBe(false);
   });
 
-  it('holds more when a group is queued or under test, whatever the queue said', async () => {
-    expect(await queueBusyNow({ api: runs(1, 0), graphql: queue(0), repo: REPO })).toBe(true);
-    expect(await queueBusyNow({ api: runs(0, 1), graphql: queue(0), repo: REPO })).toBe(true);
+  it('is empty when the queue has none, even while the run of a merged group is still going', async () => {
+    // Two groups built at once can merge through the later one; the earlier run goes on until
+    // it is cancelled, and the push it leaves is still the end of the batch.
+    expect(await queueBusyNow({ api: runs(1, 0), graphql: queue(0), repo: REPO })).toBe(false);
+    expect(await queueBusyNow({ api: runs(0, 1), graphql: queue(0), repo: REPO })).toBe(false);
+  });
+
+  it('reads a group queued or under test only when the queue cannot be read', async () => {
+    expect(await queueBusyNow({ api: runs(1, 0), graphql: broken, repo: REPO })).toBe(true);
     expect(await queueBusyNow({ api: runs(0, 1), graphql: broken, repo: REPO })).toBe(true);
     expect(await queueBusyNow({ api: runs(0, 0), graphql: broken, repo: REPO })).toBe(false);
+    expect(await queueBusyNow({ api: runs(0, 1), graphql: unread, repo: REPO })).toBe(true);
   });
 });
 

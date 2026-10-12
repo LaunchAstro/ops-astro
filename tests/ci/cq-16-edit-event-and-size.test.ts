@@ -121,7 +121,11 @@ describe('CQ-16 workflow permissions', () => {
     expect(own[0]?.[1]).toContain(
       '    permissions:\n      contents: read\n      actions: read\n    ',
     );
-    // Its token reaches one step, on a push to main alone.
+    // Its token reaches one step, on a push to main alone: the checkout keeps none in .git/config,
+    // where the pull request's own scripts that the gate runs could read it.
+    expect(own[0]?.[1]).toMatch(
+      /- uses: actions\/checkout@\S+ # v[\d.]+\n {8}with:\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/u,
+    );
     expect(ci.match(/github\.token/gu)).toHaveLength(1);
     expect(ci).toContain(
       "          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}\n        run: node scripts/full-run.ts\n",

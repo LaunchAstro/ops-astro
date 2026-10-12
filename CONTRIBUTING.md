@@ -136,7 +136,8 @@ size, dependency audit, static analysis and the database conformance gate),
 but `full checks` and every job behind it are skipped, and `local checks`,
 `isolation tests` and `database conformance` fail with "the full set waits
 for the ci-next label". Adding the label starts the run; removing it runs the
-light set again. A label change on a closed or merged pull request runs
+light set again. A run reads the labels its event carried, so a push that
+started just before the label was added stays light: add the label again. A label change on a closed or merged pull request runs
 nothing. `review evidence for this revision` is its own workflow and runs on
 every event, label or not (`scripts/full-run.ts`).
 
