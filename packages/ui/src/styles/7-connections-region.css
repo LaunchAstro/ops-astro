@@ -287,6 +287,14 @@
   height: auto;
   white-space: nowrap;
 }
+/* A standing approval's sentence is the words a person writes, so above the
+   narrow stop it takes three shares of the row's spare room to the ceiling's
+   and the date's one. */
+@media (width > 640px) {
+  .gradsec .psadd > [data-mandate-label] {
+    flex-grow: 3;
+  }
+}
 .connnote__field {
   min-width: 8rem;
   padding: 0.45rem 0.55rem;
