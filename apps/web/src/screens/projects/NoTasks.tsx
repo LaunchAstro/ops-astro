@@ -13,6 +13,8 @@ export function NoTasks(props: {
   readonly clients: readonly ClientView[];
   /** The selected project's own client, which the door files. */
   readonly project: ClientView | null;
+  /** Whether the board admits the reader and the project's own client is settled; else no client. */
+  readonly admitted: boolean;
 }): ReactElement {
   return (
     <Empty
@@ -25,7 +27,7 @@ export function NoTasks(props: {
             className="btn btn--secondary btn--sm"
             type="button"
             data-projects-empty-new-task
-            {...boardDoor(props.address, true, props.clients, props.project)}
+            {...boardDoor(props.address, true, props.clients, props.project, props.admitted)}
           >
             New task
           </button>

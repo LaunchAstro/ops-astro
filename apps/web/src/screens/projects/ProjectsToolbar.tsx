@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { usePageToolbar } from '@launchastro/ui';
 import {
   TASK_CATEGORIES,
   TASK_STAGES,
@@ -14,13 +13,15 @@ import { addressScope, queryOf } from './board-address.ts';
  * board's client (its scope's, else the selected project's own `project`
  * client, else the one Client filter's, named from `clients`) and project, the
  * one stage and category it is filtered to, and the one priority and category
- * its scope reads as. Two of a kind guess neither.
+ * its scope reads as. Two of a kind guess neither. A board that does not admit
+ * its reader (`admitted` false) names no client, whatever would name one.
  */
 export function boardDoor(
   address: string | undefined,
   canFileTask: boolean,
   clients: readonly ClientView[] = [],
   project: ClientView | null = null,
+  admitted = true,
 ): Readonly<Record<string, string | undefined>> {
   if (!canFileTask) return {};
   const scope = addressScope(address);
@@ -28,10 +29,11 @@ export function boardDoor(
   const priority = only(chips.flatMap((chip) => (chip.kind === 'priority' ? [chip.value] : [])));
   const facets = (new URLSearchParams(queryOf(address)).get('f') ?? '').split(',');
   const filtered = only(facets.flatMap((facet) => valueOf('client', facet)));
-  const clientId =
-    scope?.client ??
-    project?.clientId ??
-    only([...new Set(clients.filter((one) => one.name === filtered).map((one) => one.clientId))]);
+  const clientId = admitted
+    ? (scope?.client ??
+      project?.clientId ??
+      only([...new Set(clients.filter((one) => one.name === filtered).map((one) => one.clientId))]))
+    : undefined;
   return {
     'data-new-task': '',
     'data-new-task-label': 'Projects',
@@ -76,25 +78,29 @@ function categoryOf(label: string): readonly string[] {
   return category === undefined ? [] : [category.id];
 }
 
-/** The page's New task, in the page toolbar; inline when the board is in a panel. */
+/**
+ * The page's New task, drawn by the board's read into `target` (the page
+ * toolbar, or the page's own toolbar row in a panel), so its client never
+ * trails the board's admission by a commit.
+ */
 export function ProjectsToolbar(props: {
-  readonly inPanel: boolean;
+  readonly target: HTMLElement | null;
   readonly canFileTask: boolean;
   /** The board's address, whose client and project the door carries. */
   readonly address: string;
   /** The clients the board knows by name, for a Client filter's door. */
-  readonly clients: readonly ClientView[];
+  readonly clients?: readonly ClientView[];
   /** The selected project's own client, read for its door; null for none or unread. */
-  readonly project: ClientView | null;
-}): ReactElement {
-  const pageBar = usePageToolbar();
-  const bar = props.inPanel ? null : pageBar;
+  readonly project?: ClientView | null;
+  /** Whether the board admits the reader and the project's client is settled; else no client. */
+  readonly admitted: boolean;
+}): ReactElement | null {
   const control = (
     <button
       className="btn btn--secondary btn--sm"
       type="button"
       data-projects-new-task
-      {...boardDoor(props.address, props.canFileTask, props.clients, props.project)}
+      {...boardDoor(props.address, props.canFileTask, props.clients, props.project, props.admitted)}
       disabled={!props.canFileTask}
       title={
         props.canFileTask
@@ -105,9 +111,5 @@ export function ProjectsToolbar(props: {
       New task
     </button>
   );
-  return bar === null ? (
-    <div className="projects__toolbar">{control}</div>
-  ) : (
-    createPortal(control, bar)
-  );
+  return props.target === null ? null : createPortal(control, props.target);
 }
