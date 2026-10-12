@@ -65,6 +65,34 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 
 export class Refusal extends Error {}
 
+// Migration 20261006140500's stop: a closed list of plain names, so no address.
+const NAME = String.raw`(?:schema )?[a-z_][a-z0-9_]{0,62}(?:\.[a-z_][a-z0-9_]{0,62})?`;
+const BACKUP_GAP = new RegExp(
+  String.raw`^the backup identity cannot read ${NAME}(?:, ${NAME}){0,49}$`,
+  'u',
+);
+
+/**
+ * Why a run stopped: the backup identity's gap by name, any other error by its
+ * class and SQLSTATE alone, since its message may carry an address.
+ */
+export function stoppedBecause(error: unknown): string {
+  const { cause } = (error ?? {}) as { cause?: { code?: unknown; message?: unknown } };
+  if (
+    cause?.code === '42501' &&
+    typeof cause.message === 'string' &&
+    BACKUP_GAP.test(cause.message)
+  )
+    return cause.message;
+  const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown };
+  return [
+    typeof name === 'string' ? name : 'error',
+    typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code) ? code : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 const REF = /^[a-z]{20}$/u;
 /** Supabase's shared pooler in Sydney, staging's region (NATHAN-SUPABASE-FREE). */
 export const POOLER: RegExp = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
@@ -248,10 +276,17 @@ export const CARRY_ENDED_SESSIONS: readonly string[] = [
    end $$`,
   'select ops_astro_reset.carry_ended_sessions()',
 ];
+/**
+ * Put back in one transaction. Each subject's ending keeps its time: the
+ * trigger that sets a new ending's time at commit is off for this one insert,
+ * and on again before the commit, so it never sees the rows put back.
+ */
 export const RESTORE_ENDED_SESSIONS: readonly string[] = [
   `insert into ops.ended_provider_sessions (session_id, ended_at)
      select session_id, ended_at from ops_astro_reset.ended_provider_sessions`,
+  'alter table ops.ended_subject_sessions disable trigger ended_subject_sessions_at_commit',
   `insert into ops.ended_subject_sessions (subject_digest, kept_session, ended_before)
      select subject_digest, kept_session, ended_before from ops_astro_reset.ended_subject_sessions`,
+  'alter table ops.ended_subject_sessions enable trigger ended_subject_sessions_at_commit',
   'drop schema ops_astro_reset cascade',
 ];

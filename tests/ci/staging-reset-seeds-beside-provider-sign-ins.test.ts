@@ -5,10 +5,14 @@
 // unmarked database whose sign-in table had held a row and refused it. The
 // stand-in now writes `auth.users` as the provider does; this file adds the
 // cast's made-up sign-ins there once more and runs the reset again.
+// The provider lists its sign-ins a page at a time, and the stand-in pages as
+// it does: a cast sign-in past the first page is still found and reset.
 
+import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { STAGING_CAST } from '../../scripts/ops/staging-reset.ts';
 import {
+  calls,
   onDatabase,
   run,
   serverUrl,
@@ -44,6 +48,32 @@ it.skipIf(serverUrl === undefined)(
         'auth.users holds the made-up sign-ins the reset itself made (unmarked + not new)\n' +
         again.out,
     ).toBe(0);
+  },
+  360_000,
+);
+
+it.skipIf(serverUrl === undefined)(
+  'staging reset finds a made-up sign-in the provider lists past its first page',
+  async () => {
+    // More invented sign-ins than one page holds, made before the cast's, so
+    // the provider lists the cast from its second page on.
+    const made = [...users];
+    users.clear();
+    for (let n = 1; n <= 200; n += 1) users.set(`extra-${String(n)}@alpha.local`, randomUUID());
+    for (const [email, id] of made) users.set(email, id);
+    const ada = users.get('ada@alpha.local');
+    const before = calls.length;
+
+    const result = await run(settings());
+
+    expect(result.status, `the reset finishes\n${result.out}`).toBe(0);
+    const asked = calls.slice(before);
+    expect(
+      asked.some((call) => call.method === 'GET' && /(?:^|&)page=2(?:&|$)/u.test(call.query)),
+    ).toBe(true);
+    expect(
+      asked.some((call) => call.method === 'PUT' && call.path === `/admin/users/${String(ada)}`),
+    ).toBe(true);
   },
   360_000,
 );

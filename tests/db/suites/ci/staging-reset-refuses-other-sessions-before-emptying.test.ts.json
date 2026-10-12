@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a staging reset refuses before emptying while another session is connected, an idle one of its own login included, by the migration runner's own rule, so the refusal leaves the database as it was"
+}

@@ -17,7 +17,8 @@
 // database neither marked made-up nor new is refused, and so are a service key
 // the admin API does not accept (one read) and a record that is not a real
 // file (a `started` line is written to it and read back); then the owner's
-// folder is made; only then, judged again with the tenant tables locked, empty
+// folder is made; only then, judged again with the tenant tables locked and
+// refused while any other session is connected (as the migrations are), empty
 // (the product's schemas, and the guard's notes on them, carrying the ended
 // sessions across), mark the database made-up again, migrate, put the ended
 // sessions back, make the sign-ins
@@ -45,7 +46,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
+import { migrate, otherSessions } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { markEmptied, productionSigns, resettable } from './made-up-only.ts';
 import { RECORD_FILE } from './operator.ts';
 import {
@@ -56,6 +57,7 @@ import {
   STAGING_CAST,
   TENANT_TABLES,
   refusalBeforeConnecting,
+  stoppedBecause,
 } from './staging-reset.ts';
 
 const SEED = new URL('../local-seed.mjs', import.meta.url).pathname;
@@ -92,16 +94,14 @@ const redact = (text) =>
     .filter((secret) => typeof secret === 'string' && secret.length >= 4)
     .reduce((out, secret) => out.replaceAll(secret, '[a setting]'), text);
 
-/** An error by its class and SQLSTATE alone: its message may carry an address. */
-const named = (error) =>
-  [error?.name ?? 'error', /^[0-9A-Z]{5}$/u.test(error?.code ?? '') ? error.code : '']
-    .filter(Boolean)
-    .join(' ');
-
 function refuse(why) {
   console.error(`staging-reset: ${why}. Nothing was done.`);
   process.exit(1);
 }
+
+/** The provider's list, read this many sign-ins a page, up to this many pages. */
+const PAGE = 200;
+const PAGES = 50;
 
 /** One made-up sign-in through the admin API, confirmed as made, so no mail goes. */
 async function signIn(member, password) {
@@ -123,10 +123,15 @@ async function signIn(member, password) {
   const confirmed = { email: member.email, password, email_confirm: true };
   const made = await call('/admin/users', 'POST', confirmed);
   if (made.ok && typeof made.body?.id === 'string') return made.body.id;
-  // Already there from an earlier reset: its password is made again.
-  const listed = await call('/admin/users?page=1&per_page=200', 'GET');
-  const users = Array.isArray(listed.body?.users) ? listed.body.users : [];
-  const id = users.find((user) => user.email === member.email)?.id;
+  // Already there from an earlier reset: found page by page, its password made again.
+  let id;
+  for (let page = 1; id === undefined && page <= PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- one page after another, until it is found
+    const listed = await call(`/admin/users?page=${page}&per_page=${PAGE}`, 'GET');
+    const users = Array.isArray(listed.body?.users) ? listed.body.users : [];
+    id = users.find((user) => user.email === member.email)?.id;
+    if (users.length < PAGE) break;
+  }
   if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/u.test(id))
     throw new Refusal(`the admin API did not make the sign-in ${member.email}`);
   if (!(await call(`/admin/users/${id}`, 'PUT', confirmed)).ok)
@@ -211,6 +216,19 @@ try {
       const signs = await productionSigns({ execute }, [], true);
       throw new Refusal(`since it was judged, ${signs.join('; ')}; nothing was emptied`);
     }
+    // The migrations refuse while anything else is connected, so that is asked
+    // here, by their rule, before anything is dropped. The session pooler keeps
+    // a login's connection open, idle, after its client leaves, this login's too.
+    const others = await otherSessions(execute);
+    if (others.length > 0) {
+      const [{ me }] = await execute('select current_user::text as me');
+      const mine = others.filter(({ usename }) => usename === me).length;
+      throw new Refusal(
+        `${others.length} other ${others.length === 1 ? 'session is' : 'sessions are'} ` +
+          `connected, ${mine} of them as this login: stop the app's worker, forwarder and web, ` +
+          'then wait until the pooler drops its idle connections; nothing was emptied',
+      );
+    }
     // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
     for (const statement of [...CARRY_ENDED_SESSIONS, ...EMPTY]) await execute(statement);
   });
@@ -229,7 +247,7 @@ try {
   });
 } catch (error) {
   await admin.close();
-  const said = error instanceof Refusal ? error.message : named(error);
+  const said = error instanceof Refusal ? error.message : stoppedBecause(error);
   console.error(`staging-reset: stopped while ${step} (${said}); run it again.`);
   process.exit(1);
 }
@@ -293,7 +311,7 @@ try {
       'put them in the password manager entry "Ops Astro staging", then delete the folder.',
   );
 } catch (error) {
-  const said = error instanceof Refusal ? error.message : named(error);
+  const said = error instanceof Refusal ? error.message : stoppedBecause(error);
   console.error(`staging-reset: stopped while ${step} (${said}); empty and run it again.`);
   process.exit(1);
 }
