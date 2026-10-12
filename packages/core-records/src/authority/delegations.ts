@@ -579,12 +579,22 @@ export async function resolveDelegation(
   agentActorId: string,
   credential: string,
 ): Promise<DelegationDecision<Delegation>> {
+  return await resolveAt(tx, agentActorId, credential, 'clock_timestamp()');
+}
+
+/** `resolveDelegation` with expiry judged at `clock`, a SQL instant. */
+async function resolveAt(
+  tx: TenantQuery,
+  agentActorId: string,
+  credential: string,
+  clock: 'clock_timestamp()' | 'now()',
+): Promise<DelegationDecision<Delegation>> {
   const rows = await tx.query<
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
   >(
     `select ${delegationColumns()},
-            (revoked_at is null and settled_at is null and expires_at > clock_timestamp()) as live,
-            (revoked_at is not null and settled_at is null and expires_at > clock_timestamp()
+            (revoked_at is null and settled_at is null and expires_at > ${clock}) as live,
+            (revoked_at is not null and settled_at is null and expires_at > ${clock}
              and revocation_cause = 'authority_lost') as narrowed
        from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3`,
@@ -673,6 +683,11 @@ export async function resolveHistoricalDelegation(
  * person's grants no longer cover it. The caller's refusal code is not
  * consulted; it is recomputed.
  *
+ * The credential's expiry is judged on the transaction's start, which is no
+ * later than the live answer `resolveDelegation` gave earlier in this
+ * transaction, so an expiry passing between the two statements never loses
+ * the report: the same rule `resolveHistoricalDelegation` keeps.
+ *
  * Read-only, like its sibling, and it permits nothing. The delegation stays
  * live and unrevoked; nothing is recorded for it, and nothing it answers
  * changes what the credential reaches.
@@ -683,7 +698,7 @@ export async function resolveNarrowedDelegation(
   credential: string,
   request: ScopeRequest,
 ): Promise<{ readonly id: string } | undefined> {
-  const resolved = await resolveDelegation(tx, agentActorId, credential);
+  const resolved = await resolveAt(tx, agentActorId, credential, 'now()');
   if (!resolved.ok) return undefined;
   const reach = await checkDelegatedAuthority(tx, resolved.value, request);
   if (reach.ok || reach.refusal.code !== 'DELEGATION_NARROWED') return undefined;
