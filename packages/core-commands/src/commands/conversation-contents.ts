@@ -7,10 +7,11 @@
 // them at quiet and reads the work again before a purge.
 
 import type { ReadableScope, TenantQuery } from '../../../core-records/src/index.ts';
-import type {
-  ConversationPointerView,
-  WrapUpItemView,
-  WrapUpView,
+import {
+  minorDigits,
+  type ConversationPointerView,
+  type WrapUpItemView,
+  type WrapUpView,
 } from '../../../core-wire/src/index.ts';
 import { conversationAddress } from './conversations.ts';
 import { createdTasks, type Work } from './conversation-work.ts';
@@ -140,6 +141,40 @@ export function wrapUpView(stored: WrapUpRow, reads: ReadsAddress): WrapUpView {
   };
 }
 
+/** An amount in minor units, written exactly in its currency's major units. */
+function moneyOf(minor: string, currency: string): string {
+  const digits = minorDigits(currency);
+  const padded = minor.padStart(digits + 1, '0');
+  const whole = padded.slice(0, padded.length - digits);
+  return `${currency} ${digits === 0 ? whole : `${whole}.${padded.slice(-digits)}`}`;
+}
+
+/**
+ * The conversation's priced replies, from its planning ledger (AW-04): the
+ * settled calls and their spend, and what failed calls still hold.
+ */
+async function costOf(tx: TenantQuery, conversationId: string): Promise<string> {
+  const [row] = await tx.query<{ settled: string; spent: string; held: string; currency: string }>(
+    `select count(*) filter (where m.state = 'settled')::text as settled,
+            coalesce(sum(m.actual_minor) filter (where m.state = 'settled'), 0)::text as spent,
+            coalesce(sum(m.reserved_minor) filter (where m.state in
+              ('reserved', 'dispatched', 'liability_unknown')), 0)::text as held,
+            c.currency
+       from public.planning_envelopes e
+       join public.budget_caps c on c.business_id = e.business_id and c.id = e.cap_id
+       join public.model_calls m on m.business_id = e.business_id and m.planning_envelope_id = e.id
+      where e.business_id = $1 and e.conversation_id = $2
+      group by c.currency`,
+    [tx.businessId, conversationId],
+  );
+  if (row === undefined || (row.settled === '0' && row.held === '0')) {
+    return 'No priced model call recorded';
+  }
+  const calls = `${row.settled} priced model ${row.settled === '1' ? 'call' : 'calls'}`;
+  const held = row.held === '0' ? '' : `, ${moneyOf(row.held, row.currency)} still held`;
+  return `${calls}, ${moneyOf(row.spent, row.currency)} spent${held}`;
+}
+
 /** The seven pointer-and-fact contents, from records. */
 export async function itemsOf(
   tx: TenantQuery,
@@ -186,9 +221,7 @@ export async function itemsOf(
     },
     { key: 'runs_started', fact: COUNTED_FACTS.runs_started(runs.length), pointers: runs },
     { key: 'gates_raised', fact: COUNTED_FACTS.gates_raised(gates.length), pointers: gates },
-    // Priced model calls go through AW-01's broker; the conversation's own
-    // calls are counted here once the exchange makes them.
-    { key: 'cost', fact: 'No priced model call recorded', pointers: [] },
+    { key: 'cost', fact: await costOf(tx, conversationId), pointers: [] },
   ];
 }
 
