@@ -7,8 +7,10 @@
 // board, and given only while the board admits the reader. A board denial, or
 // a reread that drops the board's answer after an admission (as a denial or an
 // outage does, even one no render drew), withdraws it, and only a read begun
-// once the board admits the reader again gives it back. A refused or failed
-// read, or a project with no client the reader can name, gives none.
+// once the board admits the reader again gives it back. While a reread is in
+// flight it gives none, so a door clicked mid-refresh never files the client
+// the project had before. A refused or failed read, or a project with no
+// client the reader can name, gives none.
 
 import { useState } from 'react';
 import type { ClientView, TaskReadResult } from '../../../../../packages/core-wire/src/index.ts';
@@ -64,5 +66,5 @@ export function useProjectClient(
     deps: [client, boardId, since.admissions],
   });
   if (!board.admitted || since.withdrawn || !own) return null;
-  return state.outcome === 'loading' ? state.previous : state.value;
+  return state.outcome === 'ready' ? state.value : null;
 }

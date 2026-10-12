@@ -13,13 +13,15 @@ import { addressScope, queryOf } from './board-address.ts';
  * board's client (its scope's, else the selected project's own `project`
  * client, else the one Client filter's, named from `clients`) and project, the
  * one stage and category it is filtered to, and the one priority and category
- * its scope reads as. Two of a kind guess neither.
+ * its scope reads as. Two of a kind guess neither. A board that does not admit
+ * its reader (`admitted` false) names no client, whatever would name one.
  */
 export function boardDoor(
   address: string | undefined,
   canFileTask: boolean,
   clients: readonly ClientView[] = [],
   project: ClientView | null = null,
+  admitted = true,
 ): Readonly<Record<string, string | undefined>> {
   if (!canFileTask) return {};
   const scope = addressScope(address);
@@ -27,10 +29,11 @@ export function boardDoor(
   const priority = only(chips.flatMap((chip) => (chip.kind === 'priority' ? [chip.value] : [])));
   const facets = (new URLSearchParams(queryOf(address)).get('f') ?? '').split(',');
   const filtered = only(facets.flatMap((facet) => valueOf('client', facet)));
-  const clientId =
-    scope?.client ??
-    project?.clientId ??
-    only([...new Set(clients.filter((one) => one.name === filtered).map((one) => one.clientId))]);
+  const clientId = admitted
+    ? (scope?.client ??
+      project?.clientId ??
+      only([...new Set(clients.filter((one) => one.name === filtered).map((one) => one.clientId))]))
+    : undefined;
   return {
     'data-new-task': '',
     'data-new-task-label': 'Projects',
@@ -86,16 +89,18 @@ export function ProjectsToolbar(props: {
   /** The board's address, whose client and project the door carries. */
   readonly address: string;
   /** The clients the board knows by name, for a Client filter's door. */
-  readonly clients: readonly ClientView[];
+  readonly clients?: readonly ClientView[];
   /** The selected project's own client, read for its door; null for none or unread. */
-  readonly project: ClientView | null;
+  readonly project?: ClientView | null;
+  /** Whether the board admits the reader now; a board that does not names no client. */
+  readonly admitted: boolean;
 }): ReactElement | null {
   const control = (
     <button
       className="btn btn--secondary btn--sm"
       type="button"
       data-projects-new-task
-      {...boardDoor(props.address, props.canFileTask, props.clients, props.project)}
+      {...boardDoor(props.address, props.canFileTask, props.clients, props.project, props.admitted)}
       disabled={!props.canFileTask}
       title={
         props.canFileTask

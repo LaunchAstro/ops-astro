@@ -40,7 +40,6 @@ import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-na
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
 import { useProjectClient } from './project-client.ts';
 import { ProjectsToolbar } from './ProjectsToolbar.tsx';
-
 import type { OperationsClient } from '../../operations/client.ts';
 
 const NONE: readonly ClientView[] = [];
@@ -78,8 +77,7 @@ export function ProjectBoard(
           target={props.toolbar}
           canFileTask={props.canFileTask === true}
           address={place.view}
-          clients={NONE}
-          project={null}
+          admitted={false}
         />
         <p role="alert">{scope.reason}</p>
       </>
@@ -208,6 +206,7 @@ function ProjectBoardRead(
         address={door.address}
         clients={known}
         project={project}
+        admitted={admitted}
       />
       {reading === null ? null : <p data-board-reading>{reading}</p>}
       {props.scope.client === undefined || waiting === 0 ? null : (
