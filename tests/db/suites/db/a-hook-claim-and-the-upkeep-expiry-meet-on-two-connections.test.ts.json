@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a hook message claim racing the upkeep expiry on another connection waits on the expiry, claims afresh or is a replay as it settles, and a claim not yet committed is never removed"
+}
