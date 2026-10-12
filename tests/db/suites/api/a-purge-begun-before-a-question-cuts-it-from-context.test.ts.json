@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A purge whose transaction began before a question was asked on its task, and that commits after the question was answered, still cuts that question and its answer from the conversation's later context. The cut is an ordering under the conversation's row lock. Judged on a real migrated database through the API, with the trash and purge paused after BEGIN."
+}
