@@ -28,6 +28,11 @@
 
 HUB_GATE_REPO=$PWD
 export HUB_GATE_REPO
+# A push sends the objects themselves, never a local `git replace` stand-in,
+# so every Git read here and in the scanners ignores replacements: the
+# exported scanners are the pushed commit's own.
+GIT_NO_REPLACE_OBJECTS=1
+export GIT_NO_REPLACE_OBJECTS
 scanner_dirs=""
 # shellcheck disable=SC2086
 trap 'rm -rf $scanner_dirs' EXIT

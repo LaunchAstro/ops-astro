@@ -19,7 +19,7 @@ establish that the index or outgoing history is clean.
 At pre-push the scanners come from each pushed commit, not from the checkout
 the push starts in: the hook exports that commit's `scripts/` and
 `tests/gate/` and runs them over that ref's range, with `HUB_GATE_REPO`
-naming the repository to read. A stale checkout cannot refuse a clean push or
+naming the repository to read. The hook sets `GIT_NO_REPLACE_OBJECTS`, so neither the export nor the scanners read a local replacement for what the push sends. A stale checkout cannot refuse a clean push or
 pass what the pushed rules refuse, and a branch that changes a scanner is
 judged by its own version.
 
