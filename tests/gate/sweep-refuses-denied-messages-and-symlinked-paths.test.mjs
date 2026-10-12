@@ -16,11 +16,12 @@ assert.ok(canary);
 function fixture(work) {
   const repo = mkdtempSync(join(tmpdir(), 'sweep-publication-'));
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
-  const scan = (...args) => spawnSync('python3', [scanner, ...args], {
-    cwd: repo,
-    env: { ...process.env, HUB_GATE_REPO: repo, HUB_GATE_LITERAL_HISTORY_RECEIPT: '' },
-    encoding: 'utf8',
-  });
+  const scan = (...args) =>
+    spawnSync('python3', [scanner, ...args], {
+      cwd: repo,
+      env: { ...process.env, HUB_GATE_REPO: repo, HUB_GATE_LITERAL_HISTORY_RECEIPT: '' },
+      encoding: 'utf8',
+    });
   try {
     git('init', '-q');
     git('config', 'user.name', 'Gate Test');
@@ -50,9 +51,13 @@ test('resolving a parent symlink cannot erase a denied repository path', () => {
     mkdirSync(join(repo, 'fixtures'));
     writeFileSync(join(repo, 'safe', 'note.txt'), 'neutral bytes\n');
     symlinkSync('../safe', join(repo, 'fixtures', 'clients'));
-    const results = ['fixtures/clients/note.txt', join(repo, 'fixtures/clients/note.txt')]
-      .map((target) => scan('--path', target));
-    assert.deepEqual(results.map((result) => result.status), [1, 1],
-      results.map((result) => result.stdout + result.stderr).join('\n'));
+    const results = ['fixtures/clients/note.txt', join(repo, 'fixtures/clients/note.txt')].map(
+      (target) => scan('--path', target),
+    );
+    assert.deepEqual(
+      results.map((result) => result.status),
+      [1, 1],
+      results.map((result) => result.stdout + result.stderr).join('\n'),
+    );
   });
 });
