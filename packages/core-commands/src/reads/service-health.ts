@@ -114,6 +114,7 @@ async function readSource(
   }
   const answer = await observeWithin(source, timeoutMs);
   if (!answer.ok) return failed(name, answer.fault);
+  if (answer.services.length > MOST_SERVICES) return failed(name, 'oversized');
   const services = shaped(answer.services, now);
   if (services === undefined) return failed(name, 'malformed');
   return {
@@ -165,7 +166,6 @@ function shaped(
   services: readonly unknown[],
   now: Date,
 ): readonly ServiceObservation[] | undefined {
-  if (services.length > MOST_SERVICES) return undefined;
   return services.every((service) => isObservation(service, now))
     ? (services as readonly ServiceObservation[])
     : undefined;

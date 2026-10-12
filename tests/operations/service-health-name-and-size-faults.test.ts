@@ -2,7 +2,8 @@
 //
 // The service-health read's shaping of a source's answer, called directly: a
 // service name is shown as text on one line, so it holds no control, line
-// separator or direction control.
+// separator or direction control, and an answer naming more services than the
+// read takes is `oversized`, not `malformed`.
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -53,6 +54,20 @@ describe('service health shaping', () => {
     }
     // An accented name and an emoji are text a person reads.
     expect(await watcherSays([service('Zoë’s mailer 📬')])).toEqual({
+      source: 'watcher',
+      state: 'read',
+      fault: null,
+    });
+  });
+
+  it('more services than the read takes is oversized, not malformed', async () => {
+    const many = Array.from({ length: 201 }, (_, index) => service(`service ${index}`));
+    expect(await watcherSays(many)).toEqual({
+      source: 'watcher',
+      state: 'read-failure',
+      fault: 'oversized',
+    });
+    expect(await watcherSays(many.slice(0, 200))).toEqual({
       source: 'watcher',
       state: 'read',
       fault: null,
