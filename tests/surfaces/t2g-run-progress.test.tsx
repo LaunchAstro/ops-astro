@@ -91,12 +91,12 @@ const RECEIPT = new Response(
 
 type Execution = (() => Promise<Response> | Response) | Response;
 
-function open(execution: Execution) {
+function open(execution: Execution, receipt: Response = RECEIPT) {
   const fetch = (async (url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
-    if (at.endsWith('/task/receipt')) return RECEIPT.clone();
+    if (at.endsWith('/task/receipt')) return receipt.clone();
     if (at.endsWith('/task/execution')) {
       return typeof execution === 'function' ? await execution() : execution.clone();
     }
@@ -223,6 +223,33 @@ describe('T2g the run on the task page', () => {
     const money = page.find('[data-receipt-attempt="a-1"] [data-money]');
     expect(money?.textContent).toBe('held 20.00 · spent 15.00 · released 5.00');
     expect(page.find('[data-receipt-attempt="a-1"] button')).toBeNull();
+    await page.unmount();
+  });
+
+  it.each([
+    ['a null event', [null]],
+    ['a number for an event', [7]],
+    ['an event without its run', [{ ...event(1, 'r-1', 'picked_up'), runId: undefined }]],
+  ])('draws an answer carrying %s as unavailable, never a throw', async (_, events) => {
+    const page = await open(answer('ready', [run('r-1', 'running')], events));
+    await tick();
+    expect((page.find('[data-run-progress]') as HTMLElement | null)?.dataset['outcome']).toBe(
+      'unavailable',
+    );
+    expect(page.all('[data-run-id]')).toHaveLength(0);
+    await page.unmount();
+  });
+
+  it('a receipt answer without its receipt says the receipt could not be read', async () => {
+    const page = await open(
+      answer('ready', [run('r-1', 'running')], [event(1, 'r-1', 'claimed')]),
+      json({ ok: true }),
+    );
+    await tick();
+    expect(page.find('[data-receipt="unavailable"]')?.textContent).toContain(
+      'The receipt for attempt a-1 could not be read.',
+    );
+    expect(page.find('[data-receipt-decision]')).toBeNull();
     await page.unmount();
   });
 
