@@ -8,9 +8,10 @@
 // retention window rows, their revision and refusal handling and their
 // capability gating.
 //
-// Each group is keyed on the grant key, so a change of business or person
-// starts it over: no draft, and no outcome of a write made under the last
-// owner, is carried into the next one's settings.
+// Your AI agents and This business are keyed on the grant key, so a change of
+// business or person starts them over: no draft, and no outcome of a write
+// made under the last owner, is carried into the next one's settings. You and
+// Notifications carry their own owner tags (`data/owned.ts`).
 
 import type { ReactElement } from 'react';
 import { SettingsScreen, type SettingsScreenProps } from './Settings.tsx';
@@ -20,12 +21,7 @@ import { AgentsGroup } from './settings/agents.tsx';
 export function SettingsGeneralScreen(props: SettingsScreenProps): ReactElement {
   return (
     <div className="stack settings__page" data-screen="settings-general">
-      <YouGroups
-        key={props.grantKey}
-        client={props.client}
-        grantKey={props.grantKey}
-        storage={props.storage}
-      />
+      <YouGroups client={props.client} grantKey={props.grantKey} storage={props.storage} />
       <AgentsGroup key={props.grantKey} client={props.client} grantKey={props.grantKey} />
       <div data-pref="business">
         <SettingsScreen key={props.grantKey} {...props} />
