@@ -91,12 +91,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.trash': TASK,
   // A purge clears what still names the task before it deletes the row (`tasks/trash.ts`): its
   // links and tags go, its record grants are revoked, a conversation on it and its time detach.
-  // The delete takes its inbox items with their attention and delivery rows, and a map's body, by
-  // cascade, and a live map it sat under is refreshed by the records trigger.
+  // The delete takes its inbox items (in TASK) with their attention and delivery rows, and a map's
+  // body, by cascade, and a live map it sat under is refreshed by the records trigger.
   'task.purge': writing([
     ...TASK.writes,
     ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
-    ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
+    ...client('inbox_attention', 'inbox_delivery_attempts'),
     ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
   ]),
   'task.read': READ,
