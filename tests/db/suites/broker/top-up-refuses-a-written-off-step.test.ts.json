@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A top-up at a budget stop refuses a step a person wrote off with its effect unknown, whatever the amount, and writes nothing; the end still applies. Judged through the commands on a real migrated database."
+}

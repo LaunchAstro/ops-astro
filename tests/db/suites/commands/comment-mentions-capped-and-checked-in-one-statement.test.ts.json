@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A comment naming more people than the mention limit is refused with nothing written, and its mentions' access is asked in one statement under the task lock; judged on a real migrated database."
+}
