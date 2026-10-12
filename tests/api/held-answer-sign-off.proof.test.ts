@@ -86,6 +86,7 @@ it('a held provider answer cannot bypass client sign-off enabled before its comm
 
 it('client sign-off enabled during the provider call holds the comment until it clears', async () => {
   const { taskId, credential } = await launched();
+  await linkClient(r.fixture, taskId);
   await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
     await installBusinessSettings(tx);
   });
