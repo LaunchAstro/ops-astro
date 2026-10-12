@@ -164,6 +164,16 @@ real_checker_refuses "a first push to a bare URL reads what origin/main holds" \
 real_checker_refuses "a first push to origin on GitHub reads what origin/main holds" \
   origin https://github.com/LaunchAstro/ops-astro.git
 
+# The hook runs the pushed commit's checker from a temporary folder, which on
+# macOS sits behind a symlink. A checker reached through a symlinked path must
+# still check, not take itself for an import and exit 0 having read nothing.
+ln -s "$REPO_ROOT/scripts" "$SCRATCH/linked-scripts"
+if node "$SCRATCH/linked-scripts/public-content-check.mjs" --repo "$DIRTY" --range "$DIRTY_SHA" >/dev/null 2>&1; then
+  fail "the checker reached through a symlinked folder still refuses" "it exited 0 on a private path"
+else
+  pass "the checker reached through a symlinked folder still refuses"
+fi
+
 # Proofs from #1212's review that a skipped first-push range publishes history
 # the destination never received: a remote whose URL changed, a rewritten
 # push URL, a relative URL that names another remote, and an SSH transport
