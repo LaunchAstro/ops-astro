@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a manager whose pair grant lapses while delegation.revoke waits on the delegation row is refused, and the delegation stays live"
+}
