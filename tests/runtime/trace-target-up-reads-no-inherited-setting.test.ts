@@ -30,9 +30,6 @@ it('up gives Compose no name the model reads from the shell it was started in', 
     LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: 'https://bucket.example.test',
     TRACE_TARGET_POSTGRES_PASSWORD: 'from-the-shell',
   });
-  const inherited = target
-    .upEnvironment()
-    .map((line) => line.slice(0, line.indexOf('=')))
-    .filter((name) => read.has(name));
+  const inherited = Object.keys(target.upEnvironment()).filter((name) => read.has(name));
   expect(inherited).toEqual([]);
 });

@@ -7,27 +7,22 @@
 // repository's own `.local/trace-target.env` or a real container.
 
 import { execFileSync } from 'node:child_process';
-import {
-  chmodSync,
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
 const LOCAL = resolve(import.meta.dirname, '../../scripts/local');
+
+type Settings = Readonly<Record<string, string | undefined>>;
 
 export interface TraceTarget {
   /** Runs `node trace-target.ts <args>` in the copy with `env` added. */
   readonly run: (args: readonly string[], env?: Readonly<Record<string, string>>) => void;
   /** The settings file the last `up` wrote. */
-  readonly settings: () => string;
-  /** The environment the last `compose up` was given, as NAME=value lines. */
-  readonly upEnvironment: () => string[];
+  readonly settings: () => Settings;
+  /** The environment the last `compose up` was given. */
+  readonly upEnvironment: () => Settings;
   /** Removes the copy. */
   readonly remove: () => void;
 }
@@ -61,8 +56,8 @@ export function traceTarget(): TraceTarget {
         stdio: 'pipe',
       });
     },
-    settings: () => readFileSync(join(root, '.local', 'trace-target.env'), 'utf8'),
-    upEnvironment: () => readFileSync(seen, 'utf8').split('\n').filter(Boolean),
+    settings: () => readEnvFile(join(root, '.local', 'trace-target.env'), { required: true }),
+    upEnvironment: () => readEnvFile(seen, { required: true }),
     remove: () => rmSync(root, { recursive: true, force: true }),
   };
 }
