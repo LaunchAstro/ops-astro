@@ -123,19 +123,29 @@ function useDrafts() {
  * gone would not yet show as gone. A `SCOPE_NOT_GRANTED` closes the refused
  * key on the refused record only, so a ticket the reader may not write leaves
  * the ones they may write open.
+ *
+ * One write asked for is one operation: a press whose answer was lost sends
+ * the same `operationId` again, and the server answers it as the success it
+ * was, never as `VERSION_STALE` against itself, which would offer to add the
+ * line twice. A known answer ends the attempt.
  */
 function useWrites(client: OperationsClient, reload: () => void, rereading: boolean) {
   const command = useCommand();
   const [sent, setSent] = useState<MapCommand>('map.revise');
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
+  const attempts = useRef(new Map<string, string>());
   const { drafts, open, sending, setConflict } = useDrafts();
   const send: Send = (name, recordId, revision, body, slot) => {
     const steps = slot === undefined ? undefined : sending(slot);
+    const intent = JSON.stringify([name, recordId, revision, body]);
+    const operationId = attempts.current.get(intent) ?? client.newOperationId();
+    attempts.current.set(intent, operationId);
     setSent(name);
     setConflict(null);
     command.run(
-      () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
+      () => client.mutate(name, { recordId, ...body }, { operationId, expectedRevision: revision }),
       (settlement) => {
+        if (settlement.kind !== 'unknown') attempts.current.delete(intent);
         if (settlement.kind === 'ok') steps?.applied();
         if (settlement.kind === 'closed') {
           setShut((now) => new Set(now).add(latch(name, recordId)));
