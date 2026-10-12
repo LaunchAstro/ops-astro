@@ -15,7 +15,8 @@
 // take the same keys in one order (`ending-keys.ts`, C52-A).
 
 import { randomUUID } from 'node:crypto';
-import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
+import { setTimeout as delay } from 'node:timers/promises';
+import { advisoryLock, type Database, type TenantQuery } from '../tenancy/database.ts';
 import { holdEnding, sessionKey, subjectKey } from './ending-keys.ts';
 import {
   SESSION_ABSOLUTE_SECONDS,
@@ -158,17 +159,27 @@ export async function openResetWindow(tx: TenantQuery, subject: string): Promise
 }
 
 /**
- * Wait, on the database's clock, into its next whole second (C40). GoTrue
- * stamps a sign-in in whole seconds, rounded down, and a settled window
- * refuses only a stamp whose whole second had passed, so a reset that set the
- * password waits here before it settles: a sign-in stamped up to the
- * provider's set is then a whole second before the settle and refused, and one
- * with the new password after the answer is served. A sign-in the provider
- * checked against the old password before the set but stamped after it is
- * not covered (#752).
+ * Wait into the database clock's next whole second, then `run` in a
+ * transaction of its own (C40): a reset that set the password settles there,
+ * so a sign-in GoTrue stamped up to the provider's set (whole seconds,
+ * rounded down) is a whole second before the settle and refused, and one with
+ * the new password is served; one checked against the old password but
+ * stamped after the set is not covered (#752). The wait holds no connection;
+ * `run`'s transaction waits on the clock first, normally not at all.
  */
-export async function waitForNextSecond(tx: TenantQuery): Promise<void> {
-  await tx.query(`select pg_sleep(1 - extract(epoch from clock_timestamp()) % 1)`);
+export async function waitForNextSecond<T>(
+  database: Database,
+  businessId: string,
+  run: (tx: TenantQuery) => Promise<T>,
+): Promise<T> {
+  const clock = 'extract(epoch from clock_timestamp())::float8';
+  const read = async (tx: TenantQuery) => await tx.query<{ at: number }>(`select ${clock} as at`);
+  const at = (await database.withBusiness(businessId, read))[0]?.at ?? 0;
+  await delay((1 - (at % 1)) * 1000);
+  return await database.withBusiness(businessId, async (tx) => {
+    await tx.query(`select pg_sleep(greatest(0, $1 - ${clock}))`, [Math.floor(at) + 1]);
+    return await run(tx);
+  });
 }
 
 /** Settle the window: a sign-in from this moment is served. */
