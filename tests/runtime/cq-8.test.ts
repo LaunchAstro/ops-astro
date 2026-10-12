@@ -137,6 +137,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // who may do what (a grant given, a grant revoked, access ended),
   // inside the handler's transaction.
   'packages/core-records/src/authority/access.ts',
+  // A record share's own key, one per business, record and person, taken
+  // before its live-share read, so two shares or withdrawals of one record
+  // with one person run one after the other.
+  'packages/core-records/src/authority/shares.ts',
   // C52-A (PRV-oa-984-R2.1): the session-ending keys, exclusive for an ending,
   // in one order: the audit chain, the login's subject, each session sorted.
   'packages/core-records/src/identity/ending-keys.ts',

@@ -30,7 +30,7 @@
 
 import { isWayfinderRecord } from '../tasks/wayfinder.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import {
   checkAuthority,
   issueGrant,
@@ -71,9 +71,10 @@ const subjectsOfSharer = (sharer: Sharer): readonly Subject[] => [
  * Share one record with one person, for reading.
  *
  * Idempotent: a live share of the same record with the same person is
- * returned rather than issued twice, so a repeated share leaves one row to
- * revoke. Authority is checked before existence, so a sharer with no `share`
- * learns nothing about whether the record or the person is there.
+ * returned rather than issued twice, so a repeated share, or two at once,
+ * leaves one row to revoke. Authority is checked before existence, so a
+ * sharer with no `share` learns nothing about whether the record or the
+ * person is there.
  */
 export async function shareRecord(
   tx: TenantQuery,
@@ -190,21 +191,26 @@ async function refuseShare(
 }
 
 /**
- * This record's live share rows with this person. `standing` keeps only those
- * whose whole chain is live (`EFFECTIVE`): a share is reused only when it
- * still grants, while a withdrawal revokes every live row.
+ * This record's live share rows with this person, read under the share's own
+ * lock for the rest of the transaction, so two shares or withdrawals of it run
+ * one after the other. `standing` keeps only those whose whole chain is live
+ * (`EFFECTIVE`): a share is reused only when it still grants, while a
+ * withdrawal revokes every live row. Expiry is judged by the clock after the
+ * lock, so a share that lapsed while this waited is not live.
  */
 async function liveShares(
   tx: TenantQuery,
   request: ShareRequest,
   standing = false,
 ): Promise<readonly string[]> {
+  const key = `record-share:${tx.businessId}:${request.recordId}:${request.personId}`;
+  await advisoryLock(tx, key.toLowerCase());
   const rows = await tx.query<{ readonly id: string }>(
     `${standing ? EFFECTIVE : ''}
      select id from ${standing ? 'effective' : 'public.grants'}
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
         and scope_kind = 'record' and scope_id = $3 and collection = $4 and action = 'read'
-        and revoked_at is null and (expires_at is null or expires_at > now())
+        and revoked_at is null and (expires_at is null or expires_at > clock_timestamp())
       order by granted_at`,
     [tx.businessId, request.personId, request.recordId, request.collection],
   );
