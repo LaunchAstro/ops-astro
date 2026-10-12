@@ -5,11 +5,16 @@
 // answer settles the card: approved once the server kept the words, stale on
 // a stale version (a ceiling that is not the version's among them), or offered
 // again, the server's refusal quoted as it came either way. Nothing else in
-// the drawer moves, and nothing is retried. A click after an unknown outcome
-// reuses the operation id kept for that body in that session, from any card
-// that sends it, so a committed accept replays (operations/client.ts); a
-// settled answer ends the attempt. That card stays `unknown`, its accept kept,
-// even once a newer version lands.
+// the drawer moves, and nothing is retried.
+//
+// Cards that send one body share one operation id, kept while any of them is
+// in flight or has lost its answer, so a click after an unknown outcome
+// replays a committed accept (operations/client.ts). Each card has its own
+// place in that attempt: an answer settles the attempt its click sent under,
+// never one that took the same body later. The server's yes is every lost
+// card's too; a refusal lets its own card go; once no card is left, the next
+// click mints a new id. A card that lost its answer stays `unknown`, its
+// accept kept, even once a newer version lands.
 
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
@@ -25,11 +30,17 @@ export interface CardStore {
 }
 
 /**
- * The operation id of each attempt whose outcome is still unknown, by session
- * and by the whole body the register digests: two cards that send one body
- * are one accept, and two tabs' cards (each its conversation) are two.
+ * Each accept still owed an answer, by session and by the whole body the
+ * register digests: two cards that send one body are one accept, and two tabs'
+ * cards (each its conversation) are two. `cards` holds each card that sent it
+ * and has no known answer yet.
  */
-const attempts = new Map<string, string>();
+interface Attempt {
+  readonly operationId: string;
+  readonly cards: Map<string, 'pending' | 'unknown'>;
+}
+
+const attempts = new Map<string, Attempt>();
 
 /**
  * The register's canonical form (core-digest, which loads node:crypto, so
@@ -69,15 +80,25 @@ export async function acceptPlanCard(
   store.update((current) => settlePlan(current, key, id, { state: 'accepting', refusal: null }));
   const conversationId = store.chat(key)?.conversationId ?? null;
   const body = acceptBody(offer, conversationId);
-  const attempt = JSON.stringify([grantKey ?? null, canonical(body)]);
-  const operationId = attempts.get(attempt) ?? client.newOperationId();
-  attempts.set(attempt, operationId);
+  const held = JSON.stringify([grantKey ?? null, canonical(body)]);
+  const attempt = attempts.get(held) ?? { operationId: client.newOperationId(), cards: new Map() };
+  attempts.set(held, attempt);
+  attempt.cards.set(id, 'pending');
+  const { operationId } = attempt;
   const settled = settle(await client.mutate('task.accept_plan', body, { operationId }));
-  if (settled.kind !== 'unknown') attempts.delete(attempt);
+  if (settled.kind === 'unknown') attempt.cards.set(id, 'unknown');
+  else attempt.cards.delete(id);
+  // The server kept this accept once: each card that lost its answer to it was kept too.
+  const kept = settled.kind === 'ok' ? [...attempt.cards].filter(([, at]) => at === 'unknown') : [];
+  for (const [other] of kept) attempt.cards.delete(other);
+  if (attempt.cards.size === 0 && attempts.get(held) === attempt) attempts.delete(held);
   store.update((current) =>
-    settlePlan(current, key, id, {
-      state: SETTLED[settled.kind],
-      refusal: settled.kind === 'ok' ? null : settled.because,
-    }),
+    kept.reduce(
+      (state, [other]) => settlePlan(state, key, other, { state: 'approved', refusal: null }),
+      settlePlan(current, key, id, {
+        state: SETTLED[settled.kind],
+        refusal: settled.kind === 'ok' ? null : settled.because,
+      }),
+    ),
   );
 }
