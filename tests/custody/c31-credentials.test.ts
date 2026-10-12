@@ -423,11 +423,16 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
   });
 
   it('C31 a sealed value opens only with the broker key', () => {
-    const sealed = seal(CANARY, pair.key);
+    const at = {
+      businessId: controls.fixture.business,
+      name: 'canary.key',
+      scope: { kind: 'business', id: null },
+    } as const;
+    const sealed = seal(CANARY, pair.key, at);
     expect(sealed.sealed.toString('hex')).not.toContain(CANARY_HEX);
-    expect(open(sealed, pair.privateKey)).toBe(CANARY);
+    expect(open(sealed, pair.privateKey, at)).toBe(CANARY);
     const stranger = generateSealingPair('test/c31@1');
-    expect(() => open(sealed, stranger.privateKey)).toThrow();
+    expect(() => open(sealed, stranger.privateKey, at)).toThrow();
   });
 
   it('C31 parity: the three commands are catalogued custody:manage, person only', () => {
