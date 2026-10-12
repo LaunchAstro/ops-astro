@@ -4,6 +4,8 @@
 // p-clients), opened from its tab over the board on both sides. Measured at
 // 1480 only: at 900 and under, the mockup draws its tab strip below the
 // viewport at rest (D-1), so its panel cannot be opened there to measure.
+// The mockup's industry line is not probed: client.list serves no industry
+// (RELAYWALK0244, the book is the business's own clients, never made up).
 
 import type { LookProbe, LookScreen } from './probe.ts';
 
@@ -42,7 +44,16 @@ export const CLIENTS: LookScreen = {
       // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
       ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
     },
-    probe('item', '.cl__item', '.clbook__item', ['border-bottom-color', 'box.height']),
+    {
+      ...probe('item', '.cl__item', '.clbook__item', ['border-bottom-color', 'box.height']),
+      // RELAYWALK0244: the book is client.list's, which serves no industry, so
+      // a row is one line (the name) where the mockup's made-up row had two.
+      ruled: (['light', 'dark'] as const).map((theme) => ({
+        at: `box.height@${theme}`,
+        want: '41',
+        why: 'RELAYWALK0244',
+      })),
+    },
     {
       ...probe('tile', '.cl__av', '.clbook__tile', [
         'box.width',
@@ -59,10 +70,6 @@ export const CLIENTS: LookScreen = {
     {
       ...probe('name', '.cl__nm', '.clbook__name', ['font-size', 'font-weight', 'color']),
       ruled: snapped('font-size', '13px'),
-    },
-    {
-      ...probe('industry', '.cl__ind', '.clbook__industry', ['font-size', 'color']),
-      ruled: snapped('font-size', '12px'),
     },
   ],
 };
