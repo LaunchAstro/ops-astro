@@ -50,7 +50,10 @@ it('a board task event cannot name a task whose read grant is revoked during rej
     await vi.waitFor(() => expect(joins).toBe(2));
     release();
     await new Promise((resolve) => { setTimeout(resolve, 20); });
-    expect(writes).not.toContainEqual({ event: 'invalidate', data: taskId });
+    // The reads did not move, so nothing more is said, and no frame names the task.
+    expect(writes.map((frame) => frame.event)).toEqual(['resync']);
+    expect(writes.every((frame) => frame.data === '')).toBe(true);
+    expect(JSON.stringify(writes)).not.toContain(taskId);
   } finally {
     release();
     stream.abort();
