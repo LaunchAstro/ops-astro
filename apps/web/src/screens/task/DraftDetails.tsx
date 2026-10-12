@@ -219,10 +219,18 @@ function DraftProject(
   const offered = Array.isArray(answer)
     ? answer.filter((project) => project.client === null || project.client === props.draft.clientId)
     : [];
+  // The answered list names the chosen project under another client: said, never silently kept.
+  const elsewhere = projectDropped(answer, chosen, props.draft.clientId);
   const listed =
     chosen === null || offered.some((choice) => choice.id === chosen)
       ? offered
-      : [...offered, { id: chosen, title: 'The project it was filed from' }];
+      : [
+          ...offered,
+          {
+            id: chosen,
+            title: elsewhere ? 'A project of another client' : 'The project it was filed from',
+          },
+        ];
   return (
     <>
       <Select
@@ -239,6 +247,11 @@ function DraftProject(
       />
       {answer === 'failed' ? (
         <p className="card__sub">The project list could not be loaded.</p>
+      ) : null}
+      {elsewhere ? (
+        <p className="field__error" role="alert" data-draft-project-elsewhere>
+          This project holds another client’s work. Choose another project, or None, before Create.
+        </p>
       ) : null}
     </>
   );
