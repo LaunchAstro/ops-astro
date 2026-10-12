@@ -9,7 +9,9 @@
 // SP-8 names. So the grants are asked first (`heldScopes`, the grant model's
 // own expression of "live") to admit the viewer, and the statement judges
 // each row by the same live grants inside itself (`readableTaskCondition`):
-// the whole business, the named records, or a named map's tickets.
+// the whole business, the named records, or, for the team only, a named map's
+// tickets. A map's tickets never reach a client surface (WF-1), as `task.read`
+// refuses them to a reader outside the team.
 //
 // `search_tsv` is kept by the record store's trigger from searchable slotted
 // text (`migrations/0005_record_store.sql`), which for a task is its title.
@@ -24,6 +26,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
+import { isInternalReader } from './tasks.ts';
 import type { SearchHit, TaskSearchResult } from '../../../core-wire/src/index.ts';
 
 /** The most hits one search answers; the ⌘K list shows a handful. */
@@ -86,7 +89,7 @@ export async function searchTasks(
       where r.business_id = $1
         and r.record_type_id = $2
         and r.deleted_at is null
-        and ${readableTaskCondition('r', 3)}
+        and ${readableTaskCondition('r', 3, isInternalReader(session.roleKey))}
         and r.search_tsv @@ to_tsquery('english', $5)
       order by ts_rank(r.search_tsv, to_tsquery('english', $5)) desc, r.txt_1
       limit $6::int`,

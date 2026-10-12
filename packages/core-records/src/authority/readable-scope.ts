@@ -53,15 +53,21 @@ export async function readableScope(
  * Whether row `alias` is reached, judged inside the statement that reads it:
  * a live grant of the asked subjects (`kinds`, `ids`) on `collection` and
  * `action` that is business-scoped, scoped to the row, or, for `task`/`read`
- * only, scoped to the map the row is a ticket of (W12, `mapTicketCondition`),
- * never a nested map. Party-scoped grants reach nothing here. Expiry is judged
+ * only and when `throughMaps`, scoped to the map the row is a ticket of (W12,
+ * `mapTicketCondition`), never a nested map. Party-scoped grants reach nothing here. Expiry is judged
  * by the statement's own clock (`EFFECTIVE`), so a grant that lapses before a
  * later statement reaches nothing in it.
  */
 function reachedBy(
   alias: string,
   sql: { kinds: string; ids: string; collection: string; action: string },
+  throughMaps: boolean,
 ): string {
+  const throughMap = throughMaps
+    ? `or (${sql.collection} = 'task' and ${sql.action} = 'read'
+           and e.scope_kind = 'record' and e.scope_id = ${alias}.uuid_4
+           and ${mapTicketCondition(alias)})`
+    : '';
   return `exists (${EFFECTIVE}
     select 1 from effective e
      where e.business_id = ${alias}.business_id
@@ -70,9 +76,7 @@ function reachedBy(
                     where s.kind = e.subject_kind and s.id = e.subject_id)
        and (e.scope_kind = 'business'
             or (e.scope_kind = 'record' and e.scope_id = ${alias}.id)
-            or (${sql.collection} = 'task' and ${sql.action} = 'read'
-                and e.scope_kind = 'record' and e.scope_id = ${alias}.uuid_4
-                and ${mapTicketCondition(alias)})))`;
+            ${throughMap}))`;
 }
 
 /**
@@ -81,15 +85,25 @@ function reachedBy(
  * A list read puts this in every statement that reads task rows, or anything
  * of a task, so each row is judged at the instant it is read: a ticket moved
  * out of its granted map, or a map retyped, before a statement runs is not
- * read by it, and no lock is taken.
+ * read by it, and no lock is taken. A read that serves people outside the
+ * team passes `throughMaps` false: a map and its tickets never reach a client
+ * surface (WF-1).
  */
-export function readableTaskCondition(alias: string, firstParam: number): string {
-  return reachedBy(alias, {
-    kinds: `$${String(firstParam)}::text[]`,
-    ids: `$${String(firstParam + 1)}::uuid[]`,
-    collection: `'task'`,
-    action: `'read'`,
-  });
+export function readableTaskCondition(
+  alias: string,
+  firstParam: number,
+  throughMaps = true,
+): string {
+  return reachedBy(
+    alias,
+    {
+      kinds: `$${String(firstParam)}::text[]`,
+      ids: `$${String(firstParam + 1)}::uuid[]`,
+      collection: `'task'`,
+      action: `'read'`,
+    },
+    throughMaps,
+  );
 }
 
 /**
@@ -147,7 +161,7 @@ export async function readableRecordIds(
     `select r.id
        from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and ${reachedBy('r', { kinds: '$5::text[]', ids: '$6::uuid[]', collection: '$3::text', action: '$4::text' })}`,
+        and ${reachedBy('r', { kinds: '$5::text[]', ids: '$6::uuid[]', collection: '$3::text', action: '$4::text' }, true)}`,
     [
       tx.businessId,
       request.recordTypeId,
