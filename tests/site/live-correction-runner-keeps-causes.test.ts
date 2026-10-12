@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C80's runner keeps what went wrong: a failed receipt holds every refusal
-// the guarded calls recorded beside its own code, and the register takes an
-// effect only from a lease at its own fence. Every provider here is a double.
+// the guarded calls recorded beside its own code, a task call that failed is
+// the run's failure even when settling the ask fails too, and the register
+// takes an effect only from a lease at its own fence. Every provider here is
+// a double.
 
 import { describe, expect, it } from 'vitest';
 import { BEFORE } from './c80-world.ts';
 import { doubles } from './c80-runner-doubles.ts';
+import { runLivePublish } from '../../packages/core-commands/src/index.ts';
 import { registerCorrectionEffect } from '../../packages/core-commands/src/commands/live-correction-effect.ts';
 import {
   approved,
@@ -38,6 +41,30 @@ describe.skipIf(serverUrl === undefined)('C80 publish, a failed receipt', () => 
     expect((await receipt(id, 'publish'))['refusals_raised']).toEqual({
       observed: 'PROVIDER_TIMEOUT CONTENT_DRIFT_UNCHECKED',
     });
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 publish, an unknown asked of a person', () => {
+  it('fails the run with the task call’s error when settling the ask fails too', async () => {
+    const id = await approved();
+    const crashed = doubles({
+      publish: () => Promise.reject(new Error('worker lost after the take')),
+    });
+    await expect(publish(id, crashed)).rejects.toThrow('worker lost');
+    const app = w.world.db.app;
+    let lost = false;
+    const db: typeof app = {
+      ...app,
+      withBusiness: (business, run) =>
+        lost ? Promise.reject(new Error('database lost')) : app.withBusiness(business, run),
+    };
+    const later = doubles({
+      raiseTask: () => {
+        lost = true;
+        return Promise.reject(new Error('task service down'));
+      },
+    });
+    await expect(runLivePublish(db, at(id), later)).rejects.toThrow('task service down');
   });
 });
 
