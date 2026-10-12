@@ -10,6 +10,7 @@ import { ProjectsBoard, clientFiltersIn } from '@launchastro/ui';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from '../projects-row.ts';
 import type {
   ClientListResult,
+  ClientView,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
@@ -37,9 +38,12 @@ import { useBoardTarget } from './scoped-board-read.ts';
 import { todayOn } from '../task/due-dates.ts';
 import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-names.ts';
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
-import { NO_DOOR, useProjectClient, type BoardDoor } from './project-client.ts';
+import { useProjectClient } from './project-client.ts';
+import { ProjectsToolbar } from './ProjectsToolbar.tsx';
 
 import type { OperationsClient } from '../../operations/client.ts';
+
+const NONE: readonly ClientView[] = [];
 
 export interface ProjectsProps {
   readonly canFileTask?: boolean;
@@ -59,17 +63,27 @@ export function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & {
     readonly hidden: boolean;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
-    /** The board read the page's own New task files from, which `onDoor` answers. */
-    readonly doorOf: string;
-    /** What the board's doors file, for the page's own New task. */
-    readonly onDoor: (door: BoardDoor) => void;
+    /** Where the page's own New task is drawn; null while it is not. */
+    readonly toolbar: HTMLElement | null;
   },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
   const widths = useBoardWidths(props.client, props.grantKey);
   const place = props.place;
   const scope = decodeBoardAddress(place.query);
-  if (scope.kind === 'invalid') return <p role="alert">{scope.reason}</p>;
+  if (scope.kind === 'invalid')
+    return (
+      <>
+        <ProjectsToolbar
+          target={props.toolbar}
+          canFileTask={props.canFileTask === true}
+          address={place.view}
+          clients={NONE}
+          project={null}
+        />
+        <p role="alert">{scope.reason}</p>
+      </>
+    );
   return (
     <ProjectBoardRead
       key={`${props.grantKey}:${JSON.stringify(boardBody(scope))}:${String(place.generation)}`}
@@ -86,8 +100,7 @@ function ProjectBoardRead(
     readonly scope: BoardAddress;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
-    readonly doorOf: string;
-    readonly onDoor: (door: BoardDoor) => void;
+    readonly toolbar: HTMLElement | null;
   },
 ): ReactElement {
   const client = props.client;
@@ -169,14 +182,14 @@ function ProjectBoardRead(
   // The doors carry the view the board shows now, and name a Client filter's client and
   // the selected project's own, only while the board admits the reader.
   const known = useMemo(
-    () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NO_DOOR.clients),
+    () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NONE),
     [reached.state, admitted, answer],
   );
-  const project = useProjectClient(client, grantKey, query, { admitted, denied });
-  const { doorOf, onDoor } = props;
-  useEffect(() => {
-    onDoor({ of: doorOf, clients: known, project });
-  }, [onDoor, doorOf, known, project]);
+  const project = useProjectClient(client, grantKey, query, {
+    admitted,
+    denied,
+    answered: answer !== null,
+  });
   const door = {
     address: props.place.view,
     canFileTask: props.canFileTask === true,
@@ -189,6 +202,13 @@ function ProjectBoardRead(
 
   return (
     <div className="stack" ref={wrap}>
+      <ProjectsToolbar
+        target={props.toolbar}
+        canFileTask={door.canFileTask}
+        address={door.address}
+        clients={known}
+        project={project}
+      />
       {reading === null ? null : <p data-board-reading>{reading}</p>}
       {props.scope.client === undefined || waiting === 0 ? null : (
         <p data-board-waiting-count>

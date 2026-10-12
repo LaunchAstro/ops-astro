@@ -5,10 +5,8 @@ import { createPortal } from 'react-dom';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
-import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import { useProjectBoardAddress } from './projects/board-address.ts';
-import { NO_DOOR, type BoardDoor } from './projects/project-client.ts';
 
 export type { ProjectsProps };
 
@@ -18,29 +16,19 @@ export function Projects(props: ProjectsProps): ReactElement {
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
-  // What the board's doors file, given only by the board read for this reader and place.
-  const doorOf = `${props.grantKey}:${place.query}:${String(place.generation)}`;
-  const [answered, onDoor] = useState<BoardDoor>(NO_DOOR);
-  const door = answered.of === doorOf ? answered : NO_DOOR;
+  // The page's New task goes in the page toolbar, else in its own row; the board's read draws it.
+  const inline = inPanel === true || toolbar === null;
+  const [row, setRow] = useState<HTMLElement | null>(null);
   return (
     <div className="stack projects">
-      {tab === 'board' ? (
-        <ProjectsToolbar
-          inPanel={inPanel === true}
-          canFileTask={canFileTask}
-          address={place.view}
-          clients={door.clients}
-          project={door.project}
-        />
-      ) : null}
+      {tab === 'board' && inline ? <div className="projects__toolbar" ref={setRow} /> : null}
       <ViewSwitch tab={tab} select={select} toolbar={inPanel === true ? null : toolbar} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           canFileTask={canFileTask}
           hidden={tab !== 'board'}
           place={place}
-          doorOf={doorOf}
-          onDoor={onDoor}
+          toolbar={tab === 'board' ? (inline ? row : toolbar) : null}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

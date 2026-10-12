@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { usePageToolbar } from '@launchastro/ui';
 import {
   TASK_CATEGORIES,
   TASK_STAGES,
@@ -76,9 +75,13 @@ function categoryOf(label: string): readonly string[] {
   return category === undefined ? [] : [category.id];
 }
 
-/** The page's New task, in the page toolbar; inline when the board is in a panel. */
+/**
+ * The page's New task, drawn by the board's read into `target` (the page
+ * toolbar, or the page's own toolbar row in a panel), so its client never
+ * trails the board's admission by a commit.
+ */
 export function ProjectsToolbar(props: {
-  readonly inPanel: boolean;
+  readonly target: HTMLElement | null;
   readonly canFileTask: boolean;
   /** The board's address, whose client and project the door carries. */
   readonly address: string;
@@ -86,9 +89,7 @@ export function ProjectsToolbar(props: {
   readonly clients: readonly ClientView[];
   /** The selected project's own client, read for its door; null for none or unread. */
   readonly project: ClientView | null;
-}): ReactElement {
-  const pageBar = usePageToolbar();
-  const bar = props.inPanel ? null : pageBar;
+}): ReactElement | null {
   const control = (
     <button
       className="btn btn--secondary btn--sm"
@@ -105,9 +106,5 @@ export function ProjectsToolbar(props: {
       New task
     </button>
   );
-  return bar === null ? (
-    <div className="projects__toolbar">{control}</div>
-  ) : (
-    createPortal(control, bar)
-  );
+  return props.target === null ? null : createPortal(control, props.target);
 }
