@@ -26,9 +26,15 @@ type Request = CommandRequest & { readonly command: 'privacy.record_incident' };
 /** How far ahead of the server's clock day 0 may be, for a caller's clock drift. */
 const FOUND_AT_SKEW_MS = 5 * 60 * 1000;
 
+/** The Notifiable Data Breaches scheme began on 22 February 2018: no day 0 is earlier. */
+const FOUND_AT_EARLIEST_MS = Date.parse('2018-02-22T00:00:00+11:00');
+
 const FIXES: Readonly<Record<string, readonly string[]>> = {
   whatHappened: ['Describe what happened in 1 to 4000 characters.'],
-  foundAt: ['Send when it was found as an ISO 8601 time, not in the future.'],
+  foundAt: [
+    'Send when it was found as an ISO 8601 time with its offset (Z or +10:00), ' +
+      'not in the future and not before 22 February 2018.',
+  ],
   foundBy: ['Name who found it in 1 to 200 characters.'],
   affected: ['Say which clients and people in 1 to 2000 characters.'],
   informationKinds: [`Send one or more of: ${INFORMATION_KINDS.join(', ')}, each once.`],
@@ -51,10 +57,21 @@ function isCheckViolation(cause: unknown): boolean {
   );
 }
 
+/**
+ * An instant that names its offset, since `Date.parse` reads a time without
+ * one in the host's zone, on or after the scheme's first day.
+ */
 function foundAtOf(value: unknown, now: number): Date | undefined {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/u.test(value)) return undefined;
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T.*(?:[Zz]|[+-]\d{2}:?\d{2})$/u.test(value)
+  ) {
+    return undefined;
+  }
   const at = Date.parse(value);
-  return Number.isFinite(at) && at <= now + FOUND_AT_SKEW_MS ? new Date(at) : undefined;
+  return Number.isFinite(at) && at >= FOUND_AT_EARLIEST_MS && at <= now + FOUND_AT_SKEW_MS
+    ? new Date(at)
+    : undefined;
 }
 
 function kindsOf(value: unknown): readonly InformationKind[] | undefined {

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an incident's foundAt with no offset, which the host zone would read, or before the breach scheme began, is refused FIELD_VALUE_INVALID and writes nothing"
+}
