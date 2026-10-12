@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a template build drops other trees' templates past the newest three and keeps the current tree's, so a long-lived server stops gaining one per migration change (#803)"
+}
