@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The M5 deploy records a unit only when each container runs its pinned image:
-// a live process, not one that stopped after Compose waited or waits in
-// Docker's restart backoff. Each case runs deploy.mjs's own effects against a
-// docker whose `inspect` answers as `.State` reads (Sol's PR #1357 findings).
+// a container Docker reports as running, not one that stopped after Compose
+// waited, waits in restart backoff or was paused. Each case runs deploy.mjs's
+// own effects against a docker whose `inspect` answers with `.State.Status`
+// (Sol's PR #1357 findings).
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -29,12 +30,11 @@ const containersOf = (definition: StagingDefinition): Record<string, string> =>
 /** A deploy whose Docker reports every container on its pinned image, the worker in `state`. */
 async function deployWithWorker(state: string) {
   const containers = Object.values(whole.services).map((s) => String(s.container_name));
-  // deploy.mjs's own effects; Docker answers `inspect` as `.State` reads:
-  // Running, Restarting, Pid.
+  // deploy.mjs's own effects; Docker answers `inspect` with `.State.Status`.
   const body = /const effects = (\{[\s\S]*?\n\});/u.exec(read('scripts/ops/deploy.mjs'))?.[1];
   const inspect = containers
     .map((name) => {
-      const running = name === 'ops-astro-worker' ? state : 'true false 4242';
+      const running = name === 'ops-astro-worker' ? state : 'running';
       return `/${name} ${containersOf(whole)[name]} ${running}`;
     })
     .join('\n');
@@ -64,16 +64,21 @@ async function deployWithWorker(state: string) {
 
 describe("the deploy reads each container's running state", () => {
   it('records the unit when the worker has a live process', async () => {
-    expect(await deployWithWorker('true false 4243')).toMatchObject({ kind: 'deployed' });
+    expect(await deployWithWorker('running')).toMatchObject({ kind: 'deployed' });
   });
 
   it('fails when the worker stopped after Compose waited, though its image matches', async () => {
-    const outcome = await deployWithWorker('false false 0');
+    const outcome = await deployWithWorker('exited');
     expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
   });
 
-  it('fails when the worker waits in restart backoff, running with no process', async () => {
-    const outcome = await deployWithWorker('true true 0');
+  it('fails when the worker waits in restart backoff', async () => {
+    const outcome = await deployWithWorker('restarting');
+    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
+  });
+
+  it('fails when the worker was paused after Compose waited', async () => {
+    const outcome = await deployWithWorker('paused');
     expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
   });
 });

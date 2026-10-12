@@ -123,8 +123,8 @@ in the business. A profile cannot park it, because Compose requires every
 and its settings, and then the worker must run too. A deploy without it
 leaves a worker that is already running alone. `--worker` is production's
 only: staging's worker is in its own unit. A deploy records the unit only
-when each of its containers has a live process, so a worker that stopped,
-or waits in Docker's restart backoff, fails it. `stop-production.mjs` stops
+when Docker reports each of its containers as `running`, so a worker that
+stopped, waits in restart backoff or was paused fails it. `stop-production.mjs` stops
 a parked unit's forwarder and records the stop: a worker that is not there
 is stopped already.
 
