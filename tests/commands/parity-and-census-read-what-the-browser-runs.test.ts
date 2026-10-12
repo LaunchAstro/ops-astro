@@ -100,6 +100,7 @@ test('parity inspects an imported browser worker that ships an uncatalogued requ
   }
 }, 180_000);
 
+// eslint-disable-next-line max-lines-per-function -- the proof kept as its reviewer wrote it
 test('parity rejects task.update grant refusal removed while its query remains', () => {
   const copy = mkdtempSync(join(tmpdir(), 'parity-census-write-refusal-'));
   try {
