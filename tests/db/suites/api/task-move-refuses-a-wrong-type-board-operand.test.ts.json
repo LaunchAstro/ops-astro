@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.move answers a board or board section of the wrong JSON type with FIELD_VALUE_INVALID through the real route, never a 500, and writes nothing"
+}

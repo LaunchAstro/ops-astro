@@ -5,16 +5,15 @@
 // (`agent credential revoked`), both under `credential:write`.
 //
 // An issue is always the caller's own. Its scope is the ticked keys, each held
-// by the caller at business scope now, never decide, share or manage, and
-// never a money key (C59's set, `isMoneyKey`): CAPABILITY-SLICES.md says an
-// agent may hold none, and every credential is an agent's. The keys are
-// judged under the business's access lock, which access.end takes too, so an
-// issue either sees the ending and is refused or lands before it and is
-// revoked by it. Its expiry is at
-// most `CREDENTIAL_MAX_DAYS` out. The secret is in the issue answer alone: the
+// by the caller at business scope now, and never a key no agent may hold
+// (`credential-scope.ts`): every credential is an agent's. The keys are judged
+// under the business's access lock, which access.end takes too, so an issue
+// either sees the ending and is refused or lands before it and is revoked by
+// it. Its expiry is at most `CREDENTIAL_MAX_DAYS` out, judged on the database
+// clock that stamps `issued_at`. The secret is in the issue answer alone: the
 // register keeps the answer with the credential nulled (`envelope.ts`), and
 // the issuer's replay of the same operation derives it again while the
-// credential is live and carries no money key (`replayIssue`).
+// credential is live and its keys would be issued again (`replayIssue`).
 //
 // A revocation locks the row and decides under it. The issuer revokes their
 // own; anyone else needs `access:manage` too, and without it another person's
@@ -22,27 +21,31 @@
 // the field alone: the purpose and the secret are in no refusal or detail.
 
 import {
+  advisoryLock,
   checkAuthority,
-  CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,
   digestOf,
-  isMoneyKey,
+  ENDED_FIXES,
   issueAgentCredential,
   isUuid,
   lockAccess,
   lockAgentCredential,
   revokeAgentCredential,
+  sessionEndedSince,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
-import type {
-  Action,
-  CredentialKey,
-  Session,
-  TenantQuery,
-} from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import {
+  databaseClock,
+  keysOf,
+  MAX_KEYS,
+  refuseNeverCarried,
+  refuseScope,
+  storedKeys,
+} from './credential-scope.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle } from './register-store.ts';
@@ -53,20 +56,8 @@ type Issue = CommandRequest & { readonly command: 'credential.issue' };
 type Revoke = CommandRequest & { readonly command: 'credential.revoke' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_KEYS = 32;
 const MAX_PURPOSE = 200;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u;
-const COLLECTION = /^[a-z][a-z_]{0,39}$/u;
-const ACTIONS: ReadonlySet<string> = new Set<Action>([
-  'read',
-  'comment',
-  'write',
-  'assign',
-  'decide',
-  'share',
-  'manage',
-]);
-const EXCLUDED: ReadonlySet<string> = new Set(CREDENTIAL_EXCLUDED_ACTIONS);
 const WHOLE_BUSINESS = { kind: 'business', id: null } as const;
 
 const FIXES: Readonly<Record<string, readonly string[]>> = {
@@ -89,25 +80,6 @@ const NO_KEY = refuseCommand(
   ],
 );
 
-/** The ticked keys, shaped, or undefined when any one is not a key. */
-function keysOf(scope: unknown): readonly CredentialKey[] | undefined {
-  if (!Array.isArray(scope) || scope.length === 0 || scope.length > MAX_KEYS) return undefined;
-  const keys: CredentialKey[] = [];
-  const seen = new Set<string>();
-  for (const one of scope as readonly unknown[]) {
-    if (typeof one !== 'object' || one === null || Array.isArray(one)) return undefined;
-    const { collection, action, ...rest } = one as Readonly<Record<string, unknown>>;
-    if (Object.keys(rest).length > 0) return undefined;
-    if (typeof collection !== 'string' || !COLLECTION.test(collection)) return undefined;
-    if (typeof action !== 'string' || !ACTIONS.has(action)) return undefined;
-    const key = `${collection}:${action}`;
-    if (seen.has(key)) return undefined;
-    seen.add(key);
-    keys.push({ collection, action: action as Action });
-  }
-  return keys;
-}
-
 /**
  * The expiry, or undefined unless it is a real UTC instant after now and within
  * the limit: never a 30 February `Date.parse` would roll into March (#522).
@@ -123,42 +95,6 @@ function expiryOf(expiresAt: unknown, now: number): Date | undefined {
   return new Date(at);
 }
 
-const WIDENS = refuseCommand(
-  'CREDENTIAL_SCOPE_WIDENS',
-  ['scope'],
-  ['Tick only keys you hold across the whole business.'],
-);
-
-// CAPABILITY-SLICES.md: an agent may hold no money key, billing:read included.
-const MONEY = refuseCommand(
-  'CREDENTIAL_MONEY_KEY_EXCLUDED',
-  ['scope'],
-  [
-    'An agent credential never carries a billing key, offer:decide, mandate:manage or spend:decide.',
-    'Untick them; money actions stay with a person.',
-  ],
-);
-
-const holdsMoney = (keys: readonly { readonly collection: string; readonly action: Action }[]) =>
-  keys.some((key) => isMoneyKey(key.collection, key.action));
-
-/** A ticked key the caller does not hold at business scope, or undefined. */
-async function refuseScope(
-  tx: TenantQuery,
-  session: Session,
-  keys: readonly CredentialKey[],
-): Promise<CommandRefusal | undefined> {
-  for (const key of keys) {
-    // oxlint-disable-next-line no-await-in-loop -- one grant walk per key, in order
-    const decision = await checkAuthority(tx, subjectsOf(session), {
-      ...key,
-      scope: WHOLE_BUSINESS,
-    });
-    if (!decision.ok) return WIDENS;
-  }
-  return undefined;
-}
-
 export async function issueCredential(
   tx: TenantQuery,
   context: CommandContext,
@@ -166,17 +102,11 @@ export async function issueCredential(
 ): Promise<HandlerOutcome> {
   const keys = keysOf(request.scope);
   if (keys === undefined) return invalid('scope');
-  if (holdsMoney(keys)) return refused(MONEY);
-  if (keys.some((key) => EXCLUDED.has(key.action))) {
-    return refused(
-      refuseCommand(
-        'CREDENTIAL_ACTION_EXCLUDED',
-        ['scope'],
-        ['An agent credential never carries decide, share or manage. Untick them.'],
-      ),
-    );
-  }
-  const expiresAt = expiryOf(request.expiresAt, Date.now());
+  const never = refuseNeverCarried(keys);
+  if (never !== undefined) return refused(never);
+  // Its shape and ceiling before any lock, on the transaction's clock; the
+  // database holds the ceiling again against the issue it stamps at insert.
+  const expiresAt = expiryOf(request.expiresAt, await databaseClock(tx, 'now()'));
   if (expiresAt === undefined) return invalid('expiresAt');
   const { purpose } = request;
   if (typeof purpose !== 'string' || purpose.trim().length === 0 || purpose.length > MAX_PURPOSE) {
@@ -186,6 +116,10 @@ export async function issueCredential(
   await lockAccess(tx);
   const scopeRefusal = await refuseScope(tx, session, keys);
   if (scopeRefusal !== undefined) return refused(scopeRefusal);
+  // An expiry that passed while the issue waited on the access lock mints nothing.
+  if (expiresAt.getTime() <= (await databaseClock(tx, 'clock_timestamp()'))) {
+    return invalid('expiresAt');
+  }
   const held = delegationCredentialKeys();
   if (!held.ok) return refused(NO_KEY);
   const issued = await issueAgentCredential(tx, held.keys, {
@@ -239,8 +173,9 @@ export async function revokeCredential(
  * The issuer's replay of an issue: the stored answer, with the secret derived
  * again while the credential is theirs and live. Revoked, expired or no
  * longer the caller's, it goes out as stored, with the credential null. A
- * live one carrying a money key, issued before the rule, is refused as an
- * issue of it is.
+ * live one whose keys an issue of it would now refuse (a key no agent may
+ * hold, issued before the rule, or one the issuer no longer holds) is
+ * refused as that issue is.
  */
 export async function replayIssue(
   tx: TenantQuery,
@@ -253,15 +188,24 @@ export async function replayIssue(
     held === undefined ||
     held.issuedByPersonId !== session.personId ||
     held.revokedAt !== null ||
-    held.expiresAt.getTime() <= Date.now()
+    // On the database's clock, read after the row's lock wait.
+    held.expiresAt.getTime() <= (await databaseClock(tx, 'clock_timestamp()'))
   ) {
     return stored;
   }
-  const scope = held.scope.map((key) => {
-    const [collection = '', action = ''] = key.split(':');
-    return { collection, action: action as Action };
-  });
-  if (holdsMoney(scope)) return MONEY;
+  // The session and the keys asked again after the last wait, the audit
+  // chain's key, its ending keys held to commit after it (`ending-keys.ts`):
+  // no secret for a signed-out caller. The secret again is an issue again:
+  // its keys judged as an issue's are, under the access lock, against the
+  // issuer's grants as they stand after that wait, so a grant that ran out
+  // while it waited refuses the replay.
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (await sessionEndedSince(tx, session)) {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
+  }
+  const scope = storedKeys(held.scope);
+  const refusal = refuseNeverCarried(scope) ?? (await refuseScope(tx, session, scope));
+  if (refusal !== undefined) return refusal;
   const keys = delegationCredentialKeys();
   const credential = keys.ok
     ? deriveAgentCredential(keys.keys, held.keyId, tx.businessId, held)

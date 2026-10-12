@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an agent field write asks its person's write grant again under the task lock, and a delegation revoke queued behind that row neither deadlocks with the write's share on the delegation nor overtakes it"
+}

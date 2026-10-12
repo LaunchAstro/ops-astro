@@ -28,6 +28,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/index.ts';
 
 export type Seedable = Pick<EmptyDatabase, 'app' | 'admin'>;
 
@@ -118,7 +119,10 @@ export async function presetFields(db: Seedable, t: Tenant, slots: number): Prom
       writeMode: 'generic',
       visibilityClass: 'internal',
     }));
-    const request = { recordTypeKey: 'task', presetKey: 'fixture', fields };
+    const operations = new Set(
+      COMMAND_SURFACE.filter((row) => row.kind === 'write').map((row) => row.name),
+    );
+    const request = { recordTypeKey: 'task', presetKey: 'fixture', fields, operations };
     const plan = await planPresetSync(tx, t.lead, request);
     if (!plan.ok) refused('preset plan', plan.refusal.code);
     for (const [n, step] of plan.value.actions.entries()) {

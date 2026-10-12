@@ -12,7 +12,12 @@
 // writes nothing.
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import { withSession } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  ENDED_FIXES,
+  sessionEndedSince,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -22,6 +27,7 @@ import type {
 import { isInternalReader } from '../reads/tasks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { storableText } from './values.ts';
 
 export const AVAILABILITY_COMMAND = 'availability.set';
 export const REASON_LIMIT = 140;
@@ -37,7 +43,7 @@ const FIELDS = new Set(['state', 'reason']);
 
 const STATE_FIXES = ["Send state as 'available' or 'away'."];
 const REASON_FIXES = [
-  `Send reason as text of 1 to ${String(REASON_LIMIT)} characters, or leave it out.`,
+  `Send reason as text of 1 to ${String(REASON_LIMIT)} characters, with no NUL or half of a split character, or leave it out.`,
   'Available carries no reason; clearing away clears it.',
 ];
 const BODY_FIXES = ['Send state, and reason when away. Nothing else: it is your own account.'];
@@ -57,7 +63,8 @@ export function availabilityOf(
     typeof reason === 'string' &&
     state === 'away' &&
     reason.trim().length > 0 &&
-    reason.length <= REASON_LIMIT;
+    reason.length <= REASON_LIMIT &&
+    storableText(reason);
   return fits ? { state, reason } : refuseCommand('FIELD_VALUE_INVALID', ['reason'], REASON_FIXES);
 }
 
@@ -86,7 +93,14 @@ export async function setOwnAvailability(
   const asked = availabilityOf(body);
   const outcome = await withSession(database, businessId, presented, async (tx, session) => {
     const wanted = 'refused' in asked ? undefined : asked;
-    const refusal = refusalFor(session, asked);
+    // The session asked again with its ending keys held to commit, after the
+    // audit chain's key, in an ending's order (`ending-keys.ts`): a sign-out
+    // that committed since the door is refused here, and one still to commit
+    // waits for this write, so nothing is written for an ended session (#1292).
+    await advisoryLock(tx, tx.businessId.toLowerCase());
+    const refusal = (await sessionEndedSince(tx, session))
+      ? refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES)
+      : refusalFor(session, asked);
     await writeAuditEvent(tx, {
       actorId: session.actorId,
       command: AVAILABILITY_COMMAND,

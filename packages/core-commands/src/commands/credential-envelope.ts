@@ -55,6 +55,7 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
+import { ExportLimitReached, recordCredentialFailure } from './credential-failure.ts';
 import { credentialNotLive, lapsedSince, readWhileLive } from './credential-not-live.ts';
 import type { UncheckedRequest } from './requests.ts';
 
@@ -188,6 +189,8 @@ async function resolvedAndRun(
           businessId,
           async (tx) => await attempt(tx, call, request, doorFull, held),
         ),
+      // The fault handed to the caller leaves its attempt on the chain.
+      async (cause) => await recordCredentialFailure(database, businessId, call, request, cause),
     );
   } catch (cause) {
     if (!(cause instanceof ExportLimitReached)) {
@@ -253,9 +256,6 @@ async function attempt(
   }
   return ran;
 }
-
-/** Thrown inside the transaction so an answer over the export limit applies nothing. */
-class ExportLimitReached extends Error {}
 
 const live = async (tx: TenantQuery, call: CredentialCall): Promise<boolean> =>
   await isAgentCredentialLive(tx, call.credential, call.now);

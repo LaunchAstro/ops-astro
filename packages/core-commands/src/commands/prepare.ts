@@ -285,6 +285,7 @@ const FREE_OPERANDS: readonly string[] = [
   'step',
   'successor',
   'trainsOnIt',
+  'value',
   'whatHappened',
   'where',
 ];

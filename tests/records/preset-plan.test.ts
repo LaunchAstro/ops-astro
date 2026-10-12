@@ -21,6 +21,11 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/index.ts';
+
+const WRITES = new Set(
+  COMMAND_SURFACE.filter((row) => row.kind === 'write').map((row) => row.name),
+);
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -45,7 +50,7 @@ describe.skipIf(serverUrl === undefined)('preset.plan', () => {
       planPresetSync(
         tx,
         { personId, actorId },
-        { recordTypeKey: 'task', presetKey: 'agency', fields: fields as never },
+        { recordTypeKey: 'task', presetKey: 'agency', fields: fields as never, operations: WRITES },
       ),
     );
 
