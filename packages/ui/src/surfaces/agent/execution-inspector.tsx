@@ -38,6 +38,35 @@ function moneyLine(run: MapNode): string {
   return `${held}; ${spent}`;
 }
 
+/**
+ * The gate as `task.read` showed it. That is a snapshot: a pending gate the
+ * run has moved past, or any gate on a superseded run, no longer speaks for
+ * the step, so it reads as earlier.
+ */
+function GateCard(props: {
+  readonly step: MapStep;
+  readonly gate: NonNullable<MapStep['gate']>;
+}): ReactElement {
+  const { step, gate } = props;
+  const overtaken =
+    (gate.state === 'pending' && !step.armed) ||
+    step.runs.at(-1)?.observed.condition === 'superseded';
+  return (
+    <div className={step.armed ? 'gate gate--armed' : 'gate'}>
+      <span className="gate__mark" aria-hidden="true" />
+      <div>
+        <div className="gate__word">
+          Human approval gate · {words(gate.state)}
+          {overtaken ? ' earlier, no longer current' : ''}
+        </div>
+        <p className="gate__say" data-map="binds">
+          Binds v{gate.version} · {gate.digest}.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function MapInspector(props: { readonly step: MapStep | null }): ReactElement {
   const { step } = props;
   if (step === null) {
@@ -51,11 +80,6 @@ export function MapInspector(props: { readonly step: MapStep | null }): ReactEle
     );
   }
   const newest = step.runs.at(-1);
-  // `task.read`'s gate is a snapshot: a pending gate the run has moved past,
-  // or any gate on a superseded run, no longer speaks for the step.
-  const overtaken =
-    step.gate !== null &&
-    ((step.gate.state === 'pending' && !step.armed) || newest?.observed.condition === 'superseded');
   const waiting = step.after.filter((one) => !one.satisfied).map((one) => one.key);
   return (
     <div className="tg__insp" data-map="detail" data-map-step={step.key}>
@@ -64,20 +88,7 @@ export function MapInspector(props: { readonly step: MapStep | null }): ReactEle
         <span className="sb__meta">{step.state.word}</span>
       </div>
       <p className="tg__insp__t">{step.title}</p>
-      {step.gate === null ? null : (
-        <div className={step.armed ? 'gate gate--armed' : 'gate'}>
-          <span className="gate__mark" aria-hidden="true" />
-          <div>
-            <div className="gate__word">
-              Human approval gate · {words(step.gate.state)}
-              {overtaken ? ' earlier, no longer current' : ''}
-            </div>
-            <p className="gate__say" data-map="binds">
-              Binds v{step.gate.version} · {step.gate.digest}.
-            </p>
-          </div>
-        </div>
-      )}
+      {step.gate === null ? null : <GateCard step={step} gate={step.gate} />}
       <div className="tg__insp__facts">
         <Fact k="Needs">
           {step.after.length === 0
