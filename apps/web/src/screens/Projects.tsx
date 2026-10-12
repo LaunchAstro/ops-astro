@@ -50,7 +50,13 @@ export function Projects(props: ProjectsProps): ReactElement {
       </TabPanel>
       <TabPanel name="projects" tab="worklog" selected={tab}>
         {workLogOpened ? (
-          <WorkLog client={props.client} grantKey={props.grantKey} navigate={props.navigate} />
+          <WorkLog
+            client={props.client}
+            grantKey={props.grantKey}
+            navigate={props.navigate}
+            address={props.address}
+            inPanel={inPanel === true}
+          />
         ) : null}
       </TabPanel>
     </div>

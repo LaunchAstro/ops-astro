@@ -9,7 +9,10 @@
 //
 // The search (`ledger-search.ts`) reads people and kinds over the days in view
 // and sends its free words as the ledger's `query`, which C1's search answers;
-// the box stays put while a new first page is read.
+// the box stays put while a new first page is read. A name is a person once the
+// reader has seen them act on any page read here, earlier days included, so a
+// new answer cannot turn a person back into a word. In a dock panel the search
+// is the panel's own: read from its address and written to no page address.
 //
 // `Load earlier days` asks for the page before the last day drawn and adds it
 // below. The earlier pages belong to the first page they continue: a reload or
@@ -33,7 +36,14 @@ import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
-import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
+import {
+  actorsIn,
+  passing,
+  queryOf,
+  readingLine,
+  readSearch,
+  type LedgerSearch,
+} from './ledger-search.ts';
 
 const UTC = 'UTC';
 
@@ -95,11 +105,23 @@ export interface WorkLogProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly navigate: (path: string) => void;
+  /** A dock panel's own address, which holds its search instead of the page's. */
+  readonly address?: string | undefined;
+  readonly inPanel?: boolean;
 }
 
 /** The search's words in the address (L-01 `q`), so a reload or a shared link opens it searched. */
-const typedInAddress = (): string =>
-  new URLSearchParams(globalThis.location?.search ?? '').get('q') ?? '';
+const typedInAddress = (address: string | undefined): string =>
+  (address === undefined
+    ? new URLSearchParams(globalThis.location?.search ?? '')
+    : new URL(address, 'http://here').searchParams
+  ).get('q') ?? '';
+
+/** The people the reader has seen act, for the reader they were read for. */
+interface Seen {
+  readonly grantKey: string;
+  readonly names: readonly string[];
+}
 
 function writeTyped(typed: string): void {
   const here = globalThis.location;
@@ -117,16 +139,22 @@ function writeTyped(typed: string): void {
 
 export function WorkLog(props: WorkLogProps): ReactElement {
   const { client, grantKey, navigate } = props;
-  const [typed, setWords] = useState(typedInAddress);
+  const inPanel = props.inPanel === true;
+  const [typed, setWords] = useState(() =>
+    typedInAddress(inPanel ? (props.address ?? '') : undefined),
+  );
   const setTyped = (words: string): void => {
     setWords(words);
-    writeTyped(words);
+    if (!inPanel) writeTyped(words);
   };
-  // The first page the read last accepted. The people in view are read from
-  // it alone: an answer the read dropped names nobody, and the words it was
-  // searched for stay words, so its own answer cannot turn them into people.
+  // The first page the read last accepted, and the people seen act on it and
+  // the pages it continues. An answer the read dropped names nobody, and the
+  // words a page was searched for stay words, so its own answer cannot turn
+  // them into people.
   const [answer, setAnswer] = useState<LedgerRead | null>(null);
-  const search = readSearch(typed, answer?.ledger.days ?? [], answer?.query ?? null);
+  const [seen, setSeen] = useState<Seen>({ grantKey, names: [] });
+  const names = seen.grantKey === grantKey ? seen.names : [];
+  const search = readSearch(typed, names, answer?.query ?? null);
   const query = queryOf(search);
   const { state, reload } = useRead<LedgerRead>({
     grantKey,
@@ -136,6 +164,13 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   const accepted = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
   if (accepted !== null && accepted !== answer) setAnswer(accepted);
   const pages = useEarlierDays(client, answer);
+  // Only this reader's: `accepted` is always the current grant's read.
+  const ownDays =
+    accepted === null
+      ? []
+      : [...accepted.ledger.days, ...(pages.more.from === accepted ? pages.more.days : [])];
+  const known = [...new Set([...names, ...actorsIn(ownDays)])];
+  if (known.length !== names.length) setSeen({ grantKey, names: known });
   const clear = (): void => {
     setTyped('');
   };
@@ -258,29 +293,45 @@ function LedgerPages(props: {
   const inView = days.reduce((sum, day) => sum + day.events.length, 0);
   const reading = readingLine(search, passed);
   const partial = first.query !== null && first.ledger.more === true;
+  const loading = pages.asking === first;
+  const loadEarlier = (): void => {
+    pages.loadEarlier(first, days);
+  };
   return (
     <>
       <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
       {reading !== null && passed === 0 ? (
-        <Empty
-          title="Nothing matches that."
-          description="This log holds every change to a task you can see: try a name on its own."
-          onClearFilters={props.onClear}
-        />
+        <>
+          <Empty
+            title="Nothing matches that."
+            description="This log holds every change to a task you can see: try a name on its own."
+            onClearFilters={props.onClear}
+          />
+          {/* People and kinds filter only the days read: older days may still match. */}
+          {earlier ? (
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm act__more"
+              disabled={loading}
+              aria-busy={loading}
+              onClick={loadEarlier}
+            >
+              Load earlier days
+            </button>
+          ) : null}
+        </>
       ) : (
         <Ledger
           days={shown}
           earlier={earlier}
-          loading={pages.asking === first}
+          loading={loading}
           today={todayIn(first.zone)}
           timeZone={first.zone}
           taskHref={(key) => pathTo('agency:task-detail', { key })}
           onOpenTask={(key) => {
             navigate(pathTo('agency:task-detail', { key }));
           }}
-          onLoadEarlier={() => {
-            pages.loadEarlier(first, days);
-          }}
+          onLoadEarlier={loadEarlier}
         />
       )}
       {continued.failed === null ? null : (
