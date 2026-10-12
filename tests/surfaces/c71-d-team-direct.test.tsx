@@ -22,7 +22,7 @@ import {
 import { dockTabs } from '../../apps/web/src/panels.ts';
 import { dockOf } from './dock-props.ts';
 import { mount, type Mounted } from './mount.tsx';
-import { ME, THREADS, chip, message, props, next } from './team-fixture.tsx';
+import { LAUNCH, ME, THREADS, chip, message, props, next } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -242,6 +242,35 @@ describe('C71-D the thread draws each message as the words written', () => {
     expect(mounted.find('.tmc__conv .msg time')?.getAttribute('datetime')).toBe(
       '2026-09-28T09:12:00Z',
     );
+  });
+});
+
+describe('C71-D a send the server did not take keeps the words', () => {
+  it('the words come back to the composer, unless the person has started new ones', async () => {
+    let answer: ((sent: boolean) => void) | undefined;
+    const sent = (): Promise<boolean> =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    const p = props({ threads: THREADS, groups: [LAUNCH] });
+    const talk = { ...p.conversations!, onSend: sent, onGroup: sent };
+    mounted = await mount(<TeamPanel {...p} conversations={talk} />);
+    const field = '.tmc__conv .composer input';
+    const typed = (): string | undefined =>
+      (mounted?.host.querySelector(field) as HTMLInputElement | null)?.value;
+
+    await mounted.type(field, 'unsent message canary');
+    await send(mounted, 'enter');
+    expect(typed()).toBe('');
+    await act(() => answer?.(false));
+    expect(typed()).toBe('unsent message canary');
+
+    await mounted.click('.tmc__g[data-group="g-launch"]');
+    await mounted.type(field, 'unsent group canary');
+    await send(mounted, 'enter');
+    await mounted.type(field, 'Newer words');
+    await act(() => answer?.(false));
+    expect(typed()).toBe('Newer words');
   });
 });
 

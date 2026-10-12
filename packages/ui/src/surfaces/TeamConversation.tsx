@@ -30,10 +30,10 @@ function Message(props: { readonly message: TeamMessage; readonly me: string }):
   );
 }
 
-function Composer(props: {
-  readonly to: string;
-  readonly onSend: (body: string) => void;
-}): ReactElement {
+/** Resolves true once the server took the words; false hands them back to the composer. */
+type Send = (body: string) => Promise<boolean>;
+
+function Composer(props: { readonly to: string; readonly onSend: Send }): ReactElement {
   const [text, setText] = useState('');
   const field = useRef<HTMLInputElement>(null);
   const label = `Message ${props.to}`;
@@ -44,9 +44,13 @@ function Composer(props: {
         event.preventDefault();
         const said = text.trim();
         if (said === '') return;
-        props.onSend(said);
         setText('');
         field.current?.focus();
+        // Words the server did not take go back in, unless the person has started new ones.
+        void props.onSend(said).then((sent) => {
+          if (!sent) setText((now) => (now === '' ? said : now));
+          return sent;
+        });
       }}
     >
       <input
@@ -75,7 +79,7 @@ export function Conversation(props: {
   /** Null where the reader keeps no read marker: a group they have left. */
   readonly onRead: (() => void) | null;
   /** Null where the reader may not send: a group they have left. */
-  readonly onSend: ((body: string) => void) | null;
+  readonly onSend: Send | null;
 }): ReactElement {
   const messages = props.thread?.messages ?? [];
   const scroller = useRef<HTMLDivElement>(null);
