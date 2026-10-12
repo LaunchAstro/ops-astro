@@ -225,6 +225,7 @@
             "      const asks = watching(options, live, context, admitted.businessId);",
             "      const [taskId] = await asks.atDoor([context.req.param('recordId')]);",
             "      if (taskId === undefined) throw new Error('the door answered no topic');",
+            "      if (taskId === UNANSWERED) return unavailable(context);",
             "      if (typeof taskId !== 'string') return refuse(context, taskId);",
             "      // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).",
             "      return liveStream(context, async (stream) => {",

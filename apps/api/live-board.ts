@@ -25,20 +25,25 @@
 // `chat.conversations`; anyone else, one removed mid-join included, is told nothing. A
 // reconnect (`resync`) may have lost a signal, so it asks of any conversation, says it once.
 //
+// A join the sign-in provider could not answer (its key set unreachable) is no
+// answer: nothing is said or closed, and what that run owed waits for the next.
+//
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
 // flight, so none reaches a pool that closes after it.
 
 import type { SSEStreamingApi } from 'hono/streaming';
-import type { BoardSignal, LiveTopics } from './live.ts';
+import { UNANSWERED, type BoardSignal, type LiveTopics, type Unanswered } from './live.ts';
 
 export interface BoardQuestions {
-  /** The person the bearer resolves to now, if they may still hold the stream. */
-  readonly joinedAs: () => Promise<string | undefined>;
+  /** The person the bearer resolves to now, if they may still hold the stream; no answer from the provider. */
+  readonly joinedAs: () => Promise<string | undefined | Unanswered>;
   /** A digest of the tasks `personId` reads now and their activity; undefined when refused. */
   readonly reach: (personId: string) => Promise<string | undefined>;
   /** A digest of what `inbox.read` shows `personId` now; undefined when refused. */
   readonly shown: (personId: string) => Promise<string | undefined>;
+  /** Called as each run starts: the questions of one run may share one check of the bearer. */
+  readonly newRun?: () => void;
   /** Whether `personId` is a current member of any of these (`any`: of any) now; absent, never. */
   readonly hears?: (
     personId: string,
@@ -118,20 +123,37 @@ function batch(
   bind: (personId: string) => void,
 ): (signal: BoardSignal | 'check') => void {
   const pending = { heard: false, check: false, any: false, chats: new Set<string>() };
+  /** A run the provider could not answer: its signals wait for the next signal or check. */
+  const owe = (heard: boolean, check: boolean, chats: readonly string[] | 'any'): void => {
+    pending.heard ||= heard;
+    pending.check ||= check;
+    if (chats === 'any') pending.any = true;
+    else for (const chat of chats) pending.chats.add(chat);
+  };
   const drain = async (): Promise<void> => {
     while (!stream.aborted && (pending.heard || pending.check || pending.chats.size > 0)) {
       const { heard, check } = pending;
       const chats = pending.any ? 'any' : [...pending.chats];
       pending.heard = pending.check = pending.any = false;
       pending.chats.clear();
+      ask.newRun?.();
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const joined = heard || check ? await rule(stream, ask, bound, bind, check) : 'same';
       if (joined === 'closed') return;
+      if (joined === 'unanswered') {
+        owe(heard, check, chats);
+        return;
+      }
       // A rebind the recheck found is told by that recheck, from the new person's reads.
       if (joined === 'rebound' && check) pending.check = true;
       const toTell = chats === 'any' || chats.length > 0;
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
-      if (toTell && (await told(stream, ask, bound, bind, chats)) === 'closed') return;
+      const said = toTell ? await told(stream, ask, bound, bind, chats) : 'same';
+      if (said === 'closed') return;
+      if (said === 'unanswered') {
+        owe(false, false, chats);
+        return;
+      }
     }
   };
   let queued = false;
@@ -172,7 +194,7 @@ async function rule(
   bound: Bound,
   bind: (personId: string) => void,
   check: boolean,
-): Promise<'closed' | 'rebound' | 'same'> {
+): Promise<Joined> {
   const tasks = await ask.reach(bound.personId);
   const inbox = await ask.shown(bound.personId);
   const joined = await rejoin(stream, ask, bound, bind);
@@ -197,7 +219,7 @@ async function told(
   bound: Bound,
   bind: (personId: string) => void,
   chats: readonly string[] | 'any',
-): Promise<'closed' | 'rebound' | 'same'> {
+): Promise<Joined> {
   const hears = async (): Promise<boolean> => (await ask.hears?.(bound.personId, chats)) ?? false;
   const member = await hears();
   const joined = await rejoin(stream, ask, bound, bind);
@@ -207,18 +229,23 @@ async function told(
   return joined;
 }
 
+/** What asking the join again found. */
+type Joined = 'closed' | 'rebound' | 'same' | 'unanswered';
+
 /**
  * The join asked again: `closed` (said, and the stream ended) when it is
  * refused; `rebound` when the bearer now resolves to another person, whose
- * topic replaces the previous one's; `same` otherwise.
+ * topic replaces the previous one's; `unanswered` when the provider could not
+ * be asked; `same` otherwise.
  */
 async function rejoin(
   stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
-): Promise<'closed' | 'rebound' | 'same'> {
+): Promise<Joined> {
   const personId = await ask.joinedAs();
+  if (personId === UNANSWERED) return 'unanswered';
   if (personId === undefined) {
     await send(stream, 'closed');
     stream.abort();

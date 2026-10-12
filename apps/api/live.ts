@@ -24,6 +24,14 @@ import type { Listener } from '../../packages/core-records/src/index.ts';
 
 export const LIVE_CHANNEL = 'ops_astro_live';
 
+/**
+ * A stream's question the sign-in provider could not answer (its key set
+ * unreachable): not a refusal, so nothing is closed or said, and what was
+ * due waits for the next check.
+ */
+export const UNANSWERED: unique symbol = Symbol('unanswered');
+export type Unanswered = typeof UNANSWERED;
+
 /** How long `/api/health` waits to hear its own probe back. */
 export const PROBE_MS = 1_000;
 
