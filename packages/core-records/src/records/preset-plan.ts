@@ -46,6 +46,8 @@ export type PresetPlanRefusalCode =
   | 'PRESET_FIELD_UNPLACEABLE'
   /** Two entries of one request claim the same field key. */
   | 'PRESET_FIELD_DUPLICATE'
+  /** A field definition `field_defs` would refuse: its key, label, search or operation names. */
+  | 'PRESET_FIELD_INVALID'
   /** The caller holds no live `manage` grant on the record family being planned. */
   | 'SCOPE_NOT_GRANTED';
 
@@ -151,6 +153,30 @@ function unclassified(fields: readonly PresetField[]): readonly string[] {
     .map((field) => field.key);
 }
 
+const FIELD_KEY = /^[a-z][a-z0-9_]{0,62}$/u;
+const OPERATION_NAME = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
+
+/**
+ * Which fields `field_defs` would refuse on insert, so the dry run never
+ * promises them (#867): a key outside its shape (`field_defs_key_present`), a
+ * blank label (`field_defs_label_present`), a searchable field that is not
+ * text, which alone is slotted for search (`field_defs_searchable_is_slotted_text`),
+ * and an owning operation that is not an operation name
+ * (`field_defs_operation_names_are_operations`).
+ */
+function invalid(fields: readonly PresetField[]): readonly string[] {
+  return fields
+    .filter(
+      (field) =>
+        !FIELD_KEY.test(field.key) ||
+        typeof field.label !== 'string' ||
+        field.label.trim().length === 0 ||
+        (field.searchable === true && field.valueType !== 'text') ||
+        (field.owningOperations ?? []).some((name) => !OPERATION_NAME.test(name)),
+    )
+    .map((field) => field.key);
+}
+
 async function recordTypeId(tx: TenantQuery, key: string): Promise<string | undefined> {
   const rows = await tx.query<{ readonly id: string }>(
     `select id from record_types where business_id = $1 and key = $2`,
@@ -232,6 +258,15 @@ export async function planPresetSync(
     return refuse('PRESET_FIELD_UNCLASSIFIED', unclear, [
       'Every field a preset ships carries a write mode: generic, operation or system.',
       'An operation-owned field names its operations, and no other field names any.',
+      'Nothing of this plan was applied.',
+    ]);
+  }
+
+  const malformed = invalid(request.fields);
+  if (malformed.length > 0) {
+    return refuse('PRESET_FIELD_INVALID', malformed, [
+      'A field key is lowercase letters, digits and underscores, starting with a letter.',
+      'Every field has a label, only a text field is searchable, and each owning operation is named as collection.action.',
       'Nothing of this plan was applied.',
     ]);
   }

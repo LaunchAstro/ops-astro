@@ -133,6 +133,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['PRESET_TYPE_UNKNOWN', 404, 'caller'],
   ['PRESET_FIELD_UNPLACEABLE', 409, 'caller'],
   ['PRESET_FIELD_DUPLICATE', 422, 'caller'],
+  ['PRESET_FIELD_INVALID', 422, 'caller'],
   ['GATE_PENDING', 409, 'caller'],
   ['GATE_ALREADY_DECIDED', 409, 'caller'],
   ['GATE_NOT_APPROVED', 409, 'caller'],
