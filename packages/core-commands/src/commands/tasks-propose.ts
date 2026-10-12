@@ -72,41 +72,6 @@ function planStepRefusal(plan: ProjectedPlan | null, step: ProposedStep): Refuse
 }
 
 /**
- * An agent's live lineage of `purpose` on the task that still waits (its gate
- * pending and unexpired, or its decided work held), as `task.propose` answered
- * it, read under the task lock: a worker restarted mid-propose or after the
- * decision, or a second copy on one delegation, finds it rather than opening
- * a second gate for the same work.
- */
-async function agentWaitingProposal(
-  tx: TenantQuery,
-  taskId: string,
-  actorId: string,
-  purpose: string,
-): Promise<Readonly<Record<string, unknown>> | undefined> {
-  const rows = await tx.query<Readonly<Record<string, unknown>>>(
-    `select g.lineage_id as "lineageId", g.version_id as "versionId", v.version,
-            g.run_id as "runId", g.step_id as "stepId", g.evidence_pack_id as "evidencePackId",
-            g.id as "gateId", g.payload_digest as "payloadDigest"
-       from public.proposal_lineages l
-       join public.actors a
-         on a.business_id = l.business_id and a.id = l.opened_by_actor_id and a.kind = 'agent'
-       join public.proposal_versions v
-         on v.business_id = l.business_id and v.lineage_id = l.id and v.superseded_at is null
-       join public.gates g on g.business_id = v.business_id and g.version_id = v.id
-      where l.business_id = $1 and l.task_id = $2 and l.opened_by_actor_id = $3
-        and l.state = 'live' and v.purpose = $4
-        and ((g.state = 'pending' and g.expires_at > clock_timestamp())
-             or exists (select 1 from public.reservations r
-                         where r.business_id = v.business_id and r.version_id = v.id
-                           and r.state = 'held'))
-      order by g.created_at desc limit 1`,
-    [tx.businessId, taskId, actorId, purpose],
-  );
-  return rows[0];
-}
-
-/**
  * A proposal on the locked task.
  *
  * The expiry is named as a duration and turned into an instant **here**,
@@ -267,11 +232,6 @@ export async function proposeFor(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
-  const waiting =
-    typeof lineageId === 'string'
-      ? undefined
-      : await agentWaitingProposal(tx, target.id, actorId, fields.purpose);
-  if (waiting !== undefined) return applied(target.id, current.revision, waiting);
   // The plan the step key is checked against is the one stored with the step
   // (MP-6-2, 20261003001115), so the log places the run in it whatever binds later.
   const plan = await readProjectedPlan(tx, target.id);
@@ -280,7 +240,11 @@ export async function proposeFor(
   const planRecordId = plan?.planRecordId ?? null;
   const result = await proposeUnderLocks(tx, { ...proposal, planRecordId }, held);
   if (!result.ok) return refused(result.refusal);
-  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
+  // An agent's waiting proposal answered again (`proposeUnderLocks`) already
+  // has its decision raised.
+  if (result.value.reused !== true) {
+    await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
+  }
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against
