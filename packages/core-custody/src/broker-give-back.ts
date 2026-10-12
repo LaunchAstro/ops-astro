@@ -16,7 +16,8 @@
 //   a replacement's size sees it, and nothing is given back twice.
 // A hold that ended any other way (the classifier's settle, a person's outcome
 // or write-off with no top-up, an observed cost) never counted its calls, and
-// gives nothing back.
+// gives nothing back; nor does a call a person wrote off, whatever answered
+// its hold since.
 //
 // Each caller reaches here only for a call it just moved out of an open or
 // unknown state, under the envelope's lock it took first, so the difference is
@@ -108,7 +109,9 @@ export async function giveBackReleased(
 
 /**
  * Give back what the ended call did not spend, when its hold counted it at its
- * maximum; the amount given back, or 0.
+ * maximum; the amount given back, or 0. A call a person wrote off gives
+ * nothing back: the write-off's charge is final, and a top-up answer on the
+ * hold it closed never moved the call onto the envelope (`holdTopUp`).
  */
 export async function giveBack(tx: TenantQuery, callId: string): Promise<number> {
   const [due] = await tx.query<Due>(
@@ -117,7 +120,7 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<number>
        from public.model_calls c
        join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
       where c.business_id = $1 and c.id = $2 and c.state in ('settled', 'released')
-        and ${countedHold('$3')}
+        and c.outcome is distinct from 'written_off' and ${countedHold('$3')}
         for update of r`,
     [tx.businessId, callId, COUNTED_CAUSES],
   );
