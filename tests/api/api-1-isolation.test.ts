@@ -21,6 +21,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   api,
   bravoBusinessId,
+  clientOf,
   clientOne,
   clientTwo,
   fixture,
@@ -66,6 +67,11 @@ function businessAndClientCrossings(): void {
   }, 60_000);
 
   it('API-1 isolation: client to client, a grant on one task reads nothing of the other on any surface', async () => {
+    // A real crossing: two stored clients, both linked, not the same one.
+    const [first, second] = [await clientOf(task.client1), await clientOf(task.client2)];
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first).not.toBe(second);
     const reads = rows.filter(
       (row) => row.kind === 'read' && row.command === ('task.read' as CommandName),
     );
