@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the stored priority-stages check refuses each bad stage list and a stage-id value under another key, written directly as the application role"
+}
