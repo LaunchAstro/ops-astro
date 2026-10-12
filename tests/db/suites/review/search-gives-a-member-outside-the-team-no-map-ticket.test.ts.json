@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "search lists a map's tickets to the team only: a member outside it holding the map's grant finds none, as task.read refuses them"
+}
