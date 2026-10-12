@@ -9,6 +9,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { invalid } from '../commands/operands.ts';
 import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { listPeople } from './people.ts';
+import { isInternalReader } from './tasks.ts';
 import type { Parsed } from './read-row.ts';
 import type { TodoScope } from './todo-evidence.ts';
 
@@ -39,6 +40,9 @@ export async function admitTodoScope(
     client,
   }: { readonly person?: string | undefined; readonly client?: string | undefined },
 ): Promise<{ readonly scope: TodoScope } | { readonly refusal: CommandRefusal }> {
+  // A to-do row is the internal summary; a role outside the internal ones
+  // reads a task only through the shared-field allowlist (`readSharedTask`).
+  if (!isInternalReader(session.roleKey)) return { refusal: refuseNotFound() };
   if (person !== undefined) {
     const vocabulary = await checkAuthority(tx, subjectsOf(session), {
       collection: 'person',
