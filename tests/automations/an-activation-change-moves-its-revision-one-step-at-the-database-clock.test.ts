@@ -4,7 +4,8 @@
 // names the revision it wrote. The application role wrote both the revision
 // and `changed_at` itself, so a direct statement could roll the revision back
 // to one an approval already names, skip ahead, or back-date the change. The
-// database now holds each change to one step, stamped with its own clock.
+// database now holds each change to one step, and stamps it with its own
+// clock whatever the statement wrote.
 
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
@@ -30,7 +31,7 @@ const change = async (set: string) =>
       await tx.query<{ revision: string; stamped: boolean }>(
         `update public.activations set ${set}, changed_by_actor_id = $2
           where id = $1
-          returning revision::text, changed_at = now() as stamped`,
+          returning revision::text, changed_at >= now() as stamped`,
         [seeded.activationId, s.decider.actorId],
       ),
   );
@@ -42,13 +43,12 @@ it.skipIf(noDatabase)('a change one revision on, at now, applies', async () => {
 });
 
 it.skipIf(noDatabase)(
-  'a change that rolls the revision back, skips ahead, keeps it, or back-dates is refused',
+  'a change that rolls the revision back, skips ahead or keeps it is refused',
   async () => {
     const written = await Promise.allSettled([
       change('enabled = false, revision = 1, changed_at = now()'),
       change('enabled = false, revision = revision + 5, changed_at = now()'),
       change('enabled = false, changed_at = now()'),
-      change(`enabled = false, revision = revision + 1, changed_at = now() - interval '1 day'`),
     ]);
     expect(written).toMatchObject(
       written.map(() => ({ status: 'rejected', reason: { code: '23514' } })),
@@ -60,3 +60,9 @@ it.skipIf(noDatabase)(
     expect(stored).toEqual({ revision: '2', enabled: true });
   },
 );
+
+it.skipIf(noDatabase)('a back-dated change is stamped at the database clock instead', async () => {
+  await expect(
+    change(`enabled = false, revision = revision + 1, changed_at = now() - interval '1 day'`),
+  ).resolves.toEqual([{ revision: '3', stamped: true }]);
+});

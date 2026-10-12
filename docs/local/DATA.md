@@ -956,11 +956,12 @@ SHA-256 of its secret (`credential_hash`), the scheme (`hmac-sha256-v1`) and
 the key id, when it was issued and when it expires (after issue), and the
 revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
 secret itself is stored nowhere. A guard keeps every issued column as written
-and lets the revocation be set once. A before-insert trigger
+and lets the revocation be set once. An after-insert trigger
 (`agent_credentials_held_by_an_agent`, 20261012133600) asks that the agent is
 an actor of kind agent and the issuer the person actor of
 `issued_by_person_id`, so no person, the issuer included, holds a credential
-as its agent. The application may select, insert and update; nothing deletes
+as its agent, and an actor a credential names keeps that kind and person
+(`actors_hold_their_credentials`). The application may select, insert and update; nothing deletes
 a row. Tenancy-keyed with the restrictive policy.
 
 ## Automations (20261005003850, C33)
@@ -983,10 +984,10 @@ and names a run only when it started one, at most one occurrence per run. Nothin
 an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
 standing approval (below) lets it through as `approved`. The application may
 select and insert all four, and update an activation's setting, pin, switch and
-revision by column grant; each change moves the revision one step and stamps
-`changed_at` with the transaction's `now()`, and a before-update trigger
-refuses any other revision or time (`activations_change_one_step`,
-20261012133600). Nothing deletes a row. Tenancy-keyed with the
+revision by column grant; a before-update trigger
+(`activations_change_one_step`, 20261012133600) refuses any revision but the
+next and stamps `changed_at` itself with the clock read once the row is
+locked. Nothing deletes a row. Tenancy-keyed with the
 restrictive policy. The records are `packages/core-records/src/automations/`.
 
 ## Standing approvals (20261005193201, C52-A)
