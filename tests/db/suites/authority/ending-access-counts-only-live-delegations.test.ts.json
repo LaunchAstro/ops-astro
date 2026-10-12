@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "ending a person's access revokes and counts only the delegations they gave that are still live; an expired one is left as it was"
+}
