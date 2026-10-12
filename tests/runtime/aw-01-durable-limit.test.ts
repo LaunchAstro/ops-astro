@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import {
   hasRoom,
+  isBusinessId,
   type Database,
   type DurableLimit,
   type TenantQuery,
@@ -37,9 +38,9 @@ afterAll(async () => {
 
 const fixed = (n: number) => async (): Promise<number> => await Promise.resolve(n);
 
-/** A second backend on the same database. */
-function backend(): Database {
-  const db = racer(alpha);
+/** A second backend on the same database, at the login's defaults or the URL's. */
+function backend(url?: string): Database {
+  const db = racer(alpha, url);
   racers.push(db);
   return db;
 }
@@ -113,6 +114,55 @@ it('AW-01 durable limit: two transactions of one business at the limit admit exa
   expect(await alpha.db.app.withBusiness(alpha.business, agents)).toBe(before + 1);
   // A fresh backend, as after a restart, reads the same count and the limit holds.
   expect(await attempt(backend())).toBe(false);
+});
+
+/** Two transactions at the limit, each holding its lock past the other's attempt. */
+async function race(
+  first: { db: Database; business: string },
+  second: { db: Database; business: string },
+): Promise<boolean[]> {
+  const before = await alpha.db.app.withBusiness(alpha.business, agents);
+  const limit: DurableLimit = { name: `agents-${randomUUID()}`, limit: before + 1, count: agents };
+  const attempt = async ({ db, business }: { db: Database; business: string }) => {
+    if (!isBusinessId(business)) throw new Error(`${business} is not a business id`);
+    return await db.withBusiness(business, async (tx) => {
+      if (!(await hasRoom(tx, [limit]))) return false;
+      await pause(300);
+      await addAgent(tx);
+      return true;
+    });
+  };
+  const admitted = await Promise.all([attempt(first), attempt(second)]);
+  expect(await alpha.db.app.withBusiness(alpha.business, agents)).toBe(before + 1);
+  return admitted;
+}
+
+it('AW-01 durable limit: a connection whose default is repeatable read still admits exactly one at the limit', async () => {
+  const url = new URL(alpha.db.appUrl);
+  url.searchParams.set('default_transaction_isolation', 'repeatable read');
+  const [one, two] = [backend(url.toString()), backend(url.toString())];
+  const level = await one.withBusiness(alpha.business, async (tx) => {
+    const [row] = await tx.query<{ level: string }>(
+      `select current_setting('transaction_isolation') as level`,
+    );
+    return row?.level;
+  });
+  expect(level).toBe('read committed');
+  const admitted = await race(
+    { db: one, business: alpha.business },
+    { db: two, business: alpha.business },
+  );
+  expect(admitted.filter(Boolean)).toHaveLength(1);
+});
+
+it('AW-01 durable limit: two spellings of one business id share its lock, so the limit holds', async () => {
+  const upper = alpha.business.toUpperCase();
+  expect(upper).not.toBe(alpha.business);
+  const admitted = await race(
+    { db: alpha.db.app, business: alpha.business },
+    { db: backend(), business: upper },
+  );
+  expect(admitted.filter(Boolean)).toHaveLength(1);
 });
 
 it('AW-01 durable limit: a business at its limit never delays another business on the same limit', async () => {
