@@ -18,7 +18,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { tick } from './task-page-stub.tsx';
 import { mount, press, typeInto, unmountAll } from './perspective-support.tsx';
-import { PanelWithDoor, create, draft, fill, server, store, valueOf } from './draft-support.tsx';
+import {
+  ADA,
+  PanelWithDoor,
+  create,
+  draft,
+  fill,
+  server,
+  store,
+  valueOf,
+} from './draft-support.tsx';
 
 afterEach(unmountAll);
 
@@ -102,6 +111,24 @@ describe('MP-4-13 draft kept until create or cancel', () => {
     await first.view.unmount();
     const again = await draft({ storage });
     expect(valueOf(again.view, '#panel-draft-name')).toBe('');
+  });
+
+  it('Cancel discards a saved draft that cannot be read, so the next New task can create', async () => {
+    const storage = store();
+    storage.setItem(`ops-astro.task-draft.${ADA}`, '{"title":null}');
+    const { client, sent } = server();
+    const first = await draft({ client, storage });
+    await typeInto(first.view, '#panel-draft-name', 'A valid name');
+    await create(first.view);
+    expect(sent.filter((one) => one.to === '/task/create')).toHaveLength(0);
+    await first.view.click('[data-draft="cancel"]');
+    expect(first.outcome.closed).toBe(1);
+    expect(storage.getItem(`ops-astro.task-draft.${ADA}`)).toBeNull();
+    await first.view.unmount();
+    const again = await draft({ client, storage });
+    await typeInto(again.view, '#panel-draft-name', 'A valid name');
+    await create(again.view);
+    expect(again.outcome.created).not.toBeNull();
   });
 });
 
