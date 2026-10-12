@@ -10,6 +10,13 @@
 // establish nothing and why. No timer reads the note: a call left unknown
 // stays unknown until the provider proves absence or a person decides.
 //
+// A pass asks about at most `MOST` calls in a business, those asked longest
+// ago first: a call never asked, then by `lookup_until`, which recording an
+// answer moves to that moment. A call that proved nothing goes to the back of
+// the line, so fifty that never prove absence cannot keep a newer call from
+// being asked on a later pass. A lookup that waited records nothing, so its
+// call keeps its place.
+//
 // The phase runs as system work, in the business's own transactions: one to
 // find the calls, then for each the lookup outside any transaction (custody's
 // wait is bounded by the operation's timeout), then one to record the answer,
@@ -216,6 +223,7 @@ async function record(
   const moved = await tx.query(
     `update public.model_calls
         set reconcile_note = $3, reconcile_mode = coalesce(reconcile_mode, $5),
+            lookup_until = greatest(lookup_until, clock_timestamp()),
             state = case when $4 then 'released' else state end,
             ended_at = case when $4 then clock_timestamp() else ended_at end
       where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
@@ -261,7 +269,7 @@ export async function reconcileProviderCalls(
           where c.business_id = $1 and c.state = 'liability_unknown' and c.outcome is null
             and c.reconcile_mode is distinct from 'person'
             and (att.state = 'liability_unknown' or c.planning_envelope_id is not null)
-          order by c.unknown_since, c.id
+          order by c.lookup_until nulls first, c.unknown_since, c.id
           limit $2`,
         [tx.businessId, MOST],
       ),
