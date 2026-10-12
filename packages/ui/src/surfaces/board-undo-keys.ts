@@ -2,7 +2,7 @@
 //
 // The board's undo keys (U09), for `useBoardMachine` in board-hooks.ts.
 
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { reduceBoard } from '../board/machine.ts';
 import type { BoardContext, MachineState } from '../board/types.ts';
 
@@ -20,7 +20,11 @@ export function useUndoKeys<Row>(
   owns: (node: Node) => boolean,
 ): void {
   const ownsRef = useRef(owns);
-  ownsRef.current = owns;
+  // Taken once the render commits: a render React discards (a toolbar move
+  // still suspended) never decides which board a key belongs to.
+  useLayoutEffect(() => {
+    ownsRef.current = owns;
+  });
   useEffect(() => {
     if (hidden) return;
     const step = (event: KeyboardEvent, mine: boolean): void => {
