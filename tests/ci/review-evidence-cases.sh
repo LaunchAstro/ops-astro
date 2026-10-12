@@ -34,6 +34,8 @@ Verdict: approve
 
 "
 BUILDER=claude-opus-5-5
+# The range's commits, `<sha> <subject>` per line; none unless a case sets COMMITS.
+COMMITS=""
 # The pull request's labels, newline separated; none unless a case sets LABELS.
 LABELS=""
 DEFER_EPOCH=""
@@ -45,7 +47,7 @@ unset OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL
 run_case() {
   local label="$1" expect="$2" body="$3" files="$4" actual output
   output="$(
-    PR_BODY="${RECORD//@HEAD@/$HEAD}$body" PR_LABELS="$LABELS" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
+    PR_BODY="${RECORD//@HEAD@/$HEAD}$body" PR_LABELS="$LABELS" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" RANGE_COMMITS="$COMMITS" \
       OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL="$DEFER_EPOCH" BASE_SHA="$DEFER_BASE" \
       node --import 'data:text/javascript,Date.now=()=>Date.parse("2026-10-14T00:00:00Z")' "$CHECKER" 2>&1
   )"
@@ -1104,7 +1106,16 @@ Review checkpoint
     tests/x/approval-at-commit.test.ts
     tests/y/accepted-and-reviewed-paths.test.ts
 $FENCE"
-run_case "domain first: approval words in a checkpoint's paths and subjects are no claim" 0 "$CHECKPOINT_FENCE$P2$DEFERRAL" "README.md"
+CHECKPOINT_FILES=$'tests/x/approval-at-commit.test.ts\ntests/y/accepted-and-reviewed-paths.test.ts'
+LISTED_SHA=53307ba15e0e28e4b5e0e28e4b5e0e28e4b5e0e2
+COMMITS="$LISTED_SHA test(gate): a slow Git read on a busy machine is not a bad approval"
+run_case "domain first: approval words in a checkpoint's paths and subjects are no claim" 0 "$CHECKPOINT_FENCE$P2$DEFERRAL" "$CHECKPOINT_FILES"
+run_case "domain first: a listed path that is not a changed file is a claim" 1 "$CHECKPOINT_FENCE$P2$DEFERRAL" "tests/x/approval-at-commit.test.ts"
+COMMITS="${LISTED_SHA/53307ba15/53307ba16} test(gate): a slow Git read on a busy machine is not a bad approval"
+run_case "domain first: a listed commit outside the range is a claim" 1 "$CHECKPOINT_FENCE$P2$DEFERRAL" "$CHECKPOINT_FILES"
+COMMITS="$LISTED_SHA test(gate): a slow Git read"
+run_case "domain first: a listed commit whose subject is not its own is a claim" 1 "$CHECKPOINT_FENCE$P2$DEFERRAL" "$CHECKPOINT_FILES"
+COMMITS="$LISTED_SHA test(gate): a slow Git read on a busy machine is not a bad approval"
 for claim in "Approved by the second model." "The fix was reviewed." "Code review: no findings"; do
   run_case "domain first: a claim beside a checkpoint still refuses: '$claim'" 1 "$CHECKPOINT_FENCE$P2$claim$P2$DEFERRAL" "README.md"
 done
@@ -1151,6 +1162,32 @@ Review checkpoint
 $listed
 $FENCE$P2$DEFERRAL" "README.md"
 done
+COMMITS=""
+# CI supplies no range: the listed commits are the ones Git holds in it.
+LIST_FIXTURE="$(mktemp -d)"
+(
+  cd "$LIST_FIXTURE" && git init -q && git config user.email t@example.invalid && git config user.name t &&
+    git config commit.gpgsign false && echo one > README.md && git add -A && git commit -qm base &&
+    echo two > README.md && git commit -qam "test(ci): an approval word in a subject"
+) || fail "the listed-commit Git fixture builds" "git failed in $LIST_FIXTURE"
+LIST_BASE="$(git -C "$LIST_FIXTURE" rev-parse HEAD~1)"
+LIST_HEAD="$(git -C "$LIST_FIXTURE" rev-parse HEAD)"
+listed_case() {
+  local label="$1" expect="$2" line="$3" output actual
+  output="$(cd "$LIST_FIXTURE" && PR_BODY="$FENCE
+Review checkpoint
+  head:        $LIST_HEAD
+  commits:     1
+$line
+$FENCE${P2}Review deferral: DOMAINFIRST20261008 internal-stage1 $LIST_BASE..$LIST_HEAD stage1/SOL-OWED.md" \
+    PR_LABELS="$LABELS" HEAD_SHA="$LIST_HEAD" BASE_SHA="$LIST_BASE" CHANGED_FILES="README.md" \
+    AGENT_MODELS="$BUILDER" OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL="$DEFER_EPOCH" node "$CHECKER" 2>&1)"
+  actual=$?
+  if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual: $output"; fi
+}
+listed_case "domain first: a listed commit read from Git is no claim" 0 "    ${LIST_HEAD:0:9} test(ci): an approval word in a subject"
+listed_case "domain first: a listed commit Git holds under another subject is a claim" 1 "    ${LIST_HEAD:0:9} test(ci): approved by the second model"
+rm -rf "$LIST_FIXTURE"
 for hidden in "- $DEFERRAL" "> $DEFERRAL" "\`$DEFERRAL\`" "<!--$P2$DEFERRAL$P2-->"; do
   run_case "domain first: valid marker plus hidden second marker refuses" 1 "$DEFER_BODY$P2$hidden" "README.md"
 done
