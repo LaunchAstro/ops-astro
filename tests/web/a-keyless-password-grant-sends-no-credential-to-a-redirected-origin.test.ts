@@ -4,16 +4,18 @@ import { expect, it } from 'vitest';
 import { signIn } from '../../apps/web/src/session/password-grant.ts';
 
 async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('missing test address');
   return `http://127.0.0.1:${address.port}`;
 }
 
 async function close(server: Server): Promise<void> {
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
 }
 
 it('a password grant does not forward credentials to a redirected origin', async () => {
