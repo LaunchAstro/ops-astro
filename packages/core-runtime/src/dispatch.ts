@@ -47,7 +47,7 @@ import {
   refuseLease,
   type LeaseRow,
 } from './lease-ownership.ts';
-import { holdSignOffSetting, launchRecheck, signOffRequired } from './launch-gate.ts';
+import { launchRecheck, signOffRefusal } from './launch-gate.ts';
 import { acquire, type LockRequest } from './locks.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -330,7 +330,7 @@ async function recheck(fact: EffectTimeFact, on: Recheck): Promise<RuntimeResult
     case 'launch':
       return await launchRecheck(on.tx, on.facts.version_id);
     case 'signOff':
-      return (await holdSignOffSetting(on.tx)) ? signOffRequired() : null;
+      return await signOffRefusal(on.tx, on.facts.version_id);
     case 'lease': {
       const cause = fenceCause(on.lease, on.request.fence);
       return cause === null ? null : refuseLease(cause, LEASE_FIXES.heartbeat.expired);
