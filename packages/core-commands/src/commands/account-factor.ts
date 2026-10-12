@@ -63,9 +63,6 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 export type { FactorCaller } from './account-factor-judged.ts';
 
-const FRESH_FIXES: readonly string[] = [
-  'Sign in again with your password, then set up the authenticator app within 60 minutes.',
-];
 const NEWER_FIXES: readonly string[] = [
   'A newer set-up started while this one was on its way. Use the newest, or start again.',
 ];
@@ -93,9 +90,7 @@ export async function enrolSecondFactor(
       if (await holdsVerified(tx, caller, live))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
       startedFrom = live?.id;
-      return (await freshSignIn(tx, session))
-        ? undefined
-        : refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
+      return await freshSignIn(tx, session);
     },
     'before',
   );
@@ -105,6 +100,9 @@ export async function enrolSecondFactor(
   const recorded = await judged(sending, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
     const live = await liveFactor(tx, session.personId, caller.presented.subject, { lock: true });
+    // Judged again: the sign-in may have left the window during the lock wait.
+    const stale = await freshSignIn(tx, session);
+    if (stale !== undefined) return stale;
     if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // A newer one, recorded since that check, stays the target; this one is a stray.
