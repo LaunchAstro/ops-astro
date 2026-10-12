@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The key a refused write needed, in one line. A grant refusal does not name
-// the key it looked for, so the page names the one the command is declared
-// with on the surface, as the CLI's refusal line does (`apps/cli/render.ts`).
+// The key a refused write needed, in one line: the key the refusal names, or
+// else the one the command is declared with on the surface. The agent CLI's
+// refusal line asks the same two questions here (`apps/cli/render.ts`).
 //
 // Only for the codes listed here, each one meaning "this reader does not hold
 // the key". The list is closed on purpose: a code is added by name when it
@@ -23,9 +23,18 @@ export function keyOf(command: CommandName): string | null {
   return row === undefined ? null : `${row.collection}:${row.action}`;
 }
 
+/** Whether a refusal `code` means the caller does not hold the key. */
+export const missingKey = (code: string): boolean => MISSING_KEY.has(code);
+
+/** The first `collection:action` key among a refusal's `names`, else `declared`. */
+export function keyNamed(names: readonly unknown[], declared: string): string {
+  const named = names.find((name) => typeof name === 'string' && /^[a-z_]+:[a-z_]+$/u.test(name));
+  return typeof named === 'string' ? named : declared;
+}
+
 export function needsKey(command: CommandName, refusal: WireRefusal | undefined): string | null {
   const key = keyOf(command);
-  return key !== null && refusal !== undefined && MISSING_KEY.has(refusal.code)
-    ? `You need ${key}.`
+  return key !== null && refusal !== undefined && missingKey(refusal.code)
+    ? `You need ${keyNamed(refusal.names, key)}.`
     : null;
 }

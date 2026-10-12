@@ -155,7 +155,13 @@ export const SCREENS: {
       at={clientNamedIn(context.address)}
     />
   ),
-  'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
+  'agency:team': (context) => (
+    <TeamScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      {...(context.address === undefined ? {} : { address: context.address })}
+    />
+  ),
   'agency:access': (context) => (
     <AccessScreen client={context.client} grantKey={context.grantKey} />
   ),

@@ -4,7 +4,7 @@
 // sends, the filters and the rule a ticket passes them by.
 
 export type MapViewName = 'map' | 'tickets' | 'frontier' | 'fog';
-export type MapCommand = 'map.revise' | 'map.graduate' | 'task.set_blocking';
+export type MapCommand = 'map.revise' | 'map.graduate' | 'task.set_blocking' | 'task.claim';
 
 /**
  * One write: its command, its target and that target's revision, its operands,

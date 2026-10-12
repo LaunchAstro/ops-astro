@@ -7,8 +7,8 @@
 // agent's edit as a reviewable change waits on the agent credential narrowed
 // from a person's grants (API-2, SL09 U18): until then `map.revise` is
 // `agent: 'never'` and an agent is refused at the surface. Each line is its
-// named test, a todo until then; the file is listed as deliberately unnamed in
-// the database manifest, which refuses a skipped test in a named suite.
+// named test, a todo until then. It reaches no database, so the database
+// manifest does not name it.
 
 import { describe, it } from 'vitest';
 

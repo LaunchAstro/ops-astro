@@ -71,7 +71,7 @@ export const ITEMS: readonly Grouped[] = [
 ];
 
 export interface Opened {
-  readonly kind: 'task' | 'client';
+  readonly kind: 'task' | 'client' | 'conversation';
   readonly key: string;
   readonly beside: boolean;
 }
@@ -87,6 +87,9 @@ export function props(over: Partial<NotificationsProps> = {}): NotificationsProp
     taskHref: (key) => `/task/${encodeURIComponent(key)}`,
     onOpenTask: (key, how) => opened.push({ kind: 'task', key, beside: how.beside }),
     onOpenClient: (key, how) => opened.push({ kind: 'client', key, beside: how.beside }),
+    conversationHref: (id) => `/team/?conversation=${encodeURIComponent(id)}`,
+    onOpenConversation: (id, how) =>
+      opened.push({ kind: 'conversation', key: id, beside: how.beside }),
     ...over,
     opened,
   };

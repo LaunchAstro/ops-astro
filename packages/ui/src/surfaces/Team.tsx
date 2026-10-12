@@ -54,6 +54,8 @@ export interface TeamConversations {
   /** The group conversations the reader is a member of, as the comment read returned them (C71-G). */
   readonly groups: readonly GroupThread[];
   readonly onGroup: (action: GroupAction) => void;
+  /** The conversation the address asked for (a notification's door), opened first when present. */
+  readonly asked?: Selected;
 }
 
 export interface TeamPanelProps {
@@ -73,6 +75,7 @@ type Selected = { readonly kind: 'person' | 'group'; readonly id: string } | nul
 
 function opening(talk: TeamConversations | null, me: string): Selected {
   if (talk === null) return null;
+  if (talk.asked !== undefined && talk.asked !== null) return talk.asked;
   const person = openingThread(talk.threads, me);
   if (person !== null) return { kind: 'person', id: person };
   const group = openingGroup(talk.groups, me);
@@ -203,9 +206,25 @@ function Talk(props: {
   );
 }
 
+/** The open conversation; the one a door asks for opens whenever the request changes. */
+function useSelection(
+  talk: TeamConversations | null,
+  me: string,
+): readonly [Selected, (which: Selected) => void] {
+  const [selected, setSelected] = useState<Selected>(() => opening(talk, me));
+  const asked = talk?.asked ?? null;
+  const key = asked === null ? null : `${asked.kind}:${asked.id}`;
+  const [followed, setFollowed] = useState(key);
+  if (asked !== null && key !== followed) {
+    setFollowed(key);
+    setSelected(asked);
+  }
+  return [selected, setSelected];
+}
+
 export function TeamPanel(props: TeamPanelProps): ReactElement {
   const talk = props.conversations;
-  const [selected, setSelected] = useState<Selected>(() => opening(talk, props.me));
+  const [selected, setSelected] = useSelection(talk, props.me);
   const mine = props.people.find((person) => person.personId === props.me);
   const teammates = teammatesOf(props.people, props.me);
   const read = talk === null ? null : reader(talk, props.me);

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The tickets view (WF-4): every ticket on the map that passes the filters,
-// each linking its own page, with what blocks it. Blocking is
+// The tickets view (WF-4, CS-15.7): every ticket on the map that passes the
+// filters, each linking its own page, with what blocks it, what it blocks, and
+// Claim (`task.claim`, which the server refuses for a closed or claimed
+// ticket, naming why). Blocking is
 // `task.set_blocking` on the blocked ticket, which takes the whole list: adding
 // a blocker sends the list with it, removing one sends the list without it.
 // The command refuses a blocker from another map, a cycle and a foreign id.
@@ -39,6 +41,18 @@ export function TicketsView(props: {
                 {ticket.type} · {ticket.state ?? 'no state'}
               </span>
               <Blockers ticket={ticket} name={name} busy={busy} send={props.send} />
+              <Blocks ticket={ticket} tickets={tickets} name={name} />
+              <button
+                className="btn"
+                type="button"
+                data-claim={ticket.id}
+                disabled={props.locked('task.claim', ticket.id)}
+                onClick={() => {
+                  props.send('task.claim', ticket.id, ticket.revision, {});
+                }}
+              >
+                Claim
+              </button>
               <BlockControl ticket={ticket} tickets={tickets} busy={busy} send={props.send} />
             </li>
           );
@@ -78,6 +92,21 @@ function Blockers(props: {
           </button>{' '}
         </span>
       ))}
+    </span>
+  );
+}
+
+function Blocks(props: {
+  readonly ticket: Ticket;
+  readonly tickets: readonly Ticket[];
+  readonly name: (id: string) => string;
+}): ReactElement | null {
+  const blocked = props.tickets.filter((one) => one.blockedBy.includes(props.ticket.id));
+  if (blocked.length === 0) return null;
+  return (
+    <span data-blocks={props.ticket.id}>
+      {' '}
+      Blocks: {blocked.map((one) => props.name(one.id)).join(', ')}{' '}
     </span>
   );
 }
