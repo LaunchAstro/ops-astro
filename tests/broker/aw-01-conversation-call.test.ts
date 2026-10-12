@@ -18,7 +18,11 @@ import {
   type ModelCaller,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
-import { REPLAY_COMPOSE, replayAdapter } from '../../packages/core-connectors/src/index.ts';
+import {
+  REPLAY_COMPOSE,
+  REPLAY_MODEL_WINDOW,
+  replayAdapter,
+} from '../../packages/core-connectors/src/index.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
 import { seedConversation } from './conversation-fixture.ts';
 import {
@@ -122,7 +126,7 @@ it('AW-01 conversation call: a priced answer is above a hold of nothing, so it i
   expect(Number(row?.['observed_minor'])).toBeGreaterThan(0);
 });
 
-it('CS-7.30 conversation call: the chosen model is handed to the adapter and sent, not the default', async () => {
+it("CS-7.30 conversation call: the chosen model is handed to the adapter and sent, not left to the adapter's default", async () => {
   const handed: (string | undefined)[] = [];
   const build: typeof replayAdapter = (values, id, model) => {
     handed.push(model);
@@ -133,10 +137,12 @@ it('CS-7.30 conversation call: the chosen model is handed to the adapter and sen
     ...local(),
     providers: new Map([['replay', { build, price: () => 0 }]]),
   };
-  await inConversation(person(), { ...(await ask()), model: 'replay-chosen' }, capturing);
-  expect(handed).toStrictEqual(['replay-chosen']);
+  // The provider's one offered model: a model it does not offer is refused before any send.
+  const model = REPLAY_MODEL_WINDOW.model;
+  await inConversation(person(), { ...(await ask()), model }, capturing);
+  expect(handed).toStrictEqual([model]);
   const asked = world.provider.seen.slice(sent).map((seen) => JSON.parse(seen.body) as object);
-  expect(asked).toMatchObject([{ model: 'replay-chosen' }]);
+  expect(asked).toMatchObject([{ model }]);
 });
 
 it('AW-01 conversation egress off: a cloud route from a conversation is refused before any row or request', async () => {
