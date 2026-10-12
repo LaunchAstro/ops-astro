@@ -141,7 +141,9 @@ export async function proposalBody(harness: Harness, held: Held): Promise<Record
   return {
     recordId: held.taskId,
     expectedRevision: task.revision,
-    purpose: 'synthetic_comment',
+    // A purpose of its own each time: an agent's second new lineage of one
+    // purpose is refused while the first waits (`agentLineageWaits`).
+    purpose: `synthetic_${randomUUID().replaceAll('-', '').slice(0, 12)}`,
     maximumMinor: 100,
     currency: 'AUD',
     payload: { change: 'a synthetic change' },

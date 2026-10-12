@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's task.propose opening a new lineage is refused TRANSITION_NOT_PERMITTED while its own live lineage of the same purpose on the task has a pending unexpired gate or held approved work, and nothing is written; another purpose, a lapsed gate and a person proposing still open one. It must be judged on a real database under the task lock."
+}
