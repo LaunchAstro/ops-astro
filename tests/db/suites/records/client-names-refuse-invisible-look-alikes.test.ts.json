@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a client's name refuses an invisible look-alike, a leading Hebrew mark, an invisible Hangul filler and an unbounded combining stack"
+}
