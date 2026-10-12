@@ -16,6 +16,7 @@ import { renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_GPT_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import { parseCredentials } from '../../packages/core-custody/src/credentials.ts';
 import { codexLogin } from './codex.ts';
 import { createRunner, type Runner } from './runner.ts';
 import { readSettings, type RunnerSettings } from './settings.ts';
@@ -124,6 +125,14 @@ async function ready(
 > {
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
   if (!read.ok) return { ok: false, code: read.code, message: read.message };
+  // Custody refuses the whole file over a key it cannot carry, and the broker never starts.
+  if (!parseCredentials([credentialOf(key)]).ok) {
+    return {
+      ok: false,
+      code: 'KEY_REFUSED',
+      message: 'custody refuses this OPS_LOCAL_AGENT_KEY: use one with no spaces, or unset it',
+    };
+  }
   const { settings } = read;
   const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
   if (![settings.home, installation].every((value) => QUOTABLE.test(value))) {
@@ -203,9 +212,10 @@ export async function startStack(
     throw error;
   }
   print(`local agent: runner on ${runner.origin}`);
-  // The API and custody read the port and key only when they start.
-  print(`local agent: source ${apiEnvFile}, then start or restart the API (pnpm api:up)`);
-  print('local agent: after every launcher start, re-source it and restart the API');
+  // The API and custody read the port and key only when they start. Sourced in
+  // brackets, the settings stay out of the owner's terminal for later commands.
+  print(`local agent: start or restart the API with (. '${apiEnvFile}' && pnpm api:up)`);
+  print('local agent: after every launcher start, restart the API that way');
   return {
     ok: true,
     stack: { home: settings.home, runner, credentialsFile, apiEnvFile, close: runner.close },
