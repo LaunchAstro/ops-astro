@@ -8,11 +8,14 @@
 // same number of tests whatever the number of shards. This holds the counting
 // to cases; the census itself runs over vitest's own list of each item.
 
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { censusOf } from '../../scripts/db-census.ts';
 import { assignShards, planItems, readPlan } from '../../scripts/db-shards.ts';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { ci, ISOLATION_COUNT } from './ci-shards.fixture.ts';
+import { ROOT } from './merge-group-repo.ts';
 
 const manifest = readNamedSuites(fileURLToPath(new URL('../..', import.meta.url)));
 const plan = readPlan(new URL('../../tests/db/shard-plan.json', import.meta.url));
@@ -48,3 +51,36 @@ it('names an item a split lost, repeated or made up, and the total moves', () =>
   expect(census.placed).toBe(items.length - 1);
   expect(census.tests).toBe(total - (counts[lost] ?? 0) + (counts[doubled] ?? 0));
 });
+
+/** What one shard's runner would run, from its own `--list`. */
+const listed = (args: readonly string[]): string[] => {
+  const run = spawnSync(process.execPath, ['scripts/db-conformance.mjs', ...args, '--list'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, DATABASE_URL: 'postgres://unused@127.0.0.1:1/x' },
+  });
+  // --list runs nothing, so it never exits 0.
+  expect(run.status, run.stderr).toBe(3);
+  return run.stdout.split('\n').filter(Boolean);
+};
+
+// A merge group runs the named suites in two matrices: `database conformance`
+// and `isolation tests`. Between them every run item runs once, so neither
+// matrix repeats the other's suites, and none is left out.
+it('the database and isolation shards run every named item exactly once a group', () => {
+  const database = ci.jobs['database-shard']?.strategy?.matrix?.shard?.length ?? 0;
+  expect(database).toBeGreaterThan(0);
+  const shards = (count: number, flags: readonly string[]): string[][] =>
+    Array.from({ length: count }, (_, i) =>
+      listed([...flags, '--shard', `${String(i + 1)}/${String(count)}`]),
+    );
+  const group = [...shards(database, []), ...shards(ISOLATION_COUNT, ['--isolation'])];
+  expect(censusOf(items, group, counts)).toStrictEqual({
+    items: items.length,
+    placed: items.length,
+    missing: [],
+    twice: [],
+    extra: [],
+    tests: total,
+  });
+}, 180_000);
