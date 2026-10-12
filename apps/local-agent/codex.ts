@@ -238,12 +238,16 @@ export async function runCodex(
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   return await new Promise((resolve) => {
+    const { holds, stopGroup, release } = heldGroup();
     const child = spawn(settings.codexBin, codexArgs(model, cwd), {
       cwd,
       env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
       stdio: ['pipe', 'pipe', 'ignore'],
       shell: false,
+      // Its own process group: whatever ends the call ends a wrapper's descendants with it.
+      detached: true,
     });
+    holds(child.pid);
     const parts: Buffer[] = [];
     let bytes = 0;
     let done = false;
@@ -251,12 +255,11 @@ export async function runCodex(
       if (done) return;
       done = true;
       clearTimeout(timer);
+      stopGroup();
+      release();
       resolve(result);
     };
-    const stop = (): void => {
-      child.kill('SIGKILL');
-      finish(UNKNOWN);
-    };
+    const stop = (): void => finish(UNKNOWN);
     const timer = setTimeout(stop, settings.timeoutMs);
     signal?.addEventListener('abort', stop, { once: true });
     child.stdout.on('data', (chunk: Buffer) => {
