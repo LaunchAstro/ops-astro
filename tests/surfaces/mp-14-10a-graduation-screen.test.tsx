@@ -443,6 +443,51 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(page.find('[data-region-said]'), 'The withdrawn resend belongs to Client A').toBeNull();
   });
 
+  // Sol's proof on #1381 (round 2), retitled by what it proves; its body is Sol's.
+  it('a restored Client A mandate draft cannot be filed for the fallback Client B', async () => {
+    const outage = { down: false };
+    let region = BODY;
+    const { page, sent } = await open(/\/mandate\/file$/u, {
+      once: true,
+      outage,
+      readRegion: () => region,
+    });
+    await page.type('[data-mandate-label]', 'Authority for Client A only');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    outage.down = true;
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(sentTo(sent, '/mandate/file')).toMatchObject({
+      clientId: 'k-a',
+      label: 'Authority for Client A only',
+    });
+    expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
+    region = {
+      ...BODY,
+      clients: BODY.clients.filter((client) => client.id !== 'k-a'),
+      rows: BODY.rows.filter((one) => one.clientId !== 'k-a'),
+      mandates: BODY.mandates.filter((one) => one.clientId !== 'k-a'),
+    };
+    outage.down = false;
+    await page.click('[data-graduation] [data-outcome="unavailable"] button');
+    await tick();
+    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
+    await page.click('[data-mandate-add]');
+    await tick();
+    const transferred = commands(sent).filter((call) => {
+      const body = bodyOf(call);
+      return (
+        call.includes('/mandate/file') &&
+        body['clientId'] === 'k-b' &&
+        body['label'] === 'Authority for Client A only'
+      );
+    });
+    expect(transferred, 'Client A financial authority must not be restored into Client B').toEqual(
+      [],
+    );
+  });
+
   it('owner check: choose a client, file a standing approval with a limit and expiry, then revoke it', async () => {
     const { page, sent } = await open();
     await page.choose('[data-client-scope] select', 'k-b');
