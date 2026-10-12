@@ -2434,7 +2434,10 @@ any person holding it), and no agent route serves it
 (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held `liability_unknown`
 takes one; any other is `LIABILITY_NOT_UNKNOWN`. Nothing happened releases the
 whole hold and resumes the work on a new hold; it happened spends the whole
-hold; it happened differently spends it and reopens the work. A retry under the
+hold; it happened differently spends it and reopens the work. It happened stops
+a replacement the reconciliation reserved for the step, unless that replacement
+has dispatched or has a model call out at the provider: then it is
+`TRANSITION_NOT_PERMITTED` and nothing moves. A retry under the
 same `operationId` replays the stored answer.
 
 A planning reply (AW-04) held unknown has no task and no attempt: its form is
