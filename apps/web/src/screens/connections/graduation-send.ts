@@ -5,12 +5,11 @@
 // is one operation, kept through the step-up's resend: the server holds no
 // operation for a step-up refusal, so the same one is judged afresh once
 // stepped up. An answer lost on the way back (`unknown`) keeps its operation,
-// so pressing again with the same body is the same attempt and files once,
-// whatever other write settles in between: each body keeps its own. A retry
-// refused stays kept: a stored success the server withholds from a sign-in it
-// does not yet find fresh is refused too, and only its answer settles it.
-// `drop` withdraws a write held for that sign-in, or still in flight, and its
-// refusal with it; a promotion form drops only the write it sent.
+// so pressing again with the same body is the same attempt and files once. A
+// retry refused stays kept: a stored success the server withholds from a sign-in
+// it does not yet find fresh is refused too, and only its answer settles it.
+// `drop` withdraws a write held for that sign-in, and its refusal with it; a
+// promotion form drops only the write it sent.
 
 import { useRef } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -38,14 +37,14 @@ const ownerOf = (name: Change, body: Readonly<Record<string, unknown>>): string 
 /** The region's commands, the one write at a time and how a held one is dropped. */
 export function useSend(client: OperationsClient, reload: () => void) {
   const command = useMoneyCommand(client);
-  // Each unsettled body's operation, by the body.
-  const unresolved = useRef(new Map<string, string>());
+  const unresolved = useRef<{ readonly key: string; readonly id: string } | null>(null);
   const owner = useRef<string | null>(null);
   const send: Send = (name, body, revision, done) => {
     const key = JSON.stringify([name, body, revision ?? null]);
-    const kept = unresolved.current.get(key);
-    const retry = kept !== undefined;
-    const id = kept ?? client.newOperationId();
+    const kept = unresolved.current;
+    const same = kept?.key === key ? kept : null;
+    const retry = same !== null;
+    const id = same?.id ?? client.newOperationId();
     const expected = revision === undefined ? {} : { expectedRevision: revision };
     owner.current = ownerOf(name, body);
     command.run(
@@ -53,8 +52,7 @@ export function useSend(client: OperationsClient, reload: () => void) {
       (settlement) => {
         // A retry refused may still have applied: only its answer settles it.
         const open = settlement.kind !== 'ok' && (retry || settlement.kind === 'unknown');
-        if (open) unresolved.current.set(key, id);
-        else unresolved.current.delete(key);
+        unresolved.current = open ? { key, id } : null;
         if (settlement.kind === 'ok') {
           owner.current = null;
           done?.();

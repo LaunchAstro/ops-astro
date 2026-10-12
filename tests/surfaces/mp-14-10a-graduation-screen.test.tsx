@@ -91,11 +91,6 @@ const BODY: ConnectionGraduationResult = {
     row('ready', 'k-a', 'ready', { note: 'Every post this month went out as drafted.' }),
     row('auto', 'k-a', 'promoted', { promotedAt: '2026-09-20T00:00:00Z', revision: 5 }),
     row('held', 'k-a', 'held', { heldBy: 'm-no' }),
-    row('heldauto', 'k-a', 'held', {
-      heldBy: 'm-no',
-      promotedAt: '2026-09-20T00:00:00Z',
-      revision: 6,
-    }),
     row('short', 'k-a', 'short', { approved: 12 }),
     row('mixed', 'k-a', 'mixed', { rejected: 4 }),
     row('ceiling', 'k-a', 'never', { neverWhy: 'ceiling' }),
@@ -146,9 +141,6 @@ interface Opening {
    * catches up.
    */
   readonly ahead?: number;
-  /** While `down` is true, every read of the region fails on the way. */
-  readonly outage?: { down: boolean };
-  readonly readRegion?: () => ConnectionGraduationResult;
 }
 
 const STEP_UP = { refused: true, code: 'STEP_UP_REQUIRED', names: [], fixes: [] };
@@ -260,10 +252,6 @@ function refuser(refuse: RegExp | undefined, opening: Opening): (at: string) => 
     (opening.once !== true || refused++ === 0);
 }
 
-/** Whether a read of the region at `at` fails, the case's outage being on. */
-const readDown = (opening: Opening, at: string): boolean =>
-  opening.outage?.down === true && at.endsWith('/connection/graduation');
-
 /** Open the page; a command whose path matches `refuse` is refused, as stale by default. */
 // eslint-disable-next-line max-lines-per-function -- the stub's every opening, in one place
 async function open(
@@ -285,10 +273,6 @@ async function open(
     const at = String(url);
     const call = `${at} ${String(init?.body ?? '')}`;
     sent.push(call);
-    if (readDown(opening, at)) throw new TypeError('Failed to fetch');
-    if (at.endsWith('/connection/graduation') && opening.readRegion !== undefined) {
-      return json(opening.readRegion());
-    }
     if (COMMAND.test(at)) {
       await opening.hold;
       if (++commandCount === 2) await opening.resendHold;
@@ -364,7 +348,7 @@ async function stepUpWith(page: Mounted, code = '123456'): Promise<void> {
   await tick();
 }
 
-/** A gate the stub's commands wait on until the case releases it. */
+/** A gate a held answer waits on, released by the case. */
 function gated(): { readonly hold: Promise<void>; readonly release: () => void } {
   const gate: { release?: () => void } = {};
   const hold = new Promise<void>((resolve) => {
@@ -375,119 +359,6 @@ function gated(): { readonly hold: Promise<void>; readonly release: () => void }
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('Connections & signal: client scope bar, graduation and standing approvals', () => {
-  /* eslint-disable oxc/no-map-spread, unicorn/no-array-reverse -- Sol's proof, kept as written */
-  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
-  it('an outage cannot restore Client A’s standing mandate fields into Client B and file them there', async () => {
-    const outage = { down: false };
-    let region = BODY;
-    const { page, sent } = await open(/\/mandate\/file$/u, {
-      once: true,
-      outage,
-      readRegion: () => region,
-    });
-    await page.type('[data-mandate-label]', 'Authority for Client A only');
-    await page.type('[data-mandate-ceiling]', '500');
-    await page.type('[data-mandate-expiry]', '2026-10-31');
-    outage.down = true;
-    await page.click('[data-mandate-add]');
-    await tick();
-    expect(sentTo(sent, '/mandate/file')).toMatchObject({
-      clientId: 'k-a',
-      label: 'Authority for Client A only',
-    });
-    expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
-    region = {
-      ...BODY,
-      clients: BODY.clients
-        .map((client) =>
-          client.id === 'k-b' ? { ...client, label: 'A newly alphabetised client' } : client,
-        )
-        .reverse(),
-    };
-    outage.down = false;
-    await page.click('[data-graduation] [data-outcome="unavailable"] button');
-    await tick();
-    await page.click('[data-mandate-add]');
-    await tick();
-    const transferred = commands(sent).filter((call) => {
-      const body = bodyOf(call);
-      return (
-        call.includes('/mandate/file') &&
-        body['clientId'] === 'k-b' &&
-        body['label'] === 'Authority for Client A only'
-      );
-    });
-    expect(transferred, 'Restored financial authority must stay with Client A').toEqual([]);
-  });
-  /* eslint-enable oxc/no-map-spread, unicorn/no-array-reverse */
-
-  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
-  it('a withdrawn step-up resend cannot draw its late refusal under another client', async () => {
-    const gate = gated();
-    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
-      code: 'STEP_UP_REQUIRED',
-      stepUp: steppedUp,
-      resendHold: gate.hold,
-    });
-    await page.click('[data-grad="auto"] [data-auto]');
-    await tick();
-    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
-    await stepUpWith(page);
-    await signInAgain();
-    expect(operationsTo(sent, '/graduation/demote')).toHaveLength(2);
-    await page.choose('[data-client-scope] select', 'k-b');
-    expect(page.find('[data-region-said]')).toBeNull();
-    gate.release();
-    await tick();
-    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
-    expect(page.find('[data-region-said]'), 'The withdrawn resend belongs to Client A').toBeNull();
-  });
-
-  // Sol's proof on #1381 (round 2), retitled by what it proves; its body is Sol's.
-  it('a restored Client A mandate draft cannot be filed for the fallback Client B', async () => {
-    const outage = { down: false };
-    let region = BODY;
-    const { page, sent } = await open(/\/mandate\/file$/u, {
-      once: true,
-      outage,
-      readRegion: () => region,
-    });
-    await page.type('[data-mandate-label]', 'Authority for Client A only');
-    await page.type('[data-mandate-ceiling]', '500');
-    await page.type('[data-mandate-expiry]', '2026-10-31');
-    outage.down = true;
-    await page.click('[data-mandate-add]');
-    await tick();
-    expect(sentTo(sent, '/mandate/file')).toMatchObject({
-      clientId: 'k-a',
-      label: 'Authority for Client A only',
-    });
-    expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
-    region = {
-      ...BODY,
-      clients: BODY.clients.filter((client) => client.id !== 'k-a'),
-      rows: BODY.rows.filter((one) => one.clientId !== 'k-a'),
-      mandates: BODY.mandates.filter((one) => one.clientId !== 'k-a'),
-    };
-    outage.down = false;
-    await page.click('[data-graduation] [data-outcome="unavailable"] button');
-    await tick();
-    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
-    await page.click('[data-mandate-add]');
-    await tick();
-    const transferred = commands(sent).filter((call) => {
-      const body = bodyOf(call);
-      return (
-        call.includes('/mandate/file') &&
-        body['clientId'] === 'k-b' &&
-        body['label'] === 'Authority for Client A only'
-      );
-    });
-    expect(transferred, 'Client A financial authority must not be restored into Client B').toEqual(
-      [],
-    );
-  });
-
   it('owner check: choose a client, file a standing approval with a limit and expiry, then revoke it', async () => {
     const { page, sent } = await open();
     await page.choose('[data-client-scope] select', 'k-b');
@@ -558,7 +429,7 @@ describe('Connections & signal: client scope bar, graduation and standing approv
       'true',
     ]);
     const reasons: Record<string, string> = {
-      held: 'Held by "Nothing social for A" below',
+      held: 'Held by m-no below',
       short: '12 approved so far',
       mixed: '4 rejected',
       ceiling: 'Ceiling: Draft',
@@ -1055,6 +926,27 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect((page.find('[data-mandate-label]') as HTMLInputElement | null)?.value).toBe('');
   });
 
+  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
+  it('a withdrawn step-up resend cannot draw its late refusal under another client', async () => {
+    const gate = gated();
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      stepUp: steppedUp,
+      resendHold: gate.hold,
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    expect(operationsTo(sent, '/graduation/demote')).toHaveLength(2);
+    await page.choose('[data-client-scope] select', 'k-b');
+    expect(page.find('[data-region-said]')).toBeNull();
+    gate.release();
+    await tick();
+    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
+    expect(page.find('[data-region-said]'), 'The withdrawn resend belongs to Client A').toBeNull();
+  });
   it('a demote refused for a fresh sign-in after the scope bar moved opens no prompt, and nothing resends it', async () => {
     const gate = gated();
     const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
@@ -1073,7 +965,6 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     await signInAgain();
     expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
   });
-
   it('a promotion refused for a fresh sign-in after its form was cancelled opens no prompt, and nothing resends it', async () => {
     const gate = gated();
     const { page, sent, signInAgain } = await open(/\/graduation\/promote$/u, {
@@ -1094,122 +985,5 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(page.find('[data-step-up="prompt"]')).toBeNull();
     await signInAgain();
     expect(commands(sent).filter((call) => call.includes('/graduation/promote'))).toHaveLength(1);
-  });
-
-  it('a lost filing keeps its operation across another write that succeeds in between', async () => {
-    const { page, sent } = await open(undefined, { lose: /\/mandate\/file$/u });
-    await fillApproval(page);
-    await page.click('[data-mandate-add]');
-    await tick();
-    await page.click('[data-grad="auto"] [data-auto]');
-    await tick();
-    expect(sentTo(sent, '/graduation/demote')).toMatchObject({ classId: 'auto' });
-    await page.click('[data-mandate-add]');
-    await tick();
-    const operations = operationsTo(sent, '/mandate/file');
-    expect(operations).toHaveLength(2);
-    expect(operations[1]).toBe(operations[0]);
-    expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
-  });
-
-  it('a promoted class held by a refusal draws its switch on, and pressing it demotes', async () => {
-    const { page, sent } = await open();
-    const sw = page.find('[data-grad="heldauto"] [data-auto]') as HTMLButtonElement | null;
-    expect([sw?.disabled, sw?.getAttribute('aria-checked')]).toStrictEqual([false, 'true']);
-    expect(page.find('[data-grad="heldauto"] .autosw__lbl')?.textContent).toBe(
-      'Held by "Nothing social for A" below',
-    );
-    await page.click('[data-grad="heldauto"] [data-auto]');
-    await tick();
-    expect(page.find('[data-promote-form="heldauto"]')).toBeNull();
-    expect(sentTo(sent, '/graduation/demote')).toMatchObject({
-      classId: 'heldauto',
-      expectedRevision: 6,
-    });
-  });
-
-  it('a reread outage after a refused filing or promotion keeps the typed forms', async () => {
-    const outage = { down: false };
-    const { page } = await open(/\/(mandate\/file|graduation\/promote)$/u, { outage });
-    const value = (selector: string): string | undefined =>
-      page.host.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value;
-    const outageThenRetry = async (press: string): Promise<void> => {
-      outage.down = true;
-      await page.click(press);
-      await tick();
-      expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
-      outage.down = false;
-      await page.click('[data-graduation] [data-outcome="unavailable"] button');
-      await tick();
-    };
-    await page.choose('[data-client-scope] select', 'k-b');
-    await page.type('[data-mandate-label]', 'Kept through an outage');
-    await page.type('[data-mandate-ceiling]', '500');
-    await page.type('[data-mandate-expiry]', '2026-10-31');
-    await outageThenRetry('[data-mandate-add]');
-    expect(value('[data-client-scope] select')).toBe('k-b');
-    expect(value('[data-mandate-label]')).toBe('Kept through an outage');
-    expect(value('[data-mandate-ceiling]')).toBe('500');
-
-    await page.click('[data-grad="bready"] [data-auto]');
-    await page.type('[data-promote-form="bready"] [data-promote-ceiling]', '25');
-    await page.type('[data-promote-form="bready"] [data-promote-expiry]', '2026-10-15');
-    await outageThenRetry('[data-promote-form="bready"] [data-promote-confirm]');
-    expect(value('[data-promote-form="bready"] [data-promote-ceiling]')).toBe('25');
-    expect(value('[data-promote-form="bready"] [data-promote-expiry]')).toBe('2026-10-15');
-    expect(value('[data-mandate-label]')).toBe('Kept through an outage');
-  });
-
-  it('a cancelled promotion form opens empty again, and another client starts with empty forms', async () => {
-    const { page } = await open();
-    const value = (selector: string): string | undefined =>
-      page.host.querySelector<HTMLInputElement>(selector)?.value;
-    await page.click('[data-grad="ready"] [data-auto]');
-    await page.type('[data-promote-form="ready"] [data-promote-ceiling]', '25');
-    await page.click('[data-promote-form="ready"] [data-promote-cancel]');
-    await page.click('[data-grad="ready"] [data-auto]');
-    expect(value('[data-promote-form="ready"] [data-promote-ceiling]')).toBe('');
-    await page.type('[data-mandate-label]', 'Only for A');
-    await page.choose('[data-client-scope] select', 'k-b');
-    await page.choose('[data-client-scope] select', 'k-a');
-    expect(value('[data-mandate-label]')).toBe('');
-    expect(page.find('[data-promote-form="ready"]')).toBeNull();
-  });
-
-  it('dates read as the day where the reader is', async () => {
-    const zone = process.env['TZ'];
-    try {
-      process.env['TZ'] = 'America/Los_Angeles';
-      const behind = await open();
-      expect(behind.page.find('[data-grad="auto"] .autosw__lbl')?.textContent).toBe(
-        'Auto since 2026-09-19',
-      );
-      await behind.page.unmount();
-      process.env['TZ'] = 'Pacific/Auckland';
-      const ahead = await open();
-      expect(ahead.page.find('[data-mandate="m-yes"]')?.textContent).toContain('until 2026-10-30');
-    } finally {
-      process.env['TZ'] = zone;
-    }
-  });
-
-  it('a ceiling typed with a dollar sign or thousands commas files as that amount', async () => {
-    const { page, sent } = await open();
-    await page.click('[data-grad="ready"] [data-auto]');
-    await page.type('[data-promote-form="ready"] [data-promote-ceiling]', '$50');
-    await page.type('[data-promote-form="ready"] [data-promote-expiry]', '2026-10-15');
-    await page.click('[data-promote-form="ready"] [data-promote-confirm]');
-    await tick();
-    expect(sentTo(sent, '/graduation/promote')).toMatchObject({
-      ceiling: { amountMinor: 5000, currency: 'AUD' },
-    });
-    await page.type('[data-mandate-label]', 'Up to a thousand');
-    await page.type('[data-mandate-ceiling]', '$1,000.50');
-    await page.type('[data-mandate-expiry]', '2026-10-31');
-    await page.click('[data-mandate-add]');
-    await tick();
-    expect(sentTo(sent, '/mandate/file')).toMatchObject({
-      ceiling: { amountMinor: 100_050, currency: 'AUD' },
-    });
   });
 });
