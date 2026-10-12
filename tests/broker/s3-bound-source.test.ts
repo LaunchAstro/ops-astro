@@ -262,3 +262,65 @@ it("AW-01 personal information stays local (S3) race: a call waits on an agent's
     await editor.close();
   }
 }, 120_000);
+
+it("AW-01 personal information stays local (S3) race: an agent's edit committed while the start waits on the task releases the call unsent", async () => {
+  const work = await liveWork(s, 's3 an edit during the start', 2_000);
+  await stepOf(work);
+  world.provider.mode('answer');
+  const request = requestFor(work, { fields: [bound(work.taskId)] });
+  const cloud = withRoutes([CLOUD]);
+  const reserving = await s.db.app.withBusiness(
+    s.business,
+    async (tx) => await reserveModelCall(tx, caller(work), request, cloud),
+  );
+  if (!reserving.ok) throw new Error(`the hold was refused ${reserving.code}`);
+  expect(reserving.reserved.route.reach).toBe('cloud');
+  const seen = world.provider.seen.length;
+  const editor = racer(s);
+  let commit!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    commit = resolve;
+  });
+  let written!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    written = resolve;
+  });
+  // The edit and its register row, held uncommitted until the start is parked on the task.
+  const editing = editor.withBusiness(s.business, async (tx) => {
+    await tx.query(
+      `update public.records set data = data || '{"title":"s3 edited during the start"}'::jsonb
+        where business_id = $1 and id = $2`,
+      [s.business, work.taskId],
+    );
+    await tx.query(AGENT_WROTE, agentWrote(work.taskId));
+    written();
+    await gate;
+  });
+  try {
+    await ready;
+    const starting = sendReservedCall(
+      s.db.app,
+      s.business,
+      caller(work),
+      request,
+      reserving.reserved,
+      cloud,
+    );
+    await awaitParked(s, 'records', 1);
+    commit();
+    await editing;
+    expect(await starting).toEqual({
+      ok: false,
+      code: 'LOCAL_MODEL_REQUIRED',
+      callId: reserving.reserved.callId,
+    });
+    expect(world.provider.seen.length).toBe(seen);
+    expect(await rowsOf(reserving.reserved.callId)).toMatchObject([
+      { state: 'released', started_at: null },
+    ]);
+  } finally {
+    commit();
+    await editing.catch(() => {});
+    await editor.close();
+  }
+}, 120_000);
