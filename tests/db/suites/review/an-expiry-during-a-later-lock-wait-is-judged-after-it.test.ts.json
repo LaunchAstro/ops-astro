@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a money step-up and a delegation that expire during a later lock wait are judged after it: the threshold is unchanged, and access end neither revokes nor counts the delegation"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two publications of one legal document at once commit one after the other, so the later commit is the current version"
+}
