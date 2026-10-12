@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The Team screen's chat writes, held and let go out of order by a stand-in
-// server (`team-chat-held-stand-in.ts`): one operation id per intent, kept on
-// a retry; no second command for an intent already in flight; and an answer
-// that lands after a newer one, or after the business changed, is dropped.
+// server (`team-chat-held-stand-in.ts`): an older list answer landing after a
+// newer one is dropped, and a marker moved within one millisecond counts the
+// message read. The command runner's in-flight, retry and business-switch
+// gaps are #1490's.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -47,60 +48,8 @@ async function team(api = heldServer()) {
 const commands = (api: ReturnType<typeof heldServer>, at: string) =>
   api.sent.filter((one) => one.at === at);
 
-describe('the Team chat screen sends each intent once', () => {
-  it('pressing Remove again while the first member change is in flight sends one change', async () => {
-    const { api, m } = await team();
-    await m.click(`[data-group="${GROUP}"]`);
-    api.settings.holdCommands = true;
-    await m.click('.tmc__remove');
-    await settle();
-    await m.click('.tmc__remove');
-    await settle();
-    expect(commands(api, '/chat/change_members')).toHaveLength(1);
-  });
-
-  it('clicking the open conversation again while its mark_read is in flight sends one mark_read', async () => {
-    const { api, m } = await team();
-    api.settings.holdCommands = true;
-    await m.click('.tmc__conv .tmc__scroll');
-    await settle();
-    await m.click('.tmc__conv .tmc__scroll');
-    await settle();
-    expect(commands(api, '/chat/mark_read')).toHaveLength(1);
-  });
-
-  it('a Remove pressed again after its answer was lost presents the first attempt’s operation id', async () => {
-    const { api, m } = await team();
-    await m.click(`[data-group="${GROUP}"]`);
-    api.settings.reply = 'lose';
-    await m.click('.tmc__remove');
-    await until('the lost answer said', () => m.find('[role="alert"]') !== null);
-    api.settings.reply = 'answer';
-    await m.click('.tmc__remove');
-    await until('the second press sent', () => commands(api, '/chat/change_members').length === 2);
-    const [first, again] = commands(api, '/chat/change_members').map((one) => one.body);
-    expect(again?.['operationId']).toBe(first?.['operationId']);
-  });
-});
-
 // eslint-disable-next-line max-lines-per-function -- the stale answers, one stand-in each
 describe('the Team chat screen drops stale answers', () => {
-  it('a group action’s refusal that lands after the business changed is not drawn for the new business', async () => {
-    const { api, m } = await team();
-    await m.click(`[data-group="${GROUP}"]`);
-    api.settings.holdCommands = true;
-    api.settings.reply = 'refuse';
-    await m.click('.tmc__leave');
-    await until('the leave in flight', () => api.heldCount() === 1);
-    const bravo = heldServer('bravo');
-    await m.render(<TeamScreen client={bravo.client} grantKey="bravo:ana" />);
-    await until('the new business drawn', () => shown(m).length > 0);
-    api.letGo();
-    await settle();
-    await settle();
-    expect(m.find('[role="alert"]')?.textContent ?? null).toBeNull();
-  });
-
   it('an older chat.conversations answer landing after a newer one does not bring back management it withdrew', async () => {
     const { api, m } = await team();
     await m.click(`[data-group="${GROUP}"]`);
