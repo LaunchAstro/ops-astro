@@ -68,7 +68,7 @@ const COLUMN_UPDATES: readonly {
  * `20261005003850_automations`) is `from` or later. Every four-digit ID sorts
  * before every fourteen-digit timestamp, so both are padded to fourteen.
  */
-const reached = (at: string, from: string): boolean =>
+export const reached = (at: string, from: string): boolean =>
   (at.split('_', 1)[0] ?? at).padStart(14, '0') >= from.padStart(14, '0');
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
@@ -167,11 +167,6 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   ].map(([act, column]) => ({
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
-  })),
-  // 20261012133600: a Send Email hook message is claimed and read by its digest alone.
-  ...['INSERT', 'SELECT'].map((act) => ({
-    from: '20261012133600',
-    line: `ops_astro_app ${act} ops.auth_hook_messages.message_digest`,
   })),
   // C31: custody's select leaves out the three sealed columns (20261005023013).
   ...[

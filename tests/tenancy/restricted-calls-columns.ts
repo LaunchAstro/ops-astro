@@ -10,6 +10,7 @@ import { describeOutcome } from './restricted-calls-cases.ts';
 import {
   catalogueColumnGrants,
   columnUpdatesAt,
+  reached,
   roleColumnGrantsAt,
 } from './restricted-calls-catalogue.ts';
 import {
@@ -18,6 +19,14 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+
+/**
+ * 20261012133600: a Send Email hook message is claimed and read by its digest
+ * alone. Kept here because the catalogue file is at its line limit.
+ */
+const HOOK_CLAIM_GRANTS = ['INSERT', 'SELECT'].map(
+  (act) => `${APPLICATION_ROLE} ${act} ops.auth_hook_messages.message_digest`,
+);
 
 /**
  * The column grants held against the contract, then an actual update of each
@@ -37,12 +46,13 @@ export async function columnUpdateFindings(
   const wanted = [
     ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
     ...roleColumnGrantsAt(at),
+    ...(at === undefined || reached(at, '20261012133600') ? HOOK_CLAIM_GRANTS : []),
   ].toSorted();
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {
     // One table at a time: the callers share their connections.
     // oxlint-disable-next-line no-await-in-loop
-    wrong.push(...(await columnCalls(admin, callers, active, business, pair)));
+    wrong.push(...(await columnCalls(admin, callers, active, business, pair, at)));
   }
   return wrong;
 }
@@ -52,18 +62,19 @@ export async function columnUpdateFindings(
  * past privilege and tenancy. 20261006080000 (MP-14-10a): a standing mandate is
  * written once, so an update that does not move its revision by one is refused
  * as a constraint (23001, restrict_violation). 20261012133600: an activation's
- * change moves its revision one step at `now()`, so the same (23514).
+ * change moves its revision one step, so the same (23514). Each from its migration.
  */
 const OWN_UPDATE_REFUSALS: Readonly<Record<string, string>> = {
-  'public.activations': 'constraint',
-  'public.standing_mandates': 'constraint',
+  'public.activations': '20261012133600',
+  'public.standing_mandates': '20261006080000',
 };
 
 /** A column update's answer: the own business its own rows, other application positions none. */
-function columnExpected(caller: CallerName, own: string, table: string): string {
+function columnExpected(caller: CallerName, own: string, table: string, at?: string): string {
   if (!APPLICATION_CALLERS.has(caller)) return 'denied';
   if (caller !== 'login in the wrapper, own tenant') return 'rows 0';
-  return OWN_UPDATE_REFUSALS[table] ?? own;
+  const from = OWN_UPDATE_REFUSALS[table];
+  return from !== undefined && (at === undefined || reached(at, from)) ? 'constraint' : own;
 }
 
 async function columnCalls(
@@ -72,6 +83,7 @@ async function columnCalls(
   active: readonly CallerName[],
   business: string,
   pair: string,
+  at?: string,
 ): Promise<string[]> {
   const table = pair.slice(0, pair.lastIndexOf('.'));
   const column = pair.slice(pair.lastIndexOf('.') + 1);
@@ -90,7 +102,7 @@ async function columnCalls(
     const outcome = describeOutcome(await callers.call(caller, text, [business]));
     // oxlint-disable-next-line no-await-in-loop
     const after = await fingerprint(admin, table);
-    const expected = columnExpected(caller, own, table);
+    const expected = columnExpected(caller, own, table, at);
     const line = `${pair} update ${caller}: ${outcome}`;
     if (outcome !== expected) wrong.push(`${line}, expected ${expected}`);
     if (before !== after) wrong.push(`${line}, the table changed`);
