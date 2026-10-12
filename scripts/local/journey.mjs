@@ -186,7 +186,8 @@ function afterJourney() {
     const file = join(evidence, 'runtime-proofs.txt');
     const own = ['--name', `${container}-proofs`, '--port', ports.proofsPg];
     const api = ['--api-port', ports.proofsApi, '--evidence', file];
-    const legs = run('bash', ['scripts/local/runtime-proofs.sh', ...own, ...api]);
+    // It never pulls: the preflight found the image, and a pull now would be a different run.
+    const legs = run('bash', ['scripts/local/runtime-proofs.sh', '--no-pull', ...own, ...api]);
     record(proofs, legs.ok ? 'pass' : 'fail', `evidence ${file}`);
     const env = { DATABASE_URL: admin, DATABASE_ADMIN_URL: admin };
     const named = run(process.execPath, ['scripts/db-conformance.mjs'], env);
