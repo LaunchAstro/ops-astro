@@ -20,7 +20,8 @@ export interface HeldPermission {
   readonly scope: Scope;
   /**
    * Named on an acting identity no longer active: listed so it can be found
-   * and revoked, and no authority, as no sign-in acts through that identity.
+   * and revoked, and no authority for a sign-in, as none acts through that
+   * identity. A Launch minted on it still draws on it (`delegatingSubjects`).
    */
   readonly dormant: boolean;
 }
@@ -30,9 +31,10 @@ export interface HeldPermission {
  * names, or the person behind the acting identity it names. It is
  * `EFFECTIVE`, the walk `effectiveGrants` asks, so what it answers is what
  * the grant check grants. A grant on an inactive acting identity grants
- * nothing, so it is left out unless `dormant` asks for it, and then marked:
- * a list of grants to revoke takes it, and a preview or a rank check never
- * does. A group grant reaches nobody here, because no group has members yet.
+ * nothing to a sign-in, so it is left out unless `dormant` asks for it, and
+ * then marked: a list of grants to revoke takes it, as does the preview of a
+ * Launch minted on that identity, and a person's preview or a rank check
+ * never does. A group grant reaches nobody here, because no group has members yet.
  */
 export async function heldPermissions(
   tx: TenantQuery,

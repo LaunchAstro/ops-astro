@@ -51,7 +51,8 @@ afterAll(async () => {
   if (serverUrl !== undefined) await closeLegal();
 });
 
-async function open(path: string, signedIn: boolean) {
+/** Noah's session held, or none. */
+function sessionsFor(signedIn: boolean): SessionStore {
   const session = {
     token: harness.world.noah.token,
     businessKey: 'alpha',
@@ -60,7 +61,7 @@ async function open(path: string, signedIn: boolean) {
   const held = new Map<string, string>(
     signedIn ? [['ops-astro.session', JSON.stringify(session)]] : [],
   );
-  const sessions = new SessionStore({
+  return new SessionStore({
     getItem: (key) => held.get(key) ?? null,
     setItem: (key, value) => {
       held.set(key, value);
@@ -69,6 +70,10 @@ async function open(path: string, signedIn: boolean) {
       held.delete(key);
     },
   });
+}
+
+async function open(path: string, signedIn: boolean) {
+  const sessions = sessionsFor(signedIn);
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     if (signedIn && !String(url).startsWith('/api/public/')) {
@@ -99,7 +104,9 @@ async function open(path: string, signedIn: boolean) {
       break;
     // oxlint-disable-next-line no-await-in-loop -- polled one step at a time
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
     });
   }
   return view;

@@ -252,16 +252,16 @@ function once(held: readonly AccessPermission[]): AccessPermission[] {
  * What `checkDelegatedAuthority` grants the agent: each collection and action
  * its purpose carries, except `decide`, that its person holds by a grant
  * naming them (or, for a Launch's, the acting identity it was minted on, as
- * `delegatingSubjects` says), at business scope or on the delegation's one
- * record; and only ever on that record.
+ * `delegatingSubjects` says, even once that identity is inactive), at
+ * business scope or on the delegation's one record; and only ever on that
+ * record.
  */
 function agentOf(row: DelegationRow, held: readonly HeldPermission[]): AccessAgent {
   const scope = { kind: row.purpose_scope_kind, id: row.purpose_scope_id };
   const drawn = held.filter(
     (permission) =>
       permission.personId === row.person_id &&
-      (permission.direct ||
-        (row.launch && !permission.dormant && permission.actorId === row.minted_by_actor_id)) &&
+      (permission.direct || (row.launch && permission.actorId === row.minted_by_actor_id)) &&
       permission.action !== 'decide' &&
       row.collections.includes(permission.collection) &&
       row.actions.includes(permission.action) &&

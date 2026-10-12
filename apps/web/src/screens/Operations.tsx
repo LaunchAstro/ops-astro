@@ -34,16 +34,22 @@ export interface OperationsScreenProps {
   readonly address?: string | undefined;
 }
 
-/** The runbook version and digest an evidence link pins (`legalVersionPath`), or none. */
-function runbookPinOf(
-  address: string | undefined,
-): { readonly runbookVersion: string; readonly runbookDigest: string } | null {
+/**
+ * The runbook version and digest an evidence link pins (`legalVersionPath`),
+ * or null for none. Half a pin is sent as it is, for the read to refuse, so
+ * it never shows the latest runbook in its place.
+ */
+function runbookPinOf(address: string | undefined): Record<string, string> | null {
   const query = new URL(address ?? '/', 'http://here').searchParams;
-  const runbookVersion = query.get('runbook');
-  const runbookDigest = query.get('digest');
-  return runbookVersion === null || runbookDigest === null
-    ? null
-    : { runbookVersion, runbookDigest };
+  const pin: Record<string, string> = {};
+  for (const [name, operand] of [
+    ['runbook', 'runbookVersion'],
+    ['digest', 'runbookDigest'],
+  ] as const) {
+    const value = query.get(name);
+    if (value !== null) pin[operand] = value;
+  }
+  return Object.keys(pin).length === 0 ? null : pin;
 }
 
 /** What each unattended item is owed for, said of its recipient. */
@@ -163,7 +169,7 @@ export function OperationsScreen(props: OperationsScreenProps): ReactElement {
   const { state, reload, own } = useRead<OperationsReadResult>({
     grantKey,
     run: () => client.read<OperationsReadResult>('operations.read', pin ?? {}),
-    deps: [client, pin?.runbookVersion, pin?.runbookDigest],
+    deps: [client, pin?.['runbookVersion'], pin?.['runbookDigest']],
   });
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
