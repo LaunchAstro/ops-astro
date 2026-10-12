@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { savePreference } from '../../apps/web/src/data/preference-saves.ts';
 import { nextRequest, type Tag } from '../../apps/web/src/data/owned.ts';
-import { tabOwnerGeneration } from '../../apps/web/src/session/token.ts';
+import { SessionStore, tabOwnerGeneration } from '../../apps/web/src/session/token.ts';
 
 interface Gate {
   readonly open: Promise<void>;
@@ -62,6 +62,34 @@ const turn = (): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+
+it('a repair queued behind a held save sends nothing once the tab owner has left', async () => {
+  const api = world();
+  const older = api.client('older');
+  const newer = api.client('newer');
+  const person = 'alpha:ada:repair-after-sign-out';
+  const darkHeld = api.hold('older', 'dark');
+  const dark = savePreference(older, 'appearance', 'dark', tag(person));
+  await turn();
+  await savePreference(newer, 'appearance', 'light', tag(person));
+  const densityHeld = api.hold('newer', 'compact');
+  const density = savePreference(newer, 'density', 'compact', tag(person));
+  await turn();
+  darkHeld.release();
+  await dark;
+  await turn();
+  // The person signs out while the repair waits behind the held density save.
+  new SessionStore(null).clear();
+  densityHeld.release();
+  await density;
+  await turn();
+  await turn();
+  expect(api.sent).toEqual([
+    ['older', 'appearance', 'dark'],
+    ['newer', 'appearance', 'light'],
+    ['newer', 'density', 'compact'],
+  ]);
+});
 
 it('a queued repair does not keep its value over a choice made after it', async () => {
   const api = world();
