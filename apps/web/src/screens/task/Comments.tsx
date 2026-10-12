@@ -26,8 +26,9 @@
 // which the stale path below handles. While the outcome is unknown the words,
 // recipients, audience and reply stay locked; Send retries that exact attempt.
 // Once a retry is refused, the person may Stop waiting: the attempt is let go
-// by its operation id, every box showing it keeps its words as an unsent
-// draft, and the next Send is a new attempt.
+// by its operation id, every box showing it (or coming back still holding it
+// after a reread) keeps its words as an unsent draft, and the next Send is a
+// new attempt.
 //
 // **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
 // Client with their counts, and All activity with none. It opens on Internal
@@ -59,7 +60,7 @@ import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommentCustody } from './comment-custody-context.tsx';
-import type { CommentHold, PendingComment } from './comment-custody.ts';
+import type { CommentCustody, CommentHold, PendingComment } from './comment-custody.ts';
 import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
 import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
 import { useRowActions } from './row-actions.ts';
@@ -192,7 +193,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
   });
   const because = hold.failure?.because ?? props.refusal;
   const form = useRef<HTMLFormElement>(null);
-  useCommentSettlement(props, hostDraft, hold);
+  useCommentSettlement(props, hostDraft, hold, custody);
 
   const post = (): void => {
     if (cannotPost) return;
@@ -328,13 +329,28 @@ function OwnedComments(props: CommentsProps): ReactElement {
   );
 }
 
-/** A known answer consumes only this host's submitted draft, including after a reread remount. */
+/**
+ * A known answer consumes only this host's submitted draft, including after a
+ * reread remount. A box that was away when its held attempt was let go comes
+ * back with that operation id while later settlements have moved on: it drops
+ * the id and keeps the words as an unsent draft, so Send is a new attempt.
+ */
 function useCommentSettlement(
   props: CommentsProps,
   hostDraft: CommentDraft,
   hold: CommentHold,
+  custody: CommentCustody,
 ): void {
   const held = hold.pending;
+  const away = hostDraft.pending;
+  useEffect(() => {
+    if (
+      away !== null &&
+      held?.operationId !== away.operationId &&
+      custody.abandoned(away.operationId)
+    )
+      props.onDraft({ ...hostDraft, pending: null });
+  }, [away, held, custody, props, hostDraft]);
   const because = hold.failure?.because ?? props.refusal;
   const observed = useRef(
     !hold.busy && held === null && matchesSubmittedDraft(hostDraft, hold.settled, props.comments)
