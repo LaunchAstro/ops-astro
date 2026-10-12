@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the client crossing's task.create is its own attempt under its own operation id on the app's client, the CLI and the API, each refused by its own grant check and never a replay, writing no task; a send whose answer is lost, sent again under its operation id on any surface, files its task once"
+}
