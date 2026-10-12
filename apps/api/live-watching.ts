@@ -237,8 +237,8 @@ interface Run {
  * The board stream's questions (INB-1f) for one tab. A run's tasks digest,
  * inbox digest and join are asked in that order with one check of the bearer.
  * A run a signal woke is shared with the other boards of the same credential
- * that began after this board's signal (`gather.ts`, #620); the stream's own checks, at
- * join and on the recheck, are its own. Every run asks again, so a bearer
+ * whose runs a signal woke and that ask before it begins (`gather.ts`, #620);
+ * the stream's own checks, at join and on the recheck, are its own. Every run asks again, so a bearer
  * revoked or remapped since is caught by that run (ORCH46); a join asked after
  * the run's own, a conversation's (C71), is asked afresh.
  */
@@ -261,25 +261,25 @@ export function boardQuestions(
   };
   let run: Promise<Run> | undefined;
   let joinTaken = false;
-  let since: number | undefined;
+  let shared = false;
   const asked = async (personId: string): Promise<Run> => {
     const tasks = await mayReach(door, context, businessId, personId);
     const inbox = await mayShowInbox(door, context, businessId, personId);
     return { tasks, inbox, joined: await joinedNow() };
   };
   const ask = async (personId: string): Promise<Run> =>
-    await (run ??=
-      since === undefined
-        ? asked(personId)
-        : gather(`${businessId}\u0000${credential}\u0000${personId}`, since, async () => {
-            return await asked(personId);
-          }));
+    await (run ??= shared
+      ? gather(
+          `${businessId}\u0000${credential}\u0000${personId}`,
+          async () => await asked(personId),
+        )
+      : asked(personId));
   return {
-    newRun: (heardAt) => {
+    newRun: (heard) => {
       checked = undefined;
       run = undefined;
       joinTaken = false;
-      since = heardAt;
+      shared = heard;
     },
     reach: async (personId) => (await ask(personId)).tasks,
     shown: async (personId) => (await ask(personId)).inbox,
