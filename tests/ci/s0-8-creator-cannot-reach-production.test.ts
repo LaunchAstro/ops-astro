@@ -42,6 +42,7 @@ function creator(env: Env, answer: () => Response = () => Response.json(JOB), pu
       {
         env,
         push: (v, branch) => (pushes.push([v, branch]), pushed),
+        head: () => pushes.at(-1)?.[0],
         post: (url, init) => (posts.push([url, init]), Promise.resolve(answer())),
       },
     );

@@ -49,6 +49,8 @@ export interface PreviewDeps {
   readonly env: Environment;
   /** Puts `version` on `branch` at origin; true when the push took. */
   readonly push: (version: string, branch: string) => boolean;
+  /** The commit `branch` holds at origin, or undefined when it cannot be read. */
+  readonly head: (branch: string) => string | undefined;
   readonly post: (url: string, init: RequestInit) => Promise<Response>;
 }
 
@@ -64,13 +66,25 @@ export const pushArgs = (version: string): string[] => [
 /** What git needs to find itself and the person's sign-in; no hook, database or bearer value. */
 const GIT_KEPT = ['PATH', 'HOME', 'TMPDIR', 'SSH_AUTH_SOCK', 'GIT_SSH_COMMAND'];
 
+const gitEnvironment = (env: Environment): Environment =>
+  Object.fromEntries(GIT_KEPT.flatMap((name) => (env[name] ? [[name, env[name]]] : [])));
+
 /** The push the command uses: the person's git, its environment held to `GIT_KEPT`. */
 export function gitPush(version: string, env: Environment): boolean {
-  const kept = Object.fromEntries(
-    GIT_KEPT.flatMap((name) => (env[name] ? [[name, env[name]]] : [])),
-  );
-  const result = spawnSync('git', pushArgs(version), { env: kept, stdio: 'inherit' });
+  const result = spawnSync('git', pushArgs(version), {
+    env: gitEnvironment(env),
+    stdio: 'inherit',
+  });
   return result.status === 0;
+}
+
+/** The commit the preview branch holds at origin, read as the push is made. */
+export function gitHead(env: Environment): string | undefined {
+  const result = spawnSync('git', ['ls-remote', 'origin', `refs/heads/${PREVIEW_BRANCH}`], {
+    env: gitEnvironment(env),
+    encoding: 'utf8',
+  });
+  return result.status === 0 ? result.stdout.split('\t')[0] : undefined;
 }
 
 /** Why the settings cannot create a preview, naming each setting, never its value. */
@@ -120,6 +134,14 @@ export async function requestPreview(
   );
   if (job === undefined)
     return { kind: 'failed', reason: 'the deploy hook did not answer a job; nothing was recorded' };
+  // Every request shares the branch, and the hook builds what it holds. One
+  // that moved before the hook answered may have been built in this one's
+  // place, so the record would name a commit the job did not build.
+  if (deps.head(PREVIEW_BRANCH) !== request.version)
+    return {
+      kind: 'failed',
+      reason: `another request moved ${PREVIEW_BRANCH} before the hook answered; nothing was recorded, ask again`,
+    };
   const project = deps.env['PREVIEWS_VERCEL_PROJECT_ID'] ?? '';
   const record = { action: 'preview requested', version: request.version, project, job } as const;
   return { kind: 'requested', record: { ...record, branch: PREVIEW_BRANCH } };
