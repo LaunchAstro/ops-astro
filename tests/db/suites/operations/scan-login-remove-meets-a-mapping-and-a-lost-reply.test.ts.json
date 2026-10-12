@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent mapping made live again in another business while scan-login cleanup holds the subject lock is refused or keeps the account, and a remove whose provider delete reply is lost, run again, deletes once; the race needs the CLI's own connection and the test's."
+}
