@@ -23,12 +23,7 @@
 
 import { useContext, useEffect, useRef, useState, type ReactElement } from 'react';
 import { Button, Card } from '@launchastro/ui';
-import {
-  isRefusal,
-  type CallResult,
-  type IssuedFactor,
-  type OperationsClient,
-} from '../../operations/client.ts';
+import { isRefusal, type CallResult, type IssuedFactor } from '../../operations/client.ts';
 import { describeFailure } from '../../records/submit.ts';
 import { SignInAgainContext, StepUpContext } from '../../records/use-money-command.ts';
 import { CodeField } from '../../views/step-up-prompt.tsx';
@@ -36,6 +31,8 @@ import {
   Buttons,
   RemoveForm,
   SIX_DIGITS,
+  afterOwnLast,
+  type Owner,
   SignInAgainForm,
   useCheck,
   useRestart,
@@ -80,12 +77,8 @@ function refusedStage(result: CallResult<IssuedFactor>, canSignIn: boolean): Sta
   return { at: 'idle', said };
 }
 
-// The last enrol sent from any panel, as its settling and not its answer. A cancelled one still
-// lands and would replace the factor whose key is shown, so the next waits for it, as Start does.
-let landing: Promise<unknown> = Promise.resolve();
-
 /** The enrol and its stage; every answer is dropped once cancelled or left. */
-function useEnrol(client: OperationsClient) {
+function useEnrol({ client, grantKey }: Owner) {
   const canSignIn = useContext(SignInAgainContext) !== null;
   const [stage, setStage] = useState<Stage>(IDLE);
   const [settling, setSettling] = useState(false);
@@ -101,8 +94,8 @@ function useEnrol(client: OperationsClient) {
     const mine = asked.current;
     setStage({ at: 'asking' });
     setSettling(true);
-    const sent = landing.then(async () => await client.enrolFactor()).catch(() => UNSENT);
-    landing = (async () => {
+    const sent = afterOwnLast(grantKey, async () => await client.enrolFactor()).catch(() => UNSENT);
+    void (async () => {
       const result = await sent;
       setSettling(false);
       if (asked.current !== mine) return;
@@ -255,9 +248,9 @@ function Actions(props: {
   );
 }
 
-export function AuthenticatorSetup(props: { readonly client: OperationsClient }): ReactElement {
+export function AuthenticatorSetup(props: Owner): ReactElement {
   const signedIn = useContext(StepUpContext) !== null;
-  const { stage, settling, setStage, start, cancel, done, removed } = useEnrol(props.client);
+  const { stage, settling, setStage, start, cancel, done, removed } = useEnrol(props);
   const restart = useRestart(props.client, start);
   const at = stage.at;
   return (

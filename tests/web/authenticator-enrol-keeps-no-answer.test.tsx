@@ -36,7 +36,7 @@ const clientOf = (enrols: (() => Promise<CallResult<IssuedFactor>>)[]): Operatio
 const panel = async (client: OperationsClient) =>
   await mount(
     <StepUpContext.Provider value={stepUp}>
-      <AuthenticatorSetup client={client} />
+      <AuthenticatorSetup grantKey="alpha:owner@example.test:0" client={client} />
     </StepUpContext.Provider>,
   );
 

@@ -21,6 +21,27 @@ import { CodeField, PasswordField } from '../../views/step-up-prompt.tsx';
 
 export const SIX_DIGITS = /^\d{6}$/u;
 
+/** Whose panel it is: their client, and the grant key their enrols queue under. */
+export interface Owner {
+  readonly client: OperationsClient;
+  readonly grantKey: string;
+}
+
+// The last enrol each person sent in each business, by grant key, as its settling and not its
+// answer. A cancelled one still lands and would replace that person's factor whose key is shown,
+// so their next waits for it, as Start does. Nobody else's waits: one that never answers holds
+// back only its own person.
+const landing = new Map<string, Promise<void>>();
+const settled = (): void => {};
+
+/** Send `enrol` once this person's earlier enrol in this business has settled. */
+export function afterOwnLast<T>(grantKey: string, enrol: () => Promise<T>): Promise<T> {
+  const sent = (landing.get(grantKey) ?? Promise.resolve()).then(enrol);
+  // Its settling only: the issued factor is never kept here.
+  landing.set(grantKey, sent.then(settled, settled));
+  return sent;
+}
+
 type Checked = { readonly ok: true } | { readonly ok: false; readonly because: string };
 
 /** One check in flight, its words when it fails, and nothing drawn once the form is gone. */

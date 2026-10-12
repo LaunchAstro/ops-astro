@@ -63,7 +63,9 @@ afterEach(async () => {
 });
 
 async function panel(route: Route) {
-  const drawn = await drawSignedIn(route, (client) => <AuthenticatorSetup client={client} />);
+  const drawn = await drawSignedIn(route, (client) => (
+    <AuthenticatorSetup grantKey="alpha:owner@example.test:0" client={client} />
+  ));
   live.push(drawn.view);
   await settle();
   return drawn;
