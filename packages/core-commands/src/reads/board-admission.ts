@@ -4,12 +4,7 @@
 // names a live task: the catalogue's board helpers (`reads/catalogue.ts`),
 // kept beside it so the catalogue stays under the line cap.
 
-import {
-  canonicalUuid,
-  readableScope,
-  isUuid,
-  subjectsOf,
-} from '../../../core-records/src/index.ts';
+import { readableScope, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -52,9 +47,7 @@ export async function boardAdmission(
   const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
   const pool = typeof board === 'object' && board !== null ? board : { board };
   if ('mode' in pool && !scope.business) return { refusal: refuseScope() };
-  // Matched against the grants' own spelling.
-  const named = 'board' in pool ? pool.board : null;
-  const selected = typeof named === 'string' ? canonicalUuid(named) : null;
+  const selected = 'board' in pool ? pool.board : null;
   const unreadable = (one: string | null): boolean =>
     !scope.business && (one === null ? scope.records.length === 0 : !scope.records.includes(one));
   if (unreadable(null)) return { refusal: refuseScope() };

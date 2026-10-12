@@ -22,7 +22,7 @@
 // no other task. A step archived by its parent's completion (MP-4-15) is not
 // open work, so it takes no number until the parent is reopened.
 
-import { canonicalUuid, readableRecordIds, type Subject } from '../../../core-records/src/index.ts';
+import { readableRecordIds, type Subject } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { priorityStageIds, type RankView } from '../../../core-wire/src/index.ts';
 
@@ -186,11 +186,9 @@ export async function readTaskRank(
   recordId: string,
   pool: RankPool,
 ): Promise<RankView> {
-  // Compared with the selected rows, so on the id's one spelling.
-  const id = canonicalUuid(recordId);
   const readable =
     pool.kind === 'task'
-      ? [id]
+      ? [recordId]
       : await readableRecordIds(tx, pool.subjects, {
           collection: 'task',
           action: 'read',
@@ -211,9 +209,9 @@ export async function readTaskRank(
         and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and (r.id = $3 or r.id = any($4::uuid[]))`,
-    [tx.businessId, taskTypeId, id, readable],
+    [tx.businessId, taskTypeId, recordId, readable],
   );
-  const own = rows.find((row) => row.id === id);
+  const own = rows.find((row) => row.id === recordId);
   if (own === undefined) return { number: null, score: null, calc: '' };
   const now = own.now;
   const numbers = numberPool(
@@ -222,7 +220,7 @@ export async function readTaskRank(
   );
   const scored = scoreTask(rankInputOf(own), now);
   return {
-    number: numbers.get(id) ?? null,
+    number: numbers.get(recordId) ?? null,
     score: scored.score,
     calc: calcLine(scored),
   };

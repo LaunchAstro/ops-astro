@@ -251,7 +251,7 @@ export {
   type TenantQuery,
   type TransactionQuery,
 } from './tenancy/database.ts';
-export { canonicalUuid, isUuid } from './tenancy/ids.ts';
+export { isUuid } from './tenancy/ids.ts';
 export * from './onboarding/index.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

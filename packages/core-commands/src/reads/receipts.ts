@@ -10,12 +10,7 @@
 // attempt with no observed effect has no receipt. The receipt is the runtime's derived view
 // (`core-runtime/src/receipt.ts`) and names no operation to undo it.
 
-import {
-  canonicalUuid,
-  isUuid,
-  type Session,
-  type TenantQuery,
-} from '../../../core-records/src/index.ts';
+import { isUuid, type Session, type TenantQuery } from '../../../core-records/src/index.ts';
 import { readReceipt, receiptTask, type Receipt } from '../../../core-runtime/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
 import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -54,8 +49,6 @@ export async function serveReceipt(
   { recordId }: { readonly recordId: string | undefined },
 ): Promise<{ readonly ok: true; readonly receipt: Receipt } | CommandRefusal> {
   if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
-  // The effect's operation identity is built from the id's one spelling.
-  const id = canonicalUuid(attemptId);
-  const receipt = await readReceipt(tx, id, effectOperationId(id));
+  const receipt = await readReceipt(tx, attemptId, effectOperationId(attemptId));
   return receipt === undefined ? refuseNotFound() : { ok: true, receipt };
 }
