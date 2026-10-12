@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a client-to-client task.create sent with a complete, valid body is refused by the grant on the other client's task on the app's client, the CLI and the API, not by the body's shape"
+}
