@@ -41,9 +41,8 @@ function decoded(raw: string): string {
 /** The first `name` value in `search`, decoded by `decoded`; null when absent. */
 function queryParam(search: string, name: string): string | null {
   for (const pair of search.split('&')) {
-    const at = pair.indexOf('=');
-    if (decoded(at === -1 ? pair : pair.slice(0, at)) === name)
-      return at === -1 ? '' : decoded(pair.slice(at + 1));
+    const [key = '', ...value] = pair.split('=');
+    if (decoded(key) === name) return decoded(value.join('='));
   }
   return null;
 }
