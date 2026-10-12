@@ -41,7 +41,10 @@ it('a board task event cannot name a task revoked after the final read sampled i
     await vi.waitFor(() => expect(writes.some((frame) => frame.event === 'resync')).toBe(true));
     hear({ kind: 'task', taskId });
     await new Promise((resolve) => { setTimeout(resolve, 40); });
-    expect(writes).not.toContainEqual({ event: 'invalidate', data: taskId });
+    // The reads did not move, so nothing more is said, and no frame names the task.
+    expect(writes.map((frame) => frame.event)).toEqual(['resync']);
+    expect(writes.every((frame) => frame.data === '')).toBe(true);
+    expect(JSON.stringify(writes)).not.toContain(taskId);
   } finally {
     stream.abort();
     await running;
