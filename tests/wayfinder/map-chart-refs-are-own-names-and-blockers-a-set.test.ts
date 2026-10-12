@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `map.chart` through the envelope: a ticket's `blockedBy` is a set, as
-// `task.set_blocking` treats it, so a repeated ref charts one blocking edge.
+// `task.set_blocking` treats it, so a repeated ref charts one blocking edge;
+// and a ref is the caller's own name, so one spelled like an inherited object
+// key (`__proto__`, `toString`, `constructor`) maps to its own new ticket and
+// blocks as itself.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -40,5 +43,21 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('map.chart refs', ()
     ]);
     expect(code).toBe('applied');
     expect(await blockersOf(tickets['b'])).toStrictEqual([tickets['a']]);
+  });
+
+  it('a ref named like an inherited object key maps to its own ticket and blocks as itself', async () => {
+    for (const ref of ['__proto__', 'toString', 'constructor']) {
+      // oxlint-disable-next-line no-await-in-loop
+      const { code, tickets } = await chart([
+        { ref, title: 'A', type: 'research' },
+        { ref: 'b', title: 'B', type: 'task', blockedBy: [ref] },
+      ]);
+      expect(code, ref).toBe('applied');
+      expect(Object.keys(tickets).toSorted(), ref).toStrictEqual([ref, 'b'].toSorted());
+      const own = Object.getOwnPropertyDescriptor(tickets, ref)?.value as unknown;
+      expect(typeof own, ref).toBe('string');
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await blockersOf(tickets['b']), ref).toStrictEqual([own]);
+    }
   });
 });
