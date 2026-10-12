@@ -16,8 +16,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { agentWorld, codeOf, detailOf, type AgentWorld, type Decider } from './agent-fixture.ts';
-import { grantTo, WHOLE_BUSINESS } from './fixture.ts';
+import {
+  agentWorld,
+  codeOf,
+  detailOf,
+  type AgentWorld,
+  type Decider,
+} from '../commands/agent-fixture.ts';
+import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 
