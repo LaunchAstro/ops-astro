@@ -46,9 +46,14 @@ async function pinOf(id: string) {
     partyId: string;
     pageUrl: string;
     targetPath: string;
+    word: string;
+    replacement: string;
+    preImageDigest: string;
+    baseRevision: string;
   }>(
     `select seam, version_digest as version, party_id as "partyId", page_url as "pageUrl",
-            target_path as "targetPath"
+            target_path as "targetPath", word, replacement,
+            pre_image_digest as "preImageDigest", base_revision as "baseRevision"
        from public.live_corrections where id = $1`,
     [id],
   );
@@ -57,18 +62,27 @@ async function pinOf(id: string) {
   return pin;
 }
 
-/** The pin's binding on a party's site: the pin's own party and seam unless named. */
+/** The pin's binding of its approved bytes: on its own party's site and seam unless named. */
 function bindingOf(
   pin: Awaited<ReturnType<typeof pinOf>>,
   named: { readonly seam?: string | undefined; readonly party?: string | undefined },
+  approved?: SiteBinding['change'],
 ): SiteBinding {
   const partyId = named.party ?? pin.partyId;
+  const { targetPath: path, word, replacement, preImageDigest, baseRevision, pageUrl } = pin;
   const made = siteBindingFor(
     siteOf(partyId),
     { ...pin, partyId, seam: named.seam ?? pin.seam },
     {
       proposal: { request: '17', head: HEAD, versionDigest: pin.version },
-      change: { before: BEFORE, after: AFTER },
+      change: approved ?? { before: BEFORE, after: AFTER },
+      version: {
+        target: { path, word, replacement },
+        preImageDigest,
+        baseRevision,
+        pageUrl,
+        seam: pin.seam,
+      },
     },
   );
   if (!made.ok) throw new Error(`not bound: ${made.code}`);
@@ -84,6 +98,9 @@ interface Given {
   readonly wrap?: (site: Provider) => Transport;
   /** The page's status as served: anything but 200 the fence refuses. */
   readonly status?: number;
+  /** The bytes the correction was requested with, when not BEFORE and AFTER. */
+  readonly approved?: SiteBinding['change'];
+  /** Bytes the binding holds in place of the approved ones. */
   readonly change?: SiteBinding['change'];
 }
 
@@ -98,7 +115,7 @@ export async function bound(id: string, given: Given = {}): Promise<Bound> {
     request: { number: 17, head: HEAD, merged: false },
   });
   const binding = {
-    ...bindingOf(pin, { seam, party: given.party?.() }),
+    ...bindingOf(pin, { seam, party: given.party?.() }, given.approved),
     ...(given.change === undefined ? {} : { change: given.change }),
   };
   site.state.content = binding.change.before;

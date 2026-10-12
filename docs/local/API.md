@@ -3681,7 +3681,8 @@ statement? }`: one of the eight items, three closing lines or the procedure
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
   While any item is open it is refused `INSTALLATION_NOT_READY` 409 naming
   them; `mode: 'made-up'` is refused `INSTALLATION_MODE_ONE_WAY` 409; an
-  installation already real answers `ok` and changes nothing.
+  installation already real is refused `TRANSITION_NOT_PERMITTED` 409 naming
+  `mode=real`, writes nothing and audits only the refusal.
 
 The application's role reads both tables; it may insert a gate item and update
 the mode alone, and nothing else, and it writes them only through these two

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an approved scheduled activation fires through the occurrence sweep once per due time, never when turned off, and never in another business"
+}

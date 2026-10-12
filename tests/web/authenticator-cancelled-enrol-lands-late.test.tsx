@@ -86,7 +86,7 @@ it('a cancelled enrolment cannot invalidate the displayed replacement when it fi
   };
   const view = await mount(
     <StepUpContext.Provider value={stepUp}>
-      <AuthenticatorSetup client={client} />
+      <AuthenticatorSetup grantKey="alpha:owner@example.test:0" client={client} />
     </StepUpContext.Provider>,
   );
   try {

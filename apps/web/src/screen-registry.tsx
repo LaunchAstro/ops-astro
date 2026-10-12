@@ -134,7 +134,11 @@ export const SCREENS: {
         storage={context.storage}
       />
       <OwnSessions client={context.client} grantKey={context.grantKey} />
-      <AuthenticatorSetup key={context.grantKey} client={context.client} />
+      <AuthenticatorSetup
+        key={context.grantKey}
+        grantKey={context.grantKey}
+        client={context.client}
+      />
       <p>
         <a href={pathTo('agency:password')}>Change your password</a>
       </p>

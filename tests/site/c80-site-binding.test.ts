@@ -8,6 +8,7 @@ import {
   publishesOnlyApprovedFile,
   refusesConcurrentEdit,
   refusesChangedBytes,
+  revertsApprovedPreImage,
 } from './c80-site-binding-atomic-cases.ts';
 import {
   SITE_OPERATIONS,
@@ -264,6 +265,7 @@ describe('C80 publish binding: the revert', () => {
     });
     expect(site.sent.map((sent) => sent.method)).toEqual(['GET']);
   });
+  it('never reverts to a pre-image outside the approved version', revertsApprovedPreImage);
 });
 
 describe('C80 UTF-8 source bytes', () => {

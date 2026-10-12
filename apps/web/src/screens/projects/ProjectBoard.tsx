@@ -16,6 +16,7 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
+import { opensRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { useRereadOn } from '../task/reread-on.ts';
 import { pathTo } from '../../routes.ts';
@@ -38,8 +39,11 @@ import { useBoardTarget } from './scoped-board-read.ts';
 import { todayOn } from '../task/due-dates.ts';
 import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-names.ts';
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
-
+import { useProjectClient } from './project-client.ts';
+import { ProjectsToolbar } from './ProjectsToolbar.tsx';
 import type { OperationsClient } from '../../operations/client.ts';
+
+const NONE: readonly ClientView[] = [];
 
 export interface ProjectsProps {
   readonly canFileTask?: boolean;
@@ -59,17 +63,26 @@ export function ProjectBoard(
   props: Omit<ProjectsProps, 'navigate'> & {
     readonly hidden: boolean;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
-    /** The clients the board's doors may name, for the page's own New task. */
-    readonly onClients: (clients: readonly ClientView[]) => void;
-    /** The selected project's own client, which the board's doors file. */
-    readonly project: ClientView | null;
+    /** Where the page's own New task is drawn; null while it is not. */
+    readonly toolbar: HTMLElement | null;
   },
 ): ReactElement {
   // Above the keyed read, so a new place or reread keeps the widths already read.
   const widths = useBoardWidths(props.client, props.grantKey);
   const place = props.place;
   const scope = decodeBoardAddress(place.query);
-  if (scope.kind === 'invalid') return <p role="alert">{scope.reason}</p>;
+  if (scope.kind === 'invalid')
+    return (
+      <>
+        <ProjectsToolbar
+          target={props.toolbar}
+          canFileTask={props.canFileTask === true}
+          address={place.view}
+          admitted={false}
+        />
+        <p role="alert">{scope.reason}</p>
+      </>
+    );
   return (
     <ProjectBoardRead
       key={`${props.grantKey}:${JSON.stringify(boardBody(scope))}:${String(place.generation)}`}
@@ -86,8 +99,7 @@ function ProjectBoardRead(
     readonly scope: BoardAddress;
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
-    readonly onClients: (clients: readonly ClientView[]) => void;
-    readonly project: ClientView | null;
+    readonly toolbar: HTMLElement | null;
   },
 ): ReactElement {
   const client = props.client;
@@ -166,27 +178,36 @@ function ProjectBoardRead(
   const wrap = useBoardTarget(rows, props.scope.target, props.place.generation, props.hidden);
   const reading = admitted && chips !== null ? boardReading(props.scope, chips, rows) : null;
   const waiting = rows.reduce((sum, task) => sum + (task.todo?.waitingComments ?? 0), 0);
-  // The doors carry the view the board shows now, and name a Client filter's client.
+  // The doors carry the view the board shows now, and name a Client filter's client and
+  // the selected project's own, only while the board admits the reader.
   const known = useMemo(
-    () => doorClients(reached.state, admitted ? (answer?.tasks ?? []) : []),
+    () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NONE),
     [reached.state, admitted, answer],
   );
-  const { onClients } = props;
-  useEffect(() => {
-    onClients(known);
-  }, [onClients, known]);
+  const admission = { admitted, denied, answered: answer !== null, opening: opensRead(state) };
+  const project = useProjectClient(client, grantKey, query, admission, panel?.changes ?? 0);
   const door = {
     address: props.place.view,
     canFileTask: props.canFileTask === true,
     clients: known,
+    project: project.client,
+    admitted: admitted && project.settled,
   };
-  const noTasks = <NoTasks {...door} project={props.project} />;
+  const noTasks = <NoTasks {...door} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
 
   return (
     <div className="stack" ref={wrap}>
+      <ProjectsToolbar
+        target={props.toolbar}
+        canFileTask={door.canFileTask}
+        address={door.address}
+        clients={known}
+        project={project.client}
+        admitted={door.admitted}
+      />
       {reading === null ? null : <p data-board-reading>{reading}</p>}
       {props.scope.client === undefined || waiting === 0 ? null : (
         <p data-board-waiting-count>

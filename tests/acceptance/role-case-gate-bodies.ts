@@ -111,9 +111,17 @@ export async function legalEvidence(
 export const gateContext = (
   owner: Owner,
   businessId: string,
-): Required<Pick<BodyContext, 'clearGateItem' | 'legalEvidence'>> => ({
+): Required<Pick<BodyContext, 'clearGateItem' | 'legalEvidence' | 'madeUpInstallation'>> => ({
   clearGateItem: async (item) => {
     await owner.execute('delete from ops.gate_items where item = $1', [item]);
+  },
+  // The one-way trigger guards the product's path; the fixture steps round it
+  // for its own transaction only, as the restricted-call suites do.
+  madeUpInstallation: async () => {
+    await owner.execute(
+      `with replica as (select set_config('session_replication_role', 'replica', true))
+       update ops.installation set mode = 'made-up' from replica where mode = 'real'`,
+    );
   },
   legalEvidence: async () => await legalEvidence(owner, businessId),
 });
@@ -145,6 +153,7 @@ export function createGateBody(context: BodyContext): (name: GateCommand) => Pro
       }
       return { body: gateRecordBody(item, await context.legalEvidence?.()) };
     }
+    await context.madeUpInstallation?.();
     if (allDone) return { body: { mode: 'real' } };
     const links = await context.legalEvidence?.();
     for (const item of GATE_ITEMS) {

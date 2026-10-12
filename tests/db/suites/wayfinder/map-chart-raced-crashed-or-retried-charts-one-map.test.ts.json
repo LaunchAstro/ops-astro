@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "map.chart sent again after a lost answer, sent twice at once on two connections, or aborted before its write or its commit charts one map with each blocking edge once"
+}
