@@ -14,6 +14,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import { conversationAddress } from './conversations.ts';
 import { createdTasks, type Work } from './conversation-work.ts';
+import { cutWithEllipsis } from './ellipsis.ts';
 
 const QUOTATION_LIMIT = 1_000;
 
@@ -198,8 +199,5 @@ export async function requestQuotation(tx: TenantQuery, conversationId: string):
       order by created_at, id limit 1`,
     [tx.businessId, conversationId],
   );
-  const body = rows[0]?.body ?? '';
-  if (body.length <= QUOTATION_LIMIT) return body;
-  // The cut falls between whole characters: a pair the limit would halve is left out.
-  return `${body.slice(0, QUOTATION_LIMIT - 1).replace(/[\uD800-\uDBFF]$/u, '')}…`;
+  return cutWithEllipsis(rows[0]?.body ?? '', QUOTATION_LIMIT);
 }
