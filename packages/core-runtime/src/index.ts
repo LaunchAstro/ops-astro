@@ -215,12 +215,11 @@ export {
   type KeyResolver,
 } from './signing.ts';
 export {
-  endAtBudgetStop,
   topUpAtBudgetStop,
-  type EndOutcome,
   type BudgetStopTopUpRequest,
   type TopUpOutcome,
 } from './budget-answer.ts';
+export { endAtBudgetStop, type EndOutcome } from './budget-end.ts';
 export { spentNowOf } from './budget-stop.ts';
 export type {
   BudgetAnswerCode,

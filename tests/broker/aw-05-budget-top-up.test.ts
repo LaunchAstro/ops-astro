@@ -59,7 +59,7 @@ it('AW-05 the plan approver tops up within the cap and the run goes back for pic
   const before = await moneyOf(runId);
 
   const answered = await topUp(as(people.approver, runId), 600);
-  expect(answered).toMatchObject({ ok: true, value: { state: 'applied', heldMinor: 1000 } });
+  expect(answered).toMatchObject({ ok: true, value: { state: 'applied', heldMinor: '1000' } });
 
   const after = await moneyOf(runId);
   expect(after).toMatchObject({

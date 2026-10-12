@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A top-up past 2^53 minor units must be answered, and kept in the operation register for replay, at exactly the hold the reservation stores; judged through the real command on a real database."
+}
