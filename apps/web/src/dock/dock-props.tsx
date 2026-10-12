@@ -79,6 +79,7 @@ type ShellDock = Pick<
   | 'dock'
   | 'railCollapsed'
   | 'railWidth'
+  | 'railOwner'
   | 'onRailFold'
   | 'onRailResize'
   | 'onRailResizeEnd'
@@ -100,6 +101,7 @@ export const shellDock = (
   dock: screen === null ? null : dockProps({ registry, dock, layout, screen, task, counts, agent }),
   railCollapsed: nav.collapsed,
   railWidth: nav.width,
+  railOwner: nav.owner,
   onRailFold: nav.fold,
   onRailResize: nav.resize,
   onRailResizeEnd: nav.keep,
