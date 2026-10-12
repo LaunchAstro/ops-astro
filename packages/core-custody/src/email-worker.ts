@@ -55,7 +55,9 @@ const DUE = `select i.id, i.recipient_person_id as recipient, i.reason
 
 /**
  * The worker actor, held `for share` and active: a deactivation in flight is waited on and then
- * read, and one that comes later waits for this transaction's end.
+ * read, and one that comes later waits for this transaction's end. The recheck relies on the
+ * order in `deliver` (`broker-email.ts`): custody is asked only after the send's transaction
+ * commits, so the one send a deactivation can still meet is one that held the worker first.
  */
 async function activeWorker(tx: TenantQuery, actorId: string): Promise<boolean> {
   if (!isUuid(actorId)) return false;
