@@ -12,6 +12,7 @@ import { tick } from './settings-four-eyes-world.tsx';
 import {
   choosePriority,
   prioritySave,
+  priorityInput,
   priorityScreen,
   prioritySettingsWorld,
   priorityWrites,
@@ -63,6 +64,34 @@ it('a draft started after this screen saved meets the conflict when another save
     expect(priorityWrites(world)[1]?.body).toMatchObject({ expectedRevision: 8 });
     expect(world.value).toStrictEqual(['retention']);
     expect(page.find('[data-settings="conflict"]')).not.toBeNull();
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('Write over it after the conflict writes the boxes ticked since, and names them', async () => {
+  const world = prioritySettingsWorld();
+  const page = await mount(priorityScreen(world));
+  try {
+    await tick();
+    await choosePriority(page, 'sales');
+    world.value = ['retention'];
+    world.revision = 8;
+    await page.click('[data-settings="save-sign-off"]');
+    await tick();
+    await page.click('[data-settings="save-priority"]');
+    await tick();
+    expect(page.find('[data-settings="conflict"]')).not.toBeNull();
+    await choosePriority(page, 'advocacy');
+    const over = page.find('[data-settings="confirm-priority"]');
+    expect(over?.textContent).toContain('Advocacy');
+    await page.click('[data-settings="confirm-priority"]');
+    await tick();
+    expect(priorityWrites(world).at(-1)?.body).toMatchObject({
+      value: ['trust', 'sales', 'advocacy'],
+      expectedRevision: 8,
+    });
+    expect(priorityInput(page, 'advocacy').checked).toBe(true);
   } finally {
     await page.unmount();
   }

@@ -51,6 +51,7 @@ import {
 import { PlanningCapSection } from './settings/planning-cap.tsx';
 import { seesTriggers, TriggersPanel } from './settings/triggers.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
+import type { Draft } from './settings/confirmed.ts';
 import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
@@ -113,14 +114,15 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
     );
   };
 
-  const conflictFor = (which: Which): ReactElement | null =>
+  // A row whose draft moves on after the conflict hands in `current`, which is then what is written.
+  const conflictFor = (which: Which, current?: Draft): ReactElement | null =>
     model.conflict === null || model.conflict.which !== which ? null : (
       <ConflictBlock
-        conflict={model.conflict}
+        conflict={current === undefined ? model.conflict : { ...model.conflict, draft: current }}
         row={model.rowFor(which)}
         reading={model.read.outcome === 'loading'}
         disabled={model.disabledFor(which)}
-        onWriteOver={model.writeOver}
+        onWriteOver={() => model.writeOver(current)}
       />
     );
 
@@ -267,7 +269,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             {conflictFor('sign-off')}
           </div>
 
-          <PriorityStagesRow model={model} conflict={conflictFor('priority')} />
+          <PriorityStagesRow model={model} conflict={(chosen) => conflictFor('priority', chosen)} />
           <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>
