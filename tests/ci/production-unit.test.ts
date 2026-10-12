@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Production's M5 unit (deploy/production/compose.json): the worker, its
-// forwarder, the backup store and the two egress hops, beside staging's. It is
-// staging's definition with only the names changed, so every containment rule,
-// limit, image pin and command staging's suites prove holds for it too
-// (staging-containment.test.ts, staging-egress.test.ts). No production name or
-// setting is staging's, and its worker unit is the pair production's stop
-// names. `deploy.mjs --production` selects it.
+// Production's M5 unit (deploy/production/compose.json): the forwarder, the
+// backup store and the two egress hops, beside staging's, with its worker in a
+// file of its own (deploy/production/worker.json) that no deploy starts: the
+// worker stays parked. Together the two files are staging's definition with only
+// the names changed, so every containment rule, limit, image pin and command
+// staging's suites prove holds for it too (staging-containment.test.ts,
+// staging-egress.test.ts). No production name or setting is staging's, and its
+// worker unit is the pair production's stop names. `deploy.mjs --production`
+// selects it.
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +20,7 @@ import {
   productionAddressRefusal,
   type StagingDefinition,
   unitOf,
+  withWorker,
 } from '../../scripts/ops/deploy.ts';
 // @ts-expect-error -- the report is a plain JavaScript module, as the machine runs it
 import * as report from '../../scripts/ops/service-report.mjs';
@@ -35,6 +38,8 @@ const staging = (): StagingDefinition =>
   JSON.parse(read('deploy/staging/compose.json')) as StagingDefinition;
 const production = (): StagingDefinition =>
   JSON.parse(read('deploy/production/compose.json')) as StagingDefinition;
+const workerFile = (): Pick<StagingDefinition, 'services'> =>
+  JSON.parse(read('deploy/production/worker.json')) as Pick<StagingDefinition, 'services'>;
 
 /** Staging's definition with each name it owns changed to production's, and nothing else. */
 function renamed(definition: StagingDefinition): unknown {
@@ -49,23 +54,41 @@ function renamed(definition: StagingDefinition): unknown {
   );
 }
 
+/** The containers a deploy's Compose run would start. */
+const containersOf = (definition: StagingDefinition): Record<string, string> =>
+  Object.fromEntries(
+    Object.values(definition.services).map((s) => [s.container_name, String(s.image)]),
+  );
+
 describe("production's M5 unit: staging's definition, renamed", () => {
-  it('is staging’s definition with only the names changed', () => {
-    expect(production()).toStrictEqual(renamed(staging()));
+  it('with its worker file, is staging’s definition with only the names changed', () => {
+    expect(withWorker(production(), workerFile())).toStrictEqual(renamed(staging()));
+  });
+
+  it('parks the worker without it: no worker service, setting or dependency', () => {
+    const { services } = production();
+    expect(services['worker']).toBeUndefined();
+    expect(services['forwarder']?.['depends_on']).toBeUndefined();
+    expect(read('deploy/production/compose.json')).not.toContain('PRODUCTION_WORKER_');
+    expect(Object.keys(workerFile().services)).toStrictEqual(['worker', 'forwarder']);
   });
 
   it('names nothing of staging’s: no container, network, volume or setting', () => {
-    expect(read('deploy/production/compose.json')).not.toMatch(/staging/iu);
+    for (const file of ['compose.json', 'worker.json']) {
+      expect(read(`deploy/production/${file}`)).not.toMatch(/staging/iu);
+    }
     const names = [
-      ...Object.values(production().services).map((service) => service.container_name),
+      ...Object.values(withWorker(production(), workerFile()).services).map(
+        (s) => s.container_name,
+      ),
       production()['x-ops-astro'].ownPrefix,
     ];
     for (const name of names) expect(name).toMatch(/^ops-astro(?:-|$)/u);
   });
 
   it("its worker unit is the pair production's stop names", () => {
-    const { worker, forwarder } = production().services;
-    expect([worker?.container_name, forwarder?.container_name]).toStrictEqual([
+    const { worker: parked, forwarder } = withWorker(production(), workerFile()).services;
+    expect([parked?.container_name, forwarder?.container_name]).toStrictEqual([
       'ops-astro-worker',
       'ops-astro-forwarder',
     ]);
@@ -77,7 +100,7 @@ describe("production's M5 unit: staging's definition, renamed", () => {
   });
 
   it('every service is named by a recorded digest', () => {
-    expect(imagePinProblems(production(), record)).toStrictEqual([]);
+    expect(imagePinProblems(withWorker(production(), workerFile()), record)).toStrictEqual([]);
   });
 });
 
@@ -86,20 +109,23 @@ describe('the M5 deploy selects the unit by environment', () => {
     expect(definitionPath('production')).toMatch(/\/deploy\/production\/compose\.json$/u);
     expect(definitionPath('staging')).toMatch(/\/deploy\/staging\/compose\.json$/u);
   });
+});
 
-  it("checks production's own containers and records production", async () => {
-    const running = Object.fromEntries(
-      Object.values(production().services).map((s) => [s.container_name, String(s.image)]),
-    );
+describe("production's deploy starts the unit with its worker parked", () => {
+  it('starts its own containers but the worker, from compose.json alone, and records production', async () => {
+    const files: string[][] = [];
     const outcome = await deploy(
       { version: STAGED, store: store() },
-      effects({ runningImages: () => running }),
+      effects({ runningImages: () => containersOf(production()), up: (f) => files.push(f) }),
       clean,
       'production',
     );
     expect(outcome).toMatchObject({ kind: 'deployed', record: { environment: 'production' } });
+    expect(files).toStrictEqual([[definitionPath('production')]]);
   });
+});
 
+describe('the M5 deploy checks its own environment', () => {
   it("fails when production's containers are not up, though staging's are", async () => {
     const outcome = await deploy(
       { version: STAGED, store: store() },
@@ -108,7 +134,10 @@ describe('the M5 deploy selects the unit by environment', () => {
       'production',
     );
     expect(outcome.kind).toBe('failed');
-    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
+    expect(outcome.kind === 'failed' && outcome.reason).toContain(
+      'ops-astro-forwarder runs nothing',
+    );
+    expect(outcome.kind === 'failed' && outcome.reason).not.toContain('ops-astro-worker');
     expect(outcome.kind === 'failed' && outcome.reason).toContain('Production is up');
   });
 
@@ -147,10 +176,7 @@ describe('each deploy leaves out its own containers and counts the other’s as 
   it('the deploy hands the compare its own unit', async () => {
     const units: string[] = [];
     const watched = effects({
-      runningImages: () =>
-        Object.fromEntries(
-          Object.values(production().services).map((s) => [s.container_name, String(s.image)]),
-        ),
+      runningImages: () => containersOf(production()),
       compare: (_before, _after, unit) => {
         units.push(unit.name);
         return { unchanged: true, report: '' };
