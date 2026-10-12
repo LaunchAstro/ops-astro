@@ -92,7 +92,11 @@ interface Asked {
 
 const AWAY = { unavailable: true, because: 'not asked here' };
 
-function reader(answer: unknown): { readonly client: OperationsClient; readonly asked: Asked[] } {
+function reader(answer: unknown): {
+  readonly client: OperationsClient;
+  readonly asked: Asked[];
+  readonly answer: (next: unknown) => void;
+} {
   const asked: Asked[] = [];
   const client = {
     read: (name: string, body: Readonly<Record<string, unknown>>) => {
@@ -111,7 +115,13 @@ function reader(answer: unknown): { readonly client: OperationsClient; readonly 
       });
     },
   } as unknown as OperationsClient;
-  return { client, asked };
+  return {
+    client,
+    asked,
+    answer: (next) => {
+      answer = next;
+    },
+  };
 }
 
 async function address(path: string, answer: unknown) {
@@ -119,7 +129,7 @@ async function address(path: string, answer: unknown) {
   if (match === null || match.id !== 'agency:agent-conversation') {
     throw new Error(`${path} is not a conversation's address`);
   }
-  const { client, asked } = reader(answer);
+  const { client, asked, answer: next } = reader(answer);
   const page = track(
     await mount(
       drawScreen(match, {
@@ -132,7 +142,7 @@ async function address(path: string, answer: unknown) {
     ),
   );
   await settle();
-  return { page, asked };
+  return { page, asked, answer: next };
 }
 
 const refusal = (code: string, fix: string): unknown => ({
@@ -170,7 +180,7 @@ describe('C36 conversation address', () => {
       .map((each) => [...each.classList].filter((name) => name.startsWith('aip__msg')).join(' '));
     expect(looks).toStrictEqual(['aip__msg aip__msg--user', 'aip__msg aip__msg--ai']);
     const who = page.all('.convrec__who');
-    expect(who.map((each) => each.textContent)).toStrictEqual(['You', 'Agent']);
+    expect(who.map((each) => each.textContent)).toStrictEqual(['Person', 'Agent']);
     expect(who.every((each) => each.classList.contains('visually-hidden'))).toBe(true);
   });
 
@@ -241,5 +251,14 @@ describe('C36 address refusals', () => {
       expect(page.text()).not.toContain(withheld);
     }
     expect(page.find('[data-conversation="title"]')).toBeNull();
+  });
+});
+
+describe('C36 conversation address, another reader', () => {
+  it('a colleague reading the conversation is never told the owner’s words are their own', async () => {
+    const { page } = await address(`/agent/${ID}`, LIVE);
+    const who = page.all('.convrec__who').map((each) => each.textContent);
+    expect(who).not.toContain('You');
+    expect(who).toStrictEqual(['Person', 'Agent']);
   });
 });
