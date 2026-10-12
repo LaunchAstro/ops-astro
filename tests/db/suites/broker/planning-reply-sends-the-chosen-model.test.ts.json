@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A priced planning reply sends the conversation's chosen model, through the real hold and settle on the planning ledger."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A sent invitation with a long provider message id is recorded as sent while no enrolment token is stored; judged on the real attempt rows."
+}

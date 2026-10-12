@@ -146,6 +146,7 @@ export type BrokerRefusal =
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
   | 'LIABILITY_UNKNOWN'
+  | 'FIELD_VALUE_INVALID'
   | CarryRefusal;
 
 export type ModelCallResult =
