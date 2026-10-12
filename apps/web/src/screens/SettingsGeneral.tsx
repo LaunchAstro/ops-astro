@@ -7,6 +7,10 @@
 // (`Settings.tsx`): the four-eyes, client sign-off, conversation window and
 // retention window rows, their revision and refusal handling and their
 // capability gating.
+//
+// Each group is keyed on the grant key, so a change of business or person
+// starts it over: no draft, and no outcome of a write made under the last
+// owner, is carried into the next one's settings.
 
 import type { ReactElement } from 'react';
 import { SettingsScreen, type SettingsScreenProps } from './Settings.tsx';
@@ -16,10 +20,15 @@ import { AgentsGroup } from './settings/agents.tsx';
 export function SettingsGeneralScreen(props: SettingsScreenProps): ReactElement {
   return (
     <div className="stack settings__page" data-screen="settings-general">
-      <YouGroups client={props.client} grantKey={props.grantKey} storage={props.storage} />
-      <AgentsGroup client={props.client} grantKey={props.grantKey} />
+      <YouGroups
+        key={props.grantKey}
+        client={props.client}
+        grantKey={props.grantKey}
+        storage={props.storage}
+      />
+      <AgentsGroup key={props.grantKey} client={props.client} grantKey={props.grantKey} />
       <div data-pref="business">
-        <SettingsScreen {...props} />
+        <SettingsScreen key={props.grantKey} {...props} />
       </div>
     </div>
   );
