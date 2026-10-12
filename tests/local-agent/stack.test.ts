@@ -79,12 +79,7 @@ describe('what the stack refuses before writing anything', () => {
       {},
       'SETTING_MALFORMED',
     ],
-    [
-      'with no Codex to run',
-      { OPS_LOCAL_AGENT_CODEX_BIN: '/nonexistent/ops-astro/codex' },
-      {},
-      'CODEX_NOT_FOUND',
-    ],
+    ['with no Codex to run', { OPS_LOCAL_AGENT_CODEX_BIN: '/no/codex' }, {}, 'CODEX_NOT_FOUND'],
     [
       'a key custody cannot file',
       { OPS_LOCAL_AGENT_KEY: `a key with spaces ${RUNNER_KEY}` },
