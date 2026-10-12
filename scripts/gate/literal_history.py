@@ -23,7 +23,8 @@ def checked_git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     # Hooks export repository selectors; this probe must discover its own cwd.
     for name in local.stdout.decode("ascii").splitlines():
         env.pop(name, None)
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, timeout=10, env=env)
+    # The objects a push sends, never a local replacement for them.
+    return subprocess.run(["git", "--no-replace-objects", *args], cwd=repo, capture_output=True, timeout=10, env=env)
 
 
 class HistoricalLiterals:
