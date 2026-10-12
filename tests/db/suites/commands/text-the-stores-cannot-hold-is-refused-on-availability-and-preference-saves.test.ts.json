@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an availability reason or a preference value holding a NUL or a lone surrogate is refused FIELD_VALUE_INVALID by name, audited where the command is, and nothing is stored"
+}

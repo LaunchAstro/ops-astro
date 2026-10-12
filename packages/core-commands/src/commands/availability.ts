@@ -27,6 +27,7 @@ import type {
 import { isInternalReader } from '../reads/tasks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { storableText } from './values.ts';
 
 export const AVAILABILITY_COMMAND = 'availability.set';
 export const REASON_LIMIT = 140;
@@ -42,7 +43,7 @@ const FIELDS = new Set(['state', 'reason']);
 
 const STATE_FIXES = ["Send state as 'available' or 'away'."];
 const REASON_FIXES = [
-  `Send reason as text of 1 to ${String(REASON_LIMIT)} characters, or leave it out.`,
+  `Send reason as text of 1 to ${String(REASON_LIMIT)} characters, with no NUL or half of a split character, or leave it out.`,
   'Available carries no reason; clearing away clears it.',
 ];
 const BODY_FIXES = ['Send state, and reason when away. Nothing else: it is your own account.'];
@@ -62,7 +63,8 @@ export function availabilityOf(
     typeof reason === 'string' &&
     state === 'away' &&
     reason.trim().length > 0 &&
-    reason.length <= REASON_LIMIT;
+    reason.length <= REASON_LIMIT &&
+    storableText(reason);
   return fits ? { state, reason } : refuseCommand('FIELD_VALUE_INVALID', ['reason'], REASON_FIXES);
 }
 
