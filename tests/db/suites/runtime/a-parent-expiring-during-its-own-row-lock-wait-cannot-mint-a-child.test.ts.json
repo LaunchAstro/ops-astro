@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a parent delegation that expires while minting waits on its row lock refuses DELEGATION_EXPIRED and mints no child"
+}
