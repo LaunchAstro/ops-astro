@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the operator gate's hold: a revocation, a remapping or a session ending waits for it on a second connection; a grant or session ending inside its budget, or a hold past it, refuses; a deployment record is written only under it"
+}
