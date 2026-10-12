@@ -27,18 +27,20 @@ export interface Owner {
   readonly grantKey: string;
 }
 
-// The last enrol each person sent in each business, by grant key, as its settling and not its
-// answer. A cancelled one still lands and would replace that person's factor whose key is shown,
-// so their next waits for it, as Start does. Nobody else's waits: one that never answers holds
-// back only its own person.
+// The last enrol each person sent in each business, as its settling and not its answer. A
+// cancelled one still lands and would replace that person's factor whose key is shown, so their
+// next waits for it, as Start does. Nobody else's waits: one that never answers holds back only
+// its own person. It is keyed on the grant key without its session generation (`grantKeyOf`):
+// a switch away and back, or a sign-out and in, may leave the sign-in that sent it alive.
 const landing = new Map<string, Promise<void>>();
 const settled = (): void => {};
 
 /** Send `enrol` once this person's earlier enrol in this business has settled. */
 export function afterOwnLast<T>(grantKey: string, enrol: () => Promise<T>): Promise<T> {
-  const sent = (landing.get(grantKey) ?? Promise.resolve()).then(enrol);
+  const person = grantKey.replace(/:\d+$/u, '');
+  const sent = (landing.get(person) ?? Promise.resolve()).then(enrol);
   // Its settling only: the issued factor is never kept here.
-  landing.set(grantKey, sent.then(settled, settled));
+  landing.set(person, sent.then(settled, settled));
   return sent;
 }
 
