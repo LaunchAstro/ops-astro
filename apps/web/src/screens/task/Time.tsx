@@ -57,6 +57,7 @@ function EntryNote(props: {
 }): ReactElement {
   const { entry } = props;
   const [draft, setDraft] = useState<string | null>(null);
+  const held = useHeldOperations();
   const open = (event: KeyboardEvent<HTMLSpanElement>): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
@@ -66,13 +67,15 @@ function EntryNote(props: {
     if (event.key === 'Escape') setDraft(null);
     if (event.key !== 'Enter' || draft === null) return;
     event.preventDefault();
-    const sent = draft;
+    const body = { entryId: entry.id, note: draft };
+    const hold = holding(held, 'time.set_note', body, () => props.client.newOperationId());
     props.run(
-      () => props.client.mutate('time.set_note', { entryId: entry.id, note: sent }),
+      () => props.client.mutate('time.set_note', body, { operationId: hold.id }),
       (settlement) => {
+        hold.settle(settlement.kind);
         if (settlement.kind !== 'ok') return;
         // Words typed while it was saving are not this answer's to close.
-        setDraft((current) => (current === sent ? null : current));
+        setDraft((current) => (current === body.note ? null : current));
         props.onChanged();
       },
     );
