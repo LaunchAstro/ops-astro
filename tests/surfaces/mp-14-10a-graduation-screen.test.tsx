@@ -377,7 +377,7 @@ function gated(): { readonly hold: Promise<void>; readonly release: () => void }
 describe('Connections & signal: client scope bar, graduation and standing approvals', () => {
   /* eslint-disable oxc/no-map-spread, unicorn/no-array-reverse -- Sol's proof, kept as written */
   // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
-  it('an outage cannot restore Client A approval fields into Client B and file them there', async () => {
+  it('an outage cannot restore Client A’s standing mandate fields into Client B and file them there', async () => {
     const outage = { down: false };
     let region = BODY;
     const { page, sent } = await open(/\/mandate\/file$/u, {
