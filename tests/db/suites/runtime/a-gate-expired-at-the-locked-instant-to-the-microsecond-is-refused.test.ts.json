@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a decision judges its gate deadline at the locked instant to the microsecond, so a gate that expired at that instant is refused"
+}
