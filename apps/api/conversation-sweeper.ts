@@ -11,7 +11,8 @@
 // throws is that business's failure and the round goes on to the next; a
 // round that cannot read its businesses is logged and the next tick tries
 // again. `stop` starts no round and no business after it, and resolves once a
-// pass in flight has ended, so the pool outlives every pass.
+// pass in flight has ended, so the pool outlives every pass; a failure's
+// raise still running is not waited on.
 //
 // Each failure a pass reports is handed to `raise` once per business and
 // cause: a wrap-up or a purge that could not be written (a conversation held
@@ -100,9 +101,13 @@ export function sweepRound(
   const open = new Map<string, ReadonlySet<SweepFailureCause>>();
   const raise = options.raise ?? logSweepFailure;
   const sweep = options.sweep ?? sweepConversations;
+  // Once stopped, a raise still running is not waited on: one may never answer.
+  const stopped = new Promise<void>((resolve) => {
+    stopping?.addEventListener('abort', () => resolve(), { once: true });
+  });
   const hand = async (failure: SweepFailure): Promise<void> => {
     try {
-      await raise(failure);
+      await Promise.race([raise(failure), stopped]);
     } catch {
       console.error('conversation sweep: a failure could not be raised');
     }
