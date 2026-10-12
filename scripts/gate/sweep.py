@@ -283,11 +283,16 @@ def decode(data: bytes) -> str | None:
 # ---------------------------------------------------------------------------
 # Git
 
+# A push sends the objects themselves. A `git replace` ref changes what this
+# clone reads in their place and is never what the remote receives, so every
+# read here ignores replacements.
+GIT = ["git", "--no-replace-objects"]
+
 
 def git(args: list[str], cwd: Path | None = None) -> bytes:
     try:
         return subprocess.run(
-            ["git", *args],
+            [*GIT, *args],
             cwd=cwd or REPO,
             check=True,
             capture_output=True,
@@ -316,7 +321,7 @@ def staged_blob(path: str) -> bytes | None:
     """The bytes git will commit, read out of the index."""
     try:
         return subprocess.run(
-            ["git", "show", f":{path}"],
+            [*GIT, "show", f":{path}"],
             cwd=REPO,
             check=True,
             capture_output=True,
@@ -328,7 +333,7 @@ def staged_blob(path: str) -> bytes | None:
 def cat_blob(sha: str) -> bytes | None:
     try:
         return subprocess.run(
-            ["git", "cat-file", "blob", sha],
+            [*GIT, "cat-file", "blob", sha],
             cwd=REPO,
             check=True,
             capture_output=True,
