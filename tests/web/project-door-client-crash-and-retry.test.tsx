@@ -113,7 +113,7 @@ describe('a project read that crashes, and its retry', () => {
     expect(settled()).toEqual({ toolbar: OTHER, toolbarName: 'Client B', empty: OTHER });
   });
 
-  it('a project read answered as an outage names no client, and only the live channel rereads it', async () => {
+  it('a project read answered as an outage names no client until a reread answers', async () => {
     const page = await projectsPage();
     const gate = held();
     page.serve.project = outage(gate);
@@ -124,10 +124,8 @@ describe('a project read that crashes, and its retry', () => {
     expect(settled()).toEqual({ toolbar: undefined, toolbarName: undefined, empty: undefined });
     page.serve.project = answer(ON_B);
     const before = page.reads.project;
+    // A task panel change while the board admits the reader rereads the project's client.
     await page.panelChange();
-    expect(page.reads.project).toBe(before);
-    expect(settled().toolbar).toBeUndefined();
-    await page.invalidate();
     expect(page.reads.project).toBe(before + 1);
     expect(settled()).toEqual({ toolbar: OTHER, toolbarName: 'Client B', empty: OTHER });
   });

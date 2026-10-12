@@ -16,6 +16,7 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
+import { opensRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { useRereadOn } from '../task/reread-on.ts';
 import { pathTo } from '../../routes.ts';
@@ -183,11 +184,8 @@ function ProjectBoardRead(
     () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NONE),
     [reached.state, admitted, answer],
   );
-  const project = useProjectClient(client, grantKey, query, {
-    admitted,
-    denied,
-    answered: answer !== null,
-  });
+  const admission = { admitted, denied, answered: answer !== null, opening: opensRead(state) };
+  const project = useProjectClient(client, grantKey, query, admission, panel?.changes ?? 0);
   const door = {
     address: props.place.view,
     canFileTask: props.canFileTask === true,
