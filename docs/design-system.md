@@ -10,6 +10,17 @@ Use the approved existing application and frozen visual reference to choose each
 
 The private source-reference report accompanies local preparation. Future public transfers need a neutral, redistributable source/attribution record and relevant synthetic visual evidence. Never publish private reference routes or real user data.
 
+## Current reference update (12 October 2026)
+
+Nathan's R20261012 makes the running mockup canonical for the Projects and Tasks
+transfer. [VISUAL-PARITY.md](../VISUAL-PARITY.md) records its scope, measurements
+and preserved operations. This current contract supersedes the proposed icon
+steps in the dated, generated TOKENS.md plan: extra-small is 13px; small aliases
+the existing 16px medium step; large stays 24px. There is one numeric 16px value,
+with the existing small API name retained for its consumers. Checkbox marks
+retain their own 12px inset geometry. The generated plan's private source is
+not rewritten as an implementation receipt.
+
 ## Preserve behaviour and meaning
 
 Preserve typography, geometry, spacing, colours, navigation, keyboard operation, loading/empty/error states and responsive behaviour for the selected reference. A JavaScript-to-TypeScript conversion is not visual or behavioural proof.

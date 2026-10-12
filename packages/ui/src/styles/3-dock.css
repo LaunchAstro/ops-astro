@@ -170,6 +170,9 @@
   border-bottom: 1px solid var(--border);
 }
 .dpanel__name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -179,6 +182,14 @@
   text-transform: var(--type-subheading-case);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.dpanel__extra {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.dpanel__extra:empty {
+  display: none;
 }
 .dpanel__acts {
   display: flex;
@@ -216,7 +227,7 @@
   flex: none;
   width: 1px;
   height: 1.1em;
-  margin: 0 0.25rem;
+  margin: 0 var(--s-1);
   background: var(--border);
 }
 .dpanel__body {
@@ -429,4 +440,33 @@
   .shell {
     display: block;
   }
+}
+
+.dpanel__body > .readstate {
+  padding: 0;
+}
+.dpanel__extra .aip__head {
+  padding: 0;
+  border: 0;
+  align-items: center;
+}
+.dpanel__extra .aip__acts {
+  gap: 0.15rem;
+}
+
+.dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn {
+  min-height: 0;
+  padding: 0.2rem 0.4rem;
+  border-color: transparent;
+  background: transparent;
+  font: var(--type-caption);
+  color: var(--text-muted);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  /* type-exception R20261012: reference compact model picker. */
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+.dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn:is(:hover, :focus) {
+  border-color: var(--border-strong);
 }

@@ -119,6 +119,7 @@ export const taskPanelOf = (
   id: 'task',
   label: LABEL,
   ariaLabel: 'Task: the task open in the dock',
+  icon: 'list-check',
   door: task.door,
   ...walked,
   body: task.body,

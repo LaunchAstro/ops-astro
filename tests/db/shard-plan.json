@@ -5,7 +5,8 @@
     "seconds: each run item's time in a hosted shard, the median over the merge groups of 4 October 2026 (runs 37191365275, 37189614772, 37189341194, 37187728767, 37187285915; the 'moved the database counter by N in Ss' lines), every one of the 730 items then named. The eight broker and runtime items named on 5 October 2026 (four-eyes, launch gate and settings-wait suites) take their one time from merge group run 37284770513. Only the balance reads them: an item missing here still runs, weighted at the median. Refresh from a recent run when the shards drift apart."
   ],
   "parts": {
-    "tests/acceptance/d06-generated.test.ts": 6
+    "tests/acceptance/d06-generated.test.ts": 6,
+    "tests/tenancy/restricted-calls-prefixes.test.ts": 4
   },
   "seconds": {
     "tests/acceptance/audit-per-operation.test.ts": 49.5,

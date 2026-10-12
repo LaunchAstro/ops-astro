@@ -131,6 +131,17 @@ export function databaseProject(name: string, value: string): string {
   const host = url.hostname.toLowerCase();
   // One named host: the driver falls back to PGHOST for none and tries a list in turn.
   if (!/^[a-z0-9][a-z0-9.-]*$/u.test(host)) throw new Refusal(`${name} names no one host`);
+  // And the one the driver reads: postgres.js takes the authority after its first `@`,
+  // decoded, as a comma list, where this parser takes the last `@` (postgres/src/index.js).
+  const authority = value.slice(value.indexOf('://') + 3).split(/[?/]/u)[0] ?? '';
+  let driverHost = '';
+  try {
+    driverHost = decodeURIComponent(authority.slice(authority.indexOf('@') + 1));
+  } catch {
+    throw new Refusal(`${name} is not a database address`);
+  }
+  if (driverHost.toLowerCase() !== url.host.toLowerCase())
+    throw new Refusal(`${name} names no one host`);
   let user = '';
   try {
     user = decodeURIComponent(url.username);

@@ -8,7 +8,7 @@
 // ci-shards-check.test.ts proves pnpm check's steps and the step wrapper;
 // ci-shards-workflow.test.ts proves ci.yml.
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -97,7 +97,57 @@ describe('isolation tests', () => {
     expect(listed).toStrictEqual(split);
     expect(partitionProblems(listed, items)).toStrictEqual([]);
   }, 120_000);
+
+  it('the runner lists every suite to a reader that drains its output late', async () => {
+    const names = Array.from(
+      { length: 5000 },
+      (_, i) => `tests/listed/suite-${String(i).padStart(4, '0')}-of-a-long-list.test.ts`,
+    );
+    const manifest = join(temp(), 'manifest.json');
+    writeFileSync(manifest, JSON.stringify({ invariant: names }));
+    const { code, lines } = await listedLate(manifest);
+    expect(code).toBe(3);
+    expect(lines).toStrictEqual(names);
+  }, 30_000);
 });
+
+/**
+ * The runner's `--list` of a manifest, read only once it has exited or two
+ * seconds have passed. A list larger than a pipe holds fills it first, so an
+ * exit before its output drained loses the tail.
+ */
+async function listedLate(manifest: string): Promise<{ code: number | null; lines: string[] }> {
+  const child = spawn(
+    process.execPath,
+    ['scripts/db-conformance.mjs', '--manifest', manifest, '--list'],
+    {
+      cwd: ROOT,
+      env: { ...process.env, DATABASE_URL: 'postgres://unused@127.0.0.1:1/x' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+    },
+  );
+  child.stdout.pause();
+  const exited = new Promise<number | null>((done) => {
+    child.on('exit', done);
+  });
+  await Promise.race([
+    exited,
+    new Promise((done) => {
+      setTimeout(done, 2000);
+    }),
+  ]);
+  const chunks: Buffer[] = [];
+  const ended = new Promise((done) => {
+    child.stdout.on('end', done);
+  });
+  child.stdout.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);
+  });
+  child.stdout.resume();
+  const code = await exited;
+  await ended;
+  return { code, lines: Buffer.concat(chunks).toString('utf8').split('\n').filter(Boolean) };
+}
 
 /** Each local checks shard's files, as vitest's configured sequencer picks them from `files`. */
 function sequenced(files: readonly string[]): Promise<string[][]> {

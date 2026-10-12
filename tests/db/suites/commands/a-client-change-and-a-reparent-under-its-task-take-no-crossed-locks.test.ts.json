@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a client change on an empty task and a reparent of its project under it take the task and project rows in one order, so neither ends in a deadlock"
+}

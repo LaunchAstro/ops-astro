@@ -12,12 +12,18 @@
 // - the task is a client's: `LAUNCH_CLIENT_TASK`. Only internal tasks go to an
 //   AI agent for now (owner ruling, 11 Oct 2026);
 // - the agent is switched off: `AGENT_NOT_ACTIVE`;
-// - the launcher may not direct it: `SCOPE_NOT_GRANTED` naming `agent`;
+// - the launcher may not direct it: `SCOPE_NOT_GRANTED` naming `agent`. One
+//   who directs it through `agent:assign` is asked again once the launch is
+//   written, after the business's audit-chain lock, the last wait: a grant
+//   that expired while the command waited refuses it, and the handler's
+//   savepoint takes back the launch and its delegation;
 // - a run of the task is open: `RUN_ALREADY_OPEN`.
 //
 // The answer names the run and nothing of its credential.
 
 import {
+  advisoryLock,
+  directsEveryAgent,
   launchRun,
   mayDirectAgent,
   subjectsOf,
@@ -35,6 +41,16 @@ const no = (
   names: readonly string[],
   fixes: readonly string[],
 ): HandlerOutcome => refused(refuseCommand(code, names, fixes));
+
+const notYours = (): HandlerOutcome =>
+  no(
+    'SCOPE_NOT_GRANTED',
+    ['agent'],
+    [
+      "That agent belongs to someone else, and you may not direct other people's agents.",
+      'Ask its owner to launch it.',
+    ],
+  );
 
 /** Why this task cannot be launched by anyone: no agent holds it, or it is a client's. */
 async function taskRefusal(
@@ -71,13 +87,13 @@ async function taskRefusal(
   return undefined;
 }
 
-/** Why this caller may not launch this task's agent now, or undefined. */
+/** Why this caller may not launch this task's agent now, or how they direct it. */
 async function refusalOf(
   tx: TenantQuery,
   context: CommandContext,
   taskId: string,
   data: Readonly<Record<string, unknown>>,
-): Promise<HandlerOutcome | undefined> {
+): Promise<HandlerOutcome | 'own' | 'granted'> {
   const { session } = context;
   if (session.credentialScope !== undefined) {
     return no('SCOPE_NOT_GRANTED', [], ['Only a person launches a run, signed in as themselves.']);
@@ -96,17 +112,8 @@ async function refusalOf(
       ],
     );
   }
-  if (may === 'not-yours') {
-    return no(
-      'SCOPE_NOT_GRANTED',
-      ['agent'],
-      [
-        "That agent belongs to someone else, and you may not direct other people's agents.",
-        'Ask its owner to launch it.',
-      ],
-    );
-  }
-  if (delegationCredentialKeys().ok) return undefined;
+  if (may === 'not-yours') return notYours();
+  if (delegationCredentialKeys().ok) return may;
   return no(
     'DEPENDENCY_NOT_LANDED',
     ['task.launch'],
@@ -123,8 +130,8 @@ export async function launchTask(
 ): Promise<HandlerOutcome> {
   const { session, target } = context;
   if (target === undefined) throw new Error('launchTask: the envelope read no target');
-  const refusal = await refusalOf(tx, context, target.id, target.data);
-  if (refusal !== undefined) return refusal;
+  const directing = await refusalOf(tx, context, target.id, target.data);
+  if (typeof directing !== 'string') return directing;
   const launched = await launchRun(tx, {
     taskId: target.id,
     agentActorId: String(target.data['agent']),
@@ -133,5 +140,9 @@ export async function launchTask(
     subjects: subjectsOf(session),
   });
   if (!launched.ok) return refused(launched.refusal);
+  if (directing === 'granted') {
+    await advisoryLock(tx, tx.businessId.toLowerCase());
+    if (!(await directsEveryAgent(tx, subjectsOf(session)))) return notYours();
+  }
   return applied(target.id, target.revision, { runId: launched.launchId, state: 'waiting' });
 }

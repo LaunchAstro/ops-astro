@@ -199,7 +199,7 @@ describe('MP-3-1 head', () => {
     const acts = [...head.querySelectorAll('.dpanel__acts > *')].map(
       (each) => (each as HTMLElement).dataset['act'] ?? each.className,
     );
-    expect(acts).toEqual(['door', 'dpanel__div', 'back', 'forward', 'close']);
+    expect(acts).toEqual(['dpanel__extra', 'door', 'dpanel__div', 'back', 'forward', 'close']);
     const back = head.querySelector('[data-act="back"]');
     expect(back?.getAttribute('aria-disabled')).toBe('true');
     expect(back?.getAttribute('aria-label')).toBe('Back, where the dock was');

@@ -61,10 +61,10 @@ export interface DeployEffects {
   runningImages(): Record<string, string>;
 }
 
-/** The unit a deploy starts: its name, and whether a container is its own. */
+/** The unit a deploy starts: its name, and whether a service (by name and manager) is its own. */
 export interface Unit {
   readonly name: DeployEnvironment;
-  readonly owns: (container: string) => boolean;
+  readonly owns: (service: string, manager: string) => boolean;
 }
 
 export interface DeployRecord {
@@ -87,15 +87,21 @@ const readDefinition = (environment: DeployEnvironment): StagingDefinition =>
 const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
 
 /**
- * The unit's own containers, which its deploy starts: staging's by its prefix,
- * as the service report has always judged; production's by its prefix and
- * never staging's, which shares the start of it.
+ * The unit's own services, which its deploy may restart: staging's by its
+ * prefix, as the service report has always judged; production's only the
+ * Docker containers its Compose definition names, so a launchd job or any
+ * other `ops-astro-*` service stays a live one.
  */
 export function unitOf(environment: DeployEnvironment): Unit {
-  const staging = (name: string): boolean => name.startsWith(STAGING_PREFIX);
-  if (environment === 'staging') return { name: environment, owns: staging };
-  const prefix = `${readDefinition(environment)['x-ops-astro'].ownPrefix}-`;
-  return { name: environment, owns: (name) => name.startsWith(prefix) && !staging(name) };
+  if (environment === 'staging')
+    return { name: environment, owns: (name) => name.startsWith(STAGING_PREFIX) };
+  const containers = new Set(
+    Object.entries(readDefinition(environment).services).map(([key, s]) => s.container_name ?? key),
+  );
+  return {
+    name: environment,
+    owns: (name, manager) => manager === 'docker' && containers.has(name),
+  };
 }
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
 

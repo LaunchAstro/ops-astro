@@ -32,7 +32,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { PageToolbar } from './PageToolbar.tsx';
+import { PageTitle, PageToolbar } from './PageToolbar.tsx';
 import { BrandMark } from '../primitives/BrandMark.tsx';
 import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
 import { useDrawerFocus } from './drawer.ts';
@@ -104,6 +104,7 @@ export interface ShellProps {
 export function Shell(props: ShellProps): ReactElement {
   const ready = useReadyAfterFirstLayout();
   const [toolbar, setToolbar] = useState<HTMLElement | null>(null);
+  const [title, setTitle] = useState<HTMLElement | null>(null);
   const [railDragging, setRailDragging] = useState(false);
   const collapsed = props.railCollapsed ?? false;
   const railWidth = props.railWidth ?? RAIL_DEFAULT;
@@ -244,42 +245,47 @@ export function Shell(props: ShellProps): ReactElement {
       ) : null}
 
       <PageToolbar value={toolbar}>
-        <main className="main" inert={open}>
-          <div className="chrome">
-            {props.strip}
-            {props.tabs ? (
-              <TabRow key={props.tabs.id} label={props.tabs.label} tabs={props.tabs.entries} />
-            ) : null}
-            <header className="topbar">
-              {onToggle === undefined ? null : (
-                <button
-                  className="navtoggle"
-                  type="button"
-                  ref={toggleRef}
-                  aria-expanded={open}
-                  aria-controls={railId}
-                  aria-label="Open the menu"
-                  onClick={() => {
-                    onToggle(!open);
-                  }}
-                >
-                  <span />
-                  <span />
-                  <span />
-                </button>
-              )}
-              <div className="topbar__title">
-                <h1 className="t-title">{props.title}</h1>
-              </div>
-              <div className="topbar__bar" ref={setToolbar} />
-              <div className="topbar__meta">
-                {props.freshness ? <FreshnessMarker freshness={props.freshness} /> : null}
-                {props.meta}
-              </div>
-            </header>
-          </div>
-          <div className="content">{props.children}</div>
-        </main>
+        <PageTitle value={title}>
+          <main className="main" inert={open}>
+            <div className="chrome">
+              {props.strip}
+              {props.tabs ? (
+                <TabRow key={props.tabs.id} label={props.tabs.label} tabs={props.tabs.entries} />
+              ) : null}
+              <header className="topbar">
+                {onToggle === undefined ? null : (
+                  <button
+                    className="navtoggle"
+                    type="button"
+                    ref={toggleRef}
+                    aria-expanded={open}
+                    aria-controls={railId}
+                    aria-label="Open the menu"
+                    onClick={() => {
+                      onToggle(!open);
+                    }}
+                  >
+                    <span />
+                    <span />
+                    <span />
+                  </button>
+                )}
+                <div className="topbar__title">
+                  <h1 className="t-title">
+                    <span className="topbar__default-title">{props.title}</span>
+                    <span className="topbar__record-title" ref={setTitle} />
+                  </h1>
+                </div>
+                <div className="topbar__bar" ref={setToolbar} />
+                <div className="topbar__meta">
+                  {props.freshness ? <FreshnessMarker freshness={props.freshness} /> : null}
+                  {props.meta}
+                </div>
+              </header>
+            </div>
+            <div className="content">{props.children}</div>
+          </main>
+        </PageTitle>
       </PageToolbar>
 
       {/* The dock is the way in to a panel at every width. The rail rotates

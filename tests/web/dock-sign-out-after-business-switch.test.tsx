@@ -66,7 +66,7 @@ describe('MP-3-1 sign-out removes the dock', () => {
     expect(sessions.session?.businessKey).toBe('alpha');
 
     // The person opens a panel in Alpha: the tab now keeps Alpha's open set.
-    await view.click('.dock__tab[data-panel="settings"]');
+    await view.click('.dock__tab[data-panel="todos"]');
     await settle();
     expect(tab.held.get(dockKey('alpha'))).toContain('mia@alpha.local');
 

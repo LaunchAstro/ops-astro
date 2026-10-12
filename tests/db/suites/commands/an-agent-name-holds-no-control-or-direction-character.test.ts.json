@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The actors table refuses an agent name carrying a C0 or C1 control, DEL, a line separator or a bidi control when the row is written directly, and keeps accented names and emoji with the joiner"
+}

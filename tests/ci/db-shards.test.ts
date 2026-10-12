@@ -150,13 +150,21 @@ it('a split suite runs each case in exactly one part, and the whole suite when u
   expect(() => planItems(['a'], { a: 1 })).toThrow();
   // The split suite takes its part from SUITE_PART and runs only its cells.
   const d06 = read('tests/acceptance/d06-generated.test.ts');
-  expect(Object.keys(plan.parts)).toEqual(['tests/acceptance/d06-generated.test.ts']);
+  expect(Object.keys(plan.parts)).toEqual([
+    'tests/acceptance/d06-generated.test.ts',
+    'tests/tenancy/restricted-calls-prefixes.test.ts',
+  ]);
   expect(d06).toContain("const PART = suitePart(process.env['SUITE_PART']);");
   expect(d06).toContain('TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART))');
   expect(d06).toContain('PAYLOAD_CELLS.filter((_, i) => inPart(i, PART))');
   expect(d06).toContain('it.each(TOP_CELLS)(');
   expect(d06).toContain('it.each(FIELD_CELLS)(');
   expect(d06).toContain('expect(tally.total()).toBe(TOP_CELLS.length + FIELD_CELLS.length);');
+  // The prefix suite applies every migration in each part and proves only its share.
+  const prefixes = read('tests/tenancy/restricted-calls-prefixes.test.ts');
+  expect(prefixes).toContain("const PART = suitePart(process.env['SUITE_PART']);");
+  expect(prefixes).toContain('if (!inPart(index, PART)) continue;');
+  expect(prefixes).toContain('await catchUpTo(index);');
 });
 
 it('a shard argument that is not i of n is refused', () => {

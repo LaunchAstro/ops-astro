@@ -33,6 +33,7 @@
 import './styles/0-fonts.css';
 import './styles/1-tokens.css';
 import './styles/2-controls-and-marks.css';
+import './styles/2-select.css';
 import './styles/2-primitives.css';
 import './styles/2-empty.css';
 import './styles/2-forms.css';
@@ -104,4 +105,6 @@ export * from './page-kit/detail.tsx';
 // Money in a currency's own minor digits, the server's rule; the task page shares it.
 export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';
 
-export { usePageToolbar } from './surfaces/PageToolbar.tsx';
+export { usePageTitle, usePageToolbar, usePanelToolbar } from './surfaces/PageToolbar.tsx';
+
+export { StyledSelect } from './kit/styled-select.tsx';

@@ -158,7 +158,10 @@ function load(text, which) {
 export function compare(beforeText, afterText, unit = STAGING) {
   const before = load(beforeText, 'before');
   const after = load(afterText, 'after');
-  const own = (key) => unit.owns(key.split(' ')[1]);
+  const own = (key) => {
+    const [manager, name] = key.split(' ');
+    return unit.owns(name, manager);
+  };
   const changed = [];
   let unchanged = 0;
   for (const [key, was] of before) {

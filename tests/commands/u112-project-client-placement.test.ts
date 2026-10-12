@@ -171,6 +171,74 @@ async function emptyProjectClientChanges(): Promise<void> {
   expect((await factsOf(project.recordId)).client).toBe(world.theirs);
 }
 
+const refusedAs = (answer: Awaited<ReturnType<typeof send>>) =>
+  isCommandRefusal(answer) ? [answer.code, ...answer.names] : 'applied';
+
+/** `task.create`: a new top-level task has no client, so a client's project refuses it. */
+async function newTaskRefusedClientProject(): Promise<void> {
+  const title = `Onto ${randomUUID()}`;
+  const body = { command: 'task.create', fields: { title }, board: world.projects.ours };
+  expect(refusedAs(await send(world.owner, body))).toEqual(['PLACEMENT_IS_DERIVED', 'board']);
+  const stored = await world.db.admin.execute<{ readonly n: number }>(
+    `select count(*)::int as n from records where business_id = $1 and data ->> 'title' = $2`,
+    [world.business, title],
+  );
+  expect(stored[0]?.n).toBe(0);
+}
+
+/** `task.set_party`: an empty task left on a client's project (by an earlier create) takes only that client. */
+async function leftTaskTakesOnlyProjectClient(): Promise<void> {
+  const recordId = (await drafted(null)).recordId;
+  await world.db.admin.execute(
+    `update records set data = data || jsonb_build_object('board', $2::text) where id = $1`,
+    [recordId, world.projects.ours],
+  );
+  const left = await factsOf(recordId);
+  const party = (client: string) => ({
+    command: 'task.set_party',
+    recordId,
+    expectedRevision: left.revision,
+    fields: { client },
+  });
+  expect(refusedAs(await send(world.owner, party(world.theirs)))).toEqual([
+    'PLACEMENT_IS_DERIVED',
+    'board',
+  ]);
+  expect(await factsOf(recordId)).toEqual(left);
+  await applied(world.owner, party(world.ours));
+  expect(await factsOf(recordId)).toMatchObject({ client: world.ours, board: world.projects.ours });
+}
+
+/** A project with no client takes a new task, and that task any client. */
+async function agencyProjectTakesAnyClient(): Promise<void> {
+  const body = {
+    command: 'task.create',
+    fields: { title: 'Agency' },
+    board: world.projects.agency,
+  };
+  const made = await applied(world.owner, body);
+  const recordId = made.recordId ?? '';
+  const party = { recordId, expectedRevision: made.revision, fields: { client: world.theirs } };
+  await applied(world.owner, { command: 'task.set_party', ...party });
+  expect(await factsOf(recordId)).toMatchObject({
+    client: world.theirs,
+    board: world.projects.agency,
+  });
+}
+
+/** The two other writers of a task's project or client hold to `task.move`'s rule. */
+function createAndPartyKeepTheRule(): void {
+  it(
+    'a new task is refused a client’s project, and nothing is stored',
+    newTaskRefusedClientProject,
+  );
+  it(
+    'an empty task left on a client’s project takes only that client',
+    leftTaskTakesOnlyProjectClient,
+  );
+  it('a new task on the agency’s project takes any client', agencyProjectTakesAnyClient);
+}
+
 describe.skipIf(serverUrl === undefined)(
   'U112 Core 04 4: a project holds its client’s work',
   () => {
@@ -203,6 +271,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(await boardOf(task.recordId)).toBeNull();
     });
 
+    describe('task.create and task.set_party keep the rule', createAndPartyKeepTheRule);
     it('a project with a task on its board keeps its client', heldTaskLocksProjectClient);
 
     it('an empty project’s client still changes', emptyProjectClientChanges);
