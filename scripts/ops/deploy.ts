@@ -58,7 +58,7 @@ export interface DeployEffects {
   up(files: string[]): void;
   /** The local image id a pinned reference resolves to, or undefined when it is not there. */
   imageId(ref: string): string | undefined;
-  /** Each staging container's name and the image id it runs. */
+  /** Each running container's name and the image id it runs; a stopped one runs nothing. */
   runningImages(): Record<string, string>;
 }
 

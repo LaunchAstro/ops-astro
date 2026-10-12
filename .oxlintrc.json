@@ -305,6 +305,15 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/ci/production-unit-parks-and-runs-the-worker.proof.test.ts"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "require-unicode-regexp": "off",
+        "unicorn/no-array-callback-reference": "off",
+        "unicorn/no-array-sort": "off"
+      }
+    },
+    {
       "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
       "rules": { "require-await": "off" }
     },

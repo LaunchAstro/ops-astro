@@ -74,10 +74,12 @@ const effects = {
     });
     return result.status === 0 ? result.stdout.trim() : undefined;
   },
+  // Only a running container runs its image: one that stopped after Compose
+  // waited keeps the image it was created from, and runs nothing.
   runningImages() {
     const result = spawnSync(
       'docker',
-      ['inspect', '--format', '{{.Name}} {{.Image}}', ...containers],
+      ['inspect', '--format', '{{.Name}} {{.Image}} {{.State.Running}}', ...containers],
       {
         encoding: 'utf8',
       },
@@ -87,6 +89,7 @@ const effects = {
         .split('\n')
         .filter(Boolean)
         .map((line) => line.split(' '))
+        .filter(([, , running]) => running === 'true')
         .map(([name, image]) => [name.replace(/^\//u, ''), image]),
     );
   },
