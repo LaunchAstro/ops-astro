@@ -19,7 +19,7 @@
 // the page before the last day drawn and adds it below; a new reader or search
 // starts again from the newest days.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { Button, Ledger, SearchBox } from '@launchastro/ui';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
@@ -116,7 +116,8 @@ export function WorkLog(props: WorkLogProps): ReactElement {
 
 interface WindowRead {
   readonly read: UseReadLive<LedgerRead>;
-  readonly epoch: number;
+  /** The window's epoch, as committed: a new reader or search starts another. */
+  readonly epoch: { readonly current: number };
   /** The oldest day loaded, which a refresh reads down to. */
   readonly through: { current: string | null };
 }
@@ -134,15 +135,21 @@ function useWindow(client: OperationsClient, grantKey: string, query: string | n
   return { read, epoch: useEpoch(grantKey, query, through), through };
 }
 
-/** The window's epoch: a new reader or search starts another, from the first page. */
+/**
+ * The window's epoch: a new reader or search starts another, from the first
+ * page. Moved once the change commits, before the new read starts, so a
+ * render that never commits (a suspended switch) moves nothing.
+ */
 function useEpoch(grantKey: string, query: string | null, through: { current: string | null }) {
-  const seen = useRef({ grantKey, query, epoch: 0 });
-  const last = seen.current;
-  if (last.grantKey !== grantKey || last.query !== query) {
+  const epoch = useRef(0);
+  const seen = useRef({ grantKey, query });
+  useLayoutEffect(() => {
+    if (seen.current.grantKey === grantKey && seen.current.query === query) return;
+    seen.current = { grantKey, query };
     through.current = null;
-    seen.current = { grantKey, query, epoch: last.epoch + 1 };
-  }
-  return seen.current.epoch;
+    epoch.current += 1;
+  }, [grantKey, query, through]);
+  return epoch;
 }
 
 interface EarlierDays {
@@ -162,29 +169,32 @@ interface EarlierDays {
 function useEarlierDays(client: OperationsClient, log: WindowRead): EarlierDays {
   const [asking, setAsking] = useState<Asking | null>(null);
   const { read, epoch, through } = log;
-  const epochNow = useRef(epoch);
-  epochNow.current = epoch;
 
   const loadEarlier = async (from: LedgerRead): Promise<void> => {
     const boundary = from.ledger.days.at(-1)?.day;
     if (boundary === undefined) return;
-    const sent: Asking = { epoch, failures: read.now().failures, zone: from.zone, boundary };
+    const sent: Asking = {
+      epoch: epoch.current,
+      failures: read.now().failures,
+      zone: from.zone,
+      boundary,
+    };
     setAsking(sent);
     const result = await readPage(client, from.zone, boundary, from.query);
     setAsking((held) => (held === sent ? null : held));
     // The read as it stands, not as last drawn: an answer may have landed since.
     const { state, failures } = read.now();
     if (isRefusal(result) || isUnavailable(result)) {
-      if (sent.epoch === epochNow.current) read.land(result);
+      if (sent.epoch === epoch.current) read.land(result);
       return;
     }
     const drawn = state === null ? null : drawnOf(state);
-    if (drawn === null || !joins(sent, { epoch: epochNow.current, failures }, drawn)) return;
+    if (drawn === null || !joins(sent, { epoch: epoch.current, failures }, drawn)) return;
     through.current = result.value.days.at(-1)?.day ?? through.current;
     read.land({ ok: true, value: extend(drawn, result.value) });
     if (state?.outcome === 'loading') read.reload();
   };
-  return { loading: asking?.epoch === epoch, loadEarlier };
+  return { loading: asking?.epoch === epoch.current, loadEarlier };
 }
 
 /** The window on screen: the answer, or the one kept while its refresh is in flight. */
