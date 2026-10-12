@@ -10,8 +10,8 @@ import { press, track, unmountAll } from '../surfaces/mp-7-11-drawer-fixtures.ts
 
 afterEach(unmountAll);
 
-// eslint-disable-next-line max-lines-per-function -- Sol's proof, kept as written
-it('Sol proof, criterion 1: changing model during the first question task read preserves the model chosen at Enter', async () => {
+// eslint-disable-next-line max-lines-per-function -- one proof, kept as written
+it('a model change during the first question task read keeps the model chosen at Enter', async () => {
   const task = {
     id: '55555555-5555-4555-8555-555555555555',
     title: 'Synthetic brief',

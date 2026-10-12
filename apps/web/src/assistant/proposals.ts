@@ -12,7 +12,7 @@
 // asked at. A question in a chat on a task first reads that task, before it is
 // sent, so the revision kept is never newer than the one the answer read; an
 // edit the reply proposes is bound to that task and revision, kept in the tab
-// by the reply's message id so a reload keeps it too (Sol F4). The click sends
+// by the reply's message id so a reload keeps it too. The click sends
 // `task.update` at that revision: a task changed since is refused as stale and
 // nothing newer is overwritten. A chat on no task draws no edit card, the model
 // never names the task, and a card with no kept baseline applies nothing.
@@ -21,7 +21,7 @@
 // reply's message id (a live reply's line and a kept one's both carry it) and
 // its body is fixed by the reply, so a second click, or a reload and a click,
 // presents the same attempt with the same payload, and the register replays its
-// first outcome (`register-store.ts`), refusal included (Sol F5, F6).
+// first outcome (`register-store.ts`), refusal included.
 
 import type { AssistantMessage, AssistantProposal } from '@launchastro/ui';
 import {
