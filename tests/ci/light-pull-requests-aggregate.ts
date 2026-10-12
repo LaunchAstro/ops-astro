@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // CI-SPEED: the required `database conformance` aggregate's own script, run under bash for every
-// event, gate result and shards result, for tests/ci/light-pull-requests-workflow.test.ts.
+// event, gate result, shards result and scope (scripts/full-run.ts), for
+// tests/ci/light-pull-requests-workflow.test.ts.
 
 import { spawnSync } from 'node:child_process';
 
@@ -14,9 +15,11 @@ export const condition = (value: unknown): unknown =>
 const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
 
 /**
- * The aggregate's script, run under GitHub's bash with each event, gate result and shards result.
- * A skip passes on a pull request whose gate passed, and nowhere else: a failed, cancelled or
- * skipped gate skips the shards too, and that skip must not read as green.
+ * The aggregate's script, run under GitHub's bash with each event, gate result, shards result and
+ * scope. A skip passes on a pull request whose gate passed and whose scope is not light, and on a
+ * light push whose gate passed (its merge group tested the tree), and nowhere else: a failed,
+ * cancelled or skipped gate skips the shards too, and that skip must not read as green; a light
+ * pull request waits for the `ci-next` label.
  */
 export function aggregateProblems(step: { run?: string; env?: Env } | undefined): string[] {
   if (step?.run === undefined) return ['the aggregate has no script'];
@@ -24,7 +27,8 @@ export function aggregateProblems(step: { run?: string; env?: Env } | undefined)
   for (const event of ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'])
     for (const gate of RESULTS)
       for (const shards of RESULTS)
-        problems.push(...aggregateRun(step.run, step.env ?? {}, { event, gate, shards }));
+        for (const scope of ['full', 'light', ''])
+          problems.push(...aggregateRun(step.run, step.env ?? {}, { event, gate, shards, scope }));
   return problems;
 }
 
@@ -32,7 +36,7 @@ export function aggregateProblems(step: { run?: string; env?: Env } | undefined)
 function aggregateRun(
   run: string,
   stepEnv: Env,
-  { event, gate, shards }: { event: string; gate: string; shards: string },
+  { event, gate, shards, scope }: { event: string; gate: string; shards: string; scope: string },
 ): string[] {
   const problems: string[] = [];
   const env: Env = { PATH: process.env['PATH'] ?? '' };
@@ -40,6 +44,7 @@ function aggregateRun(
     'needs.database-shard.result': shards,
     'needs.gate.result': gate,
     'github.event_name': event,
+    'needs.gate.outputs.scope': scope,
   };
   for (const [key, value] of Object.entries(stepEnv)) {
     const known = values[String(condition(value))];
@@ -52,9 +57,13 @@ function aggregateRun(
   });
   const wants =
     shards === 'success' ||
-    (shards === 'skipped' && gate === 'success' && event === 'pull_request');
+    (shards === 'skipped' &&
+      gate === 'success' &&
+      ((event === 'pull_request' && scope !== 'light') || (event === 'push' && scope === 'light')));
   const got = out.status === 0 ? 'passed' : 'failed';
   if ((out.status === 0) !== wants)
-    problems.push(`${event || 'no event'} gate ${gate} shards ${shards}: ${got}`);
+    problems.push(
+      `${event || 'no event'} gate ${gate} shards ${shards}${scope === 'full' ? '' : ` scope ${scope || 'unset'}`}: ${got}`,
+    );
   return problems;
 }

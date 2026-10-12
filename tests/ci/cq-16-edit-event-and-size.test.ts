@@ -115,8 +115,21 @@ describe('CQ-16 workflow permissions', () => {
     const ci = read(CI);
     expect(ci.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target/u)).toBeNull();
     expect(top(ci, 'permissions')).toBe('permissions:\n  contents: read\n\n');
-    const own = [...jobs(ci)].filter(([, b]) => /^ {4}permissions:/mu.test(b)).map(([k]) => k);
-    expect(own).toEqual([]);
+    // The gate alone reads Actions, for the push-to-main scope (scripts/full-run.ts), read only.
+    const own = [...jobs(ci)].filter(([, b]) => /^ {4}permissions:/mu.test(b));
+    expect(own.map(([k]) => k)).toEqual(['gate']);
+    expect(own[0]?.[1]).toContain(
+      '    permissions:\n      contents: read\n      actions: read\n    ',
+    );
+    // Its token reaches one step, on a push to main alone: the checkout keeps none in .git/config,
+    // where the pull request's own scripts that the gate runs could read it.
+    expect(own[0]?.[1]).toMatch(
+      /- uses: actions\/checkout@\S+ # v[\d.]+\n {8}with:\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/u,
+    );
+    expect(ci.match(/github\.token/gu)).toHaveLength(1);
+    expect(ci).toContain(
+      "          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}\n        run: node scripts/full-run.ts\n",
+    );
   });
 
   it('CQ-16 workflow permissions: the token reaches only the step that reads the description', () => {

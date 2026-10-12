@@ -38,6 +38,7 @@ const ROUTED = [
   'database',
   'database-gate',
   'database-shard',
+  'full',
   'gate',
   'isolation',
   'isolation-tests',
@@ -178,8 +179,8 @@ const PLANTS: [string, [string, string, string][], string][] = [
     [
       [
         CI,
-        '    name: command parity\n    needs: [gate]\n    runs-on: ubuntu-latest\n',
-        `    name: command parity\n    needs: [gate]\n    runs-on: ${ROUTE}\n`,
+        '    name: command parity\n    needs: [gate, full]\n    runs-on: ubuntu-latest\n',
+        `    name: command parity\n    needs: [gate, full]\n    runs-on: ${ROUTE}\n`,
       ],
     ],
     'command parity: reaches the M5 on merge_group',

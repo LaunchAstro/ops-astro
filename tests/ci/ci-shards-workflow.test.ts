@@ -79,7 +79,9 @@ function jobProblems(shardKey: string, name: string): string[] {
   if (aggregates.length !== 1 || aggregate === undefined)
     return [...problems, `${name}: ${String(aggregates.length)} jobs`];
   if (unguarded(aggregate.if) !== 'always()') problems.push(`${key}: if: ${String(aggregate.if)}`);
-  if ((aggregate.needs ?? []).toSorted().join(' ') !== [shardKey, 'gate'].toSorted().join(' '))
+  if (
+    (aggregate.needs ?? []).toSorted().join(' ') !== [shardKey, 'gate', 'full'].toSorted().join(' ')
+  )
     problems.push(`${key}: needs ${String(aggregate.needs)}`);
   if (aggregate['continue-on-error'] !== undefined || aggregate.steps?.length !== 1)
     problems.push(`${key}: one step, never continue-on-error`);
@@ -95,15 +97,18 @@ const stepEnv = (job: string, step: string) =>
 
 const RESULTS = ['success', 'failure', 'cancelled', 'skipped', ''];
 const EVENTS = ['merge_group', 'pull_request', 'push'];
+// The gate's `scope` output (scripts/full-run.ts); empty when the gate never wrote it.
+const SCOPES = ['full', 'light', ''];
 
-/** The aggregate's script under bash for one event, gate result and shards result: whether it passed. */
-function passes(name: string, shardKey: string, values: [string, string, string]): boolean {
+/** The aggregate's script under bash for one event, gate result, shards result and scope: whether it passed. */
+function passes(name: string, shardKey: string, values: [string, string, string, string]): boolean {
   const step = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0];
-  const [event, gate, shards] = values;
+  const [event, gate, shards, scope] = values;
   const known: Record<string, string> = {
     [`\${{ needs.${shardKey}.result }}`]: shards,
     '${{ needs.gate.result }}': gate,
     '${{ github.event_name }}': event,
+    '${{ needs.gate.outputs.scope }}': scope,
   };
   const env: Record<string, string> = { PATH: process.env['PATH'] ?? '' };
   for (const [k, v] of Object.entries(step?.env ?? {})) {
@@ -152,21 +157,25 @@ describe('the aggregates', () => {
     ['local checks', 'check'],
     ['isolation tests', 'isolation'],
   ])(
-    'the %s aggregate passes only when every shard succeeded',
+    'the %s aggregate passes when every shard succeeded, or on a light push whose gate passed',
     (name, shardKey) => {
       const run = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0]?.run;
       expect(run).toBeDefined();
       expect(run).not.toContain('${{');
       const passed = EVENTS.flatMap((event) =>
         RESULTS.flatMap((gate) =>
-          RESULTS.filter((shards) => passes(name, shardKey, [event, gate, shards])).map(
-            (shards) => `${event} ${gate} ${shards}`,
+          RESULTS.flatMap((shards) =>
+            SCOPES.filter((scope) => passes(name, shardKey, [event, gate, shards, scope])).map(
+              (scope) => `${event} ${gate} ${shards} ${scope}`,
+            ),
           ),
         ),
       );
-      expect(passed).toStrictEqual(
-        EVENTS.flatMap((event) => RESULTS.map((gate) => `${event} ${gate} success`)),
-      );
+      // Every success, and the one skip a light push whose gate passed may carry.
+      const wanted = EVENTS.flatMap((event) =>
+        RESULTS.flatMap((gate) => SCOPES.map((scope) => `${event} ${gate} success ${scope}`)),
+      ).concat('push success skipped light');
+      expect(passed.toSorted()).toStrictEqual(wanted.toSorted());
     },
     120_000,
   );

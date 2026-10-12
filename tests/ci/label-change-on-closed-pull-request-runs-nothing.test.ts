@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 import { read, ROOT } from './merge-group-repo.ts';
 import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
+import { FULL_GUARD } from './full-checks.ts';
 
 type Job = { if?: unknown; needs?: unknown };
 type Workflow = { on?: Record<string, { types?: string[] } | null>; jobs: Record<string, Job> };
@@ -48,6 +49,8 @@ function own(cond: unknown, ctx: Ctx, guarded: boolean): boolean | 'always' {
   if (guarded && rest !== cond && !guardHolds(ctx)) return false;
   if (rest === undefined) return true;
   if (rest === 'always()') return 'always';
+  // `full checks` waits on the gate, which decides; a closed pull request's gate never runs.
+  if (rest === FULL_GUARD) return true;
   const match = /^github\.event_name (==|!=) '(\w+)'$/u.exec(String(rest));
   if (match === null) throw new Error(`a condition this test does not read: ${String(rest)}`);
   return (match[1] === '==') === (ctx.event === match[2]);
