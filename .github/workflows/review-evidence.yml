@@ -9,8 +9,9 @@ name: review evidence
 # its latest run is the one result.
 #
 # It holds one job, under the required check's exact name, with no condition
-# and nothing it waits on, so an edit makes no new, skipped or cancelled run
-# of any other check on the head (CQ-16). ci.yml runs every other check on a
+# but the guard that skips it on a closed pull request, and nothing it waits
+# on, so an edit makes no new, skipped or cancelled run of any other check on
+# the head (CQ-16). ci.yml runs every other check on a
 # push, a label change and a reopen, and never on an edit; adding the
 # `sent-back` label instead fails ci.yml's gate on that head
 # (scripts/sent-back-hold.mjs). Its concurrency
@@ -62,6 +63,9 @@ jobs:
   review-evidence:
     name: review evidence for this revision
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    # A label change or an edit on a closed or merged pull request judges
+    # nothing: nothing merges from it, so the check skips there.
+    if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
     # Its slowest green run in the day to 1 October 2026: 1.1 min.
     timeout-minutes: 10
     steps:
