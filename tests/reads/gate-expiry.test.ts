@@ -277,7 +277,7 @@ describe.skipIf(serverUrl === undefined)('a gate past its deadline, on read', ()
         new URL('../../packages/core-commands/src/reads/proposals.ts', import.meta.url),
         'utf8',
       );
-      expect(decideSource).toContain('(g.expires_at <= $3::timestamptz) as expired');
+      expect(decideSource).toContain('(g.expires_at <= $3::text::timestamptz) as expired');
       expect(readSource).toContain("g.state = 'pending' and g.expires_at <= now()");
     });
   });
