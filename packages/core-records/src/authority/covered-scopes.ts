@@ -9,8 +9,8 @@ import { readableScope, type ReadableScope } from './readable-scope.ts';
 
 /**
  * Where the caller holds this collection and action right now: the whole
- * business, or the records its record-scoped grants reach, a granted map's
- * tickets among them (W12). A list read hands both to its own query, so the
+ * business, or the records its record-scoped grants reach, with a granted
+ * map's tickets for `task:read` (W12). A list read hands both to its own query, so the
  * rows it returns are filtered by the caller's grant inside the statement
  * that reads them. A subject held within ticked keys (an agent credential) is
  * asked only of those (`askedFor`).

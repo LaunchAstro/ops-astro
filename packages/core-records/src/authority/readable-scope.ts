@@ -3,8 +3,10 @@
 // What a list read may answer: the records a caller's live grants reach for
 // one collection and action, from the same effective chain `checkAuthority`
 // walks (grants.ts), so a list and a single-record check cannot disagree. A
-// task grant on a map reaches the map's tickets too, never a nested map
-// (W12), as `task.read` admits them (`reads/dispatch.ts`).
+// `task:read` grant on a map also reaches the map's tickets, never a nested
+// map (W12), as `task.read` admits them (`reads/dispatch.ts`), and holds each
+// of them as that read does. No other action reaches through a map: a decide
+// on a ticket's gate asks the ticket's own grant.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { mapTicketCondition } from '../tasks/wayfinder.ts';
@@ -16,7 +18,8 @@ export interface ReadableScope {
   readonly business: boolean;
   /**
    * The records reached by record-scoped grants, when there is no business
-   * grant: each granted record, and each ticket of a granted map.
+   * grant: each granted record and, for `task:read`, each ticket of a granted
+   * map.
    */
   readonly records: readonly string[];
 }
@@ -38,33 +41,37 @@ export async function readableScope(
 ): Promise<ReadableScope> {
   const asked = askedFor(subjects, { collection, action });
   const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
-    `${EFFECTIVE}, held as (
-       select distinct e.scope_kind, e.scope_id
-         from effective e
-        where e.collection = $1
-          and e.action = $2
-          and e.scope_kind in ('business', 'record')
-          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
-                       where s.kind = e.subject_kind and s.id = e.subject_id))
-     select scope_kind, scope_id from held
-     union
-     select 'record', t.id
-       from held h
-       join public.records t on t.business_id = $5 and t.uuid_4 = h.scope_id
-      where $1 = 'task' and h.scope_kind = 'record' and ${mapTicketCondition('t')}`,
-    [
-      collection,
-      action,
-      asked.map((subject) => subject.kind),
-      asked.map((subject) => subject.id),
-      tx.businessId,
-    ],
+    `${EFFECTIVE}
+     select distinct e.scope_kind, e.scope_id
+       from effective e
+      where e.collection = $1
+        and e.action = $2
+        and e.scope_kind in ('business', 'record')
+        and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [collection, action, asked.map((subject) => subject.kind), asked.map((subject) => subject.id)],
   );
   if (rows.some((row) => row.scope_kind === 'business')) return { business: true, records: [] };
-  return {
-    business: false,
-    records: rows.flatMap((row) => (row.scope_id === null ? [] : [row.scope_id])),
-  };
+  const granted = rows.flatMap((row) => (row.scope_id === null ? [] : [row.scope_id]));
+  const tickets = collection === 'task' && action === 'read' ? await heldTickets(tx, granted) : [];
+  return { business: false, records: [...granted, ...tickets] };
+}
+
+/**
+ * The tickets of whichever of `ids` are maps, held `for share` in id order as
+ * `task.read` holds a ticket it admits through its map, so none moves out of
+ * the map before the read that listed it is served.
+ */
+async function heldTickets(tx: TenantQuery, ids: readonly string[]): Promise<readonly string[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx.query<{ readonly id: string }>(
+    `select t.id from public.records t
+      where t.business_id = $1 and t.uuid_4 = any($2::uuid[]) and ${mapTicketCondition('t')}
+      order by t.id
+      for share of t`,
+    [tx.businessId, ids],
+  );
+  return rows.map((row) => row.id);
 }
 
 /**
@@ -74,8 +81,9 @@ export async function readableScope(
  * A read that works over many records (the derived rank's pool) filters by
  * this list rather than reading every record and checking each afterwards, so
  * a record the subjects hold no grant on never leaves the database. A business
- * grant reaches every record; a record grant, its one record, and a task
- * grant on a map each of the map's tickets (W12). A party grant is not read
+ * grant reaches every record; a record grant, its one record, and a
+ * `task:read` grant on a map each of the map's tickets (W12), held as
+ * `readableScope` holds them. A party grant is not read
  * here, as `checkAuthority` does not read it for a record either, so the list
  * is exactly the records a single-record read would admit, a subject held
  * within ticked keys included.
@@ -89,30 +97,12 @@ export async function readableRecordIds(
     readonly recordTypeId: string;
   },
 ): Promise<readonly string[]> {
-  const asked = askedFor(subjects, request);
+  const scope = await readableScope(tx, subjects, request.collection, request.action);
   const rows = await tx.query<{ readonly id: string }>(
-    `${EFFECTIVE}
-     select r.id
-       from public.records r
+    `select r.id from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and exists (
-          select 1 from effective e
-           where e.collection = $3
-             and e.action = $4
-             and exists (select 1 from unnest($5::text[], $6::uuid[]) as s (kind, id)
-                          where s.kind = e.subject_kind and s.id = e.subject_id)
-             and (e.scope_kind = 'business'
-                  or (e.scope_kind = 'record' and e.scope_id = r.id)
-                  or (e.scope_kind = 'record' and e.collection = 'task' and e.scope_id = r.uuid_4
-                      and ${mapTicketCondition('r')})))`,
-    [
-      tx.businessId,
-      request.recordTypeId,
-      request.collection,
-      request.action,
-      asked.map((subject) => subject.kind),
-      asked.map((subject) => subject.id),
-    ],
+        and ($3 or r.id = any($4::uuid[]))`,
+    [tx.businessId, request.recordTypeId, scope.business, scope.records],
   );
   return rows.map((row) => row.id);
 }
