@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a task created from a conversation while the wrap-up or purge holds it, in either order, leaves the wrap-up not covering or listing the task, keeps the body, and never names a purged conversation"
+}
