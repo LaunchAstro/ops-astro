@@ -12,6 +12,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  mintDelegation,
+  revokeDelegation,
+} from '../../packages/core-records/src/authority/delegations.ts';
+import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { hold, waitingOn } from '../support/lock-waits.ts';
@@ -131,6 +136,23 @@ describe.skipIf(serverUrl === undefined)('a lease claim against concurrent write
       meanwhile,
     );
 
+  /** A delegation for the agent on `taskId`, from the approving person, ending at `expires`. */
+  const delegation = async (taskId: unknown, expires: Date): Promise<string> =>
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      const minted = await mintDelegation(tx, {
+        agentActorId: s.agentActorId,
+        delegatePersonId: s.decider.personId,
+        mintedByActorId: s.decider.actorId,
+        purpose: `lease_race_${randomUUID().slice(0, 8)}`,
+        collections: ['task'],
+        actions: ['read', 'comment', 'write'],
+        purposeScope: { kind: 'record', id: String(taskId) },
+        expiresAt: expires,
+      });
+      if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
+      return minted.value.delegation.id;
+    });
+
   it('two claims on one reservation at once leave one lease, at the first fence', async () => {
     const work = await approvedWork(s);
     const second = await behind(work, 'commit');
@@ -143,6 +165,68 @@ describe.skipIf(serverUrl === undefined)('a lease claim against concurrent write
     const second = await behind(work, 'rollback');
     expect(second).toStrictEqual({ status: 'fulfilled', value: 1 });
     expect(await leasesOn(work['taskId'])).toStrictEqual([{ holder: colleague.actorId, fence: 1 }]);
+  });
+
+  it('a claim whose write grant is revoked while it waits is refused', async () => {
+    const work = await approvedWork(s);
+    const revoked = await writer('revoked-writer');
+    const revoke = async () =>
+      await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, revoked.grant));
+    const second = await behind(work, 'rollback', revoke, revoked.member);
+    expect(reasonOf(second)).toMatch(/^42501 .*authority does not cover/u);
+    expect(await leasesOn(work['taskId'])).toStrictEqual([]);
+  });
+
+  it('a claim whose approved version is superseded while it waits is refused', async () => {
+    const work = await approvedWork(s);
+    const second = await behind(work, 'rollback', async () => {
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await tx.query(
+          `update public.proposal_versions set superseded_at = now()
+            where business_id = $1 and id = $2`,
+          [s.business, work['versionId']],
+        );
+      });
+    });
+    expect(reasonOf(second)).toMatch(/^23514 .*not claimable/u);
+    expect(await leasesOn(work['taskId'])).toStrictEqual([]);
+  });
+
+  it("an agent's claim whose delegation is revoked while it waits is refused", async () => {
+    const work = await approvedWork(s);
+    const expires = inTenMinutes();
+    const minted = await delegation(work['taskId'], expires);
+    const agent = [randomUUID(), work['reservationId'], minted, s.agentActorId];
+    const revoke = async () =>
+      await s.db.app.withBusiness(s.business, async (tx) => await revokeDelegation(tx, minted));
+    const second = await claimBehindCompetitor(
+      work['reservationId'],
+      [...agent, s.decider.personId, expires, 'task'],
+      'rollback',
+      revoke,
+    );
+    expect(reasonOf(second)).toMatch(/^42501 .*authority does not cover/u);
+    expect(await leasesOn(work['taskId'])).toStrictEqual([]);
+  });
+
+  it("an agent's claim whose delegation expires while it waits is refused", async () => {
+    const work = await approvedWork(s);
+    // Whole seconds, at least two ahead, so the delegation ends while the claim waits.
+    const expires = new Date(Math.floor(Date.now() / 1000) * 1000 + 3_000);
+    const minted = await delegation(work['taskId'], expires);
+    const agent = [randomUUID(), work['reservationId'], minted, s.agentActorId];
+    const second = await claimBehindCompetitor(
+      work['reservationId'],
+      [...agent, s.decider.personId, expires, 'task'],
+      'rollback',
+      async () => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, expires.getTime() - Date.now() + 500);
+        });
+      },
+    );
+    expect(reasonOf(second)).toMatch(/^(42501 .*authority does not cover|23514 .*lifetime)/u);
+    expect(await leasesOn(work['taskId'])).toStrictEqual([]);
   });
 
   it('a claim cut before its commit leaves no lease, and its retry takes the first fence', async () => {
