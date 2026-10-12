@@ -25,6 +25,8 @@ import { Client, loginIn } from './backup-identity.fixture.ts';
 let db: FreshDatabase;
 let login: { url: string; name: string };
 let forwarderDb: AdminConnection;
+/** A connection of its own to watch the locks: the holder keeps the admin one busy. */
+let watcher: AdminConnection;
 
 /** A promise and the function that settles it. */
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
@@ -57,7 +59,7 @@ async function holdForwarderLock(): Promise<{ readonly release: () => Promise<vo
 async function passWaits(): Promise<void> {
   await vi.waitFor(
     async () => {
-      const [row] = await db.admin.execute<{ n: number }>(
+      const [row] = await watcher.execute<{ n: number }>(
         `select count(*)::int as n from pg_locks l join pg_database d on d.oid = l.database
           where d.datname = current_database() and l.locktype = 'advisory' and not l.granted`,
       );
@@ -72,10 +74,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('security alert log 
     db = await createFreshDatabase({ part: 'alertlogclock' });
     login = await loginIn(db, 'ops_astro_forwarder', 'fwclock');
     forwarderDb = connectAsAdmin(login.url, { source: 'forwarder' });
+    watcher = connectAsAdmin(login.url, { source: 'forwarder' });
   }, 180_000);
 
   afterAll(async () => {
     await forwarderDb?.close();
+    await watcher?.close();
     await db?.drop();
     const cleanup = new Client(databaseUrlFromEnvironment() ?? '');
     try {
