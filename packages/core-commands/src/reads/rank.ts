@@ -183,9 +183,11 @@ export function rankInputOf(row: RankPoolRow): RankInput {
 export async function readTaskRank(
   tx: TenantQuery,
   taskTypeId: string,
-  recordId: string,
+  id: string,
   pool: RankPool,
 ): Promise<RankView> {
+  // Either spelling of the UUID names the one row; rows come back lower-case.
+  const recordId = id.toLowerCase();
   const readable =
     pool.kind === 'task'
       ? [recordId]

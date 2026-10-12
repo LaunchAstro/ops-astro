@@ -295,9 +295,12 @@ export async function pickup(
   const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
   if (fenced !== null) return fenced;
   if (!claimed.ok) {
-    // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
+    // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it,
+    // and an agent already working the purpose under a live delegation is refused as its mint is.
     const may = await claimantMayWork(tx, request, found, lockedAt);
-    return may.ok ? claimed : may;
+    if (!may.ok) return may;
+    const live = await liveDelegationRefusal(tx, request, found);
+    return live ?? claimed;
   }
 
   // From the database instant above, not the process clock. Whole
@@ -697,7 +700,46 @@ async function claimantMayWork(
 }
 
 /**
- * The collections the agent's delegation reaches: the work's own, and `run`
+ * The agent's live delegation for this purpose, refused as `mintDelegation`
+ * refuses a second one: its row locked, its expiry judged after that wait at
+ * the clock. A stop at a spent hold mints nothing, so it asks here, and the
+ * refusal takes the stop's ask back with the rest of the transaction.
+ */
+async function liveDelegationRefusal(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+): Promise<RuntimeResult<never> | null> {
+  if (request.claimant === 'person') return null;
+  const held = await tx.query<{ readonly id: string }>(
+    `select id from public.delegations
+      where business_id = $1 and agent_actor_id = $2 and purpose = $3
+        and revoked_at is null and settled_at is null
+      for update`,
+    [tx.businessId, request.agentActorId, found.purpose],
+  );
+  if (held[0] === undefined) return null;
+  const [judged] = await tx.query<{ readonly live: boolean }>(
+    `select expires_at > clock_timestamp() as live from public.delegations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, held[0].id],
+  );
+  if (judged?.live !== true) return null;
+  return {
+    ok: false,
+    refusal: refuseCommand(
+      'DELEGATION_ALREADY_LIVE',
+      [],
+      [
+        `this agent already holds a live delegation for the purpose ${found.purpose}`,
+        'Use the credential already issued for it, or hand the work back so the delegation settles.',
+      ],
+    ),
+  };
+}
+
+/**
+ * The collections the agent's delegation reaches:the work's own, and `run`
  * where the delegating person holds `run:write` at the locked instant, so the
  * agent may revise its run's state (MP-6-2). The mint holds `run` to `write`;
  * a person without it mints the task delegation it always was.

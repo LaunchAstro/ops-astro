@@ -110,12 +110,14 @@ export function observed(
  * One email through custody, its answer read as `observed` reads it. Custody sends nothing past
  * the ask's place under the ceiling (`roomFor`'s bound, from `reserved`), so a send that waited
  * on its way out after its fence (`lapsed`) never goes beside the email that took its place.
+ * `endsAt`, a wall-clock instant, bounds it further: a link that expires then is never sent after.
  */
 export async function sendOnce(
   broker: Broker,
   { operation, route }: Routed,
   built: AdapterRequest,
   reserved: Reading,
+  endsAt: number = Infinity,
 ): Promise<ReturnType<typeof observed>> {
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
@@ -124,7 +126,7 @@ export async function sendOnce(
     body: built.body,
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
-    notAfter: endBy(reserved.wall, operation.timeoutMs + IN_FLIGHT_GRACE_MS),
+    notAfter: Math.min(endBy(reserved.wall, operation.timeoutMs + IN_FLIGHT_GRACE_MS), endsAt),
   });
   return observed(outcome, operation, isLoopbackMock(broker.custody) ? 'mock' : 'provider');
 }
