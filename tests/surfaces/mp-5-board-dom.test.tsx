@@ -301,3 +301,56 @@ describe('MP-5-5 on the gallery fixture', () => {
     expect(board.find('.cbdta__more')?.textContent).toMatch(/^\+\d+ more — keep typing$/u);
   });
 });
+
+/** True when a media condition holds at a `viewport`-wide screen: min-width, max-width and `not all and`. */
+const holdsAt = (condition: string, viewport: number): boolean => {
+  const negated = condition.startsWith('not all and ');
+  const holds = [...condition.matchAll(/\((min|max)-width:\s*(\d+)px\)/gu)].every(([, edge, px]) =>
+    edge === 'min' ? viewport >= Number(px) : viewport <= Number(px),
+  );
+  return negated ? !holds : holds;
+};
+
+/** The overflow-x of every rule in the board sheet that holds for `element` at `viewport`, in order. */
+const overflowsFor = (element: Element, viewport: number): readonly string[] => {
+  const style = document.createElement('style');
+  style.textContent = SHEET;
+  document.head.append(style);
+  const found: string[] = [];
+  const visit = (rules: CSSRuleList): void => {
+    for (const rule of rules) {
+      if (rule instanceof CSSMediaRule) {
+        if (holdsAt(rule.conditionText, viewport)) visit(rule.cssRules);
+      } else if (rule instanceof CSSStyleRule && rule.style.getPropertyValue('overflow-x') !== '') {
+        let matches = false;
+        try {
+          matches = element.matches(rule.selectorText);
+        } catch {
+          matches = false;
+        }
+        if (matches) found.push(rule.style.getPropertyValue('overflow-x'));
+      }
+    }
+  };
+  visit(style.sheet!.cssRules);
+  style.remove();
+  return found;
+};
+
+describe('a board on a desktop screen', () => {
+  it('a narrow board card on a wide screen scrolls to its right-hand columns instead of clipping them', async () => {
+    const board = await open({ width: 400, viewport: 1480 });
+    const table = board.find('table') as HTMLElement;
+    expect(table.style.width).toMatch(/px$/u);
+    const wrap = board.find('.cbd__wrap')!;
+    const overflow = overflowsFor(wrap, 1480);
+    expect(overflow).not.toContain('clip');
+    expect(overflow.at(-1)).toBe('auto');
+  });
+
+  it('a board that fits its card on a wide screen still clips, so its heads stay stuck to the page', async () => {
+    const board = await open({ width: 1200, viewport: 1480 });
+    expect((board.find('table') as HTMLElement).style.width).toBe('');
+    expect(overflowsFor(board.find('.cbd__wrap')!, 1480).at(-1)).toBe('clip');
+  });
+});
