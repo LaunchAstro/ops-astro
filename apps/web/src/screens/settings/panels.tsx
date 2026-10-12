@@ -81,8 +81,8 @@ export function ReadBanner(props: {
       {state.outcome === 'empty' ? (
         <Empty
           title="This business holds neither setting yet."
-          description="The read answered with no rows. Until one of them is written there is nothing to show, and a default drawn here would be a number nobody asked for."
-          hint="Writing either setting below creates its row."
+          description="The read answered with no rows. Until they are installed there is nothing to show, and a default drawn here would be a number nobody asked for."
+          hint="Saving either setting below is refused until they are installed."
         />
       ) : null}
     </div>
