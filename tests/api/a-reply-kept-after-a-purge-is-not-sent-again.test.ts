@@ -126,8 +126,8 @@ async function timingOf(fixture: Fixture, conversationId: string) {
     question_before: boolean;
     answer_after: boolean;
   }>(
-    `select q.created_at < c.context_from as question_before,
-          r.created_at > c.context_from as answer_after
+    `select q.context_epoch < c.context_epoch as question_before,
+          r.context_epoch = c.context_epoch as answer_after
      from public.conversations c
      join public.conversation_messages q on q.conversation_id = c.id and q.role = 'person'
      join public.conversation_messages r on r.answers_message_id = q.id

@@ -84,7 +84,7 @@ async function pausedPost(
   return { request };
 }
 
-/** Whether the conversation is detached, and its cut falls before the question. */
+/** Whether the conversation is detached, and its cut (the purge's epoch) falls after the question. */
 async function timingOf(
   fixture: Awaited<ReturnType<typeof createApiFixture>>,
   conversationId: string,
@@ -95,7 +95,7 @@ async function timingOf(
     detached: boolean;
   }>(
     `select c.scope_record_id is null as detached,
-          c.context_from <= q.created_at as cutoff_before_question
+          q.context_epoch < c.context_epoch as cutoff_before_question
      from public.conversations c
      join public.conversation_messages q on q.conversation_id = c.id
     where c.id = $1 and q.id = $2`,

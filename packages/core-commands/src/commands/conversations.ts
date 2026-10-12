@@ -281,8 +281,9 @@ export async function messageConversation(
   if (!still.ok) return refused(still.refusal);
   await tx.query(
     `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body, created_at)
-     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz)`,
+       (business_id, id, conversation_id, role, author_actor_id, body, created_at, context_epoch)
+     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz,
+             (select context_epoch from conversations where business_id = $1 and id = $3))`,
     [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body, at],
   );
   await tx.query(
@@ -292,9 +293,5 @@ export async function messageConversation(
   );
   const asked = { conversationId: fields.conversationId, messageId };
   if (pageRefused !== null) await markRefusedForPage(tx, context.session, asked, pageRefused);
-  return applied(null, null, {
-    conversationId: fields.conversationId,
-    messageId,
-    address: conversationAddress(fields.conversationId),
-  });
+  return applied(null, null, { ...asked, address: conversationAddress(fields.conversationId) });
 }
