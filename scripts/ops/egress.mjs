@@ -32,7 +32,8 @@ import { connect, createServer } from 'node:net';
 const HOST =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const LINK_PORT = 9443;
-const HELLO_LIMIT = 16_384;
+// The largest TLS record, header and all: a hello is read until it is whole or past this.
+const HELLO_LIMIT = 5 + 16_384;
 
 /** The API's host from the worker's own address: https, port 443, nothing but a host. */
 function apiHost(env) {
@@ -67,13 +68,32 @@ export function allowList(env) {
 const listed = (list, host, port) => list.some(([h, p]) => h === host && p === port);
 
 /**
- * The server name in a TLS ClientHello, or undefined when there is none to read. Only a whole
- * first record names anything: a hello cut short names nothing, so the relay reads on.
+ * The handshake message a hello's records carry, joined across them, or undefined until it is
+ * whole: a client may split its hello over several records.
  */
-export function serverName(hello) {
+function handshakeOf(bytes) {
+  const parts = [];
+  for (let at = 0; at + 5 <= bytes.length && bytes[at] === 0x16;) {
+    const end = at + 5 + bytes.readUInt16BE(at + 3);
+    if (end > bytes.length) return;
+    parts.push(bytes.subarray(at + 5, end));
+    const message = Buffer.concat(parts);
+    const size = message.length < 4 ? Infinity : 4 + message.readUIntBE(1, 3);
+    if (message.length >= size) return message.subarray(0, size);
+    at = end;
+  }
+}
+
+/**
+ * The server name in a TLS ClientHello, or undefined when there is none to read. Only a whole
+ * hello names anything, read within its own message: a hello cut short names nothing, so the
+ * relay reads on.
+ */
+export function serverName(bytes) {
   try {
-    if (hello[0] !== 0x16 || hello[5] !== 0x01 || hello.length < 5 + hello.readUInt16BE(3)) return;
-    let at = 5 + 4 + 2 + 32;
+    const hello = handshakeOf(bytes);
+    if (hello?.[0] !== 0x01) return;
+    let at = 4 + 2 + 32;
     at += 1 + hello[at];
     at += 2 + hello.readUInt16BE(at);
     at += 1 + hello[at];
@@ -81,8 +101,12 @@ export function serverName(hello) {
     for (at += 2; at + 4 <= end;) {
       const [type, size] = [hello.readUInt16BE(at), hello.readUInt16BE(at + 2)];
       if (type === 0 && hello[at + 6] === 0) {
-        const name = hello.subarray(at + 9, at + 9 + hello.readUInt16BE(at + 7)).toString('latin1');
-        return name.toLowerCase();
+        const stop = at + 9 + hello.readUInt16BE(at + 7);
+        if (stop > hello.length) return;
+        return hello
+          .subarray(at + 9, stop)
+          .toString('latin1')
+          .toLowerCase();
       }
       at += 4 + size;
     }
