@@ -2,10 +2,9 @@
 // @vitest-environment jsdom
 //
 // `Load earlier days` pressed in the commit that starts a new search, after the
-// window's epoch has moved and before the new search's read starts: the page
-// leaves for the window still drawn, the previous search's, so it may neither
-// join the new search's window nor withdraw it, and the new window's button is
-// not held disabled by it. The press runs from a layout effect beside the Work
+// window's epoch has moved and before the new search's read starts: the window
+// still drawn is the previous search's, so the press sends nothing, and nothing
+// joins or withdraws the new search's window or holds its button disabled. The press runs from a layout effect beside the Work
 // log, the one place a test can reach between the two; a person reaches it when
 // the commit is not a discrete one (a transition, or an answer that moves the
 // query), whose passive effects wait for the next frame.
@@ -100,10 +99,9 @@ async function pressedAsTheSearchCommits() {
   expect(drawn(view)).toEqual(['e1', 'e2']);
   await view.type('input[type="search"]', 'hinge');
   await settle();
-  // The press went out for the window drawn then: no query, its last day.
+  // The press found the previous search's window drawn and sent nothing for it.
   expect(asked.map((body) => [body['query'], body['before']])).toEqual([
     [undefined, null],
-    [undefined, '2026-09-22'],
     ['hinge', null],
   ]);
   expect(drawn(view)).toEqual(['h1', 'h2']);
