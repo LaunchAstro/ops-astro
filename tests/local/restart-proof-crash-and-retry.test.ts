@@ -16,13 +16,17 @@ afterEach(() => {
   for (const box of boxes.splice(0)) box.remove();
 });
 
-/** A daemon whose `run` (or `exec ... psql`) creates, then holds until STANDIN_DIR/release. */
+/**
+ * A daemon whose `run` (or `exec ... psql`) creates, then holds until STANDIN_DIR/release.
+ * As Docker does, `run` writes the id to its --cidfile once the container is created.
+ */
 const holding = (step: 'run' | 'psql') => `
 hold() { touch "$STANDIN_DIR/held"; while [ ! -e "$STANDIN_DIR/release" ]; do sleep 0.05; done; }
+created() { while [ $# -gt 0 ]; do [ "$1" != --cidfile ] || printf cid-created >"$2"; shift; done; }
 case "$1" in
   inspect) exit 1 ;;
   image) exit 0 ;;
-  run) ${step === 'run' ? 'touch "$STANDIN_DIR/created"; hold;' : ''} echo cid-created ;;
+  run) created "$@"; ${step === 'run' ? 'touch "$STANDIN_DIR/created"; hold;' : ''} echo cid-created ;;
   exec) case " $* " in *" psql "*) ${step === 'psql' ? 'hold;' : ':'} ;; esac ;;
   port) echo "127.0.0.1:$STANDIN_PORT" ;;
 esac
