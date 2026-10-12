@@ -20,6 +20,7 @@ import {
   suitePart,
 } from '../../scripts/db-shards.ts';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { unguarded } from './open-pull-request.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -182,7 +183,8 @@ it('the aggregate keeps the name and fails unless every shard succeeded', () => 
   expect(aggregate).toContain('GATE: ${{ needs.gate.result }}');
   // Without always() a failed or skipped shard would skip this job, and a
   // skipped required check reads as passed.
-  expect(aggregate).toContain('    if: always()\n');
+  // The exact guard against closed pull requests aside (open-pull-request.ts).
+  expect(unguarded(/^ {4}if: (.+)$/mu.exec(aggregate)?.[1])).toBe('always()');
   expect(aggregate).toContain('SHARDS: ${{ needs.database-shard.result }}');
   expect(aggregate).toContain('test "$SHARDS" = success');
   expect(aggregate).not.toMatch(/continue-on-error/u);

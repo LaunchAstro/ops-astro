@@ -9,6 +9,7 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { ci, type Job, SHARD } from './ci-shards.fixture.ts';
+import { unguarded } from './open-pull-request.ts';
 
 // Every command the two jobs ran whole, before the split, and the step that now runs it.
 const LOCAL: [string, string][] = [
@@ -77,7 +78,7 @@ function jobProblems(shardKey: string, name: string): string[] {
   const [key = '', aggregate] = aggregates[0] ?? [];
   if (aggregates.length !== 1 || aggregate === undefined)
     return [...problems, `${name}: ${String(aggregates.length)} jobs`];
-  if (aggregate.if !== 'always()') problems.push(`${key}: if: ${String(aggregate.if)}`);
+  if (unguarded(aggregate.if) !== 'always()') problems.push(`${key}: if: ${String(aggregate.if)}`);
   if ((aggregate.needs ?? []).toSorted().join(' ') !== [shardKey, 'gate'].toSorted().join(' '))
     problems.push(`${key}: needs ${String(aggregate.needs)}`);
   if (aggregate['continue-on-error'] !== undefined || aggregate.steps?.length !== 1)

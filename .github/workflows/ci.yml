@@ -64,6 +64,10 @@ jobs:
     # it is not made acceptable by passing its type checks.
     name: contamination gate
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    # A label change on a closed or merged pull request runs nothing: the gate
+    # skips, so every job behind it skips, and the three `always()` jobs carry
+    # the same condition. A pull request that is open runs as before.
+    if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
     # Its slowest green run in the day to 1 October 2026: 5.2 min.
     timeout-minutes: 15
     steps:
@@ -307,7 +311,7 @@ jobs:
     # shards run on pull requests too, so no skip passes anywhere.
     name: local checks
     needs: [gate, check]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
@@ -470,7 +474,7 @@ jobs:
     # check means.
     name: database conformance
     needs: [gate, database-shard]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
     timeout-minutes: 10
@@ -682,7 +686,7 @@ jobs:
     # same terms as `local checks` above.
     name: isolation tests
     needs: [gate, isolation]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:

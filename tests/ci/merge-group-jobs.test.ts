@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 import { read } from './merge-group-repo.ts';
+import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
 
 const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
@@ -58,7 +59,8 @@ export function groupSkips(text: string, path: string): string[] {
     if (table.has(key.toLowerCase())) problems.push(`${path}: ${key}: job ID repeats without case`);
     table.set(key.toLowerCase(), {
       name: typeof job?.['name'] === 'string' ? job['name'] : key,
-      cond: condition(job?.['if']),
+      // The exact guard against closed pull requests never skips a group (open-pull-request.ts).
+      cond: unguarded(condition(job?.['if'])),
       needs: list.filter((n) => typeof n === 'string').map((n) => n.toLowerCase()),
     });
   }
@@ -172,6 +174,12 @@ describe('merge group: no job skips a group', () => {
         ? `if: ${ONLY_PULL_REQUESTS}`
         : 'waits on database-lookahead';
     expect(groupSkips(planted(...swaps), CI).join('\n')).toContain(reason);
+  });
+
+  it('refuses a guard against closed pull requests that is not the exact one', () => {
+    const mangled = `always() && ${OPEN_GUARD}`;
+    const text = planted(licences(`    needs: [gate]\n    if: ${mangled}\n`));
+    expect(groupSkips(text, CI)).toContain(`${CI}: OSI licence allowlist: if: ${mangled}`);
   });
 
   it('refuses a duplicate key and a workflow it cannot parse', () => {

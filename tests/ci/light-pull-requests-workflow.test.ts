@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 import { aggregateProblems, condition } from './light-pull-requests-aggregate.ts';
 import { read } from './merge-group-repo.ts';
+import { unguarded } from './open-pull-request.ts';
 
 type Env = Record<string, string>;
 type Step = { name?: string; if?: unknown; run?: string; uses?: string; env?: Env };
@@ -61,6 +62,8 @@ const queueOnlyOf = (): string[] =>
 const problemsNow = (ci: Workflow) => workflowProblems(ci, load(REVIEW), queueOnlyOf());
 const aggregateStep = (ci: Workflow) => ci.jobs['database']?.steps?.[0];
 const BEHIND = 'runs on a status function behind the gate';
+// A job's condition with the exact guard against closed pull requests stripped (open-pull-request.ts).
+const jobCondition = (value: unknown): unknown => unguarded(condition(value));
 const needsOf = (job: Job | undefined): string[] =>
   job?.needs === undefined ? [] : ([] as unknown[]).concat(job.needs).map(String);
 
@@ -74,7 +77,7 @@ function alwaysProblems(ci: Workflow): string[] {
       (n) => n === 'gate' || (!seen.has(n) && (seen.add(n), behindGate(n, seen))),
     );
   for (const [key, job] of Object.entries(ci.jobs)) {
-    const cond = condition(job.if);
+    const cond = jobCondition(job.if);
     if (
       typeof cond !== 'string' ||
       !/\b(always|cancelled|failure|success)\s*\(\s*\)/iu.test(cond) ||
@@ -103,7 +106,7 @@ function requiredProblems(workflows: Workflow[]): string[] {
     }
     for (const event of ['pull_request', 'merge_group'])
       if (!(event in (owner.on ?? {}))) problems.push(`${name}: its workflow skips ${event}`);
-    const cond = condition(job.if);
+    const cond = jobCondition(job.if);
     if (![undefined, 'always()', NOT_ON_PUSH].includes(cond as string))
       problems.push(`${name}: if: ${String(cond)}`);
   }
@@ -139,22 +142,22 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
     ...stepProblems(REVIEW, review),
     ...alwaysProblems(ci),
   ];
-  const shards = condition(ci.jobs['database-shard']?.if);
+  const shards = jobCondition(ci.jobs['database-shard']?.if);
   if (shards !== SKIPS_PULL_REQUESTS) problems.push(`database-shard: if: ${String(shards)}`);
   const aggregate = ci.jobs['database'];
   if (
-    condition(aggregate?.if) !== 'always()' ||
+    jobCondition(aggregate?.if) !== 'always()' ||
     needsOf(aggregate).toSorted().join(' ') !== 'database-shard gate'
   )
     problems.push('database: must always run over the gate and database-shard');
   // CI-SHARDS-2: `local checks` and `isolation tests` run as shards on every event they ran on
   // whole, each behind an aggregate that always runs over the gate and its shards.
   for (const [shardKey, name] of SHARDED) {
-    const cond = condition(ci.jobs[shardKey]?.if);
+    const cond = jobCondition(ci.jobs[shardKey]?.if);
     if (cond !== undefined) problems.push(`${shardKey}: if: ${String(cond)}`);
     const sum = Object.values(ci.jobs).find((job) => job.name === name);
     if (
-      condition(sum?.if) !== 'always()' ||
+      jobCondition(sum?.if) !== 'always()' ||
       needsOf(sum).toSorted().join(' ') !== [shardKey, 'gate'].toSorted().join(' ')
     )
       problems.push(`${name}: must always run over the gate and ${shardKey}`);

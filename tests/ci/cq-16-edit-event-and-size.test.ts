@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { withoutGuardLines } from './open-pull-request.ts';
 import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -47,14 +48,15 @@ describe('CQ-16 edited runs review evidence only', () => {
     expect(prTypes(read(REVIEW))).toContain('edited');
   });
 
-  it('CQ-16 edited runs review evidence only: one job, with no condition, named exactly as the required check', () => {
+  it('CQ-16 edited runs review evidence only: one job, with no condition but the guard against closed pull requests, named exactly as the required check', () => {
     const edit = jobs(read(REVIEW));
     expect([...edit.keys()]).toEqual(['review-evidence']);
     const block = edit.get('review-evidence') ?? '';
     expect(/^ {4}name: (.*)$/mu.exec(block)?.[1]).toBe(CHECK);
     expect(job(read(CI), CHECK)).toBe('');
-    // A condition could skip it, and `needs` would name a job this workflow does not hold.
-    expect(block.match(/^ {4}(if|needs):/mu)).toBeNull();
+    // A condition could skip it, and `needs` would name a job this workflow does not hold. The
+    // exact guard skips it only on a closed pull request (open-pull-request.ts).
+    expect(withoutGuardLines(block).match(/^ {4}(if|needs):/mu)).toBeNull();
   });
 
   it('CQ-16 edited runs review evidence only: an edit cannot cancel a code run, because its concurrency group is its own', () => {
