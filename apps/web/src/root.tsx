@@ -51,7 +51,7 @@ function useTabMoves(tab: Window, history: TabHistory, moved: () => void): void 
 export function Root(props: RootProps): ReactElement {
   const { window: tab, ...app } = props;
   // A sign-in service's link is cleared before the address is first read (`sign-in-link.ts`),
-  // and again whenever the address moves within the page.
+  // and again whenever the address moves within the page, the application's own moves too.
   const history = useMemo(() => {
     dropSignInLink(tab);
     return new TabHistory(tab);
@@ -66,6 +66,8 @@ export function Root(props: RootProps): ReactElement {
   const navigate = (next: string, options?: { readonly replace?: boolean }): void => {
     if (options?.replace === true) history.replace(next);
     else history.push(next);
+    // A pushed or replaced address fires neither `popstate` nor `hashchange`: cleared here.
+    dropSignInLink(tab);
     setAt(read());
   };
   return (

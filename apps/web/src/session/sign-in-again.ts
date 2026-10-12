@@ -72,7 +72,9 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
 
 /**
  * GoTrue's own sign-out of this one session (`scope=local`), with the token it issued. True only
- * when GoTrue acknowledged it (a 2xx); a refusal, a fault or no answer is false.
+ * when GoTrue acknowledged it: its 204 with nothing in the body (C58, as the API reads it), or
+ * its word that the session is already gone, as a sign-out whose answer was lost leaves it. A
+ * 200, any other refusal, a fault or no answer is false: a gateway can say those.
  */
 export async function signOutAtProvider(
   gotrueUrl: string,
@@ -85,7 +87,10 @@ export async function signOutAtProvider(
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
     });
-    return answer.ok;
+    if (answer.status === 204) return (await answer.text()) === '';
+    if (answer.status !== 403) return false;
+    const said: unknown = await answer.json().catch(() => {});
+    return (said as { error_code?: unknown } | undefined)?.error_code === 'session_not_found';
   } catch {
     // Unreachable: the token is held nowhere, and runs out within the hour.
     return false;

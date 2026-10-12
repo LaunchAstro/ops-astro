@@ -108,16 +108,18 @@ export async function changePassword(
     fetch: route.fetch,
   });
   if (!confirmed.ok) return confirmed;
+  // The confirming token signs its own session out until its life runs out (GoTrue's default).
+  const until = Date.now() + (confirmed.expiresIn ?? 3600) * 1000;
   let token = confirmed.token;
   if (request.code !== undefined) {
-    await endAtProvider(gotrueUrl, token, route.fetch);
+    await endAtProvider(gotrueUrl, token, route.fetch, until);
     const raised = await raiseWithCode(request.client, request.code);
     if (!raised.ok) return raised;
     token = raised.token;
   }
   // A sign-out or a switch while the password or code was checked: nothing is written for it.
   if (!request.current()) {
-    await dropConfirming(request, token);
+    await dropConfirming(request, token, until);
     return { ok: false, because: LEFT };
   }
   const set = await setPassword({
@@ -127,39 +129,51 @@ export async function changePassword(
     fetch: route.fetch,
   });
   if (set !== 'set') {
-    await dropConfirming(request, token);
+    await dropConfirming(request, token, until);
     if (set === 'needs-code') return { ok: false, because: NEEDS_CODE, needsCode: true };
     return { ok: false, because: set.because };
   }
-  return await moveAndEndOthers(request, token);
+  return await moveAndEndOthers(request, token, until);
 }
 
 /**
  * The confirming sign-in, when the token is its, signed out at GoTrue: a token the tab will not
  * hold. With a code the token is the tab's own sign-in's, which stays.
  */
-async function dropConfirming(request: PasswordChangeRequest, token: string): Promise<void> {
+async function dropConfirming(
+  request: PasswordChangeRequest,
+  token: string,
+  until: number,
+): Promise<void> {
   if (request.code === undefined)
-    await endAtProvider(request.gotrueUrl, token, request.route.fetch);
+    await endAtProvider(request.gotrueUrl, token, request.route.fetch, until);
 }
 
-/** How many times a confirming sign-in's sign-out is asked before it is left to run out. */
-const SIGN_OUT_TRIES = 3;
+/** The wait before a confirming sign-in's sign-out is asked again, doubled each time to the most. */
+const FIRST_WAIT_MS = 250;
+const LONGEST_WAIT_MS = 30_000;
 
 /**
- * A confirming sign-in signed out at GoTrue, asked again until GoTrue acknowledges it: a refused
- * or lost sign-out is not cleanup. Past the tries, the token is held nowhere and runs out within
- * the hour.
+ * A confirming sign-in signed out at GoTrue, asked again until GoTrue acknowledges it: a refused,
+ * lost or gateway-answered sign-out is not cleanup, and no count of them ends the asking. It ends
+ * when the token's life does, `until`: GoTrue then refuses the token for a sign-out, and the
+ * session's refresh token was never kept (`password-grant.ts` reads only the access token).
  */
 async function endAtProvider(
   gotrueUrl: string,
   token: string,
   send: ApiRoute['fetch'],
+  until: number,
 ): Promise<void> {
-  for (let tried = 0; tried < SIGN_OUT_TRIES; tried += 1) {
+  for (let wait = FIRST_WAIT_MS; ; wait = Math.min(wait * 2, LONGEST_WAIT_MS)) {
     // One after another: a second ask only once the first has failed.
     // eslint-disable-next-line no-await-in-loop
     if (await signOutAtProvider(gotrueUrl, token, send)) return;
+    if (Date.now() + wait >= until) return;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, wait);
+    });
   }
 }
 
@@ -184,13 +198,14 @@ async function raiseWithCode(
 async function moveAndEndOthers(
   request: PasswordChangeRequest,
   token: string,
+  until: number,
 ): Promise<PasswordChangeResult> {
   const { route, from } = request;
   const traded = request.current() ? await tradeForCookie(route, token) : undefined;
   const sessionId = traded?.ok === true ? traded.sessionId : undefined;
   if (sessionId === undefined || !request.current()) {
     if (sessionId !== undefined) await endCookie(route, sessionId);
-    await dropConfirming(request, token);
+    await dropConfirming(request, token, until);
     return { ok: false, because: CHANGED_ELSEWHERE };
   }
   request.adopt(sessionId);
