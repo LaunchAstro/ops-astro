@@ -219,6 +219,8 @@ const config: ViteUserConfig = defineConfig({
             'tests/web/time-log-retry-after-lost-answer-stores-once.test.tsx',
             'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
             'tests/web/preferences-save-order-api.test.tsx',
+            'tests/web/older-client-save-cannot-overwrite-newer-preference.test.tsx',
+            'tests/web/newest-preference-wins-when-answers-arrive-out-of-order.test.ts',
             'tests/web/saved-flag-save-order.test.tsx',
             'tests/support/template-lock-and-clone-catalogue.test.ts',
             'tests/acceptance/credential-comment-represented-person.test.ts',
