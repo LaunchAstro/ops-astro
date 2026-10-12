@@ -85,6 +85,15 @@ const htmlOf = (token) => {
   return found;
 };
 
+/** The prose shown, and the same without a pasted checkpoint fence: its paths and subjects claim nothing. */
+const textsOf = (tokens, prose) => {
+  const pasted = tokens.filter(
+    (t) => t.type === 'fence' && t.content.startsWith('Review checkpoint\n'),
+  );
+  const claims = prose.filter((text) => !pasted.some((t) => t.content === text));
+  return { prose: prose.join('\n'), claims: claims.join('\n') };
+};
+
 /**
  * The body as GitHub renders it.
  *  - stated: every counted `Code review:` and `Security review:` field;
@@ -93,7 +102,8 @@ const htmlOf = (token) => {
  *  - deferrals: every counted `Review deferral:` value and its exact source line;
  *  - buried: every other line that is written or shown as a review field;
  *  - html: every HTML node that is not only a comment, its first 40 characters;
- *  - prose: the text shown, code included, comments left out.
+ *  - prose: the text shown, code included, comments left out;
+ *  - claims: that prose without a fenced review checkpoint, where outcomes could be claimed.
  * A field counts only as a plain line of a top-level paragraph, at the
  * margin, where the paragraph's shown lines are its source lines one for one.
  */
@@ -144,7 +154,7 @@ export const readBody = (body) => {
     if (named !== undefined && !counted.has(i)) buried.push(`line ${i + 1}: ${fieldKey(named)}`);
   }
   const snips = html.map((h) => h.trim().slice(0, 40));
-  return { ...read, buried: [...new Set(buried)], html: snips, prose: prose.join('\n') };
+  return { ...read, ...textsOf(tokens, prose), buried: [...new Set(buried)], html: snips };
 };
 
 /**
