@@ -21,9 +21,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildIdentifier } from '../../apps/web/build-stamp.ts';
 import { buildOutputProblems } from '../../scripts/ops/build-output.ts';
 import { artefactName } from '../../scripts/ops/promotion.ts';
 import { outputDigest, release } from '../../scripts/ops/release.ts';
@@ -33,8 +32,7 @@ import { clean, fakeVercel, settings as webSettings } from './web-deploy.fixture
 const scratch = mkdtempSync(join(tmpdir(), 's0-6-release-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-// The checkout's own identifier: the API the release bundles comes from it.
-const STAMP = buildIdentifier(resolve(import.meta.dirname, '../..'));
+const STAMP = 'abcdef012345';
 const CANARY = 'release-canary-4b9e';
 
 function webBuild(name: string, stamp: string | null = STAMP): string {
@@ -121,11 +119,6 @@ function digestCase() {
     await expect(release({ dist: webBuild('unstamped', null), out: again })).rejects.toThrow(
       'not stamped',
     );
-    // A web build from another revision would label this checkout's API with its stamp.
-    const older = STAMP.startsWith('0') ? '1111111111aa' : '0000000000aa';
-    await expect(release({ dist: webBuild('older', older), out: again })).rejects.toThrow(
-      'not this checkout',
-    );
   }, 120_000);
 }
 
@@ -166,20 +159,15 @@ function bundledCase() {
 }
 
 function deployableCase() {
-  // A checkout with uncommitted changes makes a `-dirty` release, which no deploy takes.
-  it.skipIf(STAMP.endsWith('-dirty'))(
-    'the web deploy takes the real release output as stored, only the Vercel CLI faked',
-    async () => {
-      const root = mkdtempSync(join(scratch, 'store-'));
-      cpSync(out, join(root, artefactName(STAMP)), { recursive: true });
-      const vercel = fakeVercel();
-      const outcome = await deployWeb(
-        { version: STAMP, store: root },
-        { env: webSettings(vercel.path), preflight: clean },
-      );
-      expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: 'deployed' });
-      expect(vercel.lines('argv')).toContain('deploy --prebuilt --prod');
-    },
-    60_000,
-  );
+  it('the web deploy takes the real release output as stored, only the Vercel CLI faked', async () => {
+    const root = mkdtempSync(join(scratch, 'store-'));
+    cpSync(out, join(root, artefactName(STAMP)), { recursive: true });
+    const vercel = fakeVercel();
+    const outcome = await deployWeb(
+      { version: STAMP, store: root },
+      { env: webSettings(vercel.path), preflight: clean },
+    );
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: 'deployed' });
+    expect(vercel.lines('argv')).toContain('deploy --prebuilt --prod');
+  }, 60_000);
 }

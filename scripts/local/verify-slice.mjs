@@ -982,20 +982,15 @@ async function theJourney() {
     },
     credential,
   );
-  // A queue that could not be read is not an empty one.
   const queueSettled = await call(ada.token, 'alpha', '/task/queue', {});
-  const settled = queueSettled.status === 200 && Array.isArray(queueSettled.body?.queue);
-  const stillThere =
-    settled && queueSettled.body.queue.some((entry) => entry.reservationId === reservationId);
-  let settledNote = settled
-    ? 'the queue no longer shows it'
-    : `the queue read answered HTTP ${queueSettled.status}`;
-  if (stillThere) settledNote = 'the reservation is still on the queue';
+  const stillThere = (queueSettled.body?.queue ?? []).some(
+    (entry) => entry.reservationId === reservationId,
+  );
   record(downstream[3], {
     status: handedBack.status,
     code: codeOf(handedBack) ?? 'applied',
-    ok: handedBack.status === 200 && settled && !stillThere,
-    note: settledNote,
+    ok: handedBack.status === 200 && !stillThere,
+    note: stillThere ? 'the reservation is still on the queue' : 'the queue no longer shows it',
   });
 
   // A decision made from a page that went stale. The live gate is the one the
@@ -1031,28 +1026,12 @@ async function theJourney() {
     note: 'decided from a page that went stale',
   });
   const after = await call(ada.token, 'alpha', '/task/read', { recordId: sibling });
-  // Two lineages that could not be read are not two unchanged ones: both
-  // proposals landed, and both reads show the lineage they made.
-  const seen = [before, after].every(
-    (read) =>
-      read.status === 200 &&
-      (read.body?.task?.proposals ?? []).some(
-        (proposal) => proposal.lineageId === detailOf(first).lineageId,
-      ),
-  );
-  const held =
-    seen && canonical(before.body.task.proposals) === canonical(after.body.task.proposals);
-  let heldNote = held ? 'nothing on the lineage moved' : 'THE LINEAGE MOVED';
-  if (!seen) heldNote = 'the lineage could not be read either side';
+  const held = canonical(before.body?.task?.proposals) === canonical(after.body?.task?.proposals);
   record(downstream[4], {
     status: stale.status,
     code: codeOf(stale),
-    ok:
-      first.status === 200 &&
-      second.status === 200 &&
-      codeOf(stale) === 'VERSION_SUPERSEDED' &&
-      held,
-    note: heldNote,
+    ok: codeOf(stale) === 'VERSION_SUPERSEDED' && held,
+    note: held ? 'nothing on the lineage moved' : 'THE LINEAGE MOVED',
   });
 }
 

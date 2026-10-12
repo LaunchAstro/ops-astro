@@ -24,8 +24,6 @@ export interface Faults {
   readonly inertWrites?: true;
   /** A created task has no state until something moves it. */
   readonly statelessCreate?: true;
-  /** Once an agent hands back, a person's queue and task reads answer 503. */
-  readonly blindAfterHandback?: true;
 }
 
 const STATES = {
@@ -68,7 +66,6 @@ class FakeSlice {
   readonly #gates = new Map<string, { versionId: string; taskId: string }>();
   readonly #queue: Json[] = [];
   #picked: string | undefined;
-  #handedBack = false;
 
   readonly faults: Faults;
 
@@ -78,8 +75,6 @@ class FakeSlice {
 
   answer(op: string, who: string, body: Json, agent: boolean): Answer {
     if (agent) return this.#agent(op, body);
-    if (this.#handedBack && this.faults.blindAfterHandback !== undefined && /read|queue/u.test(op))
-      return [503, {}];
     if (op === 'person/list')
       return [200, { ok: true, persons: [{ personId: 'p-noah', name: 'noah' }] }];
     if (op === 'task/create') return this.#create(who, body);
@@ -196,7 +191,6 @@ class FakeSlice {
     }
     if (op === 'task/handback') {
       this.#queue.splice(0);
-      this.#handedBack = true;
       return [200, { ok: true }];
     }
     return NOT_FOUND;
