@@ -14,7 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type Server, type Socket } from 'node:net';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { createFunctionHandler } from '../../apps/api/function.ts';
-import { ISSUER } from './fixture.ts';
+import { TEST_ISSUER as ISSUER } from '../support/sign-in.ts';
 
 const HOST = 'ops.example.test';
 const KEY_ID = 'test/function-recovery-bound@1';

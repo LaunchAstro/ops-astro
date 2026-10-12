@@ -5,7 +5,7 @@ import { startLiveTopics, PROBE_MS } from '../../apps/api/live.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { AdminConnection, Database, Listener } from '../../packages/core-records/src/index.ts';
-import { ISSUER } from './fixture.ts';
+import { TEST_ISSUER as ISSUER } from '../support/sign-in.ts';
 import { keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 
 it('the health probe deadline also bounds a stalled notification transaction', async () => {
