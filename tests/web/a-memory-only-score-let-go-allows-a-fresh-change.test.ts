@@ -116,3 +116,12 @@ it('a late answer for a let-go memory-only change does not bring it back', async
   expect(held.custody.snapshot(TASK).pending?.value).toBe(9);
   expect(held.custody.snapshot(TASK).pending?.operationId).not.toBe(held.id);
 });
+
+it('a late stored answer for a let-go memory-only change still counts the change', async () => {
+  const held = await letGoWhileOut();
+  held.late.land();
+  await pause();
+  expect(held.custody.snapshot(TASK).changed, 'the page reads the stored change').toBe(
+    held.before + 1,
+  );
+});
