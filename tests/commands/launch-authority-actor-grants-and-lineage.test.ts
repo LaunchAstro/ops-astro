@@ -71,6 +71,48 @@ async function proposal(taskId: string) {
 
 const LAUNCH_ACTIONS = ['read', 'comment', 'write', 'assign'] as const;
 
+it('Access keeps actor-held Launch authority after the minting actor is inactive', async () => {
+  const task = await launchedOn('actor');
+  const [row] = await w.world.db.admin.execute<{ id: string; actor: string }>(
+    `select d.id, d.minted_by_actor_id as actor
+       from public.task_launches l join public.delegations d
+         on d.business_id = l.business_id and d.id = l.delegation_id
+      where l.task_id = $1 and l.state = 'waiting'`,
+    [task],
+  );
+  if (row === undefined) throw new Error('No Launch');
+  await w.world.db.admin.execute(
+    'update public.actors set active = false, deactivated_at = now() where id = $1',
+    [row.actor],
+  );
+  expect(codeOf(await w.world.asAgent(await proposal(task), await credentialFor(task)))).toBe(
+    'not-a-refusal',
+  );
+  const manager = await enrol(w.world.db.app, w.world.business, 'access manager');
+  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    await grantTo(tx, manager, 'manage', undefined, false, 'access');
+  });
+  const answer = await executeRead(w.world.db.app, w.world.business, manager.presented, {
+    read: 'access.read',
+  });
+  if (!('team' in answer)) throw new Error('Access refused');
+  const granted = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const delegation = await resolveLiveById(tx, w.world.agentActorId, row.id);
+    if (delegation === undefined) throw new Error('Launch no longer live');
+    return await checkDelegatedAuthority(tx, delegation, {
+      collection: 'task',
+      action: 'read',
+      scope: { kind: 'record', id: task },
+    });
+  });
+  expect(granted.ok).toBe(true);
+  expect(answer.agents.find((agent) => agent.delegationId === row.id)?.permissions).toContainEqual({
+    collection: 'task',
+    action: 'read',
+    scope: { kind: 'record', id: task },
+  });
+});
+
 /** A task launched by a fresh person whose task grants on it are held on `on`. */
 async function launchedOn(on: 'person' | 'actor'): Promise<string> {
   const task = await created(w, w.p, `Record grants on ${on}`);
