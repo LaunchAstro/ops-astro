@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a client linked to the page task mid-answer: no client material reaches Ollama"
+}

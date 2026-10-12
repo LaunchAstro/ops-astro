@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two Ollama questions at once: one reaches the model, the other is told it is busy"
+}

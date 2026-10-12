@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Ollama failing mid-answer keeps no reply and frees the one call at a time"
+}

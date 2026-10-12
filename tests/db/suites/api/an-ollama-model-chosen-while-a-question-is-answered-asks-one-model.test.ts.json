@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a model chosen while a question is answered: one model is asked, and the call and reply agree"
+}
