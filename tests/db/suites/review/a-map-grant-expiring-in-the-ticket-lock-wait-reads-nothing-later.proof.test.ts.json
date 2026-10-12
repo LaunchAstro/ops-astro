@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a map grant that expires while the list read waits on its tickets reaches nothing written after: the board neither fetches nor returns it"
+}
