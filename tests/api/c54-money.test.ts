@@ -19,7 +19,7 @@ import { isRefusal, isUnavailable } from '../../apps/web/src/operations/client.t
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
-import { createWorld, serverUrl, tokenFor, type World } from '../acceptance/world.ts';
+import { createWorld, rebuildApi, serverUrl, tokenFor, type World } from '../acceptance/world.ts';
 import {
   auditOf,
   billingHolder,
@@ -119,16 +119,19 @@ describe.skipIf(serverUrl === undefined)('C54 run money', { timeout: 60_000 }, (
   let mia: Signed;
   let bob: Signed;
   let cai: Signed;
+  // A second API on its own connection: on the world's (`max: 1`) a race queues in the pool.
+  let other: ReturnType<typeof rebuildApi>;
 
   beforeAll(async () => {
     world = await createWorld('c54_money');
+    other = rebuildApi(world);
     ada = signed(world.ada);
     mia = signed(world.mia);
     bob = await billingHolder(world, world.alpha, 'alpha', 'bob');
     cai = await billingHolder(world, world.alpha, 'alpha', 'cai');
   }, 240_000);
 
-  afterAll(async () => await world?.close());
+  afterAll(async () => await Promise.resolve(other?.close()).finally(() => world?.close()));
 
   it('C54 refusal billing:decide: a member without it is refused each act, and nothing moves', async () => {
     const work = await unknownWork(world, ada);
@@ -252,7 +255,7 @@ describe.skipIf(serverUrl === undefined)('C54 run money', { timeout: 60_000 }, (
     expect(await maximumOf(world, taskId)).toBe(paired ? MAXIMUM + LARGE : MAXIMUM);
   });
 
-  it('C54 top-up approver: two second approvers at once apply exactly once; the other applies nothing', async () => {
+  it('C54 top-up approver: two second approvers at once, on two connections, apply exactly once; the other applies nothing', async () => {
     const taskId = await plannedTask(world, ada);
     const body = { recordId: taskId, amountMinor: LARGE, fromMaximumMinor: MAXIMUM };
     const first = await send(world, ada, 'budget.top_up', body);
@@ -260,7 +263,7 @@ describe.skipIf(serverUrl === undefined)('C54 run money', { timeout: 60_000 }, (
     expect(await maximumOf(world, taskId)).toBe(MAXIMUM);
     const seconds = await Promise.all([
       send(world, bob, 'budget.top_up', body),
-      send(world, cai, 'budget.top_up', body),
+      send({ ...world, api: other.api }, cai, 'budget.top_up', body),
     ]);
     expect(seconds.map((sent) => sent.code).toSorted()).toStrictEqual(['VERSION_STALE', 'ok']);
     expect(seconds.find((sent) => sent.code === 'ok')?.state).toBe('applied');

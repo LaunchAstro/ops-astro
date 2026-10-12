@@ -14,6 +14,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { COMMAND_SURFACE, TASK_CATEGORIES } from '../../packages/core-wire/src/index.ts';
 import {
@@ -153,12 +155,32 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
     expect(outcomeOf(late)).toMatchObject({ code: 'VERSION_STALE' });
     expect((await stored(task.recordId)).category).toBe('branding');
   });
+});
 
-  it('two writers at one revision: one applies, the other is refused stale', async () => {
+describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
+  // A second connection for the race below: `db.app` is `max: 1`, so two
+  // writers on it queue in the pool and never meet at the row lock.
+  let second: Database;
+
+  beforeAll(() => {
+    second = connect(db.appUrl, { source: 'runtime' });
+  });
+
+  afterAll(async () => {
+    await second?.close();
+  });
+
+  it('two writers at one revision, on two connections: one applies, the other is refused stale', async () => {
     const task = await fresh(alpha, writer, 'raced');
     const answers = await Promise.all([
       setCategory(alpha, writer, task, 'seo'),
-      setCategory(alpha, writer, task, 'content'),
+      executeCommand(second, alpha, writer.presented, 'api', {
+        command: 'task.set_category',
+        operationId: randomUUID(),
+        recordId: task.recordId,
+        expectedRevision: task.revision,
+        fields: { category: 'content' },
+      } as never),
     ]);
     const codes = answers.map((one) => outcomeOf(one)['code'] ?? 'applied');
     expect(codes.toSorted()).toStrictEqual(['VERSION_STALE', 'applied']);
