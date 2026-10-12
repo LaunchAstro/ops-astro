@@ -33,8 +33,23 @@ function Message(props: { readonly message: TeamMessage; readonly me: string }):
 /** Resolves true once the server took the words; false hands them back to the composer. */
 type Send = (body: string) => Promise<boolean>;
 
+/** Words the server did not take while newer ones were already typed, and the door to put them back. */
+function Unsent(props: { readonly words: string; readonly onPutBack: () => void }): ReactElement {
+  return (
+    <p className="field__error" role="alert" data-composer-unsent="">
+      Not sent: {props.words}{' '}
+      <button type="button" className="btn btn--ghost btn--sm" onClick={props.onPutBack}>
+        Put it back
+      </button>
+    </p>
+  );
+}
+
 function Composer(props: { readonly to: string; readonly onSend: Send }): ReactElement {
   const [text, setText] = useState('');
+  const typed = useRef('');
+  typed.current = text;
+  const [unsent, setUnsent] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const label = `Message ${props.to}`;
   return (
@@ -46,13 +61,24 @@ function Composer(props: { readonly to: string; readonly onSend: Send }): ReactE
         if (said === '') return;
         setText('');
         field.current?.focus();
-        // Words the server did not take go back in, unless the person has started new ones.
+        // Words the server did not take go back in, or beside newer ones the person has started.
         void props.onSend(said).then((sent) => {
-          if (!sent) setText((now) => (now === '' ? said : now));
+          if (sent) return sent;
+          if (typed.current === '') setText(said);
+          else setUnsent(said);
           return sent;
         });
       }}
     >
+      {unsent === null ? null : (
+        <Unsent
+          words={unsent}
+          onPutBack={() => {
+            setText(`${unsent} ${typed.current}`.trim());
+            setUnsent(null);
+          }}
+        />
+      )}
       <input
         ref={field}
         placeholder={label}
