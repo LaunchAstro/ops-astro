@@ -6,6 +6,7 @@
 // made-up client book is drawn by the application, so none reaches
 // production.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 import { json, open } from './mp-2-1-support.tsx';
@@ -140,5 +141,95 @@ describe('Add client', () => {
     expect(creates).toHaveLength(2);
     expect(creates[1]?.body['operationId']).toBe(creates[0]?.body['operationId']);
     expect(names(page)).toContain('Northgate Plumbing');
+  });
+});
+
+interface Held {
+  readonly resolve: () => void;
+  readonly reject: () => void;
+}
+
+/** Two businesses' books, and every `client.create` held until the test answers or loses it. */
+function twoBusinesses() {
+  const sent: (Sent & { readonly business: string })[] = [];
+  const held: Held[] = [];
+  const books: Record<string, { clientId: string; name: string }[]> = {
+    alpha: [RIVERBEND],
+    bravo: [CORAL],
+  };
+  const fetch = ((url: string | URL, init?: RequestInit) => {
+    const [, business = '?', to = ''] = /\/api\/b\/(\w+)(\/.*)$/u.exec(String(url)) ?? [];
+    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
+    sent.push({ business, to, body });
+    if (to === '/client/list')
+      return Promise.resolve(json({ ok: true, clients: books[business] ?? [] }));
+    if (to === '/client/create')
+      return new Promise<Response>((resolve, reject) => {
+        held.push({
+          resolve: () =>
+            resolve(json({ recordId: MADE, revision: null, detail: { clientId: MADE } })),
+          reject: () => reject(new TypeError('network down')),
+        });
+      });
+    return new Promise<Response>(() => {});
+  }) as unknown as typeof globalThis.fetch;
+  const clientFor = (businessKey: string) =>
+    new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
+  return { sent, held, clientFor };
+}
+
+/** Let a held create answer, or lose it, and let what follows land. */
+async function release(held: Held | undefined, how: 'resolve' | 'reject'): Promise<void> {
+  await act(async () => {
+    held?.[how]();
+    await Promise.resolve();
+  });
+  for (let pass = 0; pass < 4; pass += 1) {
+    // eslint-disable-next-line no-await-in-loop -- one answer after another
+    await settle();
+  }
+}
+
+describe('Add client across a business switch and an edited name', () => {
+  it('a create that lands after a business switch leaves the new business’s book and typed name alone', async () => {
+    const api = twoBusinesses();
+    const page = await mount(
+      <ClientsScreen client={api.clientFor('alpha')} grantKey="alpha:ada" />,
+    );
+    live.push(page);
+    await settle();
+    await add(page, 'Switch Race Roofing');
+    await page.render(<ClientsScreen client={api.clientFor('bravo')} grantKey="bravo:ada" />);
+    await settle();
+    await page.type('[data-client-add] input', 'Typed In Bravo');
+    await release(api.held.shift(), 'resolve');
+    expect(
+      api.sent.filter((one) => one.to === '/client/create').map((one) => one.business),
+    ).toStrictEqual(['alpha']);
+    expect(page.find('.readstate')?.getAttribute('data-outcome')).toBe('ready');
+    expect(names(page)).toStrictEqual(['Coral Coast Yoga']);
+    expect((page.find('[data-client-add] input') as HTMLInputElement | null)?.value).toBe(
+      'Typed In Bravo',
+    );
+  });
+
+  it('a name edited after a lost answer and typed back is the same attempt, under its first operation id', async () => {
+    const api = twoBusinesses();
+    const page = await mount(
+      <ClientsScreen client={api.clientFor('alpha')} grantKey="alpha:ada" />,
+    );
+    live.push(page);
+    await settle();
+    await add(page, 'Edited Back Electrical');
+    await release(api.held.shift(), 'reject');
+    await add(page, 'Edited Back Electrical Co');
+    await release(api.held.shift(), 'reject');
+    await add(page, 'Edited Back Electrical');
+    const ids = api.sent
+      .filter((one) => one.to === '/client/create')
+      .map((one) => String(one.body['operationId']));
+    expect(ids).toHaveLength(3);
+    expect(ids[1]).not.toBe(ids[0]);
+    expect(ids[2]).toBe(ids[0]);
   });
 });
