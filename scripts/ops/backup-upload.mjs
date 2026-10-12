@@ -48,9 +48,12 @@ export async function* upload(source, seal, failure) {
   }
   const pieces = piecesOf(source)[Symbol.asyncIterator]();
   for (;;) {
-    failure.stage = 'dump';
+    // The dump's failure only when its pieces throw: the store may refuse while this waits.
     // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
-    const next = await pieces.next();
+    const next = await pieces.next().catch((error) => {
+      failure.stage = 'dump';
+      throw error;
+    });
     failure.stage = 'seal';
     if (next.done) break;
     held.push(seal.update(next.value));

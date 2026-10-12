@@ -76,7 +76,8 @@ const PLAIN_END = `select from public.records r
    where r.business_id = $2 and r.id = $1 and s.txt_2 = $3 and c.name is not distinct from $4`;
 const WAITING = `select ${RUN} and exists (select from public.gates g
     join public.proposal_versions v on v.business_id = g.business_id and v.id = g.version_id
-   where g.business_id = $2 and g.run_id = run.id and g.state = 'pending' and v.version = 2)`;
+   where g.business_id = $2 and g.run_id = run.id and g.state = 'pending' and v.version = 2
+     and g.expires_at > clock_timestamp())`;
 const ENDED = {
   finished: `select ${RUN} and run.state = 'handed_back' and exists (select from
     public.handback_reports h where h.business_id = $2 and h.run_id = run.id
