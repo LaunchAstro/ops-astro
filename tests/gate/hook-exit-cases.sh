@@ -256,6 +256,48 @@ STUB
 }
 deletion_case
 
+# The rules that judge a push are the pushed commit's own, not whatever the
+# checkout the push starts in has. A stale checkout must not refuse a clean
+# push, nor pass what the pushed commit's scanners refuse, and a branch that
+# changes a scanner is judged by its own version. No override is set here:
+# the real hook finds the scanners itself. Each fixture scanner answers every
+# mode with one exit code.
+OWN="$SCRATCH/own-scanners"
+git init -q "$OWN"
+mkdir -p "$OWN/scripts/gate" "$OWN/tests/gate"
+: > "$OWN/tests/gate/canary.txt"
+scanners_exit() {
+  printf 'import sys\nprint("fixture gate exits %s")\nsys.exit(%s)\n' "$1" "$1" \
+    > "$OWN/scripts/gate/sweep.py"
+  printf 'console.log("fixture public content exits %s");\nprocess.exit(%s);\n' "$1" "$1" \
+    > "$OWN/scripts/public-content-check.mjs"
+}
+
+# label committed-exit working-tree-exit expected-hook-exit
+own_scanner_case() {
+  local out actual sha
+  scanners_exit "$2"
+  git -C "$OWN" add -A
+  git -C "$OWN" -c user.name=gate -c user.email=gate@example.invalid -c commit.gpgsign=false \
+    commit -q --allow-empty -m "scanners exit $2"
+  sha="$(git -C "$OWN" rev-parse HEAD)"
+  scanners_exit "$3"
+  out="$(
+    cd "$OWN" || exit 99
+    printf 'refs/heads/main %s refs/heads/main %s\n' "$sha" "$ZERO" \
+      | env -u HUB_GATE_CMD -u HUB_PUBLIC_CONTENT_CMD sh -e "$HOOK" origin git@example.invalid:none.git 2>&1
+    echo "HOOK_EXIT=$?"
+  )"
+  actual="$(printf '%s\n' "$out" | grep '^HOOK_EXIT=' | tail -1)"
+  if [ "${actual#HOOK_EXIT=}" = "$4" ]; then
+    pass "$1"
+  else
+    fail "$1" "expected hook exit $4. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  fi
+}
+own_scanner_case "a pushed commit whose own scanners pass gets through a checkout whose scanners refuse" 0 1 0
+own_scanner_case "a pushed commit whose own scanners refuse is refused by a checkout whose scanners pass" 1 0 1
+
 echo
 echo "hook exit cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
