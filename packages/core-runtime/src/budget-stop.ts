@@ -245,13 +245,18 @@ export async function remainingOf(tx: TenantQuery, reservationId: string): Promi
   return { heldMinor, spentMinor, leftMinor: heldMinor - spentMinor, leaseId: row.lease_id };
 }
 
+const NO_OTHER_ASK =
+  'This run already waits for a person at its budget, or has ended, so no other ask is raised.';
+
 /**
  * The run stops at its budget and asks (AW-05). Under the caller's locks on
  * the run, the stopped hold's lease and its reservation. A run put back to
  * `planned` is claimed for the stop, which 0193 enters from `claimed` only.
  * When its asks are spent the run ends, as a person's end does, with no hold
- * left to release, and a person is told on the task. Returns the words for
- * the refusal or the resume's note.
+ * left to release, and a person is told on the task. A run already waiting
+ * at its budget, or ended, raises nothing more: a person's outcome can resume
+ * a waiting run's step with nothing left to hold. Returns the words for the
+ * refusal or the resume's note.
  */
 export async function stopAtSpentHold(
   tx: TenantQuery,
@@ -266,6 +271,11 @@ export async function stopAtSpentHold(
   const { leaseId, heldMinor, spentMinor } = stop.remaining;
   // A hold spends only through calls under its lease (AW-01), so a spent hold has one.
   if (leaseId === null) throw new Error('budget stop: a spent hold with no lease');
+  const [run] = await tx.query<{ readonly state: string }>(
+    'select state from public.planned_runs where business_id = $1 and id = $2',
+    [tx.businessId, stop.runId],
+  );
+  if (run?.state !== 'planned' && run?.state !== 'claimed') return NO_OTHER_ASK;
   await tx.query(
     `update public.planned_runs set state = 'claimed'
       where business_id = $1 and id = $2 and state = 'planned'`,

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a person's outcome that leaves a waiting run's step nothing to hold raises no second budget ask, and the run's one ask still ends it"
+}
