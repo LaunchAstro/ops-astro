@@ -163,16 +163,17 @@ export async function signOut(
   request: ApiRoute & { readonly sessionId?: string; readonly businessKey?: string },
 ): Promise<void> {
   latest += 1;
-  // This session's own write, already sent, would set its cookie again after this end clears it.
+  // This session's own write, already sent, would set its cookie again after the end clears it.
+  // The revocation does not wait for it: a revoked bearer back in a cookie admits nothing.
   const written = request.sessionId === undefined ? undefined : rewriting.get(request.sessionId);
   const named = request.sessionId === undefined ? {} : { [SESSION_HEADER]: request.sessionId };
   const { businessKey } = request;
   const account = `${PREFIX.person}${encodeURIComponent(businessKey ?? '')}/account/sessions`;
   const sent = (async () => {
-    await written;
     if (request.sessionId !== undefined && businessKey !== undefined) {
       await toApi(request, `${account}/sign-out`, named, '{}');
     }
+    await written;
     return await toApi(request, `${SESSION_PATH}/end`, named);
   })();
   signingOut.add(sent);

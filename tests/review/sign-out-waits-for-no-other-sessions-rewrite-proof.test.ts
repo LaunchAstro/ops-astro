@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // A transport hold around the real API and database, without replacing admission or revocation.
-// Sol's #1525 round 1 proof, steps and assertions as written; only the file name and the lint
-// comments are added.
+// Sol's #1525 round 1 proof, steps and assertions as written; only the file name, the title and
+// the lint comments are changed.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { openSignIn, signOut } from '../../apps/web/src/session/sign-in.ts';
@@ -32,7 +32,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   // eslint-disable-next-line max-lines-per-function -- Sol's proof, kept as one case
   () => {
     // eslint-disable-next-line max-lines-per-function -- Sol's proof, kept as one case
-    it('Sol proof, criterion 1: a stalled earlier rewrite cannot keep a later signed-out session authorised', async () => {
+    it('a stalled earlier rewrite cannot keep a later signed-out session authorised', async () => {
       const api = fixture.compose();
       const token = async () =>
         await signBearer({

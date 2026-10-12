@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Race review of #1525: a session's own stalled cookie rewrite does not delay its sign-out's revocation, so its bearer is refused once it signs out"
+}
