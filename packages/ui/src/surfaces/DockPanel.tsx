@@ -5,7 +5,14 @@
 // or a click inside the body means is the application's; this draws it.
 
 import { PanelToolbar } from './PageToolbar.tsx';
-import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import type { MouseEvent } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 import { inAppAddress } from './gesture.ts';
@@ -50,11 +57,7 @@ export function DockPanelView(props: {
   const { panel, dock } = props;
   const body = useRef<HTMLDivElement>(null);
   const [toolbar, setToolbar] = useState<HTMLElement | null>(null);
-  const top = panel.scrollTop;
-  // A walk of the history puts the panel's scroll back, once per walk.
-  useLayoutEffect(() => {
-    if (top !== undefined && body.current !== null) body.current.scrollTop = top;
-  }, [dock.restoreWalk, top]);
+  const heard = useRestoredScroll(body, dock.restoreWalk, panel.scrollTop);
   return (
     <PanelToolbar.Provider value={toolbar}>
       <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
@@ -70,6 +73,7 @@ export function DockPanelView(props: {
             dock.onBodyClick?.(panel.id, event);
           }}
           onScroll={(event) => {
+            heard(event.currentTarget.scrollTop);
             dock.onScroll?.(panel.id, event.currentTarget.scrollTop);
           }}
         >
@@ -78,6 +82,43 @@ export function DockPanelView(props: {
       </section>
     </PanelToolbar.Provider>
   );
+}
+
+/**
+ * A walk of the history puts the panel's scroll back, once per walk. While the
+ * body is too short to reach it, as when the panel's read lands after the
+ * walk, it is put back again each time the content changes, until it is
+ * reached or the person scrolls. Returns what the body's scroll tells it.
+ */
+function useRestoredScroll(
+  body: RefObject<HTMLDivElement | null>,
+  walk: number | undefined,
+  top: number | undefined,
+): (at: number) => void {
+  const reaching = useRef<{ readonly placed: number; readonly stop: () => void } | null>(null);
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (top === undefined || element === null) return;
+    const grows = new MutationObserver(() => {
+      put();
+    });
+    const stop = (): void => {
+      grows.disconnect();
+      reaching.current = null;
+    };
+    const put = (): void => {
+      element.scrollTop = top;
+      if (element.scrollTop >= top) stop();
+      else reaching.current = { placed: element.scrollTop, stop };
+    };
+    grows.observe(element, { childList: true, subtree: true, characterData: true });
+    put();
+    return stop;
+  }, [body, walk, top]);
+  // A scroll to anywhere but where the restoration put it is the person's own.
+  return (at) => {
+    if (reaching.current !== null && at !== reaching.current.placed) reaching.current.stop();
+  };
 }
 
 function DockPanelHead(props: {
