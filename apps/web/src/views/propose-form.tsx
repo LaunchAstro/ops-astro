@@ -5,7 +5,7 @@
 // its refusal above the read.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { minorDigits, minorOf } from '@launchastro/ui';
+import { StyledSelect, minorDigits, minorOf } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type { TaskEnvelope } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
@@ -285,7 +285,7 @@ function ProposeFields(props: {
         <label className="tf__k" htmlFor="propose-currency">
           In
         </label>
-        <select
+        <StyledSelect
           className="input"
           disabled={props.locked}
           id="propose-currency"
@@ -295,7 +295,7 @@ function ProposeFields(props: {
           {props.currency === null ? null : (
             <option value={props.currency}>{props.currency}</option>
           )}
-        </select>
+        </StyledSelect>
         {props.currency !== null ? null : (
           <p className="card__sub" data-propose="no-cap">
             This task has no budget cap to draw on, so there is no currency a proposal could be

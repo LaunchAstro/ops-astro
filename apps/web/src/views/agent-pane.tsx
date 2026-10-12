@@ -19,8 +19,9 @@
 // read again with each new task read, as the run's own section reads them; a
 // refused or failed read draws no log, and the run's section says why.
 
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import { unknownControls, stopControls } from './agent-budget-controls.ts';
 import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -33,10 +34,12 @@ import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { closedNote, refusesRecipient, type DecisionNote } from './gate-controls.tsx';
+import { ExecutionMap } from './run-progress.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { activityOf, useTaskExecution, type TaskExecutionRead } from './task-execution.ts';
 
 export interface AgentSectionProps {
+  readonly brief?: ReactNode;
   readonly client: OperationsClient;
   /**
    * The session the page is read under: the drawer's ask carries it, and the
@@ -72,7 +75,7 @@ export interface AgentSectionProps {
   readonly onStepUp?: (open: true | null) => void;
 }
 
-interface AgentControls {
+export interface AgentControls {
   readonly busy: boolean;
   readonly refusal: string | null;
   readonly decide: (
@@ -99,7 +102,7 @@ interface AgentControls {
 }
 
 /** One write, handed the client of the sign-in it goes on. */
-type Call = (client: OperationsClient) => ReturnType<OperationsClient['mutate']>;
+export type Call = (client: OperationsClient) => ReturnType<OperationsClient['mutate']>;
 
 /** The `detail.state` a command's answer carries, if any. */
 const stateOf = (value: unknown): unknown =>
@@ -164,65 +167,6 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   return { busy, refusal, decide, cancel, awaiting, stopAwaiting, stepUp, ...acts };
 }
 
-/** C54's two answers at a budget stop, each on its owning command (AW-05). */
-function stopControls(
-  props: AgentSectionProps,
-  busy: boolean,
-  send: (call: Call) => void,
-): Pick<AgentControls, 'topUpAtStop' | 'endAtStop'> {
-  return {
-    topUpAtStop: (runId, askId, amountMinor, currency) => {
-      if (busy) return;
-      send((client) =>
-        client.mutate('run.top_up', {
-          recordId: props.recordId,
-          runId,
-          askId,
-          amountMinor,
-          currency,
-        }),
-      );
-    },
-    endAtStop: (runId, askId) => {
-      if (busy) return;
-      send((client) =>
-        client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId, askId }),
-      );
-    },
-  };
-}
-
-/** C54's two acts on an unknown effect, each on its owning command (T3d1, T3c). */
-function unknownControls(
-  props: AgentSectionProps,
-  busy: boolean,
-  send: (call: Call) => void,
-): Pick<AgentControls, 'recordOutcome' | 'writeOff'> {
-  return {
-    recordOutcome: (attemptId, outcome) => {
-      if (busy) return;
-      send((client) =>
-        client.mutate('budget.record_outcome', {
-          recordId: props.recordId,
-          attemptId,
-          outcome,
-        }),
-      );
-    },
-    writeOff: (attemptId, amountMinor, reason) => {
-      if (busy) return;
-      send((client) =>
-        client.mutate('budget.write_off', {
-          recordId: props.recordId,
-          attemptId,
-          amountMinor,
-          reason,
-        }),
-      );
-    },
-  };
-}
-
 export function AgentSection(props: AgentSectionProps): ReactElement {
   return props.execution === undefined ? (
     <ReadAgentSection {...props} />
@@ -236,6 +180,7 @@ function ReadAgentSection(props: AgentSectionProps): ReactElement {
   return <AgentSectionBody {...props} execution={execution} />;
 }
 
+// oxlint-disable-next-line max-lines-per-function -- this adapter supplies one complete typed configuration to the shared Agent pane.
 function AgentSectionBody(
   props: AgentSectionProps & {
     readonly execution: TaskExecutionRead;
@@ -248,12 +193,15 @@ function AgentSectionBody(
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
   const activity = activityOf(props.execution);
+  const state = props.execution;
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
   return (
     <section className="sb__sect" data-section="agent" aria-label="Agent">
       <AgentPane
+        brief={props.brief}
+        executionMap={<ExecutionMap state={state} {...props} />}
         lineages={props.proposals}
         effect={null}
         nameOf={nameOf}

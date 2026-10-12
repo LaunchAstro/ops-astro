@@ -40,6 +40,7 @@ import { useRead } from '../data/use-read.ts';
 export interface RunProgressProps extends TaskExecutionOptions {
   /** The task read's proposals, for each run's gate on the execution map (MP-6-3). */
   readonly proposals?: readonly ProposalView[];
+  readonly showMap?: boolean;
 }
 /**
  * The run of one task read under one grant. A section is keyed by both, so
@@ -57,26 +58,26 @@ function RunSection(props: RunProgressProps): ReactElement {
   return <RunProgressRead {...props} state={state} />;
 }
 
+/** A refused, failed or unknown execution is never treated as readable. */
+function readableExecution(state: TaskExecutionRead) {
+  const value =
+    state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
+  return value !== null && isReadable(value) ? value : null;
+}
+
 export function RunProgressRead(
   props: RunProgressProps & {
     readonly state: TaskExecutionRead;
   },
 ): ReactElement {
-  const { client, taskKey, state } = props;
-  const value =
-    state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
+  const { client, state } = props;
+  const value = readableExecution(state);
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
-  const readable = value !== null && isReadable(value);
+  const readable = value !== null;
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
-  const graph = readable ? value.graph : undefined;
   return (
     <>
-      <RunMap
-        graph={graph}
-        proposals={props.proposals ?? []}
-        read={state}
-        scope={`${props.grantKey} ${taskKey}`}
-      />
+      {props.showMap === false ? null : <ExecutionMap {...props} />}
       <section className="sb__sect" data-outcome={outcome} data-run-progress="">
         <div className="sb__sh">
           <span className="sb__k">The run</span>
@@ -102,6 +103,23 @@ export function RunProgressRead(
         )}
       </section>
     </>
+  );
+}
+
+/** The read and scope travel together in either the summary or the run section. */
+export function ExecutionMap(
+  props: Pick<RunProgressProps, 'grantKey' | 'taskKey' | 'proposals'> & {
+    readonly state: TaskExecutionRead;
+  },
+): ReactElement {
+  const graph = readableExecution(props.state)?.graph;
+  return (
+    <RunMap
+      graph={graph}
+      proposals={props.proposals ?? []}
+      read={props.state}
+      scope={`${props.grantKey} ${props.taskKey}`}
+    />
   );
 }
 

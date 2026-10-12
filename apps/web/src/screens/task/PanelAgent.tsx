@@ -17,6 +17,7 @@
 // **Ask drafts, never sends.** The head's Ask opens the dock's assistant with
 // the task in scope (`assistant/asks.ts`), under the panel's own session.
 
+import { Icon } from '@launchastro/ui';
 import { useState, type ReactElement } from 'react';
 import type {
   InternalTaskDetail as Task,
@@ -59,14 +60,16 @@ export function PanelAgent(props: AgentSideProps): ReactElement {
   });
   return (
     <>
-      <BriefField
-        client={client}
-        recordId={task.id}
-        revision={task.revision}
-        value={task.agentBrief}
-        onSaved={props.onChanged}
-      />
       <AgentSection
+        brief={
+          <BriefField
+            client={client}
+            recordId={task.id}
+            revision={task.revision}
+            value={task.agentBrief}
+            onSaved={props.onChanged}
+          />
+        }
         client={client}
         grantKey={props.grantKey}
         recordId={task.id}
@@ -99,7 +102,7 @@ export function AskDoor(props: { readonly grantKey: string; readonly task: Task 
         askDrawer(taskAsk(scopeOf(props.task)), props.grantKey);
       }}
     >
-      <span aria-hidden="true">Ask</span>
+      <Icon name="sparkles" size="sm" />
     </button>
   );
 }

@@ -59,7 +59,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--s-2);
 }
 .aip__title {
   font: var(--type-subheading);
@@ -94,7 +94,7 @@ select.aip__hmodel:hover:not(:disabled) {
   flex: none;
   width: 1px;
   align-self: stretch;
-  margin: 0.15rem 0.25rem;
+  margin: 0.15rem var(--s-1);
   background: var(--border);
 }
 .aip__scroll {
@@ -139,8 +139,8 @@ select.aip__hmodel:hover:not(:disabled) {
 .aip__chip {
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
+  border-radius: 0;
+  background: var(--paper);
   color: var(--text-2);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -200,7 +200,7 @@ select.aip__hmodel:hover:not(:disabled) {
 }
 /* The head's eye and close (AI-03, AI-05): muted, the close a 1.6rem square. */
 .aip__act {
-  padding: 0.25rem 0.35rem;
+  padding: var(--s-1) 0.35rem;
   color: var(--text-muted);
 }
 .aip__x {
@@ -248,7 +248,7 @@ select.aip__hmodel:hover:not(:disabled) {
 }
 .aip__cites {
   margin: 0.4rem 0 0;
-  padding-left: 1rem;
+  padding-left: var(--s-4);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
