@@ -148,6 +148,9 @@ function keysOf<Row>(at: {
         to.done();
       }
     } else if (event.key === 'Escape') {
+      // Escape that closes suggestions does only that: a search field's own
+      // Escape would clear it. With none shown, Escape is the page's.
+      if (items.length > 0) event.preventDefault();
       to.setOpen(false);
     } else if (event.key === 'Backspace' && draft === '') {
       props.onDropLast();
