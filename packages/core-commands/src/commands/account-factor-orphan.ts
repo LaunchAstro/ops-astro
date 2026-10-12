@@ -83,13 +83,16 @@ export async function catchUp(
   /** The act's own target, already removed or kept by the act itself. */
   handled: string,
 ): Promise<void> {
-  const held = await provider.heldFactors(session.accessToken);
-  if (!held.ok || held.value.length === 0) return;
+  // The record first: a login with nothing held removed asks the provider nothing.
   const removed = await caller.database.withBusiness(caller.businessId, (tx) =>
     loginRemovedFactors(tx, caller.presented.subject),
   );
+  const pending = removed.filter((digest) => digest !== factorDigest(handled));
+  if (pending.length === 0) return;
+  const held = await provider.heldFactors(session.accessToken);
+  if (!held.ok) return;
   for (const providerFactorId of held.value) {
-    if (providerFactorId === handled || !removed.includes(factorDigest(providerFactorId))) continue;
+    if (!pending.includes(factorDigest(providerFactorId))) continue;
     // oxlint-disable-next-line no-await-in-loop
     await removeAtProvider(caller, provider, session, { providerFactorId }, attempt);
   }
