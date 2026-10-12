@@ -37,6 +37,7 @@ const decideBody = (version: Detail, decision: string, extra: Body = {}): Body =
   ...extra,
 });
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('an escalated gate and its recipient’s authority', () => {
   let s: Schedules;
 
@@ -88,6 +89,18 @@ describe.skipIf(serverUrl === undefined)('an escalated gate and its recipient’
     );
   }
 
+  /** How many decision items on the gate are open for this person. */
+  async function openItems(gateId: unknown, person: string): Promise<number> {
+    const found = await rows<{ readonly count: number }>(
+      s,
+      `select count(*)::int as count from public.inbox_items
+        where business_id = $1 and reason = 'decision' and fact_kind = 'gate' and fact_id = $2
+          and recipient_person_id = $3 and work_state = 'open'`,
+      [s.business, gateId, person],
+    );
+    return found[0]?.count ?? 0;
+  }
+
   async function itemState(gateId: unknown, person: string): Promise<string | undefined> {
     const found = await rows<{ readonly state: string }>(
       s,
@@ -106,11 +119,13 @@ describe.skipIf(serverUrl === undefined)('an escalated gate and its recipient’
     });
     await assign(taskId, s.decider.personId);
     expect(await itemState(gateId, recipient.personId)).toBe('withdrawn');
+    expect(await openItems(gateId, recipient.personId)).toBe(0);
   });
 
   it('a recipient who still decides is owed the gate again when the task is reassigned', async () => {
     const { taskId, gateId, recipient } = await escalatedToTheAssignee();
     await assign(taskId, s.decider.personId);
     expect(await itemState(gateId, recipient.personId)).toBe('open');
+    expect(await openItems(gateId, recipient.personId)).toBe(1);
   });
 });
