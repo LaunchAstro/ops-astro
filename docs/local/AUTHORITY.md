@@ -1118,9 +1118,10 @@ door or in an early statement and read the content in later ones, so a
 revocation or demotion that commits between the two does not stop that one
 answer: the owner's ruling (OWNER-3 A, 4 October 2026) is that a read started
 before a revocation may finish. The next read is judged afresh and serves
-nothing the revoked grant covered. Writes are not like this: every command
-judges its authority again under its locks, after any wait, and a revocation
-committed first refuses it ([Revocation](#revocation) above). Some reads ask
+nothing the revoked grant covered. Writes are held to more: a command judges
+its authority again under its locks, so a revocation committed first refuses
+it ([Revocation](#revocation) above); the sites that still judge before a later
+wait are tracked in #444 and #1009. Some reads ask
 the content grant in the reading statement as well (`readableNow`, the chat
 reads), which narrows the window further but is not the rule.
 
