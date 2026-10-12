@@ -13,10 +13,10 @@
 // hook answers a first read's loading state, never the old grant's state.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
+import { AuthorisedRead, dropsAnswer, initialState, type ReadState } from './authorised-read.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
-import type { CallResult } from '../operations/client.ts';
+import { isRefusal, type CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
   readonly grantKey: string;
@@ -37,10 +37,6 @@ export interface UseReadOptions<T> {
   /** Which published answers break what the host admits; refused or out when absent. */
   readonly breaks?: (state: ReadState<T>) => boolean;
 }
-
-/** An answer that drops the last one: refused or out. */
-export const dropsAnswer = (state: ReadState<unknown>): boolean =>
-  state.outcome === 'denied' || state.outcome === 'unavailable';
 
 export interface UseReadResult<T> {
   readonly state: ReadState<T>;
@@ -63,10 +59,7 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * a host that must not draw from it treats it as still loading.
    */
   readonly own: boolean;
-  /**
-   * How many published answers were breaks (`breaks`), counted as each lands,
-   * so a break React never draws, batched with its recovery, still counts.
-   */
+  /** Breaks (`breaks`, and refusals of superseded reads) counted as each lands, drawn or not. */
   readonly breaks: number;
 }
 
@@ -92,9 +85,11 @@ async function offer<T>(
   generation: number,
   run: () => Promise<CallResult<T>>,
   grantKey: string,
+  refusedLate: () => void,
 ): Promise<void> {
   try {
-    projection.accept(generation, await run(), grantKey);
+    const result = await run();
+    if (!projection.accept(generation, result, grantKey) && isRefusal(result)) refusedLate();
   } catch {
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
@@ -140,6 +135,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const waitedFrom = useRef<number | null>(null);
   /** The grant and dependencies the projection in `readRef` was built for. */
   const built = useRef<readonly unknown[]>([]);
+  const refusedLate = useCallback(
+    (projection: AuthorisedRead<T>) => () => {
+      if (readRef.current === projection) setBreaks((count) => count + 1);
+    },
+    [],
+  );
   const reread = useCallback(
     (live: boolean) => {
       const projection = readRef.current;
@@ -147,9 +148,9 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
       liveRef.current = live;
       waitedFrom.current = null;
       const generation = projection.begin();
-      void offer(projection, generation, runRef.current, grantKey);
+      void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
     },
-    [grantKey],
+    [grantKey, refusedLate],
   );
   const reload = useCallback(() => {
     reread(false);
@@ -174,7 +175,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
-    void offer(projection, generation, runRef.current, grantKey);
+    void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
     return () => {
       // Retire it, do not merely forget it. Clearing the reference stops the
       // next `reload` from finding it and stops nothing else: the read this
