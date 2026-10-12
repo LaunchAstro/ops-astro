@@ -65,23 +65,27 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 
 export class Refusal extends Error {}
 
-/** The provider's list, read this many sign-ins a page, up to this many pages. */
+/** The provider's list, read this many sign-ins a page. */
 const PAGE = 200;
-const PAGES = 50;
 
 type ProviderCall = (path: string, method: string) => Promise<{ body?: unknown }>;
 
-/** A sign-in's id from the provider's list, read page by page until it is found. */
+/**
+ * A sign-in's id from the provider's list, read page by page to the end: a
+ * short page is the last. A page that repeats the one before means the list
+ * is not moving, so the search ends there rather than reading it again.
+ */
 export async function listedId(call: ProviderCall, email: string): Promise<unknown> {
-  for (let page = 1; page <= PAGES; page += 1) {
+  let previous: unknown;
+  for (let page = 1; ; page += 1) {
     // oxlint-disable-next-line no-await-in-loop -- one page after another, until it is found
     const listed = await call(`/admin/users?page=${page}&per_page=${PAGE}`, 'GET');
     const { users } = (listed.body ?? {}) as { users?: unknown };
     const list = Array.isArray(users) ? (users as { email?: unknown; id?: unknown }[]) : [];
     const found = list.find((user) => user.email === email);
-    if (found !== undefined || list.length < PAGE) return found?.id;
+    if (found !== undefined || list.length < PAGE || list[0]?.id === previous) return found?.id;
+    previous = list[0]?.id;
   }
-  return undefined;
 }
 
 const REF = /^[a-z]{20}$/u;
