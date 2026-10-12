@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Standing mandates and graduation (MP-14-10a, CS-14.17 to CS-14.19; owner
-// answer 13).
+// Standing mandates and graduation (MP-14-10a, CS-14.17 to CS-14.19; owner answer 13).
 //
 // The envelope has already checked `mandate:manage` business-wide, refused
 // every agent (all four rows are `agent: never`) and, because the key is in
@@ -13,19 +12,17 @@
 // its rows are written, each takes the audit chain's lock, its last wait, and
 // asks a last time at that clock, its session included (`mandate-authority.ts`).
 //
-// What is left is the value: classes picked from the client's own scope list,
-// a ceiling in whole minor units of one currency, an expiry at least a minute
-// past the database's clock, and a sentence that is a label and nothing more.
-// Nothing files until each is set, and each refusal names the field it refuses
-// without echoing what was sent.
+// What is left is the value: classes picked from the client's own scope list, a ceiling in
+// whole minor units of one currency, an expiry at least a minute past the database's clock, and
+// a sentence that is a label and nothing more. Nothing files until each is set, and each
+// refusal names the field it refuses without echoing what was sent.
 //
-// Every command locks in core's order: the client's row, then the graduation
-// row, then the mandate. Filing a refusal therefore waits for any effect whose
-// core check holds the client's row in share (`standingMandateVerdict`), and
-// the next check sees it. Promoting and demoting lock the graduation row, so
-// two switches on one class serialise and the second sees the first's
-// mandate. Revoking locks the mandate too, so it waits for an effect whose
-// check holds it, and an effect already past that check stands.
+// Every command locks in core's order: the client's row, then the graduation row, then the
+// mandate. Filing a refusal therefore waits for any effect whose core check holds the client's
+// row in share (`standingMandateVerdict`), and the next check sees it. Promoting and demoting
+// lock the graduation row, so two switches on one class serialise and the second sees the
+// first's mandate. Revoking locks the mandate too, so it waits for an effect whose check holds
+// it, and an effect already past that check stands.
 
 import {
   bindDraft,
@@ -91,6 +88,7 @@ const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [`state=${state}`], [fix]));
 
 const FILED_ONCE = 'This filing was already made; start a new one.';
+const FILED_OTHERWISE = 'This was already filed with other values; file again to start anew.';
 
 /** The class's client's row, then the class's row, both locked; null when not this business's. */
 async function lockClassInOrder(tx: TenantQuery, classId: string) {
@@ -161,7 +159,9 @@ async function fileOnce(
   const bound = await lockDraftMandate(tx, filing.clientId, draftId);
   if (bound?.revoked === true) return notPermitted('revoked', FILED_ONCE);
   if (bound?.live === false) return notPermitted('expired', FILED_ONCE);
-  if (bound !== null && !sameFiling(bound, filing)) return invalid('draftId');
+  if (bound !== null && !sameFiling(bound, filing)) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['draftId'], [FILED_OTHERWISE]));
+  }
   const repeat = bound ?? (await lockLiveFiling(tx, filing));
   const mandate = repeat ?? (await insertMandate(tx, filing));
   if (mandate === null) return invalid('expiresAt');

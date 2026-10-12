@@ -112,14 +112,18 @@ export class GraduationDrafts {
 
   /**
    * The filing under `draftId` answered: filed, or refused as a filing already
-   * made, its draft is spent and the form starts over. Any other refusal keeps
-   * it, and so does a newer draft in the form.
+   * made, its draft is spent and the form starts over. Refused because the
+   * draft was already filed with other values, the form keeps what is typed
+   * under a new draft. Any other refusal keeps it, and so does a newer draft.
    */
   settleFiling(clientId: string, draftId: string, settled: Settlement): void {
-    const made = settled.kind === 'failed' && settled.refusal.code === 'TRANSITION_NOT_PERMITTED';
+    const refusal = settled.kind === 'failed' ? settled.refusal : null;
+    const made = refusal?.code === 'TRANSITION_NOT_PERMITTED';
+    const changed = refusal?.code === 'FIELD_VALUE_INVALID' && refusal.names.includes('draftId');
     const slot = this.slotOf(clientId);
-    if ((settled.kind !== 'ok' && !made) || slot.mandate.draftId !== draftId) return;
-    this.#put(clientId, { ...slot, mandate: BLANK });
+    if (slot.mandate.draftId !== draftId) return;
+    if (settled.kind === 'ok' || made) this.#put(clientId, { ...slot, mandate: BLANK });
+    else if (changed) this.#put(clientId, { ...slot, mandate: { ...slot.mandate, draftId: null } });
   }
 
   /** Opens the promotion form on `classId`, empty, or closes it with null. */
