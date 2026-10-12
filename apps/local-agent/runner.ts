@@ -15,6 +15,7 @@
 // or whose turn comes as the runner closes, is never run.
 
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { once } from 'node:events';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
@@ -240,7 +241,10 @@ function handler(
   };
 }
 
-/** Start the runner on a loopback port of its own (0 picks one). */
+/**
+ * Start the runner on a loopback port of its own (0 picks one). A port already
+ * taken rejects with EADDRINUSE, and the home is let go again.
+ */
 export async function createRunner(
   settings: RunnerSettings,
   log: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
@@ -261,8 +265,10 @@ export async function createRunner(
       else send(response, 400);
     });
   });
-  await new Promise<void>((resolve) => {
-    server.listen(port, '127.0.0.1', resolve);
+  server.listen(port, '127.0.0.1');
+  await once(server, 'listening').catch((error: unknown) => {
+    releaseHome();
+    throw error;
   });
   const address = server.address() as AddressInfo;
   // Closed once: a second close waits on the first and lets go of nothing again.

@@ -46,3 +46,17 @@ export function gapOf(answer: Delivered): GapCode | null {
     return 'target_malformed_reply';
   }
 }
+
+/**
+ * Whether a landed OTLP reply names spans the target rejected (`partialSuccess`): no full
+ * delivery, and a body OTLP forbids sending again.
+ */
+export function rejectedSome(answer: Delivered): boolean {
+  if (!answer.ok) return false;
+  try {
+    const reply = JSON.parse(answer.body) as { partialSuccess?: { rejectedSpans?: unknown } };
+    return Number(reply.partialSuccess?.rejectedSpans ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}

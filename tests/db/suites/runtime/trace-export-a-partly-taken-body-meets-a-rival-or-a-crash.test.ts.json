@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A trace export holding a partly taken body keeps the business from a rival on its own connection, and one that dies before recording it leaves the batch to its lease, then sends it once more as one gap; judged on a real migrated database."
+}

@@ -9,16 +9,17 @@
 // former person's party grant is revoked on another connection; then the share
 // goes on. The revocation must wait for the share, and then the share stands;
 // on main, which held nothing, it commits first and the former person is
-// shared nothing.
+// shared nothing. The same holds when the former person's standing is cut
+// from a parent grant and the parent is the one revoked.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { gate } from '../support/lock-waits.ts';
-import { addClient } from './fixture.ts';
+import { addClient, type Member } from './fixture.ts';
 import {
   admin,
   alpha,
@@ -95,6 +96,51 @@ async function revokedFirst(revoking: Promise<unknown>): Promise<boolean> {
   throw new Error('the revocation neither committed nor waited on the share');
 }
 
+/**
+ * Client access on `task`, paused just before it inserts `former`'s share,
+ * while `grantId` is revoked on another connection: whether the revocation
+ * committed first, then what the share and the former person end with.
+ */
+async function shareWhileRevoking(task: string, former: Member, grantId: string) {
+  const pool = connect(db.appUrl);
+  const revoker = connect(db.appUrl);
+  const paused = pausedBefore(pool, former.personId);
+  let sharing: ReturnType<typeof executeCommand> | undefined;
+  try {
+    sharing = executeCommand(paused.database, alpha, admin.presented, 'api', {
+      command: SHARE,
+      operationId: randomUUID(),
+      recordId: task,
+      expectedRevision: await revisionOf(task),
+    });
+    await paused.reached;
+    const revoking = revoker.withBusiness(alpha, async (tx) => await revokeGrant(tx, grantId));
+    const first = await revokedFirst(revoking);
+    paused.go();
+    const answer = await sharing;
+    expect(await revoking).not.toBeNull();
+    const read = await readAs(alpha, former, task);
+    return {
+      revokedFirst: first,
+      shared: outcomeOf(answer)['code'] ?? 'applied',
+      formerHoldsShare: (await liveHolders(task)).includes(former.personId),
+      formerReads: outcomeOf(read)['applied'] === true,
+    };
+  } finally {
+    paused.go();
+    await sharing?.catch(ignore);
+    await Promise.all([pool.close(), revoker.close()]);
+  }
+}
+
+/** The share stands, applied before a revocation that waited for it. */
+const SHARED_FIRST = {
+  revokedFirst: false,
+  shared: 'applied',
+  formerHoldsShare: true,
+  formerReads: true,
+};
+
 it.skipIf(serverUrl === undefined)(
   'a client standing revoked during client access waits for the share it already counted',
   async () => {
@@ -103,37 +149,49 @@ it.skipIf(serverUrl === undefined)(
     const former = await clientPerson(alpha, client, admin);
     await clientPerson(alpha, client, admin);
     const task = await fresh(alpha, admin, 'Client X private task', client);
-    const pool = connect(db.appUrl);
-    const revoker = connect(db.appUrl);
-    const paused = pausedBefore(pool, former.personId);
-    let sharing: ReturnType<typeof executeCommand> | undefined;
-    try {
-      sharing = executeCommand(paused.database, alpha, admin.presented, 'api', {
-        command: SHARE,
-        operationId: randomUUID(),
-        recordId: task,
-        expectedRevision: await revisionOf(task),
-      });
-      await paused.reached;
-      const revoking = revoker.withBusiness(
-        alpha,
-        async (tx) => await revokeGrant(tx, former.partyGrantId),
-      );
-      const first = await revokedFirst(revoking);
-      expect(first, 'the revocation waits on the held standing').toBe(false);
-      paused.go();
-      const answer = await sharing;
-      expect(await revoking).not.toBeNull();
-      const read = await readAs(alpha, former, task);
-      expect({
-        shared: outcomeOf(answer)['code'] ?? 'applied',
-        formerHoldsShare: (await liveHolders(task)).includes(former.personId),
-        formerReads: outcomeOf(read)['applied'] === true,
-      }).toEqual({ shared: 'applied', formerHoldsShare: true, formerReads: true });
-    } finally {
-      paused.go();
-      await sharing?.catch(ignore);
-      await Promise.all([pool.close(), revoker.close()]);
-    }
+    expect(await shareWhileRevoking(task, former, former.partyGrantId)).toEqual(SHARED_FIRST);
+  },
+);
+
+/**
+ * `former`'s standing moved onto a grant cut from a delegable party grant of
+ * the administrator's: their own root grant is revoked, so the parent is what
+ * their standing hangs on. Returns the parent.
+ */
+const standingCutFromParent = async (client: string, former: Member): Promise<string> =>
+  await db.app.withBusiness(alpha, async (tx) => {
+    const party = {
+      scope: { kind: 'party', id: client },
+      collection: 'task',
+      action: 'read',
+    } as const;
+    const parent = await issueGrant(tx, [], {
+      ...party,
+      subject: { kind: 'person', id: admin.personId },
+      canDelegate: true,
+      parentGrantId: null,
+      grantedByActorId: admin.actorId,
+    });
+    if (!parent.ok) throw new Error(`parent grant refused ${parent.refusal.code}`);
+    const child = await issueGrant(tx, [{ kind: 'person', id: admin.personId }], {
+      ...party,
+      subject: { kind: 'person', id: former.personId },
+      parentGrantId: parent.value,
+      grantedByActorId: admin.actorId,
+    });
+    if (!child.ok) throw new Error(`cut grant refused ${child.refusal.code}`);
+    return parent.value;
+  });
+
+it.skipIf(serverUrl === undefined)(
+  'a parent grant revoked during client access waits for the share its cut standing counted',
+  async () => {
+    const client = randomUUID();
+    await addClient(db.app, alpha, client, admin);
+    const former = await clientPerson(alpha, client, admin);
+    const parent = await standingCutFromParent(client, former);
+    await db.app.withBusiness(alpha, async (tx) => await revokeGrant(tx, former.partyGrantId));
+    const task = await fresh(alpha, admin, 'Client X private task', client);
+    expect(await shareWhileRevoking(task, former, parent)).toEqual(SHARED_FIRST);
   },
 );

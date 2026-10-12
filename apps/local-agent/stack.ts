@@ -16,6 +16,7 @@ import { renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_GPT_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import { parseCredentials } from '../../packages/core-custody/src/index.ts';
 import { codexLogin } from './codex.ts';
 import { createRunner, type Runner } from './runner.ts';
 import { readSettings, type RunnerSettings } from './settings.ts';
@@ -93,7 +94,8 @@ function credentialOf(key: string) {
 }
 
 // The runner takes the home before anything is written: a second start on a
-// live home is refused with the filed key still the one the first runner serves.
+// live home is refused with the filed key still the one the first runner serves,
+// and a start on a taken port lets the home go again.
 async function claimHome(
   settings: RunnerSettings,
   port: number,
@@ -102,13 +104,35 @@ async function claimHome(
   try {
     return { ok: true, runner: await createRunner(settings, print, port) };
   } catch (error) {
-    if (!String(error).includes('LOCAL_HOME_IN_USE')) throw error;
+    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      const message = 'OPS_LOCAL_AGENT_PORT is in use: set a free port, or unset it';
+      return { ok: false, code: 'PORT_IN_USE', message };
+    }
+    const why = /^LOCAL_HOME_IN_USE: (.*)$/u.exec(String((error as Error).message))?.[1];
+    if (why === undefined) throw error;
+    // In the lock's own words: a takeover left unfinished names the file to remove.
+    return { ok: false, code: 'LOCAL_HOME_IN_USE', message: why };
+  }
+}
+
+/** The runner's Codex, signed in to ChatGPT; a refusal naming what to do when not. */
+async function loginRefusal(settings: RunnerSettings): Promise<Refusal | null> {
+  const login = await codexLogin(settings);
+  if (login === 'not_found') {
     return {
       ok: false,
-      code: 'LOCAL_HOME_IN_USE',
-      message: 'another runner holds this OPS_LOCAL_AGENT_HOME',
+      code: 'CODEX_NOT_FOUND',
+      message: `no Codex runs at ${settings.codexBin}: install it, or set OPS_LOCAL_AGENT_CODEX_BIN`,
     };
   }
+  if (login === false) {
+    return {
+      ok: false,
+      code: 'CODEX_NOT_SIGNED_IN',
+      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
+    };
+  }
+  return null;
 }
 
 /** Everything checked before the home is claimed: the settings, the home and the login. */
@@ -121,6 +145,14 @@ async function ready(
 > {
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
   if (!read.ok) return { ok: false, code: read.code, message: read.message };
+  // Custody refuses the whole file over a key it cannot carry, and the broker never starts.
+  if (!parseCredentials([credentialOf(key)]).ok) {
+    return {
+      ok: false,
+      code: 'KEY_REFUSED',
+      message: 'custody refuses this OPS_LOCAL_AGENT_KEY: use one with no spaces, or unset it',
+    };
+  }
   const { settings } = read;
   const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
   if (![settings.home, installation].every((value) => QUOTABLE.test(value))) {
@@ -141,13 +173,8 @@ async function ready(
   // Nothing is made before the login is checked; a home not there yet holds no login.
   const before = homeRefusal(settings.home, false);
   if (before !== null) return before;
-  if (!(await codexLogin(settings))) {
-    return {
-      ok: false,
-      code: 'CODEX_NOT_SIGNED_IN',
-      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
-    };
-  }
+  const login = await loginRefusal(settings);
+  if (login !== null) return login;
   // Checked again once signed in: the key is filed in this home next, as it stands now.
   const after = homeRefusal(settings.home, true);
   if (after !== null) return after;
@@ -200,9 +227,10 @@ export async function startStack(
     throw error;
   }
   print(`local agent: runner on ${runner.origin}`);
-  // The API and custody read the port and key only when they start.
-  print(`local agent: source ${apiEnvFile}, then start or restart the API (pnpm api:up)`);
-  print('local agent: after every launcher start, re-source it and restart the API');
+  // The API and custody read the port and key only when they start. Sourced in
+  // brackets, the settings stay out of the owner's terminal for later commands.
+  print(`local agent: start or restart the API with (. '${apiEnvFile}' && pnpm api:up)`);
+  print('local agent: after every launcher start, restart the API that way');
   return {
     ok: true,
     stack: { home: settings.home, runner, credentialsFile, apiEnvFile, close: runner.close },

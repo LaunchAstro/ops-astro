@@ -238,12 +238,16 @@ export async function runCodex(
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   return await new Promise((resolve) => {
+    const { holds, stopGroup, release } = heldGroup();
     const child = spawn(settings.codexBin, codexArgs(model, cwd), {
       cwd,
       env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
       stdio: ['pipe', 'pipe', 'ignore'],
       shell: false,
+      // Its own process group: whatever ends the call ends a wrapper's descendants with it.
+      detached: true,
     });
+    holds(child.pid);
     const parts: Buffer[] = [];
     let bytes = 0;
     let done = false;
@@ -251,12 +255,11 @@ export async function runCodex(
       if (done) return;
       done = true;
       clearTimeout(timer);
+      stopGroup();
+      release();
       resolve(result);
     };
-    const stop = (): void => {
-      child.kill('SIGKILL');
-      finish(UNKNOWN);
-    };
+    const stop = (): void => finish(UNKNOWN);
     const timer = setTimeout(stop, settings.timeoutMs);
     signal?.addEventListener('abort', stop, { once: true });
     child.stdout.on('data', (chunk: Buffer) => {
@@ -317,8 +320,14 @@ function heldGroup(): {
   return { holds, stopGroup, release };
 }
 
-/** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
-export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000): Promise<boolean> {
+/**
+ * On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line.
+ * `not_found` when there is no Codex to run at all.
+ */
+export async function codexLogin(
+  settings: RunnerSettings,
+  deadlineMs = 10_000,
+): Promise<boolean | 'not_found'> {
   // Codex refuses a CODEX_HOME that is not there, so a missing one holds no login; nothing is made.
   if (!existsSync(settings.codexHome)) return false;
   return await new Promise((resolve) => {
@@ -341,8 +350,9 @@ export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000):
       stopGroup();
     }, deadlineMs);
     child.on('error', () => {
+      clearTimeout(timer);
       release();
-      resolve(false);
+      resolve('not_found');
     });
     child.on('close', (code) => {
       clearTimeout(timer);

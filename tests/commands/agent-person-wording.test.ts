@@ -77,13 +77,13 @@ async function agentServes(command: string, fields: Record<string, unknown>): Pr
     if (operation.authority !== 'record') throw new Error(`${command} is not a record row`);
     const operands = operation.operands(request);
     if (isOperandRefusal(operands)) throw new Error(`${command} refused its operands`);
-    // Neither row reads the delegation; the one `authorise` would resolve is
-    // not what this compares.
+    // The rows read the delegation only for whose grants to hold before the
+    // task; the one `authorise` would resolve is not what this compares.
     return await operation.serve(
       tx,
       { session, credential: undefined, request, declaration },
       operands,
-      undefined as never,
+      { id: randomUUID(), delegatePersonId: randomUUID(), parentDelegationId: null } as never,
       // The task `authorise` checked, which is the one served.
       typeof fields['recordId'] === 'string' ? fields['recordId'] : undefined,
     );

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// LA-1 end to end on the laptop, one command: `pnpm local-agent` starts the
-// runner and writes the API's settings; the API's own composition root reads
-// them (brokerSettings, startModelBroker) and the side panel's message is
-// answered by `codex exec` through custody and the runner. Here the binary is
+// LA-1 end to end on the laptop: the launcher (`pnpm local-agent`'s
+// startStack) starts the runner and writes the API's settings; the API's own
+// broker readers take them (brokerSettings, startModelBroker), and the side
+// panel's message is answered by `codex exec` through custody and the runner.
+// The test mounts that broker's exchange through server.ts's composeApi, as
+// the server's start does; the start itself is not run. Here the binary is
 // the fake and the database a fresh Postgres; nothing reaches a model.
 
 import { randomUUID } from 'node:crypto';

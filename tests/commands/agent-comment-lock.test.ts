@@ -81,8 +81,9 @@ describe('the task an agent comments on', () => {
         agent.tx,
         { session, credential: undefined, request, declaration },
         operands,
-        // The comment row does not read its delegation.
-        undefined as never,
+        // The comment row reads only whose grants to hold before the task:
+        // a delegating person with none.
+        { id: randomUUID(), delegatePersonId: randomUUID(), parentDelegationId: null } as never,
         // The task `authorise` checked, which is the one served.
         recordId,
       );

@@ -23,23 +23,32 @@ for. Staging has no real model yet.
    and writes `~/.ops-astro-local-agent/api.env` (0600). Each start picks a
    new port and key unless `OPS_LOCAL_AGENT_PORT` and `OPS_LOCAL_AGENT_KEY`
    are set.
-3. In another terminal: `source ~/.ops-astro-local-agent/api.env`, then
-   `pnpm api:up` and `pnpm web:up` as usual. The side panel now answers.
-   The API reads the port and key only when it starts: after every launcher
-   start, re-source `api.env` and restart the API.
+3. In another terminal: `(. ~/.ops-astro-local-agent/api.env && pnpm api:up)`,
+   then `pnpm web:up` as usual. The side panel now answers. The brackets keep
+   `OPS_ENVIRONMENT=local` and the broker settings out of that terminal once
+   the API stops. The API reads the port and key only when it starts: after
+   every launcher start, stop the API and run that line again.
 
 ## What it refuses
 
 - Anywhere but `OPS_ENVIRONMENT=local`: the API refuses
   `OPS_AGENT_PROVIDER=local-gpt`, and the runner and launcher refuse to
   start (`LOCAL_ONLY`).
+- An `OPS_LOCAL_AGENT_KEY` custody would refuse, such as one holding a space
+  (`KEY_REFUSED`): the launcher checks it with custody's own rules before it
+  files anything.
 - A runner home someone else owns (`HOME_NOT_OWNED`) or that others can
   write to (`HOME_NOT_PRIVATE`; `chmod 700` it), a home or installation
   name holding a quote or line break, or a port that is not a port
-  (`SETTING_MALFORMED`), and a second start while a runner holds the home
-  (`LOCAL_HOME_IN_USE`).
+  (`SETTING_MALFORMED`), a set `OPS_LOCAL_AGENT_PORT` something else
+  already listens on (`PORT_IN_USE`; the home is let go, so a start on a free
+  port works), and a second start while a runner holds the home
+  (`LOCAL_HOME_IN_USE`; a takeover a stopped runner left unfinished names the
+  `runner.lock.takeover` file to remove).
 - A runner home whose Codex login is not the ChatGPT plan: an API-key login
   would bill per call, so `pnpm local-agent` stops with `CODEX_NOT_SIGNED_IN`.
+- No Codex to run at the configured path: `pnpm local-agent` stops with
+  `CODEX_NOT_FOUND`, naming the path, rather than calling it a missing login.
 - **Chat about a client.** GPT is a cloud model, so the owner's rule on client
   material stands: a conversation opened on a client's task asks no model.
   Only your own typed message reaches GPT; task text and anything from outside
