@@ -38,6 +38,28 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
+/**
+ * Two real clients of the business, one task on each, so the crossing the
+ * cases make is between clients, not only between two clientless tasks.
+ * Linking a task to a client is `task:share`'s (`task.set_party`).
+ */
+async function tasksOnTwoClients(
+  c: Controls,
+  w: ConversationWorld,
+  clients: readonly [string, string],
+): Promise<[string, string]> {
+  for (const client of clients) {
+    // eslint-disable-next-line no-await-in-loop -- two rows, one at a time
+    await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
+  }
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, c.manager, 'share');
+  });
+  const one = await c.createTask('client one', clients[0]);
+  const two = await c.createTask('client two', clients[1]);
+  return [one.id, two.id];
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world of two businesses, every crossing on it
 describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
   let c: Controls;
@@ -68,18 +90,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     ({ c } = await checksWorld('aw_03_isolation'));
     w = await conversationWorld(c);
     work = await pickedUpOn(c, 'conversation_crossing');
-    // Two real clients of the business, one task on each: the crossing below
-    // is between clients, not only between two clientless tasks.
-    for (const client of [clientOne, clientTwo]) {
-      // eslint-disable-next-line no-await-in-loop -- two rows, one at a time
-      await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
-    }
-    // Linking a task to a client is `task:share`'s (`task.set_party`).
-    await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
-      await grantTo(tx, c.manager, 'share');
-    });
-    taskOne = (await c.createTask('client one', clientOne)).id;
-    taskTwo = (await c.createTask('client two', clientTwo)).id;
+    [taskOne, taskTwo] = await tasksOnTwoClients(c, w, [clientOne, clientTwo]);
     conversationId = await started(w, w.owner, {
       scope: { kind: 'task', id: taskOne },
       title,
