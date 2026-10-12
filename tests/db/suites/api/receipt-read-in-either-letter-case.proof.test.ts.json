@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an observed receipt read with its attempt id in upper case returns what the lower-case read returns"
+}
