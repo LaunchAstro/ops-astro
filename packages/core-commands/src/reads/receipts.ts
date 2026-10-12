@@ -25,8 +25,10 @@ export function parseReceipt(
   | { readonly ok: true; readonly operands: Operands }
   | { readonly ok: false; readonly refusal: CommandRefusal } {
   const { attemptId } = body;
+  // One spelling of the UUID from here on: the effect identity the register
+  // stores is lowercase, and a capital one would find no receipt (#793).
   return typeof attemptId === 'string'
-    ? { ok: true, operands: { attemptId } }
+    ? { ok: true, operands: { attemptId: isUuid(attemptId) ? attemptId.toLowerCase() : attemptId } }
     : {
         ok: false,
         refusal: invalid('attemptId', 'Send attemptId as the observed attempt.'),
