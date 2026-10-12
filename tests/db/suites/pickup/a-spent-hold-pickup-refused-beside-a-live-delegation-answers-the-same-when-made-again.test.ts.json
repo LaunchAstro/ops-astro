@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a spent-hold pickup made again with its operation id, after an answer or a cut commit, raises no second ask"
+}

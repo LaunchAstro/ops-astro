@@ -10,7 +10,7 @@
 // left in place, because its `state <> 'actual'` refuses the settled row.
 //
 // The rest of T2d's checklist, one case each: the receipt names the settled
-// amount; step, reservation and audit event are one transaction; an expired
+// amount, and reads the same for its attempt named in upper case; step, reservation and audit event are one transaction; an expired
 // lease settles money and moves no work; a cost above the hold is refused,
 // audited with the observed amount and held as `liability_unknown` at the
 // maximum; a failed attempt settles at its cost and counts against the cap;
@@ -102,6 +102,16 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
       spentMinor: 1_800,
       releasedMinor: 700,
     });
+  });
+
+  it('the receipt reads the same for its attempt named in upper case', async () => {
+    const w = await work();
+    await applied(w);
+    appliedDetail(await observeOf(w, { usage: PRICED }), 'task.observe');
+    expect(w.attemptId).toMatch(/[a-f]/u);
+    const lower = await receiptOf(w.attemptId);
+    expect(lower).toHaveProperty('receipt');
+    expect(await receiptOf(w.attemptId.toUpperCase())).toStrictEqual(lower);
   });
 
   it('an unpriced attempt or absent spend is neither zero nor success: it reads as unpriced and moves no money', async () => {

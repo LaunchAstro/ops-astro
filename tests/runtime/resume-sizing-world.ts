@@ -16,6 +16,12 @@ import {
 } from './schedules-harness.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { broker, call, s } from '../broker/broker-world.ts';
+import {
+  mintDelegation,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
+import { hold, type Held } from '../support/lock-wait-race.ts';
 
 interface Hold {
   readonly id: string;
@@ -97,13 +103,77 @@ export const spentWhole = async (label: string): Promise<Work> => {
   return work;
 };
 
-export const pickupOf = async (work: Work): ReturnType<typeof asAgent> =>
-  await asAgent(s, {
-    command: 'task.pickup',
-    operationId: randomUUID(),
-    reservationId: work.decision['reservationId'],
-    leaseSeconds: 600,
-  });
+/** The agent's pickup of `work`'s hold, on `database` (the app's own by default), under `operationId`. */
+export const pickupOf = async (
+  work: Work,
+  {
+    database = s.db.app,
+    operationId = randomUUID(),
+  }: { database?: Database; operationId?: string } = {},
+): ReturnType<typeof asAgent> =>
+  await asAgent(
+    s,
+    {
+      command: 'task.pickup',
+      operationId,
+      reservationId: work.decision['reservationId'],
+      leaseSeconds: 600,
+    },
+    undefined,
+    database,
+  );
+
+/**
+ * Another live delegation of the agent's for `work`'s purpose, minted as `work`'s own pickup
+ * minted its first, in `tx` when given (left open by the caller), and its id.
+ */
+export const delegationBeside = async (
+  work: Work,
+  expiresAt: Date,
+  tx?: TenantQuery,
+): Promise<string> => {
+  const [old] = await rows<{
+    agent_actor_id: string;
+    delegate_person_id: string;
+    minted_by_actor_id: string;
+    purpose: string;
+    collections: string[];
+    actions: Parameters<typeof mintDelegation>[1]['actions'];
+  }>(s, 'select * from public.delegations where id = $1', [work.picked['delegationId']]);
+  if (old === undefined) throw new Error("Expected the work's first delegation");
+  const mint = async (on: TenantQuery) =>
+    await mintDelegation(on, {
+      agentActorId: old.agent_actor_id,
+      delegatePersonId: old.delegate_person_id,
+      mintedByActorId: old.minted_by_actor_id,
+      purpose: old.purpose,
+      collections: old.collections,
+      actions: old.actions,
+      purposeScope: { kind: 'record', id: work.taskId },
+      expiresAt,
+    });
+  const minted = tx === undefined ? await s.db.app.withBusiness(s.business, mint) : await mint(tx);
+  if (!minted.ok) throw new Error(`the mint was refused: ${minted.refusal.code}`);
+  return minted.value.delegation.id;
+};
+
+/** A delegation's row held `for update` on a connection of its own, `last` run before it commits. */
+export const holdDelegation = async (
+  id: string,
+  last?: (
+    execute: (sql: string, parameters: readonly unknown[]) => Promise<unknown>,
+  ) => Promise<void>,
+): Promise<Held> =>
+  await hold(
+    s.db,
+    async (execute) => {
+      const held = await execute('select id from public.delegations where id = $1 for update', [
+        id,
+      ]);
+      if (held.length === 0) throw new Error('holdDelegation: no delegation to hold');
+    },
+    last === undefined ? undefined : async (execute) => await last(execute as never),
+  );
 
 interface Ask {
   readonly run_state: string;
