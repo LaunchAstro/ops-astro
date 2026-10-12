@@ -85,6 +85,13 @@ export function passwordChanger(app: {
 }
 
 const NEEDS_CODE = 'Enter the six-digit code from your authenticator app to change your password.';
+/** What `/account/sessions/end-others` answers. */
+interface SessionsEnded {
+  readonly ended: number;
+  readonly signedOutAtProvider: boolean;
+}
+
+const LEFT = 'This sign-in ended before the password was changed. Nothing changed.';
 const CHANGED_ELSEWHERE =
   'Your password is changed, and this sign-in ended meanwhile. Sign in again with it.';
 
@@ -105,6 +112,11 @@ export async function changePassword(
     const raised = await raiseWithCode(request.client, request.code);
     if (!raised.ok) return raised;
     token = raised.token;
+  }
+  // A sign-out or a switch while the password or code was checked: nothing is written for it.
+  if (!request.current()) {
+    await dropConfirming(request, token);
+    return { ok: false, because: LEFT };
   }
   const set = await setPassword({
     gotrueUrl,
@@ -168,7 +180,9 @@ async function moveAndEndOthers(
     fetch: route.fetch,
     sessionId,
   });
-  const ended = await client.account('sessions/end-others');
+  const ended = await client.account<SessionsEnded>('sessions/end-others');
   if (from !== undefined && from !== sessionId) await endCookie(route, from);
-  return { ok: true, othersEnded: describeFailure(ended) === null };
+  // Ended only when the sign-in service said so too, as Settings' own panel reads it.
+  const othersEnded = !isRefusal(ended) && !isUnavailable(ended) && ended.value.signedOutAtProvider;
+  return { ok: true, othersEnded };
 }
