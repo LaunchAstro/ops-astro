@@ -19,6 +19,8 @@ export interface ScoreHold {
   readonly ephemeral: boolean;
   readonly failure: Failure | null;
   readonly changed: number;
+  /** Let go by the person while its stored copy could not be cleared: cleanup only. */
+  readonly abandoned: boolean;
 }
 const EMPTY: ScoreHold = {
   pending: null,
@@ -28,6 +30,7 @@ const EMPTY: ScoreHold = {
   ephemeral: false,
   failure: null,
   changed: 0,
+  abandoned: false,
 };
 
 /** One exact task.set_scores attempt per task, shared by its page and panel. */
@@ -122,10 +125,20 @@ export class ScoresCustody {
     const previous = this.snapshot(id);
     if (previous.busy) return;
     if (previous.pending === null) {
-      this.#put(id, { ...previous, kept: this.#save() });
+      const kept = this.#save();
+      this.#put(id, { ...previous, kept, abandoned: previous.abandoned && !kept });
       return;
     }
     void this.#send(id);
+  }
+  /** Stop waiting: drops only this held attempt and rewrites the stored copy without it. */
+  letGo(id: string, operationId: string): void {
+    const previous = this.snapshot(id);
+    if (!this.#current() || previous.busy || previous.pending?.operationId !== operationId) return;
+    const next = { ...previous, pending: null, uncertain: false, ephemeral: false, failure: null };
+    this.#holds.set(id, next);
+    const kept = this.#save();
+    this.#put(id, { ...next, kept, abandoned: !kept });
   }
   sendEphemeral(id: string): void {
     const previous = this.snapshot(id);
@@ -180,8 +193,11 @@ export class ScoresCustody {
       this.snapshot(id).pending?.operationId !== pending.operationId
     )
       return;
-    // A refusal now may withhold a stored success; only its success resolves that unknown.
-    const uncertain = answer.kind === 'unknown' || (previous.uncertain && answer.kind !== 'ok');
+    // A refusal now may withhold a stored success, so it keeps an unknown held. A stale
+    // answer cannot: a stored success replays before the revision check.
+    const uncertain =
+      answer.kind === 'unknown' ||
+      (previous.uncertain && answer.kind !== 'ok' && answer.kind !== 'stale');
     const next: ScoreHold = {
       ...previous,
       pending: uncertain ? pending : null,
