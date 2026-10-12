@@ -11,11 +11,10 @@ import { mount, settle } from '../surfaces/mount.tsx';
 
 afterEach(() => dropOtherDrafts(null, null));
 
-it('a refused Create preserves the saved draft across a reload when settlement cannot write', async () => {
-  const storage = store();
-  const person = 'alpha:sol-refusal@example.test';
+/** A client whose creates wait until the test answers them. */
+function heldCreates() {
   const requests: string[] = [];
-  let answer: ((response: Response) => void) | undefined;
+  const answer: { resolve?: (response: Response) => void } = {};
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
@@ -25,12 +24,19 @@ it('a refused Create preserves the saved draft across a reload when settlement c
       if (String(input).endsWith('/task/create')) {
         requests.push(String(input));
         return new Promise<Response>((resolve) => {
-          answer = resolve;
+          answer.resolve = resolve;
         });
       }
       return Promise.resolve(Response.json({ ok: true, persons: [] }));
     },
   });
+  return { client, requests, answer };
+}
+
+it('a refused Create preserves the saved draft across a reload when settlement cannot write', async () => {
+  const storage = store();
+  const person = 'alpha:sol-refusal@example.test';
+  const { client, requests, answer } = heldCreates();
   const panel = () => (
     <DraftPanel
       client={client}
@@ -54,7 +60,7 @@ it('a refused Create preserves the saved draft across a reload when settlement c
     throw new DOMException('full', 'QuotaExceededError');
   };
   await act(async () => {
-    answer?.(
+    answer.resolve?.(
       Response.json(
         { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] },
         { status: 403 },
