@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the application role cannot rewrite when a privacy incident was found, and an agent credential revocation is stamped with the database clock rather than the time the writer sends"
+}

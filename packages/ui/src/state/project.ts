@@ -145,31 +145,39 @@ function fallback(state: string): DrawnState {
     : { word: raw, tone: 'wait', reference: 'unknown' };
 }
 
+/**
+ * The table's own entry for a stored name. The name is text from outside, so
+ * a name an object inherits (`__proto__`, `toString`) is no entry.
+ */
+function own<T>(table: Readonly<Record<string, T>>, name: string): T | undefined {
+  return Object.hasOwn(table, name) ? table[name] : undefined;
+}
+
 export function drawRunState(run: StoredRun): DrawnState {
   if (run.state === 'waiting') {
     const reason = run.waitReason;
-    const drawnReason = reason === null ? undefined : WAIT_REASON[reason];
+    const drawnReason = reason === null ? undefined : own(WAIT_REASON, reason);
     if (drawnReason !== undefined) return drawnReason;
     // A wait whose reason this table does not know is still a wait, and the
     // reason is the more informative half, so the reason is what prints.
     return fallback(reason ?? 'waiting');
   }
-  return RUN_STATE[run.state] ?? fallback(run.state);
+  return own(RUN_STATE, run.state) ?? fallback(run.state);
 }
 
 export function drawStepState(state: string): DrawnState {
-  return STEP_STATE[state] ?? fallback(state);
+  return own(STEP_STATE, state) ?? fallback(state);
 }
 
 /** A word the mockup drew that this projection reads straight through. */
 export function drawPinnedRunWord(word: string): DrawnState {
-  const tone = PINNED_RUN_TONE[word as keyof typeof PINNED_RUN_TONE];
+  const tone = own<Tone>(PINNED_RUN_TONE, word);
   return tone === undefined ? fallback(word) : { word, tone, reference: 'pinned' };
 }
 
 export function drawPinnedStepWord(state: string): DrawnState {
-  const tone = PINNED_STEP_TONE[state as keyof typeof PINNED_STEP_TONE];
-  const word = PINNED_STEP_WORD[state as keyof typeof PINNED_STEP_WORD];
+  const tone = own<Tone>(PINNED_STEP_TONE, state);
+  const word = own<string>(PINNED_STEP_WORD, state);
   return tone === undefined || word === undefined
     ? fallback(state)
     : { word, tone, reference: 'pinned' };

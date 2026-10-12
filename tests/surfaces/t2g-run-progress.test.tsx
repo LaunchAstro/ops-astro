@@ -12,6 +12,8 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { runStories } from '../../packages/ui/src/index.ts';
+import { lineage, running } from './mp-6-1-agent-fixtures.tsx';
 import { mount } from './mount.tsx';
 
 const pause = (): Promise<void> =>
@@ -282,5 +284,15 @@ describe('T2g the run on the task page', () => {
     } finally {
       await page.unmount();
     }
+  });
+
+  it('a step priced and settled while the worker still holds its lease is still running', () => {
+    // `task.observe` settles a completed step's spend `actual` and leaves the
+    // lease live (core-runtime budget.ts), so the money alone is no hand-back.
+    const attempt = { state: 'settled', outcome: 'completed' };
+    const story = runStories([
+      lineage({ reservations: [{ ...running, state: 'actual', attempt }] }),
+    ]);
+    expect([story[0]?.state, story[0]?.cancellable]).toStrictEqual(['running', true]);
   });
 });

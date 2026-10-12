@@ -83,6 +83,7 @@ const WORDS: Readonly<Record<PanelDoor, string>> = {
   log: 'Log time in the task panel',
   timer: 'Start the timer in the task panel',
   reply: 'Reply in the task panel',
+  agent: 'Review the plan in the task panel',
 };
 
 describe('MP-4-3 panel doors placed', () => {

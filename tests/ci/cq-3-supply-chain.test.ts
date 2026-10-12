@@ -14,7 +14,7 @@ import {
   readFileSync,
   rmSync,
 } from 'node:fs';
-import { readdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -88,6 +88,8 @@ function pinsTree(authImage: string, record: string): string {
   for (const dir of ['scripts/local', '.github/workflows', 'docs'])
     mkdirSync(join(tree, dir), { recursive: true });
   cpSync(join(ROOT, 'scripts/pins-check.mjs'), join(tree, 'scripts/pins-check.mjs'));
+  // The check parses workflows with the repository's yaml package.
+  symlinkSync(join(ROOT, 'node_modules'), join(tree, 'node_modules'));
   writeFileSync(
     join(tree, '.github/workflows/ci.yml'),
     `jobs:\n  a:\n    steps:\n      - uses: ${action}\n`,

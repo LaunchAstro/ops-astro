@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two refreshes of one map, or a refresh racing an assignment, archive or completion on another connection, leave each open, unclaimed and unarchived ticket on the frontier once, and a refresh whose backend dies lets the waiter through"
+}

@@ -58,24 +58,14 @@ an image written as a `${{ }}` expression, since that picks the image at run
 time, and refuses a digest that is not recorded here. A bare `container:`
 opens a mapping, and its own `image:` line is held to the same rule.
 
-The check is not a YAML parser. It reads each workflow line by line, with LF,
-CRLF or CR line endings. It reads a `uses`, `image` or `container` key written
-plain or quoted, with or without space before its colon, and with its value
-on the same line or the next. It refuses a line where such a key follows a `{`
-or `[`, with or without a space after the bracket, and any line that begins
-with an explicit `? ` key, after an optional `- `. A bracket or a `#` inside a
-quoted scalar is text, and a `#` is a comment only after a space, so
-`name: "#"` or `name: step#1` before the key does not hide it; a doubled `''`
-inside single quotes is text too. A comment line is never refused.
-
-Other key forms are not guaranteed to be read: a tagged key (`!!str uses:`),
-an escaped quoted key, and a key inside a flow collection, or a quoted scalar,
-that spans lines. Write each of these keys in block style, one per line. The
-flow scan does not know block scalars either, so a `run: |` line holding an
-unquoted `{` or `[` followed by a `uses:`, `image:` or `container:` string can
-be refused. That is a false red, not a pin getting through: quote the shell
-text or move it to a script.
-Parsing the workflows as YAML is a recorded follow-up.
+The check parses each workflow with the repository's YAML parser (`yaml`) and
+reads every mapping key that resolves to `uses`, `image` or `container`,
+wherever it sits. A quoted, escaped, tagged or anchored key, a key in a flow
+collection, an explicit `? ` key and a value reached through an alias all
+resolve before the check reads them, so none of them hides a reference. A
+workflow that does not parse is refused. Because it needs that package, the
+check runs in `local checks` through `pnpm check`, after the install, and not
+in the contamination gate.
 `tests/ci/pins-check-cases.sh` holds the cases.
 
 The check holds every `*IMAGE=` line in `scripts/local/*.sh` to the same

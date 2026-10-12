@@ -17,6 +17,13 @@ import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
  */
 const SUCCESSOR_SERVER_OWNED: readonly string[] = ['proposedByActorId', 'proposed_by_actor_id'];
 
+/**
+ * The shape `proposal_versions_purpose_shape` holds, the same expression
+ * `task.propose` checks (`tasks-propose.ts`, not exported), so a successor's
+ * purpose is refused by name rather than faulting at the write.
+ */
+const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
+
 const SUCCESSOR_ACTOR_FIXES: readonly string[] = [
   'The successor is recorded as proposed by the actor of your session, and that is not a field a body may send: remove it and send the request again.',
   'A body that could name the proposing actor could record a proposal as somebody else’s, which is the claim this boundary exists to refuse.',
@@ -62,10 +69,10 @@ export function readSuccessor(raw: unknown, proposer: string): ReadSuccessor {
   }
 
   const purpose = raw['purpose'];
-  if (typeof purpose !== 'string' || purpose === '') {
+  if (typeof purpose !== 'string' || !PURPOSE_SHAPE.test(purpose)) {
     return invalidSuccessor(
       'successor.purpose',
-      'Name the purpose the successor works to.',
+      'A purpose is lower-case letters, digits and underscores, starting with a letter, up to 63 characters.',
       purpose,
     );
   }

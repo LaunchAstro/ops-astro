@@ -69,3 +69,29 @@ it('an unknown client filter cannot hide Client while both clients remain shown'
     await board.unmount();
   }
 });
+
+it('a client filter written twice is one filter, so Client hides while one client is shown', async () => {
+  const alpha = facetId('Client', 'Alpha');
+  const board = await mount(
+    <ProjectsBoard
+      rows={[row('a', 'Alpha'), row('b', 'Beta')]}
+      stages={[]}
+      href={(one) => `/tasks/${one.id}`}
+      address={new URLSearchParams({ f: `${alpha},${alpha}` }).toString()}
+      now={new Date(2026, 9, 4)}
+      width={1400}
+      viewport={1480}
+    />,
+  );
+  try {
+    expect(
+      board.all('tr[data-row]').map((one) => (one as HTMLElement).dataset['row'] ?? null),
+    ).toEqual(['a']);
+    expect(
+      board.find('th[data-key="client"]'),
+      'the board keeps one filter of the two, so one client is shown',
+    ).toBeNull();
+  } finally {
+    await board.unmount();
+  }
+});

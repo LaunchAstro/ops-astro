@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "each stored guard naming a nullable column refuses the row with that evidence missing: a keyed credential with no key id, a dispatched step with a NULL marker, a marked attempt abandoned with no abandonment, a top-up answer with no amount or currency"
+}

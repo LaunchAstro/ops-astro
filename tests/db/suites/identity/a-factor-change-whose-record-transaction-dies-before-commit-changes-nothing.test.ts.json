@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor change whose record transaction dies after its check and before commit changes nothing"
+}

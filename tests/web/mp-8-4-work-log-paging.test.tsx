@@ -14,6 +14,7 @@ import {
   SECOND_OF_THREE,
   THIRD,
   drawn,
+  event,
   held,
   openWorkLog,
   page,
@@ -137,6 +138,40 @@ describe('MP-8-4 paging per the long-lists ruling (web), a changed reader', () =
     await tick();
     expect(api.asked).toHaveLength(4);
     expect(drawn(view)).toEqual(['e1', 'e2', 'e3']);
+    await view.unmount();
+  });
+});
+
+describe('MP-8-4 a filter nothing in view passes still reaches earlier days', () => {
+  it('Load earlier days stays when no loaded event passes, and loading it shows the older match', async () => {
+    const updates = page(
+      [
+        {
+          day: '2026-09-28',
+          events: [event('u1', '2026-09-28T02:00:00Z', 'OPS-1', 'Fix the gate')],
+        },
+      ],
+      true,
+    );
+    const comment = {
+      ...event('c1', '2026-09-15T02:00:00Z', 'OPS-3', 'Oil the hinge'),
+      operation: 'task.comment',
+    };
+    const older = page([{ day: '2026-09-15', events: [comment] }], false);
+    const api = server([{ body: updates }, { body: older }]);
+    const view = await mount(projects(api.fetch));
+    await tick();
+    await openWorkLog(view);
+    expect(view.find('.act__more')).not.toBeNull();
+
+    await view.type('input[type="search"]', 'comment');
+    await tick();
+    expect(api.asked).toHaveLength(1);
+    expect(view.find('.act__more')).not.toBeNull();
+    await view.click('.act__more');
+    await tick();
+    expect(api.asked[1]).toEqual({ timeZone: zone, before: '2026-09-28' });
+    expect(drawn(view)).toEqual(['c1']);
     await view.unmount();
   });
 });

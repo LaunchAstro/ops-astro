@@ -28,6 +28,9 @@ const WORDS: Readonly<Record<string, string>> = {
   MODEL_NOT_OFFERED:
     'The model chosen for this conversation is not offered for it now, so nothing was sent. ' +
     'Your message is kept; choose another model.',
+  LOCAL_PLAN_LIMIT:
+    'The ChatGPT plan is at its usage limit, so there is no answer. ' +
+    'Your message is kept; ask again once the plan resets.',
 };
 
 const UNUSABLE =
@@ -38,6 +41,10 @@ export const refusedWith = (code: string): ConversationReply => ({
   code,
   words: WORDS[code] ?? UNUSABLE,
 });
+
+/** A released call: the plan at its limit says to wait for the reset, not to ask again now. */
+export const releasedWith = (reason: string): ConversationReply =>
+  refusedWith(reason === 'LOCAL_PLAN_LIMIT' ? reason : 'CALL_RELEASED');
 
 export interface Kept {
   readonly id: string;

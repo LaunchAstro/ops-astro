@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a connection label takes the signal grammar, refusing hidden, format and out-of-grammar characters, and an upgrade over a stored label outside it stops, naming the row, and rewrites nothing"
+}

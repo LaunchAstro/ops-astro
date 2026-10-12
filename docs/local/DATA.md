@@ -362,8 +362,9 @@ Pickup calls it after its own checks under the locks. It checks again inside, in
 `app_business_id()`'s business: the reservation is claimable, the approving
 person is the one named, the claimant's authority is live (a person's own write
 on the task, or an agent's own delegation for this lease from the approving
-person, judged as `EFFECTIVE` judges grants), and the expiry is within a lease's
-lifetime. It computes the fence itself. The application role still writes
+person, judged as `EFFECTIVE` judges grants, under the `task` collection
+whichever one the caller names, since 20261012052116), and the expiry is within
+a lease's lifetime. It computes the fence itself. The application role still writes
 delegations, grants, gate decisions and actors, so a new lease is only as
 trustworthy as those rows; the delegation mint behind this path is the next step. It runs as its own
 role, `ops_astro_lease_path` (no login, no bypass, not the owner, and the
@@ -387,7 +388,10 @@ task's key, update of the stamp, a read of both; no delete) and execute on
 `app_business_id()`, and nothing else. The worker's occurrence path takes it
 for the one insert of an occurrence's run; the trigger
 `planned_runs_occurrence_origin` refuses an origin written by any other role
-and any later change to one. The suites sort it into a class of its own
+and any later change to one, and the definer
+`planned_runs_origin_is_approved` (20261012052116) refuses a run whose origin
+occurrence is not `approved` or whose definition is not the one that
+occurrence's activation runs. The suites sort it into a class of its own
 (`occurrence`), and the column-grant contract names each of its column grants.
 
 At every migration prefix, every tenant table holds an owner-written row per
@@ -458,9 +462,11 @@ finds it before `public.records`, with no row security. So
 test database, and `scripts/local/db-up.sh` revoke it where they make the
 database (`tests/tenancy/temporary-tables.test.ts`). Since migration
 0031 the migrations revoke it too, on the current database, from `PUBLIC`, the
-group and every login in it, so a database made before that revoke loses it
-when it is migrated (`migrations/0031_upgrade_guards.sql`;
-`tests/runtime/upgrade-guards.test.ts`). A backend that had
+group and every login in it, and since 20261012052116 from every role that
+holds the group through another role, so a database made before that revoke
+loses it when it is migrated (`migrations/0031_upgrade_guards.sql`;
+`tests/runtime/upgrade-guards.test.ts`;
+`tests/runtime/temporary-revoked-from-indirect-application-members.test.ts`). A backend that had
 already made a temporary table keeps it until it disconnects, so restart the
 API after migrating. The harness also
 names the schemas it found, so

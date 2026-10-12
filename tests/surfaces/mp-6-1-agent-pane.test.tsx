@@ -125,6 +125,18 @@ describe('MP-6-1 agent pane', () => {
     expect(link?.getAttribute('target')).toBe('_blank');
   });
 
+  it('MP-6-1 staged artefact read from the rendered evidence payload', async () => {
+    // The evidence renderer keeps the proposal's content under `payload`.
+    const staged = { kind: 'preview', url: 'https://preview.example.test', built: 'b', note: 'n' };
+    const body = { renderer: 'evidence', payload: { staged } };
+    const page = await pane({
+      lineages: [lineage({ versions: [version({ evidence: { digest: 'e', body } })] })],
+    });
+    expect(page.find('[data-agent="artefact"]')?.getAttribute('href')).toBe(
+      'https://preview.example.test/',
+    );
+  });
+
   it('MP-6-1 staged artefact refuses a hostile address', async () => {
     for (const url of [
       'javascript:alert(1)',

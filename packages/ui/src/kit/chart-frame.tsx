@@ -91,6 +91,32 @@ function useShownPoint(
 }
 
 /**
+ * The point that holds a chart's tab stop: a point, not a place. After each
+ * render it is found again among the drawn nodes (the node holding focus, else
+ * the last stop while it is drawn, else the first point), so points that
+ * reorder keep the stop on the same one.
+ */
+function useTabStop(
+  count: number,
+  nodes: RefObject<(Element | null)[]>,
+): { readonly stop: number; readonly hold: (node: Element, index: number) => void } {
+  const [stop, setStop] = useState(0);
+  const held = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    const drawn = nodes.current.slice(0, count);
+    const last = held.current !== null && drawn.includes(held.current);
+    held.current = focusIn(drawn) ?? (last ? held.current : null);
+    const at = held.current === null ? 0 : drawn.indexOf(held.current);
+    if (at !== stop) setStop(at);
+  });
+  const hold = (node: Element, index: number): void => {
+    held.current = node;
+    setStop(index);
+  };
+  return { stop, hold };
+}
+
+/**
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
@@ -104,15 +130,14 @@ export function usePoints(count: number): {
   readonly tipId: string;
 } {
   const tipId = useId();
-  const [stop, setStop] = useState(0);
   const nodes = useRef<(Element | null)[]>([]);
+  const { stop, hold } = useTabStop(count, nodes);
   const { shown: live, setHovered, setFocused } = useShownPoint(count, nodes);
   const move = (event: KeyboardEvent, index: number): void => {
     const next = stepFor(event.key, index, count);
     if (next === null) return;
     event.preventDefault();
     const target = Math.max(0, Math.min(count - 1, next));
-    setStop(target);
     const node = nodes.current[target];
     if (node instanceof SVGElement) node.focus();
   };
@@ -131,7 +156,7 @@ export function usePoints(count: number): {
       setHovered(null);
     },
     onFocus: (event: FocusEvent<Element>) => {
-      setStop(index);
+      hold(event.currentTarget, index);
       setFocused(event.currentTarget);
     },
     onBlur: () => {

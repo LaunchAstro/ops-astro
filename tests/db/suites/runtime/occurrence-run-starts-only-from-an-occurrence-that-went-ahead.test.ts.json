@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the database refuses an occurrence run whose origin occurrence is not approved or whose definition is not the one its activation runs, past the dispatch code"
+}

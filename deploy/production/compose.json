@@ -58,52 +58,9 @@
         }
       }
     },
-    "worker": {
-      "container_name": "ops-astro-worker",
-      "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
-      "working_dir": "/app",
-      "command": ["node", "apps/worker/main.ts"],
-      "environment": {
-        "OPS_ASTRO_API_URL": "${PRODUCTION_WEB_URL:?set from the production runbook}",
-        "OPS_ASTRO_BUSINESS": "${PRODUCTION_WORKER_BUSINESS:?set from the production runbook}",
-        "OPS_ASTRO_EMAIL": "${PRODUCTION_WORKER_EMAIL:?set from the production runbook}",
-        "OPS_ASTRO_PASSWORD": "${PRODUCTION_WORKER_PASSWORD:?set from the production runbook}",
-        "OPS_ASTRO_GOTRUE_URL": "${PRODUCTION_GOTRUE_URL:?set from the production runbook}",
-        "SUPABASE_PUBLISHABLE_KEY": "${PRODUCTION_PUBLISHABLE_KEY:?set from the production runbook}",
-        "OPS_ASTRO_DELEGATION": "${PRODUCTION_WORKER_DELEGATION:?set from the production runbook}",
-        "OPS_WORKER_HEARTBEAT_URL": "${PRODUCTION_WORKER_HEARTBEAT_URL:?set from the production runbook}",
-        "OPS_HEARTBEAT_EVERY_MS": "${PRODUCTION_HEARTBEAT_EVERY_MS:?set from the production runbook}",
-        "OPS_EGRESS_HEARTBEAT_HOST": "${PRODUCTION_EGRESS_HEARTBEAT_HOST:?set from the production runbook}",
-        "OPS_EGRESS_AUTH_HOST": "${PRODUCTION_EGRESS_AUTH_HOST:?set from the production runbook}"
-      },
-      "volumes": ["ops-astro-app:/app:ro"],
-      "networks": ["production"],
-      "restart": "unless-stopped",
-      "user": "1000:1000",
-      "read_only": true,
-      "cap_drop": ["ALL"],
-      "security_opt": ["no-new-privileges:true"],
-      "tmpfs": ["/tmp:size=16m,uid=1000,gid=1000,mode=1777"],
-      "cpus": "0.5",
-      "mem_limit": "256m",
-      "memswap_limit": "256m",
-      "pids_limit": 100,
-      "logging": {
-        "driver": "json-file",
-        "options": {
-          "max-size": "10m",
-          "max-file": "3"
-        }
-      }
-    },
     "forwarder": {
       "container_name": "ops-astro-forwarder",
       "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
-      "depends_on": {
-        "worker": {
-          "condition": "service_started"
-        }
-      },
       "working_dir": "/app",
       "command": ["node", "scripts/ops/forwarder.mjs"],
       "environment": {

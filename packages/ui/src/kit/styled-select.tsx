@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -10,7 +11,9 @@ import {
 } from 'react';
 import { SelectControl, type Option } from './controls-fields.tsx';
 
-type StyledSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+type StyledSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onFocus'> & {
+  /** Runs when the visible control is focused or clicked, for lists read on first use. */
+  readonly onFocus?: (() => void) | undefined;
   readonly leading?: ReactNode;
   readonly optionLeading?: (value: string) => ReactNode;
 };
@@ -40,6 +43,18 @@ function useNativeSelect(props: StyledSelectProps) {
           .trim(),
     );
   });
+  useEffect(() => {
+    const page = native.current?.ownerDocument;
+    if (!page) return;
+    // A reset restores the select after its event, without a render or change event.
+    // It bubbles, so the page hears it from whichever form owns the select now.
+    const reset = (event: Event): void => {
+      if (event.target !== native.current?.form) return;
+      setTimeout(() => setValue(native.current?.value ?? ''));
+    };
+    page.addEventListener('reset', reset);
+    return () => page.removeEventListener('reset', reset);
+  }, []);
   const choose = (next: string): void => {
     if (native.current === null || next === native.current.value) return;
     native.current.value = next;
@@ -52,18 +67,21 @@ function useNativeSelect(props: StyledSelectProps) {
 /** Keeps native form/change semantics while sharing the kit's custom option menu. */
 export function StyledSelect(props: StyledSelectProps): ReactElement {
   const generated = useId();
-  const { leading, optionLeading, ...nativeProps } = props;
+  const { leading, optionLeading, onFocus, ...nativeProps } = props;
   const { native, options, label, value, choose } = useNativeSelect(props);
+  // Clicking a button does not focus it in every browser, so a click counts as focus too.
+  const used = (event: { readonly target: EventTarget }): void => {
+    if (event.target !== native.current) onFocus?.();
+  };
   return (
-    <div className="styled-select">
+    <div className="styled-select" onFocus={used} onClick={used}>
       <select
         {...nativeProps}
         ref={native}
         className={`sel__native ${props.className ?? ''}`}
         aria-hidden="true"
         tabIndex={-1}
-        onFocus={(event) => {
-          props.onFocus?.(event);
+        onFocus={() => {
           native.current?.parentElement?.querySelector('button')?.focus();
         }}
       />

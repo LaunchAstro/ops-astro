@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two agent credential revocations at once leave the first one stamped, a cut or retried revocation keeps the stamp, and a found-time change parked behind a status change is refused"
+}

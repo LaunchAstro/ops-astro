@@ -10,7 +10,8 @@
 // routes in `tests/api/c36-address.test.ts` and `c36-isolation.test.ts`.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationReadResult } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
@@ -92,7 +93,11 @@ interface Asked {
 
 const AWAY = { unavailable: true, because: 'not asked here' };
 
-function reader(answer: unknown): { readonly client: OperationsClient; readonly asked: Asked[] } {
+function reader(answer: unknown): {
+  readonly client: OperationsClient;
+  readonly asked: Asked[];
+  readonly answer: (next: unknown) => void;
+} {
   const asked: Asked[] = [];
   const client = {
     read: (name: string, body: Readonly<Record<string, unknown>>) => {
@@ -111,7 +116,13 @@ function reader(answer: unknown): { readonly client: OperationsClient; readonly 
       });
     },
   } as unknown as OperationsClient;
-  return { client, asked };
+  return {
+    client,
+    asked,
+    answer: (next) => {
+      answer = next;
+    },
+  };
 }
 
 async function address(path: string, answer: unknown) {
@@ -119,7 +130,7 @@ async function address(path: string, answer: unknown) {
   if (match === null || match.id !== 'agency:agent-conversation') {
     throw new Error(`${path} is not a conversation's address`);
   }
-  const { client, asked } = reader(answer);
+  const { client, asked, answer: next } = reader(answer);
   const page = track(
     await mount(
       drawScreen(match, {
@@ -132,7 +143,7 @@ async function address(path: string, answer: unknown) {
     ),
   );
   await settle();
-  return { page, asked };
+  return { page, asked, answer: next };
 }
 
 const refusal = (code: string, fix: string): unknown => ({
@@ -170,7 +181,7 @@ describe('C36 conversation address', () => {
       .map((each) => [...each.classList].filter((name) => name.startsWith('aip__msg')).join(' '));
     expect(looks).toStrictEqual(['aip__msg aip__msg--user', 'aip__msg aip__msg--ai']);
     const who = page.all('.convrec__who');
-    expect(who.map((each) => each.textContent)).toStrictEqual(['You', 'Agent']);
+    expect(who.map((each) => each.textContent)).toStrictEqual(['Person', 'Agent']);
     expect(who.every((each) => each.classList.contains('visually-hidden'))).toBe(true);
   });
 
@@ -241,5 +252,41 @@ describe('C36 address refusals', () => {
       expect(page.text()).not.toContain(withheld);
     }
     expect(page.find('[data-conversation="title"]')).toBeNull();
+  });
+});
+
+describe('C36 conversation address, another reader', () => {
+  it('a colleague reading the conversation is never told the owner’s words are their own', async () => {
+    const { page } = await address(`/agent/${ID}`, LIVE);
+    const who = page.all('.convrec__who').map((each) => each.textContent);
+    expect(who).not.toContain('You');
+    expect(who).toStrictEqual(['Person', 'Agent']);
+  });
+
+  // Sol's proof on #1369 (round 1), retitled by what it proves; its body is Sol's.
+  it('an open conversation withdraws private contents after server-side revocation with the same grant key', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      const { page, asked, answer } = await address(`/agent/${ID}`, LIVE);
+      expect(page.text()).toContain('What did the supplier quote?');
+      answer(refusal('SCOPE_NOT_GRANTED', 'The conversation read grant was revoked.'));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('online'));
+      });
+      await settle();
+      expect(
+        page.text(),
+        `conversation reads after revocation: ${asked.filter((call) => call.name === 'conversation.read').length}`,
+      ).not.toContain('What did the supplier quote?');
+      expect(page.find('[data-outcome="denied"]')).not.toBeNull();
+      expect(asked.filter((call) => call.name === 'conversation.read').length).toBeGreaterThan(1);
+    } finally {
+      await unmountAll();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
   });
 });

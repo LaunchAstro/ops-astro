@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor change sent again after its access ended is refused at the door and changes nothing"
+}

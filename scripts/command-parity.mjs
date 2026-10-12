@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the one parity check: the app's scan and the surfaces' probes */
 // The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseSync } from '@swc/core';
 import {
@@ -45,9 +46,12 @@ const TRANSPORTS = new Map([
   ['session/provider-key.ts', ['fetcher: typeof fetch', '): typeof fetch {', 'as typeof fetch']],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
-// first occurrence in code counts; one on a comment line is passed over (at worst, a false alarm).
-const inComment = (text, at) =>
-  /\/\/|^\s*\*|\/\*/u.test(text.slice(text.lastIndexOf('\n', at) + 1, at));
+// first occurrence in code counts; one after `//` or a `/*` still open on its line, or on a
+// comment line, is passed over (at worst, a false alarm).
+const inComment = (text, at) => {
+  const line = text.slice(text.lastIndexOf('\n', at) + 1, at);
+  return /\/\/|^\s*\*/u.test(line) || line.lastIndexOf('/*') > line.lastIndexOf('*/');
+};
 const withoutNamed = (text, file) =>
   (TRANSPORTS.get(file) ?? []).reduce((rest, call) => {
     let at = rest.indexOf(call);
@@ -104,14 +108,18 @@ export function commandsIn(text, namespaces, file = 'a.tsx') {
 
 /**
  * Whether `file` sends a request itself: a request global referenced (a bare identifier carries
- * `optional`; a property name or key does not) or read off `window`, `globalThis` or `self`,
- * `.fetch(` or `.sendBeacon(` called, or an API address.
+ * `optional`; a property name or key does not), read off `window`, `globalThis` or `self`, or
+ * taken out of an object under any name, `.fetch(` or `.sendBeacon(` called, or an API address.
  */
 export function sendsDirectly(text, file = 'a.tsx') {
   return nodesOf(text, file, true).some((node) => {
     const method = node.type === 'CallExpression' ? node.callee.property : undefined;
+    const taken = node.type === 'KeyValuePatternProperty' ? node.key : undefined;
     return (
       (node.type === 'Identifier' && 'optional' in node && REQUEST_GLOBALS.has(node.value)) ||
+      [REQUEST_GLOBALS, REQUEST_METHODS].some((names) =>
+        names.has(taken?.value ?? taken?.expression?.value),
+      ) ||
       (node.type === 'MemberExpression' &&
         GLOBAL_OBJECTS.has(node.object.value) &&
         REQUEST_GLOBALS.has(node.property.value ?? node.property.expression?.value)) ||
@@ -210,42 +218,42 @@ async function askedBy(read) {
 }
 
 // What the real API runs at each path on both prefixes, by name and profile: a read by the
-// grants its path asks, a command by its declaration (its executor stubbed).
+// grants its path asks, a command by its declaration (its executor stubbed). Every executor
+// call is kept, bearer by bearer: a path runs one command once for each bearer it takes, the
+// agent prefix a session's and an agent credential's (API-2).
 async function routedByApi() {
-  let ran;
-  let asked;
-  const command = (...args) => (
-    (ran = args[4].command),
-    Promise.resolve({ recordId: 'r', revision: 1 })
-  );
+  const calls = [];
+  const execute = (...args) => {
+    calls.push(args.at(-1).read ?? args.at(-1).command);
+    return Promise.resolve({ recordId: 'r', revision: 1 });
+  };
   const api = createApi({
     database: {},
     verify: () => Promise.resolve({ subject: 'parity' }),
     resolveBusiness: () => Promise.resolve('business'),
-    executeRead: async (...args) => ((ran = args[3].read), (asked = await askedBy(ran)), {}),
-    executeCommand: command,
-    executeAgentCommand: command,
+    executeRead: execute,
+    executeCommand: execute,
+    executeAgentCommand: execute,
+    executeCredentialCommand: execute,
   });
   const routed = new Map();
   for (const path of [...under(ROOT), ...under(AGENT)]) {
-    ran = undefined;
-    asked = undefined;
-    // A bearer, as every caller sends: the agent prefix reads nothing else (API-2).
-    const headers = {
-      'content-type': 'application/json',
-      authorization: 'Bearer parity.probe.token',
-    };
-    const init = { method: 'POST', headers, body: '{}' };
-    // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
-    await api.fetch(new Request(`http://parity${path}`, init));
-    const name = ran;
+    const bearers = ['parity.probe.token', ...(path.startsWith(AGENT) ? ['c'.repeat(43)] : [])];
+    const ran = [];
+    for (const bearer of bearers) {
+      const headers = { 'content-type': 'application/json', authorization: `Bearer ${bearer}` };
+      // eslint-disable-next-line no-await-in-loop -- one route at a time, its calls recorded
+      await api.fetch(new Request(`http://parity${path}`, { method: 'POST', headers, body: '{}' }));
+      ran.push(calls.splice(0));
+    }
+    // Each bearer runs the one command exactly once: a count shared between them hides one
+    // that runs it twice beside one that never does.
+    const name = ran[0]?.[0];
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
-    if (runs === undefined) continue;
-    const profile = profileOf(runs);
-    routed.set(path, {
-      name,
-      profile: asked === undefined ? profile : { ...profile, authority: asked },
-    });
+    if (runs === undefined || ran.some((one) => one.length !== 1 || one[0] !== name)) continue;
+    // eslint-disable-next-line no-await-in-loop -- one route at a time
+    const authority = runs.kind === 'read' ? await askedBy(runs.name) : profileOf(runs).authority;
+    routed.set(path, { name: runs.name, profile: { ...profileOf(runs), authority } });
   }
   return routed;
 }
@@ -291,7 +299,8 @@ export function run(
   return { rows, failures };
 }
 
-if (process.argv[1] === import.meta.filename) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   const { rows, failures } = run();
   if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
   else process.stdout.write(renderReport(rows, failures));

@@ -53,12 +53,16 @@ export function pinnedObservations(
 
 /**
  * Receipt L's observations of a publish the executable did not accept: refused before the send
- * (settled failed), failed on a declared proof, or unknown with its task already raised.
+ * (settled failed), or failed on a declared proof, each after the refusals the guarded calls
+ * recorded; or unknown with its task already raised.
  */
-export function notAccepted(outcome: Exclude<PublishOutcome, Accepted>): Observations {
-  if (outcome.state === 'refused') return { refusals_raised: seen(outcome.code) };
-  if (outcome.state === 'failed')
-    return { refusals_raised: seen(`${outcome.code} ${outcome.proof}`) };
+export function notAccepted(
+  outcome: Exclude<PublishOutcome, Accepted>,
+  refusals: readonly string[],
+): Observations {
+  const raised = (code: string) => ({ refusals_raised: seen([...refusals, code].join(' ')) });
+  if (outcome.state === 'refused') return raised(outcome.code);
+  if (outcome.state === 'failed') return raised(`${outcome.code} ${outcome.proof}`);
   return {
     waits_on: seen('person'),
     attempt_and_dispatch_token: seen(outcome.dispatchToken),

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A long first message with an emoji straddling the quotation limit is stored in the wrap-up as a whole-character prefix and an ellipsis, with no replacement character."
+}
