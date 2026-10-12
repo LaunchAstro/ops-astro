@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "A worker restarted after its proposal was decided recovers that proposal rather than opening a second, and a receipt by attempt id and a record-scoped board read answer the same for either letter case of the id. It must be judged on a real migrated database through the API and the worker."
-}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A read keeps the case of operands that are not identifier fields, such as a preset name that looks like a uuid, judged on a real migrated database."
+}

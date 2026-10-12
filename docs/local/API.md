@@ -917,14 +917,6 @@ naming an absolute `expiresAt` could raise a gate nobody can decide or hold a
 ceiling open for a decade, and a duration the server adds to its own clock can
 do neither. `expiresInSeconds` is a whole number from 1 to 604800, a maximum of
 seven days (owner decision, 23 Sep 2026). Leaving it out takes seven days.
-
-An agent's `task.propose` with no `lineageId` and the same `purpose` as its
-own live lineage on the task, while that lineage still waits (its gate pending
-and unexpired, or its decided work held), opens nothing. It answers that
-lineage's proposal, with the same `lineageId`, `versionId`, `version`, `runId`,
-`stepId`, `evidencePackId`, `gateId` and `payloadDigest`. So a worker restarted
-mid-propose or after the decision, or a second copy on one delegation, finds
-its one gate. To change the proposal, revise it by its `lineageId`.
 604801, zero or a fraction is `FIELD_VALUE_INVALID` 422 naming
 `expiresInSeconds` and the maximum, and it writes nothing but its refused
 audit row (`tests/api/expiry-bound.test.ts`). Existing gates are not
