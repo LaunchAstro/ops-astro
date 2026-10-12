@@ -11,11 +11,6 @@ import { parseDocument } from 'yaml';
 import { isolationItems, readShardPlan, type ShardPlan } from '../../scripts/ci-shards.ts';
 import { read, ROOT } from './merge-group-repo.ts';
 
-// CI-SHARDS-2, measured: each shard finishes inside the database shards' window
-// (tests/ci/ci-shard-plan.json, and the pull request that set these).
-export const LOCAL_COUNT = 3;
-export const ISOLATION_COUNT = 2;
-
 /** The matrix value ci.yml hands each shard's runner. */
 export const SHARD = '${{ matrix.shard }}/${{ strategy.job-total }}';
 
@@ -32,6 +27,11 @@ export type Job = {
 export const ci = parseDocument(read('.github/workflows/ci.yml'), { uniqueKeys: true }).toJS() as {
   jobs: Record<string, Job>;
 };
+
+// The shard counts ci.yml runs, read from its matrices, so every partition, sequencer, runner and
+// wrapper proof exercises the split CI runs (6 and 6 since CIITEM3, 12 October 2026).
+export const LOCAL_COUNT: number = ci.jobs['check']?.strategy?.matrix?.shard?.length ?? 0;
+export const ISOLATION_COUNT: number = ci.jobs['isolation']?.strategy?.matrix?.shard?.length ?? 0;
 export const plan: ShardPlan = readShardPlan(ROOT);
 export const items: string[] = isolationItems(ROOT);
 

@@ -7,9 +7,21 @@
 // file so the test stays under its cap.
 
 import { expect } from 'vitest';
+import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import type { Harness } from './role-case-harness.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import type { Answer } from './world.ts';
+
+/**
+ * The cases of `list` this run's part registers. The hosted runner runs the test in the parts
+ * tests/db/shard-plan.json names, SUITE_PART=i/k, each on a fixture of its own, as d06-generated
+ * does, so every cell runs once across the parts and each part still meets the agent operations in
+ * the journey's order. Unset, the file is one part and registers them all.
+ */
+export function ofThisPart<T>(list: readonly T[]): T[] {
+  const part = suitePart(process.env['SUITE_PART']);
+  return list.filter((_, i) => inPart(i, part));
+}
 
 export interface Pickup {
   readonly credential: string;

@@ -39,7 +39,7 @@ import {
   type Durable,
 } from './d06-cases.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
-import { agentHold } from './d06-agent-fixture.ts';
+import { agentHold, ofThisPart } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
@@ -231,7 +231,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     return answer;
   }
 
-  it.each(cells)(
+  it.each(ofThisPart(cells))(
     'agent $operation refuses top-level $key, and writes nothing',
     async (cell) => {
       const value = probeValue(cell.key);
@@ -268,7 +268,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     60_000,
   );
 
-  it.each(excluded)(
+  it.each(ofThisPart(excluded))(
     'agent $operation, not the agent’s, refuses top-level $key and writes nothing',
     async (cell) => {
       const value = probeValue(cell.key);

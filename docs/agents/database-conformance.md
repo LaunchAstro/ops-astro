@@ -110,19 +110,21 @@ newly named suite is assigned without editing that file, which only keeps the
 shards even. A suite too long for one shard is listed under the plan's `parts`
 and runs as k items, each with `SUITE_PART=i/k`; the suite registers only its
 part's cases (`inPart`), so each case runs once, in one part.
-`tests/acceptance/d06-generated.test.ts`, about 15 minutes whole, runs in six.
+`tests/acceptance/d06-generated.test.ts`, about 95 minutes whole, runs in 18,
+and `tests/acceptance/d06-agent.test.ts`, about 10, in two.
 `tests/ci/db-shards.test.ts` proves every item lands in exactly one shard and
 every case of a split suite in exactly one part.
-`isolation tests` runs the same way in two shards (`isolation tests shard
-<i>`), and `local checks` in three, split by measured time
+`isolation tests` runs the same way in six shards (`isolation tests shard
+<i>`), and `local checks` in six, split by measured time
 (`scripts/ci-shards.ts`, `tests/ci/ci-shard-plan.json`); each required name is
 an aggregate that passes only when every shard succeeded, and
 `tests/ci/ci-shards*.test.ts` prove every suite, step and test file runs in
 exactly one shard.
 
-Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
-`node scripts/db-census.ts` lists every run item's tests with vitest and shows
-the 8-way and 16-way splits hold each item once and the same number of tests.
+Since CIITEM3 (the owner, 12 October 2026: every job in about 10 minutes)
+there are 30 shards, and `node scripts/db-census.ts` lists every run item's
+tests with vitest and shows the 16-way and 30-way splits hold each item once
+and the same number of tests.
 Each shard also starts from one migrated template rather than migrating every
 database from empty: `tests/support/migrated-template.ts` migrates
 `migrated_<digest>` from empty once (the conformance runner builds it before
