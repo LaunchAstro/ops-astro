@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A budget answer by a client-wide decider: judged after its grant hold and its run lock wait, on separate connections, refused with nothing moved when the client grant was revoked or expired meanwhile."
+}
