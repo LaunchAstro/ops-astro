@@ -88,7 +88,12 @@ export async function startPostgres(options: {
   readonly password: string;
   readonly port: string;
   readonly admin: string;
-}): Promise<{ ok: boolean; detail: string; migrateMs: number | undefined; id?: string }> {
+}): Promise<{
+  ok: boolean;
+  detail: string;
+  migrateMs: number | undefined;
+  id?: string | undefined;
+}> {
   const { container, password, port, admin } = options;
   const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
@@ -106,7 +111,8 @@ export async function startPostgres(options: {
   ];
   const started = run(DOCKER, create);
   if (!started.ok) return { ok: false, detail: started.out.trim(), migrateMs: undefined };
-  const id = started.out.trim();
+  // `run` joins stdout and stderr; the id is the one line Docker prints on stdout.
+  const id = /^[0-9a-f]{64}$/mu.exec(started.out)?.[0];
   const ready = [
     'exec',
     container,

@@ -70,7 +70,7 @@ const SENSITIVE = [
   /^docs\/supply-chain-pins\.md$/u,
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
   // Sign-in, permissions and tenancy also live in directories of those names.
-  /(^|\/)(auth|authority|tenancy|egress|custody|audit)\//u,
+  /(^|\/)(auth|authority|tenancy|egress|custody|audit)\//iu,
 ];
 
 const base = process.env['BASE_SHA'] ?? '';

@@ -113,7 +113,7 @@ run_case "an ordinary docs change needs no security review, only the fixed line"
 
 # Sign-in, permissions and tenancy live in directories of those names, and a
 # file inside one is as sensitive as a file named after it.
-for boundary in apps/api/auth/session.ts apps/api/auth/jwks.ts apps/api/auth/provider-logins.ts \
+for boundary in apps/api/auth/session.ts apps/api/auth/jwks.ts apps/api/auth/provider-logins.ts apps/api/Auth/session.ts \
   packages/core-records/src/tenancy/database.ts packages/core-records/src/authority/access.ts; do
   run_case "a change only to $boundary needs a security review" 1 "$GOOD_BLOCK$NOT_SENSITIVE" "$boundary"
 done
