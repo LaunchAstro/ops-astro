@@ -5,7 +5,9 @@
 // the OAIC and each affected person at the recipient the operator names. It
 // drafts; nothing here or anywhere sends a notice, because the owner decides
 // what is sent (owner line 54). The OAIC's is the same template: the runbook
-// says its statement carries the same content.
+// says its statement carries the same content. A person's notice describes only
+// what concerns that person, so the words the operator typed reach it with
+// every other affected person's name and address taken out.
 
 import type { PrivacyIncident } from './privacy-incidents.ts';
 
@@ -30,6 +32,25 @@ export interface BreachNotice extends NoticeRecipient {
   readonly subject: string;
   readonly body: string;
 }
+
+/** Operator text as one recipient's notice carries it. */
+type Scrub = (text: string) => string;
+
+const asTyped: Scrub = (text) => text;
+
+/** The day a notice is dated on: the business's own, never the UTC day. */
+const businessDay = new Intl.DateTimeFormat('en-CA', {
+  // The clock the task screens date by (apps/web/src/screens/task/due-dates.ts).
+  timeZone: 'Australia/Brisbane',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** What stands in a person's notice for any other affected person. */
+const SOMEONE_ELSE = 'another person';
+
+const SYNTAX = /[\\^$.*+?()[\]{}|/]/gu;
 
 const TEMPLATE_HEADING = /^##\s+template:\s*notice to affected people\s*$/iu;
 const PLACEHOLDER = /`<([^`<>]*)>`/gu;
@@ -58,15 +79,16 @@ function valueFor(
   placeholder: string,
   input: BreachNoticeInput,
   recipient: NoticeRecipient,
+  scrub: Scrub = asTyped,
 ): string | undefined {
   const key = placeholder.trim().toLowerCase();
   if (key === 'name') return recipient.name;
-  // The day found, as the record holds it (UTC).
-  if (key === 'date') return input.incident.foundAt.toISOString().slice(0, 10);
-  if (key.startsWith('plain description')) return input.incident.whatHappened;
+  // en-CA writes the day found as YYYY-MM-DD.
+  if (key === 'date') return businessDay.format(input.incident.foundAt);
+  if (key.startsWith('plain description')) return scrub(input.incident.whatHappened);
   if (key === 'kinds') return input.incident.informationKinds.join(', ');
-  if (key.startsWith('containment')) return input.containment;
-  if (key === 'steps') return input.steps;
+  if (key.startsWith('containment')) return scrub(input.containment);
+  if (key === 'steps') return scrub(input.steps);
   return undefined;
 }
 
@@ -84,12 +106,41 @@ function fillable(lines: readonly string[], input: BreachNoticeInput): boolean {
  * operator typed that look like a placeholder stay as typed. A value ending in
  * a full stop right before the template's own loses its own.
  */
-function fill(line: string, input: BreachNoticeInput, recipient: NoticeRecipient): string {
+function fill(
+  line: string,
+  input: BreachNoticeInput,
+  recipient: NoticeRecipient,
+  scrub: Scrub,
+): string {
   return line.replace(PLACEHOLDER, (_match, name: string, offset: number) => {
-    const value = valueFor(name, input, recipient) ?? '';
+    const value = valueFor(name, input, recipient, scrub) ?? '';
     const next = line.charAt(offset + name.length + 4);
     return next === '.' && value.endsWith('.') ? value.slice(0, -1) : value;
   });
+}
+
+/**
+ * For each person, the operator's text with every affected person's name and
+ * address but that person's own read as "another person": as a whole word, in
+ * any case, the longest first. Each text is split on the names once, so 500
+ * people cost one search per text, not one per person.
+ */
+function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub {
+  const words = [...new Set(input.people.flatMap((person) => [person.name, person.address]))]
+    .map((word) => word.trim())
+    .toSorted((a, b) => b.length - a.length)
+    .map((word) => word.replaceAll(SYNTAX, '\\$&'));
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${words.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
+  const texts = [input.incident.whatHappened, input.containment, input.steps];
+  // Split with one group: the names found sit at the odd places.
+  const pieces = new Map(texts.map((text) => [text, text.split(pattern)]));
+  return (person) => {
+    const own = new Set([person.name, person.address].map((word) => word.trim().toLowerCase()));
+    return (text) =>
+      (pieces.get(text) ?? [text])
+        .map((piece, at) => (at % 2 === 1 && !own.has(piece.toLowerCase()) ? SOMEONE_ELSE : piece))
+        .join('');
+  };
 }
 
 /**
@@ -106,13 +157,21 @@ export function draftBreachNotices(
     return undefined;
   }
   const { subject, lines } = template;
-  const draft = (to: BreachNotice['to'], recipient: NoticeRecipient): BreachNotice => ({
+  const draft = (
+    to: BreachNotice['to'],
+    recipient: NoticeRecipient,
+    scrub: Scrub,
+  ): BreachNotice => ({
     to,
     name: recipient.name,
     address: recipient.address,
     // A value typed with a line break still leaves the subject one line.
-    subject: fill(subject, input, recipient).replaceAll(/\r\n|[\r\n]/gu, ' '),
-    body: lines.map((line) => fill(line, input, recipient)).join('\n'),
+    subject: fill(subject, input, recipient, scrub).replaceAll(/\r\n|[\r\n]/gu, ' '),
+    body: lines.map((line) => fill(line, input, recipient, scrub)).join('\n'),
   });
-  return [draft('oaic', input.oaic), ...input.people.map((person) => draft('person', person))];
+  const scrubFor = othersOut(input);
+  return [
+    draft('oaic', input.oaic, asTyped),
+    ...input.people.map((person) => draft('person', person, scrubFor(person))),
+  ];
 }
