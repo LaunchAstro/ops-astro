@@ -139,6 +139,18 @@ async function within<T>(work: Promise<T>): Promise<T | 'waited'> {
   return await Promise.race([work, delay(1000).then(() => 'waited' as const)]);
 }
 
+/** The door's answer to a sign-in served on the second connection, or the wait that blocked it. */
+const servingOnTwo = (world: World, sessionId: string, signedInAt: number) =>
+  within(
+    two.withBusiness(
+      world.business,
+      async (tx) => await resolveLogin(tx, presented(world.subject, sessionId, signedInAt)),
+    ),
+  );
+
+const refusedAndUnlisted = { served: false, listed: false, keepListed: true };
+const servedAndListed = { served: true, listed: true, keepListed: true };
+
 const kill = async (pid: number) => {
   await db.admin.execute('select pg_terminate_backend($1)', [pid]);
 };
@@ -148,149 +160,135 @@ function reopened(): Database {
   return connect(db.appUrl, { max: 1 });
 }
 
+async function endingCrossesServing() {
+  const world = await signedIn('ending-crosses-serving');
+  const old = randomUUID();
+  const signedInAt = now() - 600;
+  const ending = endingHeld(world);
+  try {
+    await ending.pid;
+    const serving = await servingOnTwo(world, old, signedInAt);
+    expect(serving, 'served before the ending committed').not.toBe('waited');
+    expect(serving).not.toHaveProperty('refused');
+  } finally {
+    ending.release();
+  }
+  await ending.done;
+  expect(await doorAndList(world, old, signedInAt)).toEqual(refusedAndUnlisted);
+}
+
+async function endingDies() {
+  const world = await signedIn('ending-dies');
+  const old = randomUUID();
+  const signedInAt = now() - 600;
+  const ending = endingHeld(world);
+  try {
+    const pid = await ending.pid;
+    const serving = await servingOnTwo(world, old, signedInAt);
+    expect(serving).not.toHaveProperty('refused');
+    await kill(pid);
+  } finally {
+    ending.release();
+  }
+  await expect(ending.done).rejects.toThrow();
+  one = reopened();
+  expect(await doorAndList(world, old, signedInAt)).toEqual(servedAndListed);
+}
+
+async function servingDies() {
+  const world = await signedIn('serving-dies');
+  const old = randomUUID();
+  const signedInAt = now() - 600;
+  const ending = endingHeld(world);
+  try {
+    await ending.pid;
+    const serving = two.withBusiness(world.business, async (tx) => {
+      const [row] = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
+      expect(await resolveLogin(tx, presented(world.subject, old, signedInAt))).not.toHaveProperty(
+        'refused',
+      );
+      await kill(row?.pid ?? 0);
+    });
+    await expect(serving).rejects.toThrow();
+    two = reopened();
+  } finally {
+    ending.release();
+  }
+  await ending.done;
+  expect(await doorAndList(world, old, signedInAt)).toEqual(refusedAndUnlisted);
+}
+
+async function lostAnswers() {
+  const world = await signedIn('lost-answers');
+  const old = randomUUID();
+  const signedInAt = now() - 600;
+  const ending = endingHeld(world);
+  try {
+    await ending.pid;
+    const serving = await servingOnTwo(world, old, signedInAt);
+    expect(serving).not.toHaveProperty('refused');
+  } finally {
+    ending.release();
+  }
+  await ending.done;
+  // Both answers were lost: the person ends the other sessions again, from the
+  // other connection, and the other tab sends its request again.
+  await two.withBusiness(world.business, async (tx) => {
+    await endOtherSeenSessions(tx, world.person, world.keep, 'end_others', world.subject);
+  });
+  const again = await one.withBusiness(
+    world.business,
+    async (tx) => await resolveLogin(tx, presented(world.subject, old, signedInAt)),
+  );
+  expect(again).toHaveProperty('code', 'AUTH_SESSION_EXPIRED');
+  expect(await doorAndList(world, old, signedInAt)).toEqual(refusedAndUnlisted);
+}
+
+async function clockAhead() {
+  const world = await signedIn('clock-ahead');
+  await one.withBusiness(world.business, async (tx) => {
+    await endOtherSeenSessions(tx, world.person, world.keep, 'end_others', world.subject);
+  });
+  // The ending committed 30 seconds ago.
+  await db.admin.execute(
+    `update ops.ended_subject_sessions set ended_before = ended_before - interval '30 seconds'
+    where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
+    [world.subject],
+  );
+  // Signed in now on a provider clock 31 seconds ahead, which the verifier
+  // serves (up to a minute ahead): its stamp is past the ending's minute.
+  const fresh = randomUUID();
+  const signedInAt = now() + 31;
+  const served = await two.withBusiness(
+    world.business,
+    async (tx) => await resolveLogin(tx, presented(world.subject, fresh, signedInAt)),
+  );
+  expect(served, 'the door serves the new sign-in').not.toHaveProperty('refused');
+  expect(await doorAndList(world, fresh, signedInAt)).toEqual(servedAndListed);
+}
+
 describe.skipIf(!live)(
   'session list agrees with the door when an ending and a serving cross',
   () => {
-    it('a session served on another connection while the ending commits is refused after it and not listed', async () => {
-      const world = await signedIn('ending-crosses-serving');
-      const old = randomUUID();
-      const signedInAt = now() - 600;
-      const ending = endingHeld(world);
-      try {
-        await ending.pid;
-        const serving = await within(
-          two.withBusiness(
-            world.business,
-            async (tx) => await resolveLogin(tx, presented(world.subject, old, signedInAt)),
-          ),
-        );
-        expect(serving, 'served before the ending committed').not.toBe('waited');
-        expect(serving).not.toHaveProperty('refused');
-      } finally {
-        ending.release();
-      }
-      await ending.done;
-      expect(await doorAndList(world, old, signedInAt)).toEqual({
-        served: false,
-        listed: false,
-        keepListed: true,
-      });
-    });
-
-    it('an ending whose connection dies before its commit leaves the session served and listed', async () => {
-      const world = await signedIn('ending-dies');
-      const old = randomUUID();
-      const signedInAt = now() - 600;
-      const ending = endingHeld(world);
-      try {
-        const pid = await ending.pid;
-        const serving = await within(
-          two.withBusiness(
-            world.business,
-            async (tx) => await resolveLogin(tx, presented(world.subject, old, signedInAt)),
-          ),
-        );
-        expect(serving).not.toHaveProperty('refused');
-        await kill(pid);
-      } finally {
-        ending.release();
-      }
-      await expect(ending.done).rejects.toThrow();
-      one = reopened();
-      expect(await doorAndList(world, old, signedInAt)).toEqual({
-        served: true,
-        listed: true,
-        keepListed: true,
-      });
-    });
-
-    it('a serving whose connection dies before its commit, beside an ending, is neither served nor listed', async () => {
-      const world = await signedIn('serving-dies');
-      const old = randomUUID();
-      const signedInAt = now() - 600;
-      const ending = endingHeld(world);
-      try {
-        await ending.pid;
-        const serving = two.withBusiness(world.business, async (tx) => {
-          const [row] = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
-          expect(
-            await resolveLogin(tx, presented(world.subject, old, signedInAt)),
-          ).not.toHaveProperty('refused');
-          await kill(row?.pid ?? 0);
-        });
-        await expect(serving).rejects.toThrow();
-        two = reopened();
-      } finally {
-        ending.release();
-      }
-      await ending.done;
-      expect(await doorAndList(world, old, signedInAt)).toEqual({
-        served: false,
-        listed: false,
-        keepListed: true,
-      });
-    });
-
-    it('an ending and a serving whose answers were lost and are asked again leave the session refused and unlisted', async () => {
-      const world = await signedIn('lost-answers');
-      const old = randomUUID();
-      const signedInAt = now() - 600;
-      const ending = endingHeld(world);
-      try {
-        await ending.pid;
-        const serving = await within(
-          two.withBusiness(
-            world.business,
-            async (tx) => await resolveLogin(tx, presented(world.subject, old, signedInAt)),
-          ),
-        );
-        expect(serving).not.toHaveProperty('refused');
-      } finally {
-        ending.release();
-      }
-      await ending.done;
-      // Both answers were lost: the person ends the other sessions again, from the
-      // other connection, and the other tab sends its request again.
-      await two.withBusiness(world.business, async (tx) => {
-        await endOtherSeenSessions(tx, world.person, world.keep, 'end_others', world.subject);
-      });
-      const again = await one.withBusiness(
-        world.business,
-        async (tx) => await resolveLogin(tx, presented(world.subject, old, signedInAt)),
-      );
-      expect(again).toHaveProperty('code', 'AUTH_SESSION_EXPIRED');
-      expect(await doorAndList(world, old, signedInAt)).toEqual({
-        served: false,
-        listed: false,
-        keepListed: true,
-      });
-    });
-
-    it('a session the door serves after an ending, its provider clock ahead inside the minute, is listed', async () => {
-      const world = await signedIn('clock-ahead');
-      await one.withBusiness(world.business, async (tx) => {
-        await endOtherSeenSessions(tx, world.person, world.keep, 'end_others', world.subject);
-      });
-      // The ending committed 30 seconds ago.
-      await db.admin.execute(
-        `update ops.ended_subject_sessions set ended_before = ended_before - interval '30 seconds'
-        where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
-        [world.subject],
-      );
-      // Signed in now on a provider clock 31 seconds ahead, which the verifier
-      // serves (up to a minute ahead): its stamp is past the ending's minute.
-      const fresh = randomUUID();
-      const signedInAt = now() + 31;
-      const served = await two.withBusiness(
-        world.business,
-        async (tx) => await resolveLogin(tx, presented(world.subject, fresh, signedInAt)),
-      );
-      expect(served, 'the door serves the new sign-in').not.toHaveProperty('refused');
-      expect(await doorAndList(world, fresh, signedInAt)).toEqual({
-        served: true,
-        listed: true,
-        keepListed: true,
-      });
-    });
+    it(
+      'a session served on another connection while the ending commits is refused after it and not listed',
+      endingCrossesServing,
+    );
+    it(
+      'an ending whose connection dies before its commit leaves the session served and listed',
+      endingDies,
+    );
+    it(
+      'a serving whose connection dies before its commit, beside an ending, is neither served nor listed',
+      servingDies,
+    );
+    it(
+      'an ending and a serving whose answers were lost and are asked again leave the session refused and unlisted',
+      lostAnswers,
+    );
+    it(
+      'a session the door serves after an ending, its provider clock ahead inside the minute, is listed',
+      clockAhead,
+    );
   },
 );

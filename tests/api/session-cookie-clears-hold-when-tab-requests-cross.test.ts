@@ -142,95 +142,115 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+async function twoTabsAtOnceWithOneCookieTooMany() {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const api = build();
+  const cookies = jar();
+  const signed = await tabs(api, cookies, 7);
+  const server = await listening(api);
+  try {
+    // Tabs 1 and 2, the two oldest sign-ins, read at once with the same seven cookies.
+    const sent = cookies.header();
+    const [first, second] = await Promise.all([
+      server.read(signed[0] ?? '', sent),
+      server.read(signed[1] ?? '', sent),
+    ]);
+    expect([first?.status, second?.status]).toEqual([200, 200]);
+    cookies.take([...(first?.lines ?? []), ...(second?.lines ?? [])]);
+  } finally {
+    server.close();
+  }
+  // One at a time, whichever goes first clears one cookie and the other,
+  // its own gone or not, clears nothing: six stay, the cap.
+  expect(cookies.sessions(), 'the jar keeps the cap, not one fewer').toHaveLength(6);
+}
+
+async function twoTabsAtOnceBesidePlantedCookies() {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const api = build();
+  const cookies = jar();
+  const signed = await tabs(api, cookies, 6);
+  for (const n of [1, 2, 3, 4, 5]) {
+    const cookie = planted(n);
+    cookies.plant(cookie.name, cookie.value);
+  }
+  const server = await listening(api);
+  try {
+    const sent = cookies.header();
+    const answers = await Promise.all([
+      server.read(signed[0] ?? '', sent),
+      server.read(signed[5] ?? '', sent),
+    ]);
+    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+    cookies.take(answers.flatMap((answer) => answer.lines));
+  } finally {
+    server.close();
+  }
+  expect(cookies.sessions()).toEqual(names(signed));
+}
+
+async function tabSigningInWhileAnotherReadIsOut() {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const api = build();
+  const cookies = jar();
+  const signed = await tabs(api, cookies, 7);
+  const server = await listening(api);
+  try {
+    // Tab 7's read leaves with seven cookies; tab 8 signs in before its answer lands.
+    const out = server.read(signed[6] ?? '', cookies.header());
+    const eighth = await newTab(api, cookies, 8);
+    const answer = await out;
+    expect(answer.status).toBe(200);
+    cookies.take(answer.lines);
+    expect(cookies.sessions()).toContain(cookieNameFor(eighth));
+    const own = await server.read(eighth, cookies.header());
+    expect(own.status, 'tab 8 reads on its own cookie').toBe(200);
+    cookies.take(own.lines);
+    expect(cookies.sessions()).toContain(cookieNameFor(eighth));
+  } finally {
+    server.close();
+  }
+}
+
+async function readWhoseAnswerIsLostAndSentAgain() {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const api = build();
+  const cookies = jar();
+  const signed = await tabs(api, cookies, 7);
+  const server = await listening(api);
+  try {
+    const lost = await server.read(signed[6] ?? '', cookies.header());
+    // The answer never reaches the jar; the tab sends the read again.
+    const again = await server.read(signed[6] ?? '', cookies.header());
+    expect([lost.status, again.status]).toEqual([200, 200]);
+    cookies.take(again.lines);
+    expect(cookies.sessions()).toEqual(names(signed.slice(1)));
+    // The lost answer arrives after all.
+    cookies.take(lost.lines);
+    expect(cookies.sessions()).toEqual(names(signed.slice(1)));
+  } finally {
+    server.close();
+  }
+}
+
 describe('session cookie clears hold when tab requests cross', () => {
-  it('two tabs reading at once with one cookie too many leave six, as one read at a time does', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const api = build();
-    const cookies = jar();
-    const signed = await tabs(api, cookies, 7);
-    const server = await listening(api);
-    try {
-      // Tabs 1 and 2, the two oldest sign-ins, read at once with the same seven cookies.
-      const sent = cookies.header();
-      const [first, second] = await Promise.all([
-        server.read(signed[0] ?? '', sent),
-        server.read(signed[1] ?? '', sent),
-      ]);
-      expect([first?.status, second?.status]).toEqual([200, 200]);
-      cookies.take([...(first?.lines ?? []), ...(second?.lines ?? [])]);
-    } finally {
-      server.close();
-    }
-    // One at a time, whichever goes first clears one cookie and the other,
-    // its own gone or not, clears nothing: six stay, the cap.
-    expect(cookies.sessions(), 'the jar keeps the cap, not one fewer').toHaveLength(6);
-  });
+  it(
+    'two tabs reading at once with one cookie too many leave six, as one read at a time does',
+    twoTabsAtOnceWithOneCookieTooMany,
+  );
 
-  it('two tabs reading at once beside planted cookies clear every planted one and no live tab', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const api = build();
-    const cookies = jar();
-    const signed = await tabs(api, cookies, 6);
-    for (const n of [1, 2, 3, 4, 5]) {
-      const cookie = planted(n);
-      cookies.plant(cookie.name, cookie.value);
-    }
-    const server = await listening(api);
-    try {
-      const sent = cookies.header();
-      const answers = await Promise.all([
-        server.read(signed[0] ?? '', sent),
-        server.read(signed[5] ?? '', sent),
-      ]);
-      expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
-      cookies.take(answers.flatMap((answer) => answer.lines));
-    } finally {
-      server.close();
-    }
-    expect(cookies.sessions()).toEqual(names(signed));
-  });
+  it(
+    'two tabs reading at once beside planted cookies clear every planted one and no live tab',
+    twoTabsAtOnceBesidePlantedCookies,
+  );
 
-  it('a tab signing in while another tab’s read is out keeps its new cookie', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const api = build();
-    const cookies = jar();
-    const signed = await tabs(api, cookies, 7);
-    const server = await listening(api);
-    try {
-      // Tab 7's read leaves with seven cookies; tab 8 signs in before its answer lands.
-      const out = server.read(signed[6] ?? '', cookies.header());
-      const eighth = await newTab(api, cookies, 8);
-      const answer = await out;
-      expect(answer.status).toBe(200);
-      cookies.take(answer.lines);
-      expect(cookies.sessions()).toContain(cookieNameFor(eighth));
-      const own = await server.read(eighth, cookies.header());
-      expect(own.status, 'tab 8 reads on its own cookie').toBe(200);
-      cookies.take(own.lines);
-      expect(cookies.sessions()).toContain(cookieNameFor(eighth));
-    } finally {
-      server.close();
-    }
-  });
+  it(
+    'a tab signing in while another tab’s read is out keeps its new cookie',
+    tabSigningInWhileAnotherReadIsOut,
+  );
 
-  it('a read whose answer is lost and is sent again clears what one answer clears, and the late answer nothing more', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const api = build();
-    const cookies = jar();
-    const signed = await tabs(api, cookies, 7);
-    const server = await listening(api);
-    try {
-      const lost = await server.read(signed[6] ?? '', cookies.header());
-      // The answer never reaches the jar; the tab sends the read again.
-      const again = await server.read(signed[6] ?? '', cookies.header());
-      expect([lost.status, again.status]).toEqual([200, 200]);
-      cookies.take(again.lines);
-      expect(cookies.sessions()).toEqual(names(signed.slice(1)));
-      // The lost answer arrives after all.
-      cookies.take(lost.lines);
-      expect(cookies.sessions()).toEqual(names(signed.slice(1)));
-    } finally {
-      server.close();
-    }
-  });
+  it(
+    'a read whose answer is lost and is sent again clears what one answer clears, and the late answer nothing more',
+    readWhoseAnswerIsLostAndSentAgain,
+  );
 });
