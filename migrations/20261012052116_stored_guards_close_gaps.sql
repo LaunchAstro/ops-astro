@@ -417,9 +417,10 @@ $$;
 revoke all on function public.planned_runs_origin_is_approved() from public;
 
 -- After the row's own checks and keys, so a run naming no occurrence of its
--- business is still refused by its foreign key, by name. Deferrable, so a
--- transaction that writes the run before what it rests on can ask for the
--- check at commit (`set constraints ... deferred`); immediate otherwise.
+-- business is still refused by its foreign key, by name. Deferrable, as
+-- #1044 asks: a transaction can ask for the check at commit (`set
+-- constraints ... deferred`), after the rest of its writes. The run's foreign
+-- keys still check at once, so its occurrence exists when it is written.
 create constraint trigger planned_runs_origin_is_approved
   after insert on public.planned_runs
   deferrable initially immediate
