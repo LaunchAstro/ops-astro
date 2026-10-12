@@ -2,8 +2,8 @@
 import { expect, it } from 'vitest';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import { s, useBrokerWorld } from '../broker/broker-world.ts';
-import { codeOf, rows } from './schedules-harness.ts';
-import { asksOn, pickupOf, spentWhole } from './resume-sizing-world.ts';
+import { codeOf, rows } from '../runtime/schedules-harness.ts';
+import { asksOn, pickupOf, spentWhole } from '../runtime/resume-sizing-world.ts';
 
 useBrokerWorld('spentholdlivedelegation');
 

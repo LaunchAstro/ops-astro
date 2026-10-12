@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a board narrowed by person and client, and a task read, answer an upper-case id as its lower-case spelling"
+}
