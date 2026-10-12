@@ -19,7 +19,9 @@
 # It never adopts a container it did not create: an existing NAME, a port
 # already answering, or a name or port belonging to the working slice, the
 # datafix database or the Hub's supabase_* stack is refused before anything
-# starts.
+# starts. It never pulls: an image not already on this machine is refused too.
+# The trap signals a recorded pid only while it still runs one of the proof's
+# own commands, since a pid that exited early may be another process's now.
 
 set -euo pipefail
 
@@ -65,6 +67,11 @@ done
 if "$DOCKER" inspect "$NAME" >/dev/null 2>&1; then
   refuse "a container named $NAME already exists and this run only removes what it created"
 fi
+if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
+  refuse "the pinned image is not on this machine and this run never pulls: $IMAGE"
+fi
+# What the run's own API and worker processes run (restart-process.ts, kill-harness.ts).
+OWN_COMMANDS='apps/api/server.ts|tests/support/parking-worker.ts'
 
 created=no
 PIDFILE=
@@ -76,7 +83,7 @@ cleanup() {
   # SIGTERM handler (T3d2).
   if [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ]; then
     while read -r pid; do
-      if kill -0 "$pid" 2>/dev/null; then
+      if ps -o command= -p "$pid" 2>/dev/null | grep -Eq "$OWN_COMMANDS"; then
         kill -KILL "$pid" 2>/dev/null || true
         say "killed pid $pid"
         printf 'killed by trap: %s\n' "$pid" >>"$EVIDENCE"
@@ -110,7 +117,7 @@ PIDFILE=$EVIDENCE.pids
 } >"$EVIDENCE"
 
 say "starting $NAME on 127.0.0.1:$PORT from the pinned digest"
-"$DOCKER" run -d --name "$NAME" -p "127.0.0.1:$PORT:5432" \
+"$DOCKER" run --pull never -d --name "$NAME" -p "127.0.0.1:$PORT:5432" \
   -e "POSTGRES_PASSWORD=$PASSWORD" -e "POSTGRES_DB=$DATABASE" "$IMAGE" >/dev/null
 created=yes
 

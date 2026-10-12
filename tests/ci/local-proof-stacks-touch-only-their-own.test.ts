@@ -68,7 +68,8 @@ async function freePorts(count: number): Promise<string[]> {
       });
     });
     // The restart legs take the next port up, so each base needs its neighbour free too.
-    if (port < 65_000 && !ports.includes(String(port + 1))) ports.push(String(port));
+    const near = ports.some((chosen) => Math.abs(Number(chosen) - port) <= 1);
+    if (port < 65_000 && !near) ports.push(String(port));
   }
   return ports;
 }
@@ -104,7 +105,10 @@ describe('the journey stack', () => {
       ],
       { cwd: ROOT, env: { ...process.env, DOCKER: docker }, encoding: 'utf8' },
     );
-    expect(calls(log).some((call) => call.startsWith('run'))).toBe(true);
+    expect(
+      calls(log).some((call) => call.startsWith('run')),
+      result.stdout,
+    ).toBe(true);
     expect(
       calls(log).filter((call) => call.startsWith('rm')),
       result.stdout,

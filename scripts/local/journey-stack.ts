@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 export const IMAGE =
-  'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
+  'postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
 export const DOCKER: string = process.env['DOCKER'] ?? '/usr/local/bin/docker';
 /** The live pair, the lanes' fixed stacks and the other proofs' own ports. */
 const WEB_AND_API = [5190, 5197, 5198, 5199, 8790, 8793, 8796, 8797, 8798, 8799];
@@ -55,11 +55,16 @@ export async function refusalsBeforeStarting(
   container: string,
 ): Promise<string[]> {
   const refusals: string[] = [];
+  const named = new Map<string, string>();
   for (const [name, value] of Object.entries(ports)) {
     // Digits only, in range: `0x1F90`, ` 54430` and `70000` are not ports, whatever Number says.
     const port = /^\d{1,5}$/u.test(value) ? Number(value) : 0;
     const label = name.replaceAll(/[A-Z]/gu, (letter) => ` ${letter.toLowerCase()}`);
+    const first = named.get(value);
+    named.set(value, first ?? label);
     if (port < 1 || port > 65_535) refusals.push(`${label} port ${value} is not a port number`);
+    else if (first !== undefined)
+      refusals.push(`${label} port ${value} is the same port as ${first}`);
     else if (DENIED.has(port)) refusals.push(`${label} port ${value} belongs to another stack`);
     // eslint-disable-next-line no-await-in-loop -- one probe at a time
     else if (await answers(port)) refusals.push(`${label} port ${value} is already in use`);
@@ -73,18 +78,35 @@ export async function refusalsBeforeStarting(
   return refusals;
 }
 
-/** The container from the pinned digest, the application group role, the migrations. */
+/**
+ * The container from the pinned digest, the application group role, the
+ * migrations. `id` is the container this call created, the one thing the run
+ * may remove: a name another run took in the meantime is not this run's.
+ */
 export async function startPostgres(options: {
   readonly container: string;
   readonly password: string;
   readonly port: string;
   readonly admin: string;
-}): Promise<{ ok: boolean; detail: string; migrateMs: number | undefined }> {
+}): Promise<{ ok: boolean; detail: string; migrateMs: number | undefined; id?: string }> {
   const { container, password, port, admin } = options;
   const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
-  const started = run(DOCKER, ['run', '-d', '--name', container, '-p', publish, ...env, IMAGE]);
+  const create = [
+    'run',
+    '--pull',
+    'never',
+    '-d',
+    '--name',
+    container,
+    '-p',
+    publish,
+    ...env,
+    IMAGE,
+  ];
+  const started = run(DOCKER, create);
   if (!started.ok) return { ok: false, detail: started.out.trim(), migrateMs: undefined };
+  const id = started.out.trim();
   const ready = [
     'exec',
     container,
@@ -105,7 +127,7 @@ export async function startPostgres(options: {
   const last = migrated.out.trim().split('\n').at(-1) ?? '';
   const detail = `${container} on 127.0.0.1:${port}; ${role.ok ? last : role.out.trim()}`;
   // Timed only when the migrations applied: a refused or failed run measured nothing.
-  return { ok: role.ok && migrated.ok, detail, migrateMs: migrated.ok ? migrateMs : undefined };
+  return { ok: role.ok && migrated.ok, detail, migrateMs: migrated.ok ? migrateMs : undefined, id };
 }
 
 /** What a member of one of the journey's own process groups runs. */
