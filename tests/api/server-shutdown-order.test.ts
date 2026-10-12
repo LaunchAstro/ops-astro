@@ -147,7 +147,7 @@ it("server shutdown: the database closes only after the reconciliation sweep's r
     events.push('pass started');
     await held;
     events.push('pass ended');
-    return [];
+    return { ok: true, businesses: [] };
   }, 10);
   await expect.poll(() => events, { timeout: 2_000 }).toEqual(['pass started']);
 

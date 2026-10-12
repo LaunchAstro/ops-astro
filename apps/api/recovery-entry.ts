@@ -159,14 +159,6 @@ export async function sweepDeployment(
   );
 }
 
-/**
- * How long a pass's transaction may sit idle before the database ends it. A
- * hosted instance may be frozen mid-pass once it has answered (`function.ts`):
- * the database then ends that transaction and lets its locks go, and the pass
- * rolls back and runs again on the next tick.
- */
-const IDLE_LIMIT = '10s';
-
 async function eachBusiness<T>(
   database: Database,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
@@ -196,10 +188,7 @@ async function eachBusiness<T>(
       // Sequential by design: one tenant's transaction commits or rolls back
       // before the next one opens.
       // eslint-disable-next-line no-await-in-loop
-      const classified = await database.withBusiness(target.businessId, async (tx) => {
-        await tx.query(`set local idle_in_transaction_session_timeout = '${IDLE_LIMIT}'`);
-        return await run(tx);
-      });
+      const classified = await database.withBusiness(target.businessId, run);
       businesses.push({ ...target, classified });
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : 'unknown';
@@ -223,19 +212,19 @@ export function describeRecovered(business: RecoveredBusiness): string {
 export const SWEEP_INTERVAL_MS = 60_000;
 
 /**
- * Run `pass` every `everyMs`, one pass at a time (`every`). A business whose
- * pass fails is logged with its problem and the next one runs anyway. `stop`
+ * Run `pass` every `everyMs`, one pass at a time (`every`): a pass still
+ * running when the next is due is skipped rather than stacked. A pass that
+ * fails is logged with its problem and the next one runs anyway. `stop`
  * resolves once the running pass has ended, so the server closes no pool under it.
  */
 export function startSweeper(
-  pass: () => Promise<readonly RecoveryOutcome[]>,
+  pass: () => Promise<RecoveryOutcome>,
   everyMs: number = SWEEP_INTERVAL_MS,
 ): { readonly stop: () => Promise<void> } {
   const stop = every(everyMs, 'sweep', async () => {
-    for (const outcome of await pass()) {
-      if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
-      else console.error(`api: ${outcome.problem}`);
-    }
+    const outcome = await pass();
+    if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
+    else console.error(`api: ${outcome.problem}`);
   });
   return { stop };
 }
@@ -341,32 +330,4 @@ export async function passDeployment(
       reconciled: answered.businesses[at]?.classified ?? [],
     })),
   };
-}
-
-/**
- * The recurring pass, one business at a time (#841): a key that does not
- * resolve, or a business whose pass rolls back or throws, is that business's
- * outcome alone, and every business after it still has its turn. Restart
- * recovery stays one pass whose failure stops the start.
- */
-export async function passEachBusiness(
-  database: Database,
-  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
-  keys: readonly string[],
-  lookup: EffectLookup,
-  providers?: Parameters<typeof passDeployment>[4],
-): Promise<readonly RecoveryOutcome[]> {
-  const outcomes: RecoveryOutcome[] = [];
-  for (const key of keys) {
-    // One business after another, each in its own transactions.
-    // eslint-disable-next-line no-await-in-loop
-    const outcome = await passDeployment(database, resolveBusiness, [key], lookup, providers).catch(
-      (cause: unknown) => ({
-        ok: false as const,
-        problem: `recurring pass for business ${JSON.stringify(key)} failed: ${cause instanceof Error ? cause.message : 'unknown'}`,
-      }),
-    );
-    outcomes.push(outcome);
-  }
-  return outcomes;
 }
