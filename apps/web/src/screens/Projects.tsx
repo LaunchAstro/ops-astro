@@ -20,7 +20,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
   const [clients, setClients] = useState<readonly ClientView[]>([]);
-  // A selected project's own client, which every door on its board files.
+  // A selected project's own client, which every door on its board files, while the board is read.
   const project = useProjectClient(props.client, props.grantKey, place.query);
   return (
     <div className="stack projects">
@@ -30,7 +30,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           canFileTask={canFileTask}
           address={place.view}
           clients={clients}
-          project={project}
+          project={project.client}
         />
       ) : null}
       <ViewSwitch tab={tab} select={select} toolbar={inPanel === true ? null : toolbar} />
@@ -40,7 +40,8 @@ export function Projects(props: ProjectsProps): ReactElement {
           hidden={tab !== 'board'}
           place={place}
           onClients={setClients}
-          project={project}
+          onDenied={project.onDenied}
+          project={project.client}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

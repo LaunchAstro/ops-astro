@@ -3,10 +3,13 @@
 // A selected project's own client, for the board's New task doors: a client's
 // project takes only that client's work, and the address the app writes for a
 // project (`?board=<id>`) names no client. Read with the board's own reads, so
-// a change to the project's client or a denial reaches the doors when it
-// reaches the board; a refused or failed read, or a project with no client the
-// reader can name, gives none.
+// a change to the project's client reaches the doors when it reaches the
+// board, and given only while the board's reads are not refused (`onDenied`,
+// which the board calls), so a denial withdraws the client even with this read
+// still in flight. A refused
+// or failed read, or a project with no client the reader can name, gives none.
 
+import { useState } from 'react';
 import type { ClientView, TaskReadResult } from '../../../../../packages/core-wire/src/index.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
 import {
@@ -39,7 +42,8 @@ export function useProjectClient(
   client: OperationsClient,
   grantKey: string,
   query: string,
-): ClientView | null {
+): { readonly client: ClientView | null; readonly onDenied: (denied: boolean) => void } {
+  const [denied, onDenied] = useState(false);
   const scope = addressScope(query);
   // A board scoped to a client already names it.
   const boardId = scope?.kind === 'selected' && scope.client === undefined ? scope.boardId : null;
@@ -48,5 +52,6 @@ export function useProjectClient(
     run: () => readProjectClient(client, boardId),
     deps: [client, boardId],
   });
-  return own && state.outcome === 'ready' ? state.value : null;
+  // A board denial withdraws the client with the rows, whatever this read answers later.
+  return { client: !denied && own && state.outcome === 'ready' ? state.value : null, onDenied };
 }
