@@ -68,10 +68,15 @@ export type Chip =
 const DUE_WORDS: ReadonlyMap<string, 'today' | 'overdue' | 'soon'> = new Map([
   ['due:today', 'today'],
   ['today', 'today'],
+  ['due:overdue', 'overdue'],
   ['overdue', 'overdue'],
   ['late', 'overdue'],
+  ['due:soon', 'soon'],
   ['soon', 'soon'],
 ]);
+
+/** A due word, plain or in the `due:` form. */
+export const isDueWord = (token: string): boolean => DUE_WORDS.has(token);
 const WAITING_WORDS = new Set(['waiting', 'comments', 'unread']);
 const MOVE_WORDS: ReadonlyMap<string, TodoView['whoseMove']> = new Map([
   ['review', 'Review'],
