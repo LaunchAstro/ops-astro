@@ -14,6 +14,8 @@ import {
   STEP_UP_WINDOW_SECONDS,
 } from '../../../core-records/src/index.ts';
 import type {
+  BusinessId,
+  Database,
   SecondFactor,
   Session,
   TenantQuery,
@@ -120,6 +122,30 @@ export async function recordCode(
     `insert into ops.second_factor_codes (subject_digest, attempt, state) values ($1, $2, $3)`,
     [subjectDigest(caller.presented.subject), attempt, sent ? 'sent' : 'answered'],
   );
+}
+
+/**
+ * A code that never reached the provider's check (`unsent`, or no factor to
+ * send it to) stops counting: its attempt is recorded answered, under the
+ * same lock. Its own transaction, asking nothing of the session, so a session
+ * ended while the code waited still settles it; it changes no factor.
+ */
+export async function settleUnsent(
+  caller: {
+    readonly database: Database;
+    readonly businessId: BusinessId;
+    readonly presented: VerifiedSubject;
+  },
+  attempt: string,
+): Promise<void> {
+  const digest = subjectDigest(caller.presented.subject);
+  await caller.database.withBusiness(caller.businessId, async (tx) => {
+    await advisoryLock(tx, `second-factor-codes:${digest}`);
+    await tx.query(
+      `insert into ops.second_factor_codes (subject_digest, attempt, state) values ($1, $2, 'answered')`,
+      [digest, attempt],
+    );
+  });
 }
 
 /** A first enrolment's precondition: a password sign-in inside the window. */

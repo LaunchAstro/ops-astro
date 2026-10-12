@@ -7,7 +7,9 @@
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /** What can go wrong at the provider, by kind only (TR-SEC4R-5). */
-export type ProviderFault = 'refused' | 'malformed' | 'oversized' | 'slow' | 'unreachable';
+/** `unsent`: the call failed before the code left this server, so the provider checked nothing. */
+export type ProviderFault =
+  'refused' | 'malformed' | 'oversized' | 'slow' | 'unreachable' | 'unsent';
 
 export type ProviderAnswer<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly fault: ProviderFault };
