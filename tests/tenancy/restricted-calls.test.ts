@@ -297,6 +297,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, array['social.post'], true,
             now() + interval '1 day', 'restricted calls seed', created_by_actor_id
        from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  // 20261012123000 (#1427): the seeded mandate's draft, bound as a filing binds it.
+  'public.standing_mandate_drafts': `insert into public.standing_mandate_drafts
+       (business_id, client_id, draft_id, mandate_id)
+     select business_id, client_id, gen_random_uuid(), id
+       from public.standing_mandates where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings

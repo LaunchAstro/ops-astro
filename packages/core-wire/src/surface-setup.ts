@@ -13,9 +13,11 @@ export const SETUP_OPERANDS = {
   'secret.clear': { secretId: 'id', expectedRevision: 'any' },
   'connector.repair': { connectionId: 'id', expectedRevision: 'any' },
   // A mandate's classes, ceiling and expiry are checked by value in the
-  // command, which names the field it refuses (MP-14-10a).
+  // command, which names the field it refuses (MP-14-10a). `draftId` is the
+  // screen's one id per filing intent, sent on every retry (#1427).
   'mandate.file': {
     clientId: 'id',
+    draftId: 'id',
     classes: 'any',
     refuses: 'any',
     ceiling: 'any',
