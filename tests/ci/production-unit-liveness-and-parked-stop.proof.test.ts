@@ -8,7 +8,7 @@ import { readDefinition } from '../../scripts/ops/deploy.ts';
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const docker = (args: string[]) => execFileSync('docker', args, { encoding: 'utf8', timeout: 60_000 });
 
-it('Sol proof, criterion 7: the new container proof is excluded while browser captures run', () => {
+it('the container proof is left out while browser captures run', () => {
   const target = 'tests/ci/production-unit-parks-and-runs-the-worker.proof.test.ts';
   const listed = spawnSync(process.execPath, [
     'node_modules/vitest/vitest.mjs', 'list', '--filesOnly', target,
@@ -23,7 +23,7 @@ it('Sol proof, criterion 7: the new container proof is excluded while browser ca
 });
 
 
-it('Sol proof, criterion correctness: the gated stop records success when production has a forwarder and no worker', async () => {
+it('the gated stop records success when production has a forwarder and no worker', async () => {
   const prefix = `sol1357-parked-stop-${process.pid}`;
   const forwarder = `${prefix}-forwarder`;
   const absentWorker = `${prefix}-worker`;

@@ -32,7 +32,7 @@ const compose = (files: string[], args: string[], settings = env) =>
   });
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-it('Sol proof, criterion 1: Compose parses the base with every worker setting absent', () => {
+it('Compose parses the base with every worker setting absent', () => {
   const parked = Object.fromEntries(
     Object.entries(env).filter(([key]) => !key.startsWith('PRODUCTION_WORKER_')),
   );
@@ -46,7 +46,7 @@ it('Sol proof, criterion 1: Compose parses the base with every worker setting ab
   expect(definition.services.forwarder.depends_on).toBeUndefined();
 });
 
-it('Sol proof, criterion 2: the real Compose merge equals staging after renaming', () => {
+it('the real Compose merge of the base and the worker file equals staging after renaming', () => {
   const stagedEnv = {
     ...WORKER_UNIT,
     STAGING_BACKUPS_ADMIN_USER: 'probe',
@@ -63,7 +63,7 @@ it('Sol proof, criterion 2: the real Compose merge equals staging after renaming
   );
 });
 
-it('Sol proof, criterion 1: the actual base processes start without worker settings', () => {
+it('the base processes start without worker settings', () => {
   const run = `${prefix}-base`;
   const isolated = join(scratch, 'base-isolated.json');
   const root = new URL('../../', import.meta.url).pathname;
