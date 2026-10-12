@@ -19,11 +19,20 @@
 //
 // A lower cap is not refused for being below what is committed: the cap is a
 // ceiling on the next reply, and the broker refuses whatever no longer fits.
+//
+// **Asked again after the wait.** The envelope asked `billing:decide` before
+// the row's lock, so the setter asks again once its last wait is over, at the
+// clock read then (`lockedInstant`): a grant revoked or lapsed while it waited
+// sets nothing.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { subjectsOf, type TenantQuery } from '../../../core-records/src/index.ts';
 import { PLANNING_CAP_DEFAULT } from '../../../core-custody/src/index.ts';
-import { PRICE_BOOK_CURRENCY } from '../../../core-runtime/src/index.ts';
+import {
+  checkAuthorityAt,
+  lockedInstant,
+  PRICE_BOOK_CURRENCY,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
@@ -58,9 +67,27 @@ const limitOf = (cap: Cap | undefined): number =>
 const stale = (cap: Cap | undefined): HandlerOutcome =>
   refused(refuseCommand('VERSION_STALE', [`limitMinor=${String(limitOf(cap))}`], STALE_FIXES));
 
+/** The caller's `billing:decide` on the whole business, judged now its waits are over. */
+async function lapsed(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<HandlerOutcome | undefined> {
+  const still = await checkAuthorityAt(
+    tx,
+    subjectsOf(context.session),
+    {
+      collection: context.declaration.collection,
+      action: context.declaration.action,
+      scope: { kind: 'business', id: null },
+    },
+    await lockedInstant(tx),
+  );
+  return still.ok ? undefined : refused(still.refusal);
+}
+
 export async function setPlanningCap(
   tx: TenantQuery,
-  _context: CommandContext,
+  context: CommandContext,
   request: CommandRequest & { readonly command: 'budget.set_planning_cap' },
 ): Promise<HandlerOutcome> {
   const { limitMinor, currency, fromLimitMinor } = request;
@@ -74,8 +101,7 @@ export async function setPlanningCap(
     return refused(refuseCommand('FIELD_VALUE_INVALID', invalid, [fix]));
   }
   let cap = await lockedCap(tx);
-  if (limitOf(cap) !== fromLimitMinor) return stale(cap);
-  if (cap === undefined) {
+  if (cap === undefined && fromLimitMinor === PLANNING_CAP_DEFAULT.limitMinor) {
     const [inserted] = await tx.query<{ id: string }>(
       `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
        values ($1, $2, 'planning', $3, $4)
@@ -83,14 +109,21 @@ export async function setPlanningCap(
        returning id`,
       [tx.businessId, randomUUID(), limitMinor, currency],
     );
+    // The insert waits on a first row in flight, and one rolled back lets it
+    // in: asked after it, and a refusal rolls the insert back with the attempt.
     if (inserted !== undefined) {
-      return applied(inserted.id, null, { key: 'planning', limitMinor, currency });
+      return (
+        (await lapsed(tx, context)) ??
+        applied(inserted.id, null, { key: 'planning', limitMinor, currency })
+      );
     }
     // Another setter, or a first planning reply writing the default, committed
     // the row while this insert waited on it: compare with what it holds now.
     cap = await lockedCap(tx);
-    if (cap === undefined || limitOf(cap) !== fromLimitMinor) return stale(cap);
   }
+  const lost = await lapsed(tx, context);
+  if (lost !== undefined) return lost;
+  if (cap === undefined || limitOf(cap) !== fromLimitMinor) return stale(cap);
   await tx.query(
     `update public.budget_caps set limit_minor = $3
       where business_id = $1 and id = $2 and key = 'planning'`,
