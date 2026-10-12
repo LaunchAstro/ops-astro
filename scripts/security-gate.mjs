@@ -77,7 +77,8 @@ if (kind === 'audit' && report !== undefined) {
   const { advisories } = report;
   if (typeof advisories !== 'object' || advisories === null || Array.isArray(advisories))
     refuse('the audit report carries no advisories object; the audit did not complete');
-  if (!(report.metadata?.totalDependencies > 0))
+  const total = report.metadata?.totalDependencies;
+  if (!Number.isSafeInteger(total) || total < 1)
     refuse('the audit report counted no dependencies; the audit did not complete');
   for (const a of Object.values(report.advisories ?? {})) {
     const id = a.github_advisory_id ?? String(a.id);
