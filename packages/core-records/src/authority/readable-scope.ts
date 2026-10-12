@@ -40,6 +40,31 @@ export async function readableScope(
   action: Action,
 ): Promise<ReadableScope> {
   const asked = askedFor(subjects, { collection, action });
+  const first = await grantedScopes(tx, asked, collection, action);
+  if (first === 'business') return { business: true, records: [] };
+  const tickets = collection === 'task' && action === 'read' ? await heldTickets(tx, first) : [];
+  if (tickets.length === 0) return { business: false, records: first };
+  // The ticket locks may have waited past a grant's expiry: judged again on
+  // this statement's clock, after the wait, a grant that lapsed reaches
+  // neither its record nor its map's tickets.
+  const live = await stillGranted(tx, asked, { collection, action }, first);
+  if (live === 'business') return { business: true, records: [] };
+  return {
+    business: false,
+    records: [
+      ...first.filter((id) => live.has(id)),
+      ...tickets.flatMap((ticket) => (live.has(ticket.map) ? [ticket.id] : [])),
+    ],
+  };
+}
+
+/** The records `asked`'s live grants name for this key, or `business` for a business grant. */
+async function grantedScopes(
+  tx: TenantQuery,
+  asked: readonly Subject[],
+  collection: string,
+  action: Action,
+): Promise<'business' | readonly string[]> {
   const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
     `${EFFECTIVE}
      select distinct e.scope_kind, e.scope_id
@@ -51,27 +76,58 @@ export async function readableScope(
                      where s.kind = e.subject_kind and s.id = e.subject_id)`,
     [collection, action, asked.map((subject) => subject.kind), asked.map((subject) => subject.id)],
   );
-  if (rows.some((row) => row.scope_kind === 'business')) return { business: true, records: [] };
-  const granted = rows.flatMap((row) => (row.scope_id === null ? [] : [row.scope_id]));
-  const tickets = collection === 'task' && action === 'read' ? await heldTickets(tx, granted) : [];
-  return { business: false, records: [...granted, ...tickets] };
+  if (rows.some((row) => row.scope_kind === 'business')) return 'business';
+  return rows.flatMap((row) => (row.scope_id === null ? [] : [row.scope_id]));
 }
 
 /**
- * The tickets of whichever of `ids` are maps, held `for share` in id order as
- * `task.read` holds a ticket it admits through its map, so none moves out of
- * the map before the read that listed it is served.
+ * Which of `ids` `asked`'s live grants still name for this key, judged on
+ * this statement's clock, or `business` for a business grant.
  */
-async function heldTickets(tx: TenantQuery, ids: readonly string[]): Promise<readonly string[]> {
+async function stillGranted(
+  tx: TenantQuery,
+  asked: readonly Subject[],
+  key: { readonly collection: string; readonly action: Action },
+  ids: readonly string[],
+): Promise<'business' | ReadonlySet<string>> {
+  const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
+    `${EFFECTIVE}
+     select e.scope_kind, e.scope_id
+       from effective e
+      where e.collection = $1
+        and e.action = $2
+        and (e.scope_kind = 'business' or (e.scope_kind = 'record' and e.scope_id = any($5::uuid[])))
+        and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [
+      key.collection,
+      key.action,
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
+      ids,
+    ],
+  );
+  if (rows.some((row) => row.scope_kind === 'business')) return 'business';
+  return new Set(rows.flatMap((row) => (row.scope_id === null ? [] : [row.scope_id])));
+}
+
+/**
+ * The tickets of whichever of `ids` are maps, each with its map, held `for
+ * share` in id order as `task.read` holds a ticket it admits through its map,
+ * so none moves out of the map before the read that listed it is served.
+ */
+async function heldTickets(
+  tx: TenantQuery,
+  ids: readonly string[],
+): Promise<readonly { readonly id: string; readonly map: string }[]> {
   if (ids.length === 0) return [];
-  const rows = await tx.query<{ readonly id: string }>(
-    `select t.id from public.records t
+  return await tx.query<{ readonly id: string; readonly map: string }>(
+    `select t.id, t.uuid_4 as map from public.records t
       where t.business_id = $1 and t.uuid_4 = any($2::uuid[]) and ${mapTicketCondition('t')}
       order by t.id
       for share of t`,
     [tx.businessId, ids],
   );
-  return rows.map((row) => row.id);
 }
 
 /**
