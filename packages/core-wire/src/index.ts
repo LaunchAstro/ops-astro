@@ -211,11 +211,13 @@ export type {
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 export {
   PROPOSAL_DESCRIPTION_LIMIT,
+  PROPOSAL_ESTIMATE_LIMIT,
   PROPOSAL_TITLE_LIMIT,
   proposalCreate,
   proposalEdit,
   readProposal,
   type ProposalRead,
+  type ProposedPlan,
   type TaskProposal,
 } from './task-proposal.ts';
 // the command catalogue and its parity check (API-1)

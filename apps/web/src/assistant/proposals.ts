@@ -35,7 +35,6 @@ import { settle } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
-import type { Store } from './store.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
@@ -118,31 +117,6 @@ export function keepBaseline(
   const slot = baselineSlot(grantKey);
   const kept = Object.entries({ ...slot.read(), [reply.messageId]: baseline });
   slot.write(Object.fromEntries(kept.slice(-BASELINE_LIMIT)));
-}
-
-/**
- * The store a question's answers land through, after the question, and the
- * read of the chat's task made before it is sent: the question waits for
- * `read`, and an edit its answer proposes is kept bound to what it read.
- */
-export function answersTo(
-  view: ClickView,
-  store: Store,
-  chat: Chat,
-  question: string,
-): { readonly on: Store; readonly read: Promise<Baseline | null> } {
-  let baseline: Baseline | null = null;
-  const read = baselineOf(view.client, chat).then((found) => (baseline = found));
-  const on: Store = {
-    ...store,
-    line: (key, role, words, _after, cites) => store.line(key, role, words, question, cites),
-    plan: (key, words, offer) => store.plan(key, words, offer, question),
-    answer: (key, reply, _after, cites) => {
-      keepBaseline(view.grantKey, reply, baseline);
-      store.answer(key, reply, question, cites);
-    },
-  };
-  return { on, read };
 }
 
 type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
@@ -239,7 +213,7 @@ export interface ProposalStore {
   readonly chat: (key: string) => Chat | undefined;
 }
 
-interface ClickView {
+export interface ClickView {
   readonly client: OperationsClient;
   readonly grantKey?: string | undefined;
 }

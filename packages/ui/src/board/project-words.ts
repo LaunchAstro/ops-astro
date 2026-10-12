@@ -12,7 +12,7 @@ const DAY_MINUTES = 480;
 export const pad = (n: number): string => String(n).padStart(2, '0');
 
 /** `18 Jul` from a stored day (`YYYY-MM-DD…`, the day as picked). */
-const dayWords = (iso: string): string => {
+export const dayWords = (iso: string): string => {
   const month = MONTHS[Number(iso.slice(5, 7)) - 1] ?? '';
   return `${String(Number(iso.slice(8, 10)))} ${month}`;
 };

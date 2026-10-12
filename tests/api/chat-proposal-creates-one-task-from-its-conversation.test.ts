@@ -162,6 +162,28 @@ describe.skipIf(serverUrl === undefined)('chat proposal on the stand-in model', 
     expect(JSON.stringify(created?.['pointers'])).toContain(taskId);
   });
 
+  it('a block’s due day and estimate land in the task’s Due and Estimate fields, not its description', async () => {
+    says = block(
+      '{"action":"create","title":"Draft the Riverbend newsletter","due":"2026-10-17","estimate":90}',
+    );
+    const opened = await w.as(w.owner, 'conversation.start', { body: 'Newsletter by Friday' });
+    const conversationId = String(detail(opened)['conversationId']);
+    const reply = replyOf(opened);
+    const { proposal } = readProposal(reply.body);
+    if (proposal === null) throw new Error('no create proposed');
+    const write = proposalCreate(proposal, reply.messageId, conversationId);
+    const made = await w.as(w.owner, 'task.create', {
+      ...write.body,
+      operationId: write.operationId,
+    });
+    expect(made.status).toBe(200);
+    const read = await w.as(w.owner, 'task.read', { recordId: String(made.body['recordId']) });
+    const task = (read.body as { readonly task: Record<string, unknown> }).task;
+    expect(String(task['due'])).toMatch(/^2026-10-17/u);
+    expect(task['estimateMinutes']).toBe(90);
+    expect(task['description'] ?? null).toBeNull();
+  });
+
   it('a reply’s edit applies to the chat’s own task at its question’s revision, once, and to no other task', async () => {
     const own = await make('Spring brief');
     const other = await make('Autumn brief');

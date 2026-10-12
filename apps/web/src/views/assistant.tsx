@@ -49,11 +49,11 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
-import { answersTo, sendProposal } from '../assistant/proposals.ts';
+import { sendProposal } from '../assistant/proposals.ts';
 import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
-import type { Store } from '../assistant/store.ts';
+import { answersTo, type Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {

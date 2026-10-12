@@ -10,7 +10,15 @@ import type { AssistantCite, AssistantRole } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import { initial, keyIn, said, type AssistantState, type Chat } from './chats.ts';
 import { usePlanCards } from './plans.ts';
-import { PROPOSAL_LINE, replyLine, taskOf } from './proposals.ts';
+import {
+  baselineOf,
+  keepBaseline,
+  PROPOSAL_LINE,
+  replyLine,
+  taskOf,
+  type Baseline,
+  type ClickView,
+} from './proposals.ts';
 
 type Move = (state: AssistantState) => AssistantState;
 
@@ -96,4 +104,29 @@ export function useStore(start: () => AssistantState = initial): Store {
     },
     offer: cards.offer,
   };
+}
+
+/**
+ * The store a question's answers land through, after the question, and the
+ * read of the chat's task made before it is sent: the question waits for
+ * `read`, and an edit its answer proposes is kept bound to what it read.
+ */
+export function answersTo(
+  view: ClickView,
+  store: Store,
+  chat: Chat,
+  question: string,
+): { readonly on: Store; readonly read: Promise<Baseline | null> } {
+  let baseline: Baseline | null = null;
+  const read = baselineOf(view.client, chat).then((found) => (baseline = found));
+  const on: Store = {
+    ...store,
+    line: (key, role, words, _after, cites) => store.line(key, role, words, question, cites),
+    plan: (key, words, offer) => store.plan(key, words, offer, question),
+    answer: (key, reply, _after, cites) => {
+      keepBaseline(view.grantKey, reply, baseline);
+      store.answer(key, reply, question, cites);
+    },
+  };
+  return { on, read };
 }

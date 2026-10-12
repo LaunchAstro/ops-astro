@@ -92,6 +92,21 @@ describe('chat proposal card', () => {
     expect(page.find('[data-proposal="send"]')).toBeNull();
   });
 
+  it('a block’s due day and estimate show on the card and the click sends them as the task’s Due and Estimate', async () => {
+    const planned = block(
+      '{"action":"create","title":"Draft the newsletter","due":"2026-10-17","estimate":90}',
+    );
+    const { page, ask, click, writes } = await drawer({ replies: [answered(planned)] });
+    track(page);
+    await ask('Draft the newsletter by Friday, about an hour and a half');
+    expect(page.find('[data-proposal="due"]')?.textContent).toBe('Due 17 Oct');
+    expect(page.find('[data-proposal="estimate"]')?.textContent).toBe('Estimate 1.5h');
+    await click();
+    expect(writes().map((each) => each.body['fields'])).toStrictEqual([
+      { title: 'Draft the newsletter', due: '2026-10-17', estimated_minutes: 90 },
+    ]);
+  });
+
   it('a click while the first is out sends nothing more', async () => {
     let resolve: ((value: Answer) => void) | undefined;
     const promise = new Promise<Answer>((settled) => {

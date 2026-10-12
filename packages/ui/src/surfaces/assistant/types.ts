@@ -50,6 +50,9 @@ export interface AssistantProposal {
   /** The words the click sends, drawn as they are sent; null is not changed. */
   readonly title: string | null;
   readonly description: string | null;
+  /** The task's Due day (`YYYY-MM-DD`) and Estimate in minutes, where proposed. */
+  readonly due?: string;
+  readonly estimate?: number;
   readonly state: ProposalCardState;
   /** The task made or changed, once the server kept it. */
   readonly task: { readonly label: string; readonly href: string } | null;

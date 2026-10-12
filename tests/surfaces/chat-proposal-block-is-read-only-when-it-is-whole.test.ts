@@ -78,6 +78,25 @@ describe('chat proposal block', () => {
     ).toStrictEqual({ action: 'edit', title: 'A', description: 'B' });
   });
 
+  it('reads a due day and an estimate in minutes into their own fields, and an edit of only the due day', () => {
+    const body = reply(
+      '{"action":"create","title":"Draft the newsletter","due":"2026-10-17","estimate":90}',
+    );
+    expect(readProposal(body).proposal).toStrictEqual({
+      action: 'create',
+      title: 'Draft the newsletter',
+      description: null,
+      due: '2026-10-17',
+      estimate: 90,
+    });
+    expect(readProposal(reply('{"action":"edit","due":"2026-12-31"}')).proposal).toStrictEqual({
+      action: 'edit',
+      title: null,
+      description: null,
+      due: '2026-12-31',
+    });
+  });
+
   it('allows trailing space after the block and CRLF line ends', () => {
     const body = 'Sure.\r\n```task\r\n{"action":"create","title":"Book the room"}\r\n```\r\n  \n';
     expect(readProposal(body)).toStrictEqual({
@@ -119,6 +138,23 @@ describe('chat proposal block', () => {
       reply(JSON.stringify({ action: 'create', title: 'T', description: 'y'.repeat(4001) })),
     ],
     ['a title that is not text', reply('{"action":"create","title":12}')],
+    [
+      'a due day that is not on the calendar',
+      reply('{"action":"create","title":"T","due":"2026-02-30"}'),
+    ],
+    ['a due day written another way', reply('{"action":"create","title":"T","due":"17/10/2026"}')],
+    [
+      'a due day with a time',
+      reply('{"action":"create","title":"T","due":"2026-10-17T09:00:00Z"}'),
+    ],
+    ['a due day that is a number', reply('{"action":"create","title":"T","due":20261017}')],
+    ['a negative estimate', reply('{"action":"create","title":"T","estimate":-1}')],
+    ['a part-minute estimate', reply('{"action":"create","title":"T","estimate":1.5}')],
+    [
+      'an estimate over the task’s bound',
+      reply('{"action":"create","title":"T","estimate":1000001}'),
+    ],
+    ['an estimate written as text', reply('{"action":"create","title":"T","estimate":"90"}')],
     ['a title of only an invisible mark', reply('{"action":"create","title":"\\u200b"}')],
     ['a title with a line break', reply('{"action":"create","title":"One\\nTwo"}')],
     ['a title with a NUL', reply('{"action":"create","title":"A\\u0000B"}')],
