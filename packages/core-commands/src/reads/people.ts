@@ -134,10 +134,12 @@ async function standingDelegations(tx: TenantQuery): Promise<readonly Delegation
  * listed only while its delegation stands (`standingDelegations`).
  *
  * Each person also carries their live grant rows by id, from the same walk,
- * whether or not sign-in would admit them, so any one can be revoked
- * (`access.revoke`). The walk reads this business's grants alone.
+ * whether or not sign-in would admit them, a grant left on an inactive acting
+ * identity included, so any one can be revoked (`access.revoke`). The walk
+ * reads this business's grants alone.
  *
- * Each preview is `heldPermissions`, the grant check's own walk, for a person
+ * Each preview is `heldPermissions`, the grant check's own walk, without
+ * dormant grants, for a person
  * sign-in would admit: one with standing and an active acting identity. The
  * grant check runs only behind sign-in, so a person it refuses (for instance
  * `ACTOR_INACTIVE`) is shown no permission. It cannot say more than the check
@@ -146,7 +148,7 @@ async function standingDelegations(tx: TenantQuery): Promise<readonly Delegation
  */
 export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult, 'ok'>> {
   const team = await listPeople(tx);
-  const held = await heldPermissions(tx);
+  const held = await heldPermissions(tx, { dormant: true });
   const members = new Set(team.map((person) => person.personId));
   const outside: string[] = [];
   for (const personId of new Set(held.map((permission) => permission.personId))) {
@@ -165,7 +167,10 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     [tx.businessId, outside],
   );
   const delegations = await standingDelegations(tx);
-  const preview = await previewsOf(tx, held);
+  const preview = await previewsOf(
+    tx,
+    held.filter((permission) => !permission.dormant),
+  );
   const withPreview = (person: PersonView): AccessPerson => ({
     ...person,
     permissions: admitted.has(person.personId) ? preview(person.personId) : [],
