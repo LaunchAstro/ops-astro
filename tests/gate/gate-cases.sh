@@ -263,6 +263,42 @@ else
 fi
 rm -rf "$dir"
 
+echo "N. a denied term in a file name, a commit message or an author name"
+# Git publishes the names and the messages as surely as the blobs. Each of
+# these commits carries harmless bytes, so only the text outside the blobs can
+# refuse it, and the evidence must not print the term it found.
+SLUG="$(printf '%s' "$CANARY" | tr '[:upper:] ' '[:lower:]-')"
+TERMS="$SCRATCH/gate-terms-list"
+printf '%s\nzod\n' "$CANARY" > "$TERMS"
+outside_blob_case() {
+  local label="$1" mode="$2" file="$3" message="$4" author="$5"
+  local dir out status
+  dir="$(new_repo)"
+  printf 'harmless bytes\n' > "$dir/$file"
+  git -C "$dir" add "$file" >/dev/null
+  git -C "$dir" -c user.name="$author" commit -qm "$message"
+  out="$(cd "$dir" && HUB_GATE_TERMS="$TERMS" python3 scripts/gate/sweep.py "$mode" HEAD 2>&1)"
+  status=$?
+  if [ "$status" != "1" ]; then
+    fail "$label" "expected exit 1, got $status. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  elif printf '%s' "$out" | grep -qiE "$SLUG|$CANARY|zod"; then
+    fail "$label" "refused, but the evidence printed the term it found"
+  else
+    pass "$label"
+  fi
+  rm -rf "$dir"
+}
+outside_blob_case "a hashed term in a file name is refused, and withheld" \
+  --range "$SLUG.txt" "add a note" "Gate Test"
+outside_blob_case "a hashed term in a commit message is refused" \
+  --range notes.txt "a note about $CANARY" "Gate Test"
+outside_blob_case "a literal term in a file name is refused, and withheld" \
+  --literal "$SLUG.txt" "add a note" "Gate Test"
+outside_blob_case "a literal term in a commit message is refused" \
+  --literal notes.txt "a note about $CANARY" "Gate Test"
+outside_blob_case "a literal term in an author name is refused" \
+  --literal notes.txt "add a note" "Zod"
+
 echo "K. gitleaks exclusions are anchored"
 # The allowlist entries are regexes matched against the whole path. An
 # unanchored LICENSE also matches src/LICENSE-private-config.json, which is a
