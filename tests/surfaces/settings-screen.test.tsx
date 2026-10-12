@@ -268,7 +268,8 @@ describe('the settings screen', () => {
     await page.unmount();
   });
 
-  it('draws a read that answered with no rows as empty, and a write there is refused and creates nothing', async () => {
+  // Today's behaviour, not the wanted one: creating the row on the first save is #1393.
+  it('today a save where no settings row exists is refused with NOT_FOUND and creates nothing, and the empty screen says so', async () => {
     const api = server({ reads: true });
     const page = await mount(screen(api.fetch));
     await tick();

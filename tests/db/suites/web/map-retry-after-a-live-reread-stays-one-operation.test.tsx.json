@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the map page over the composed API: an add whose committed answer is lost, retried after a live reread moved the revision, replays its first operation and leaves one fog line"
+}
