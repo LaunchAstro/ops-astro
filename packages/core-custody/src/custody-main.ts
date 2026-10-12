@@ -166,16 +166,23 @@ function redact(text: string, credential: StoredCredential): string {
 /** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
 const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
 
+/** The longest delay a timer keeps: past it, or below one, a deadline is no request. */
+const LONGEST_DEADLINE_MS = 2_147_483_647;
+
 function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
+  const deadline = shape['timeoutMs'];
   return (
     Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
     typeof shape['body'] === 'string' &&
-    typeof shape['timeoutMs'] === 'number' &&
+    typeof deadline === 'number' &&
+    Number.isInteger(deadline) &&
+    deadline >= 1 &&
+    deadline <= LONGEST_DEADLINE_MS &&
     typeof shape['maxResponseBytes'] === 'number'
   );
 }
