@@ -33,6 +33,10 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
+const WAITING_ON_CONVERSATION = `select count(*) as n from pg_stat_activity a
+    join pg_locks l on l.pid = a.pid and not l.granted and l.locktype = 'transactionid'
+   where l.transactionid::text = $2 and $1 = any(pg_blocking_pids(a.pid))
+     and a.wait_event_type = 'Lock' and a.query ~* 'from\\s+conversations\\s[\\s\\S]*for\\s+update'`;
 // eslint-disable-next-line max-lines-per-function -- one world, every race on it
 describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
   let w: ConversationWorld;
@@ -68,32 +72,14 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
       [operationIds],
     );
 
-  /**
-   * Waits until a backend is held by `holder`'s transaction on a conversation
-   * row: blocked by the holder's pid, waiting on its transaction id, while
-   * running a `for update` on `conversations`. Any other lock wait in the
-   * database, an advisory one included, is not this race.
-   */
+  /** Until a backend waits on the conversation row lock `holder` took. */
   async function waitsOnConversation(holder: TenantQuery): Promise<void> {
-    const [me] = await holder.query<{ readonly pid: number; readonly xid: string }>(
+    const [me] = await holder.query<{ pid: number; xid: string }>(
       'select pg_backend_pid() as pid, pg_current_xact_id()::text as xid',
     );
-    if (me === undefined) throw new Error('the holder has no backend');
     for (let tries = 0; tries < 200; tries += 1) {
       // eslint-disable-next-line no-await-in-loop -- polling the server
-      const n = await w.count(
-        `select count(*) as n
-           from pg_stat_activity a
-           join pg_locks l on l.pid = a.pid and not l.granted
-          where a.datname = current_database()
-            and a.pid <> $1
-            and a.wait_event_type = 'Lock'
-            and $1 = any(pg_blocking_pids(a.pid))
-            and l.locktype = 'transactionid' and l.transactionid::text = $2
-            and a.query ~* 'from\\s+conversations\\s[\\s\\S]*for\\s+update'`,
-        [me.pid, me.xid],
-      );
-      if (n >= 1) return;
+      if ((await w.count(WAITING_ON_CONVERSATION, [me?.pid, me?.xid])) >= 1) return;
       // eslint-disable-next-line no-await-in-loop
       await sleep(25);
     }
