@@ -9,8 +9,10 @@
 // Only an observed attempt has a receipt. A staged intent (dispatched, never
 // observed) reads as no receipt at all. The receipt carries facts and no
 // operation: nothing on it undoes the effect. T2d: it names the settlement,
-// read from the settled attempt and its reservation: the amount held, spent
-// and released, or the hold alone while it is unpriced or an unknown liability.
+// read from the reservation once the attempt is settled: the amount held, the
+// amount spent (the attempt's cost and the hold's settled model calls, as
+// `settleAtObserved` writes it) and the rest released, or the hold alone while
+// it is unpriced or an unknown liability.
 // AW-08: `link` is the receipt link captured when the effect was observed, or
 // null when none was kept (`receipt-link.ts`); a reader renders null as text.
 
@@ -50,7 +52,11 @@ export async function receiptTask(tx: TenantQuery, attemptId: string): Promise<s
   return rows[0]?.task_id;
 }
 
-/** The receipt of an observed attempt, or `undefined` when there is none to give. */
+/**
+ * The receipt of an observed attempt, or `undefined` when there is none to give. The effect's
+ * identity is matched in lower case, as it is stored, so an attempt named in upper case reads
+ * the same receipt.
+ */
 export async function readReceipt(
   tx: TenantQuery,
   attemptId: string,
@@ -68,7 +74,7 @@ export async function readReceipt(
                 'commentId', c.id, 'audience', c.data ->> 'audience'),
               'settlement', case when att.state = 'settled'
                 then json_build_object('state', 'settled', 'heldMinor', res.held_minor,
-                  'spentMinor', att.actual_minor, 'releasedMinor', res.held_minor - att.actual_minor)
+                  'spentMinor', res.actual_minor, 'releasedMinor', res.held_minor - res.actual_minor)
                 else json_build_object('state', case when att.state = 'liability_unknown'
                   then 'liability_unknown' else 'unpriced' end, 'heldMinor', res.held_minor)
                 end) as receipt
@@ -80,7 +86,7 @@ export async function readReceipt(
        join public.gate_decisions d on d.business_id = att.business_id
         and d.version_id = att.version_id and d.decision = 'approve'
        join public.operations o on o.business_id = att.business_id
-        and o.actor_id = l.holder_actor_id and o.operation_id = $3 and o.outcome = 'applied'
+        and o.actor_id = l.holder_actor_id and o.operation_id = lower($3) and o.outcome = 'applied'
        join public.records c on c.business_id = att.business_id
         and c.id = (o.result -> 'detail' ->> 'commentId')::uuid
       where att.business_id = $1 and att.id = $2 and att.observed
