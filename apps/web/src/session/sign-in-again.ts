@@ -70,19 +70,24 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
   return { ok: true, sessionId };
 }
 
-/** GoTrue's own sign-out of this one session (`scope=local`), with the token it issued. */
+/**
+ * GoTrue's own sign-out of this one session (`scope=local`), with the token it issued. True only
+ * when GoTrue acknowledged it (a 2xx); a refusal, a fault or no answer is false.
+ */
 export async function signOutAtProvider(
   gotrueUrl: string,
   token: string,
   fetch: typeof globalThis.fetch,
-): Promise<void> {
+): Promise<boolean> {
   const url = `${gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`;
   try {
-    await fetch(url, {
+    const answer = await fetch(url, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
     });
+    return answer.ok;
   } catch {
     // Unreachable: the token is held nowhere, and runs out within the hour.
+    return false;
   }
 }

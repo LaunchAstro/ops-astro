@@ -147,7 +147,7 @@ it.each(['x'.repeat(73), '😀'.repeat(19), 'x'.repeat(11)])(
       await view.type('#password-repeat', password);
       await view.click('[data-password="form"] button[type="submit"]');
       await settle();
-      expect(sent.some((at) => at.startsWith(GOTRUE))).toBe(false);
+      expect(sent.some((at) => at.startsWith(`${GOTRUE}/`))).toBe(false);
       expect(view.find('[role="alert"]')).not.toBeNull();
     } finally {
       await view.unmount();

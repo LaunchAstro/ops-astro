@@ -14,7 +14,7 @@
 //
 // Passwords and tokens are held for their calls: never in state, storage, a log or an answer.
 
-import { createContext } from 'react';
+import { createContext, type Context } from 'react';
 import { isRefusal, isUnavailable, OperationsClient } from '../operations/client.ts';
 import { describeFailure } from '../records/submit.ts';
 import { setPassword, signIn } from './password-grant.ts';
@@ -50,9 +50,11 @@ export interface PasswordChangeRequest extends PasswordChange {
 }
 
 /** The application's password change for the tab's own sign-in, or null without a session. */
-export const PasswordChangeContext = createContext<
-  ((change: PasswordChange) => Promise<PasswordChangeResult>) | null
->(null);
+export const PasswordChangeContext: Context<PasswordChanging | null> =
+  createContext<PasswordChanging | null>(null);
+
+/** One password change, as the page asks it. */
+export type PasswordChanging = (change: PasswordChange) => Promise<PasswordChangeResult>;
 
 /** What the application holds of a sign-in: the tab's move to a new one, as step-up's is. */
 interface Held {
@@ -108,7 +110,7 @@ export async function changePassword(
   if (!confirmed.ok) return confirmed;
   let token = confirmed.token;
   if (request.code !== undefined) {
-    await signOutAtProvider(gotrueUrl, token, route.fetch);
+    await endAtProvider(gotrueUrl, token, route.fetch);
     const raised = await raiseWithCode(request.client, request.code);
     if (!raised.ok) return raised;
     token = raised.token;
@@ -137,8 +139,27 @@ export async function changePassword(
  * hold. With a code the token is the tab's own sign-in's, which stays.
  */
 async function dropConfirming(request: PasswordChangeRequest, token: string): Promise<void> {
-  if (request.code === undefined) {
-    await signOutAtProvider(request.gotrueUrl, token, request.route.fetch);
+  if (request.code === undefined)
+    await endAtProvider(request.gotrueUrl, token, request.route.fetch);
+}
+
+/** How many times a confirming sign-in's sign-out is asked before it is left to run out. */
+const SIGN_OUT_TRIES = 3;
+
+/**
+ * A confirming sign-in signed out at GoTrue, asked again until GoTrue acknowledges it: a refused
+ * or lost sign-out is not cleanup. Past the tries, the token is held nowhere and runs out within
+ * the hour.
+ */
+async function endAtProvider(
+  gotrueUrl: string,
+  token: string,
+  send: ApiRoute['fetch'],
+): Promise<void> {
+  for (let tried = 0; tried < SIGN_OUT_TRIES; tried += 1) {
+    // One after another: a second ask only once the first has failed.
+    // eslint-disable-next-line no-await-in-loop
+    if (await signOutAtProvider(gotrueUrl, token, send)) return;
   }
 }
 

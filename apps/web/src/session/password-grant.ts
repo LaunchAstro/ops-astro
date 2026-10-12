@@ -65,9 +65,9 @@ export async function setPassword(request: {
     '/user',
     'PUT',
     { password: request.password },
-    {
-      authorization: `Bearer ${request.token}`,
-    },
+    { authorization: `Bearer ${request.token}` },
+    // A redirect is refused, never followed: the password goes to the sign-in service alone.
+    'error',
   );
   if (response === undefined) return { because: 'The sign-in service did not answer.' };
   if (response.ok) return 'set';
@@ -87,6 +87,7 @@ async function toProvider(
   method: 'POST' | 'PUT',
   body: unknown,
   headers: Readonly<Record<string, string>> = {},
+  redirect?: RequestRedirect,
 ): Promise<Response | undefined> {
   const url = `${request.gotrueUrl.replace(/\/$/u, '')}${path}`;
   try {
@@ -94,6 +95,7 @@ async function toProvider(
       method,
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
+      ...(redirect === undefined ? {} : { redirect }),
     });
   } catch {
     return undefined;
