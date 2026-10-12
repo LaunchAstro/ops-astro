@@ -17,7 +17,7 @@
 // `access.revoke` ends one grant, by the id the read lists, once confirmed;
 // `access.end` ends a person's access in one act (their login, every session
 // and their grants), sent only once it is confirmed; `delegation.revoke` ends
-// an agent's, by its delegation. After each, the list is read again: the
+// an agent's, by its delegation, also once confirmed. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
 // One write is out at a time, and one whose answer was lost goes again under
@@ -30,7 +30,13 @@ import { describeFailure } from '../records/submit.ts';
 import { settle } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
-import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import {
+  ConfirmEnd,
+  ConfirmRevokeDelegation,
+  ConfirmRevokeGrant,
+  GiveAccess,
+  type Revoking,
+} from './access/acts.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
 import { holding, type Held } from './task/held-operations.ts';
@@ -46,18 +52,10 @@ export interface AccessScreenProps {
  */
 type Act = (command: AccessCommand, body: Readonly<Record<string, unknown>>, done: string) => void;
 
+type Agent = AccessReadResult['agents'][number];
+
 type AccessCommand =
   'delegation.revoke' | 'access.grant' | 'access.end' | 'access.revoke' | 'client.set_privacy';
-
-const revokeWith =
-  (act: Act) =>
-  (agent: AccessReadResult['agents'][number]): void => {
-    act(
-      'delegation.revoke',
-      { delegationId: agent.delegationId },
-      `Revoked the delegation for ${agent.purpose}.`,
-    );
-  };
 
 const giveWith =
   (act: Act) =>
@@ -79,51 +77,79 @@ const Outcome = (props: { readonly text: string; readonly refused: boolean }): R
     </p>
   );
 
-/**
- * The two acts that wait on a confirmation before anything is sent: ending a
- * person's access (`access.end`) and revoking one grant (`access.revoke`).
- */
-function usePending(act: Act) {
-  const [ending, setEnding] = useState<PersonView | null>(null);
-  const [revoking, setRevoking] = useState<Revoking | null>(null);
-  const endAccess = (person: PersonView): void => {
-    setEnding(null);
+/** The three confirmed writes, each sent once its confirmation is pressed. */
+const confirmedWith = (act: Act) => ({
+  end: (person: PersonView): void => {
     act(
       'access.end',
       { holderId: person.personId },
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
-  };
-  const revokeGrant = ({ person, grant }: Revoking): void => {
-    setRevoking(null);
+  },
+  revokeGrant: ({ person, grant }: Revoking): void => {
     act(
       'access.revoke',
       { grantId: grant.grantId },
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
-  };
+  },
+  revokeDelegation: (agent: Agent): void => {
+    act(
+      'delegation.revoke',
+      { delegationId: agent.delegationId },
+      `Revoked the delegation for ${agent.purpose}.`,
+    );
+  },
+});
+
+/**
+ * The three acts that wait on a confirmation before anything is sent: ending a
+ * person's access (`access.end`), revoking one grant (`access.revoke`) and
+ * revoking an agent's delegation (`delegation.revoke`).
+ */
+function usePending(act: Act) {
+  const [ending, setEnding] = useState<PersonView | null>(null);
+  const [revoking, setRevoking] = useState<Revoking | null>(null);
+  const [delegation, setDelegation] = useState<Agent | null>(null);
+  const send = confirmedWith(act);
   const confirmations = (result: AccessReadResult): ReactElement => (
     <>
+      {delegation === null ? null : (
+        <ConfirmRevokeDelegation
+          agent={delegation}
+          onKeep={() => setDelegation(null)}
+          onRevoke={() => {
+            setDelegation(null);
+            send.revokeDelegation(delegation);
+          }}
+        />
+      )}
       {revoking === null ? null : (
         <ConfirmRevokeGrant
           revoking={revoking}
           result={result}
           onKeep={() => setRevoking(null)}
-          onRevoke={() => revokeGrant(revoking)}
+          onRevoke={() => {
+            setRevoking(null);
+            send.revokeGrant(revoking);
+          }}
         />
       )}
       {ending === null ? null : (
         <ConfirmEnd
           person={ending}
           onKeep={() => setEnding(null)}
-          onEnd={() => endAccess(ending)}
+          onEnd={() => {
+            setEnding(null);
+            send.end(ending);
+          }}
         />
       )}
     </>
   );
   const onRevokeGrant = (person: PersonView, grant: Revoking['grant']): void =>
     setRevoking({ person, grant });
-  return { confirmations, onEnd: setEnding, onRevokeGrant };
+  return { confirmations, onEnd: setEnding, onRevokeGrant, onRevokeDelegation: setDelegation };
 }
 
 function AccessLists(props: {
@@ -134,7 +160,7 @@ function AccessLists(props: {
   readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
-  const { confirmations, onEnd, onRevokeGrant } = usePending(act);
+  const { confirmations, onEnd, onRevokeGrant, onRevokeDelegation } = usePending(act);
   const clients = result.clientRecords;
   const lists = { clients, onEnd, onRevokeGrant };
   return (
@@ -147,7 +173,7 @@ function AccessLists(props: {
           {confirmations(result)}
           <People id="team" title="Team" people={result.team} {...lists} />
           <People id="clients" title="Clients" people={result.clients} {...lists} />
-          <Agents result={result} onRevoke={revokeWith(act)} />
+          <Agents result={result} onRevoke={onRevokeDelegation} />
         </div>
       </section>
       <section className="sec">
@@ -185,7 +211,8 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     const hold = holding(held.current, command, body, () => client.newOperationId());
     void (async () => {
       const answer = await client.mutate(command, body, { operationId: hold.id });
-      hold.settle(settle(answer).kind);
+      // A known answer ends every held write: the same words later are a new act.
+      if (settle(answer).kind !== 'unknown') held.current = {};
       const failure = describeFailure(answer);
       sending.current = false;
       setBusy(false);

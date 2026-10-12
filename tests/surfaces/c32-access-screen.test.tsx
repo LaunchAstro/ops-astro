@@ -171,11 +171,12 @@ describe('C32 isolation on the Access screen', () => {
 });
 
 describe('C32 agents on Settings ▸ Access', () => {
-  it('C32 agents: a live delegation is revoked by its own id, then the list is reread', async () => {
+  it('C32 agents: a live delegation is revoked by its own id once confirmed, then the list is reread', async () => {
     const api = server([json(access([ADA, MIA])), json(access([ADA, MIA], []))]);
     const view = await open(api.fetch);
     expect(view.find('[data-agent="d-1"]')?.closest('tr')?.textContent).toContain('task:write');
     await view.click('[data-revoke="d-1"] button');
+    await view.click('[data-confirm="revoke-delegation"] [data-act="revoke"] button');
     await settle();
     await settle();
     expect(api.commands()).toEqual([
@@ -187,7 +188,7 @@ describe('C32 agents on Settings ▸ Access', () => {
     expect(view.find('[data-agent="d-1"]')).toBeNull();
   });
 
-  it('a second Revoke delegation click while the first is out sends nothing, and the success stays', async () => {
+  it('a second confirmed Revoke delegation while the first is out sends nothing, and the success stays', async () => {
     let answers = 0;
     const releases: ((response: Response) => void)[] = [];
     const api = server([json(access([ADA, MIA]))], () => {
@@ -201,8 +202,12 @@ describe('C32 agents on Settings ▸ Access', () => {
       }).then(() => api.fetch(url, init));
     }) as typeof globalThis.fetch;
     const view = await open(held);
-    await view.click('[data-revoke="d-1"] button');
-    await view.click('[data-revoke="d-1"] button');
+    for (let press = 0; press < 2; press += 1) {
+      // eslint-disable-next-line no-await-in-loop -- one confirmed press after another, as a person makes them
+      await view.click('[data-revoke="d-1"] button');
+      // eslint-disable-next-line no-await-in-loop -- as above
+      await view.click('[data-confirm="revoke-delegation"] [data-act="revoke"] button');
+    }
     for (const release of releases) release(json({}));
     await settle();
     await settle();

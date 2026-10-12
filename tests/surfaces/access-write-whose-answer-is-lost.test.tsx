@@ -54,6 +54,7 @@ async function screen(api: World): Promise<Mounted> {
 
 async function revoke(view: Mounted): Promise<void> {
   await view.click('[data-revoke="d-1"] button');
+  await view.click('[data-confirm="revoke-delegation"] [data-act="revoke"] button');
   await settle();
   await settle();
 }
