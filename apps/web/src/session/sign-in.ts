@@ -38,7 +38,7 @@ export interface ApiRoute {
 /** Sign-outs still on their way to the API, and a count of sign-ins and outs. */
 const signingOut = new Set<Promise<unknown>>();
 let latest = 0;
-/** Sessions written again once a sign-out landed, still on their way: a sign-out waits for them. */
+/** Sessions written again once a sign-out landed and sent, still unanswered: a sign-out waits for them. */
 const rewriting = new Set<Promise<unknown>>();
 
 /**
@@ -62,12 +62,14 @@ export async function openSession(
   // sign-in or sign-out has had its say.
   if (signingOut.size > 0) {
     const landed = Promise.allSettled(signingOut);
-    const again = (async () => {
+    void (async () => {
       await landed;
-      if (latest === mine) await toApi(request, SESSION_PATH, { authorization: bearer });
+      if (latest !== mine) return;
+      const sent = toApi(request, SESSION_PATH, { authorization: bearer });
+      rewriting.add(sent);
+      await sent;
+      rewriting.delete(sent);
     })();
-    rewriting.add(again);
-    void again.then(() => rewriting.delete(again));
   }
   return await tradeForCookie(request, result.token);
 }
