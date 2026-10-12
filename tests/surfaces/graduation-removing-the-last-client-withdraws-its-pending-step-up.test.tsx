@@ -107,3 +107,44 @@ it('removing the last visible client withdraws its pending promotion step-up', a
     'The removed client must not be promoted after its form and scope disappeared',
   ).toHaveLength(1);
 });
+
+it('a draft typed for the last client is not restored when that client comes back after an empty read', async () => {
+  const shown: ConnectionGraduationResult = {
+    ok: true,
+    clients: [{ id: 'client-a', label: 'Client A', scopes: ['*'] }],
+    mandates: [],
+    rows: [],
+  };
+  let region = shown;
+  const fetch: typeof globalThis.fetch = async (url) => {
+    await Promise.resolve();
+    expect(String(url)).toMatch(/\/connection\/graduation$/u);
+    return json(region);
+  };
+  const followers = new Set<() => void>();
+  const rollup: RollupFloor = {
+    follow: (refresh) => {
+      followers.add(refresh);
+      return () => {
+        followers.delete(refresh);
+      };
+    },
+  };
+  const reread = async (next: ConnectionGraduationResult): Promise<void> => {
+    region = next;
+    await act(() => {
+      for (const refresh of followers) refresh();
+    });
+    await tick();
+  };
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+  const page = await mount(
+    <GraduationRegion client={client} grantKey="alpha:person-a" rollup={rollup} />,
+  );
+  await tick();
+  await page.type('[data-mandate-label]', 'Approve posts');
+  await reread({ ok: true, clients: [], rows: [], mandates: [] });
+  expect(page.find('[data-outcome="empty"]')).not.toBeNull();
+  await reread(shown);
+  expect(page.host.querySelector<HTMLInputElement>('[data-mandate-label]')?.value).toBe('');
+});
