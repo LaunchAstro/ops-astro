@@ -102,7 +102,7 @@ import {
   describeRecovered,
   parseRecoveryScope,
   recoverDeployment,
-  passEachBusiness,
+  passDeployment,
   registerEffectLookup,
   startSweeper,
   RECOVERY_SCOPE_SETTING,
@@ -665,7 +665,7 @@ async function main(): Promise<void> {
   const sweeper = startSweeper(
     async () =>
       await withRuntimeKeys(keys, async () => {
-        return await passEachBusiness(
+        return await passDeployment(
           database,
           resolveBusiness,
           scope.keys,
