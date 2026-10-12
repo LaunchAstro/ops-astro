@@ -54,7 +54,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
+import { PanelAgent, useDecisionNote, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import { type PageContext } from './task-prefill.ts';
 import type { ClientSeams } from './client-seam.ts';
@@ -128,7 +128,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
   useRereadOn(timerRead.changed, reload);
   useRereadOn(assignments.state.changed, refresh);
   useTimerStop(props, state.outcome === 'ready' ? state.value : null);
-  const body = { ...props, fold, conversation };
+  const body = { ...props, fold, conversation, ...useDecisionNote(props, state.outcome) };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
