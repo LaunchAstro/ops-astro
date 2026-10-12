@@ -38,7 +38,22 @@ function codeFor(secret: string): string {
   return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-async function refusalLeavesNoSession(factor: boolean, transient = true): Promise<void> {
+/**
+ * What stands between the change and GoTrue's sign-out: an answer of its own for the n-th ask
+ * (from 1), or undefined to let the ask through. `lost` lets it through and drops GoTrue's
+ * answer, as a gateway that timed out after forwarding would.
+ */
+type Gateway = (asked: number) => Response | 'lost' | undefined;
+
+const outage =
+  (failures: number): Gateway =>
+  (asked) =>
+    asked <= failures ? new Response('{}', { status: 503 }) : undefined;
+
+async function refusalLeavesNoSession(
+  factor: boolean,
+  gateway: Gateway = outage(1),
+): Promise<void> {
   const email = `sol1322-${randomUUID()}@example.test`;
   const password = `synthetic-current-${randomUUID()}`;
   const initial = await post('/signup', { email, password });
@@ -61,9 +76,13 @@ async function refusalLeavesNoSession(factor: boolean, transient = true): Promis
   let logoutAttempts = 0;
   const send: typeof fetch = async (input, init) => {
     const url = String(input);
-    // One transient gateway failure. A subsequent cleanup attempt reaches real GoTrue.
-    if (url.endsWith('/logout?scope=local') && ++logoutAttempts === 1 && transient) {
-      return new Response('{}', { status: 503 });
+    if (url.endsWith('/logout?scope=local')) {
+      const own = gateway(++logoutAttempts);
+      if (own === 'lost') {
+        await fetch(input, init);
+        return new Response('{}', { status: 504 });
+      }
+      if (own !== undefined) return own;
     }
     const response = await fetch(input, init);
     if (url.endsWith('/token?grant_type=password') && response.ok) {
@@ -127,6 +146,29 @@ it.skipIf(issuer === undefined)(
 it.skipIf(issuer === undefined).each([true, false])(
   'an acknowledged GoTrue logout revokes the confirming sign-in, factor=%s',
   async (factor) => {
-    await refusalLeavesNoSession(factor, false);
+    await refusalLeavesNoSession(factor, () => undefined);
+  },
+);
+
+it.skipIf(issuer === undefined).each([true, false])(
+  'three transient sign-out failures still revoke the confirming session, factor=%s',
+  async (factor) => {
+    await refusalLeavesNoSession(factor, outage(3));
+  },
+);
+
+it.skipIf(issuer === undefined).each([true, false])(
+  'a gateway 200 is not an acknowledged GoTrue sign-out, factor=%s',
+  async (factor) => {
+    await refusalLeavesNoSession(factor, (asked) =>
+      asked === 1 ? new Response('<html>ok</html>', { status: 200 }) : undefined,
+    );
+  },
+);
+
+it.skipIf(issuer === undefined).each([true, false])(
+  'a sign-out GoTrue made whose answer was lost is taken as made, factor=%s',
+  async (factor) => {
+    await refusalLeavesNoSession(factor, (asked) => (asked === 1 ? 'lost' : undefined));
   },
 );
