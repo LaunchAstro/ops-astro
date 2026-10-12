@@ -5,10 +5,11 @@
 // each pair of heads (MP-5-6), and rows under group banners when the board
 // groups them (MP-5-11).
 
+import { Icon } from '../primitives/Icon.tsx';
 import type { ReactElement, ReactNode } from 'react';
 import { GRIP_STEP, GRIP_STEP_LARGE } from '../board/widths.ts';
 import type { ColumnSpec, LaidColumn } from '../board/types.ts';
-import { GLYPH, type BoardMachineProps } from './board-props.ts';
+import { BOARD_ICONS, type BoardMachineProps } from './board-props.ts';
 
 const ROW_CONTROLS =
   'a,button,input,select,textarea,summary,[role="button"],[role="checkbox"],[role="listbox"],[role="option"],[contenteditable]';
@@ -237,7 +238,7 @@ function HeadInner(props: {
     <>
       {props.icon === undefined ? null : (
         <span className="cbd__thi" data-icon={props.icon} aria-hidden="true">
-          {GLYPH[props.icon] ?? '•'}
+          <Icon name={BOARD_ICONS[props.icon] ?? 'list-check'} size="xs" />
         </span>
       )}
       <span className="cbd__thl">{props.label}</span>

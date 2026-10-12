@@ -7,10 +7,13 @@
 // into chips, a chip's cross removes it, and Backspace in the empty box drops
 // the last one. None of them writes.
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { usePanelToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import { wordsOfChip, type Chip } from './todo-list.ts';
 
 export interface TodoToolsProps {
+  readonly filters?: ReactNode;
   readonly query: string;
   readonly onQuery: (query: string) => void;
   readonly chips: readonly Chip[];
@@ -24,27 +27,44 @@ export interface TodoToolsProps {
 }
 
 export function TodoTools(props: TodoToolsProps): ReactElement {
+  const toolbar = usePanelToolbar();
+  if (toolbar === null) return <ToolsBody {...props} />;
+  return (
+    <>
+      {createPortal(props.filters, toolbar)}
+      <ToolsBody {...props} compact />
+    </>
+  );
+}
+
+function ToolsBody(props: TodoToolsProps & { readonly compact?: boolean }): ReactElement {
   return (
     <div className="tsearch todos__tools">
+      {props.compact === true ? null : props.filters}
       <SearchBox {...props} />
-      <div className="todos__acts">
-        <button
-          className="btn"
-          type="button"
-          data-todos="today"
-          onClick={() => props.onQuery('due:today')}
-        >
-          Today
-        </button>
-        <a
-          className="btn"
-          data-todos="board"
-          href={props.boardAddress}
-          aria-disabled={props.boardAddress === undefined ? true : undefined}
-        >
-          Open the board
-        </a>
-      </div>
+      <details className="todos__acts">
+        <summary aria-label="Project shortcuts" title="Project shortcuts">
+          ⋯
+        </summary>
+        <div>
+          <button
+            className="btn"
+            type="button"
+            data-todos="today"
+            onClick={() => props.onQuery('due:today')}
+          >
+            Today
+          </button>
+          <a
+            className="btn"
+            data-todos="board"
+            href={props.boardAddress}
+            aria-disabled={props.boardAddress === undefined ? true : undefined}
+          >
+            Open the board
+          </a>
+        </div>
+      </details>
       <Reading reading={props.reading} onClear={props.onClear} />
     </div>
   );
@@ -79,7 +99,7 @@ function SearchBox(props: TodoToolsProps): ReactElement {
   );
 }
 
-const PLACEHOLDER = 'today, p1, person:"name", client:"name", route:team, tag:name, any words';
+const PLACEHOLDER = 'Search: a client, “today”, a priority, any words';
 
 function ChipTag(props: { readonly chip: Chip; readonly onRemove: () => void }): ReactElement {
   const words = wordsOfChip(props.chip);

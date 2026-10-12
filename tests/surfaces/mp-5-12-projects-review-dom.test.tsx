@@ -117,7 +117,7 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
   it('draws a chip per category in scope, flagged where a client waits, with no count', async () => {
     const board = await open();
     const chips = board.all('.cbd__preset--cat');
-    expect(chips.map((chip) => chip.textContent)).toStrictEqual(['◈Branding', '◈SEO']);
+    expect(chips.map((chip) => chip.textContent)).toStrictEqual(['Branding', 'SEO']);
     expect(chips.map((chip) => chip.classList.contains('is-flagged'))).toStrictEqual([true, false]);
     expect(chips[0]?.getAttribute('title')).toContain('A client or a mention is waiting here');
     expect(board.all('.cbd__preset--cat .cbd__count')).toStrictEqual([]);
@@ -125,7 +125,7 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
 
   it('only categories present in scope appear as chips (P-13, M-04)', async () => {
     const board = await open({ rows: ROWS.filter((each) => each.category === 'SEO') });
-    expect(board.all('.cbd__preset--cat').map((chip) => chip.textContent)).toStrictEqual(['◈SEO']);
+    expect(board.all('.cbd__preset--cat').map((chip) => chip.textContent)).toStrictEqual(['SEO']);
   });
 
   it('pressing a chip narrows to the category', async () => {

@@ -25,8 +25,8 @@ function server() {
   return { fetch, writes };
 }
 
-describe('the create form, refused on authority', () => {
-  it('closes rather than asking again', async () => {
+describe('New task without filing authority', () => {
+  it('stays disabled and sends nothing', async () => {
     const api = server();
     const client = new OperationsClient({
       origin: '',
@@ -37,13 +37,11 @@ describe('the create form, refused on authority', () => {
     const view = await mount(<Projects client={client} grantKey="alpha:mia" navigate={() => {}} />);
     await settle();
 
-    const box = view.find('#create-title') as HTMLInputElement;
-    const button = view.find('.projects__create button[type="submit"]') as HTMLButtonElement;
-    expect(box.disabled).toBe(true);
-    expect(button.disabled).toBe(true);
-    expect(button.dataset['newTask']).toBeUndefined();
-
-    await view.click('.projects__create button[type="submit"]');
+    const button = view.find('[data-projects-new-task]');
+    expect(button).toHaveProperty('disabled', true);
+    expect(view.find('#create-title')).toBeNull();
+    expect(view.find('.projects__create')).toBeNull();
+    await view.click('[data-projects-new-task]');
     await settle();
     expect(api.writes).toHaveLength(0);
 

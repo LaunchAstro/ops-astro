@@ -6,6 +6,7 @@
 // and clients come from current permitted vocabularies. A client's route family
 // narrows actual runtime whose-move evidence.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { ClientView } from '../../../../../packages/core-wire/src/index.ts';
 import { admittedWords, type Vocabulary } from './typed-scope.ts';
@@ -153,7 +154,7 @@ function Choice(props: {
   readonly disabled?: boolean;
 }): ReactElement {
   return (
-    <select
+    <StyledSelect
       id={props.id}
       className="input"
       aria-label={props.label}
@@ -169,6 +170,6 @@ function Choice(props: {
           {option.label}
         </option>
       ))}
-    </select>
+    </StyledSelect>
   );
 }

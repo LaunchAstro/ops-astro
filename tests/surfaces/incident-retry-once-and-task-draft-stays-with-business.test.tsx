@@ -6,7 +6,7 @@ import { afterEach, expect, it } from 'vitest';
 import { act } from 'react';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { RecordIncident } from '../../apps/web/src/screens/operations/record-incident.tsx';
-import { Projects } from '../../apps/web/src/screens/Projects.tsx';
+import { draftApp, draftTab, draftReply, commands } from '../web/projects-draft-app-support.tsx';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
@@ -87,45 +87,48 @@ it('retrying an incident after a committed response is lost records it once', as
   );
 });
 
-// Sol OW-086.1 criterion 2, retitled by what it proves; its body is Sol's.
+// The former inline creator is gone; exercise the shared drawer and its actual App owner switch.
 it('business to business switching cannot carry a confidential new-task draft into the other business', async () => {
-  const writes: { url: string; body: Record<string, unknown> }[] = [];
-  const fetch: typeof globalThis.fetch = (url, init) => {
-    const at = String(url);
-    if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
-    if (at.endsWith('/task/create')) {
-      writes.push({ url: at, body: JSON.parse(String(init?.body)) });
-    }
-    const body = at.endsWith('/task/board')
-      ? { ok: true, tasks: [], withheld: 0 }
-      : at.endsWith('/person/list')
-        ? { ok: true, persons: [] }
-        : at.endsWith('/inbox/read')
-          ? { ok: true, inbox: [] }
-          : at.endsWith('/inbox/count')
-            ? { ok: true, owed: 0 }
-            : { recordId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', revision: 1, detail: {} };
-    return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
-  };
-  const client = (businessKey: string) =>
-    new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
-  page = await mount(
-    <Projects client={client('alpha')} grantKey="alpha:ada" navigate={() => {}} />,
+  const storage = draftTab();
+  storage.removeItem('ops-astro.session');
+  storage.setItem(
+    'ops-astro.return-to',
+    JSON.stringify({
+      address: '/projects/',
+      businessKey: 'bravo',
+      code: 'AUTH_SESSION_EXPIRED',
+    }),
   );
-  await page.type('#create-title', 'Confidential Alpha client task');
-  expect((page.find('#create-title') as HTMLInputElement).value).toBe(
-    'Confidential Alpha client task',
-  );
-  await page.render(<Projects client={client('bravo')} grantKey="bravo:ada" navigate={() => {}} />);
+  const app = await draftApp({
+    storage,
+    path: '/sign-in',
+    reply: (request) => {
+      if (request.path.startsWith('http://gotrue.test/token'))
+        return Promise.resolve(Response.json({ access_token: 'test-provider-token' }));
+      if (request.path === '/api/session')
+        return Promise.resolve(Response.json({ session: 'test-tab' }));
+      if (request.path === '/session/capabilities')
+        return Promise.resolve(Response.json({ ok: true, grants: [] }));
+      return Promise.resolve(draftReply(request));
+    },
+  });
+  page = app.view;
+  await page.type('#signin-email', 'draft-entry@example.test');
+  await page.type('#signin-password', 'test-password');
+  await page.choose('#signin-business', 'alpha');
+  await page.click('form.signin__form button[type="submit"]');
   await settle();
-  await page.click('button[type="submit"]');
+  await page.click('[data-projects-new-task]');
   await settle();
-  expect(
-    writes.filter(
-      (write) =>
-        write.url.includes('/b/bravo/') &&
-        JSON.stringify(write.body).includes('Confidential Alpha client task'),
-    ),
-    'The Alpha draft must not become a Bravo task',
-  ).toEqual([]);
+  await page.type('#panel-draft-name', 'Confidential Alpha client task');
+  expect(page.find('#panel-draft-name')).toHaveProperty('value', 'Confidential Alpha client task');
+  await page.click('[data-switch="held-address"]');
+  await settle();
+  expect(page.text()).not.toContain('Confidential Alpha client task');
+  await page.click('[data-projects-new-task]');
+  await settle();
+  expect(page.find('#panel-draft-name')).toHaveProperty('value', '');
+  await page.click('[data-draft="create"]');
+  await settle();
+  expect(commands(app.sent)).toEqual([]);
 });

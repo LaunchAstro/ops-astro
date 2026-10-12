@@ -8,6 +8,7 @@
 // server. While Create is out every field is read-only, so the draft its
 // answer settles is the one it sent.
 
+import { StyledSelect } from '@launchastro/ui';
 import {
   useState,
   type KeyboardEvent,
@@ -91,7 +92,7 @@ function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElemen
         />
       </Field>
       <Field id="panel-draft-estimate" label="Estimate">
-        <select
+        <StyledSelect
           id="panel-draft-estimate"
           className="input"
           disabled={locked}
@@ -106,7 +107,7 @@ function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElemen
               {estimateWords(minutes)}
             </option>
           ))}
-        </select>
+        </StyledSelect>
       </Field>
     </>
   );
@@ -122,7 +123,7 @@ function DraftGuesses({
   return (
     <>
       <Field id="panel-draft-category" label="Category">
-        <select
+        <StyledSelect
           id="panel-draft-category"
           className="input"
           disabled={locked}
@@ -137,7 +138,7 @@ function DraftGuesses({
               {category.label}
             </option>
           ))}
-        </select>
+        </StyledSelect>
       </Field>
       <DraftOwner client={client} draft={draft} put={put} locked={locked} />
     </>

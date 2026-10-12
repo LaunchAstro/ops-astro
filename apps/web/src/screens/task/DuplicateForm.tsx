@@ -22,6 +22,7 @@
 // refusal is quoted in the server's words; a landed duplicate hands the new
 // task's key to the host.
 
+import { StyledSelect } from '@launchastro/ui';
 import { useRef, useState, type ReactElement } from 'react';
 import type { WireRefusal } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
@@ -160,7 +161,7 @@ function ClientPick(props: {
       <label className="tf__k" htmlFor="duplicate-client">
         Client
       </label>
-      <select
+      <StyledSelect
         id="duplicate-client"
         className="input"
         value={props.form.client}
@@ -172,7 +173,7 @@ function ClientPick(props: {
             {choice.name}
           </option>
         ))}
-      </select>
+      </StyledSelect>
     </>
   );
 }

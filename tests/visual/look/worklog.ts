@@ -8,7 +8,10 @@
 import type { LookScreen } from './probe.ts';
 
 const PAGE = { path: '/agency/projects/#worklog' } as const;
-const APP = { page: 'agency:projects-board', open: 'role=tab[name="Work log"]' } as const;
+const APP = {
+  page: 'agency:projects-board',
+  open: ['summary[aria-label="Project views"]', 'role=tab[name="Work log"]'],
+} as const;
 const TYPE = ['font-family', 'font-size', 'font-weight', 'line-height', 'color'] as const;
 const WIDTHS = [1480, 900, 390] as const;
 

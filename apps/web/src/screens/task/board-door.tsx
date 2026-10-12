@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { Icon } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
 import { encodeBoardAddress } from '../projects/scoped-board.ts';
@@ -15,13 +16,22 @@ export function owningBoardAddress(task: BoardTask): string | null {
   });
 }
 
-export function PanelBoardDoor(props: { readonly task: BoardTask }): ReactElement {
+export function PanelBoardDoor(props: {
+  readonly task: BoardTask;
+  readonly compact?: boolean;
+}): ReactElement {
   const href = owningBoardAddress(props.task);
   return href === null ? (
     <span className="sbact__meta">A board you cannot open</span>
   ) : (
-    <a className="btn" data-panel-head="board" href={href}>
-      Open its board
+    <a
+      className={props.compact ? 'dpanel__btn' : 'btn'}
+      data-panel-head="board"
+      aria-label="Open its board"
+      title="Open its board"
+      href={href}
+    >
+      {props.compact ? <Icon name="briefcase" /> : 'Open its board'}
     </a>
   );
 }

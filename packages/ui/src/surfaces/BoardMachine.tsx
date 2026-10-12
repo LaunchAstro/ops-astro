@@ -114,7 +114,8 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
       dispatch={dispatch}
     />
   );
-  const bar = props.hidden === true ? null : props.bar ? createPortal(command, props.bar) : command;
+  const toolbar = props.bar;
+  const bar = props.hidden === true ? null : toolbar ? createPortal(command, toolbar) : command;
   return (
     <div className="cbd" data-board="" ref={card} hidden={props.hidden === true}>
       {bar}
@@ -154,7 +155,6 @@ function BoardBody<Row>(
   const empty = mode?.empty ?? props.empty;
   return (
     <>
-      {line === '' ? null : <p className="cbd__read">{line}</p>}
       {surface ? (
         surface(narrowed)
       ) : sorted.length === 0 ? (
@@ -179,6 +179,7 @@ function BoardBody<Row>(
           grip={{ live: drag.live?.key ?? null, start: drag.start, nudge: drag.nudge }}
         />
       )}
+      {line === '' ? null : <p className="cbd__read">{line}</p>}
     </>
   );
 }

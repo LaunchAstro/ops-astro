@@ -14,6 +14,7 @@
 // change that lands is counted (`onChanged`); a refusal is quoted in the
 // server's words.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import {
@@ -56,7 +57,7 @@ export function CategoryField(props: CategoryFieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-category">
         Category
       </label>
-      <select
+      <StyledSelect
         id="panel-field-category"
         className="input"
         disabled={busy}
@@ -70,7 +71,7 @@ export function CategoryField(props: CategoryFieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={category}>{category}</option> : null}
-      </select>
+      </StyledSelect>
       {because === null ? null : (
         <p className="field__error" role="alert">
           {because}

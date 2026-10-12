@@ -16,7 +16,7 @@
 // rechecked; completion keeps its current answer while reading back.
 
 import { useEffect, useState, type ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Empty, Icon, usePanelToolbar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { dependencyAdmission } from '../../data/board-live.ts';
@@ -28,6 +28,7 @@ import { todayOn } from '../task/due-dates.ts';
 import { readingOf, scoped, sorted, type Chip } from './todo-list.ts';
 import { TodoHead, useTodoSort, type TodoOrder } from './TodoHead.tsx';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
+import { IdentityChoices } from './IdentityChoices.tsx';
 import { TodoTools } from './TodoTools.tsx';
 import { compactBoardAddress } from '../projects/scoped-board.ts';
 import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
@@ -123,8 +124,10 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
   const onDependency = useTodoDependencies(props, read, vocabulary, intent);
   return (
     <section className="todos stack" aria-label={admittedWords(scope, vocabulary) ?? 'My to-dos'}>
-      <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
-      <TodoTools {...tools} />
+      <TodoTools
+        {...tools}
+        filters={<ScopeFilter scope={scope} setScope={setScope} vocabulary={vocabulary} />}
+      />
       <IdentityChoices
         filters={filters}
         onChoose={(next) => {
@@ -148,35 +151,6 @@ function TodosOwner(props: TodosScreenProps): ReactElement {
         />
       )}
     </section>
-  );
-}
-function IdentityChoices(props: {
-  readonly filters: readonly Chip[];
-  readonly onChoose: (next: readonly Chip[]) => void;
-}): ReactElement {
-  return (
-    <>
-      {props.filters.map((chip, index) =>
-        chip.kind === 'unresolved' ? (
-          <div key={index} role="status">
-            {chip.reason}
-            {chip.choices.map((choice) => (
-              <button
-                key={`${choice.kind}:${choice.value}`}
-                type="button"
-                className="btn"
-                data-todos-identity={choice.value}
-                onClick={() =>
-                  props.onChoose(props.filters.map((each, at) => (at === index ? choice : each)))
-                }
-              >
-                {choice.kind}: {choice.name} ({choice.value})
-              </button>
-            ))}
-          </div>
-        ) : null,
-      )}
-    </>
   );
 }
 type ScopedTodosProps = TodosScreenProps & {
@@ -290,5 +264,23 @@ function TodoRows(
         <TodoRow key={todo.id} todo={todo} {...row} />
       ))}
     </ul>
+  );
+}
+
+function ScopeFilter(
+  props: Pick<ReturnType<typeof useTodoFilters>, 'scope' | 'setScope' | 'vocabulary'>,
+): ReactElement {
+  const { scope, setScope, vocabulary } = props;
+  const compact = usePanelToolbar() !== null;
+  const label = compact ? 'Choose project scope' : 'Project filters';
+  return (
+    <details className={`field-callout ${compact ? 'todos__searchdrop' : 'todos__filters'}`}>
+      <summary className={compact ? 'dpanel__btn' : undefined} aria-label={label} title={label}>
+        <Icon name={compact ? 'search' : 'filter'} size={compact ? 'sm' : 'xs'} />
+      </summary>
+      <div className="field-callout__body todos">
+        <TodoScopeSwitch scope={scope} onScope={setScope} vocabulary={vocabulary} />
+      </div>
+    </details>
   );
 }
