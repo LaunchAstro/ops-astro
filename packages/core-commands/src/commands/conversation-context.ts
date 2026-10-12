@@ -222,7 +222,9 @@ export async function waitsFirst(
 /**
  * The last earlier messages before the asked one, each person's with its
  * answer, oldest first; none from before the conversation's context starts
- * (`context_from`, set when the task it was opened on is purged).
+ * (`context_from`, set when the task it was opened on is purged). A reply is
+ * judged by the question it answers, so one kept after the purge to a
+ * question asked before it is cut with that question.
  */
 async function earlierRows(
   tx: TenantQuery,
@@ -236,8 +238,11 @@ async function earlierRows(
            on a.business_id = m.business_id and a.conversation_id = m.conversation_id
         where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
           and m.role in ('person', 'agent') and m.created_at < a.created_at
-          and m.created_at >= coalesce((select c.context_from from conversations c
-                where c.business_id = m.business_id and c.id = m.conversation_id), '-infinity')
+          and coalesce((select q.created_at from conversation_messages q
+                 where q.business_id = m.business_id and q.id = m.answers_message_id),
+               m.created_at)
+              >= coalesce((select c.context_from from conversations c
+                 where c.business_id = m.business_id and c.id = m.conversation_id), '-infinity')
           and (m.role = 'agent' or exists (
             select 1 from conversation_messages r
              where r.business_id = m.business_id and r.conversation_id = m.conversation_id
