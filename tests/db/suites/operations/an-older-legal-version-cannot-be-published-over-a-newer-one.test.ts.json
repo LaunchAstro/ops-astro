@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a legal version whose label is below one already published is refused LEGAL_VERSION_SUPERSEDED, and two publications of one document stamp in commit order"
+}
