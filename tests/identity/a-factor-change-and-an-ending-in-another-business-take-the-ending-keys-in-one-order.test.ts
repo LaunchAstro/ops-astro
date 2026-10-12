@@ -104,7 +104,8 @@ it.each(EACH)(
       expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
         result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         status: act === 'enrol' ? 'none' : 'verified',
-        removed: [],
+        // A refused enrolment's issued factor goes at the provider; nothing else does.
+        removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       });
     } finally {
       paused.goOn();
@@ -234,7 +235,8 @@ it.each(EACH)(
         actResult: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         endResult: { signedOutAtProvider: true },
         status: act === 'enrol' ? 'none' : 'verified',
-        removed: [],
+        // A refused enrolment's issued factor goes at the provider; nothing else does.
+        removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       });
     } finally {
       stop.release();

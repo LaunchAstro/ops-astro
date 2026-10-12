@@ -139,7 +139,8 @@ it.each(['enrol', 'verify', 'remove'] as const)(
       left: await left(person, asked.presented.subject, `account.factor_${act}`),
     }).toMatchObject({
       result: { refused: true, code: 'AUTH_ACCESS_ENDED' },
-      removed: [],
+      // A refused enrolment's issued factor goes at the provider; nothing else does.
+      removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       left: {
         status: act === 'enrol' ? 'none' : 'verified',
         heldByLogin: act !== 'enrol',

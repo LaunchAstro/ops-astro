@@ -7,7 +7,7 @@
 // login's record removed, stays.
 
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import {
   enrolSecondFactor,
   removeSecondFactor,
@@ -59,84 +59,85 @@ const inBusiness = (subject: string, businessId: string): FactorCaller => ({
   presented: { ...callerFor(subject).presented, sessionId: randomUUID() },
 });
 
-describe.skipIf(serverUrl === undefined)(
-  'a provider factor the record removed is removed on the next proven code',
-  () => {
-    it('an issued factor the record refused, which the provider would not remove, is removed on the next good code in another business', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const alphaPerson = await personIn(alpha, subject);
-      await personIn(bravo, subject);
-      const held: string[] = [];
-      const { provider, asked, state } = stubbornProvider(held);
-      const racing: FactorProvider = {
-        ...provider,
-        enrol: async (token) => {
-          // Mia verifies a factor in alpha while bravo's enrolment is at the provider.
-          await enrolHere(alpha, alphaPerson, subject, true);
-          return await provider.enrol(token);
-        },
-      };
-      const refused = await enrolSecondFactor(callerFor(subject), racing);
-      expect('code' in refused ? refused.code : 'issued').toBe('FACTOR_ALREADY_ENROLLED');
-      const stray = held[0] ?? '';
-      expect(asked.filter((call) => call === `remove ${stray}`)).toHaveLength(2);
-      state.working = true;
+it.skipIf(serverUrl === undefined)(
+  'an issued factor the record refused, which the provider would not remove, is removed on the next good code in another business',
+  async () => {
+    const subject = `sub-${randomUUID()}`;
+    const alphaPerson = await personIn(alpha, subject);
+    await personIn(bravo, subject);
+    const held: string[] = [];
+    const { provider, asked, state } = stubbornProvider(held);
+    const racing: FactorProvider = {
+      ...provider,
+      enrol: async (token) => {
+        // Mia verifies a factor in alpha while bravo's enrolment is at the provider.
+        await enrolHere(alpha, alphaPerson, subject, true);
+        return await provider.enrol(token);
+      },
+    };
+    const refused = await enrolSecondFactor(callerFor(subject), racing);
+    expect('code' in refused ? refused.code : 'issued').toBe('FACTOR_ALREADY_ENROLLED');
+    const stray = held[0] ?? '';
+    expect(asked.filter((call) => call === `remove ${stray}`)).toHaveLength(2);
+    state.working = true;
 
-      // Her next good code, a step-up in alpha against the factor she verified there.
-      const stepUp = await verifySecondFactor(
-        inBusiness(subject, alpha),
-        { code: '123456' },
-        provider,
-      );
+    // Her next good code, a step-up in alpha against the factor she verified there.
+    const stepUp = await verifySecondFactor(
+      inBusiness(subject, alpha),
+      { code: '123456' },
+      provider,
+    );
 
-      expect('code' in stepUp ? stepUp.code : 'verified').toBe('verified');
-      expect(held).not.toContain(stray);
-    });
+    expect('code' in stepUp ? stepUp.code : 'verified').toBe('verified');
+    expect(held).not.toContain(stray);
+  },
+);
 
-    it('a removed factor the provider would not remove is removed on the next good code', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const person = await personIn(bravo, subject);
-      const old = await factorIn(person, subject, true);
-      const held = [old.providerFactorId];
-      const { provider, state } = stubbornProvider(held);
+it.skipIf(serverUrl === undefined)(
+  'a removed factor the provider would not remove is removed on the next good code',
+  async () => {
+    const subject = `sub-${randomUUID()}`;
+    const person = await personIn(bravo, subject);
+    const old = await factorIn(person, subject, true);
+    const held = [old.providerFactorId];
+    const { provider, state } = stubbornProvider(held);
 
-      const removed = await removeSecondFactor(callerFor(subject), { code: '123456' }, provider);
-      expect('code' in removed ? removed.code : 'removed').toBe('removed');
-      expect(held).toContain(old.providerFactorId);
-      state.working = true;
-      // A new authenticator, and the good code that completes it.
-      const issued = await enrolSecondFactor(callerFor(subject), provider);
-      expect('code' in issued ? issued.code : 'issued').toBe('issued');
-      const done = await verifySecondFactor(
-        inBusiness(subject, bravo),
-        { code: '123456' },
-        provider,
-      );
+    const removed = await removeSecondFactor(callerFor(subject), { code: '123456' }, provider);
+    expect('code' in removed ? removed.code : 'removed').toBe('removed');
+    expect(held).toContain(old.providerFactorId);
+    state.working = true;
+    // A new authenticator, and the good code that completes it.
+    const issued = await enrolSecondFactor(callerFor(subject), provider);
+    expect('code' in issued ? issued.code : 'issued').toBe('issued');
+    // A token naming no session: the removal ended the login's earlier sessions.
+    const done = await verifySecondFactor(callerFor(subject), { code: '123456' }, provider);
 
-      expect('code' in done ? done.code : 'verified').toBe('verified');
-      expect(held).not.toContain(old.providerFactorId);
-    });
+    expect('code' in done ? done.code : 'verified').toBe('verified');
+    expect(held).not.toContain(old.providerFactorId);
+  },
+);
 
-    it('a good code removes no provider factor the login record never decided on, nor one another login removed', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const person = await personIn(bravo, subject);
-      await factorIn(person, subject, true);
-      // Another login, of another person here, whose factor its own record removed.
-      const otherSubject = `sub-${randomUUID()}`;
-      const other = await personIn(bravo, otherSubject);
-      const theirs = await factorIn(other, otherSubject, true);
-      await db.app.withBusiness(bravo, (tx) =>
-        recordFactorRemoved(tx, { personId: other, factorId: theirs.id, subject: otherSubject }),
-      );
-      const undecided = `factor-${randomUUID()}`;
-      const held = [undecided, theirs.providerFactorId];
-      const { provider, asked, state } = stubbornProvider(held);
-      state.working = true;
+it.skipIf(serverUrl === undefined)(
+  'a good code removes no provider factor the login record never decided on, nor one another login removed',
+  async () => {
+    const subject = `sub-${randomUUID()}`;
+    const person = await personIn(bravo, subject);
+    await factorIn(person, subject, true);
+    // Another login, of another person here, whose factor its own record removed.
+    const otherSubject = `sub-${randomUUID()}`;
+    const other = await personIn(bravo, otherSubject);
+    const theirs = await factorIn(other, otherSubject, true);
+    await db.app.withBusiness(bravo, (tx) =>
+      recordFactorRemoved(tx, { personId: other, factorId: theirs.id, subject: otherSubject }),
+    );
+    const undecided = `factor-${randomUUID()}`;
+    const held = [undecided, theirs.providerFactorId];
+    const { provider, asked, state } = stubbornProvider(held);
+    state.working = true;
 
-      const stepUp = await verifySecondFactor(callerFor(subject), { code: '123456' }, provider);
+    const stepUp = await verifySecondFactor(callerFor(subject), { code: '123456' }, provider);
 
-      expect('code' in stepUp ? stepUp.code : 'verified').toBe('verified');
-      expect(asked.filter((call) => call.startsWith('remove'))).toEqual([]);
-    });
+    expect('code' in stepUp ? stepUp.code : 'verified').toBe('verified');
+    expect(asked.filter((call) => call.startsWith('remove'))).toEqual([]);
   },
 );

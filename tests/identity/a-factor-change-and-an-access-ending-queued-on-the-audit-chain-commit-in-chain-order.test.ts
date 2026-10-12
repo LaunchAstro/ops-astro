@@ -174,7 +174,7 @@ it.each([
       expect({ ...answers, removed: removed.length }).toMatchObject({
         act: actFirst ? 'answered' : 'AUTH_ACCESS_ENDED',
         ending: 'answered',
-        removed: act === 'remove' && actFirst ? 1 : 0,
+        removed: (act === 'remove' && actFirst) || (act === 'enrol' && !actFirst) ? 1 : 0,
       });
       expect(await left(act, person, asked.presented.subject, operationId)).toEqual({
         actOutcome: actFirst ? 'applied' : 'refused',
