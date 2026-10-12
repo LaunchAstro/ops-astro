@@ -44,7 +44,6 @@ it('a hidden inbox item cannot borrow a stale digest after a visible task resync
   let shown = 'before title change';
   const board = rig({
     joinedAs: () => Promise.resolve(personId),
-    reads: () => Promise.resolve(true),
     reach: () => Promise.resolve('same visible tasks'),
     shown: () => Promise.resolve(shown),
   });
@@ -70,7 +69,6 @@ it('a remapped bearer hears no old-person task resync while reach is in flight',
   let reachCalls = 0;
   const board = rig({
     joinedAs: () => Promise.resolve(currentPerson),
-    reads: (_task, personId) => Promise.resolve(personId === first),
     shown: () => Promise.resolve('inbox'),
     reach: async () => {
       reachCalls += 1;
