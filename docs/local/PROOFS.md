@@ -505,7 +505,11 @@ trap then checks that no member of the group is left (`process group ended:
 <id>`, or exit 1). Nothing is signalled by a pid read from a file: the pid
 file the suites write is evidence only. The container is held by the id
 `docker run` returned: readiness, `psql` and removal use that id, and the
-migrations wait until that container is the one publishing the port. The trap
+migrations wait until that container is the one publishing the port. A run
+ended while `docker run` is in flight waits for it and removes the container
+by the id it wrote to `--cidfile`. That file and the keeper's FIFO sit in a
+`mktemp -d` folder of the run's own, which the trap removes, so two runs
+sharing an evidence path never touch each other's. The trap
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
 removed`, and `Tests 30 passed (30)`, with no expected failure. `--no-pull`
