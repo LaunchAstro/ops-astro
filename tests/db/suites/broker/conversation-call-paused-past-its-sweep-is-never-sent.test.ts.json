@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation or planning call that reaches custody after its row's sweep window is never sent; judged on the real call rows."
+}

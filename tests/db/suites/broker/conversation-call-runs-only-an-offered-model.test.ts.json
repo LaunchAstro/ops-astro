@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation call naming a model its provider does not offer is refused with no row, and an answer naming another model is held; judged on real call rows."
+}

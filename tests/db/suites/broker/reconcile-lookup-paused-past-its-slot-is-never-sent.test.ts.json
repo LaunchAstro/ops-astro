@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A reconciliation lookup that reaches custody after its slot has ended is never sent; the slot is the real lookup_until on the call row."
+}
