@@ -45,10 +45,8 @@ import { readNamedSuites } from '../named-suites.ts';
 import { planItems, readPlan } from '../db-shards.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
-/**
- * What this base cannot run yet, with the reason. Each prints `unrun` and
- * fails the command until the part lands here (Rebase notes on the pull request).
- */
+// What this base cannot run yet, with the reason. Each prints `unrun` and
+// fails the command until the part lands here (Rebase notes on the pull request).
 const UNRUN = [
   [
     'T4c: the pinned-mockup comparison at 1480, 900 and 390',
