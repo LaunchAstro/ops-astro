@@ -493,3 +493,22 @@ test('an approved address counts only as a whole address, at either end', () => 
   );
   for (const text of delimited) assert.deepEqual(addressRules(text, 'blob'), [], text);
 });
+
+test('only a closed quote, repeated emphasis or a URL authority frames an approved address', () => {
+  const framed = [
+    `'${approvedLocal}, the first sign-in'`,
+    `**${approvedLocal}**`,
+    `postgresql://${approvedLocal}/db`,
+  ];
+  for (const text of framed) assert.deepEqual(addressRules(text, 'blob'), [], text);
+  const unframed = [`'${approvedLocal} is not closed`, `**${approvedLocal}`, `x//${approvedLocal}`];
+  for (const text of unframed)
+    assert.deepEqual(addressRules(text, 'blob'), ['contributor-address'], text);
+});
+
+test('an address code builds at run time, or a bare host, is not a written address', () => {
+  for (const text of ['`scan-${nonce}@alpha.local`', "'@alpha.local'", '`@agency.example`'])
+    assert.deepEqual(addressRules(text, 'blob'), [], text);
+  const literal = ['${x}ops', 'alpha.local'].join('@');
+  assert.deepEqual(addressRules(literal, 'blob'), ['contributor-address'], literal);
+});

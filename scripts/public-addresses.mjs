@@ -12,16 +12,32 @@
 // a scoped package at a three-part version reads as an address and every
 // lockfile in the repository becomes a finding.
 //
-// The local part is taken whole. Punctuation a local part may carry, such as
-// `!` or `'`, joins it when letters or digits sit on both sides, so an
-// unlisted address can no longer be read as the approved address it ends in.
-// Leading punctuation is read as a quote or delimiter, as in `'name@host'`.
+// The local part is taken whole: every character a local part may carry
+// (RFC 5322 atext, and dots), so punctuation at either edge of a listed local
+// part makes a different, unlisted address, and is never dropped.
 const addressPattern =
-  /[\p{L}\p{N}._%+-]+(?:[!#$&'*/=?^`{|}~]+[\p{L}\p{N}._%+-]+)*@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+  /[\p{L}\p{N}!#$%&'*+/=?^_`{|}~.-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
 // A match with an address character touching either end is part of a longer
 // address, so no exact allowance applies to it.
 const touchesBefore = /[@\p{L}\p{N}]$/u;
 const touchesAfter = /^(?:[@\p{L}\p{N}_-]|\.[a-z0-9-])/iu;
+
+/**
+ * The address without what can be shown to frame it rather than belong to
+ * it: a quote closed later on the same line, emphasis repeated right after
+ * it, or the `//` of a URL's authority. Any other edge character stays.
+ */
+function framed(text, index, address) {
+  const end = index + address.length;
+  const lineEnd = text.indexOf('\n', end);
+  const after = text.slice(end, lineEnd === -1 ? undefined : lineEnd);
+  const quote = /^['`]/u.exec(address)?.[0];
+  if (quote !== undefined && after.includes(quote)) return address.slice(1);
+  const emphasis = /^(?:\*\*?|__?)/u.exec(address)?.[0];
+  if (emphasis !== undefined && after.startsWith(emphasis)) return address.slice(emphasis.length);
+  if (address.startsWith('//') && text[index - 1] === ':') return address.slice(2);
+  return address;
+}
 
 // Provenance only. Allowed as a commit identity; a finding inside a blob.
 const provenanceIdentities = [
@@ -59,7 +75,12 @@ const publishedAddresses = [
 export function addressRules(text, scope) {
   const found = new Set();
   for (const { 0: address, index } of text.matchAll(addressPattern)) {
-    const value = address.toLowerCase();
+    const value = framed(text, index, address).toLowerCase();
+    const local = value.slice(0, value.lastIndexOf('@'));
+    // Not a written address: no letter or digit in the local part (a bare
+    // `'@host'`), or a local part a `${...}` placeholder ends, which code
+    // fills in when it runs.
+    if (!/[\p{L}\p{N}]/u.test(local) || /\$\{[^}]*\}$/u.test(local)) continue;
     const end = index + address.length;
     const whole =
       !touchesBefore.test(text.slice(Math.max(0, index - 2), index)) &&
