@@ -93,7 +93,8 @@ async function sources() {
     resolve: { alias: { '@launchastro/ui': join(repo, 'packages', 'ui', 'src', 'index.ts') } },
     build: { write: false, minify: false },
   });
-  return [...shipped]
+  // A module imported with a query (`?worker`, `?browser`) is still that file.
+  return [...new Set([...shipped].map((id) => id.split('?')[0]))]
     .filter((id) => id.startsWith(`${repo}/`) && !id.includes('/node_modules/'))
     .filter((id) => /\.[cm]?[jt]sx?$/u.test(id))
     .map((id) => relative(WEB, id));
