@@ -64,7 +64,7 @@ export async function stopAtCeiling(
           reservationId: held.reservation_id,
           versionId: held.version_id,
           ceilingMinor: Number(held.held),
-          spentMinor: (await spentOn(tx, held.reservation_id)).spent,
+          spentMinor: Number((await spentOn(tx, held.reservation_id)).spent),
         });
       }),
   );

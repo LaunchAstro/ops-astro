@@ -91,7 +91,7 @@ export async function openCallOn(tx: TenantQuery, r: { reservation_id: string })
 
 /** A hold's spend to date, and the calls it counted while still unsent. */
 export interface Spent {
-  readonly spent: number;
+  readonly spent: bigint;
   /** The `reserved` calls counted at their maximum, for `giveBackReleased`. */
   readonly unsent: readonly string[];
 }
@@ -112,7 +112,7 @@ export async function spentOn(tx: TenantQuery, reservationId: string): Promise<S
        from public.model_calls where business_id = $1 and reservation_id = $2`,
     [tx.businessId, reservationId],
   );
-  return { spent: Number(row?.spent ?? 0), unsent: row?.unsent ?? [] };
+  return { spent: BigInt(row?.spent ?? 0), unsent: row?.unsent ?? [] };
 }
 
 /**
@@ -156,13 +156,13 @@ export async function releaseUnstarted(
   runId: string,
   stopped: { readonly envelope_id: string; readonly reservation_id: string },
   answerId: string,
-): Promise<number> {
+): Promise<bigint> {
   const others = await tx.query<{ readonly id: string }>(
     `select id from public.reservations
       where business_id = $1 and run_id = $2 and envelope_id = $3 and id <> $4 and state = 'held'`,
     [tx.businessId, runId, stopped.envelope_id, stopped.reservation_id],
   );
-  if (others.length === 0) return 0;
+  if (others.length === 0) return 0n;
   await acquire(
     tx,
     others.map(({ id }) => ({ lockClass: 'reservation' as const, id })),
@@ -182,12 +182,12 @@ export async function releaseUnstarted(
       returning r.id::text as id, r.held_minor::text as held_minor`,
     [tx.businessId, ids, answerId],
   );
-  if (released.length === 0) return 0;
-  const total = released.reduce((sum, row) => sum + Number(row.held_minor), 0);
+  if (released.length === 0) return 0n;
+  const total = released.reduce((sum, row) => sum + BigInt(row.held_minor), 0n);
   await tx.query(
     `update public.task_envelopes set held_minor = held_minor - $3
       where business_id = $1 and id = $2`,
-    [tx.businessId, stopped.envelope_id, total],
+    [tx.businessId, stopped.envelope_id, total.toString()],
   );
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = 'abandoned'

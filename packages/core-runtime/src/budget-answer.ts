@@ -39,14 +39,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import {
-  observedRefusal,
-  openCallOn,
-  recordedRefusal,
-  releaseUncounted,
-  releaseUnstarted,
-  spentOn,
-} from './budget-stop.ts';
+import { openCallOn, recordedRefusal, releaseUncounted, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes, insertApproval } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -58,18 +51,13 @@ export interface BudgetStopTopUpRequest extends BudgetAnswerRequest {
 }
 
 export type TopUpOutcome =
-  | { readonly state: 'applied'; readonly answerId: string; readonly heldMinor: number }
+  /** Minor units as a decimal string: a raised hold can pass what a number holds exactly. */
+  | { readonly state: 'applied'; readonly answerId: string; readonly heldMinor: string }
   | {
       readonly state: 'awaiting_second';
       readonly approvalId: string;
       readonly thresholdMinor: number;
     };
-
-export interface EndOutcome {
-  readonly answerId: string;
-  readonly releasedMinor: number;
-  readonly spentMinor: number;
-}
 
 /** Top up a stopped run's approved ceiling, under four eyes above the threshold. */
 export async function topUpAtBudgetStop(
@@ -120,7 +108,7 @@ export async function topUpAtBudgetStop(
     ],
   );
   const heldMinor = await raiseHold(tx, request, opened.value);
-  return { ok: true, value: { state: 'applied', answerId, heldMinor } };
+  return { ok: true, value: { state: 'applied', answerId, heldMinor: heldMinor.toString() } };
 }
 
 /**
@@ -182,11 +170,11 @@ async function raiseHold(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
-): Promise<number> {
+): Promise<bigint> {
   if (CLOSED_STOPS.includes(locked.reservation_state)) return await holdTopUp(tx, request, locked);
   const { spent, unsent } = await spentOn(tx, locked.reservation_id);
   // Exact: the hold plus a valid top-up can pass 2^53, where a number rounds.
-  const held = BigInt(locked.held_minor) + BigInt(request.amountMinor) - BigInt(spent);
+  const held = BigInt(locked.held_minor) + BigInt(request.amountMinor) - spent;
   await tx.query(
     `update public.reservations set held_minor = $3 where business_id = $1 and id = $2`,
     [tx.businessId, locked.reservation_id, held.toString()],
@@ -196,7 +184,7 @@ async function raiseHold(
         set maximum_minor = maximum_minor + $3, held_minor = held_minor + $3 - $4,
             actual_minor = actual_minor + $4
       where business_id = $1 and id = $2`,
-    [tx.businessId, locked.envelope_id, request.amountMinor, spent],
+    [tx.businessId, locked.envelope_id, request.amountMinor, spent.toString()],
   );
   // A call the sweep released since the count read it went back onto this hold.
   const back = await giveBackReleased(tx, unsent);
@@ -204,7 +192,7 @@ async function raiseHold(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
   );
-  return Number(held) + back;
+  return held + back;
 }
 
 /**
@@ -222,7 +210,7 @@ async function holdTopUp(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   locked: Opened['locked'],
-): Promise<number> {
+): Promise<bigint> {
   await tx.query(
     `update public.task_envelopes set maximum_minor = maximum_minor + $3
       where business_id = $1 and id = $2`,
@@ -247,54 +235,5 @@ async function holdTopUp(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
   );
-  return request.amountMinor;
-}
-
-/** End the work at the budget stop: one click, the hold released, the task parked. */
-export async function endAtBudgetStop(
-  tx: TenantQuery,
-  request: BudgetAnswerRequest,
-): Promise<BudgetAnswerResult<EndOutcome>> {
-  const opened = await openAnswer(tx, request, 'gate');
-  if (!opened.ok) return opened;
-  const { person, locked } = opened.value;
-  const refused = await observedRefusal(tx, locked.reservation_state, locked.reservation_id);
-  if (refused !== null) return refused;
-  const answerId = randomUUID();
-  await tx.query(
-    `insert into public.budget_answers (business_id, id, ask_id, run_id, kind, first_person_id)
-     values ($1, $2, $3, $4, 'end', $5)`,
-    [tx.businessId, answerId, locked.ask_id, request.runId, person.personId],
-  );
-  // A hold a lineage cancel already classified is not released twice.
-  let releasedMinor = 0;
-  let spentMinor = 0;
-  if (locked.reservation_state === 'held') {
-    const counted = await spentOn(tx, locked.reservation_id);
-    spentMinor = counted.spent;
-    releasedMinor = Number(locked.held_minor) - spentMinor;
-    await tx.query(
-      `update public.reservations
-          set state = 'abandoned', classified_cause = 'budget_stop_ended',
-              classified_cause_id = $3, terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [tx.businessId, locked.reservation_id, answerId],
-    );
-    await tx.query(
-      `update public.task_envelopes
-          set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-        where business_id = $1 and id = $2`,
-      [tx.businessId, locked.envelope_id, locked.held_minor, spentMinor],
-    );
-    // A call the sweep released since the count read it is spent no longer.
-    const back = await giveBackReleased(tx, counted.unsent);
-    spentMinor -= back;
-    releasedMinor += back;
-  }
-  releasedMinor += await releaseUnstarted(tx, request.runId, locked, answerId);
-  await tx.query(
-    `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
-    [tx.businessId, request.runId],
-  );
-  return { ok: true, value: { answerId, releasedMinor, spentMinor } };
+  return BigInt(request.amountMinor);
 }

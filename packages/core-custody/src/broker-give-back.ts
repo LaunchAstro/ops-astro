@@ -91,14 +91,14 @@ export async function lockEnvelope(tx: TenantQuery, callId: string): Promise<voi
 export async function giveBackReleased(
   tx: TenantQuery,
   unsent: readonly string[],
-): Promise<number> {
-  if (unsent.length === 0) return 0;
+): Promise<bigint> {
+  if (unsent.length === 0) return 0n;
   const rows = await tx.query<{ readonly id: string; readonly state: string }>(
     `select id, state from public.model_calls
       where business_id = $1 and id = any($2::uuid[]) order by id for update`,
     [tx.businessId, unsent],
   );
-  let back = 0;
+  let back = 0n;
   for (const { id, state } of rows) {
     // One call at a time, on the count's one connection.
     // eslint-disable-next-line no-await-in-loop
@@ -109,11 +109,11 @@ export async function giveBackReleased(
 
 /**
  * Give back what the ended call did not spend, when its hold counted it at its
- * maximum; the amount given back, or 0. A call a person wrote off gives
+ * maximum; the amount given back in minor units, exactly, or 0. A call a person wrote off gives
  * nothing back: the write-off's charge is final, and a top-up answer on the
  * hold it closed never moved the call onto the envelope (`holdTopUp`).
  */
-export async function giveBack(tx: TenantQuery, callId: string): Promise<number> {
+export async function giveBack(tx: TenantQuery, callId: string): Promise<bigint> {
   const [due] = await tx.query<Due>(
     `select r.id as reservation_id, r.envelope_id, r.state = 'held' as held,
             (c.reserved_minor - coalesce(c.actual_minor, 0))::text as back
@@ -124,7 +124,7 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<number>
         for update of r`,
     [tx.businessId, callId, COUNTED_CAUSES],
   );
-  if (due === undefined || Number(due.back) <= 0) return 0;
+  if (due === undefined || BigInt(due.back) <= 0n) return 0n;
   if (due.held) {
     await tx.query(
       `update public.reservations set held_minor = held_minor + $3
@@ -138,5 +138,5 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<number>
       where business_id = $1 and id = $2`,
     [tx.businessId, due.envelope_id, due.back, due.held ? due.back : 0],
   );
-  return Number(due.back);
+  return BigInt(due.back);
 }
