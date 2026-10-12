@@ -72,7 +72,14 @@ export const manifestPathIn = (root: string): string =>
       ? join(root, FOLDER)
       : join(root, SINGLE);
 
-const listOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
+/** A manifest's list of `kind`: absent is empty, and anything but an array of strings is refused. */
+export function suiteList(file: string, kind: string, value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    refuse(file, `"${kind}" must be an array of strings`);
+  }
+  return value as string[];
+}
 
 /** The named suites under `root`, from the folder when it exists, else the single file. */
 export function readNamedSuites(root: string): NamedSuites {
@@ -82,7 +89,11 @@ export function readNamedSuites(root: string): NamedSuites {
       files.filter((entry) => entry.kind === kind).map((entry) => entry.suite);
     const history = join(root, SUITES_HISTORY);
     const comment = existsSync(history)
-      ? listOf((JSON.parse(readFileSync(history, 'utf8')) as Record<string, unknown>)['comment'])
+      ? suiteList(
+          SUITES_HISTORY,
+          'comment',
+          (JSON.parse(readFileSync(history, 'utf8')) as Record<string, unknown>)['comment'],
+        )
       : [];
     return {
       comment,
@@ -93,9 +104,9 @@ export function readNamedSuites(root: string): NamedSuites {
   if (existsSync(join(root, FOLDER))) return readFolder(root);
   const manifest = JSON.parse(readFileSync(join(root, SINGLE), 'utf8')) as Record<string, unknown>;
   return {
-    comment: listOf(manifest['comment']),
-    invariant: listOf(manifest['invariant']),
-    conformance: listOf(manifest['conformance']),
+    comment: suiteList(SINGLE, 'comment', manifest['comment']),
+    invariant: suiteList(SINGLE, 'invariant', manifest['invariant']),
+    conformance: suiteList(SINGLE, 'conformance', manifest['conformance']),
   };
 }
 
@@ -244,7 +255,7 @@ export function readIsolationSuites(root: string): { invariant: string[] } {
     string,
     unknown
   >;
-  return { invariant: listOf(manifest['invariant']) };
+  return { invariant: suiteList(ISOLATION, 'invariant', manifest['invariant']) };
 }
 
 /** Converts the per-area lists and the isolation list to one file per suite, then removes them. */

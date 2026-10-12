@@ -156,6 +156,19 @@ it('without the folder, reads the single file exactly as before, in its own orde
   expect(readNamedSuites(tempRoot(realText))).toStrictEqual(real);
 });
 
+it('without the folder, refuses a single file whose list is not an array of strings', () => {
+  const one = (body: unknown) => () => readNamedSuites(tempRoot(JSON.stringify(body)));
+  expect(one({ invariant: [API], conformance: 'tests/api/c.test.ts' })).toThrow(
+    /"conformance" must be an array of strings/u,
+  );
+  expect(one({ invariant: [API, 3] })).toThrow(/"invariant" must be an array of strings/u);
+  expect(readNamedSuites(tempRoot(JSON.stringify({ invariant: [API] })))).toStrictEqual({
+    comment: [],
+    invariant: [API],
+    conformance: [],
+  });
+});
+
 it('joins the comment as history then each area in file order, and sorts the suites', () => {
   const root = folder({
     'tests-runtime.json': {

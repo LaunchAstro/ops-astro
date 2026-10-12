@@ -174,6 +174,43 @@ test('keeps diagnostic values private', () => {
   );
 }
 
+const privateMarkers = [
+  'synthetic-env-credential-5159',
+  'synthetic-collection-secret',
+  '/private/example/credentials.env',
+];
+
+async function redactsSuiteError(): Promise<void> {
+  await withSuite(
+    reachesDatabase +
+      `
+throw new Error('suite-error-marker password=synthetic-collection-secret ' + process.env.DB_REPORT_TEST_TOKEN + ' /private/example/credentials.env');
+`,
+    (run) => {
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain('suite-error-marker');
+      for (const marker of privateMarkers) expect(run.stderr).not.toContain(marker);
+      expect(run.stderr).not.toContain(root);
+    },
+  );
+}
+
+async function redactsMissingReportOutput(): Promise<void> {
+  await withSuite(
+    reachesDatabase +
+      `
+process.stderr.write('missing-report-marker password=synthetic-collection-secret ' + process.env.DB_REPORT_TEST_TOKEN + ' /private/example/credentials.env\\n');
+`,
+    (run) => {
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain('a suite produced no readable result');
+      expect(run.stderr).toContain('missing-report-marker');
+      for (const marker of privateMarkers) expect(run.stderr).not.toContain(marker);
+    },
+    true,
+  );
+}
+
 async function boundsDetail(): Promise<void> {
   await withSuite(
     reachesDatabase +
@@ -272,6 +309,16 @@ describe.skipIf(databaseUrl === '')('database conformance failure reporting', ()
   );
   it('redacts credentials and private paths from assertion detail', redactsPrivateDetail, 120_000);
   it(
+    'redacts credentials and private paths from an error raised outside any test',
+    redactsSuiteError,
+    120_000,
+  );
+  it(
+    'redacts credentials and private paths from a suite output printed without a report',
+    redactsMissingReportOutput,
+    120_000,
+  );
+  it(
     'bounds assertion detail across multiple failures and reports truncation',
     boundsDetail,
     120_000,
@@ -285,4 +332,38 @@ describe.skipIf(databaseUrl === '')('database conformance failure reporting', ()
     separatesDelayedReaderCost,
     120_000,
   );
+});
+
+describe('database conformance manifest', () => {
+  it('refuses a manifest whose suite list is not an array of strings, before running anything', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'db-manifest-'));
+    try {
+      for (const body of [
+        {
+          invariant: ['tests/runtime/aw-01-durable-limit.test.ts'],
+          conformance: 'tests/x.test.ts',
+        },
+        { invariant: ['tests/runtime/aw-01-durable-limit.test.ts', 7] },
+        { invariant: 'tests/runtime/aw-01-durable-limit.test.ts' },
+      ]) {
+        const manifest = join(directory, 'manifest.json');
+        writeFileSync(manifest, JSON.stringify(body));
+        const run = spawnSync(
+          process.execPath,
+          ['scripts/db-conformance.mjs', '--manifest', manifest],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            env: { ...process.env, DATABASE_URL: 'postgres://nobody@127.0.0.1:1/never' },
+            timeout: 60_000,
+          },
+        );
+        expect(run.status, JSON.stringify(body)).toBe(2);
+        expect(run.stderr).toMatch(/must be an array of strings/u);
+        expect(run.stderr).not.toContain('did not answer');
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
