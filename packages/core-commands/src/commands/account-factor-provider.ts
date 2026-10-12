@@ -41,6 +41,8 @@ export interface SessionsEnded {
 export interface FactorProvider {
   /** The ids of the factors the provider holds verified for the token's login. */
   verifiedFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
+  /** The ids of every factor the provider holds for the token's login, verified or not. */
+  heldFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
   enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
   verify(
     accessToken: string,

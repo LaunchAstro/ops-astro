@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A factor removed at the provider once this product has decided it goes
-// (`account-factor.ts`): an enrolment that lost, under the record lock, to a
-// factor the login verified elsewhere, or a removal the record has committed.
-// And a stray the product leaves there, reported: a factor issued or proven
-// at the provider whose record was then refused.
+// A factor removed at the provider once this product's committed record holds
+// it removed for the login (0064; removed is final): an enrolment that lost
+// under the record lock, a removal the record has committed, a factor issued
+// to an enrolment the record refused (held removed first), and a good code
+// for a factor the record has since removed. One the provider will not remove
+// is reported, and asked again on the login's next proven code (`catchUp`).
+// A factor the record has not decided on stays where it is: it may be another
+// business's enrolment in flight (#300).
 // Split from `account-factor.ts` to keep that file under the line limit.
 
-import { loginHasVerifiedFactor, withSession } from '../../../core-records/src/index.ts';
+import {
+  factorDigest,
+  loginHasVerifiedFactor,
+  loginRemovedFactors,
+  recordStrayRemoved,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { FactorProvider } from './account-factor-provider.ts';
@@ -35,6 +44,55 @@ export async function removeAtProvider(
     if ((await provider.remove(accessToken, providerFactorId)).ok) return;
   }
   await reportOrphan(caller, { providerFactorId }, attempt, 'PROVIDER_ANSWER_INVALID');
+}
+
+/** Whether the login's committed record holds the factor removed. */
+export async function heldRemoved(
+  caller: FactorCaller,
+  { providerFactorId }: { readonly providerFactorId: string },
+): Promise<boolean> {
+  const removed = await caller.database.withBusiness(caller.businessId, (tx) =>
+    loginRemovedFactors(tx, caller.presented.subject),
+  );
+  return removed.includes(factorDigest(providerFactorId));
+}
+
+/** A factor issued to an enrolment the record refused: held removed, then removed there. */
+export async function letStrayGo(
+  caller: FactorCaller,
+  provider: FactorProvider,
+  stray: { readonly providerFactorId: string },
+  attempt: string,
+): Promise<void> {
+  await caller.database.withBusiness(caller.businessId, (tx) =>
+    recordStrayRemoved(tx, { subject: caller.presented.subject, ...stray }),
+  );
+  await removeAtProvider(caller, provider, caller, stray, attempt);
+}
+
+/**
+ * After a code the provider proved, with the session it gave: every factor the
+ * provider still holds for the login that the login's record holds removed is
+ * removed there, so a removal the provider refused earlier is not left valid.
+ */
+export async function catchUp(
+  caller: FactorCaller,
+  provider: FactorProvider,
+  session: { readonly accessToken: string },
+  attempt: string,
+  /** The act's own target, already removed or kept by the act itself. */
+  handled: string,
+): Promise<void> {
+  const held = await provider.heldFactors(session.accessToken);
+  if (!held.ok || held.value.length === 0) return;
+  const removed = await caller.database.withBusiness(caller.businessId, (tx) =>
+    loginRemovedFactors(tx, caller.presented.subject),
+  );
+  for (const providerFactorId of held.value) {
+    if (providerFactorId === handled || !removed.includes(factorDigest(providerFactorId))) continue;
+    // oxlint-disable-next-line no-await-in-loop
+    await removeAtProvider(caller, provider, session, { providerFactorId }, attempt);
+  }
 }
 
 /**

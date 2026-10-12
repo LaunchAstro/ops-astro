@@ -35,7 +35,10 @@ import {
   type SessionsEnded,
 } from './account-factor-provider.ts';
 import {
+  catchUp,
+  heldRemoved,
   holdsVerified,
+  letStrayGo,
   ownFactor,
   removeAtProvider,
   reportOrphan,
@@ -116,9 +119,9 @@ export async function enrolSecondFactor(
     return undefined;
   });
   if (!issued.ok) return recorded ?? providerRefusal('malformed', 'answer');
-  // Issued there, refused here: the factor stays at the provider, reported (#300).
+  // Issued there, refused here: held removed for the login, then removed there (#300).
   const stray = { providerFactorId: issued.value.factorId };
-  if (recorded !== undefined) await reportOrphan(caller, stray, sending.operation, recorded.code);
+  if (recorded !== undefined) await letStrayGo(caller, provider, stray, sending.operation);
   return recorded ?? issued.value;
 }
 
@@ -161,17 +164,17 @@ export async function verifySecondFactor(
     return settled.refusal;
   });
   // A session or access ended during the record step's waits undoes what it
-  // decided (`judged`), answered with its own refusal in place of the check's:
-  // no losing enrolment was removed, so none goes at the provider.
-  const { ended, unrecorded = false }: VerifyRecord =
-    recorded?.code === settled.refusal?.code ? settled : {};
-  // No other refusal removes at the provider. A good code for an unverified factor
-  // refused here leaves it verified there, reported orphaned; reconcile is #300.
-  // An enrolment replaced by a newer one (enrolSecondFactor) is not reported.
-  if (unrecorded && verified.ok)
+  // decided (`judged`), answered with its own refusal in place of the check's.
+  const { ended }: VerifyRecord = recorded?.code === settled.refusal?.code ? settled : {};
+  // A refused good code removes its factor there only once the committed record
+  // holds it removed (a lost or replaced enrolment), never on what the check
+  // saw before the provider call; any other unverified one is reported (#300).
+  if (verified.ok && recorded !== undefined && (await heldRemoved(caller, target)))
     await removeAtProvider(caller, provider, verified.value, target, sending.attempt);
   else if (verified.ok && recorded !== undefined && target.status !== 'verified')
     await reportOrphan(caller, target, sending.attempt, recorded.code);
+  if (verified.ok)
+    await catchUp(caller, provider, verified.value, sending.attempt, target.providerFactorId);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   if (ended === undefined) return verified.value;
@@ -227,6 +230,7 @@ export async function removeSecondFactor(
     return recorded ?? providerRefusal('malformed', 'answer');
   // Only once the record commits; a refusal here removes nothing there.
   await removeAtProvider(caller, provider, proved.value, target, sending.attempt);
+  await catchUp(caller, provider, proved.value, sending.attempt, target.providerFactorId);
   return {
     removed: true,
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
@@ -236,8 +240,6 @@ export async function removeSecondFactor(
 /** What a verify's record step decided, under the login's lock. */
 interface VerifyRecord {
   readonly refusal?: CommandRefusal;
-  /** This call's unverified enrolment lost to a verified factor elsewhere, and was ended here. */
-  readonly unrecorded?: boolean;
   /** The other sessions a completed enrolment ended; unset for a step-up or a refusal. */
   readonly ended?: number | undefined;
 }
@@ -265,12 +267,13 @@ async function recordVerify(
   const elsewhere = await enrolledElsewhere(tx, caller, live);
   // Decided under the lock: this call's unverified enrolment lost, so it goes,
   // ended here first so no later code can record it verified (review r11-1).
-  const unrecorded = elsewhere !== undefined;
-  if (unrecorded) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
-  if (elsewhere !== undefined) return { refusal: elsewhere, unrecorded };
+  if (elsewhere !== undefined) {
+    await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
+    return { refusal: elsewhere };
+  }
   // The first good code completes an enrolment (a factor change); a later one is a step-up.
   let ended: number | undefined;
   if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
   await recordFactorVerified(tx, ownFactor(caller, session, live.id));
-  return { unrecorded, ended };
+  return { ended };
 }
