@@ -157,6 +157,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     lateCommitAlertRetryCase();
     alertLogCase();
     alertLogRollbackCase();
+    alertLogRetentionCase();
   },
 );
 
@@ -663,5 +664,23 @@ function alertLogRollbackCase() {
     // The retry raises it once and logs it once.
     await forwarder(sink()).once();
     expect(await logged()).toBe(before + 1);
+  });
+}
+
+function alertLogRetentionCase() {
+  it('the security alert log keeps ninety days: a pass deletes older rows and keeps newer ones', async () => {
+    await clear();
+    const marker = `retention-${randomBytes(4).toString('hex')}`.replace(/[0-9]/gu, 'x');
+    await fixture.db.admin.execute(
+      `insert into ops.security_alert_log (kind, at) values
+         ($1, now() - interval '90 days 1 minute'), ($1, now() - interval '89 days 23 hours')`,
+      [marker],
+    );
+    await forwarder(sink()).once();
+    const left = await fixture.db.admin.execute<{ older: boolean }>(
+      `select at < now() - interval '90 days' as older from ops.security_alert_log where kind = $1`,
+      [marker],
+    );
+    expect(left).toEqual([{ older: false }]);
   });
 }
