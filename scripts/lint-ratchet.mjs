@@ -187,6 +187,14 @@ const byArea = existsSync(BASELINE_DIR);
 const areaCounts = byArea ? attempt(() => countByArea(diagnostics)) : {};
 const wrote = byArea ? BASELINE_DIR : BASELINE;
 
+// Per-area baselines, once kept, are kept: one total would let an area take
+// another area's allowance.
+if (base?.kind === 'areas' && !byArea) {
+  fail(
+    `the base keeps a per-area baseline in ${BASELINE_DIR}/; keep it, do not replace it with ${BASELINE}.`,
+  );
+}
+
 if (write) {
   let higher = [];
   if (byArea && base?.kind === 'areas') higher = areaRises(areaCounts, base.areas);
