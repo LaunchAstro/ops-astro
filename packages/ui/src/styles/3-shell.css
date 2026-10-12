@@ -403,9 +403,12 @@
     right: 0;
   }
   /* A menu open in the chrome lifts it over the dock (DS-TOK-99), which
-     would otherwise cover the menu's lower items (OW-127). The lift lands
-     with the menu: reduced motion's reset would ease it in a frame late. */
-  .chrome:has(.menu) {
+     would otherwise cover the menu's lower items (OW-127), and so does the
+     task editor open from the toolbar, whose right-hand controls it would
+     cover. The lift lands with the menu: reduced motion's reset would ease
+     it in a frame late. */
+  .chrome:has(.menu),
+  .chrome:has(.task-controls[open]) {
     z-index: 65;
     transition-property: none;
   }
