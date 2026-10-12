@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A uuid operand is one id in either letter case, in every read and slot. The
-// first sweep's one request per read leaves optional operands out, so its
-// twin can change nothing. Here each (read, `id` operand) in `READ_OPERANDS`
-// is a case: a row of this business answers alike in both spellings, and a
-// made-up id and another business's id are refused alike and never echoed. A
-// read this world cannot seed cheaply gets the refusals only, `REFUSAL_ONLY`
-// saying why, and a new `id` operand with no case fails the first test.
+// A uuid operand is one id in either letter case, in every read and slot. Each
+// (read, `id` operand) in `READ_OPERANDS` is a case: a row of this business
+// answers alike in both spellings, and a made-up id and another business's id
+// are refused alike and never echoed. A read this world cannot seed cheaply gets
+// the refusals only (`REFUSAL_ONLY` says why); a new `id` operand with no case
+// fails the first test.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -74,6 +73,7 @@ interface Case {
   readonly foreign: () => string;
   /** The answer to an id that names nothing, when it is not a refusal. */
   readonly miss?: Body;
+  readonly hit?: (id: string) => Body;
 }
 
 /** A case whose request is `extra` and this one operand; `seeded` and `foreign` name rows. */
@@ -122,6 +122,7 @@ const CASES: Readonly<Record<string, Case>> = {
     foreign: at('bravoEvent'),
     // The task is there, so the entry missing is null, not a refusal (U116).
     miss: { ok: true, view: { historyEvent: null } },
+    hit: (eventId) => ({ ok: true, view: { historyEvent: { eventId } } }),
   },
   'task.board board': one('task.board', 'board', 'board', 'bravo'),
   'task.board person': one('task.board', 'person', 'owner', 'bravoOwner', { mode: 'aggregate' }),
@@ -276,12 +277,13 @@ describe.skipIf(serverUrl === undefined)('each uuid operand, in either letter ca
   afterAll(async () => {
     await tearDown();
   });
+  const seedable = Object.keys(CASES).filter((key) => !(key in REFUSAL_ONLY));
 
-  const seeded = Object.keys(CASES).filter((key) => !(key in REFUSAL_ONLY));
-
-  it.each(seeded)('%s: a seeded row answers alike in either case', async (key) => {
-    const answer = await twins(key, (CASES[key] as Case).seeded?.() ?? '');
+  it.each(seedable)('%s: a seeded row answers alike in either case', async (key) => {
+    const { seeded, hit } = CASES[key] as Case;
+    const answer = await twins(key, seeded?.() ?? '');
     expect(isCommandRefusal(answer), `${key}: ${JSON.stringify(answer)}`).toBe(false);
+    if (hit !== undefined) expect(answer, key).toMatchObject(hit(seeded?.() ?? ''));
   });
 
   it.each(Object.keys(CASES))('%s: made-up and foreign ids answer alike, unechoed', async (key) => {
