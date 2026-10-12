@@ -17,6 +17,8 @@
 // `task:write`); this store is told the actor and trusts it.
 
 import { randomUUID } from 'node:crypto';
+import { readableTaskIds, readableTaskParams } from '../authority/readable-scope.ts';
+import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
@@ -78,18 +80,22 @@ export async function tagsOfTask(tx: TenantQuery, taskId: string): Promise<reado
   );
 }
 
-/** Tags carried by the admitted tasks, in each task's canonical name order. */
+/**
+ * Tags carried by the admitted tasks `readers` may still read, in each task's
+ * canonical name order; null `readers` for a caller that has judged reach.
+ */
 export async function tagsOfTasks(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlyMap<string, readonly Tag[]>> {
   if (taskIds.length === 0) return new Map();
   const rows = await tx.query<Tag & { readonly task_id: string }>(
     `select t.task_id::text, g.id, g.name from public.task_tags t
        join public.tags g on g.business_id = t.business_id and g.id = t.tag_id
-      where t.business_id = $1 and t.task_id = any($2::uuid[])
+      where t.business_id = $1 and t.task_id = any(${readableTaskIds('$2::uuid[]', 3)})
       order by lower(g.name), g.id`,
-    [tx.businessId, taskIds],
+    [tx.businessId, taskIds, ...readableTaskParams(readers)],
   );
   const tasks = new Map<string, Tag[]>();
   for (const row of rows) {

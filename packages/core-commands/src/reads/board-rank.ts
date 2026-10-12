@@ -11,21 +11,20 @@
 // parent's completion (MP-4-15). `mp-5-8-board-columns` and
 // `mp-5-8-board-rank-steps` read every row back against `task.read`.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { readableTaskCondition, readableTaskParams } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { RankView } from '../../../core-wire/src/index.ts';
 import { calcLine, numberPool, scoreTask, rankInputOf, type RankPoolRow } from './rank.ts';
 
 /**
- * Each task's rank in the pool `readable` names. `readable` is the caller's
- * scope from the one grant read that admitted the board (null under a
- * collection-wide grant), so the pool is filtered inside the query and no
- * second read of the grants can disagree with the first. The clock is the
- * database's, as `readTaskRank`'s is.
+ * Each task's rank in the pool `readers` reach, judged inside the query
+ * (`readableTaskCondition`), as `readTaskRank` judges its pool; null reads
+ * every task. The clock is the database's, as `readTaskRank`'s is.
  */
 export async function readRanks(
   tx: TenantQuery,
   taskTypeId: string,
-  readable: readonly string[] | null,
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlyMap<string, RankView>> {
   const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
@@ -41,8 +40,8 @@ export async function readRanks(
          on priority.business_id = r.business_id and priority.key = 'priority_stages'
         and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and ($3::uuid[] is null or r.id = any($3::uuid[]))`,
-    [tx.businessId, taskTypeId, readable],
+        and ($3::text[] is null or ${readableTaskCondition('r', 3)})`,
+    [tx.businessId, taskTypeId, ...readableTaskParams(readers)],
   );
   const now = rows[0]?.now ?? new Date();
   const numbers = numberPool(

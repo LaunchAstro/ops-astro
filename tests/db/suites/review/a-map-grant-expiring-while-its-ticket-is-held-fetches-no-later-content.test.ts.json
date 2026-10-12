@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Sol's control: a map grant that expires while a writer holds its ticket reaches no content written after the expiry"
+}

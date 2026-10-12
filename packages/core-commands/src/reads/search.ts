@@ -7,17 +7,26 @@
 // A post-filter reads the other client's row into this process and throws it
 // away, which is reading it; and a count taken before the filter is the leak
 // SP-8 names. So the grants are asked first (`heldScopes`, the grant model's
-// own expression of "live") and the statement is handed the answer: the whole
-// business, or the named records and nothing else.
+// own expression of "live") to admit the viewer, and the statement judges
+// each row by the same live grants inside itself (`readableTaskCondition`):
+// the whole business, the named records, or, for the team only, a named map's
+// tickets. A map's tickets never reach a client surface (WF-1), as `task.read`
+// refuses them to a reader outside the team.
 //
 // `search_tsv` is kept by the record store's trigger from searchable slotted
 // text (`migrations/0005_record_store.sql`), which for a task is its title.
 // The ledger, the Docs panel and C84's erasure canary call this function
 // rather than a second query over the same index.
 
-import { heldScopes, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  heldScopes,
+  readableTaskCondition,
+  readableTaskParams,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
+import { isInternalReader } from './tasks.ts';
 import type { SearchHit, TaskSearchResult } from '../../../core-wire/src/index.ts';
 
 /** The most hits one search answers; the ⌘K list shows a handful. */
@@ -68,10 +77,9 @@ export async function searchTasks(
   if (!Number.isInteger(asked) || asked < 1 || asked > SERVER_HIT_LIMIT) return LIMIT_INVALID;
   if (session.roleKey === null) return NOT_A_MEMBER;
   const wanted = target.limit === undefined ? asked : asked + 1;
-  const scopes = await heldScopes(tx, subjectsOf(session), { collection: 'task', action: 'read' });
+  const subjects = subjectsOf(session);
+  const scopes = await heldScopes(tx, subjects, { collection: 'task', action: 'read' });
   if (scopes.length === 0) return NO_READ_GRANT;
-  const wholeBusiness = scopes.some((scope) => scope.kind === 'business');
-  const records = scopes.flatMap((scope) => (scope.kind === 'record' ? [scope.id] : []));
   const words = wordsOf(target.query).map((word) => `${word}:*`);
 
   // Key `txt_1` and title `txt_4`, the slots `reads/tasks.ts` reads.
@@ -81,11 +89,11 @@ export async function searchTasks(
       where r.business_id = $1
         and r.record_type_id = $2
         and r.deleted_at is null
-        and ($3::boolean or r.id = any($4::uuid[]))
+        and ${readableTaskCondition('r', 3, isInternalReader(session.roleKey))}
         and r.search_tsv @@ to_tsquery('english', $5)
       order by ts_rank(r.search_tsv, to_tsquery('english', $5)) desc, r.txt_1
       limit $6::int`,
-    [tx.businessId, target.taskTypeId, wholeBusiness, records, words.join(' & '), wanted],
+    [tx.businessId, target.taskTypeId, ...readableTaskParams(subjects), words.join(' & '), wanted],
   );
   const hits = rows.slice(0, asked).map((row) => hitOf(row));
   return target.limit === undefined

@@ -12,5 +12,5 @@ export async function readTaskAgents(
   recordId: string,
   reader: string | null,
 ): Promise<RowAgents> {
-  return (await readBoardAgents(tx, [recordId], reader)).get(recordId) ?? NO_AGENTS;
+  return (await readBoardAgents(tx, [recordId], reader, null)).get(recordId) ?? NO_AGENTS;
 }

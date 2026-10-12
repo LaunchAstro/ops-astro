@@ -29,6 +29,7 @@ export async function readTaskSteps(
   const gated = await awaitingApproval(
     tx,
     sent.map((child) => child.id),
+    pool.subjects,
   );
   return sent.map((child) => ({
     id: child.id,

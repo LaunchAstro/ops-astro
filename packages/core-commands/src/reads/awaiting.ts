@@ -12,14 +12,24 @@
 // Whether the wait is the caller's to end is `awaitingTheReader`'s question,
 // answered by `task.decide`'s own rules.
 
-import { readableScope, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  assigneesIfReadable,
+  readableScope,
+  readableTaskIds,
+  readableTaskParams,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { Session, Subject, TenantQuery } from '../../../core-records/src/index.ts';
-import { assignedTo, escalatedDecider, lockedInstant } from '../../../core-runtime/src/index.ts';
+import { escalatedDecider, lockedInstant } from '../../../core-runtime/src/index.ts';
 
-/** The gates waiting on these tasks, each with whether it was escalated (T3a). */
+/**
+ * The gates waiting on these tasks, each with whether it was escalated (T3a),
+ * asked only of those `readers` may read now (`readableTaskIds`).
+ */
 async function openGates(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<
   readonly { readonly task_id: string; readonly id: string; readonly escalated: boolean }[]
 > {
@@ -38,17 +48,18 @@ async function openGates(
       where g.business_id = $1
         and g.state = 'pending' and g.expires_at > statement_timestamp()
         and l.state = 'live' and ver.superseded_at is null
-        and run.task_id = any($2::uuid[])`,
-    [tx.businessId, taskIds],
+        and run.task_id = any(${readableTaskIds('$2::uuid[]', 3)})`,
+    [tx.businessId, taskIds, ...readableTaskParams(readers)],
   );
 }
 
-/** The served tasks with a gate waiting for a decision. */
+/** The served tasks `readers` may still read with a gate waiting for a decision; null for every one. */
 export async function awaitingApproval(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlySet<string>> {
-  return new Set((await openGates(tx, taskIds)).map((gate) => gate.task_id));
+  return new Set((await openGates(tx, taskIds, readers)).map((gate) => gate.task_id));
 }
 
 /** Who asks the board, as `task.decide` would see them deciding. */
@@ -76,9 +87,9 @@ export async function decideReach(tx: TenantQuery, session: Session): Promise<De
  * The waiting tasks with a gate this reader's `task.decide` would admit, asked
  * gate by gate with decide's own checks rather than a copy of them: a decide
  * grant on the task, decide across the business for an escalated gate
- * (`escalatedDecider`), and four eyes for that gate (`assignedTo`). One gate
- * must pass them all, so a gate four eyes refuses beside an escalated gate the
- * reader may not decide leaves them none. Asked only of the few rows already
+ * (`escalatedDecider`), and four eyes for that gate (`assignedTo`'s rule, read
+ * by `assigneesIfReadable`). One gate must pass them all, so a gate four eyes
+ * refuses beside an escalated gate the reader may not decide leaves them none. Asked only of the few rows already
  * waiting; no reach given is none.
  */
 export async function awaitingTheReader(
@@ -90,7 +101,7 @@ export async function awaitingTheReader(
   const granted = [...waiting].filter(
     (taskId) => reach.records === null || reach.records.includes(taskId),
   );
-  const gates = await openGates(tx, granted);
+  const gates = await openGates(tx, granted, reach.subjects);
   const ask = {
     subjects: reach.subjects,
     collection: 'task',
@@ -103,8 +114,14 @@ export async function awaitingTheReader(
     : false;
   const open = gates.filter((gate) => !gate.escalated || wider);
   // One transaction's statements, queued on its one connection in this order.
-  const mine = await Promise.all(
-    open.map(async (gate) => await assignedTo(tx, gate.task_id, reach.personId, gate.id)),
+  // Four eyes is asked with the task's read reach in the same statement: a
+  // task the reader can no longer read waits on nobody here, and nothing of
+  // it is read.
+  const assigned = await Promise.all(
+    open.map(async (gate) => await assigneesIfReadable(tx, gate.task_id, gate.id, reach.subjects)),
   );
-  return new Set(open.filter((_, index) => mine[index] !== true).map((gate) => gate.task_id));
+  const me = reach.personId.toLowerCase();
+  return new Set(
+    open.filter((_, index) => assigned[index]?.includes(me) === false).map((gate) => gate.task_id),
+  );
 }

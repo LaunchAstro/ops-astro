@@ -12,6 +12,9 @@ import {
   DELEGATION_STANDS,
   directableAgents,
   personSubjects,
+  readableTaskIds,
+  readableTaskParams,
+  type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
@@ -33,17 +36,22 @@ export async function readerAgents(
     : await directableAgents(tx, reader, await personSubjects(tx, reader));
 }
 
-/** Each served row's agent and the reader's choices for it; none for an agent reader (null). */
+/**
+ * Each served row's agent and the reader's choices for it; none for an agent
+ * reader (null). A row `readers` can no longer read has no agent read for it;
+ * null `readers` for a caller that has judged reach already.
+ */
 export async function readBoardAgents(
   tx: TenantQuery,
   taskIds: readonly string[],
   reader: string | null,
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlyMap<string, RowAgents>> {
   const found = new Map<string, RowAgents>();
   if (reader === null || taskIds.length === 0) return found;
   const myAgents = await readerAgents(tx, reader);
   for (const taskId of taskIds) found.set(taskId, { agent: null, myAgents });
-  for (const [taskId, agent] of await heldAgents(tx, taskIds)) {
+  for (const [taskId, agent] of await heldAgents(tx, taskIds, readers)) {
     found.set(taskId, { agent, myAgents });
   }
   return found;
@@ -53,6 +61,7 @@ export async function readBoardAgents(
 async function heldAgents(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<readonly (readonly [string, AgentAssigneeView])[]> {
   const rows = await tx.query<{
     readonly task_id: string;
@@ -79,8 +88,8 @@ async function heldAgents(
            join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
           where l.business_id = r.business_id and l.task_id = r.id and l.agent_actor_id = a.id
             and l.state <> 'ended' and ${DELEGATION_STANDS}) run on true
-      where r.business_id = $1 and r.id = any($2::uuid[])`,
-    [tx.businessId, taskIds],
+      where r.business_id = $1 and r.id = any(${readableTaskIds('$2::uuid[]', 3)})`,
+    [tx.businessId, taskIds, ...readableTaskParams(readers)],
   );
   return rows.map((row) => [
     row.task_id,

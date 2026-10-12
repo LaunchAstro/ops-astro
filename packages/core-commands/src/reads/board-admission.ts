@@ -28,9 +28,10 @@ const refuseScope = (): CommandRefusal =>
   );
 
 /**
- * Whether `task.board` admits the caller, from the one read of their grants:
- * it admits, and `serve` filters with the same scope, so no grant changes
- * between the decision and the answer. It comes before any lookup, so a
+ * Whether `task.board` admits the caller, from one read of their grants. It
+ * only admits: `serve` judges the grants again inside each statement that
+ * reads (`boardOf`), so a grant that changes after admission reaches nothing
+ * it no longer covers. It comes before any lookup, so a
  * member holding nothing learns nothing about which boards exist, and it is
  * refused as the grant check refuses, never answered with an empty list
  * (`declared-within`). `admitRead` asks it too (catalogue #415).
@@ -72,19 +73,21 @@ export async function boardAdmission(
 /**
  * The board's rows in the caller's read scope and the newest change among them
  * (MP-5-7), each row with its client where the caller reaches it, as `task.read`
- * sends it (the Clients row door). The caller's decide reach marks the Review
- * mode's rows (MP-5-12); it only marks rows already served under the read scope.
+ * sends it (the Clients row door). Each statement judges the caller's read
+ * reach itself, so a row is read only while it is readable, a map's ticket
+ * included. The caller's decide reach marks the Review mode's rows (MP-5-12);
+ * it only marks rows already served.
  */
 export async function boardOf(
   tx: TenantQuery,
   session: Session,
   taskTypeId: string,
   pool: ReadOperands['task.board'],
-  scope: Awaited<ReturnType<typeof readableScope>>,
   spine: TaskSpine,
 ): Promise<{
   readonly tasks: readonly (Omit<BoardTask, 'client'> & { readonly client: ClientView | null })[];
   readonly changedAt: string | null;
+  readonly wholeBusiness: boolean;
 }> {
   const narrowing: TodoScope | undefined =
     'mode' in pool
@@ -92,17 +95,21 @@ export async function boardOf(
         ? { person: pool.person ?? session.personId }
         : { client: pool.client, ...(pool.person === undefined ? {} : { person: pool.person }) }
       : undefined;
-  const { tasks, changedAt } = await readBoardStamped(
+  const { tasks, changedAt, wholeBusiness } = await readBoardStamped(
     tx,
     taskTypeId,
     'board' in pool ? pool.board : (narrowing ?? null),
-    scope.business ? null : scope.records,
+    subjectsOf(session),
     await decideReach(tx, session),
     session.personId,
     { person: pool.person, client: pool.client },
     spine,
   );
-  return { tasks: await withBoardClients(tx, tasks, subjectsOf(session)), changedAt };
+  return {
+    tasks: await withBoardClients(tx, tasks, subjectsOf(session)),
+    changedAt,
+    wholeBusiness,
+  };
 }
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */

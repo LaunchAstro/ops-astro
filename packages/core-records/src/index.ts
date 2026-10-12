@@ -84,6 +84,10 @@ export {
 export {
   readableRecordIds,
   readableScope,
+  readableTaskCondition,
+  readableTaskIds,
+  readableTaskParams,
+  readsWholeBusiness,
   type ReadableScope,
 } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
@@ -198,7 +202,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
-export { assignedPeople, assignedTo } from './tasks/assignee.ts';
+export { assignedPeople, assignedTo, assigneesIfReadable } from './tasks/assignee.ts';
 export {
   AGENT_ASSIGN,
   AGENT_NAME_LIMIT,
