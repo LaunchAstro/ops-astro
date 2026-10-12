@@ -17,8 +17,10 @@ import type { BoardContext, BoardView, SortState } from './types.ts';
 // not UTF-8 with one, so its word is dropped.
 const UNREADABLE = /\p{Cc}/u;
 const NOT_UTF8 = '\u0000';
-const FATAL = new TextDecoder('utf-8', { fatal: true });
-const LENIENT = new TextDecoder('utf-8');
+// A BOM is a character like any other here (a word separator), never a mark
+// to strip: each run of escapes decodes as it would inside the whole query.
+const FATAL = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+const LENIENT = new TextDecoder('utf-8', { ignoreBOM: true });
 
 /**
  * A query component decoded as URLSearchParams decodes it, except that bytes
