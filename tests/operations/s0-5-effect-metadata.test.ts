@@ -92,22 +92,6 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
       body: { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] },
     };
   }
-  if (declaration.name === 'task.purge') {
-    // The recipe's fresh trash is inside the retention window, so its purge
-    // writes nothing and proves no declaration: this trash is aged past any
-    // window, so the purge removes it and every table it writes shows.
-    const task = await harness.freshTask(`s0-5 effects purge ${randomUUID()}`);
-    const trashed = await harness.asPerson('task.trash', {
-      recordId: task.id,
-      expectedRevision: task.revision,
-    });
-    if (trashed.code !== 'ok') throw new Error(`trash before purge refused ${trashed.code}`);
-    await harness.world.db.admin.execute(
-      `update public.records set deleted_at = deleted_at - interval '100 years' where id = $1`,
-      [task.id],
-    );
-    return { body: {} };
-  }
   if (declaration.name === 'task.revoke_client_share') {
     // The recipe revokes on a task never shared, which changes nothing: share one first.
     const share = COMMAND_SURFACE.find((one) => one.name === 'task.share_with_client');
@@ -147,6 +131,7 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   // (batch 3a join; an agent-path proof is owed, SOL-OWED).
   if ('exception' in prepared && AGENT_ONLY.has(name)) return [];
   if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
+  if (name === 'task.purge') await harness.world.db.admin.execute(TRASH_PAST_WINDOW);
   const before = await fingerprint(harness.world.db.admin);
   const answer = await harness.asPerson(name, prepared.body);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
@@ -199,6 +184,7 @@ const NO_CHANGE: Readonly<Record<string, string>> = {
     'in-app is always on and email waits on AW-07b, so nothing is stored yet (tests/commands/inbox-escalation-settings.test.ts)',
 };
 
+const TRASH_PAST_WINDOW = `update records set deleted_at = now() - interval '9 years' where deleted_at is not null`;
 const detailOf = (answer: { readonly body: Record<string, unknown> }): Record<string, unknown> =>
   answer.body['detail'] as Record<string, unknown>;
 
