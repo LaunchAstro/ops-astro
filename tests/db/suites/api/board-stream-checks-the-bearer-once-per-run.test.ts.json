@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "each task event the board stream hears is one run with one check of the bearer, and the next event checks it again"
+}
