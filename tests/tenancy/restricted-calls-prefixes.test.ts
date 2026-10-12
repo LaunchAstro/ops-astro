@@ -27,17 +27,28 @@
 // the cluster rather than the database, so on a server where any database has
 // reached 0008 it exists at every prefix and is called there; where it does
 // not exist it is not called, and the tally says which.
+//
+// The hosted runner runs this file in the parts tests/db/shard-plan.json
+// names, SUITE_PART=i/k, each on a database of its own. Every part applies
+// every migration in order, since each prefix is the state the one before it
+// left, and proves only its share of the prefixes (`inPart`), so every prefix
+// is proved once across the parts. Unset, the file is one part and proves
+// them all.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   createEmptyDatabase,
   databaseUrlFromEnvironment,
   type EmptyDatabase,
 } from '../support/fresh-database.ts';
 import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
-import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
+import { inPart, suitePart } from '../../scripts/db-shards.ts';
+import {
+  applyMigrations,
+  readMigrations,
+} from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';
 import {
@@ -72,6 +83,7 @@ import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
+const PART = suitePart(process.env['SUITE_PART']);
 
 /** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
 const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
@@ -653,6 +665,19 @@ const CALLERS: readonly CallerName[] = [
   'worker',
 ];
 
+it('every prefix is proved in exactly one of the parts the shard plan names', () => {
+  const plan = JSON.parse(readFileSync('tests/db/shard-plan.json', 'utf8')) as {
+    readonly parts: Readonly<Record<string, number>>;
+  };
+  const count = plan.parts['tests/tenancy/restricted-calls-prefixes.test.ts'] ?? 1;
+  const parts = Array.from({ length: count }, (__, i) =>
+    onDisk.filter((_, at) => inPart(at, { index: i + 1, count })).map(({ version }) => version),
+  );
+  expect(count).toBeGreaterThan(1);
+  expect(parts.flat().toSorted()).toStrictEqual(onDisk.map(({ version }) => version).toSorted());
+  expect(parts.reduce((sum, part) => sum + part.length, 0)).toBe(onDisk.length);
+});
+
 describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every prefix', () => {
   let db: EmptyDatabase;
   let callers: Callers;
@@ -666,6 +691,30 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
     db = await createEmptyDatabase({ part: 'rcp' });
     callers = openCallers(db, { own: alpha, other: bravo });
   }, 180_000);
+
+  /** The two businesses every later prefix holds, written once `businesses` exists (0001). */
+  const openBusinesses = async (): Promise<void> => {
+    for (const id of [alpha, bravo]) {
+      // oxlint-disable-next-line no-await-in-loop
+      await db.admin.execute(
+        `insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $2)`,
+        [id, `b${id.slice(0, 8)}`],
+      );
+    }
+  };
+
+  // The next migration this database has not applied.
+  let applied = 0;
+  /** Apply, one at a time, the migrations before `index` that another part proves. */
+  const catchUpTo = async (index: number): Promise<void> => {
+    for (const migration of onDisk.slice(applied, index)) {
+      // oxlint-disable-next-line no-await-in-loop
+      await applyMigrations(db.admin, [migration]);
+      // oxlint-disable-next-line no-await-in-loop
+      if (migration.version.startsWith('0001')) await openBusinesses();
+    }
+    applied = index + 1;
+  };
 
   afterAll(async () => {
     tally('prefix counts', counts);
@@ -691,27 +740,21 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  for (const migration of onDisk) {
+  for (const [index, migration] of onDisk.entries()) {
+    if (!inPart(index, PART)) continue;
     it(`answers every caller as the contract says after ${migration.version}`, async () => {
       // The runner refuses while this database has other sessions, and the
       // callers hold some from the prefix before. Closed for the migration and
       // opened again on the new prefix.
       await callers.close();
       await db.closeSessions();
+      await catchUpTo(index);
       // oxlint-disable-next-line no-await-in-loop
       const [proof] = await proveEachPrefix(db, [migration]);
       callers = openCallers(db, { own: alpha, other: bravo });
       expect(proof?.version).toBe(migration.version);
       if (proof !== undefined && proof.findings.length > 0) expect(describePrefix(proof)).toBe('');
-      if (migration.version.startsWith('0001')) {
-        for (const id of [alpha, bravo]) {
-          // oxlint-disable-next-line no-await-in-loop
-          await db.admin.execute(
-            `insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $2)`,
-            [id, `b${id.slice(0, 8)}`],
-          );
-        }
-      }
+      if (migration.version.startsWith('0001')) await openBusinesses();
 
       // Roles belong to the cluster; the full-schema suite classifies all of them.
       const workerExists =
