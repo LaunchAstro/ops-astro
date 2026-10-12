@@ -207,6 +207,10 @@ proof_case pre-push-first-push-fingerprint-covers-scan-inputs \
   "a passed commit vouches for a later push only under the same scan inputs"
 proof_case hooks-refuse-when-not-installed \
   "a checkout without installed hooks refuses to push, whatever commit it is on"
+proof_case path-sweep-withholds-denied-name-in-all-evidence \
+  "the path sweep withholds a denied file name in its summary as well"
+proof_case sweep-refuses-denied-messages-and-symlinked-paths \
+  "a denied commit message under any display encoding, and a denied path through a symlinked folder, are refused"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \

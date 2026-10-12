@@ -263,10 +263,43 @@ else
 fi
 rm -rf "$dir"
 
-echo "O. a clean local replacement for a contaminated blob"
-# A private list for the literal sweep, outside any repository.
+echo "N. a denied term in a file name, a commit message or an author name"
+# Git publishes the names and the messages as surely as the blobs. Each of
+# these commits carries harmless bytes, so only the text outside the blobs can
+# refuse it, and the evidence must not print the term it found.
+SLUG="$(printf '%s' "$CANARY" | tr '[:upper:] ' '[:lower:]-')"
 TERMS="$SCRATCH/gate-terms-list"
-printf '%s\n' "$CANARY" > "$TERMS"
+printf '%s\nzod\n' "$CANARY" > "$TERMS"
+outside_blob_case() {
+  local label="$1" mode="$2" file="$3" message="$4" author="$5"
+  local dir out status
+  dir="$(new_repo)"
+  printf 'harmless bytes\n' > "$dir/$file"
+  git -C "$dir" add "$file" >/dev/null
+  git -C "$dir" -c user.name="$author" commit -qm "$message"
+  out="$(cd "$dir" && HUB_GATE_TERMS="$TERMS" python3 scripts/gate/sweep.py "$mode" HEAD 2>&1)"
+  status=$?
+  if [ "$status" != "1" ]; then
+    fail "$label" "expected exit 1, got $status. Output: $(printf '%s' "$out" | tr '\n' ' ')"
+  elif printf '%s' "$out" | grep -qiE "$SLUG|$CANARY|zod"; then
+    fail "$label" "refused, but the evidence printed the term it found"
+  else
+    pass "$label"
+  fi
+  rm -rf "$dir"
+}
+outside_blob_case "a hashed term in a file name is refused, and withheld" \
+  --range "$SLUG.txt" "add a note" "Gate Test"
+outside_blob_case "a hashed term in a commit message is refused" \
+  --range notes.txt "a note about $CANARY" "Gate Test"
+outside_blob_case "a literal term in a file name is refused, and withheld" \
+  --literal "$SLUG.txt" "add a note" "Gate Test"
+outside_blob_case "a literal term in a commit message is refused" \
+  --literal notes.txt "a note about $CANARY" "Gate Test"
+outside_blob_case "a literal term in an author name is refused" \
+  --literal notes.txt "add a note" "Zod"
+
+echo "O. a clean local replacement for a contaminated blob"
 # `git replace` changes what this clone reads for an object, not what a push
 # sends: the original blob is published. The gate must judge that one.
 dir="$(new_repo)"
@@ -317,6 +350,28 @@ else
   rm -rf "$dir"
 fi
 
+echo "Q. a path sweep given an absolute path judges it as the repository's"
+dir="$(new_repo)"
+mkdir -p "$dir/fixtures/clients"
+printf 'neutral\n' > "$dir/fixtures/clients/note.txt"
+for target in fixtures/clients "$dir/fixtures/clients"; do
+  status="$(gate_status "$dir" --path "$target")"
+  if [ "$status" = "1" ]; then
+    pass "a client fixture path is denied, given as ${target%%/fixtures*}... (exit 1)"
+  else
+    fail "a client fixture path is denied, given as $target" "expected exit 1, got $status"
+  fi
+done
+for target in tests/gate/canary.txt "$dir/tests/gate/canary.txt"; do
+  status="$(gate_status "$dir" --path "$target")"
+  if [ "$status" = "0" ]; then
+    pass "the approved canary is exempt, given as ${target%%/tests*}... (exit 0)"
+  else
+    fail "the approved canary is exempt, given as $target" "expected exit 0, got $status"
+  fi
+done
+rm -rf "$dir"
+
 echo "R. the self-test proves literal mode's own answer to a missing list"
 # A mutation control: the literal sweep is changed to pass when the private
 # list is missing, and nothing else. The self-test must catch it.
@@ -341,6 +396,24 @@ then
 else
   fail "a literal sweep that passes a missing list fails the self-test" "the mutation found no missing-list exit 2 in mode_literal"
 fi
+rm -rf "$dir"
+
+echo "S. a denied folder at the repository root is denied in either path form"
+# Path rules are written against repository-relative paths, so a rule for a
+# folder anywhere must also hold when that folder sits at the root.
+dir="$(new_repo)"
+for folder in client-data os-mirror; do
+  mkdir -p "$dir/$folder"
+  printf 'neutral\n' > "$dir/$folder/note.txt"
+  for target in "$folder" "$dir/$folder"; do
+    status="$(gate_status "$dir" --path "$target")"
+    if [ "$status" = "1" ]; then
+      pass "a root $folder folder is denied, given as ${target%%/$folder}... (exit 1)"
+    else
+      fail "a root $folder folder is denied, given as $target" "expected exit 1, got $status"
+    fi
+  done
+done
 rm -rf "$dir"
 
 echo "K. gitleaks exclusions are anchored"
