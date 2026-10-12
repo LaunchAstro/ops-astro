@@ -279,13 +279,13 @@ function PanelFacts(props: SideProps): ReactElement {
   );
 }
 
+/** The Agent and reply doors pick the perspective; a re-read of the same opening keeps the chosen one. */
 function usePanelPerspective(opening: PanelOpening) {
-  const [perspective, setPerspective] = useState<Perspective>(
-    opening.door === 'agent' ? 'agent' : 'team',
-  );
+  const { taskKey, door, tab } = opening;
+  const [perspective, setPerspective] = useState<Perspective>(door === 'agent' ? 'agent' : 'team');
   useEffect(() => {
-    if (opening.door === 'agent') setPerspective('agent');
-    if (opening.door === 'reply') setPerspective('team');
-  }, [opening]);
+    if (door === 'agent') setPerspective('agent');
+    if (door === 'reply') setPerspective('team');
+  }, [taskKey, door, tab]);
   return [perspective, setPerspective] as const;
 }
