@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a deactivated person or agent login mapping is refused when updated back to active"
+}

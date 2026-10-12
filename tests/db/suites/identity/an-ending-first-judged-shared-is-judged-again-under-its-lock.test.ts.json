@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an ending's shared judgement is asked again under the subject lock, so a stale first yes stamps nothing skipped"
+}

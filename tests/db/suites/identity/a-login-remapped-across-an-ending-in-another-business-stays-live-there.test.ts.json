@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a login remapped across another business's ending, to a person or an agent, reads live from the first business in both live-elsewhere answers"
+}
