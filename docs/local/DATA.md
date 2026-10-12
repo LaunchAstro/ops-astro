@@ -212,9 +212,11 @@ The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
 row an installation already holds. A migration that does so on purpose, such as
 a slot reservation or a field's owners, says so in
 `migrations/<version>.changes.json`, beside the file: a list of
-`{ "table", "columns", "where" }`. The drill excuses a changed row only where
-that predicate picked it before the upgrade and the row differs in those columns
-alone, and it fails a declaration whose change never happened
+`{ "table", "columns", "where" }`. The drill applies each such migration on its
+own and excuses a row it changed only where that predicate picked the row just
+before it and the row differs in those columns alone, so a declaration answers
+for its own migration and two declared migrations may change one row in turn.
+It fails a declaration whose change never happened
 (`scripts/local/upgrade-drill-changes.mjs`). Every other reader of `migrations/`
 reads `.sql` files only.
 
