@@ -231,11 +231,11 @@ function useTimerStop(props: TaskPanelProps, read: TaskReadResult | null): void 
       [binding.task.id, binding.task.key].includes(props.opening.taskKey))
       ? binding.task.id
       : null;
+  // The stop outlives the body: the dock hides a panel before closing it (a
+  // narrow window, a phone's one drawn panel), and that close still stops the
+  // timer. A stop from a past owner's timer sends nothing.
   useEffect(() => {
     props.onLeaving?.(taskId === null ? null : () => timer?.stop(taskId));
-    return () => {
-      props.onLeaving?.(null);
-    };
   }, [timer, taskId, props.onLeaving]);
 }
 
