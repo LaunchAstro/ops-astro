@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A model call's start that waits on its lease row while the lease is shortened tells custody the shorter end, and a start whose commit is cut then retried sends once; the races need separate real connections and a cut relay."
+}

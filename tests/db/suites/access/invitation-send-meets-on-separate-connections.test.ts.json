@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Two sends for one invitation act meet behind its row and email once, a send that waited on the row as its life ran down emails nothing past the expiry, and a send whose ask commit is cut never emails twice; the races need separate real connections and a cut relay."
+}

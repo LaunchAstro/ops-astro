@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A reconciliation lookup that waits on the route's ceiling is told to end inside the slot it took after the wait, and a lookup whose slot commit is cut asks the provider once across the passes after it; the races need separate real connections and a cut relay."
+}
