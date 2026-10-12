@@ -13,9 +13,13 @@
 //     acceptance rather than assumed: each component with the suites that
 //     prove it, and one verdict per component read from the same run's
 //     conformance output, so a proof from another revision cannot stand in.
+//     `db-conformance` prints one verdict line per run item, made here by
+//     `verdictLine` from that item's own report, and `protectedVerdicts`
+//     reads those lines and nothing else.
 
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { itemOf } from '../db-shards.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -51,8 +55,8 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
     'migrations',
     [
       'tests/tenancy/migration-prefixes.test.ts',
-      'tests/tenancy/final-r6-runner-guard.test.ts',
-      'tests/runtime/final-r1-fr1-migrations.test.ts',
+      'tests/tenancy/migration-runner-guard.test.ts',
+      'tests/runtime/storage-backstop-migrations.test.ts',
     ],
   ],
   [
@@ -63,44 +67,116 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
       'tests/reads/verified-decisions.test.ts',
     ],
   ],
+  // Also needs the same run's restart leg, which holds `inbox-worker-restart`.
+  [
+    'queue and delivery',
+    ['tests/db/inbox-conformance.test.ts', 'tests/commands/inbox-restart.test.ts'],
+  ],
 ];
 
-/** One verdict per protected component, from `output`, the same run's `db-conformance` output. */
+/** What `db-conformance` knows of one run item once it has run. */
+export interface ItemResult {
+  readonly run: {
+    readonly status: number | null;
+    readonly signal?: string | null;
+    readonly error?: unknown;
+  };
+  /** vitest's JSON report, or undefined when none could be read. */
+  readonly report:
+    | {
+        readonly success?: boolean;
+        readonly errors?: readonly unknown[];
+        readonly testResults?: readonly {
+          readonly name?: string;
+          readonly message?: string;
+          readonly assertionResults?: readonly { readonly status?: string }[];
+        }[];
+      }
+    | undefined;
+  readonly moved: number;
+  readonly clientSessions: number;
+  readonly readError?: unknown;
+  /** What one read of the counter costs on this database. */
+  readonly cost: number;
+}
+
+const NOT_RUN = new Set(['skipped', 'pending', 'todo']);
+
+/** One run item's verdict line, judged from that item's own report and counter reads. */
+export function verdictLine(item: string, result: ItemResult): string {
+  const { run: vitest, report } = result;
+  const assertions = (report?.testResults ?? []).flatMap((file) => file.assertionResults ?? []);
+  const reasons = [
+    report === undefined && 'no readable report',
+    vitest.error !== undefined && vitest.error !== null && 'vitest could not be started',
+    typeof vitest.signal === 'string'
+      ? `vitest was killed by ${vitest.signal}`
+      : vitest.status !== 0 && `vitest exited with status ${String(vitest.status)}`,
+    report?.success === false && 'the report says the run failed',
+    ((report?.errors ?? []).length > 0 ||
+      (report?.testResults ?? []).some((file) => String(file.message ?? '').trim() !== '')) &&
+      'the report carries an error',
+    assertions.some((test) => test.status === 'failed') && 'failed assertion',
+    assertions.some((test) => NOT_RUN.has(String(test.status))) && 'skipped',
+    result.readError !== undefined && 'a counter read failed',
+    result.moved <= result.cost && `no database movement (${String(result.moved)})`,
+    result.clientSessions <= 0 && 'no client session',
+  ].filter((reason) => typeof reason === 'string');
+  const detail =
+    reasons.length === 0
+      ? `${String(assertions.length)} test(s) passed, the counter moved by ${String(result.moved)}`
+      : reasons.join('; ');
+  return `db-conformance: verdict ${reasons.length === 0 ? 'ok' : 'failed'} ${item}: ${detail}`;
+}
+
+/**
+ * One verdict per protected component, from `output`, the same run's
+ * `db-conformance` output. `expected.items` is every run item the manifest and the
+ * shard plan expect (each named suite when absent), and `expected.restartLeg`
+ * whether the same run's restart leg passed.
+ */
 export function protectedVerdicts(
   output: string,
-  manifest: { readonly invariant?: readonly string[]; readonly conformance?: readonly string[] },
+  expected: {
+    readonly invariant?: readonly string[];
+    readonly conformance?: readonly string[];
+    readonly items?: readonly string[];
+    readonly restartLeg?: boolean;
+  },
 ): readonly CaseLine[] {
-  const named = new Set([...(manifest.invariant ?? []), ...(manifest.conformance ?? [])]);
-  const failed = new Set(
-    [...output.matchAll(/FAIL\s+(tests\/\S+?\.test\.tsx?)/gu)].map((m) => m[1]),
+  const named = new Set([...(expected.invariant ?? []), ...(expected.conformance ?? [])]);
+  const items = expected.items ?? [...named];
+  const lines = [...output.matchAll(/^db-conformance: verdict (ok|failed) (\S+): (.*)$/gmu)].map(
+    ([, verdict, item = '', detail]) => ({ ok: verdict === 'ok', item, detail }),
   );
-  const reached = new Set(
-    [
-      ...output.matchAll(
-        /^db-conformance: (\S+) moved the database counter by (\d+)(?: in \d+\.\ds)?\.$/gmu,
-      ),
-    ]
-      .filter((m) => Number(m[2]) > 0)
-      .map((m) => m[1] as string),
-  );
-  const verdicts = PROTECTED.map(([component, suites]): CaseLine => {
+  return PROTECTED.map(([component, suites]): CaseLine => {
     const problems = suites.flatMap((suite) => {
       if (!named.has(suite)) return [`${suite} is not named in the manifest`];
-      if (failed.has(suite)) return [`${suite} failed`];
-      if (!reached.has(suite)) return [`${suite} did not reach the database in this run`];
-      return [];
+      const own = items.filter((item) => itemOf(item).suite === suite);
+      if (own.length === 0) return [`${suite} is not a run item`];
+      const stray = lines.filter(
+        (line) => itemOf(line.item).suite === suite && !own.includes(line.item),
+      );
+      return [
+        ...own.flatMap((item) => {
+          const mine = lines.filter((line) => line.item === item);
+          if (mine.length === 0) return [`${item}: no verdict in this run`];
+          if (mine.length > 1) return [`${item}: ${String(mine.length)} verdicts in this run`];
+          return mine[0]?.ok === true ? [] : [`${item}: ${String(mine[0]?.detail)}`];
+        }),
+        ...stray.map((line) => `${line.item}: not an item this run expects`),
+      ];
     });
-    const detail =
-      problems.length === 0 ? `${suites.join(', ')}: green in this run` : problems.join('; ');
+    if (component === 'queue and delivery' && expected.restartLeg !== true) {
+      problems.push('the restart leg (runtime-proofs) did not pass in this run');
+    }
     return {
       case: `protected: ${component}`,
       status: problems.length === 0 ? 'pass' : 'fail',
-      detail,
+      detail:
+        problems.length === 0 ? `${suites.join(', ')}: green in this run` : problems.join('; '),
     };
   });
-  const later = 'queue and delivery join the protected set once INB-1 lands';
-  const queue: CaseLine = { case: 'protected: queue and delivery', status: 'unrun', detail: later };
-  return [...verdicts, queue];
 }
 
 /** The last line a check printed, which is where each of them says what it found. */
