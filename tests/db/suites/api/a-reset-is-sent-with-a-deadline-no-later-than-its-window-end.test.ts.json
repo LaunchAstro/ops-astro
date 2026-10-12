@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reset's call to the login provider carries a deadline no later than its window's end on the database clock, however slowly that end is read"
+}

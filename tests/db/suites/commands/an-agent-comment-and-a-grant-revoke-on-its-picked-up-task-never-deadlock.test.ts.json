@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent comment on its picked-up task and a revoke of its delegating person's write grant never wait on each other, and the comment after the revoke is refused"
+}
