@@ -2037,7 +2037,10 @@ and codes, never a sentence, to a trace target an operator reads.
   The blob store's start command sets the raw event bucket's lifecycle rule,
   14 days on the prefix the worker writes, chained so the store stops if it
   cannot be set: on the OpenTelemetry path nothing else ever deletes a raw
-  event. The pin check refuses a profile without exactly that rule.
+  event. The pin check refuses a profile without exactly that rule. It reads
+  each `${NAME:-default}` as its default, so Compose is run with no inherited
+  name the model reads: a raw event prefix from the shell cannot move uploads
+  outside the rule.
 - Retention (`core-runtime/src/trace-retention.ts`, `expireOnce`): the
   product is the trace store's deletion authority. A pass for one business
   takes the runs with a registered trace copy, every event behind the

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a staging reset puts each carried subject-session ending back with the time it had, so a reset ends no session signed in after the ending"
+}

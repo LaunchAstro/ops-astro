@@ -16,6 +16,13 @@ establish that the index or outgoing history is clean.
 | `pnpm gate` | Every tracked file in the working tree                              | The cheap continuous check. Not sufficient alone, which is why the two above exist                                   |
 | CI          | The outgoing range on a pull request, and the tracked tree          | Public continuous integration runs after a push, so it cannot undo a disclosure. It is the backstop, never the guard |
 
+At pre-push the scanners come from each pushed commit, not from the checkout
+the push starts in: the hook exports that commit's `scripts/` and
+`tests/gate/` and runs them over that ref's range, with `HUB_GATE_REPO`
+naming the repository to read. The hook sets `GIT_NO_REPLACE_OBJECTS`, so neither the export nor the scanners read a local replacement for what the push sends. A stale checkout cannot refuse a clean push or
+pass what the pushed rules refuse, and a branch that changes a scanner is
+judged by its own version.
+
 These rules apply to all four:
 
 - **Path rules run first, on every path, with no exclusions.** A directory the
@@ -59,6 +66,8 @@ covered. Categories are `pii`, `provenance` and `infra`.
 **The maintainer layer is literal.** A maintainer may supply an external
 clear-text list through `HUB_GATE_TERMS`. Keep it outside the repository.
 It drives `--literal` at pre-push. When the file is absent the script says so and exits 2. It never pretends to have run.
+
+The historical approval checks give each Git read 120 seconds (`HUB_GATE_GIT_TIMEOUT` sets another bound). A read that runs over stops the sweep with exit 3 and says it timed out; it never passes.
 
 Neither layer is sufficient alone. Together with gitleaks over the full
 history, and with the rule that no material is ever copied across by hand,

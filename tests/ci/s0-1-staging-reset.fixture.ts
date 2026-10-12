@@ -48,6 +48,8 @@ export let scratch = '';
 export interface Call {
   readonly method: string;
   readonly path: string;
+  /** The query, as `page=2&per_page=200`. */
+  readonly query: string;
   readonly key: boolean;
   readonly body: Record<string, unknown> | undefined;
 }
@@ -67,9 +69,9 @@ function serveAuth(): Promise<void> {
       beforeNextCall.work = undefined;
       await work?.();
       const body = text === '' ? undefined : (JSON.parse(text) as Record<string, unknown>);
-      const path = (request.url ?? '').split('?')[0] ?? '';
+      const [path = '', query = ''] = (request.url ?? '').split('?');
       const key = request.headers['apikey'] === KEY;
-      calls.push({ method: request.method ?? '', path, key, body });
+      calls.push({ method: request.method ?? '', path, query, key, body });
       const reply = (status: number, value: unknown): void => {
         response.writeHead(status, { 'content-type': 'application/json' });
         response.end(JSON.stringify(value));
@@ -85,8 +87,14 @@ function serveAuth(): Promise<void> {
         );
         return reply(200, { id, email });
       }
-      if (request.method === 'GET' && path === '/admin/users')
-        return reply(200, { users: [...users].map(([email, id]) => ({ id, email })) });
+      if (request.method === 'GET' && path === '/admin/users') {
+        // Paged as the provider pages: `per_page` sign-ins (50 unless asked), oldest first.
+        const asked = new URLSearchParams(query);
+        const size = Number(asked.get('per_page') ?? 50);
+        const page = Number(asked.get('page') ?? 1);
+        const listed = [...users].slice((page - 1) * size, page * size);
+        return reply(200, { users: listed.map(([email, id]) => ({ id, email })) });
+      }
       if (request.method === 'PUT' && path.startsWith('/admin/users/')) return reply(200, {});
       return reply(404, {});
     });

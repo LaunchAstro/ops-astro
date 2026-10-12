@@ -15,15 +15,39 @@ DIGEST = re.compile(r"[0-9a-f]{64}")
 DECISION = re.compile(r"[A-Z][A-Z0-9_-]{1,79}")
 
 
+GIT_TIMEOUT_ENV = "HUB_GATE_GIT_TIMEOUT"
+# Long enough for a sound push on a busy machine: 10 s refused one at a load
+# of 30 to 44. A hung Git read still stops the gate, by name.
+GIT_TIMEOUT = 120.0
+
+
+class GitTimeout(Exception):
+    """A Git read outlasted its bound. The gate stops; it never passes."""
+
+
+def run_git(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+    bound = float(os.environ.get(GIT_TIMEOUT_ENV) or GIT_TIMEOUT)
+    if not bound > 0:
+        raise ValueError(f"{GIT_TIMEOUT_ENV} must be a number of seconds above 0")
+    try:
+        return subprocess.run(args, cwd=cwd, capture_output=True, timeout=bound, env=env)
+    except subprocess.TimeoutExpired:
+        raise GitTimeout(
+            f"a Git read for the historical literal check took longer than {bound:g} s; "
+            f"the machine may be busy: push again when it is quieter, or set {GIT_TIMEOUT_ENV} higher"
+        ) from None
+
+
 def checked_git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(os.environ, LC_ALL="C")
-    local = subprocess.run(["git", "rev-parse", "--local-env-vars"], cwd=repo, capture_output=True, timeout=10, env=env)
+    local = run_git(["git", "rev-parse", "--local-env-vars"], repo, env)
     if local.returncode != 0:
         raise ValueError("cannot determine Git local environment")
     # Hooks export repository selectors; this probe must discover its own cwd.
     for name in local.stdout.decode("ascii").splitlines():
         env.pop(name, None)
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, timeout=10, env=env)
+    # The objects a push sends, never a local replacement for them.
+    return run_git(["git", "--no-replace-objects", *args], repo, env)
 
 
 class HistoricalLiterals:

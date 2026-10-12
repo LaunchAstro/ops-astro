@@ -58,18 +58,22 @@ from pathlib import Path
 
 # The CLI must leave the repository unchanged when it imports its local helper.
 sys.dont_write_bytecode = True
-from literal_history import HistoricalLiterals
+from literal_history import GitTimeout, HistoricalLiterals
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+# The scanner's own tree, where its self-test canaries sit beside its rules.
+OWN = HERE.parent.parent
+# The repository it reads. The pre-push hook runs each pushed commit's own
+# scanners from a temporary export and names the repository here.
+REPO = Path(os.environ.get("HUB_GATE_REPO") or OWN).resolve()
 
 DENYLIST = HERE / "denylist.sha256"
 PATH_DENYLIST = HERE / "path-denylist.txt"
 SHAPE_RULES = HERE / "shape-rules.txt"
 BINARY_ALLOWLIST = HERE / "binary-allowlist.txt"
 
-CANARY_FILE = REPO / "tests" / "gate" / "canary.txt"
-SHAPE_CANARY_FILE = REPO / "tests" / "gate" / "shape-canary.txt"
+CANARY_FILE = OWN / "tests" / "gate" / "canary.txt"
+SHAPE_CANARY_FILE = OWN / "tests" / "gate" / "shape-canary.txt"
 
 # The private clear-text list is supplied explicitly and never stored in git.
 LITERAL_LIST_ENV = "HUB_GATE_TERMS"
@@ -282,11 +286,16 @@ def decode(data: bytes) -> str | None:
 # ---------------------------------------------------------------------------
 # Git
 
+# A push sends the objects themselves. A `git replace` ref changes what this
+# clone reads in their place and is never what the remote receives, so every
+# read here ignores replacements.
+GIT = ["git", "--no-replace-objects"]
+
 
 def git(args: list[str], cwd: Path | None = None) -> bytes:
     try:
         return subprocess.run(
-            ["git", *args],
+            [*GIT, *args],
             cwd=cwd or REPO,
             check=True,
             capture_output=True,
@@ -315,7 +324,7 @@ def staged_blob(path: str) -> bytes | None:
     """The bytes git will commit, read out of the index."""
     try:
         return subprocess.run(
-            ["git", "show", f":{path}"],
+            [*GIT, "show", f":{path}"],
             cwd=REPO,
             check=True,
             capture_output=True,
@@ -327,7 +336,7 @@ def staged_blob(path: str) -> bytes | None:
 def cat_blob(sha: str) -> bytes | None:
     try:
         return subprocess.run(
-            ["git", "cat-file", "blob", sha],
+            [*GIT, "cat-file", "blob", sha],
             cwd=REPO,
             check=True,
             capture_output=True,
@@ -583,14 +592,22 @@ def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, 
     if not target.exists():
         die(f"no such path: {target}")
     found: list[Path] = []
+    # A folder that cannot be listed was never inspected, so the sweep is
+    # incomplete and must not report clean.
+    unlisted: list[str] = []
     if target.is_file():
         found = [target]
     else:
-        for dirpath, dirnames, filenames in os.walk(target):
+        def note(error: OSError) -> None:
+            unlisted.append(str(error.filename))
+
+        for dirpath, dirnames, filenames in os.walk(target, onerror=note):
             dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
             found.extend(Path(dirpath) / n for n in filenames)
     rels = [str(p) for p in found]
-    violations = path_violations(list(zip(rels, rels)), patterns)
+    unlisted_reason = "the gate could not list this folder"
+    violations = [(d, "unreadable", unlisted_reason, unlisted_reason) for d in unlisted]
+    violations += path_violations(list(zip(rels, rels)), patterns)
     items = [(rel, rel, read_path(path)) for path, rel in zip(found, rels)]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
     return report(violations, reveal, f"{len(found)} file(s) under {target}")
@@ -646,8 +663,10 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
     # The exemption list must describe the fixtures as they are now. A stale
     # line means the gate is scanning a fixture it should skip, or skipping
     # bytes nobody approved.
+    # They are the scanner's own fixtures, read from beside it: under the
+    # pre-push hook that is the pushed commit, not the checkout.
     for rel, digests in sorted(exemptions.items()):
-        path = REPO / rel
+        path = OWN / rel
         if not path.is_file():
             failures.append(f"an exempt path does not exist: {rel}")
             continue
@@ -660,8 +679,14 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
             )
     print(f"gate: {len(exemptions)} exempt path(s), all matching an approved digest")
 
-    absent = Path("/nonexistent/gate-terms-that-are-not-there.txt")
-    code = literal_sweep_status(absent)
+    # Run the literal sweep itself, as a hook would, with the list missing.
+    absent = "/nonexistent/gate-terms-that-are-not-there.txt"
+    code = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--literal"],
+        cwd=REPO,
+        env={**os.environ, LITERAL_LIST_ENV: absent},
+        capture_output=True,
+    ).returncode
     print(f"gate: a missing private list exits {code}")
     if code != 2:
         failures.append(f"a missing private list exited {code}, not 2")
@@ -678,10 +703,6 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
         return 1
     print("gate: self-test passed")
     return 0
-
-
-def literal_sweep_status(listfile: Path) -> int:
-    return 2 if not listfile.is_file() else 0
 
 
 def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
@@ -711,7 +732,9 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
     try:
         history = HistoricalLiterals.load(REPO, HERE / "literal-history-approvals.sha256", revs)
         refused_tips = history.refused_tips()
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+    except GitTimeout as exc:
+        raise GateBroken(str(exc)) from None
+    except (OSError, ValueError):
         raise GateBroken("invalid or unreadable historical literal approval") from None
     pairs: dict[tuple[str, str], set[str]] = {}
     for commit in commits:
@@ -740,7 +763,9 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
                 try:
                     if history.permits(path, sha, needle, occurrences):
                         continue
-                except (OSError, ValueError, subprocess.TimeoutExpired):
+                except GitTimeout as exc:
+                    raise GateBroken(str(exc)) from None
+                except (OSError, ValueError):
                     raise GateBroken("cannot verify historical literal approval") from None
                 violations.append(
                     (f"{where}:{path}", "denied term, literal", fingerprint(term), term)

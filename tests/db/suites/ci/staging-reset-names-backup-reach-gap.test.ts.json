@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a staging reset stopped by the backup reach check names the schemas and tables the backup identity cannot read, and tells any other error by its class and SQLSTATE alone"
+}

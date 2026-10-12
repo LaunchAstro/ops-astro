@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a login whose appointment is removed reads no archive part or header from a repeatable-read transaction begun before the removal"
+}
