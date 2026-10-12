@@ -213,7 +213,11 @@ it('the page sends nothing when the new password is too short or the two do not 
   await view.type('#password-repeat', `${NEW}x`);
   await view.click('[data-password="form"] button[type="submit"]');
   await settle();
-  expect(sent.filter((line) => line.includes(GOTRUE))).toEqual([]);
+  // Each line is `<method> <address> ...`: nothing went to the sign-in service's origin.
+  const origins = sent.map(
+    (line) => new URL(line.split(' ')[1] ?? '', 'http://page.invalid').origin,
+  );
+  expect(origins).not.toContain(GOTRUE);
   expect(view.find('[role="alert"]')).not.toBeNull();
   await view.unmount();
 });
