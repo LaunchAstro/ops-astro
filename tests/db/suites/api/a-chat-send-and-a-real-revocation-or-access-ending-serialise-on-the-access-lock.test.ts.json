@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a chat send and a real grant revocation or access ending take the access lock in turn, so a message is never written after the change commits"
+}
