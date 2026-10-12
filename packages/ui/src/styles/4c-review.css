@@ -1,0 +1,123 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.rq {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  padding: var(--s-4) var(--s-5) var(--s-2);
+}
+.rq__say {
+  /* type-exception R20261012: Nathan requires the canonical Hub Review card typography. */
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+.rq__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.rq__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.rq__figs {
+  /* type-exception R20261012: Nathan requires the canonical Hub Review card typography. */
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-light);
+  font-size: var(--fs-mono-sm);
+  line-height: 1.4;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.rec {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+}
+.rec__title {
+  /* type-exception R20261012: Nathan requires the canonical Hub Review card typography. */
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: 1.125rem;
+  line-height: 1.25;
+  letter-spacing: var(--tracking-tight);
+  padding: var(--s-4) var(--s-4) 0;
+}
+.rec__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-4);
+  padding: var(--s-4);
+}
+.rec__label {
+  /* type-exception R20261012: Nathan requires the canonical Hub Review card typography. */
+  font-family: var(--font-mono);
+  font-weight: var(--weight-light);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+.rec__text {
+  /* type-exception R20261012: Nathan requires the canonical Hub Review card typography. */
+  font-size: var(--text-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rec__respond {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  min-height: 3rem;
+}
+.rq__skills {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rq__skills .rec__label {
+  margin: 0;
+}
+.rq__lead .chip,
+.rq__skills .chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) {
+  .rec__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.rq__agent {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-muted);
+  /* type-exception R20261012: canonical Hub agent avatar typography. */
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+  font-size: 0.625rem;
+  line-height: 1.55;
+}
+
+.rq__lead a.chip {
+  text-decoration: none;
+}

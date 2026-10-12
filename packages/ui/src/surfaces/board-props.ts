@@ -24,7 +24,7 @@ export const BOARD_ICONS: Readonly<Record<string, GlyphName>> = {
 };
 
 export interface BoardMode<Row> extends RowMode<Row> {
-  /** The alternative surface, over the same narrowed rows; without one, the table narrows. */
+  /** The alternative surface, over the filtered rows that pass this mode; without one, the table narrows. */
   readonly render?: (rows: readonly Row[]) => ReactNode;
   /** A live count on the mode's chip, and what it says (P-10). */
   readonly badge?: { readonly count: number; readonly title: string };
