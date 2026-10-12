@@ -156,12 +156,13 @@ it('a split suite runs each case in exactly one part, and the whole suite when u
     'tests/acceptance/d06-agent.test.ts',
     'tests/tenancy/restricted-calls-prefixes.test.ts',
   ]);
-  // So does the agent prefix's, on both of its lists.
+  // So does the agent prefix's, on both of its lists, through its fixture.
   const agent = read('tests/acceptance/d06-agent.test.ts');
-  expect(agent).toContain("const PART = suitePart(process.env['SUITE_PART']);");
-  expect(agent.match(/\.filter\(\(_, i\) => inPart\(i, PART\)\)/gu)).toHaveLength(2);
-  expect(agent).toContain('it.each(cells)(');
-  expect(agent).toContain('it.each(excluded)(');
+  expect(agent).toContain('it.each(ofThisPart(cells))(');
+  expect(agent).toContain('it.each(ofThisPart(excluded))(');
+  const fixture = read('tests/acceptance/d06-agent-fixture.ts');
+  expect(fixture).toContain("const part = suitePart(process.env['SUITE_PART']);");
+  expect(fixture).toContain('return list.filter((_, i) => inPart(i, part));');
   expect(d06).toContain("const PART = suitePart(process.env['SUITE_PART']);");
   expect(d06).toContain('TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART))');
   expect(d06).toContain('PAYLOAD_CELLS.filter((_, i) => inPart(i, PART))');
