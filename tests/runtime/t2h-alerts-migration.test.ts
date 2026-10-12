@@ -61,6 +61,32 @@ async function dump(db: EmptyDatabase): Promise<unknown> {
   );
 }
 
+/**
+ * Every row of every table seeded at 0035, whole and in a stable order, so a
+ * value rewritten in place shows where a count would not.
+ */
+async function rows(db: EmptyDatabase, tables: readonly string[]): Promise<unknown> {
+  const each = tables.map(
+    (table) =>
+      `'${table}', (select coalesce(jsonb_agg(r order by r::text), '[]'::jsonb)
+                      from (select to_jsonb(t) as r from public.${table} t) seeded)`,
+  );
+  const [row] = await db.admin.execute<{ readonly rows: unknown }>(
+    `select jsonb_build_object(${each.join(', ')}) as rows`,
+  );
+  return row?.rows;
+}
+
+async function seededTables(db: EmptyDatabase): Promise<readonly string[]> {
+  const found = await db.admin.execute<{ readonly name: string }>(
+    `select quote_ident(c.relname) as name
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind in ('r', 'p')
+      order by 1`,
+  );
+  return found.map((row) => row.name);
+}
+
 describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
@@ -69,6 +95,9 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
   let gateBefore: unknown;
   let gateAt0036: unknown;
   let seededBefore: unknown;
+  let seededTablesAt0035: readonly string[];
+  let rowsAt0035: unknown;
+  let rowsAt0036: unknown;
 
   beforeAll(async () => {
     fresh = await createEmptyDatabase({ part: 't2hmigfresh' });
@@ -84,6 +113,8 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
     await buildFixture(upgraded.app, 't2h-seed');
     gateBefore = await gateEngine(upgraded);
     seededBefore = await dump(upgraded);
+    seededTablesAt0035 = await seededTables(upgraded);
+    rowsAt0035 = await rows(upgraded, seededTablesAt0035);
     await upgraded.closeSessions();
     // The gate engine as 0036 alone leaves it: a later migration may change the
     // gate tables on purpose (T3a's 0041 adds escalation to `gates`), and that
@@ -93,6 +124,7 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
       onDisk.filter((m) => THROUGH_0036(m.version)),
     );
     gateAt0036 = await gateEngine(upgraded);
+    rowsAt0036 = await rows(upgraded, seededTablesAt0035);
     await migrate(upgraded.admin, 'migrations');
   }, 180_000);
 
@@ -122,6 +154,9 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
     });
 
   it('rewrites no row, reads the same catalogue fresh and upgraded, and adds nothing to the gate engine’s tables', async () => {
+    const seeded = rowsAt0035 as Readonly<Record<string, readonly unknown[]>>;
+    expect(seeded['records']?.length).toBeGreaterThan(0);
+    expect(rowsAt0036).toStrictEqual(rowsAt0035);
     expect(await dump(upgraded)).toStrictEqual(seededBefore);
     expect(await catalogue(upgraded)).toStrictEqual(await catalogue(fresh));
     expect(gateAt0036).toStrictEqual(gateBefore);

@@ -15,9 +15,10 @@
 // `api-2-agent-credential-world.ts`.
 
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { agentPath, bearer, call, serverUrl, tokenFor } from '../acceptance/world.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 import {
   CANARY,
   clientToken,
@@ -249,10 +250,33 @@ describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and
 
 describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and revoked', () => {
   it('API-2 canary: a credential’s purpose and secret reach no log, audit row or refusal', async () => {
-    const issued = await issue(issueBody({ purpose: CANARY }));
+    const logged: string[] = [];
+    const keep = (...parts: unknown[]): void => {
+      logged.push(consoleLine(...parts));
+    };
+    for (const level of ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const) {
+      vi.spyOn(console, level).mockImplementation(keep);
+    }
+    for (const stream of [process.stdout, process.stderr]) {
+      vi.spyOn(stream, 'write').mockImplementation((chunk: unknown) => {
+        logged.push(streamText(chunk));
+        return true;
+      });
+    }
+    let issued: Awaited<ReturnType<typeof issue>>;
+    let refused: Awaited<ReturnType<typeof issue>>;
+    try {
+      issued = await issue(issueBody({ purpose: CANARY }));
+      refused = await issue(issueBody({ purpose: CANARY, expiresAt: 'never' }));
+    } finally {
+      vi.restoreAllMocks();
+    }
     expect(issued.status, 'the canary credential is issued').toBe(200);
+    expect(refused.status, 'the second issue is refused').toBe(422);
     const secret = String(detailOf(issued)['credential']);
-    const refused = await issue(issueBody({ purpose: CANARY, expiresAt: 'never' }));
+    const logText = logged.join('\n');
+    expect(logText, 'a log line names the purpose').not.toContain(CANARY);
+    expect(logText, 'a log line holds the secret').not.toContain(secret);
     expect(JSON.stringify(refused.body)).not.toContain(CANARY);
     const audit = await harness.world.db.app.withBusiness(
       harness.world.alpha,

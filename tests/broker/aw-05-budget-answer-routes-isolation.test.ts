@@ -4,8 +4,9 @@
 // Another business's decider on their own prefix, naming this business's
 // task and run; this business's plan approver naming another task's run
 // under this task, beside a made-up run, which answer with the same bytes;
-// and a person whose grants cover another task only (the client stand-in
-// until C32). The third crossing, an agent under a live delegation, is the
+// and another client: the two tasks are linked to two stored clients, and a
+// person whose grants cover client B and its task alone names client A's run.
+// The third crossing, an agent under a live delegation, is the
 // agent case in `aw-05-budget-answer-routes.test.ts`. No refusal names the
 // other run or either task, and nothing moves.
 
@@ -14,7 +15,7 @@ import { expect, it as vitestIt } from 'vitest';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import type { Work } from '../runtime/schedules-harness.ts';
 import { noDatabase, s, useBrokerWorld } from './broker-world.ts';
-import { moneyOf, people, setThreshold, stopped, usePeople } from './budget-answers-world.ts';
+import { moneyOf, one, people, setThreshold, stopped, usePeople } from './budget-answers-world.ts';
 import {
   asPerson,
   bravo,
@@ -80,13 +81,49 @@ async function fromAnotherTask(target: Stopped, other: Stopped): Promise<readonl
   return answers;
 }
 
-/** A person whose grants cover the other task only. */
-async function fromOutsideTheGrant(target: Stopped, other: Stopped): Promise<readonly Answer[]> {
+/** A stored client of this business, and `taskId` linked to it on the record's spine. */
+async function underNewClient(taskId: string): Promise<string> {
+  const client = randomUUID();
+  await s.db.admin.execute(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $3, $4)`,
+    [s.business, client, `aw05 client ${client.slice(0, 8)}`, s.decider.actorId],
+  );
+  await s.db.admin.execute(
+    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
+  return client;
+}
+
+/** The task's client, as the record's spine holds it. */
+const clientOf = async (taskId: string): Promise<string | null> =>
+  (
+    await one<{ client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [taskId],
+    )
+  ).client;
+
+/** Client B's person: grants on client B and its task alone, naming client A's run. */
+async function fromAnotherClient(target: Stopped, other: Stopped): Promise<readonly Answer[]> {
+  const clientA = await underNewClient(target.work.taskId);
+  const clientB = await underNewClient(other.work.taskId);
+  // A real crossing: two stored clients, both linked, not the same one.
+  expect(await clientOf(target.work.taskId)).toBe(clientA);
+  expect(await clientOf(other.work.taskId)).toBe(clientB);
+  expect(clientA).not.toBe(clientB);
   const narrow = await enrol(s.db.app, s.business, 'narrow');
   await s.db.app.withBusiness(s.business, async (tx) => {
-    const scope = { kind: 'record', id: other.work.taskId } as const;
-    await grantTo(tx, narrow, 'decide', scope, false, 'billing');
-    await grantTo(tx, narrow, 'decide', scope, false, 'gate');
+    for (const scope of [
+      { kind: 'party', id: clientB },
+      { kind: 'record', id: other.work.taskId },
+    ] as const) {
+      // eslint-disable-next-line no-await-in-loop -- two grants, one scope each
+      await grantTo(tx, narrow, 'decide', scope, false, 'billing');
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, narrow, 'decide', scope, false, 'gate');
+    }
   });
   const { work, runId, askId } = target;
   const answers = [
@@ -107,7 +144,7 @@ it('AW-05 isolation: the answer routes', async () => {
   const answers = [
     ...(await fromAnotherBusiness(target)),
     ...(await fromAnotherTask(target, other)),
-    ...(await fromOutsideTheGrant(target, other)),
+    ...(await fromAnotherClient(target, other)),
   ];
 
   for (const answer of answers) {
