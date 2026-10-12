@@ -18,9 +18,9 @@
 # The container is held by the id `docker run` returned, never by its name.
 # The suites run as one job with a process group of its own, whose first
 # member, the keeper, waits on a FIFO only this script writes to. When the
-# script exits, or dies, the FIFO reaches end of file and the keeper ends its
-# own group with SIGKILL (a worker parked with SIGSTOP never runs a SIGTERM
-# handler). Nothing is ever signalled by a pid read from a file: the pid file
+# script exits, or dies, the FIFO reaches end of file and the keeper ends that
+# group with SIGKILL, repeated until the group is empty (a worker parked with
+# SIGSTOP never runs a SIGTERM handler). Nothing is ever signalled by a pid read from a file: the pid file
 # the suites write is evidence only, since a pid may be another process's by
 # the time the trap runs.
 # L5_RESTART_INDUCE_FAILURE=throw|crash, passed through to the
@@ -178,7 +178,11 @@ set -m
     sleep 1
   fi
   exec 3<"$fifo" 4>&-
-  { read -r _ <&3 || true; kill -KILL 0; } &
+  # The keeper. At end of file it starts, in a group of its own, a loop that
+  # kills this group until it is empty: a process forked while one kill
+  # lands can miss it.
+  group=$(sh -c 'ps -o pgid= -p "$PPID"' | tr -d ' ')
+  { read -r _ <&3 || true; set -m; { while kill -KILL -"$group" 2>/dev/null; do sleep 0.1; done; } & } &
   exec 3<&-
   DATABASE_URL=$admin_url DATABASE_ADMIN_URL=$admin_url \
     L5_RESTART_CONTAINER_NAME=$NAME L5_RESTART_API_PORT=$API_PORT L5_RESTART_EVIDENCE=$EVIDENCE \
