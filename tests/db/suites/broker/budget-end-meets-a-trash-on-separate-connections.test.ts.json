@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an end refused for an unresolved cost names the restore only when the task is trashed after the end's lock wait, whichever of a trash, a restore and the end queues first, and the refusal writes nothing"
+}
