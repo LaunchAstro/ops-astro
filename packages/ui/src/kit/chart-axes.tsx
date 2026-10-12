@@ -36,21 +36,24 @@ export interface Axis {
   readonly y: (value: number) => number;
 }
 
+/** The axis for `series`, spanning only the first `count` values of each, the ones drawn. */
 export function axisFor(
   series: readonly Series[],
   top: number,
   height: number,
   stacked = false,
+  count?: number,
 ): Axis | null {
   const first = series[0];
   if (first === undefined) return null;
+  const drawn = series.map((s) => s.values.slice(0, count));
   // Stacked: each index's positives summed up and its negatives summed down, over every series.
-  const length = Math.max(...series.map((s) => s.values.length));
+  const length = Math.max(...drawn.map((values) => values.length));
   const sum = (i: number, keep: (v: number) => boolean): number =>
-    series.reduce((total, s) => total + (keep(s.values[i] ?? 0) ? (s.values[i] ?? 0) : 0), 0);
+    drawn.reduce((total, values) => total + (keep(values[i] ?? 0) ? (values[i] ?? 0) : 0), 0);
   const values = stacked
     ? Array.from({ length }, (_, i) => [sum(i, (v) => v > 0), sum(i, (v) => v < 0)]).flat()
-    : series.flatMap((s) => s.values);
+    : drawn.flat();
   const unit = first.unit ?? 'number';
   const ticks = axisTicks(Math.min(0, ...values), Math.max(0, ...values), {
     integer: unit === 'count',

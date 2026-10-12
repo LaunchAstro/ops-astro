@@ -73,8 +73,10 @@ function lineGeometry(
       series.filter((s) => s.axis !== 'right'),
       plot.y,
       plot.h,
+      false,
+      count,
     ),
-    right: axisFor(rightSeries, plot.y, plot.h),
+    right: axisFor(rightSeries, plot.y, plot.h, false, count),
     xOf: (i) => plot.x + (count === 1 ? plot.w / 2 : (i / (count - 1)) * plot.w),
     slot: count === 1 ? plot.w : plot.w / (count - 1),
   };
