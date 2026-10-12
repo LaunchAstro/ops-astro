@@ -86,8 +86,18 @@ describe('Core 04 2: board doors carry the board’s context into the draft', ()
 });
 
 describe('Core 04 2: in the App, the board doors open the draft with that context', () => {
+  // The board admits its reader only when they reach its client, and a door names no client otherwise.
+  const reaching = (server: OrderedCreateServer): OrderedCreateServer => {
+    const inner = server.fetch;
+    server.fetch = async (url, init) =>
+      String(url).endsWith('/client/list')
+        ? json({ ok: true, clients: [{ clientId: CLIENT, name: 'A client' }] })
+        : await inner(url, init);
+    return server;
+  };
+
   it('the toolbar’s New task opens the kept draft with that context', async () => {
-    const app = await open(new OrderedCreateServer(), draftTab(), SCOPED);
+    const app = await open(reaching(new OrderedCreateServer()), draftTab(), SCOPED);
     await file(app);
     // A fresh draft is kept from its first edit.
     await app.view.type('#panel-draft-name', 'Filed from the toolbar');
@@ -101,7 +111,7 @@ describe('Core 04 2: in the App, the board doors open the draft with that contex
   });
 
   it('a name typed after opening the draft keeps the board context', async () => {
-    const app = await open(new OrderedCreateServer(), draftTab(), SCOPED);
+    const app = await open(reaching(new OrderedCreateServer()), draftTab(), SCOPED);
     await file(app);
     await app.view.type('#panel-draft-name', 'Typed on a filtered board');
     await drain(app);
