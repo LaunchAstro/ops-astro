@@ -72,7 +72,16 @@ it.each(['page', 'panel'] as const)(
     expect(
       app.view.find(container + ' [data-comment-id="stored-mention"] .card__body')?.textContent,
     ).toBe('@Ada Synthetic Composed permitted internal mention');
-    expect(app.view.find(container + ' [data-mention-person]')).toBeNull();
     expect(app.sent.some((sent) => /grant|share/u.test(sent.path))).toBe(false);
+    // Posted, the composer holds no selection: a held one, absent from the
+    // emptied body, would draw Clear mentions. Nor does the sent mention carry
+    // into the next note, even one that names the same person in text.
+    expect(app.view.find('[data-mention-clear]')).toBeNull();
+    await app.view.type(body, '@Ada Synthetic named again, not chosen');
+    await app.view.click(container + ' [data-comment="post"]');
+    const next = app.sent.filter((sent) => sent.path === '/task/comment');
+    expect(next).toHaveLength(2);
+    expect(next[1]?.body).toMatchObject({ body: '@Ada Synthetic named again, not chosen' });
+    expect(next[1]?.body).not.toHaveProperty('mentions');
   },
 );
