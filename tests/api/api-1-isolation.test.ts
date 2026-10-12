@@ -89,7 +89,8 @@ function businessAndClientCrossings(): void {
         // eslint-disable-next-line no-await-in-loop -- each person in turn
         const refused = await threeWays(row, member, 'alpha', { recordId: other });
         expect(new Set(refused.map((one) => JSON.stringify(one))).size).toBe(1);
-        expect(refused[0]?.status).toBeGreaterThanOrEqual(400);
+        // Refused by the grant on the other task, not by the body or a missing record.
+        expect(refused[0]?.code).toBe('SCOPE_NOT_GRANTED');
       }
     }
     // And every write, as the person holding read alone on their own task: refused alike everywhere.
