@@ -205,6 +205,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
     return { stopped, release: () => release() };
   };
 
+  // One expiry for the file, so each case files under a label of its own: an
+  // identical live filing is answered as a repeat of the first (#1427).
   const FILING = {
     clientId: '',
     classes: ['social.post'],
@@ -220,6 +222,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
       ...FILING,
       clientId: w.clientA,
       draftId: randomUUID(),
+      label: 'Posts approved while a grant is revoked',
     });
     await stopped;
     // A covering grant committed after the command held its grants, then
@@ -247,6 +250,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
       ...FILING,
       clientId: w.clientA,
       draftId: randomUUID(),
+      label: 'Posts approved while signed out waiting',
       operationId: randomUUID(),
     };
     const chained = await hold(w.controls.fixture.db.appUrl, w.alpha, async (tx) => {
@@ -284,6 +288,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
       ...FILING,
       clientId: w.clientA,
       draftId: randomUUID(),
+      label: 'Posts approved before the sign-out',
     });
     await stopped;
     let finished = false;
