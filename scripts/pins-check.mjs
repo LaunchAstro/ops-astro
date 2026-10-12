@@ -92,7 +92,14 @@ const flowKey = (line) => {
       break;
     } else if ((c === '{' || c === '[') && bracket === -1) bracket = i;
   }
-  return bracket !== -1 && FLOW_KEY.test(line.slice(bracket + 1, end));
+  if (bracket === -1) return false;
+  if (FLOW_KEY.test(line.slice(bracket + 1, end))) return true;
+  // A tagged or escaped key inside the collection is refused as well: this
+  // scan decodes neither. `${{ … }}` expressions are not collections, so they
+  // go first.
+  const plain = line.slice(0, end).replaceAll(/\$\{\{.*?\}\}/gu, '');
+  const open = plain.search(/[{[]/u);
+  return open !== -1 && /[{[,]\s*(?:!|"(?:[^"\\]|\\.)*\\)/u.test(plain.slice(open));
 };
 const EXPLICIT_KEY = /^\s*(?:-\s+)?\?(?:\s|$)/u;
 // A double-quoted key with an escape (`"us\u0065s"`) or a tagged key

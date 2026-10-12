@@ -242,8 +242,15 @@ process.once('SIGTERM', () => {
   process.exit(143);
 });
 try {
-  const stack = await startPostgres({ container, password, port: pg, admin });
-  created = stack.id;
+  const stack = await startPostgres({
+    container,
+    password,
+    port: pg,
+    admin,
+    created: (id) => {
+      created = id;
+    },
+  });
   carried.measures.migrateMs = stack.migrateMs;
   record(
     'stack: Postgres from the pinned digest, migrated at this head',

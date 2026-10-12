@@ -55,13 +55,14 @@ export async function refusalsBeforeStarting(
   container: string,
 ): Promise<string[]> {
   const refusals: string[] = [];
-  const named = new Map<string, string>();
+  const named = new Map<number, string>();
   for (const [name, value] of Object.entries(ports)) {
     // Digits only, in range: `0x1F90`, ` 54430` and `70000` are not ports, whatever Number says.
     const port = /^\d{1,5}$/u.test(value) ? Number(value) : 0;
     const label = name.replaceAll(/[A-Z]/gu, (letter) => ` ${letter.toLowerCase()}`);
-    const first = named.get(value);
-    named.set(value, first ?? label);
+    // By number, so `06000` and `6000` are the same port.
+    const first = named.get(port);
+    named.set(port, first ?? label);
     if (port < 1 || port > 65_535) refusals.push(`${label} port ${value} is not a port number`);
     else if (first !== undefined)
       refusals.push(`${label} port ${value} is the same port as ${first}`);
@@ -80,20 +81,17 @@ export async function refusalsBeforeStarting(
 
 /**
  * The container from the pinned digest, the application group role, the
- * migrations. `id` is the container this call created, the one thing the run
- * may remove: a name another run took in the meantime is not this run's.
+ * migrations. `created` hears the id of the container this call made, the
+ * one thing the run may remove (a name another run took in the meantime is
+ * not this run's), as soon as it exists, so an interrupted start removes it.
  */
 export async function startPostgres(options: {
   readonly container: string;
   readonly password: string;
   readonly port: string;
   readonly admin: string;
-}): Promise<{
-  ok: boolean;
-  detail: string;
-  migrateMs: number | undefined;
-  id?: string | undefined;
-}> {
+  readonly created?: (id: string) => void;
+}): Promise<{ ok: boolean; detail: string; migrateMs: number | undefined }> {
   const { container, password, port, admin } = options;
   const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
@@ -102,6 +100,7 @@ export async function startPostgres(options: {
   if (!started.ok) return { ok: false, detail: started.out.trim(), migrateMs: undefined };
   // `run` joins stdout and stderr; the id is the one line Docker prints on stdout.
   const id = /^[0-9a-f]{64}$/mu.exec(started.out)?.[0];
+  if (id !== undefined) options.created?.(id);
   const ready = [
     'exec',
     container,
@@ -122,7 +121,7 @@ export async function startPostgres(options: {
   const last = migrated.out.trim().split('\n').at(-1) ?? '';
   const detail = `${container} on 127.0.0.1:${port}; ${role.ok ? last : role.out.trim()}`;
   // Timed only when the migrations applied: a refused or failed run measured nothing.
-  return { ok: role.ok && migrated.ok, detail, migrateMs: migrated.ok ? migrateMs : undefined, id };
+  return { ok: role.ok && migrated.ok, detail, migrateMs: migrated.ok ? migrateMs : undefined };
 }
 
 /** What a member of one of the journey's own process groups runs. */
