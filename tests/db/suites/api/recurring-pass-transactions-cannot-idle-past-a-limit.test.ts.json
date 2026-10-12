@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "every transaction of the recurring reconciliation pass runs under an idle limit, so an instance frozen mid-pass cannot hold its locks"
+}
