@@ -92,7 +92,7 @@ export function serverName(hello) {
 }
 
 /** Reads until `pick` names a pair or gives up; the bytes read so far travel on with it. */
-function firstBytes(socket, pick, done) {
+export function firstBytes(socket, pick, done) {
   let held = Buffer.alloc(0);
   const read = (chunk) => {
     held = Buffer.concat([held, chunk]);
