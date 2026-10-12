@@ -90,16 +90,16 @@ async function refused(
       throw new Error('A refusal must not adopt');
     },
   });
-  let settled = false;
+  const answered = { settled: false };
   void changing.finally(() => {
-    settled = true;
+    answered.settled = true;
   });
   // Ten minutes at most, a second at a time: no real wait.
-  for (let tick = 0; tick < 600 && !settled; tick += 1) {
+  for (let tick = 0; tick < 600 && !answered.settled; tick += 1) {
     // eslint-disable-next-line no-await-in-loop
     await vi.advanceTimersByTimeAsync(1000);
   }
-  expect(settled, 'the change answered').toBe(true);
+  expect(answered.settled, 'the change answered').toBe(true);
   return { result: await changing, asked };
 }
 

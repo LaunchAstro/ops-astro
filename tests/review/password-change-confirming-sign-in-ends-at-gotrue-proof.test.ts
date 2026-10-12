@@ -146,7 +146,7 @@ it.skipIf(issuer === undefined)(
 it.skipIf(issuer === undefined).each([true, false])(
   'an acknowledged GoTrue logout revokes the confirming sign-in, factor=%s',
   async (factor) => {
-    await refusalLeavesNoSession(factor, () => undefined);
+    await refusalLeavesNoSession(factor, outage(0));
   },
 );
 
