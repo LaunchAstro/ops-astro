@@ -107,15 +107,14 @@ export function EdgeGrip(props: EdgeGripProps): ReactElement {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onLostPointerCapture={drop}
       onKeyDown={onKeyDown}
     />
   );
 }
 
 /**
- * A grip removed mid-drag, or one whose pointer the browser takes back, ends
- * the drag, so its parent never stays in dragging mode. Returns that ending.
+ * A grip removed mid-drag ends the drag, so its parent never stays in
+ * dragging mode. Returns that ending, which a release uses too.
  */
 function useDropped(start: RefObject<Drag | null>, onDragging: (dragging: boolean) => void) {
   const drop = (): void => {

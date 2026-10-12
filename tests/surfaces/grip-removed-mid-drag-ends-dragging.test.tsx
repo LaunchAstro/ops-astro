@@ -4,8 +4,7 @@
 // A resize grip that goes away mid-drag ends the drag. Folding the rail while
 // its grip is held leaves the shell out of dragging mode (no resize cursor,
 // text selectable again); closing the dragged panel leaves the dock out of
-// it, so the next panel opens without it. Losing the pointer's capture ends
-// the drag the same way.
+// it, so the next panel opens without it.
 
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -73,14 +72,6 @@ describe('a resize grip removed mid-drag', () => {
     await page.render(<Dock {...dock([])} />);
     expect(flagged(page, '.dock', 'dragging')).toBe(false);
     await page.render(<Dock {...dock([panel])} />);
-    expect(flagged(page, '.dock', 'dragging')).toBe(false);
-  });
-
-  it('losing the pointer capture ends the drag', async () => {
-    const page = await mount(<Dock {...dock([panel])} />);
-    await press(page.find('.dpanel__grip'), 'pointerdown');
-    expect(flagged(page, '.dock', 'dragging')).toBe(true);
-    await press(page.find('.dpanel__grip'), 'lostpointercapture');
     expect(flagged(page, '.dock', 'dragging')).toBe(false);
   });
 });

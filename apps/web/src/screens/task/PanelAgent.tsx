@@ -29,7 +29,6 @@ import { useRead } from '../../data/use-read.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { AgentSection } from '../../views/agent-pane.tsx';
 import { keepsClosure, type DecisionNote } from '../../views/gate-controls.tsx';
-import { useForgetOnDenial, useSharedNote } from '../../views/decision-closures.tsx';
 import { useHeld } from './held-state.ts';
 import { BriefField } from './Writing.tsx';
 
@@ -65,7 +64,6 @@ export function useDecisionNote(
   panel: { readonly grantKey: string; readonly opening: { readonly taskKey: string } },
   outcome: string,
 ): Pick<AgentSideProps, 'note' | 'onDecided'> {
-  useForgetOnDenial(panel.opening.taskKey, outcome === 'denied');
   const [note, onDecided] = useHeld<DecisionNote>(
     `${panel.grantKey}\u0000${panel.opening.taskKey}`,
     outcome === 'denied',
@@ -105,7 +103,8 @@ export function PanelAgent(props: AgentSideProps): ReactElement {
         people={people.state.outcome === 'ready' ? people.state.value.persons : []}
         ledger={task.ledger}
         onChanged={props.onChanged}
-        {...useSharedNote(task, props.note, props.onDecided)}
+        note={props.note}
+        onDecided={props.onDecided}
       />
     </>
   );
