@@ -38,6 +38,7 @@ import {
   probeValue,
   type Durable,
 } from './d06-cases.ts';
+import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
@@ -99,12 +100,19 @@ const toneOn = (taskId: string) =>
  */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
 
+// The hosted runner runs this file in the parts tests/db/shard-plan.json names,
+// SUITE_PART=i/k, each part on a fixture of its own, as d06-generated does. A
+// part registers only its share of each list, so every cell runs once across
+// the parts and each part still meets the operations in the journey's order;
+// unset, the file is one part and runs them all.
+const PART = suitePart(process.env['SUITE_PART']);
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
-);
+).filter((_, i) => inPart(i, PART));
 const excluded = COMMAND_SURFACE.map((one) => one.name)
   .filter((name) => !AGENT_OPERATIONS.includes(name))
-  .flatMap((operation) => SYSTEM_OWNED_FIELDS.map((key) => ({ operation, key })));
+  .flatMap((operation) => SYSTEM_OWNED_FIELDS.map((key) => ({ operation, key })))
+  .filter((_, i) => inPart(i, PART));
 
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
 describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {

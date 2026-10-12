@@ -74,9 +74,9 @@ function balance(
   return { heaviest: Math.max(...loads), bound: Math.max(longest, (total / count) * 1.1) };
 }
 
-// CI-SPEED, the owner's 4 October 2026 decision (NATHAN-CF-RECORD item 1): 16 shards.
-it('the run is split 16 ways, each shard near its share', () => {
-  expect(shardCount).toBe(16);
+// CIITEM3, the owner's 12 October 2026 decision: 30 shards, each job in about 10 minutes.
+it('the run is split 30 ways, each shard near its share', () => {
+  expect(shardCount).toBe(30);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
 });
@@ -153,8 +153,15 @@ it('a split suite runs each case in exactly one part, and the whole suite when u
   const d06 = read('tests/acceptance/d06-generated.test.ts');
   expect(Object.keys(plan.parts)).toEqual([
     'tests/acceptance/d06-generated.test.ts',
+    'tests/acceptance/d06-agent.test.ts',
     'tests/tenancy/restricted-calls-prefixes.test.ts',
   ]);
+  // So does the agent prefix's, on both of its lists.
+  const agent = read('tests/acceptance/d06-agent.test.ts');
+  expect(agent).toContain("const PART = suitePart(process.env['SUITE_PART']);");
+  expect(agent.match(/\.filter\(\(_, i\) => inPart\(i, PART\)\)/gu)).toHaveLength(2);
+  expect(agent).toContain('it.each(cells)(');
+  expect(agent).toContain('it.each(excluded)(');
   expect(d06).toContain("const PART = suitePart(process.env['SUITE_PART']);");
   expect(d06).toContain('TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART))');
   expect(d06).toContain('PAYLOAD_CELLS.filter((_, i) => inPart(i, PART))');
