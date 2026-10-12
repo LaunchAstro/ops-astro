@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "the session list drops a session first served in another business longer ago than the absolute limit and the clock minute, though it was first served here later"
-}
