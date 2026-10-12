@@ -8,9 +8,10 @@
 // The revert rides the effect register as the publish does: the revision it
 // reverts is the publish the register holds, the page must return to the place
 // the publish was seen live at (its live receipt), and the provider's
-// acceptance is registered the moment it answers, with the time the runner
-// first took the revert up (the job carries no decision time, so the interval
-// runs from there, not from a person's decision). A revert the register holds
+// acceptance is registered the moment it answers or is read back as landed,
+// with the time the runner first took the revert up (the job carries no
+// decision time, so the interval runs from there, not from a person's
+// decision). A revert the register holds
 // is observed again and timed from that instant, never sent again; an unknown
 // revert the register does not hold waits on a person, asked once. So
 // that a revert whose answer never reached the register is never sent blind
@@ -107,9 +108,9 @@ function parsed(text: string): unknown {
 }
 
 /**
- * The provider's revert, registered the moment it answers with the time it was first taken up;
- * or, when the register already holds it, read back as landed, so it is observed and
- * timed and never sent twice.
+ * The provider's revert, registered the moment it answers or is read back as landed, with the
+ * time it was first taken up; or, when the register already holds it, read back as landed, so
+ * it is observed and timed and never sent twice.
  */
 function revertPorts(
   db: Database,
@@ -134,15 +135,20 @@ function revertPorts(
       revert: () => Promise.resolve({ kind: 'ok', value }),
     };
   }
+  const register = async (value: { revision: string; deploymentId: string }) => {
+    if (!(await registerCorrectionEffect(db, run, correction, 'revert', { ...value, decidedAt })))
+      await ports.raiseTask('EFFECT_NOT_REGISTERED');
+  };
   return {
     ...common,
-    readBack: ports.revertReadBack,
+    readBack: async (input) => {
+      const back = await ports.revertReadBack(input);
+      if (back.state === 'landed') await register(back.value);
+      return back;
+    },
     revert: async (input) => {
       const answer = await ports.revert(input);
-      if (answer.kind !== 'ok') return answer;
-      const registered = { ...answer.value, decidedAt };
-      if (!(await registerCorrectionEffect(db, run, correction, 'revert', registered)))
-        await ports.raiseTask('EFFECT_NOT_REGISTERED');
+      if (answer.kind === 'ok') await register(answer.value);
       return answer;
     },
   };
