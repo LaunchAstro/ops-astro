@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The key-set verifier: a sign-in token in, one verdict out, checked against
-// the provider's published public keys (LF-4). Not yet wired; S0-6b moves the
-// sign-in adapter onto it and removes the shared secret.
+// the provider's published public keys (LF-4). The sign-in adapter
+// (`supabase.ts`) verifies every token through it; no shared secret is held.
 //
 // **The algorithm is pinned, never read from the token.** Only ES256 is
 // accepted, and a token naming anything else (`HS256`, `none`) is refused
