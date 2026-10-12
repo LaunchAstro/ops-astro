@@ -377,14 +377,19 @@ export async function revokeDelegationAsManager(
   // Run reach exists only inside a task delegation on its purpose task, and
   // no one holds `run:manage`, so its pair is judged on the claim's collection
   // at that scope (ORCH34): each run pair so judged is a task pair it also asks.
-  for (const collection of delegation.collections) {
-    const judged = collection === 'run' ? claimCollection() : collection;
-    for (const action of delegation.actions) {
-      // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
-      if (!(await withinCeiling(tx, context, judged, action, scope))) return OUTSIDE_CEILING;
+  const ceiling = async (): Promise<boolean> => {
+    for (const collection of delegation.collections) {
+      const judged = collection === 'run' ? claimCollection() : collection;
+      for (const action of delegation.actions) {
+        // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
+        if (!(await withinCeiling(tx, context, judged, action, scope))) return false;
+      }
     }
-  }
+    return true;
+  };
+  if (!(await ceiling())) return OUTSIDE_CEILING;
 
+  let outside = false;
   const loss = await classifyAuthorityLoss(tx, {
     delegationIds: [delegationId],
     actorId: context.session.actorId,
@@ -395,6 +400,12 @@ export async function revokeDelegationAsManager(
         `select 1 from public.delegations where business_id = $1 and id = $2 for update`,
         [tx.businessId, delegationId],
       );
+      // The ceiling again, after the locks' waits: a pair grant that lapsed
+      // in them revokes nothing.
+      if (!(await ceiling())) {
+        outside = true;
+        return { applied: false, value: null };
+      }
       const live = await tx.query<{ readonly live: boolean }>(
         `select (revoked_at is null and settled_at is null and expires_at > clock_timestamp())
                 as live
@@ -411,6 +422,7 @@ export async function revokeDelegationAsManager(
         : { applied: true, value: revokedAt, lost: [delegationId], lostLeases: [] };
     },
   });
+  if (outside) return OUTSIDE_CEILING;
   const revokedAt = loss.value;
   if (!loss.applied || revokedAt === null) {
     return refused(
