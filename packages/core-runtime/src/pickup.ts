@@ -310,7 +310,7 @@ export async function pickup(
   // milliseconds, so the `Date` the delegation is minted with and the lease
   // column hold the same instant.
   const expiry = await tx.query<{ readonly at: Date }>(
-    `select date_trunc('milliseconds', $1::timestamptz + make_interval(secs => $2)) as at`,
+    `select date_trunc('milliseconds', $1::text::timestamptz + make_interval(secs => $2)) as at`,
     [lockedAt, request.leaseSeconds],
   );
   const expiresAt = only(expiry, 'pickup: the new lease expiry').at;
@@ -432,7 +432,7 @@ async function recheckClaim(
             att.id as attempt_id, att.state as attempt_state,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
-            (bound.expires_at <= $3::timestamptz) as bound_lease_expired,
+            (bound.expires_at <= $3::text::timestamptz) as bound_lease_expired,
             ${agentReach('$4', DELEGATION_STANDS_AT_CHECK)} as within_reach
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
@@ -588,7 +588,7 @@ async function fenceLiveLease(
   lockedAt: string,
 ): Promise<RuntimeResult<never> | null> {
   const held = await tx.query<{ readonly id: string; readonly expired: boolean }>(
-    `select id, (expires_at <= $3::timestamptz) as expired from public.leases
+    `select id, (expires_at <= $3::text::timestamptz) as expired from public.leases
       where business_id = $1 and task_id = $2 and state = 'live'`,
     [tx.businessId, taskId, lockedAt],
   );

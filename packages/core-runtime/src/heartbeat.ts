@@ -194,7 +194,7 @@ async function startProvider(
   lockedAt: string,
 ): Promise<RuntimeResult<true>> {
   const started = await tx.query(
-    `update public.attempts set provider_started_at = coalesce(provider_started_at, $3::timestamptz)
+    `update public.attempts set provider_started_at = coalesce(provider_started_at, $3::text::timestamptz)
       where business_id = $1 and lease_id = $2 and dispatch_marker and state = 'dispatched'
       returning id`,
     [tx.businessId, leaseId, lockedAt],
@@ -226,7 +226,7 @@ async function renew(
     `update public.leases
         set expires_at = greatest(
               expires_at,
-              least($5::timestamptz + make_interval(secs => $3),
+              least($5::text::timestamptz + make_interval(secs => $3),
                     acquired_at + make_interval(secs => $4)))
       where business_id = $1 and id = $2 and state = 'live'
       returning expires_at`,

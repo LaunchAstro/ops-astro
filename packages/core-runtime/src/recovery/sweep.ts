@@ -55,7 +55,7 @@ async function discoverExpired(tx: TenantQuery, at: string): Promise<readonly Af
     `select ${AFFECTED_COLUMNS}, 'lease_expired_and_fenced' as cause, res.lease_id as cause_id
        ${AFFECTED_JOINS}
       where res.business_id = $1 and res.state = 'held'
-        and held_lease.state = 'live' and held_lease.expires_at <= $2::timestamptz
+        and held_lease.state = 'live' and held_lease.expires_at <= $2::text::timestamptz
         and not exists (select 1 from public.attempts att
                          where att.business_id = res.business_id and att.reservation_id = res.id
                            and att.state = 'liability_unknown')

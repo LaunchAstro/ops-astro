@@ -229,7 +229,7 @@ async function readFacts(
             (res.state = 'held' and res.lease_id = $3 and res.held_minor >= att.estimated_minor
               and att.state = 'dispatched' and att.lease_id = $3) as covered,
             (d.id is null or (d.revoked_at is null and d.settled_at is null
-              and d.expires_at > $7::timestamptz)) as delegation_live,
+              and d.expires_at > $7::text::timestamptz)) as delegation_live,
             att.id as attempt_id, step.kind as step_kind,
             -- T3d1: a step resumed after its first attempt was proved absent
             -- is marked again for the replacement. The answer to a second
@@ -360,7 +360,7 @@ async function mark(
   );
   const marked = await tx.query<{ readonly dispatched_at: Date }>(
     `update public.planned_steps
-        set dispatched_at = $4::timestamptz, dispatch_attempt_id = $3, dispatch_marked = true
+        set dispatched_at = $4::text::timestamptz, dispatch_attempt_id = $3, dispatch_marked = true
       where business_id = $1 and id = $2
         and (dispatched_at is null
              -- T3d1: only once the attempt that held the mark is fenced

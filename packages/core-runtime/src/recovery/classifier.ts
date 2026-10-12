@@ -545,7 +545,7 @@ export async function checkAuthorityAt(
   const live = await tx.query<{ readonly id: string }>(
     `select id from public.grants
       where business_id = $1 and id = any($2::uuid[])
-        and (expires_at is null or expires_at > $3::timestamptz)`,
+        and (expires_at is null or expires_at > $3::text::timestamptz)`,
     [tx.businessId, decision.value.map((grant) => grant.id), at],
   );
   const ids = new Set(live.map((row) => row.id));

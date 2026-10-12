@@ -49,7 +49,7 @@ export async function recordCheck(
        (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
         fence, name, outcome, note, created_at)
      select l.business_id, $3, l.task_id, run.id, run.version_id, l.id, att.id,
-            l.holder_actor_id, l.fence, $4, $5, $6, $7::timestamptz
+            l.holder_actor_id, l.fence, $4, $5, $6, $7::text::timestamptz
        from public.leases l
        join public.reservations res
          on res.business_id = l.business_id and res.lease_id = l.id
