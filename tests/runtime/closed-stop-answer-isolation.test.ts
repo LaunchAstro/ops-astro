@@ -11,6 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import type { Member } from '../commands/fixture.ts';
 import { codeOf } from './schedules-harness.ts';
 import { callState } from './version-room-world.ts';
 import {
@@ -24,6 +25,7 @@ import {
   memberOn,
   openCrossings,
   sameAsMadeUp,
+  stopped,
   type Crossings,
 } from './closed-stop-answer-world.ts';
 
@@ -36,6 +38,9 @@ if (serverUrl === undefined) {
 }
 
 let w: Crossings;
+/** The crossings' refused callers, kept for their own stops at the end. */
+let forA: Member;
+let elsewhere: Member;
 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
@@ -79,7 +84,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across client
     ];
     expect(links.every((link) => link !== null)).toBe(true);
     expect(links[0]).not.toBe(links[1]);
-    const forA = await memberOn(alpha, 'client_a_decider', clientA.work.taskId);
+    forA = await memberOn(alpha, 'client_a_decider', clientA.work.taskId);
     const ledgers = async (): Promise<unknown> => ({
       a: await ledgerOf(alpha, clientA.work.taskId),
       b: await ledgerOf(alpha, clientB.work.taskId),
@@ -100,7 +105,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across client
 describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across people', () => {
   it('a person granted on another task only, and a person with no grant, answer this stop with nothing written', async () => {
     const { alpha, clientA, clientB } = w;
-    const elsewhere = await memberOn(alpha, 'granted_elsewhere', clientB.work.taskId);
+    elsewhere = await memberOn(alpha, 'granted_elsewhere', clientB.work.taskId);
     const nobody = await memberOn(alpha, 'granted_nothing', null);
     const before = await ledgerOf(alpha, clientA.work.taskId);
 
@@ -147,5 +152,57 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, named by a fo
       other: await callState(alpha, clientB.unsent),
     }).toEqual({ own: 'reserved', other: 'reserved' });
     expect(await ledgers()).toStrictEqual(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('a stop on a closed hold, ended beside others', () => {
+  it("ending a client's stop in one business writes its own run alone, and another business's and another client's runs and ledgers stay whole", async () => {
+    const { alpha, bravo, b1, clientB } = w;
+    const ending = await stopped(alpha);
+    expect(await linkClient(alpha, ending.work.taskId)).not.toBeNull();
+    const others = async (): Promise<unknown> => ({
+      bravo: await ledgerOf(bravo, b1.work.taskId),
+      otherClient: await ledgerOf(alpha, clientB.work.taskId),
+      calls: [await callState(bravo, b1.unsent), await callState(alpha, clientB.unsent)],
+    });
+    const before = await others();
+    const runsOf = async (): Promise<unknown> =>
+      ((await ledgerOf(alpha, ending.work.taskId)) as { runs: unknown }).runs;
+    const ownBefore = await runsOf();
+
+    const body = answerBody(
+      'run.end_at_budget_stop',
+      ending.work.taskId,
+      ending.runId,
+      ending.askId,
+    );
+    expect(codeOf(await asMember(alpha, alpha.decider, body))).toBe('applied');
+    expect(await runsOf()).not.toStrictEqual(ownBefore);
+    expect(await others()).toStrictEqual(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('a stop on a closed hold, answered by its own', () => {
+  it("the person refused on another client's stop and the person granted on another task each top up their own task's stop", async () => {
+    const { alpha, clientA, clientB } = w;
+    // While the plan's approver holds `billing:decide` the top-up is theirs
+    // alone; with it ended, any holder on the task answers.
+    const ended = await alpha.db.admin.execute(
+      `update public.grants set revoked_at = now()
+        where business_id = $1 and subject_id = $2 and collection = 'billing' returning id`,
+      [alpha.business, alpha.decider.personId],
+    );
+    expect(ended).toHaveLength(1);
+    const own = async (who: Member, target: typeof clientA): Promise<unknown> => {
+      const body = answerBody('run.top_up', target.work.taskId, target.runId, target.askId);
+      return {
+        code: codeOf(await asMember(alpha, who, body)),
+        unsent: await callState(alpha, target.unsent),
+      };
+    };
+    expect({ forA: await own(forA, clientA), elsewhere: await own(elsewhere, clientB) }).toEqual({
+      forA: { code: 'applied', unsent: 'released' },
+      elsewhere: { code: 'applied', unsent: 'released' },
+    });
   });
 });

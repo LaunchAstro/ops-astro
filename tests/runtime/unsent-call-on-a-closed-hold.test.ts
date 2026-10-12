@@ -248,3 +248,25 @@ describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a c
     });
   });
 });
+
+describe.skipIf(serverUrl === undefined)('a pickup after a top-up on an abandoned hold', () => {
+  it('counts a hold its lease left unspent at nothing once its unsent call is released, so the topped-up step is held again for what it has left', async () => {
+    // Approved 500, raised to 600. The first hold closed at 0 with 500 unsent,
+    // the second spent 500, and the top-up's hold spends 40 and stops: 540 spent.
+    const { work, versionId, first } = await roomyWork(s);
+    await unsentCall(s, first, 500);
+    expect(await stopForRoom(work, first, 500)).toBe('BUDGET_UNAVAILABLE');
+    expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
+    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+    const third = await pickup(s, fresh?.id);
+    await spend(s, third['reservationId'], 40);
+    await stopWorker(s, third);
+
+    const again = await claim(fresh?.id);
+    expect({
+      code: codeOf(again),
+      live: await liveOf(versionId),
+      recorded: await holdStateOf(s, first),
+    }).toEqual({ code: 'applied', live: ['60'], recorded: [{ hold_state: 'abandoned' }] });
+  });
+});
