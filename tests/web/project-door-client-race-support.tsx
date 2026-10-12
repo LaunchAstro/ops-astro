@@ -17,6 +17,8 @@ import { held, json } from './work-log-stand-in.tsx';
 export const CLIENT = '11111111-1111-4111-8111-111111111111';
 export const BOARD = '22222222-2222-4222-8222-222222222222';
 export const OTHER = '66666666-6666-4666-8666-666666666666';
+export const PERSON = '88888888-8888-4888-8888-888888888888';
+export const WITH_PERSON = { ok: true, persons: [{ personId: PERSON, name: 'Noah Lee' }] };
 export const DENIED = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] };
 export const EMPTY = { ok: true, tasks: [] };
 export const projectOn = (client: string, name: string) => ({
@@ -41,10 +43,11 @@ export const rejected: Answer = () => Promise.reject(new TypeError('Failed to fe
 
 /** An API whose board, project and client list answers a test steers, with the tab's live stream. */
 export function steeredApi(businessKey = 'alpha', clientName = 'Client A') {
-  const serve: { board: Answer; project: Answer; clients: Answer } = {
+  const serve: { board: Answer; project: Answer; clients: Answer; people: Answer } = {
     board: answer(EMPTY),
     project: answer(ON_A),
     clients: answer({ ok: true, clients: [{ clientId: CLIENT, name: clientName }] }),
+    people: answer(WITH_PERSON),
   };
   const reads = { board: 0, project: 0 };
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -68,7 +71,7 @@ export function steeredApi(businessKey = 'alpha', clientName = 'Client A') {
       return await serve.board();
     }
     if (path.endsWith('/client/list')) return await serve.clients();
-    if (path.endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (path.endsWith('/person/list')) return await serve.people();
     return json({ ok: true });
   };
   const client = new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
