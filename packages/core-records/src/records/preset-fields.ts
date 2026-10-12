@@ -22,9 +22,13 @@ const OPERATION_NAME = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
  * blank label (`field_defs_label_present`), a searchable field that is not
  * text, which alone is slotted for search (`field_defs_searchable_is_slotted_text`),
  * and an owning operation that is not an operation name
- * (`field_defs_operation_names_are_operations`).
+ * (`field_defs_operation_names_are_operations`), or names no write the command
+ * catalogue has (`operations`, passed in: records may not import the wire).
  */
-export function invalidFields(fields: readonly CheckedField[]): readonly string[] {
+export function invalidFields(
+  fields: readonly CheckedField[],
+  operations: ReadonlySet<string>,
+): readonly string[] {
   return fields
     .filter(
       (field) =>
@@ -32,7 +36,9 @@ export function invalidFields(fields: readonly CheckedField[]): readonly string[
         typeof field.label !== 'string' ||
         field.label.trim().length === 0 ||
         (field.searchable === true && field.valueType !== 'text') ||
-        (field.owningOperations ?? []).some((name) => !OPERATION_NAME.test(name)),
+        (field.owningOperations ?? []).some(
+          (name) => !OPERATION_NAME.test(name) || !operations.has(name),
+        ),
     )
     .map((field) => field.key);
 }
