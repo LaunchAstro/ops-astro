@@ -12,6 +12,7 @@
 
 import type { ReactElement } from 'react';
 import { PlanCard } from './plan-card.tsx';
+import { ProposalCard } from './proposal-card.tsx';
 import type { AssistantCite, AssistantMessage } from './types.ts';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
@@ -42,8 +43,10 @@ export function Transcript(props: {
   readonly messages: readonly AssistantMessage[];
   /** AW-04: the one click on a plan card, by message. */
   readonly onAccept?: ((messageId: string) => void) | undefined;
+  /** The one click on a task proposal card, by message. */
+  readonly onPropose?: ((messageId: string) => void) | undefined;
 }): ReactElement {
-  const { onAccept } = props;
+  const { onAccept, onPropose } = props;
   return (
     <div className="aip__scroll" role="log" aria-live="polite" aria-label="Conversation">
       {props.messages.map((message) => (
@@ -57,6 +60,12 @@ export function Transcript(props: {
             <PlanCard
               plan={message.plan}
               onAccept={onAccept === undefined ? undefined : () => onAccept(message.id)}
+            />
+          )}
+          {message.proposal === undefined ? null : (
+            <ProposalCard
+              proposal={message.proposal}
+              onSend={onPropose === undefined ? undefined : () => onPropose(message.id)}
             />
           )}
           {message.role === 'ai' && message.cites.length > 0 ? (

@@ -49,6 +49,7 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
+import { answersTo, sendProposal } from '../assistant/proposals.ts';
 import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
@@ -94,7 +95,7 @@ interface Opening {
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
   else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.line(key, 'ai', reply.body, undefined, citesOf(reply.cites));
+  else if (reply.answered) store.answer(key, reply, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
 
@@ -152,11 +153,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const chat = store.chat(key);
     if (chat === undefined) return;
     const question = store.line(key, 'user', body);
-    const on: Store = {
-      ...store,
-      line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
-      plan: (k, words, offer) => store.plan(k, words, offer, question),
-    };
+    const { on, read } = answersTo(props, store, chat, question);
     let known = chat.conversationId;
     // A started tab's question waits for its writes so far: a model just chosen is the one asked.
     if (known !== null) await starts.current.get(key);
@@ -168,12 +165,14 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
       const turn = before.then(async (id) => {
         if (id !== null) return id;
         asked = true;
+        await read;
         return await start(chat, body, on);
       });
       starts.current.set(key, turn);
       known = await turn;
       if (asked || known === null) return;
     }
+    await read;
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
     );
@@ -294,6 +293,7 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
       onAddPage={writes.addPage}
       onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
+      onPropose={(key, id) => void sendProposal(props, store, { key, id })}
       onClose={props.onClose}
     />
   );
