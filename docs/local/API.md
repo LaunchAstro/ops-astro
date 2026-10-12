@@ -1562,7 +1562,10 @@ up to 50 non-empty texts of at most 2,000 characters; anything else is
 (`reviseStateOnRun`, `commands/run-state.ts`).
 
 The handlers are `topUpOnRun` and `endOnRun` (`commands/run-answers.ts`), over
-`topUpAtBudgetStop` and `endAtBudgetStop` (`core-runtime/src/budget-answer.ts`).
+`topUpAtBudgetStop` (`core-runtime/src/budget-answer.ts`) and `endAtBudgetStop`
+(`core-runtime/src/budget-end.ts`). Their `heldMinor`, `releasedMinor` and
+`spentMinor` are minor units as decimal strings, exact past what a JSON number
+holds, in the answer and in the operation's stored replay.
 
 - **The top-up** answers `detail: { runId, state: 'applied', answerId,
 heldMinor }`, and the run is back in the queue for a fresh pickup. Above the

@@ -176,8 +176,8 @@ for (const answer of ['top-up', 'end'] as const) {
       // The figures the answer reports include what it gave back.
       expect(answered).toMatchObject(
         answer === 'end'
-          ? { ok: true, value: { spentMinor: 0, releasedMinor: 900 } }
-          : { ok: true, value: { heldMinor: await holdOf(work) } },
+          ? { ok: true, value: { spentMinor: '0', releasedMinor: '900' } }
+          : { ok: true, value: { heldMinor: String(await holdOf(work)) } },
       );
     } finally {
       paused.resume();

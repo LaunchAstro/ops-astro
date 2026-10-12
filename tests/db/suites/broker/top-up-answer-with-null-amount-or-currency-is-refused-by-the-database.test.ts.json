@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The database's top-up shape check must refuse a NULL amount or currency, so the run cannot leave its budget wait on such an answer."
+}

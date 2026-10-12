@@ -91,7 +91,7 @@ it('a top-up counts only the amount it moved, not the whole spend', async () => 
         currency: 'AUD',
       }),
   );
-  expect(answered).toMatchObject({ ok: true, value: { state: 'applied', heldMinor: 1_400 } });
+  expect(answered).toMatchObject({ ok: true, value: { state: 'applied', heldMinor: '1400' } });
   expect(await envelopeActual(work), 'the top-up moved the open call at 500').toBe(before + 500);
   open();
   await pending;

@@ -20,6 +20,13 @@ The private half is the broker's (ADR 0028), which AW-01 builds. With no public
 key configured, `secret.set` refuses `DEPENDENCY_NOT_LANDED` and stores
 nothing.
 
+A sealed value is bound to its place: the AES-GCM additional data names the
+key id, the business, the secret's name and its scope, so a value copied to
+another row, name, scope or business does not open there. A bound value's
+stored nonce starts with a version byte. A value sealed before the binding
+keeps a bare 12-byte nonce and names no place, so it opens nowhere and is set
+again; `octet_length(nonce) = 12` finds the rows still holding one.
+
 `secret.set` stores only what custody's own load check would take
 (`parseCredentials` in `packages/core-custody/src/credentials.ts`, AW-01 and
 C60) and refuses anything else `FIELD_VALUE_INVALID` on `value`, never
