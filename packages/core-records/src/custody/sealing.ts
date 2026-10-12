@@ -18,8 +18,8 @@
 // another row, name, scope or business does not open there. The stored nonce
 // says which formula sealed it: a bound value's carries `BOUND` before the
 // 12-byte nonce. A value sealed before the binding has the bare 12 bytes and
-// authenticates the key id only; it still opens, anywhere, until it is set
-// again, and `octet_length(nonce) = 12` finds the rows still holding one.
+// authenticates the key id only, so it could open anywhere: it opens nowhere,
+// and is set again. `octet_length(nonce) = 12` finds the rows still holding one.
 
 import {
   createCipheriv,
@@ -76,12 +76,11 @@ function wrappingKey(shared: Buffer, ephemeralPublic: Buffer, keyId: string): Bu
 }
 
 /**
- * The additional data: the key id and, for a bound value, the place. Ids are
+ * The additional data: the key id and the place. Ids are
  * compared as the database prints them, lower case, so an id given in upper
  * case binds the row it names.
  */
-function additionalData(keyId: string, at: SealedAt | null): Buffer {
-  if (at === null) return Buffer.from(keyId);
+function additionalData(keyId: string, at: SealedAt): Buffer {
   const place = [at.businessId.toLowerCase(), at.name, at.scope.kind, at.scope.id?.toLowerCase()];
   return Buffer.from(JSON.stringify(['bound', keyId, ...place]));
 }
@@ -141,9 +140,9 @@ export function seal(value: string, key: SealingKey, at: SealedAt): Sealed {
  * share one formula with `seal`, and two copies cannot drift apart.
  */
 export function open(sealed: Sealed, privateKey: KeyObject, at: SealedAt): string {
-  const bound = sealed.nonce.length === NONCE_LENGTH + 1 && sealed.nonce[0] === BOUND;
-  if (!bound && sealed.nonce.length !== NONCE_LENGTH) {
-    throw new Error('custody: the sealed value has no known nonce');
+  // A value sealed before the binding names no place, so it opens nowhere: it is set again.
+  if (sealed.nonce.length !== NONCE_LENGTH + 1 || sealed.nonce[0] !== BOUND) {
+    throw new Error('custody: the sealed value is not bound to its place; set it again');
   }
   const publicKey = importPublic(sealed.ephemeralPublic.toString('base64url'));
   const shared = diffieHellman({ privateKey, publicKey });
@@ -155,7 +154,7 @@ export function open(sealed: Sealed, privateKey: KeyObject, at: SealedAt): strin
     sealed.nonce.subarray(sealed.nonce.length - NONCE_LENGTH),
     { authTagLength: TAG_LENGTH },
   );
-  decipher.setAAD(additionalData(sealed.keyId, bound ? at : null));
+  decipher.setAAD(additionalData(sealed.keyId, at));
   decipher.setAuthTag(sealed.sealed.subarray(tagAt));
   return Buffer.concat([
     decipher.update(sealed.sealed.subarray(0, tagAt)),
