@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: every owed page of a business turn judges the window from one instant, so no run’s turn moves between pages."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: a pass stops at its read budget, and a run it did not reach keeps its turn and place for the next pass."
+}

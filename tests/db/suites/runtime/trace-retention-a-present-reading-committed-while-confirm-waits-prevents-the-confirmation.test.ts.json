@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: confirmation judges a run’s history only under the cursor row lock that every result writer takes."
+}

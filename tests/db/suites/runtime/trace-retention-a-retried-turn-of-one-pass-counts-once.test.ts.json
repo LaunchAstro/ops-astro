@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: a business turn retried within one deployment pass keeps the pass’s identity, so its absence counts once."
+}

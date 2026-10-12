@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: the owed read-back goes before the asks are read back, and every read of a pass counts against one budget, so the asks cannot spend the allowance an owed span needed."
+}

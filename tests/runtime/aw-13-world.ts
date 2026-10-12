@@ -39,6 +39,8 @@ export interface TraceTarget {
   /** Trace ids the target holds, and their span ids: an export adds, a delete not skipped drops. */
   readonly stored: Set<string>;
   readonly spans: Map<string, Set<string>>;
+  /** Reads the target still answers before each answers 429, as a store whose allowance is spent; unset for no limit. */
+  allowance?: number | undefined;
   /** A case's stand-in for what the target receives: the body it stores and records instead. */
   tamper?: ((method: string, body: string) => Promise<string>) | undefined;
   readonly origin: string;
@@ -124,6 +126,13 @@ async function listen(
         target.ingestion.push(
           request.headers['x-langfuse-ingestion-version'] as string | undefined,
         );
+        if (request.method === 'GET' && target.allowance !== undefined) {
+          target.allowance -= 1;
+          if (target.allowance < 0) {
+            response.writeHead(429, { 'content-type': 'application/json' }).end('{}');
+            return;
+          }
+        }
         const status =
           target.mode === 'ok' || target.mode === 'skipping'
             ? store(target, request.method ?? '', request.url ?? '', body)

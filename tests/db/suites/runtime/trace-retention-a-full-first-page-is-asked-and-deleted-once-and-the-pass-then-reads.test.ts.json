@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: due pages are asked and deleted once each, by keyset, before the pass reads, and a run awaiting its second read is not deleted again."
+}

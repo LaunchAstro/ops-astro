@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: a present result between two absences resets the count, so a run is confirmed only on two absences in consecutive passes."
+}

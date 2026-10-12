@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: one 404 for a recently sent span steps no cursor back and resends nothing; a second consecutive absence does, and a present answer between resets it."
+}

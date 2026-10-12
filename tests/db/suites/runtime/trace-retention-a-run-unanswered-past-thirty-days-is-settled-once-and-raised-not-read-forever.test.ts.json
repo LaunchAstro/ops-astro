@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: a run still unconfirmed once its ask is older than the window is settled once, raised, and never read again."
+}

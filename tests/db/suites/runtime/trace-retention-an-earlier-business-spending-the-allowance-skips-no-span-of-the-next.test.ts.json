@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention: one read budget spans every business of a deployment pass, and each pass starts one business on, so an earlier business cannot spend the next one’s reads unseen."
+}
