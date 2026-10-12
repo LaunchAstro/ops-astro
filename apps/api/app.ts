@@ -94,14 +94,8 @@ import {
   type Seated,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
-import {
-  hearing,
-  mayJoinBoard,
-  mayReach,
-  mayShowInbox,
-  watching,
-  type DoorWatching,
-} from './live-watching.ts';
+import { createGather, type Gather } from './gather.ts';
+import { boardQuestions, mayJoinBoard, watching, type DoorWatching } from './live-watching.ts';
 import { liveStream } from './live-stream.ts';
 import { recordsIn } from './records-in.ts';
 import { settleAfterCommit } from './settle-after-commit.ts';
@@ -741,6 +735,14 @@ async function boardStream(
   });
 }
 
+/** One per live channel: the board streams of one credential share a signal's run (`gather.ts`). */
+const gathers = new WeakMap<LiveOptions, Gather>();
+function gatherOf(live: LiveOptions): Gather {
+  const known = gathers.get(live) ?? createGather();
+  gathers.set(live, known);
+  return known;
+}
+
 /** The board's questions on `stream` (the whole stream, or its `board` share), for the person the join resolved. */
 async function followBoardOn(
   stream: LiveStream,
@@ -750,31 +752,11 @@ async function followBoardOn(
   businessId: string,
   joined: { readonly personId: string },
 ): Promise<void> {
-  // One check of the bearer per run, shared by that run's questions. Every run,
-  // a signal's or the recheck's, checks it again and asks the join again, so a
-  // bearer revoked or remapped since is caught by the next run (ORCH46).
-  let checked: ReturnType<Verifier> | undefined;
-  const door: ApiOptions = {
-    ...options,
-    verify: async (request) => await (checked ??= options.verify(request)),
-  };
   await followBoard(
     stream,
     live.topics,
     { businessId, personId: joined.personId, recheckMs: live.recheckMs ?? RECHECK_MS },
-    {
-      newRun: () => {
-        checked = undefined;
-      },
-      joinedAs: async () => {
-        const again = await mayJoinBoard(door, context, businessId);
-        if (again === UNANSWERED) return again;
-        return isCommandRefusal(again) ? undefined : again.personId;
-      },
-      reach: async (personId) => await mayReach(door, context, businessId, personId),
-      shown: async (personId) => await mayShowInbox(door, context, businessId, personId),
-      hears: hearing(door, context, businessId),
-    },
+    boardQuestions(options, context, businessId, gatherOf(live)),
   );
 }
 
