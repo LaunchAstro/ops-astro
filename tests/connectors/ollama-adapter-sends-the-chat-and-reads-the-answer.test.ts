@@ -75,6 +75,12 @@ describe('the Ollama adapter', () => {
     expect(system?.content).not.toContain('b1d0f3a2');
   });
 
+  it('tells the model it only proposes, and never to say it has done anything', () => {
+    const [system] = bodyOf({ message: 'Make a task' }).messages;
+    expect(system?.content).toContain('you must never say or suggest that you have');
+    expect(system?.content).toContain('Nothing happens until the person clicks');
+  });
+
   it('keeps earlier words it cannot read as turns out of the request', () => {
     const { messages } = bodyOf({ earlier: 'not json', message: 'Hi' });
     expect(messages.map((message) => message.role)).toStrictEqual(['system', 'user']);
