@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// OW-069.1: another business maps the scan sign-in to a person while
-// `scan-login remove` is cleaning it up. Real migrated Postgres, the real CLI
+// Another business maps the scan sign-in to a person or an agent before or
+// while `scan-login remove` is cleaning it up. Real migrated Postgres, the real CLI
 // as a child process, and an HTTP stand-in for GoTrue's admin API. Every
 // credential here is invented.
 //
@@ -38,7 +38,7 @@ function provider(users: Map<string, string>, hooks: { onDelete?: () => void }):
     };
     const id = req.url?.startsWith('/admin/users/') ? req.url.slice('/admin/users/'.length) : '';
     if (req.url === '/admin/users' && req.method === 'POST') {
-      const made = randomUUID();
+      const made = typeof body.id === 'string' ? body.id : randomUUID();
       users.set(made, body.email);
       answer(200, { id: made });
     } else if (req.url === '/token?grant_type=password') {
@@ -121,8 +121,56 @@ async function bravoWithLogin(db: Database, subject: string) {
   return { map, live };
 }
 
-it('a person mapping made in another business during scan-login cleanup is refused with the account deleted, or live with the account kept', async () => {
-  const db = await createFreshDatabase({ part: 'scanrace' });
+/** Bravo, with a login for `subject` and an agent, the two not yet mapped. */
+async function bravoWithAgentLogin(db: Database, subject: string) {
+  const [business, agent, login] = [randomUUID(), randomUUID(), randomUUID()];
+  await db.admin.execute(
+    'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+    [business, 'bravo', 'Bravo'],
+  );
+  await db.app.withBusiness(business, async (tx) => {
+    await tx.query(
+      "insert into public.actors (business_id, id, kind, active) values ($1, $2, 'agent', true)",
+      [business, agent],
+    );
+    await tx.query(
+      "insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'supabase', $3)",
+      [business, login, subject],
+    );
+  });
+  const map = () =>
+    db.app.withBusiness(business, (tx) =>
+      tx.query(
+        `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+         values ($1, $2, $3, $4, $4)`,
+        [business, randomUUID(), login, agent],
+      ),
+    );
+  const live = async () =>
+    (
+      await db.app.withBusiness(business, (tx) =>
+        tx.query<{ active: boolean }>(
+          'select active from public.actor_logins where login_id = $1',
+          [login],
+        ),
+      )
+    ).some((row) => row.active);
+  return { map, live };
+}
+
+/** A fresh database with Alpha, the stand-in listening and a scan login made, for `run`. */
+async function withScanLogin(
+  part: string,
+  run: (world: {
+    db: Database;
+    dir: string;
+    port: number;
+    users: Map<string, string>;
+    hooks: { onDelete?: () => void };
+    userId: string;
+  }) => Promise<void>,
+): Promise<void> {
+  const db = await createFreshDatabase({ part });
   const dir = mkdtempSync(join(tmpdir(), 'scan-login-race-'));
   const users = new Map<string, string>();
   const hooks: { onDelete?: () => void } = {};
@@ -142,8 +190,20 @@ it('a person mapping made in another business during scan-login cleanup is refus
     const { userId } = JSON.parse(readFileSync(join(dir, 'login.json'), 'utf8')) as {
       userId: string;
     };
-    const bravo = await bravoWithLogin(db, userId);
+    await run({ db, dir, port, users, hooks, userId });
+  } finally {
+    delete hooks.onDelete;
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+    await db.drop();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
+it('a person mapping made in another business during scan-login cleanup is refused with the account deleted, or live with the account kept', async () => {
+  await withScanLogin('scanrace', async ({ db, dir, port, users, hooks, userId }) => {
+    const bravo = await bravoWithLogin(db, userId);
     let mapping: Promise<boolean> | undefined;
     hooks.onDelete = () => {
       mapping ??= bravo.map().then(
@@ -153,21 +213,43 @@ it('a person mapping made in another business during scan-login cleanup is refus
     };
     await cli(db, dir, port, 'remove');
     expect(mapping, 'the cleanup reached the provider delete').toBeDefined();
-    const state = {
-      refused: await mapping,
-      live: await bravo.live(),
-      kept: users.has(userId),
-    };
+    const state = { refused: await mapping, live: await bravo.live(), kept: users.has(userId) };
     expect([
       { refused: true, live: false, kept: false },
       { refused: false, live: true, kept: true },
     ]).toContainEqual(state);
-  } finally {
-    delete hooks.onDelete;
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
+  });
+});
+
+it('scan-login cleanup keeps a sign-in another business maps to an agent', async () => {
+  await withScanLogin('scanagent', async ({ db, dir, port, users, userId }) => {
+    const bravo = await bravoWithAgentLogin(db, userId);
+    await bravo.map();
+    const removed = await cli(db, dir, port, 'remove');
+    expect({ live: await bravo.live(), kept: users.has(userId) }).toEqual({
+      live: true,
+      kept: true,
     });
-    await db.drop();
-    rmSync(dir, { recursive: true, force: true });
-  }
+    expect(removed.code).toBe(1);
+  });
+});
+
+it('an agent mapping made in another business during scan-login cleanup is refused with the account deleted, or live with the account kept', async () => {
+  await withScanLogin('scanagentrace', async ({ db, dir, port, users, hooks, userId }) => {
+    const bravo = await bravoWithAgentLogin(db, userId);
+    let mapping: Promise<boolean> | undefined;
+    hooks.onDelete = () => {
+      mapping ??= bravo.map().then(
+        () => false,
+        () => true,
+      );
+    };
+    await cli(db, dir, port, 'remove');
+    expect(mapping, 'the cleanup reached the provider delete').toBeDefined();
+    const state = { refused: await mapping, live: await bravo.live(), kept: users.has(userId) };
+    expect([
+      { refused: true, live: false, kept: false },
+      { refused: false, live: true, kept: true },
+    ]).toContainEqual(state);
+  });
 });

@@ -7,8 +7,8 @@
 //
 // Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging or
 // local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` writes
-// SCAN_LOGIN_FILE once the sign-in exists, so `remove` finds it even when `make`
-// stopped part way. Exit 0 when done, 1 when refused or stopped. Nothing
+// SCAN_LOGIN_FILE before it asks for the sign-in, so `remove` finds it even when
+// `make` stopped part way. Exit 0 when done, 1 when refused or stopped. Nothing
 // printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -22,6 +22,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { endPersonAuthority } from '../../packages/core-commands/src/commands/authority-controls.ts';
+import { lockAccess } from '../../packages/core-records/src/authority/access.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -62,8 +63,8 @@ async function provider(path, method, body, headers = admin) {
 }
 
 /** Owner-only, a file there before included: emptied and narrowed before the text goes in. */
-function keep(file, text) {
-  const fd = openSync(file, 'w', 0o600);
+function keep(file, text, flags = 'w') {
+  const fd = openSync(file, flags, 0o600);
   try {
     fchmodSync(fd, 0o600);
     writeSync(fd, text);
@@ -140,11 +141,18 @@ async function make() {
     stop('SCAN_LOGIN_FILE exists: remove the last scan login first');
   const email = scanEmail(randomBytes(6).toString('hex'));
   const password = randomBytes(24).toString('base64url');
-  const made = await provider('/admin/users', 'POST', { email, password, email_confirm: true });
-  const userId = made.body?.id;
-  if (made.status >= 300 || typeof userId !== 'string')
+  // The sign-in's id is chosen here and kept before the provider is asked, in a
+  // file only one make can create: a lost reply leaves the id `remove` deletes by.
+  const userId = randomUUID();
+  keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId }), 'wx');
+  const made = await provider('/admin/users', 'POST', {
+    id: userId,
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (made.status >= 300 || made.body?.id !== userId)
     stop(`the admin API did not make the sign-in (${made.status})`);
-  keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId }));
 
   const business = businessId(await businesses());
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
@@ -170,8 +178,8 @@ async function make() {
 
 // Check first, then end what the sign-in is mapped to, found from its own login
 // row and never from the file: a lost reply is found, a tampered file names no one.
-// A sign-in another business still maps to a person is that person's too, so
-// nothing is ended and the provider keeps it.
+// A sign-in another business still maps to a person or an agent is theirs too,
+// so nothing is ended and the provider keeps it.
 async function endRows(record, providerEmail, all) {
   const scan = businessId(all);
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
@@ -180,15 +188,20 @@ async function endRows(record, providerEmail, all) {
       // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
       const elsewhere = await db.withBusiness(id, (tx) =>
         tx.query(
-          `select from public.logins l join public.person_logins pl on pl.login_id = l.id
-            where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
+          `select from public.logins l
+            where l.provider = 'supabase' and l.subject = $1
+              and (exists (select from public.person_logins m where m.login_id = l.id and m.active)
+                or exists (select from public.actor_logins m where m.login_id = l.id and m.active))
+            limit 1`,
           [record.userId],
         ),
       );
       if (elsewhere.length > 0)
-        stop("the sign-in is a person's in another business too; nothing was removed");
+        stop('the sign-in is mapped in another business too; nothing was removed');
     }
     await db.withBusiness(scan, async (tx) => {
+      // As `access.end` does: no grant is given meanwhile and missed by the ending.
+      await lockAccess(tx);
       const mapped = await tx.query(
         `select pl.person_id, p.display_name from public.logins l
            join public.person_logins pl on pl.login_id = l.id
