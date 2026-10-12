@@ -4,7 +4,10 @@
 // the one panel width every panel shares, and the geometry they give. Where
 // the window cannot hold every open panel at the floor, the lowest-ranked one
 // closes through the open set, as a close from anywhere does, and one line
-// says so (R39).
+// says so (R39). The Task panel closes through its own close, which refuses
+// while its draft's Create is out; the next lowest-ranked panel closes in its
+// place, so the dock settles rather than closing and restoring the draft in a
+// loop.
 //
 // The width and the sheet height are the `dock.width` and `dock.sheetHeight`
 // keys of MP-2-11's one preference store (shell/layout-store.ts), no dock record
@@ -65,12 +68,16 @@ function useWindowSize(): { readonly viewport: number; readonly tall: number } {
   return size;
 }
 
-/** `navRail` is the nav rail as drawn: the person's width, or the strip's while folded (MP-2-3). */
+/**
+ * `navRail` is the nav rail as drawn: the person's width, or the strip's while
+ * folded (MP-2-3). `closeTask` is the Task panel's own close, false while it refuses.
+ */
 export function useDockLayout(
   dock: DockModel,
   registry: PanelRegistry,
   navRail: number,
   store: { readonly layout: Layout; readonly save: LayoutStore['save'] },
+  closeTask?: () => boolean,
 ): DockLayoutModel {
   const { viewport, tall } = useWindowSize();
   const [held, setMoving] = useState<{ of?: Layout; width?: number; sheet?: number }>({});
@@ -84,13 +91,14 @@ export function useDockLayout(
   const closes = geometry.closes;
   const { change } = dock;
   useEffect(() => {
-    if (closes === null) return;
-    change((state) => close(state, closes));
-    const label = registry[closes]?.label ?? 'A panel';
+    const shut = closes === 'task' && closeTask?.() === false ? (open.at(-2) ?? null) : closes;
+    if (shut === null) return;
+    change((state) => close(state, shut));
+    const label = registry[shut]?.label ?? 'A panel';
     setStamp(
       `${label} closed: ${COUNT[open.length] ?? String(open.length)} panels do not fit at this width.`,
     );
-  }, [closes, change, registry, open.length]);
+  }, [closes, closeTask, change, registry, open.length]);
 
   return {
     geometry,

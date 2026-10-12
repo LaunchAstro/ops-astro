@@ -68,6 +68,8 @@ export interface ShellProps {
   /** The person's rail: folded to the 56px strip, and its width while open. */
   readonly railCollapsed?: boolean;
   readonly railWidth?: number;
+  /** Whose rail it is (business and person): a change ends a drag in progress. */
+  readonly railOwner?: string;
   readonly onRailFold?: () => void;
   /** The rail's width while its grip moves. */
   readonly onRailResize?: (width: number) => void;
@@ -227,6 +229,7 @@ export function Shell(props: ShellProps): ReactElement {
         </p>
         {collapsed || open || props.onRailResize === undefined ? null : (
           <RailGrip
+            key={props.railOwner}
             width={railWidth}
             onDragging={setRailDragging}
             onResize={props.onRailResize}
