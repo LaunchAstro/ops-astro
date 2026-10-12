@@ -8,9 +8,9 @@
 // the start itself, the page by `conversation.set_scope` straight after it.
 // After that, a rename and a page go to the conversation in turn, in order.
 //
-// **One start per tab.** A second question asked while the first is still starting waits for it
-// and joins the conversation it made, so a quick second press never opens a second conversation.
-// Where that start is refused, the next queued question starts the tab and the rest wait on it.
+// **One start per tab.** A question asked while the first is still starting waits for it and
+// joins its conversation; a refused start lets the next queued one start the tab, and a lost
+// answer holds them and the tab's writes until Send again (`assistant/question-attempts.ts`).
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
@@ -54,6 +54,7 @@ import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import type { Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
+import { useQuestionAttempts, type Attempt } from '../assistant/question-attempts.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {
   CallResult,
@@ -65,6 +66,7 @@ import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
 import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
+import { lostIn, waiting, withLost } from './lost-questions.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -88,6 +90,7 @@ interface Opening {
   readonly body: string;
   readonly subject: Subject;
   readonly scope: { readonly kind: 'task'; readonly id: string } | null;
+  readonly attempt: Attempt;
 }
 
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
@@ -105,20 +108,13 @@ async function startWith(
   opening: Opening,
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
-  const { chat, body, subject, scope } = opening;
+  const { chat, body, subject, scope, attempt } = opening;
   const { title, page, model } = store.chat(chat.key) ?? chat;
   // A model chosen before the first question rides in the start, so the first
-  // answer is asked of it (CS-7.30); none chosen, the default.
+  // answer is asked of it (CS-7.30); none chosen, the default. Sent again, these same bytes.
   const chosen = model === null ? {} : { model };
-  const settled = settle(
-    await client.mutate('conversation.start', {
-      body,
-      title,
-      subject: subject.label,
-      scope,
-      ...chosen,
-    }),
-  );
+  const payload = { body, title, subject: subject.label, scope, ...chosen };
+  const settled = await attempt('conversation.start', payload);
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
     store.line(
@@ -137,6 +133,7 @@ async function startWith(
 /** The start, the join, and every write after them, each refusal shown in the tab. */
 function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
+  const attempts = useQuestionAttempts(props.client);
   const report = async (key: string, sent: Sent): Promise<boolean> => {
     const settled = settle(await sent);
     if (settled.kind !== 'ok') store.line(key, 'failed', settled.because);
@@ -146,12 +143,13 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const task = store.now().scope.task;
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
-  const start = (chat: Chat, body: string, on: Store): Promise<string | null> =>
-    startWith(props.client, on, { chat, body, subject, scope: scope() }, report);
+  const start = (chat: Chat, body: string, on: Store, attempt: Attempt): Promise<string | null> =>
+    startWith(props.client, on, { chat, body, subject, scope: scope(), attempt }, report);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
     const question = store.line(key, 'user', body);
+    const attempt = attempts.begin(key, question);
     const on: Store = {
       ...store,
       line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
@@ -168,19 +166,17 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
       const turn = before.then(async (id) => {
         if (id !== null) return id;
         asked = true;
-        return await start(chat, body, on);
+        return await start(chat, body, on, attempt);
       });
       starts.current.set(key, turn);
       known = await turn;
       if (asked || known === null) return;
     }
-    const settled = settle(
-      await props.client.mutate('conversation.message', { conversationId: known, body }),
-    );
+    const settled = await attempt('conversation.message', { conversationId: known, body });
     if (settled.kind === 'ok') replied(on, key, settled.value.reply);
     else on.line(key, 'failed', settled.because);
   };
-  return { report, send, starts: starts.current };
+  return { report, send, starts: starts.current, lost: attempts.lost };
 }
 
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
@@ -266,6 +262,7 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
   const models = useModels(props.client, opened);
+  const lost = lostIn(sender.lost, state);
   return (
     <AssistantPanel
       subject={subject}
@@ -276,9 +273,9 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
-      allowance={besideAllowance(allowanceFor(props.client, chat), props)}
+      allowance={besideAllowance(withLost(allowanceFor(props.client, chat), lost), props)}
       draft={state.draft}
-      answering={(state.answering[state.selected] ?? 0) > 0}
+      answering={(state.answering[state.selected] ?? 0) > waiting(lost)}
       history={useHistoryList(props.client, store)}
       onSelect={(key) => {
         update((current) => select(current, key));
