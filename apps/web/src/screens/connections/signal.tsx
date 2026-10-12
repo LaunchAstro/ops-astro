@@ -9,14 +9,14 @@
 // Nothing here acts (CS-14.14: doors, navigation and view state). The only
 // links are the night round's cites, which jump to a section on this page or
 // to a task, and each filed tripwire's link into the one attention feed,
-// drawn unavailable until MP-14-4 builds the feed. The Exceptions
-// section a cite may name is MP-14-10's; until it is on the page that cite is
-// flat text rather than a link to an anchor that is not there. The ceiling
-// chip opens a clearance document that does not exist yet, so it is drawn
-// unavailable too.
+// drawn with the kit's Unavailable until MP-14-4 builds the feed. The
+// Exceptions section a cite may name is MP-14-10's; until it is on the page
+// that cite is flat text rather than a link to an anchor that is not there.
+// The Ceiling mark opens a clearance document that does not exist yet, so it
+// is drawn unavailable too.
 
 import { useEffect, useReducer, type ReactElement } from 'react';
-import { Empty, SectionHead, StatusLine, type MarkTone } from '@launchastro/ui';
+import { Chip, Empty, SectionHead, StatusLine, Unavailable, type MarkTone } from '@launchastro/ui';
 import type {
   ConnectionSignalResult,
   NightStepView,
@@ -27,7 +27,7 @@ import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { CeilingChip, GrantsSection } from './signal-grants.tsx';
+import { Agent, Ceiling, GrantsSection } from './signal-grants.tsx';
 import { clock, nightLede, plural, stamp, tripwiresLede } from './signal-view.ts';
 
 function Fired(props: { readonly row: TripwireView }): ReactElement {
@@ -45,9 +45,11 @@ function Fired(props: { readonly row: TripwireView }): ReactElement {
         {row.filedItem === null ? (
           `Filed nothing${row.filedNothing === null ? '' : `: ${row.filedNothing}`}`
         ) : (
-          <a data-feed-link aria-disabled="true" title="The attention feed arrives with MP-14-4">
-            Filed {row.filedItem} in the one feed
-          </a>
+          <Unavailable
+            feature="The attention feed"
+            label={`Filed ${row.filedItem} in the one feed`}
+            variant="ghost"
+          />
         )}
       </p>
     </>
@@ -65,9 +67,7 @@ function TripwireRow(props: { readonly row: TripwireView }): ReactElement {
     >
       <p>
         <strong>{row.what}</strong>{' '}
-        <span className={armed ? 'chip chip--outline is-ok' : 'chip chip--outline is-warn'}>
-          {armed ? 'Armed' : 'Cannot be armed'}
-        </span>
+        <Chip tone={armed ? 'ok' : 'warn'}>{armed ? 'Armed' : 'Cannot be armed'}</Chip>
       </p>
       <p>
         <span className="t-2">Fires when</span> {row.rule}
@@ -120,7 +120,7 @@ function Cite(props: { readonly cite: NonNullable<NightStepView['cite']> }): Rea
         data-night-cite
         title={
           cite.kind === 'exceptions'
-            ? 'The exceptions section arrives with MP-14-10'
+            ? 'The exceptions section is not on this page yet'
             : 'No task key to open'
         }
       >
@@ -152,7 +152,9 @@ function NightStep(props: { readonly step: NightStepView }): ReactElement {
   const words = STEP_WORDS[step.tone];
   return (
     <li data-night-step={step.id}>
-      <time className="mono">{clock(step.at)}</time>{' '}
+      <time className="mono" dateTime={step.at}>
+        {clock(step.at)}
+      </time>{' '}
       <span data-tone={step.tone}>
         <StatusLine tone={STEP_TONE[step.tone]} node />
       </span>{' '}
@@ -170,8 +172,7 @@ function Roster(props: { readonly signal: ConnectionSignalResult }): ReactElemen
       <ul>
         {props.signal.roster.map((agent) => (
           <li key={agent.agentId} data-roster={agent.agentId}>
-            <strong>{agent.agentId.slice(0, 8)}</strong> <CeilingChip />{' '}
-            {agent.active ? '' : 'Inactive · '}
+            <Agent id={agent.agentId} /> <Ceiling /> {agent.active ? '' : 'Inactive · '}
             {agent.liveGrants === 0 ? 'Idle' : `Holding ${plural(agent.liveGrants, 'grant')}`}
           </li>
         ))}
