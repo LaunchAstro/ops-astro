@@ -13,7 +13,15 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  fchmodSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -229,8 +237,8 @@ function checked(): void {
 
 const hex = (bytes: number): string => randomBytes(bytes).toString('hex');
 
-/** A run's own secrets and first-start keys, in a file only its owner may read. */
-function runSettings(port: number): string {
+/** A run's own secrets and first-start keys, in a file only its owner may read, even one made before. */
+export function runSettings(port: number, file: string = ENV_FILE): string {
   const lines = [
     `TRACE_TARGET_PORT=${String(port)}`,
     ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
@@ -249,9 +257,15 @@ function runSettings(port: number): string {
     'LANGFUSE_INIT_USER_NAME=operator',
     `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
   ];
-  mkdirSync(dirname(ENV_FILE), { recursive: true });
-  writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
-  return ENV_FILE;
+  mkdirSync(dirname(file), { recursive: true });
+  const fd = openSync(file, 'w', 0o600);
+  try {
+    fchmodSync(fd, 0o600);
+    writeFileSync(fd, `${lines.join('\n')}\n`);
+  } finally {
+    closeSync(fd);
+  }
+  return file;
 }
 
 function compose(...args: string[]): void {
