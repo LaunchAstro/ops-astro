@@ -43,7 +43,8 @@ export function Table<Row>(
 ): ReactElement {
   const width = props.tableWidth;
   return (
-    <div className="cbd__wrap">
+    // A table wider than its card scrolls in the wrap, on every screen.
+    <div className="cbd__wrap" data-overflows={width === null ? undefined : ''}>
       <table
         className="table cbd__tbl"
         style={
