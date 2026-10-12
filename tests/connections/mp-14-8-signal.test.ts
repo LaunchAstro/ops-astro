@@ -22,6 +22,7 @@ import { insertLogin } from '../identity/fixture.ts';
 import { authorised, ISSUER, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { agentPath, createControls, type Controls } from '../api/controls-fixture.ts';
 import { testSignIn } from '../support/sign-in.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import {
   createClient,
   mintChildDelegation,
@@ -133,7 +134,11 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     );
     const revision = set[0] === undefined ? task.revision : Number(set[0].revision);
     const proposal = await controls.propose(task.id, revision, purpose);
-    const picked = await controls.pickup(await controls.approve(proposal));
+    const picked = await besideOtherWork(
+      controls.fixture.db.admin,
+      controls.fixture.agentActorId,
+      async () => await controls.pickup(await controls.approve(proposal)),
+    );
     const rows = await controls.fixture.db.admin.execute<{ readonly id: string }>(
       `select id from public.delegations where purpose_scope_id = $1`,
       [task.id],

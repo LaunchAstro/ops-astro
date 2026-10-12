@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -114,7 +115,12 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
       [taskId],
     );
     const proposal = await controls.propose(taskId, Number(task[0]?.revision), purpose);
-    const picked = await controls.pickup(await controls.approve(proposal));
+    const { db, agentActorId } = controls.fixture;
+    const picked = await besideOtherWork(
+      db.admin,
+      agentActorId,
+      async () => await controls.pickup(await controls.approve(proposal)),
+    );
     return String(picked['credential']);
   };
 
