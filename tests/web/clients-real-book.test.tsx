@@ -206,7 +206,7 @@ describe('Add client across a business switch and an edited name', () => {
     expect(
       api.sent.filter((one) => one.to === '/client/create').map((one) => one.business),
     ).toStrictEqual(['alpha']);
-    expect(page.find('.readstate')?.getAttribute('data-outcome')).toBe('ready');
+    expect((page.find('.readstate') as HTMLElement | null)?.dataset['outcome']).toBe('ready');
     expect(names(page)).toStrictEqual(['Coral Coast Yoga']);
     expect((page.find('[data-client-add] input') as HTMLInputElement | null)?.value).toBe(
       'Typed In Bravo',
