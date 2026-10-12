@@ -105,7 +105,9 @@ function expiryOf(token: string): number | undefined {
  * out would otherwise ride on every request until the headers are too large to
  * answer (431), after which no request reaches the door to clear them. A tab
  * whose cookie goes signs in again. The claim is read unverified because all it
- * decides is which of the cookies this request carries are cleared.
+ * decides is which of the cookies this request carries are cleared. An `exp`
+ * past the absolute session limit from now is no sign-in this API issued (a
+ * planted cookie), so it is cleared rather than kept ahead of a live tab.
  */
 export function staleSessions(request: Context['req'], now: number): string[] {
   const named = cookieNameFor(namedSession(request) ?? '');
@@ -115,7 +117,12 @@ export function staleSessions(request: Context['req'], now: number): string[] {
     .filter(([name]) => name !== named)
     .map(([name, token]) => [name, expiryOf(token)] as const)
     .toSorted(([, a = -Infinity], [, b = -Infinity]) => (a === b ? 0 : b - a));
-  const stale = others.filter(([, exp], rank) => rank >= kept || (exp !== undefined && exp < now));
+  const forged = (exp: number) => exp > now + SESSION_ABSOLUTE_SECONDS;
+  const real = others.filter(([, exp]) => exp === undefined || !forged(exp));
+  const stale = [
+    ...others.filter(([, exp]) => exp !== undefined && forged(exp)),
+    ...real.filter(([, exp], rank) => rank >= kept || (exp !== undefined && exp < now)),
+  ];
   return [...new Set(stale.map(([name]) => name))];
 }
 
