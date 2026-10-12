@@ -87,10 +87,36 @@ export interface EgressGuard {
   release(): void;
 }
 
+/** The guards held now, last taken last: a refusal is recorded on the last. */
+const held: string[][] = [];
+/** Swaps every way out back to the one from before the first guard held now. */
+let restore: (() => void) | undefined;
+
+/**
+ * Refuse egress until `release`. Guards may overlap and be released in any
+ * order: the ways out are swapped once, when the first is taken, and back
+ * once, when the last held is released.
+ */
 export function denyEgress(): EgressGuard {
   const attempts: string[] = [];
+  if (held.length === 0) restore = denyAll();
+  held.push(attempts);
+  return {
+    attempts,
+    release: () => {
+      const at = held.indexOf(attempts);
+      if (at === -1) return;
+      held.splice(at, 1);
+      if (held.length > 0) return;
+      restore?.();
+      restore = undefined;
+    },
+  };
+}
+
+function denyAll(): () => void {
   const refuse = (what: string): Error => {
-    attempts.push(what);
+    held.at(-1)?.push(what);
     return new Error(`egress denied: ${what}`);
   };
   const connect = Socket.prototype.connect;
@@ -121,16 +147,13 @@ export function denyEgress(): EgressGuard {
   globalThis.fetch = (async (input: unknown) => {
     throw await Promise.resolve(refuse(`fetch ${String(input)}`));
   }) as typeof fetch;
-  return {
-    attempts,
-    release: () => {
-      Socket.prototype.connect = connect;
-      dns.lookup = lookup;
-      dns.promises.lookup = promised;
-      globalThis.fetch = fetched;
-      dgram.Socket.prototype.send = send;
-      resolves();
-      handles();
-    },
+  return () => {
+    Socket.prototype.connect = connect;
+    dns.lookup = lookup;
+    dns.promises.lookup = promised;
+    globalThis.fetch = fetched;
+    dgram.Socket.prototype.send = send;
+    resolves();
+    handles();
   };
 }
