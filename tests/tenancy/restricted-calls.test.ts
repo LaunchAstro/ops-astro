@@ -947,7 +947,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Thirteen, each for a named reason. The map read models' four (WF-1) and the
+  // Fourteen, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -955,8 +955,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // security. It answers one number and no id, and only the broker's role
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
-  // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it. The ending's commit time (20261004181806) is a
+  // codes expiry (20261002105957) and the hook claims expiry (20261012133600) each delete
+  // only rows past a fixed horizon, and only the upkeep identity runs them. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
   // The reset token lookup (20261005144947, C40B) is the reset's one read
   // across businesses, made with no business: two ids for a hash exactly one business holds,
@@ -971,7 +971,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly thirteen, each with its search path pinned', () => {
+    it('are exactly fourteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
