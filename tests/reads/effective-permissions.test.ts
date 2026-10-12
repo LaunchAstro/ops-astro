@@ -18,7 +18,7 @@ import {
   mintDelegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
 import { insertAgentActor } from '../identity/fixture.ts';
-import { enrol, grantTo } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 
 import {
   serverUrl,
@@ -265,6 +265,8 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     ]);
     expect(previewOf(listed, idle.personId)).toStrictEqual([]);
 
+    // The command entry serves a business with its task spine installed.
+    await installSpine(db.app, alpha);
     const revoked = await executeCommand(db.app, alpha, owner.presented, 'api', {
       command: 'access.revoke',
       operationId: randomUUID(),
