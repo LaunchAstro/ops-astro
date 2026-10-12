@@ -9,7 +9,7 @@ import type {
 import type { OperationsClient } from '../../operations/client.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { useRereadOn } from '../task/reread-on.ts';
-import { scopeOf, type Chip, type IdentityChip } from './todo-list.ts';
+import { isDueWord, scopeOf, type Chip, type IdentityChip } from './todo-list.ts';
 import { bodyOf, wordsOf, type TodoScope } from './todo-scope.ts';
 
 export interface Vocabulary {
@@ -132,7 +132,7 @@ export function typedScope(query: string, vocabulary: Vocabulary): readonly Chip
           ? [{ kind: 'route', value: family }]
           : [{ kind: 'unresolved', value: token, reason: `Unknown route: ${route}`, choices: [] }];
       }
-      if (token.includes(':') && !token.startsWith('tag:') && token !== 'due:today')
+      if (token.includes(':') && !token.startsWith('tag:') && !isDueWord(token))
         return [
           { kind: 'unresolved', value: token, reason: `Unknown scope: ${token}`, choices: [] },
         ];
