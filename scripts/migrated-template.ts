@@ -187,9 +187,7 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
       // Another builder may have finished while this one waited.
       const now = await finishedIn(lock, name);
       if (now !== undefined) return { name, migration: now };
-      const migration = await buildFromEmpty(serverUrl, name);
-      await beside(serverUrl, async (server) => await dropOtherTrees(server, name));
-      return { name, migration };
+      return { name, migration: await buildFromEmpty(serverUrl, name) };
     } finally {
       // Closing the session releases the lock too, so a failed unlock must not
       // hide the build's own error.
@@ -197,31 +195,6 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
     }
   } finally {
     await lock.close();
-  }
-}
-
-/** Other trees' templates kept, newest first: a run on another tree may still clone one. */
-const KEPT = 3;
-
-/**
- * Drops every tree's template past the newest `KEPT`, except the one just
- * built and the current tree's, so a long-lived server does not keep one per
- * migration change for good (#803). Under the builders' lock, so none is half
- * built; a clone in flight holds its template, and the drop waits for it.
- */
-async function dropOtherTrees(
-  server: ReturnType<typeof connectAsAdmin>,
-  name: string,
-): Promise<void> {
-  const stale = await server.execute<{ datname: string }>(
-    `select datname from pg_database
-      where datname ~ '^migrated_[0-9a-f]{16}$' and datname <> all($1::text[])
-      order by oid desc offset ${KEPT}`,
-    [[name, templateName()]],
-  );
-  for (const { datname } of stale) {
-    // oxlint-disable-next-line no-await-in-loop -- one drop at a time on one connection
-    await server.execute(`drop database if exists ${quoted(datname)}`);
   }
 }
 

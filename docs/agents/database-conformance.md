@@ -135,10 +135,7 @@ even with `postgres` configured:
 migrated from empty, catalogue and privileges alike, and
 `tests/support/template-lock-and-clone-catalogue.test.ts` that builders share
 one lock, leave template1 free, and that the comparison sees disabled triggers
-and membership options. A build drops other trees' templates past the newest
-three, never the current tree's, so a long-lived server stops gaining one per
-migration change (`tests/support/migrated-template-drops-older-trees.test.ts`).
-A suite that must migrate
+and membership options. A suite that must migrate
 itself passes `fromEmpty` or its own `migrationsDirectory`, and
 `OPS_ASTRO_DB_TEMPLATE=off` sends every suite the old way. The Postgres 18
 look-ahead runs the same suites each night (`.github/workflows/lookahead.yml`),
