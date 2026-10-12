@@ -19,7 +19,6 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
-import { recordProofPid } from './proof-pid.ts';
 import { arch, platform, release } from 'node:os';
 import { expect } from 'vitest';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
@@ -227,7 +226,8 @@ export function startWorker(options: {
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
-  recordProofPid(child.pid);
+  const pidFile = process.env['L5_RESTART_PIDFILE'];
+  if (pidFile !== undefined && child.pid !== undefined) appendFileSync(pidFile, `${child.pid}\n`);
   const written: string[] = [];
   let partial = '';
   child.stdout?.on('data', (chunk: Buffer) => {

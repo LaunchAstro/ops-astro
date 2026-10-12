@@ -16,7 +16,7 @@
 // that file it asserts nothing about the product: it starts, stops and reads.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { recordProofPid } from './proof-pid.ts';
+import { appendFileSync } from 'node:fs';
 import { ACCEPTANCE_ISSUER, serverUrl, type World } from './world.ts';
 import { sharedKeySetUrl } from '../support/sign-in.ts';
 
@@ -104,7 +104,8 @@ export async function startApi(
   });
   // Written down before anything can fail, so a runner that dies mid-case
   // still leaves `restart-proof.sh` the pid its exit trap must stop.
-  recordProofPid(child.pid);
+  const pidFile = process.env['L5_RESTART_PIDFILE'];
+  if (pidFile !== undefined && child.pid !== undefined) appendFileSync(pidFile, `${child.pid}\n`);
   let exited = false;
   const ended = new Promise<NodeJS.Signals | null>((resolve) => {
     child.once('exit', (_code, signal) => {

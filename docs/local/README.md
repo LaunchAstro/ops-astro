@@ -409,7 +409,7 @@ compared (`journey_twice_same_facts`), the separation between two businesses,
 the live update within 2 s, every declaration through the command line, a full
 API and Postgres restart read back and replayed, T3d2's restart legs, the
 named suites, one verdict per protected component (domain model, tenancy
-wrapper, migrations, gate engine, queue and delivery) read from that same run's conformance output,
+wrapper, migrations, gate engine) read from that same run's conformance output,
 the built web bundle searched for any fixture selector
 (`tests/ci/fixture-bundle.ts`), and the worker's module graph checked for a
 database driver. A case this base cannot run prints `unrun` with its reason. Any

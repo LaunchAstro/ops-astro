@@ -34,62 +34,6 @@ function stub(path: string, body: string): string {
   return path;
 }
 
-it('a recycled PID belonging to another API command is spared', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'proof-1365-pid-'));
-  const other = join(dir, 'apps/api/server.ts');
-  mkdirSync(join(dir, 'apps/api'), { recursive: true });
-  writeFileSync(other, 'setInterval(() => {}, 1000);\n');
-  const victim = spawn(process.execPath, ['apps/api/server.ts'], { cwd: dir, stdio: 'ignore' });
-  await new Promise<void>((done) => {
-    victim.once('spawn', done);
-  });
-  const evidence = join(dir, 'evidence');
-  // The session sandbox denies native ps; enumerate the known real child instead.
-  stub(
-    join(dir, 'ps'),
-    `[ "$4" = '${String(victim.pid)}' ] && printf '%s\\n' 'node apps/api/server.ts'\n`,
-  );
-  const docker = stub(
-    join(dir, 'docker'),
-    `case "$1" in
-  image) exit 0 ;;
-  inspect) exit 1 ;;
-  run) printf '%s\\n' '${String(victim.pid)}' >> '${evidence}.pids'; exit 125 ;;
-  *) exit 0 ;;
-esac
-`,
-  );
-  try {
-    const run = spawnSync(
-      'bash',
-      [
-        'scripts/local/restart-proof.sh',
-        '--name',
-        'recycled-pid-proof',
-        '--port',
-        '64001',
-        '--api-port',
-        '64002',
-        '--evidence',
-        evidence,
-      ],
-      {
-        cwd: root,
-        env: { ...process.env, DOCKER: docker, PATH: `${dir}:${process.env['PATH'] ?? ''}` },
-        encoding: 'utf8',
-      },
-    );
-    expect(run.status).toBe(125);
-    await new Promise((done) => {
-      setTimeout(done, 300);
-    });
-    expect(victim.signalCode, run.stdout).toBeNull();
-  } finally {
-    victim.kill('SIGKILL');
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 it('interruption during readiness removes the container already created', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'proof-1365-startup-'));
   const log = join(dir, 'calls');

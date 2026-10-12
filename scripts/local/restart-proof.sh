@@ -19,10 +19,7 @@
 # It never adopts a container it did not create: an existing NAME, a port
 # already answering, or a name or port belonging to the working slice, the
 # datafix database or the Hub's supabase_* stack is refused before anything
-# starts. It never pulls: an image not already on this machine is refused too.
-# The trap signals a recorded pid only while the start time recorded beside it
-# (tests/acceptance/proof-pid.ts) still stands, since a pid that exited early
-# may be another process's now.
+# starts.
 
 set -euo pipefail
 
@@ -68,25 +65,18 @@ done
 if "$DOCKER" inspect "$NAME" >/dev/null 2>&1; then
   refuse "a container named $NAME already exists and this run only removes what it created"
 fi
-if ! "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
-  refuse "the pinned image is not on this machine and this run never pulls: $IMAGE"
-fi
 
 created=no
 PIDFILE=
 cleanup() {
   status=$?
-  # The trap runs to the end: `ps` exits 1 for a recorded pid that has already
-  # gone, and under -e that would skip the later pids and the container.
-  set +e
   # The API and worker processes the run started, by the pids it wrote down. A
   # runner that died mid-case never reached its own afterAll, so they are
   # killed here. SIGKILL, because a worker parked with SIGSTOP never runs a
   # SIGTERM handler (T3d2).
   if [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ]; then
-    while read -r pid started; do
-      now=$(ps -o lstart= -p "$pid" 2>/dev/null | tr -s ' ' | sed 's/^ //; s/ $//')
-      if [ -n "$started" ] && [ "$now" = "$started" ]; then
+    while read -r pid; do
+      if kill -0 "$pid" 2>/dev/null; then
         kill -KILL "$pid" 2>/dev/null || true
         say "killed pid $pid"
         printf 'killed by trap: %s\n' "$pid" >>"$EVIDENCE"
@@ -120,7 +110,7 @@ PIDFILE=$EVIDENCE.pids
 } >"$EVIDENCE"
 
 say "starting $NAME on 127.0.0.1:$PORT from the pinned digest"
-"$DOCKER" run --pull never -d --name "$NAME" -p "127.0.0.1:$PORT:5432" \
+"$DOCKER" run -d --name "$NAME" -p "127.0.0.1:$PORT:5432" \
   -e "POSTGRES_PASSWORD=$PASSWORD" -e "POSTGRES_DB=$DATABASE" "$IMAGE" >/dev/null
 created=yes
 

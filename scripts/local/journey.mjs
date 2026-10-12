@@ -38,12 +38,38 @@ import {
   startPostgres,
   stopStarted,
 } from './journey-stack.ts';
-import { builtCases, protectedVerdicts, UNRUN } from './journey-proofs.ts';
+import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 import { emptyMeasures, takeMeasure } from './journey-measure.ts';
 import { runTestSide } from './journey-process.ts';
 import { readNamedSuites } from '../named-suites.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
+/**
+ * What this base cannot run yet, with the reason. Each prints `unrun` and
+ * fails the command until the part lands here (Rebase notes on the pull request).
+ */
+const UNRUN = [
+  ['T2g: request changes, the revision round, journey_parity_cli', { owner: 'T2g', pr: '#136' }],
+  ['T3a: escalate at the bound, reject, cancel and restart', { owner: 'T3a', pr: '#153' }],
+  ['T4c: the pinned-mockup comparison at 1480, 900 and 390', { owner: 'T4c', pr: '#134' }],
+].map(([name, facts]) => [
+  name,
+  `${facts.owner} (${facts.pr}) is not on this base; the re-baseline brings it`,
+  facts,
+]);
+UNRUN.push(
+  [
+    'the browser pass (slice-acceptance) on this stack',
+    'the web app signs in through GoTrue, which this stack does not start yet',
+    { owner: 'T4b1' },
+  ],
+  [
+    'keyboard-only and 390-wide passes over the whole journey (T4-R9)',
+    'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
+    { owner: 'T4b2' },
+  ],
+);
+
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const flag = (name, fallback) => {
   const at = args.indexOf(name);
@@ -225,6 +251,7 @@ for (const refusal of refusals) say(`refused: ${refusal}`);
 if (refusals.length > 0) process.exit(2);
 // The container this run created, by id; nothing else is ever removed.
 let created;
+const made = (id) => (created = id);
 const finish = () => {
   stopStarted(pidfile, say);
   if (args.includes('--remove') && created !== undefined) {
@@ -242,15 +269,7 @@ process.once('SIGTERM', () => {
   process.exit(143);
 });
 try {
-  const stack = await startPostgres({
-    container,
-    password,
-    port: pg,
-    admin,
-    created: (id) => {
-      created = id;
-    },
-  });
+  const stack = await startPostgres({ container, password, port: pg, admin, created: made });
   carried.measures.migrateMs = stack.migrateMs;
   record(
     'stack: Postgres from the pinned digest, migrated at this head',
