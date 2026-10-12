@@ -3284,7 +3284,8 @@ actions, each under `privacy:manage` and never an agent's:
 - `legal.publish_version` (`legal document published`) takes
   `{ operationId, versionId }` and publishes only an approved version:
   otherwise `LEGAL_NOT_APPROVED` 409, and a second time
-  `LEGAL_ALREADY_PUBLISHED` 409.
+  `LEGAL_ALREADY_PUBLISHED` 409. A version older, by its major.minor label,
+  than one already published is `LEGAL_VERSION_SUPERSEDED` 409.
 
 A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A version of
 another business and a made-up one are both `NOT_FOUND` 404.

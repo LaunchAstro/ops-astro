@@ -88,6 +88,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['LEGAL_ALREADY_APPROVED', 409, 'caller'],
   ['LEGAL_NOT_APPROVED', 409, 'caller'],
   ['LEGAL_ALREADY_PUBLISHED', 409, 'caller'],
+  ['LEGAL_VERSION_SUPERSEDED', 409, 'caller'],
   ['LEGAL_REGISTER_CHANGED', 409, 'caller'],
   ['LEGAL_REGISTER_UNCONFIRMED', 409, 'caller'],
   ['CLIENT_LOCKED', 409, 'caller'],
