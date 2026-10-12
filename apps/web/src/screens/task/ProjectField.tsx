@@ -15,6 +15,7 @@
 // **Through `task.move`** (`task:write`), at the revision the panel read; a
 // move that lands is counted, a refusal is quoted in the server's words.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type {
@@ -55,7 +56,7 @@ function ProjectSelect(props: {
 }): ReactElement {
   const { task } = props;
   return (
-    <select
+    <StyledSelect
       id="panel-field-board"
       className="input"
       disabled={props.busy}
@@ -73,7 +74,7 @@ function ProjectSelect(props: {
           {choice.title ?? 'Untitled'}
         </option>
       ))}
-    </select>
+    </StyledSelect>
   );
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useState, type ReactElement } from 'react';
-import { TabPanel } from '@launchastro/ui';
+import { Icon, TabPanel, usePageToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import type { ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
@@ -14,6 +15,7 @@ export type { ProjectsProps };
 
 export function Projects(props: ProjectsProps): ReactElement {
   const { canFileTask = false, inPanel } = props;
+  const toolbar = usePageToolbar();
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
@@ -21,7 +23,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   // A selected project's own client, which every door on its board files.
   const project = useProjectClient(props.client, props.grantKey, place.query);
   return (
-    <div className="stack">
+    <div className="stack projects">
       {tab === 'board' ? (
         <ProjectsToolbar
           inPanel={inPanel === true}
@@ -31,7 +33,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           project={project}
         />
       ) : null}
-      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <ViewSwitch tab={tab} select={select} toolbar={inPanel === true ? null : toolbar} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           canFileTask={canFileTask}
@@ -52,5 +54,34 @@ export function Projects(props: ProjectsProps): ReactElement {
         ) : null}
       </TabPanel>
     </div>
+  );
+}
+
+/** The view switch: a menu in the page toolbar when the page has one, else the page's own tabs. */
+function ViewSwitch(props: {
+  readonly tab: ReturnType<typeof useProjectsTab>['tab'];
+  readonly select: ReturnType<typeof useProjectsTab>['select'];
+  readonly toolbar: HTMLElement | null;
+}): ReactElement {
+  const { tab, select, toolbar } = props;
+  return toolbar === null ? (
+    <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+  ) : (
+    createPortal(<ProjectViews tab={tab} select={select} />, toolbar)
+  );
+}
+
+function ProjectViews(props: {
+  readonly tab: ReturnType<typeof useProjectsTab>['tab'];
+  readonly select: ReturnType<typeof useProjectsTab>['select'];
+}): ReactElement {
+  const { tab, select } = props;
+  return (
+    <details className="projects__views">
+      <summary aria-label="Project views" title="Project views">
+        <Icon name="calendar" size="xs" />
+      </summary>
+      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+    </details>
   );
 }

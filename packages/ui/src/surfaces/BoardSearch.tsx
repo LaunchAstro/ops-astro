@@ -19,6 +19,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react';
+import { Icon } from '../primitives/Icon.tsx';
 import { suggest } from '../board/typeahead.ts';
 import type { Facet, Filters, SuggestionItem } from '../board/types.ts';
 
@@ -52,9 +53,10 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
   };
   const items = groups.flatMap((group) => group.items);
   const onKeyDown = keysOf({ props, items, active, draft });
-  const any = props.have.ids.length > 0 || props.have.text.length > 0;
+
   return (
     <div className="cbdm__search" ref={host}>
+      <Icon name="search" size="xs" />
       <input
         className="cbd__barq"
         data-board-search=""
@@ -65,7 +67,7 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={items[active] === undefined ? undefined : optionId(listId, active)}
-        placeholder={any ? 'Add another…' : `Filter ${props.noun}s…`}
+        placeholder="Add another…"
         value={draft}
         onChange={(event) => {
           setDraft(event.target.value);

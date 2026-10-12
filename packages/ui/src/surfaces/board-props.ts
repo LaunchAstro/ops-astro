@@ -4,18 +4,23 @@
 // chips and heads draw. Its own module so the machine's parts share them
 // without importing one another.
 
+import type { GlyphName } from '../primitives/Icon.tsx';
 import type { ReactNode } from 'react';
 import type { ColumnSpec, ColumnWidths, Facet, Preset, RowMode } from '../board/types.ts';
 
 export const STACK_TIP = ' · shift-click to add it to what is already on';
 
-/** Plain glyphs until the kit's icon set lands (SL03); the label names the head. */
-export const GLYPH: Readonly<Record<string, string>> = {
-  building: '▦',
-  calendar: '◷',
-  comment: '◌',
-  person: '◍',
-  tag: '◈',
+export const BOARD_ICONS: Readonly<Record<string, GlyphName>> = {
+  building: 'briefcase',
+  calendar: 'calendar',
+  comment: 'comment-alt',
+  person: 'user',
+  tag: 'document',
+  rank: 'users',
+  'list-check': 'list-check',
+  route: 'share',
+  hourglass: 'clock',
+  stopwatch: 'clock',
 };
 
 export interface BoardMode<Row> extends RowMode<Row> {

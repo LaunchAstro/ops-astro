@@ -6,8 +6,9 @@
    What is in it: the controls the working slice adds that the pinned mockup
    never drew, because it shipped populated demonstration data and had nothing
    to submit. A sign-in form, a create form, a lifecycle button row and the five
-   read-state containers. Everything borrows layer 1's tokens; no colour, radius
-   or space literal appears below.
+   read-state containers. Shared tokens supply the design values. Measured
+   control geometry follows the canonical reference where no token represents
+   it (R20261012); those literals describe new controls, not ported overrides.
 
    What is NOT in it: any override of a ported rule. A change to the drawn
    estate belongs in the layer that drew it, or it is a divergence from the
@@ -175,53 +176,6 @@
   gap: var(--s-2);
 }
 
-/* The create form wears the mockup's quick-add field (`.cbd__field`, layer 4)
-   and its secondary sm button, in one row above the board. */
-.projects__create {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-3);
-}
-
-.projects__create .cbd__field {
-  flex: 0 1 31rem;
-}
-
-.projects__create > p {
-  flex: 1 0 100%;
-  margin: 0;
-}
-
-/* The title box is the board's quick-add field (DS-COMP-16): the box draws the
-   border and the focus, the input inside it draws nothing. */
-.projects__create .cbd__field {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.projects__create .cbd__field:focus-within {
-  border-color: var(--accent);
-}
-
-.projects__create .cbd__field input {
-  width: 100%;
-  min-width: 3rem;
-  /* The control's own 1px 2px, which the mockup's field keeps: the box is 34 tall. */
-  padding: 1px 2px;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-}
-
 /* The Projects page's Board and Work log, drawn as the tab row (DS-COMP-2):
    43 tall, the tabs 32 apart, the current one in --text at 500 over a 2px
    accent rule. At 390 the row scrolls sideways with no scrollbar. */
@@ -270,20 +224,6 @@
 .inbox > :not(.card__head) {
   margin: 0;
   padding: 0 var(--s-5) var(--s-5);
-}
-
-/* 390: the narrowest pinned comparison width. The create form stacks rather
-   than scrolling sideways, because a horizontal scroll on a form is a control
-   a thumb cannot reach. */
-@media (width <= 480px) {
-  .projects__create {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .projects__create .cbd__field {
-    flex: 1 1 auto;
-  }
 }
 
 /* The proposal section prints stored values it did not choose the length of: an
@@ -434,6 +374,11 @@
 .todos .tl__row {
   padding: 0.6rem 0;
   border-bottom: 1px solid var(--rule-faint);
+}
+.todos .tl__head {
+  padding: 0 0 0.4rem;
+  border-color: var(--border);
+  white-space: nowrap;
 }
 
 .todos .tl__row:hover {
@@ -697,4 +642,88 @@
 [data-step-list] [data-step-archived] {
   flex-basis: 100%;
   overflow-wrap: anywhere;
+}
+
+.projects__views {
+  position: relative;
+  order: 3;
+}
+.projects__views > summary {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.projects__views > summary::-webkit-details-marker {
+  display: none;
+}
+.projects__views > .routetabs {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  min-width: 200px;
+  margin: 0;
+  padding: 0 0.75rem;
+}
+
+.todos {
+  position: relative;
+}
+.todos__filters {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  z-index: 2;
+}
+.todos__tools {
+  margin-bottom: 0.5rem;
+}
+.todos__tools .tsearch__tags {
+  padding-right: 64px;
+}
+.todos__acts {
+  position: absolute;
+  top: 5px;
+  right: 34px;
+}
+.todos__acts > summary {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  list-style: none;
+  text-align: center;
+}
+.todos__acts > summary::-webkit-details-marker {
+  display: none;
+}
+.todos__acts > div {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  padding: 0.75rem;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  display: flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.todos > .readstate[data-outcome='ready'] {
+  padding: 0;
+}
+
+.todos__searchdrop {
+  position: relative;
+}
+.todos__searchdrop > .field-callout__body {
+  position: absolute;
+  width: min(31rem, 90vw);
+  padding: 0.75rem;
 }

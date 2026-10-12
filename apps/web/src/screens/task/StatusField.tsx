@@ -16,6 +16,7 @@
 // write is at the revision read; a landed one is counted (`onChanged`) and a
 // refusal is quoted in the server's words.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import {
   isRefusal,
@@ -100,7 +101,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
       <label className="tf__k" htmlFor={props.id}>
         Status
       </label>
-      <select
+      <StyledSelect
         id={props.id}
         className="input"
         disabled={busy || props.disabled === true}
@@ -114,7 +115,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={current.id}>{current.label}</option> : null}
-      </select>
+      </StyledSelect>
       {because === null ? null : (
         <p className="field__error" role="alert">
           {because}

@@ -69,7 +69,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.create-field',
     { ...PROJECTS, selector: '.cbd__barq .cbd__field' },
-    '.projects__create .cbd__field',
+    '.topbar__bar .cbdm__search',
     [
       'box.height',
       'padding-left',
@@ -78,11 +78,12 @@ const BOARD_PROBES: readonly LookProbe[] = [
       'font-family',
       'font-size',
     ],
+    { ruled: [{ at: 'background-color@dark', want: 'rgba(10,10,13,255)', why: 'DR-25' }] },
   ),
   probe(
     'board.create-button',
     { ...PROJECTS, selector: 'button[data-newtask]' },
-    '.projects__create button[type=submit]',
+    '[data-projects-new-task]',
     [...TYPE, 'box.height', 'padding-left', 'border-top-color', 'background-color', 'color'],
   ),
   // DS-COMP-17 and DS-COMP-16: the board frame, the filter row, the head.
@@ -137,7 +138,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
     // The mockup's first group is Active; the machine's group rows carry no name.
     'tr.cbd__grp:first-child > td',
     ['box.height', 'padding-top', 'padding-left', 'background-color'],
-    { widths: WIDE, ruled: themed('box.height', '33', 'DS-TOK-111') },
+    { widths: WIDE, ruled: themed('box.height', '38', 'R20261012') },
   ),
   probe(
     'board.group',
@@ -145,7 +146,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
     // A later group, ruled off the one above, as On hold is in the mockup.
     'tr.cbd__grp:not(:first-child) > td',
     ['box.height', 'padding-top', 'padding-bottom', 'border-top-color', 'background-color'],
-    { widths: WIDE, ruled: themed('box.height', '41', 'DS-TOK-111') },
+    { widths: WIDE, ruled: themed('box.height', '46', 'R20261012') },
   ),
   probe(
     'board.group-label',
@@ -155,8 +156,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     {
       widths: WIDE,
       ruled: [
-        ...themed('font-size', '16px', 'DS-TOK-111'),
-        ...themed('letter-spacing', '-0.16px', 'DS-TOK-111'),
+        ...themed('font-size', '16.8px', 'R20261012'),
+        ...themed('letter-spacing', '-0.168px', 'R20261012'),
       ],
     },
   ),

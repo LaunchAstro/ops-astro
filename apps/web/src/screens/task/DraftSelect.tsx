@@ -2,6 +2,7 @@
 //
 // One labelled select of the new-task draft, with a first option for none.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 
 export interface Choice {
@@ -24,7 +25,7 @@ export function Select(props: {
       <label className="tf__k" htmlFor={props.id}>
         {props.label}
       </label>
-      <select
+      <StyledSelect
         id={props.id}
         className="input"
         disabled={props.locked}
@@ -40,7 +41,7 @@ export function Select(props: {
             {choice.title}
           </option>
         ))}
-      </select>
+      </StyledSelect>
     </div>
   );
 }

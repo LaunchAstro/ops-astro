@@ -100,10 +100,10 @@ describe('Core 04 2: in the App, the board doors open the draft with that contex
     });
   });
 
-  it('the quick-add opens the kept draft with the typed name and the same context', async () => {
+  it('a name typed after opening the draft keeps the board context', async () => {
     const app = await open(new OrderedCreateServer(), draftTab(), SCOPED);
-    await app.view.type('#create-title', 'Typed on a filtered board');
-    await app.view.click('.projects__create button[type="submit"]');
+    await file(app);
+    await app.view.type('#panel-draft-name', 'Typed on a filtered board');
     await drain(app);
     expect(readDraft(app.storage, PERSON)).toMatchObject({
       title: 'Typed on a filtered board',

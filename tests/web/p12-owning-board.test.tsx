@@ -51,7 +51,7 @@ it.each([
     expect(app.view.find(PANEL_DOOR)?.getAttribute('href')).toBe(
       `/projects/?board=${value}&target=${KEY}`,
     );
-    expect(app.view.find('[data-panel-head="page"]')?.getAttribute('href')).toBe(`/task/${KEY}`);
+    expect(app.view.find('[data-act="door"]')?.getAttribute('href')).toBe(`/task/${KEY}`);
     await app.view.click(PANEL_DOOR);
     await tick();
     expect(app.sent.findLast((one) => one.path === '/task/board')?.body).toEqual({

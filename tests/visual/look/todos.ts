@@ -31,7 +31,7 @@ const snapped = (prop: string, want: string) =>
 const TYPE = ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'];
 
 /** The first row, in the mockup's panel and on the app's page. */
-const ROW = '.tl__row';
+const ROW = '.tl__row:not(.tl__head)';
 
 const probe = (
   id: string,
