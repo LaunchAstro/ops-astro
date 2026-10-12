@@ -48,13 +48,20 @@ const entriesAt = (commit) =>
     }));
 
 /**
- * Top-level names that are `migrations` in another case. The runner reads
- * `migrations/` alone, and a Mac checkout folds the other onto it.
+ * A name as a case-insensitive disk may read it: compatibility forms and marks
+ * taken away (the long s is an s, a dotted capital I an I), then lower case.
+ */
+const folded = (name) =>
+  name.normalize('NFKD').replaceAll(/\p{M}/gu, '').toLowerCase().replaceAll('ı', 'i');
+
+/**
+ * Top-level names that are `migrations` in another case or spelling. The
+ * runner reads `migrations/` alone, and a Mac checkout folds the other onto it.
  */
 const caseVariantsAt = (commit) =>
   git('ls-tree', '-z', '--name-only', commit)
     .split('\0')
-    .filter((name) => name !== 'migrations' && name.toLowerCase() === 'migrations');
+    .filter((name) => name !== 'migrations' && folded(name) === 'migrations');
 
 /** What is wrong with `commit` as a change to `parent`. */
 function judge(parent, commit) {
