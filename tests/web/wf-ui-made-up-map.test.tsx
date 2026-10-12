@@ -13,6 +13,8 @@ import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 import { until } from './screen-until.tsx';
 import { WAYFINDER_READS } from '../visual/made-up-wayfinder.ts';
+import { MERIDIAN } from '../visual/made-up-access.ts';
+import { TICKET_TYPES } from '../../apps/web/src/screens/map/model.ts';
 
 const asked: string[] = [];
 const open: Mounted[] = [];
@@ -55,6 +57,16 @@ describe('the map page on the harness made-up answers', () => {
     }
     for (const line of [...map.fog, ...map.outOfScope]) expect(page.text()).toContain(line.text);
     expect(asked).toStrictEqual(['map.view']);
+  });
+
+  it("the made-up tickets take a map ticket's types, and the made-up client keeps its one name", () => {
+    const { map } = WAYFINDER_READS['map.view'];
+    for (const ticket of map.tickets) expect(TICKET_TYPES).toContain(ticket.type);
+    for (const ticket of WAYFINDER_READS['map.frontier'].frontier) {
+      expect(TICKET_TYPES).toContain(ticket.type);
+    }
+    expect(map.client).toBe(MERIDIAN.clientId);
+    expect(map.title).toContain(MERIDIAN.name);
   });
 
   it('draws a row per made-up ticket on the tickets view', async () => {
