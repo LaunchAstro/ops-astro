@@ -1,11 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { AgentControls, Call } from './agent-pane.tsx';
+import type { RecordedOutcome } from '@launchastro/ui';
+import type { OperationsClient } from '../operations/client.ts';
+
+/** One write, handed the client of the sign-in it goes on. */
+export type Call = (client: OperationsClient) => ReturnType<OperationsClient['mutate']>;
+
+/** The two answers at a budget stop. */
+export interface StopControls {
+  readonly topUpAtStop: (
+    runId: string,
+    askId: string,
+    amountMinor: number,
+    currency: string,
+  ) => void;
+  readonly endAtStop: (runId: string, askId: string) => void;
+}
+
+/** The two acts on an unknown effect. */
+export interface UnknownControls {
+  readonly recordOutcome: (attemptId: string, outcome: RecordedOutcome) => void;
+  readonly writeOff: (attemptId: string, amountMinor: number, reason: string) => void;
+}
+
 /** C54's two answers at a budget stop, each on its owning command (AW-05). */
 export function stopControls(
   props: { readonly recordId: string },
   busy: boolean,
   send: (call: Call) => void,
-): Pick<AgentControls, 'topUpAtStop' | 'endAtStop'> {
+): StopControls {
   return {
     topUpAtStop: (runId, askId, amountMinor, currency) => {
       if (busy) return;
@@ -33,7 +55,7 @@ export function unknownControls(
   props: { readonly recordId: string },
   busy: boolean,
   send: (call: Call) => void,
-): Pick<AgentControls, 'recordOutcome' | 'writeOff'> {
+): UnknownControls {
   return {
     recordOutcome: (attemptId, outcome) => {
       if (busy) return;

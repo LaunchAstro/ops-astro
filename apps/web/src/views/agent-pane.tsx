@@ -20,8 +20,14 @@
 // refused or failed read draws no log, and the run's section says why.
 
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
-import { unknownControls, stopControls } from './agent-budget-controls.ts';
+import { AgentPane, type GateDecision } from '@launchastro/ui';
+import {
+  stopControls,
+  unknownControls,
+  type Call,
+  type StopControls,
+  type UnknownControls,
+} from './agent-budget-controls.ts';
 import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -75,7 +81,7 @@ export interface AgentSectionProps {
   readonly onStepUp?: (open: true | null) => void;
 }
 
-export interface AgentControls {
+export interface AgentControls extends StopControls, UnknownControls {
   readonly busy: boolean;
   readonly refusal: string | null;
   readonly decide: (
@@ -84,25 +90,13 @@ export interface AgentControls {
     recipientPersonId?: string,
   ) => void;
   readonly cancel: (lineageId: string) => void;
-  readonly recordOutcome: (attemptId: string, outcome: RecordedOutcome) => void;
-  readonly writeOff: (attemptId: string, amountMinor: number, reason: string) => void;
   /** The server's word that the last write-off waits on a second person, or null. */
   readonly awaiting: string | null;
-  readonly topUpAtStop: (
-    runId: string,
-    askId: string,
-    amountMinor: number,
-    currency: string,
-  ) => void;
-  readonly endAtStop: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting: string | null;
   /** The money step-up prompt, while a refused money write waits on a code. */
   readonly stepUp: StepUpAsk | null;
 }
-
-/** One write, handed the client of the sign-in it goes on. */
-export type Call = (client: OperationsClient) => ReturnType<OperationsClient['mutate']>;
 
 /** The `detail.state` a command's answer carries, if any. */
 const stateOf = (value: unknown): unknown =>
