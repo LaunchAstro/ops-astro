@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a board delayed past its peer's shared run asks the join again, so after its login is remapped it says nothing for the previous person"
+}
