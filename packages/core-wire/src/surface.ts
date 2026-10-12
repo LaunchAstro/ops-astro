@@ -268,9 +268,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
-  // Its rule admits the owner on `conversation:write` and anyone else on the
-  // read-any `conversation:read`, so the catalogue names both (API-1); a read
-  // is reached on any one of the grants it names (`reachableBy`).
   read('conversation.read', CONVERSATION_COLLECTION, {
     authority: ['conversation:write', 'conversation:read'],
   }),
