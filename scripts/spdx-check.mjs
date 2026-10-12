@@ -41,9 +41,12 @@ export function ownedSources(root) {
 
 export function headerErrors(root) {
   return ownedSources(root).filter((path) => {
-    const markers = readFileSync(resolve(root, path), 'utf8')
-      .split(/\r?\n/u)
-      .slice(0, 6)
+    // The header is in the leading comments: a line after code, or inside a
+    // string that code opened, is not a header.
+    const lines = readFileSync(resolve(root, path), 'utf8').split(/\r?\n/u).slice(0, 6);
+    const code = lines.findIndex((line) => !/^(?:#!|\/\/|#|--|\/\*.*\*\/\s*$|\s*$)/u.test(line));
+    const markers = lines
+      .slice(0, code === -1 ? lines.length : code)
       .filter((line) => /^(?:\/\/|#|--)\s*SPDX-License-Identifier:/u.test(line));
     return (
       markers.length !== 1 ||
