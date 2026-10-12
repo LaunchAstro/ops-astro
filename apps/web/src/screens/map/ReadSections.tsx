@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The map view's sections that only read (WF-3): Decisions so far and the
-// version history, with the section frame and the ticket link the other views
-// share. Split from `Sections.tsx`, which keeps the sections a person edits.
+// version history, each version timed on the business's clock, with the
+// section frame and the ticket link the other views share. Split from
+// `Sections.tsx`, which keeps the sections a person edits.
 
 import type { ReactElement, ReactNode } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../../routes.ts';
+import { stamp } from '../connections/signal-view.ts';
 
 export function Section(props: {
   readonly name: string;
@@ -60,7 +62,9 @@ export function Versions(props: { readonly map: MapView }): ReactElement {
             <li className="sbact__row" key={entry.version} data-version={entry.version}>
               <span className="sb__state">Version {entry.version}</span>
               <span className="sbact__meta">
-                {entry.at} · {entry.actorId} · {entry.changed.length} changed
+                {/* The read carries the writer's id only, never a name to show. */}
+                <time dateTime={entry.at}>{stamp(entry.at)}</time> · by someone ·{' '}
+                {entry.changed.length} changed
               </span>
             </li>
           ))}
