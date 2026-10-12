@@ -29,6 +29,7 @@ it('partition proofs exercise the shard counts CI actually runs', () => {
   ]);
 });
 
+// eslint-disable-next-line max-lines-per-function -- a review proof, kept as written
 it('the completion proof rejects balanced database shards above 35 minutes', () => {
   const dir = mkdtempSync(join(tmpdir(), 'shard-times-duration-'));
   try {
@@ -96,6 +97,7 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
 
 it.each(['tests/acceptance/d06-agent.test.ts', 'tests/acceptance/d06-generated.test.ts'])(
   '%s registers every injection case once across its configured parts',
+  // eslint-disable-next-line max-lines-per-function -- a review proof, kept as written
   (suite) => {
     const dir = mkdtempSync(join(tmpdir(), 'shard-times-collection-'));
     try {
