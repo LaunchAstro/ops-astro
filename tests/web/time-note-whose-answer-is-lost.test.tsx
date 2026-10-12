@@ -139,4 +139,15 @@ describe('a note saved again', () => {
     expect(api.sent).toHaveLength(2);
     expect(idOf(api.sent, 1)).not.toBe(idOf(api.sent, 0));
   });
+
+  it('after the server stored it with the answer lost is the same operation', async () => {
+    const api = world();
+    const { view } = await timeLog(api);
+    api.fates.push('lose');
+    await saveNote(view, 'New note');
+    await press(view, BOX, 'Enter');
+    await tick();
+    expect(idOf(api.sent, 1)).toBe(idOf(api.sent, 0));
+    expect(boxValue(view)).toBeUndefined();
+  });
 });

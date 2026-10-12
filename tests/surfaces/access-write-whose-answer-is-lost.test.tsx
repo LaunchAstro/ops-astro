@@ -125,4 +125,14 @@ describe('a revoke pressed again', () => {
     expect(api.sent).toHaveLength(2);
     expect(idOf(api.sent, 1)).not.toBe(idOf(api.sent, 0));
   });
+
+  it('after the server stored it with the answer lost is the same operation, answered as revoked', async () => {
+    const api = world();
+    const view = await screen(api);
+    api.fates.push('lose');
+    await revoke(view);
+    await revoke(view);
+    expect(idOf(api.sent, 1)).toBe(idOf(api.sent, 0));
+    expect(outcome(view)).toContain('Revoked the delegation');
+  });
 });

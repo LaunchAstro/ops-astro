@@ -144,4 +144,15 @@ describe('a status chosen again', () => {
     expect(api.sent).toHaveLength(2);
     expect(idOf(api.sent, 1)).not.toBe(idOf(api.sent, 0));
   });
+
+  it('after a reopen stored with its answer lost is the same reopen, and the state is set', async () => {
+    const api = world();
+    const { view, counted } = await status(api);
+    api.fates.push('lose');
+    await choose(view, 's-doing');
+    await choose(view, 's-doing');
+    expect(idOf(api.sent, 1)).toBe(idOf(api.sent, 0));
+    expect(api.record.state).toBe('s-doing');
+    expect(counted.changed).toBe(1);
+  });
 });
