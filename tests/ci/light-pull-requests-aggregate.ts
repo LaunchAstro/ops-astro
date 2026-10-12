@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // CI-SPEED: the required `database conformance` aggregate's own script, run under bash for every
-// event, gate result, shards result and scope (scripts/full-run.ts), for
+// event, gate result, shards result, isolation shards result and scope (scripts/full-run.ts), for
 // tests/ci/light-pull-requests-workflow.test.ts.
 
 import { spawnSync } from 'node:child_process';
@@ -15,8 +15,9 @@ export const condition = (value: unknown): unknown =>
 const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
 
 /**
- * The aggregate's script, run under GitHub's bash with each event, gate result, shards result and
- * scope. A skip passes on a pull request whose gate passed and whose scope is not light, and on a
+ * The aggregate's script, run under GitHub's bash with each event, gate result, shards result,
+ * isolation shards result and scope. Where the shards ran, it passes only when the isolation
+ * shards, which run the isolation suites in their place, succeeded too. A skip passes on a pull request whose gate passed and whose scope is not light, and on a
  * light push whose gate passed (its merge group tested the tree), and nowhere else: a failed,
  * cancelled or skipped gate skips the shards too, and that skip must not read as green; a light
  * pull request waits for the `ci-next` label.
@@ -24,24 +25,36 @@ const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
 export function aggregateProblems(step: { run?: string; env?: Env } | undefined): string[] {
   if (step?.run === undefined) return ['the aggregate has no script'];
   const problems = step.run.includes('${{') ? ['the script interpolates an expression'] : [];
-  for (const event of ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'])
-    for (const gate of RESULTS)
-      for (const shards of RESULTS)
-        for (const scope of ['full', 'light', ''])
-          problems.push(...aggregateRun(step.run, step.env ?? {}, { event, gate, shards, scope }));
+  const runs = ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'].flatMap((event) =>
+    RESULTS.flatMap((gate) =>
+      RESULTS.flatMap((shards) =>
+        RESULTS.flatMap((isolation) =>
+          ['full', 'light', ''].map((scope) => ({ event, gate, shards, isolation, scope })),
+        ),
+      ),
+    ),
+  );
+  for (const run of runs) problems.push(...aggregateRun(step.run, step.env ?? {}, run));
   return problems;
 }
 
-/** One run of the aggregate's script on one event, gate result and shards result. */
+/** One run of the aggregate's script on one event, gate result, shards result and isolation result. */
 function aggregateRun(
   run: string,
   stepEnv: Env,
-  { event, gate, shards, scope }: { event: string; gate: string; shards: string; scope: string },
+  {
+    event,
+    gate,
+    shards,
+    isolation,
+    scope,
+  }: { event: string; gate: string; shards: string; isolation: string; scope: string },
 ): string[] {
   const problems: string[] = [];
   const env: Env = { PATH: process.env['PATH'] ?? '' };
   const values: Record<string, string> = {
     'needs.database-shard.result': shards,
+    'needs.isolation.result': isolation,
     'needs.gate.result': gate,
     'github.event_name': event,
     'needs.gate.outputs.scope': scope,
@@ -56,14 +69,14 @@ function aggregateRun(
     encoding: 'utf8',
   });
   const wants =
-    shards === 'success' ||
+    (shards === 'success' && isolation === 'success') ||
     (shards === 'skipped' &&
       gate === 'success' &&
       ((event === 'pull_request' && scope !== 'light') || (event === 'push' && scope === 'light')));
   const got = out.status === 0 ? 'passed' : 'failed';
   if ((out.status === 0) !== wants)
     problems.push(
-      `${event || 'no event'} gate ${gate} shards ${shards}${scope === 'full' ? '' : ` scope ${scope || 'unset'}`}: ${got}`,
+      `${event || 'no event'} gate ${gate} shards ${shards}${isolation === 'success' ? '' : ` isolation ${isolation}`}${scope === 'full' ? '' : ` scope ${scope || 'unset'}`}: ${got}`,
     );
   return problems;
 }

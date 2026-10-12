@@ -147,9 +147,9 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
   const aggregate = ci.jobs['database'];
   if (
     jobCondition(aggregate?.if) !== 'always()' ||
-    needsOf(aggregate).toSorted().join(' ') !== 'database-shard full gate'
+    needsOf(aggregate).toSorted().join(' ') !== 'database-shard full gate isolation'
   )
-    problems.push('database: must always run over the gate and database-shard');
+    problems.push('database: must always run over the gate, database-shard and isolation');
   // CI-SHARDS-2: `local checks` and `isolation tests` run as shards on every event they ran on
   // whole, each behind an aggregate that always runs over the gate and its shards.
   for (const [shardKey, name] of SHARDED) {
@@ -275,7 +275,7 @@ describe('planted: the aggregate and the gate, each goes red', () => {
     ci.jobs['database'] = { ...ci.jobs['database'], needs: ['database-shard'] };
     expect(problemsNow(ci)).toStrictEqual([
       'database: runs on a status function behind the gate, without needing it',
-      'database: must always run over the gate and database-shard',
+      'database: must always run over the gate, database-shard and isolation',
     ]);
   });
 

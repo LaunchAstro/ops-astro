@@ -55,7 +55,8 @@ service containers, reading the named suites through
 item 5, so two pull requests that add suites never edit the same file): the
 suite `tests/<path>` is named by `tests/db/suites/<path>.json`, holding
 `"kind"` (`"invariant"` or `"conformance"`), `"isolation"` (`true` when
-`isolation tests` runs it too) and `"why"` (what it proves). To name a suite,
+`isolation tests` runs it, in place of the `database conformance` shards) and
+`"why"` (what it proves). To name a suite,
 add its file; to stop naming one, delete its test file with it. The reader
 refuses a file with another key, a missing or empty reason, a name that is
 not a test file's plus `.json`, a symlink, or the old lists
@@ -120,6 +121,14 @@ every case of a split suite in exactly one part.
 an aggregate that passes only when every shard succeeded, and
 `tests/ci/ci-shards*.test.ts` prove every suite, step and test file runs in
 exactly one shard.
+The isolation suites run in the `isolation tests` shards alone: the
+`database conformance` shards split the other run items
+(`--without-isolation`, `scripts/db-shards.ts` `databaseItems`; the nightly
+look-ahead, with no isolation shards beside it, runs every item), and the `database conformance`
+aggregate waits on both matrices, so on a merge group or a push it passes only
+when the isolation shards succeeded too. `tests/ci/db-census.test.ts` reads
+every shard's own `--list` and proves the two matrices together run each named
+item exactly once.
 
 Since CIITEM3 (the owner, 12 October 2026: every job in about 10 minutes)
 there are 30 shards, and `node scripts/db-census.ts` lists every run item's

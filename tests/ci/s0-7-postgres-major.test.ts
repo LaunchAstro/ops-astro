@@ -136,13 +136,15 @@ function ciOnTheCases1() {
     const block = job(SHARD_JOB);
     expect(required).toContain('database conformance');
     // The required check passes only when every shard did.
-    expect(job('database conformance')).toMatch(/^ {4}needs: \[gate, full, database-shard\]$/mu);
+    expect(job('database conformance')).toMatch(
+      /^ {4}needs: \[gate, full, database-shard, isolation\]$/mu,
+    );
     expect(required).toContain('isolation tests');
     expect(images(block)).toStrictEqual([`postgres@sha256:${DIGEST}`]);
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
     expect(block).toMatch(
-      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} -- pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
+      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} -- pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --without-isolation$/mu,
     );
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.

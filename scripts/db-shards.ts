@@ -15,6 +15,13 @@
 // suites too long for one shard: such a suite runs as k items, `<path>#i/k`,
 // each with SUITE_PART=i/k, and the suite registers only the cases `inPart`
 // gives that part, so every case still runs once, in one part.
+//
+// The isolation suites are named suites too, and the `isolation tests` shards
+// run them (scripts/ci-shards.ts), so ci.yml's `database conformance` shards
+// split the rest (`databaseItems`, the runner's --without-isolation) and a
+// merge group runs every item once. The `database conformance` aggregate waits
+// on both matrices. A run with no isolation shards beside it (the nightly
+// look-ahead) splits every item.
 
 import { readFileSync } from 'node:fs';
 
@@ -58,6 +65,12 @@ export const planItems = (
     }
     return Array.from({ length: count }, (_, i) => `${suite}#${String(i + 1)}/${String(count)}`);
   });
+
+/** The run items the `database conformance` shards split: every item but an isolation suite's. */
+export const databaseItems = (items: readonly string[], isolation: readonly string[]): string[] => {
+  const apart = new Set(isolation);
+  return items.filter((item) => !apart.has(itemOf(item).suite));
+};
 
 /** A run item back to its suite path and, for a part, its "i/k". */
 export const itemOf = (item: string): { suite: string; part: string | undefined } => {

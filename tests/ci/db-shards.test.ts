@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // `database conformance` runs its named suites across matrix shards,
-// each with its own Postgres. Splitting a gate is how a suite gets dropped
+// each with its own Postgres, all but the isolation suites, which the
+// `isolation tests` shards run. Splitting a gate is how a suite gets dropped
 // quietly, so this proves the split runs every suite once: the shards' lists
-// put together are the manifest's list, no suite is in two shards, a suite
+// put together are the manifest's list less the isolation suites (the two
+// matrices together are the whole list, tests/ci/db-census.test.ts), no suite
+// is in two shards, a suite
 // named later lands in a shard without anyone editing the timings, a suite
 // split into parts runs each case in exactly one part, and the aggregate keeps
 // the required check's name and fails unless every shard passed.
@@ -11,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
   assignShards,
+  databaseItems,
   inPart,
   itemOf,
   parseShard,
@@ -19,16 +23,19 @@ import {
   shardWeight,
   suitePart,
 } from '../../scripts/db-shards.ts';
-import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 import { unguarded } from './open-pull-request.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
-const manifest = readNamedSuites(fileURLToPath(new URL('../..', import.meta.url)));
+const root = fileURLToPath(new URL('../..', import.meta.url));
+const manifest = readNamedSuites(root);
 const named = [...manifest.invariant, ...manifest.conformance];
+const isolation = readIsolationSuites(root).invariant;
 const plan = readPlan(new URL('../../tests/db/shard-plan.json', import.meta.url));
-const items = planItems(named, plan.parts);
+/** The run items these shards split: the manifest's, less the isolation suites'. */
+const items = databaseItems(planItems(named, plan.parts), isolation);
 const timings = plan.seconds;
 const ci = read('.github/workflows/ci.yml');
 
@@ -99,16 +106,17 @@ it('the balance check weighs a suite with no timing as the split does', () => {
   expect(heaviest).toBeLessThanOrEqual(bound);
 });
 
-it('every run item runs in exactly one shard, and the shards together are the manifest', () => {
+it('every run item runs in exactly one shard, and the shards together are the manifest less the isolation suites', () => {
   const shards = assignShards(items, timings, shardCount);
   expect(shards).toHaveLength(shardCount);
   for (const shard of shards) expect(shard.length).toBeGreaterThan(0);
   expect(sorted(shards.flat())).toEqual(sorted(items));
-  // Every named suite is an item, or all k of its parts are.
+  // Every named suite but an isolation suite is an item, or all k of its parts are.
   expect(sorted([...new Set(items.map((item) => itemOf(item).suite))])).toEqual(
-    sorted([...new Set(named)]),
+    sorted([...new Set(named)].filter((suite) => !isolation.includes(suite))),
   );
   for (const [suite, count] of Object.entries(plan.parts)) {
+    if (isolation.includes(suite)) continue;
     expect(named, `${suite} is split but not named`).toContain(suite);
     expect(items.filter((item) => itemOf(item).suite === suite).map((i) => itemOf(i).part)).toEqual(
       Array.from({ length: count }, (_, i) => `${String(i + 1)}/${String(count)}`),
@@ -194,7 +202,7 @@ it('the aggregate keeps the name and fails unless every shard succeeded', () => 
   expect(aggregate).toContain('    name: database conformance\n');
   // It needs the gate too, and reads its result: a pull request whose gate failed skips the
   // shards, and that skip must not pass (tests/ci/light-pull-requests-workflow.test.ts).
-  expect(aggregate).toContain('    needs: [gate, full, database-shard]\n');
+  expect(aggregate).toContain('    needs: [gate, full, database-shard, isolation]\n');
   expect(aggregate).toContain('GATE: ${{ needs.gate.result }}');
   // Without always() a failed or skipped shard would skip this job, and a
   // skipped required check reads as passed.
@@ -202,6 +210,9 @@ it('the aggregate keeps the name and fails unless every shard succeeded', () => 
   expect(unguarded(/^ {4}if: (.+)$/mu.exec(aggregate)?.[1])).toBe('always()');
   expect(aggregate).toContain('SHARDS: ${{ needs.database-shard.result }}');
   expect(aggregate).toContain('test "$SHARDS" = success');
+  // The isolation suites run in the isolation shards alone, so the aggregate reads them too.
+  expect(aggregate).toContain('ISOLATION: ${{ needs.isolation.result }}');
+  expect(aggregate).toContain('test "$ISOLATION" = success');
   expect(aggregate).not.toMatch(/continue-on-error/u);
   expect(shardJob).not.toMatch(/continue-on-error/u);
 });
