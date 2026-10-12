@@ -169,7 +169,11 @@ export const SCREENS: {
     <TelemetryScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:operations': (context) => (
-    <OperationsScreen client={context.client} grantKey={context.grantKey} />
+    <OperationsScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      address={context.address}
+    />
   ),
   'agency:map': (context) => (
     <MapScreen
@@ -234,6 +238,8 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
 export interface OpenContext {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
+  /** The whole address, its query included: an evidence link pins a version there. */
+  readonly path: string;
 }
 
 /** The screen each open route draws, with or without a session; keyed so none is missed. */
@@ -242,9 +248,10 @@ const OPEN_SCREENS: {
 } = {
   'agency:legal': (params, context) => (
     <LegalScreen
-      key={`${params.business}/${params.document}`}
+      key={context.path}
       business={params.business}
       document={params.document}
+      query={new URL(context.path, 'http://here').search}
       apiOrigin={context.apiOrigin}
       read={context.fetch}
     />

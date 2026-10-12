@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a public legal link pinned to a version and digest shows that version after a newer one is published; a wrong digest, half a pin, a draft or another business's version is the one 404"
+}

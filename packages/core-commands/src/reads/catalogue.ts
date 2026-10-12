@@ -781,13 +781,33 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // C55. The business's own operations, so no subject record; it asks
   // `read` on `operations`, which no agent holds. Its unattended items are
   // `inbox.unattended`'s, read for the same caller.
+  // An evidence link pins the breach runbook's version and digest, both or neither.
   'operations.read': {
     identifiers: [],
-    parse: NONE,
+    parse(body) {
+      const { runbookVersion: version, runbookDigest: digest } = body;
+      if (version === undefined && digest === undefined) return parsed({});
+      if (typeof version !== 'string') {
+        return rejected('runbookVersion', 'Send runbookVersion with runbookDigest.');
+      }
+      if (typeof digest !== 'string') {
+        return rejected('runbookDigest', 'Send runbookDigest with runbookVersion.');
+      }
+      return parsed({ runbookVersion: version, runbookDigest: digest });
+    },
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx, session) => ({ ok: true, ...(await readOperations(tx, session.personId)) }),
+    serve: async (tx, session, operands) => ({
+      ok: true,
+      ...(await readOperations(
+        tx,
+        session.personId,
+        operands.runbookVersion === undefined || operands.runbookDigest === undefined
+          ? undefined
+          : { version: operands.runbookVersion, digest: operands.runbookDigest },
+      )),
+    }),
   },
   // C81's breach drill. It asks `manage` on `privacy`, the key the incident is
   // recorded under, which no agent holds. The incident is looked up in the

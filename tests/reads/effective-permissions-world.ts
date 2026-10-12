@@ -28,6 +28,8 @@ import {
   insertActor,
   insertAgentActor,
   insertBusiness,
+  insertLogin,
+  insertMapping,
   insertPerson,
 } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -70,7 +72,7 @@ export async function root(
   return issued.value;
 }
 
-/** A client person: no membership, standing only on the grant given here. */
+/** A client person who can sign in: no membership, standing only on the grant given here. */
 export async function client(
   tx: TenantQuery,
   name: string,
@@ -79,6 +81,7 @@ export async function client(
 ): Promise<string> {
   const personId = await insertPerson(tx, name);
   await insertActor(tx, personId);
+  await insertMapping(tx, await insertLogin(tx, `${name}-${randomUUID()}`), personId, by);
   await root(tx, { kind: 'person', id: personId }, 'read', scope, by);
   return personId;
 }

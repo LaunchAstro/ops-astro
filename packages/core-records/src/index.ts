@@ -129,6 +129,7 @@ export {
   wordsIn,
   type DraftedVersion,
   type LegalDocument,
+  type LegalPin,
   type PublishedVersion,
   type VersionRefusal,
 } from './operations/legal-documents.ts';
