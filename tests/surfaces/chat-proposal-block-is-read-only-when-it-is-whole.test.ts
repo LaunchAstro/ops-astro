@@ -127,7 +127,7 @@ describe('chat proposal block', () => {
     ['JSON null', reply('null')],
     ['an unknown action', reply('{"action":"delete","title":"Gone"}')],
     ['no action', reply('{"title":"No action"}')],
-    ['another key', reply('{"action":"create","title":"T","client":"North"}')],
+    ['another key', reply('{"action":"create","title":"T","assignee":"me"}')],
     ['an id the model named', reply('{"action":"edit","id":"T-12","title":"T"}')],
     ['a create with no title', reply('{"action":"create","description":"Only words"}')],
     ['an empty title', reply('{"action":"create","title":""}')],

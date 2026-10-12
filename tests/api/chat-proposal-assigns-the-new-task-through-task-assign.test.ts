@@ -5,7 +5,7 @@
 // (`proposalAssign`), so it meets that command's checks and no others. Against
 // Postgres through the server's composition root: the clicker, as `team.list`
 // names them, holds the task once the click lands, and the same click again is
-// the same answer; a teammate `team.list` lists can be given it; a person of
+// the same answer; a person of
 // another business and an id that names nobody are one NOT_FOUND, the task
 // left as it was. The stored rows, read as admin, are the oracle.
 
@@ -88,14 +88,6 @@ describe.skipIf(serverUrl === undefined)('chat proposal assignee against Postgre
     expect(first.status).toBe(200);
     expect(again.body).toStrictEqual(first.body);
     expect(await holderOf(task.recordId)).toBe(you);
-  });
-
-  it('a teammate team.list lists can be given the new task', async () => {
-    const listed = (await team()).people.map((each) => each.personId);
-    expect(listed).toContain(w.colleague.personId);
-    const { messageId, task } = await made('Draft the newsletter');
-    expect((await assign(messageId, task, w.colleague.personId)).status).toBe(200);
-    expect(await holderOf(task.recordId)).toBe(w.colleague.personId);
   });
 
   it('a person of another business and an id of nobody are one NOT_FOUND, and the task stays unassigned', async () => {

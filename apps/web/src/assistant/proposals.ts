@@ -6,11 +6,10 @@
 //
 // **Create** sends `task.create` with the title, the description and the
 // conversation as its origin (`tasks-write.ts` `originOf`), starting nothing.
-// Once it answers, `task.assign` gives the new task, at the revision the create
-// returned, to whoever clicked, or to the one teammate the block names
-// (`assigneeOf`), as the task draft assigns its own (`draft-command.ts`): the
-// existing command and its checks, no new authority. The card shows who
-// before the click.
+// Once it answers, `task.assign` gives the new task to whoever clicked, at the
+// revision the create returned (`assignees.ts`), as the task draft assigns its
+// own (`draft-command.ts`): the existing command and its checks, no new
+// authority.
 //
 // **Edit** applies to the chat's own task at the revision its question was
 // asked at. A question in a chat on a task first reads that task, before it is
@@ -27,21 +26,19 @@
 // presents the same attempt with the same payload, and the register replays its
 // first outcome (`register-store.ts`), refusal included.
 
-import { useMemo, useRef } from 'react';
 import type { AssistantMessage, AssistantProposal } from '@launchastro/ui';
 import {
   proposalCreate,
   proposalEdit,
   readProposal,
   type TaskReadResult,
-  type TeamListResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
-import { assign, assigned, keptAssignee, useTeam } from './assignees.ts';
+import { assignClicker } from './assignees.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
@@ -184,7 +181,7 @@ async function create(
   const { detail, recordId, revision } = settled.value;
   const key = detail?.['key'];
   const task = taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId);
-  const assigning = await assign(view, proposal, source, { recordId, revision });
+  const assigning = await assignClicker(view.client, source, { recordId, revision });
   if (assigning?.state === 'unknown') return { ...assigning, task: null };
   return { state: 'made', refusal: null, task, ...assigning };
 }
@@ -222,10 +219,6 @@ export interface ProposalStore {
 export interface ClickView {
   readonly client: OperationsClient;
   readonly grantKey?: string | undefined;
-  /** The team the card was matched with; none, the click reads it. */
-  readonly team?: TeamListResult | null;
-  /** Who each reply's click sent, while the drawer is open. */
-  readonly sent?: Map<string, string>;
 }
 
 /** A card's one click: one write, its answer settling the card. */
@@ -244,29 +237,4 @@ export async function sendProposal(
   const send = proposal.action === 'create' ? create : edit;
   const settled = await send(view, chat, proposal, source);
   store.update((current) => settleProposal(current, key, id, settled));
-}
-
-/** The tabs as drawn, each new task's card saying who it goes to, and the cards' one click. */
-export function useProposalCards(
-  view: ClickView,
-  store: ProposalStore & { state: AssistantState },
-) {
-  const read = useTeam(view.client, store.state.chats);
-  const sent = useRef(new Map<string, string>()).current;
-  const { grantKey } = view;
-  const keptFor = (line: string): string | undefined => {
-    const source = sourceOf(line);
-    return source === null ? undefined : (sent.get(source) ?? keptAssignee(grantKey, source));
-  };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- `keptFor` reads the session's slot and `sent`, which change only with a click, itself a state change.
-  const chats = useMemo(
-    () => assigned(store.state.chats, read, keptFor),
-    [store.state.chats, read],
-  );
-  // A card no read since it was drawn has matched reads the team itself on its click.
-  const onPropose = (key: string, id: string): void => {
-    const team = read.cards.has(id) ? read.team : null;
-    void sendProposal({ ...view, team, sent }, store, { key, id });
-  };
-  return { chats, onPropose };
 }
