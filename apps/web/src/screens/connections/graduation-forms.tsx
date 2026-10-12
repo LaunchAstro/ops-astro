@@ -21,10 +21,17 @@ import {
 /** The region's typed values by field, held above its read; a new grant starts a new one. */
 export const Drafts = createContext(new Map<string, unknown>());
 
-/** A field's value, kept in the region's drafts under `key`. */
+/**
+ * A field's value, kept in the region's drafts under `key` from its first draw,
+ * so what comes back after an outage is what was on screen: the chosen client
+ * included, even one never chosen by hand.
+ */
 export function useDraft<T>(key: string, initial: T): readonly [T, (next: T) => void] {
   const drafts = useContext(Drafts);
-  const [value, setValue] = useState(() => (drafts.has(key) ? (drafts.get(key) as T) : initial));
+  const [value, setValue] = useState(() => {
+    if (!drafts.has(key)) drafts.set(key, initial);
+    return drafts.get(key) as T;
+  });
   const set = (next: T): void => {
     drafts.set(key, next);
     setValue(next);
