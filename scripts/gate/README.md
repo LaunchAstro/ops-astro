@@ -67,6 +67,8 @@ covered. Categories are `pii`, `provenance` and `infra`.
 clear-text list through `HUB_GATE_TERMS`. Keep it outside the repository.
 It drives `--literal` at pre-push. When the file is absent the script says so and exits 2. It never pretends to have run.
 
+The historical approval checks give each Git read 120 seconds (`HUB_GATE_GIT_TIMEOUT` sets another bound). A read that runs over stops the sweep with exit 3 and says it timed out; it never passes.
+
 Neither layer is sufficient alone. Together with gitleaks over the full
 history, and with the rule that no material is ever copied across by hand,
 they are the belt and the braces.

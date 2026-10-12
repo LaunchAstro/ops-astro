@@ -59,7 +59,7 @@ from pathlib import Path
 
 # The CLI must leave the repository unchanged when it imports its local helper.
 sys.dont_write_bytecode = True
-from literal_history import HistoricalLiterals
+from literal_history import GitTimeout, HistoricalLiterals
 
 HERE = Path(__file__).resolve().parent
 # The scanner's own tree, where its self-test canaries sit beside its rules.
@@ -774,7 +774,9 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
     try:
         history = HistoricalLiterals.load(REPO, HERE / "literal-history-approvals.sha256", revs)
         refused_tips = history.refused_tips()
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+    except GitTimeout as exc:
+        raise GateBroken(str(exc)) from None
+    except (OSError, ValueError):
         raise GateBroken("invalid or unreadable historical literal approval") from None
     needles = [(term, " ".join(normalise(term))) for term in terms]
 
@@ -823,7 +825,9 @@ def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
             try:
                 if history.permits(path, sha, needle, occurrences):
                     continue
-            except (OSError, ValueError, subprocess.TimeoutExpired):
+            except GitTimeout as exc:
+                raise GateBroken(str(exc)) from None
+            except (OSError, ValueError):
                 raise GateBroken("cannot verify historical literal approval") from None
             violations.append(
                 (where, "denied term, literal", fingerprint(term), term)
