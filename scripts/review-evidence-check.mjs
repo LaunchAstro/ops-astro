@@ -16,8 +16,9 @@
 //    BASE_SHA and HEAD_SHA (owner, 11 October), so main moving does not stale
 //    it. Checkpoints and every non-review check remain required.
 //
-// It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
-// runs in continuous integration and in its own tests. It reads no reviewer
+// It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES, AGENT_MODELS and
+// RANGE_COMMITS so the same code runs in continuous integration and in its
+// own tests. It reads no reviewer
 // identity: a green result proves the evidence is bound to this exact head,
 // not that any reviewer read anything.
 
@@ -106,12 +107,22 @@ const builders = (
     : git('log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`))
 ).split('\n');
 
+// The range's commits as `<sha> <subject>`, so a pasted checkpoint's commit
+// lines can be matched to the commits Git holds.
+const rangeCommits = nonEmptyLines(
+  process.env['RANGE_COMMITS'] ??
+    (base === '' ? '' : git('log', '--format=%H %s', `${base}..${head}`)),
+).map((line) => ({ sha: line.slice(0, 40).toLowerCase(), subject: line.slice(41) }));
+
 const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, owed, deferrals, buried, html, prose, claims } = readBody(body);
+const { stated, record, owed, deferrals, buried, html, prose, claims } = readBody(body, {
+  paths: changed,
+  commits: rangeCommits,
+});
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
