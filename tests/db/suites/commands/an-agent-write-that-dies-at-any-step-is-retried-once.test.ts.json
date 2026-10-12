@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's comment or owned field write whose connection dies after the task lock, after its authority is asked again, or after the write before the commit leaves nothing, and its retry with the same operation id applies once; judged on a real migrated database."
+}
