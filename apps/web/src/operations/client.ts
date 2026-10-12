@@ -246,6 +246,8 @@ export class OperationsClient {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        // A 307 or 308 would resend the body, a factor code among them, to wherever it points.
+        redirect: 'error',
       });
     } catch (error) {
       // A transport failure is unavailable and is never dressed as a refusal.
