@@ -27,6 +27,7 @@ it('the first-push hook refuses a detectable credential appended to the lockfile
       'public-content-check.mjs',
       'candidate-snapshot.mjs',
       'history-objects.mjs',
+      'public-addresses.mjs',
     ])
       copyFileSync(join(root, 'scripts', file), join(scratch, 'scripts', file));
     for (const file of ['canary.txt', 'shape-canary.txt'])
