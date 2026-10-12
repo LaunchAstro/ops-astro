@@ -13,7 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -229,10 +229,26 @@ function checked(): void {
 
 const hex = (bytes: number): string => randomBytes(bytes).toString('hex');
 
-/** A run's own secrets and first-start keys, in a file only its owner may read. */
+/**
+ * A run's own secrets and first-start keys, in a file only its owner may read.
+ * A target already up keeps its volumes, made with the file's secrets and keys,
+ * so an `up` again keeps them too and changes only the port.
+ */
 function runSettings(port: number): string {
-  const lines = [
-    `TRACE_TARGET_PORT=${String(port)}`,
+  const kept = existsSync(ENV_FILE)
+    ? readFileSync(ENV_FILE, 'utf8')
+        .split('\n')
+        .filter((line) => line !== '' && !line.startsWith('TRACE_TARGET_PORT='))
+    : undefined;
+  const lines = [`TRACE_TARGET_PORT=${String(port)}`, ...(kept ?? firstSettings())];
+  mkdirSync(dirname(ENV_FILE), { recursive: true });
+  writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
+  return ENV_FILE;
+}
+
+/** The secrets and first-start keys of a target not yet made. */
+function firstSettings(): string[] {
+  return [
     ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
       (store) => `TRACE_TARGET_${store}_PASSWORD=${hex(16)}`,
     ),
@@ -249,9 +265,6 @@ function runSettings(port: number): string {
     'LANGFUSE_INIT_USER_NAME=operator',
     `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
   ];
-  mkdirSync(dirname(ENV_FILE), { recursive: true });
-  writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
-  return ENV_FILE;
 }
 
 function compose(...args: string[]): void {
@@ -267,7 +280,8 @@ function compose(...args: string[]): void {
 
 // `node scripts/local/trace-target.ts check | up <port> | down`: check the pin,
 // start the disposable target on a loopback port with generated secrets
-// (`.local/trace-target.env`), or destroy it with every volume and that file.
+// (`.local/trace-target.env`, kept by an `up` again), or destroy it with every
+// volume and that file.
 if (import.meta.main) {
   const [command, port] = process.argv.slice(2);
   checked();
