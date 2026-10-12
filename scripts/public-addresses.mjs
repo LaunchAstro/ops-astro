@@ -24,7 +24,7 @@ const touchesAfter = /^(?:[@\p{L}\p{N}_-]|\.[a-z0-9-])/iu;
 
 /**
  * The address without what can be shown to frame it rather than belong to
- * it: a quote closed later on the same line, emphasis repeated right after
+ * it: a quote that closes later on the line, emphasis repeated right after
  * it, or the `//` of a URL's authority. Any other edge character stays.
  */
 function framed(text, index, address) {
@@ -32,7 +32,10 @@ function framed(text, index, address) {
   const lineEnd = text.indexOf('\n', end);
   const after = text.slice(end, lineEnd === -1 ? undefined : lineEnd);
   const quote = /^['`]/u.exec(address)?.[0];
-  if (quote !== undefined && after.includes(quote)) return address.slice(1);
+  // The next such quote closes it, unless a letter or digit follows that one:
+  // then it opens more code, or sits inside a word (`don't`), and frames nothing.
+  const close = quote === undefined ? -1 : after.indexOf(quote);
+  if (close >= 0 && !/^[\p{L}\p{N}]/u.test(after.slice(close + 1))) return address.slice(1);
   const emphasis = /^(?:\*\*?|__?)/u.exec(address)?.[0];
   if (emphasis !== undefined && after.startsWith(emphasis)) return address.slice(emphasis.length);
   if (address.startsWith('//') && text[index - 1] === ':') return address.slice(2);
@@ -78,10 +81,10 @@ export function addressRules(text, scope) {
     // A file name has no quotes or emphasis to frame an address: it is read whole.
     const value = (scope === 'path' ? address : framed(text, index, address)).toLowerCase();
     const local = value.slice(0, value.lastIndexOf('@'));
-    // Not a written address: no letter or digit in the local part (a bare
-    // `'@host'`), or a local part a `${...}` placeholder ends, which code
-    // fills in when it runs.
-    if (!/[\p{L}\p{N}]/u.test(local) || /\$\{[^}]*\}$/u.test(local)) continue;
+    // Not a written address: only quote marks left of the local part once
+    // its frame goes (a quoted bare `'@host'`), or a local part a
+    // placeholder's `}` ends (`${...}`), which code fills in when it runs.
+    if (/^['`]*$/u.test(local) || local.endsWith('}')) continue;
     const end = index + address.length;
     const whole =
       !touchesBefore.test(text.slice(Math.max(0, index - 2), index)) &&
