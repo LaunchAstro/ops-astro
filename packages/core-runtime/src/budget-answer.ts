@@ -185,10 +185,11 @@ async function raiseHold(
 ): Promise<number> {
   if (CLOSED_STOPS.includes(locked.reservation_state)) return await holdTopUp(tx, request, locked);
   const { spent, unsent } = await spentOn(tx, locked.reservation_id);
-  let heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
+  // Exact: the hold plus a valid top-up can pass 2^53, where a number rounds.
+  const held = BigInt(locked.held_minor) + BigInt(request.amountMinor) - BigInt(spent);
   await tx.query(
     `update public.reservations set held_minor = $3 where business_id = $1 and id = $2`,
-    [tx.businessId, locked.reservation_id, heldMinor],
+    [tx.businessId, locked.reservation_id, held.toString()],
   );
   await tx.query(
     `update public.task_envelopes
@@ -198,12 +199,12 @@ async function raiseHold(
     [tx.businessId, locked.envelope_id, request.amountMinor, spent],
   );
   // A call the sweep released since the count read it went back onto this hold.
-  heldMinor += await giveBackReleased(tx, unsent);
+  const back = await giveBackReleased(tx, unsent);
   await tx.query(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
   );
-  return heldMinor;
+  return Number(held) + back;
 }
 
 /**
