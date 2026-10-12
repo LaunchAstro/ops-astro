@@ -76,9 +76,8 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
       document.removeEventListener('click', onClick);
     };
   }, [file]);
-  // A layout effect: the dock's close drops the panel in the same commit, and
-  // the panel's unmount clears the timer's stop in the passive phase after,
-  // so the close must run first to send time.stop.
+  // A layout effect: the task panel's own close runs in the commit the dock
+  // drops the panel in, before the page paints.
   useLayoutEffect(() => {
     const was = last.current;
     last.current = { open, docked };
