@@ -56,7 +56,7 @@ export async function advisoryLock(
 }
 
 export interface Connection {
-  /** Everything this connection has sent, for the no-runtime-DDL assertion. */
+  /** What this connection has sent, for the no-runtime-DDL assertion (`DatabaseOptions.log`). */
   readonly log: StatementLog;
   close(): Promise<void>;
 }
@@ -95,7 +95,12 @@ export interface TransactionOptions {
 export interface DatabaseOptions {
   /** What to label this connection's statements: `runtime`, `migration`, `harness`. */
   readonly source?: string;
-  /** Share one log across connections when the run wants a single trail. */
+  /**
+   * Share one log across connections when the run wants a single trail. A
+   * proof that reads the whole history passes one; without it the connection
+   * keeps only its newest statements, so a server's heap does not grow with
+   * its traffic.
+   */
   readonly log?: StatementLog;
   readonly max?: number;
 }
@@ -104,7 +109,7 @@ export function open(
   url: string,
   options: DatabaseOptions,
 ): { sql: postgres.Sql; log: StatementLog } {
-  const log = options.log ?? createStatementLog();
+  const log = options.log ?? createStatementLog({ keep: 1_000 });
   const source = options.source ?? 'runtime';
   const sql = postgres(url, {
     max: options.max ?? 1,

@@ -116,9 +116,16 @@ function lengthAt(pattern: RegExp, sql: string, at: number): number {
   return pattern.exec(sql)?.[0].length ?? 0;
 }
 
-// `SELECT ... INTO new_table` creates a table without saying CREATE. It is the
-// one DDL statement whose leading verb reads as a read.
-const SELECT_INTO = /^SELECT\b[\s\S]*?\bINTO\b/iu;
+// The verbs a WITH's CTE list leads into: the statement the WITH belongs to.
+const WITH_BODY_VERBS: ReadonlySet<string> = new Set([
+  'SELECT',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'MERGE',
+  'VALUES',
+  'TABLE',
+]);
 
 // scan.l's whitespace is space [ \t\n\r\f\v] and newline [\n\r]. Nothing
 // else is: a character past ASCII starts an identifier (ident_start), so a
@@ -342,12 +349,47 @@ export function leadingVerb(statement: string): string {
   return '';
 }
 
+/**
+ * Whether a SELECT or WITH statement is `SELECT ... INTO new_table`, which
+ * creates a table without saying CREATE: the one DDL statement whose leading
+ * verb reads as a read. A WITH belongs to the first statement verb after its
+ * CTE list, at the depth the WITH stands at; a CTE's own INSERT INTO sits
+ * inside its parentheses. Once that verb is SELECT, any INTO word is the
+ * table-creating one, since a subquery cannot write. Strings, quoted names and
+ * comments are tokens of their own, so an `into` inside one is not the word.
+ */
+function selectsInto(statement: string): boolean {
+  let depth = 0;
+  let withDepth: number | undefined;
+  let selecting = false;
+  for (let at = 0; at < statement.length;) {
+    const token = scanToken(statement, at);
+    const ch = statement[at] ?? '';
+    if (token.kind === 'word') {
+      const word = statement.slice(at, token.end).toUpperCase();
+      if (selecting) {
+        if (word === 'INTO') return true;
+      } else if (withDepth === undefined && word === 'WITH') {
+        withDepth = depth;
+      } else if (withDepth === undefined || (depth === withDepth && WITH_BODY_VERBS.has(word))) {
+        if (word !== 'SELECT') return false;
+        selecting = true;
+      }
+    } else if (token.kind === 'other') {
+      if (ch === '(') depth += 1;
+      if (ch === ')') depth -= 1;
+    }
+    at = token.end;
+  }
+  return false;
+}
+
 export function classifyStatement(statement: string): StatementKind {
   const verb = leadingVerb(statement);
   if (DDL_VERBS.has(verb)) return 'ddl';
   if (OPAQUE_VERBS.has(verb)) return 'opaque';
   if (DATA_VERBS.has(verb)) {
-    return verb === 'SELECT' && SELECT_INTO.test(statement.trimStart()) ? 'ddl' : 'data';
+    return (verb === 'SELECT' || verb === 'WITH') && selectsInto(statement) ? 'ddl' : 'data';
   }
   if (TRANSACTION_VERBS.has(verb)) return 'transaction';
   if (SESSION_VERBS.has(verb)) return 'session';
@@ -358,15 +400,26 @@ export function classify(sql: string): readonly Statement[] {
   return splitStatements(sql).map((text) => ({ text, kind: classifyStatement(text) }));
 }
 
-export function createStatementLog(): StatementLog {
+/**
+ * A log of every statement, or, given `keep`, of at least the newest `keep`
+ * and at most twice that many: a connection that runs for the life of a
+ * server keeps a bounded history, and a proof asks for the whole one.
+ */
+export function createStatementLog(options: { readonly keep?: number } = {}): StatementLog {
   const entries: RecordedStatement[] = [];
+  const add = (entry: RecordedStatement): void => {
+    entries.push(entry);
+    if (options.keep !== undefined && entries.length > 2 * options.keep) {
+      entries.splice(0, entries.length - options.keep);
+    }
+  };
   return {
     record(source: string, sql: string): void {
       const at = Date.now();
-      for (const statement of classify(sql)) entries.push({ ...statement, source, at });
+      for (const statement of classify(sql)) add({ ...statement, source, at });
     },
     unreadable(source: string, reason: string): void {
-      entries.push({ text: reason, kind: 'opaque', source, at: Date.now() });
+      add({ text: reason, kind: 'opaque', source, at: Date.now() });
     },
     entries,
     schemaChanging(): readonly RecordedStatement[] {

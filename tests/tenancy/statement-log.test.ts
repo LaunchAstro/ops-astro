@@ -12,6 +12,7 @@ import {
   leadingVerb,
   splitStatements,
 } from '../../packages/core-records/src/tenancy/statements.ts';
+import { open } from '../../packages/core-records/src/tenancy/database.ts';
 
 describe('splitStatements', () => {
   it('splits on the semicolons that end statements', () => {
@@ -214,6 +215,29 @@ describe('classifyStatement', () => {
     expect(leadingVerb('-- set the schema up\n  create table t ()')).toBe('CREATE');
     expect(classifyStatement('/* quiet */ drop table t')).toBe('ddl');
   });
+
+  it.each([
+    '/* request */ select 1 into public.review_probe',
+    '-- request\nselect 1 into public.review_probe',
+    'with source as (select 1 as n) select n into public.review_probe from source',
+    'with recursive source(n) as (select 1) select n into table public.review_probe from source',
+    '(select 1 into public.review_probe)',
+  ])('reads the table-creating SELECT INTO %j as ddl', (statement) => {
+    expect(classifyStatement(statement)).toBe('ddl');
+    const log = createStatementLog();
+    log.record('runtime', statement);
+    expect(log.schemaChanging()).toHaveLength(1);
+  });
+
+  it.each([
+    "select 'into' as word",
+    'select 1 as "into"',
+    'with x as (insert into t values (1) returning *) select * from x',
+    'with x as (select 1 as n) insert into t select n from x',
+    'with x as (select 1 as n) merge into t using x on true when matched then do nothing',
+  ])('reads %j, whose INTO creates no table, as data', (statement) => {
+    expect(classifyStatement(statement)).toBe('data');
+  });
 });
 
 describe('the log', () => {
@@ -240,5 +264,30 @@ describe('the log', () => {
     log.record('runtime', 'commit');
     expect(log.schemaChanging()).toStrictEqual([]);
     expect(classify('select 1').map((s) => s.kind)).toStrictEqual(['data']);
+  });
+});
+
+const nowhere = 'postgres://nobody@127.0.0.1:1/never';
+
+/** `times` statements through the connection's driver hook, as its traffic would. */
+function sent(sql: ReturnType<typeof open>['sql'], times: number): void {
+  const debug = sql.options.debug as unknown as (connection: number, query: string) => void;
+  for (let at = 0; at < times; at += 1) debug(1, `select $1::int -- ${String(at)}`);
+}
+
+describe('the log a connection keeps', () => {
+  it('keeps a bounded history of the newest statements when no log is asked for', async () => {
+    const { sql, log } = open(nowhere, {});
+    sent(sql, 100_000);
+    expect(log.entries.length).toBeLessThanOrEqual(2_000);
+    expect(log.entries.at(-1)?.text).toBe('select $1::int -- 99999');
+    await sql.end();
+  });
+
+  it('keeps every statement when the caller asks for a full log', async () => {
+    const { sql, log } = open(nowhere, { log: createStatementLog() });
+    sent(sql, 5_000);
+    expect(log.entries).toHaveLength(5_000);
+    await sql.end();
   });
 });
