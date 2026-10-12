@@ -31,7 +31,7 @@
 // to refuse anything.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -144,7 +144,10 @@ const checkAssets = (file) => {
       );
     }
     if (!nonEmpty(asset?.permittedUse)) found.push(`${name}: no permitted use recorded`);
-    if (!nonEmpty(asset?.licenceFile) || !existsSync(join(dir, asset.licenceFile))) {
+    if (
+      !nonEmpty(asset?.licenceFile) ||
+      !statSync(join(dir, asset.licenceFile), { throwIfNoEntry: false })?.isFile()
+    ) {
       found.push(`${name}: its licence text is not beside it`);
     }
     // The public tree holds no binary file, so the bytes are pinned rather

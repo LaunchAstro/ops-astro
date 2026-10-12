@@ -26,7 +26,7 @@ import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
-import { readStamp } from '../../apps/web/build-stamp.ts';
+import { buildIdentifier, readStamp } from '../../apps/web/build-stamp.ts';
 import { buildOutputProblems, outputDigest, stampOutput } from './build-output.ts';
 
 export { outputDigest };
@@ -60,6 +60,11 @@ export interface Release {
 export async function release({ dist, out }: { dist: string; out: string }): Promise<Release> {
   const stamp = readStamp(dist);
   if (stamp === undefined) throw new Error('the web build is not stamped');
+  // The API is bundled from this checkout, so the web build must be from it too.
+  const here = buildIdentifier(ROOT);
+  if (stamp !== here) {
+    throw new Error(`the web build is ${stamp}, not this checkout (${here}); rebuild the web here`);
+  }
   rmSync(out, { recursive: true, force: true });
   cpSync(dist, join(out, 'static'), { recursive: true });
   const func = join(out, 'functions', 'api.func');

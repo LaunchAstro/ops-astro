@@ -166,15 +166,20 @@ function bundledCase() {
 }
 
 function deployableCase() {
-  it('the web deploy takes the real release output as stored, only the Vercel CLI faked', async () => {
-    const root = mkdtempSync(join(scratch, 'store-'));
-    cpSync(out, join(root, artefactName(STAMP)), { recursive: true });
-    const vercel = fakeVercel();
-    const outcome = await deployWeb(
-      { version: STAMP, store: root },
-      { env: webSettings(vercel.path), preflight: clean },
-    );
-    expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: 'deployed' });
-    expect(vercel.lines('argv')).toContain('deploy --prebuilt --prod');
-  }, 60_000);
+  // A checkout with uncommitted changes makes a `-dirty` release, which no deploy takes.
+  it.skipIf(STAMP.endsWith('-dirty'))(
+    'the web deploy takes the real release output as stored, only the Vercel CLI faked',
+    async () => {
+      const root = mkdtempSync(join(scratch, 'store-'));
+      cpSync(out, join(root, artefactName(STAMP)), { recursive: true });
+      const vercel = fakeVercel();
+      const outcome = await deployWeb(
+        { version: STAMP, store: root },
+        { env: webSettings(vercel.path), preflight: clean },
+      );
+      expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: 'deployed' });
+      expect(vercel.lines('argv')).toContain('deploy --prebuilt --prod');
+    },
+    60_000,
+  );
 }
