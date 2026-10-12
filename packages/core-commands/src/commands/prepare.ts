@@ -309,17 +309,17 @@ const BODY_FIXES: readonly string[] = [
  * The identifier fields a body carries that its operation does not take.
  *
  * Exported for the read half, which asks the same question of its own
- * operations (`reads/dispatch.ts`, root ruling 3): one list of what counts as
- * an identifier, so a field added here is refused on both paths or neither.
+ * operations (`reads/dispatch.ts`, root ruling 3) over `READ_IDENTIFIER_FIELDS`,
+ * which holds this list and the identifiers only reads take, so a field added
+ * here is refused on both paths or neither.
  * `null` is a value the caller sent, so it counts as present.
  */
 export function irrelevantIdentifiers(
   named: Readonly<Record<string, unknown>>,
   allowed: readonly string[],
+  fields: readonly string[] = IDENTIFIER_FIELDS,
 ): readonly string[] {
-  return IDENTIFIER_FIELDS.filter(
-    (field) => named[field] !== undefined && !allowed.includes(field),
-  );
+  return fields.filter((field) => named[field] !== undefined && !allowed.includes(field));
 }
 
 /**

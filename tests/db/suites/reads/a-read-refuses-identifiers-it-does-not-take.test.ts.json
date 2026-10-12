@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A read refuses every identifier its catalogue row does not name, the read-only ones (person, client, runId, attemptId, incidentId, correctionId) included, and answers nothing."
+}
