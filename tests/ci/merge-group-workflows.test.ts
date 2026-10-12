@@ -9,7 +9,7 @@ import { cpSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cleanup, ENV, group, read, repo, ROOT, type Repo } from './merge-group-repo.ts';
-import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
+import { unguarded, withoutGuardLines } from './open-pull-request.ts';
 import { script, step, top } from './workflow-text.ts';
 
 afterAll(cleanup);
@@ -105,13 +105,13 @@ describe('merge group: every required check runs on a group, and none passes it 
   });
 
   it('every step that reads the pull request range runs once per pull request, on a pull request and on a group', () => {
-    const ci = read(CI);
+    // A step runs on into the next job's header; only that job's exact guard line is set aside.
+    const ci = withoutGuardLines(read(CI));
     const ranged = ci.split(/^(?= {6}- )/mu).filter((s) => /BASE_SHA|base\.sha/u.test(s));
     expect(ranged.length).toBeGreaterThan(0);
     for (const s of ranged) {
       const name = /name: (.+)/u.exec(s)?.[1] ?? s.slice(0, 80);
-      // A step runs on into the next job's header, whose exact guard reads no range.
-      expect(s.replaceAll(OPEN_GUARD, ''), name).not.toContain('github.event.pull_request.');
+      expect(s, name).not.toContain('github.event.pull_request.');
       expect(s, name).toMatch(/node scripts\/merge-group\.mjs each|merge-group\.mjs/u);
       expect(/^ {8}if: (.+)$/mu.exec(s)?.[1] ?? '', name).not.toMatch(/== 'pull_request'$/u);
     }

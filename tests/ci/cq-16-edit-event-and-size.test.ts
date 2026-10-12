@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { OPEN_GUARD } from './open-pull-request.ts';
+import { withoutGuardLines } from './open-pull-request.ts';
 import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -56,7 +56,7 @@ describe('CQ-16 edited runs review evidence only', () => {
     expect(job(read(CI), CHECK)).toBe('');
     // A condition could skip it, and `needs` would name a job this workflow does not hold. The
     // exact guard skips it only on a closed pull request (open-pull-request.ts).
-    expect(block.replace(`    if: ${OPEN_GUARD}\n`, '').match(/^ {4}(if|needs):/mu)).toBeNull();
+    expect(withoutGuardLines(block).match(/^ {4}(if|needs):/mu)).toBeNull();
   });
 
   it('CQ-16 edited runs review evidence only: an edit cannot cancel a code run, because its concurrency group is its own', () => {

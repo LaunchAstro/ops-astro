@@ -16,3 +16,13 @@ export function unguarded<T>(cond: T): T | 'always()' | undefined {
   if (cond === `always() && (${OPEN_GUARD})`) return 'always()';
   return cond;
 }
+
+/**
+ * Workflow text with each exact job-level guard line set aside, as `unguarded` reads a condition:
+ * the guard's own line goes and `always() && (guard)` reads `always()`. A step's line, a command and
+ * any other text keep every character.
+ */
+export const withoutGuardLines = (text: string): string =>
+  text
+    .replaceAll(`\n    if: ${OPEN_GUARD}\n`, '\n')
+    .replaceAll(`\n    if: always() && (${OPEN_GUARD})\n`, '\n    if: always()\n');
