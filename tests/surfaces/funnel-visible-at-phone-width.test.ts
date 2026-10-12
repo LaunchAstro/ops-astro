@@ -13,11 +13,22 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 // checks read it, so a copy of this check pointed at another sheet draws that sheet.
 const repo = (path: string): string => join(process.cwd(), path);
 
+/** A stage shape as drawn: its box, and whether it paints there. */
+interface Drawn {
+  readonly box: DOMRect;
+  /**
+   * Visible, every ancestor's opacity above zero, and the shape itself on top
+   * at its own centre (hit-testing follows its clip-path), so a hidden,
+   * transparent, covered or clipped-away shape does not paint.
+   */
+  readonly painted: boolean;
+}
+
 /**
  * The real funnel's stage shapes, drawn at 390 px in Chromium under the
  * package's sheets in load order, with `primitives` in the primitives sheet's place.
  */
-async function stagesAt390(primitives: string): Promise<readonly DOMRect[]> {
+async function stagesAt390(primitives: string): Promise<readonly Drawn[]> {
   const sheets = [
     ...readFileSync(repo('packages/ui/src/index.ts'), 'utf8').matchAll(
       /^import '\.\/(styles\/[\w-]+\.css)';$/gmu,
@@ -46,11 +57,21 @@ async function stagesAt390(primitives: string): Promise<readonly DOMRect[]> {
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
     await page.setContent(`<style>${sheets.join('\n')}</style>${html}`);
-    return await page
-      .locator('.funnel__bg')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().toJSON() as DOMRect),
-      );
+    return await page.locator('.funnel__bg').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        let painted = getComputedStyle(node).visibility === 'visible';
+        for (let at: Element | null = node; at !== null; at = at.parentElement) {
+          const style = getComputedStyle(at);
+          if (style.display === 'none' || Number(style.opacity) === 0) painted = false;
+        }
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return {
+          box: box.toJSON() as DOMRect,
+          painted: painted && top !== null && node.contains(top),
+        };
+      }),
+    );
   } finally {
     await browser.close();
   }
@@ -64,12 +85,13 @@ it('MP-1-5 the true-scale funnel remains visible at phone width', async () => {
     );
   expect(hidesShapeAtPhoneWidth).toBe(false);
 
-  // Drawn: every stage's shape has area and sits inside a 390 px screen.
-  const boxes = await stagesAt390(css);
-  expect(boxes).toHaveLength(2);
-  for (const box of boxes) {
+  // Drawn: every stage's shape has area, sits inside a 390 px screen and paints.
+  const stages = await stagesAt390(css);
+  expect(stages).toHaveLength(2);
+  for (const { box, painted } of stages) {
     expect(box.width).toBeGreaterThan(0);
     expect(box.height).toBeGreaterThan(0);
     expect(box.right).toBeLessThanOrEqual(390);
+    expect(painted).toBe(true);
   }
 }, 30_000);
