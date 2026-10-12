@@ -60,7 +60,7 @@ const ASSESSMENT_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 // `overdue` is the database's judgement, on its own clock, of the same limit
 // as `assessBy` (720 hours is ASSESSMENT_DAYS_MS): no server clock decides it.
 const COLUMNS = `id, what_happened, found_at, found_by, affected, information_kinds,
-  status = 'open' and now() > found_at + interval '720 hours' as overdue,
+  status = 'open' and statement_timestamp() > found_at + interval '720 hours' as overdue,
   status, recorded_at, recorded_by_actor`;
 
 const shaped = (row: IncidentRow): PrivacyIncident => ({
