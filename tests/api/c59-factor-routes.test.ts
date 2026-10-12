@@ -61,7 +61,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(answer.status).toBe(403);
       expect(answer.code).toBe('FRESH_SIGN_IN_REQUIRED');
       expect(seen).toEqual([]);
-      expect(await factorOf(world.mia.personId)).toBeUndefined();
+      expect(await factorOf(world.mia)).toBeUndefined();
       expect((await eventsFor('account.factor_enrol')).at(-1)).toEqual({
         outcome: 'refused',
         refusal_code: 'FRESH_SIGN_IN_REQUIRED',
@@ -75,7 +75,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(enrolled.body).toMatchObject({ factorId: 'factor-one', secret: CANARY });
       expect(seen.map((request) => request.route)).toEqual(['POST /factors']);
       expect(seen[0]?.authorization).toBe(`Bearer ${token}`);
-      expect(await factorOf(world.mia.personId)).toMatchObject({ status: 'unverified' });
+      expect(await factorOf(world.mia)).toMatchObject({ status: 'unverified' });
 
       // One event for the act, written with its record after the provider
       // answered; the check before the call recorded nothing, having done nothing.
@@ -85,7 +85,7 @@ describe.skipIf(serverUrl === undefined)(
       const verified = await act('verify', token, { code: '123456' });
       expect(verified.status).toBe(200);
       expect(verified.body).toMatchObject({ accessToken: 'aal2-access-token' });
-      expect(await factorOf(world.mia.personId)).toMatchObject({ status: 'verified' });
+      expect(await factorOf(world.mia)).toMatchObject({ status: 'verified' });
       expect((await eventsFor('account.factor_verify')).at(-1)).toEqual({
         outcome: 'applied',
         refusal_code: null,
@@ -144,7 +144,7 @@ describe.skipIf(serverUrl === undefined)(
       );
       // The refused enrolment writes no row: one live factor, nothing ended.
       expect(rows.map((row) => row.status)).toEqual(['unverified']);
-      expect(await factorOf(clientD.personId)).toMatchObject({ status: 'unverified' });
+      expect(await factorOf(clientD)).toMatchObject({ status: 'unverified' });
       expect((await appliedOf()) - appliedBefore).toBe(1);
       // The refused enrolment's provider factor is reported as an orphan.
       expect((await eventsFor('account.factor_orphaned')).length - orphanedBefore).toBe(1);
@@ -170,7 +170,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(wrong.status).toBe(422);
       expect(wrong.code).toBe('SECOND_FACTOR_INVALID');
       expect(seen.map((request) => request.route)).not.toContain('DELETE /factors/factor-one');
-      expect(await factorOf(world.mia.personId)).toMatchObject({ status: 'verified' });
+      expect(await factorOf(world.mia)).toMatchObject({ status: 'verified' });
       expect((await eventsFor('account.factor_remove')).at(-1)).toEqual({
         outcome: 'refused',
         refusal_code: 'SECOND_FACTOR_INVALID',
@@ -184,7 +184,7 @@ describe.skipIf(serverUrl === undefined)(
       // password-only bearer the request arrived with.
       const deletion = seen.find((request) => request.route === 'DELETE /factors/factor-one');
       expect(deletion?.authorization).toBe('Bearer aal2-access-token');
-      expect(await factorOf(world.mia.personId)).toBeUndefined();
+      expect(await factorOf(world.mia)).toBeUndefined();
       // The person row's mirror follows the factor rows: no verified factor
       // left, so a sign-in without one is enough again.
       const mirrored = await world.db.app.withBusiness(world.alpha, (tx) =>

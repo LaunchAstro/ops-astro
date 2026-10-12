@@ -77,6 +77,7 @@ export async function enrolHere(
   await db.app.withBusiness(business, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });
@@ -236,6 +237,7 @@ export async function factorIn(
   const id = await db.app.withBusiness(bravo, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId: person,
+      subject,
       provider: 'supabase',
       providerFactorId,
     });

@@ -88,7 +88,7 @@ export async function enrolSecondFactor(
     sending,
     act,
     async (tx, session) => {
-      const live = await liveFactor(tx, session.personId);
+      const live = await liveFactor(tx, session.personId, caller.presented.subject);
       if (await holdsVerified(tx, caller, live))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
       startedFrom = live?.id;
@@ -103,7 +103,7 @@ export async function enrolSecondFactor(
   const issued = await provider.enrol(caller.accessToken);
   const recorded = await judged(sending, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
-    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+    const live = await liveFactor(tx, session.personId, caller.presented.subject, { lock: true });
     if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // A newer one, recorded since that check, stays the target; this one is a stray.
@@ -112,11 +112,9 @@ export async function enrolSecondFactor(
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
     if (live !== undefined) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
-    await recordFactorEnrolled(tx, {
-      personId: session.personId,
-      provider: caller.presented.provider,
-      providerFactorId: issued.value.factorId,
-    });
+    const { subject, provider: by } = caller.presented;
+    const enrolment = { personId: session.personId, subject, provider: by };
+    await recordFactorEnrolled(tx, { ...enrolment, providerFactorId: issued.value.factorId });
     return undefined;
   });
   if (!issued.ok) return recorded ?? providerRefusal('malformed', 'answer');
@@ -207,7 +205,7 @@ export async function removeSecondFactor(
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
       const locked = await wrongCodeLock(tx, caller.presented.subject);
       if (locked !== undefined) return locked;
-      const live = await liveFactor(tx, session.personId);
+      const live = await liveFactor(tx, session.personId, caller.presented.subject);
       if (live?.status !== 'verified')
         return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
       factor = live;
@@ -223,7 +221,7 @@ export async function removeSecondFactor(
   let ended = 0;
   const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
-    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+    const live = await liveFactor(tx, session.personId, caller.presented.subject, { lock: true });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
@@ -259,7 +257,7 @@ async function recordVerify(
   caller: FactorCaller,
   target: CodeTarget,
 ): Promise<VerifyRecord> {
-  const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+  const live = await liveFactor(tx, session.personId, caller.presented.subject, { lock: true });
   // One held elsewhere is checked again: still none here, and not removed there meanwhile.
   if (target.id === undefined)
     return live === undefined && (await stillHeld(tx, caller, target))

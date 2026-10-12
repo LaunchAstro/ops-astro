@@ -58,6 +58,7 @@ beforeAll(async () => {
   await db.app.withBusiness(alpha, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId: milo.personId,
+      subject: milo.presented.subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });

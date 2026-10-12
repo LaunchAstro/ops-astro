@@ -91,6 +91,7 @@ async function verifyThrough(login: Login, business: string): Promise<string> {
     const personId = login.person[business] ?? '';
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject: login.subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });
@@ -173,7 +174,7 @@ async function enrolThrough(login: Login, business: string, provider: FactorProv
 /** The status of the person's live factor in `business`, or `none`. */
 async function factorStatus(login: Login, business: string): Promise<string> {
   const live = await db.app.withBusiness(business, (tx) =>
-    liveFactor(tx, login.person[business] ?? ''),
+    liveFactor(tx, login.person[business] ?? '', login.subject),
   );
   return live?.status ?? 'none';
 }
