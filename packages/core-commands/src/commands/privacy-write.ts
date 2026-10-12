@@ -20,6 +20,7 @@ import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 import type { CommandRequest } from './requests.ts';
+import { isTimestamp } from './values.ts';
 
 type Request = CommandRequest & { readonly command: 'privacy.record_incident' };
 
@@ -51,8 +52,14 @@ function isCheckViolation(cause: unknown): boolean {
   );
 }
 
+/**
+ * A real calendar instant the column can store: `Date.parse` rolls 30 February
+ * into March and takes year zero, which the assessment clock would then start
+ * from or the column refuse (#522).
+ */
 function foundAtOf(value: unknown, now: number): Date | undefined {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/u.test(value)) return undefined;
+  if (!isTimestamp(value)) return undefined;
   const at = Date.parse(value);
   return Number.isFinite(at) && at <= now + FOUND_AT_SKEW_MS ? new Date(at) : undefined;
 }
