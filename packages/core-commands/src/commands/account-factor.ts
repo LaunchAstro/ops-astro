@@ -49,6 +49,7 @@ import {
   BODY_FIXES,
   checkCode,
   codeOf,
+  settleUnsent,
   ENROLLED_FIXES,
   enrolledElsewhere,
   freshSignIn,
@@ -153,6 +154,7 @@ export async function verifySecondFactor(
   const found = seen.factor ?? (await heldElsewhere(caller, provider, seen.held));
   if (found === undefined || 'code' in found) {
     const refused = found ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+    await settleUnsent(caller, sending.attempt);
     return (await judged(sending, act, () => Promise.resolve(refused))) ?? refused;
   }
   const target = found;
@@ -166,6 +168,7 @@ export async function verifySecondFactor(
   // A session or access ended during the record step's waits undoes what it
   // decided (`judged`), answered with its own refusal in place of the check's.
   const { ended }: VerifyRecord = recorded?.code === settled.refusal?.code ? settled : {};
+  if (!verified.ok && verified.fault === 'unsent') await settleUnsent(caller, sending.attempt);
   // A refused good code removes its factor there only once the committed record
   // holds it removed (a lost or replaced enrolment), never on what the check
   // saw before the provider call; any other unverified one is reported (#300).
@@ -226,6 +229,7 @@ export async function removeSecondFactor(
     await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
+  if (!proved.ok && proved.fault === 'unsent') await settleUnsent(caller, sending.attempt);
   if (recorded !== undefined || !proved.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   // Only once the record commits; a refusal here removes nothing there.
