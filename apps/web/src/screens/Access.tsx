@@ -21,7 +21,7 @@
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../records/submit.ts';
@@ -164,11 +164,16 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     deps: [client],
   });
   const [busy, setBusy] = useState(false);
+  // One write at a time: a second press before the answer sends nothing.
+  const sending = useRef(false);
   const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
   const act: Act = (send, done) => {
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     void (async () => {
       const failure = describeFailure(await send());
+      sending.current = false;
       setBusy(false);
       setOutcome({ text: failure ?? done, refused: failure !== null });
       if (failure === null) reload();

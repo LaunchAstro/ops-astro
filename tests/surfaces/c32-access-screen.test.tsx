@@ -186,4 +186,27 @@ describe('C32 agents on Settings ▸ Access', () => {
     ]);
     expect(view.find('[data-agent="d-1"]')).toBeNull();
   });
+
+  it('a second Revoke delegation click while the first is out sends nothing, and the success stays', async () => {
+    let answers = 0;
+    const releases: ((response: Response) => void)[] = [];
+    const api = server([json(access([ADA, MIA]))], () => {
+      answers += 1;
+      return answers === 1 ? json({ recordId: 'r', revision: 1 }) : refusal('NOT_FOUND', 404);
+    });
+    const held = ((url: string | URL, init?: RequestInit) => {
+      if (!String(url).endsWith('/delegation/revoke')) return api.fetch(url, init);
+      return new Promise<Response>((resolve) => releases.push(resolve)).then(() =>
+        api.fetch(url, init),
+      );
+    }) as typeof globalThis.fetch;
+    const view = await open(held);
+    await view.click('[data-revoke="d-1"] button');
+    await view.click('[data-revoke="d-1"] button');
+    for (const release of releases) release(json({}));
+    await settle();
+    await settle();
+    expect(api.commands()).toHaveLength(1);
+    expect(view.find('[data-access-outcome]')?.textContent).toContain('Revoked the delegation');
+  });
 });
