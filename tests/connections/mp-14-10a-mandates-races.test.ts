@@ -7,7 +7,6 @@
 // lock) so the other request lands exactly there. The isolation cases cross
 // into rows that exist: each business has a client and a live mandate.
 
-import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { Answer } from '../api/fixture.ts';
@@ -124,7 +123,6 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate command races and is
     const filed = await filing
       .as(w.racer, 'mandate.file', {
         clientId: w.clientA,
-        draftId: randomUUID(),
         classes: ['social.post'],
         ceiling: AUD(1),
         expiresAt: inDays(1),
@@ -146,7 +144,6 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate command races and is
         'mandate.file',
         {
           clientId: w.clientB,
-          draftId: randomUUID(),
           classes: ['social.post'],
           ceiling: AUD(1),
           expiresAt: inDays(1),
@@ -201,7 +198,6 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate command races and is
         'mandate.file',
         {
           clientId: w.clientA,
-          draftId: randomUUID(),
           classes: ['social.post'],
           ceiling: AUD(1),
           expiresAt: inDays(1),
