@@ -92,6 +92,22 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
       body: { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] },
     };
   }
+  if (declaration.name === 'task.purge') {
+    // The recipe's fresh trash is inside the retention window, so its purge
+    // writes nothing and proves no declaration: this trash is aged past any
+    // window, so the purge removes it and every table it writes shows.
+    const task = await harness.freshTask(`s0-5 effects purge ${randomUUID()}`);
+    const trashed = await harness.asPerson('task.trash', {
+      recordId: task.id,
+      expectedRevision: task.revision,
+    });
+    if (trashed.code !== 'ok') throw new Error(`trash before purge refused ${trashed.code}`);
+    await harness.world.db.admin.execute(
+      `update public.records set deleted_at = deleted_at - interval '100 years' where id = $1`,
+      [task.id],
+    );
+    return { body: {} };
+  }
   if (declaration.name === 'task.revoke_client_share') {
     // The recipe revokes on a task never shared, which changes nothing: share one first.
     const share = COMMAND_SURFACE.find((one) => one.name === 'task.share_with_client');
@@ -177,8 +193,6 @@ const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
  * would be unproved.
  */
 const NO_CHANGE: Readonly<Record<string, string>> = {
-  'task.purge':
-    'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
   'session.end':
     'a sign-out writes only its audit event; the browser ends the credential (tests/commands/c23-session-end.test.ts)',
   'notifications.set_channel':
