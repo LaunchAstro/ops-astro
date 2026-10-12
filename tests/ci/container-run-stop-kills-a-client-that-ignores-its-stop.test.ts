@@ -23,8 +23,8 @@ writeFileSync(
     'for arg in "$@"; do case $arg in --cidfile=*) cid="${arg#--cidfile=}" ;; esac; done',
     `printf '%s' '${'b'.repeat(64)}' > "$cid"`,
     "trap '' INT TERM",
-    '/bin/sleep 20 > /dev/null 2>&1 &',
-    'while :; do wait; done',
+    // Bounded, so a stand-in left behind by a failing case ends by itself.
+    'for i in $(seq 30); do /bin/sleep 1 > /dev/null 2>&1; done',
     '',
   ].join('\n'),
 );
