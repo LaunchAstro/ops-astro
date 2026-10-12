@@ -10,21 +10,23 @@
 // all read as nothing, which the manifest capture answers
 // `DEFINITION_UNAVAILABLE`; the root itself unreachable is the store down, the
 // same code naming the fault as ours (`storeUnavailable`). The file is opened
-// without following a link and read once, through the handle that was checked.
+// without following a link and read once, through the handle that was checked:
+// it must be the file the segment checks found, and the path, checked again,
+// must still name it. The root may be `/`.
 //
 // C33's `definition_version` replaces this source when it is built: runs then
 // pin a definition version in the same slot (`0192_bootstrap_pins`), and the
 // directory goes.
 
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { access, lstat, open, realpath } from 'node:fs/promises';
-import { isAbsolute, join, sep } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { isInstructionPath, type InstructionSource } from './definitions.ts';
 
 export const INSTRUCTION_ROOT_VARIABLE = 'OPS_ASTRO_INSTRUCTION_ROOT';
 
-/** Whether every segment of `path` under `root` is a directory or, last, a plain file. */
-async function plainSegments(root: string, path: string): Promise<boolean> {
+/** The file `path` names under `root` when every segment is a directory or, last, a plain file. */
+async function plainSegments(root: string, path: string): Promise<Stats | undefined> {
   const segments = path.split('/');
   let at = root;
   for (const [index, segment] of segments.entries()) {
@@ -33,21 +35,29 @@ async function plainSegments(root: string, path: string): Promise<boolean> {
     // eslint-disable-next-line no-await-in-loop
     const found = await lstat(at);
     const last = index === segments.length - 1;
-    if (last ? !found.isFile() : !found.isDirectory()) return false;
+    if (last) return found.isFile() ? found : undefined;
+    if (!found.isDirectory()) return undefined;
   }
-  return true;
+  return undefined;
 }
+
+const same = (one: Stats | undefined, other: Stats): boolean =>
+  one !== undefined && one.dev === other.dev && one.ino === other.ino;
 
 async function readInside(root: string, path: string): Promise<Uint8Array | undefined> {
   if (!isInstructionPath(path)) return undefined;
   try {
     const base = await realpath(root);
-    if (!(await plainSegments(base, path))) return undefined;
-    const full = join(base, path);
-    if (!(await realpath(full)).startsWith(base + sep)) return undefined;
-    const handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const checked = await plainSegments(base, path);
+    if (checked === undefined) return undefined;
+    const handle = await open(join(base, path), constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
-      if (!(await handle.stat()).isFile()) return undefined;
+      // A directory on the way swapped for a link while the file opened: what opened is the
+      // file the checks found, and the path still names it once checked again.
+      const opened = await handle.stat();
+      if (!same(checked, opened) || !same(await plainSegments(base, path), opened)) {
+        return undefined;
+      }
       return new Uint8Array(await handle.readFile());
     } finally {
       await handle.close();
