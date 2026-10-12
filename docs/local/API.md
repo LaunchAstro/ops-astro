@@ -2431,7 +2431,10 @@ same bytes as a missing task.
 `happened_differently` (O7). It asks `decide` on `billing` for the task (O8:
 any person holding it), and no agent route serves it
 (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held `liability_unknown`
-takes one; any other is `LIABILITY_NOT_UNKNOWN`. Nothing happened releases the
+takes one, or one a person wrote off; any other is `LIABILITY_NOT_UNKNOWN`.
+After a write-off its charge stands and no money moves: nothing happened, or
+happened differently, resumes the work on a fresh hold within the budget, once.
+Otherwise nothing happened releases the
 whole hold and resumes the work on a new hold; it happened spends the whole
 hold; it happened differently spends it and reopens the work. It happened stops
 a replacement the reconciliation reserved for the step, unless that replacement
@@ -2463,10 +2466,10 @@ agent route serves it (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held
 amount settles the hold at that figure, with the attempt's outcome left
 `unknown`; nothing abandons it under the cause `written_off`. The envelope
 gives the whole hold back either way; no attempt, hold or envelope row is
-added and no work moves. It is final for the attempt: no outcome is recorded
-after it, and a top-up at the run's budget stop is `TRANSITION_NOT_PERMITTED`,
-since a fresh hold would run a step whose effect is unknown; a person ends the
-work and starts it again. When the hold is above the business's four-eyes
+added and no work moves. Its charge is final, and a top-up at the run's budget
+stop is `TRANSITION_NOT_PERMITTED`, since a fresh hold would run a step whose
+effect is unknown; a person records the work's outcome instead
+(`budget.record_outcome`), or ends the work. When the hold is above the business's four-eyes
 band, the first holder's call answers `awaiting_second_approver` and moves
 nothing; a different live holder naming the same attempt and amount applies
 it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
