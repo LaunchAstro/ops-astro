@@ -72,15 +72,16 @@ export async function boardAdmission(
 /**
  * The board's rows in the caller's read scope and the newest change among them
  * (MP-5-7), each row with its client where the caller reaches it, as `task.read`
- * sends it (the Clients row door). The caller's decide reach marks the Review
- * mode's rows (MP-5-12); it only marks rows already served under the read scope.
+ * sends it (the Clients row door). Each statement judges the caller's read
+ * reach itself, so a row is read only while it is readable, a map's ticket
+ * included. The caller's decide reach marks the Review mode's rows (MP-5-12);
+ * it only marks rows already served.
  */
 export async function boardOf(
   tx: TenantQuery,
   session: Session,
   taskTypeId: string,
   pool: ReadOperands['task.board'],
-  scope: Awaited<ReturnType<typeof readableScope>>,
   spine: TaskSpine,
 ): Promise<{
   readonly tasks: readonly (Omit<BoardTask, 'client'> & { readonly client: ClientView | null })[];
@@ -96,7 +97,7 @@ export async function boardOf(
     tx,
     taskTypeId,
     'board' in pool ? pool.board : (narrowing ?? null),
-    scope.business ? null : scope.records,
+    subjectsOf(session),
     await decideReach(tx, session),
     session.personId,
     { person: pool.person, client: pool.client },

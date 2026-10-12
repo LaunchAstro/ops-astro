@@ -335,14 +335,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const admitted = await boardAdmission(tx, session, operands, spine);
       if ('refusal' in admitted) return admitted.refusal;
       const { scope } = admitted;
-      const { tasks, changedAt } = await boardOf(
-        tx,
-        session,
-        spine.taskTypeId,
-        operands,
-        scope,
-        spine,
-      );
+      const { tasks, changedAt } = await boardOf(tx, session, spine.taskTypeId, operands, spine);
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
       // narrower collection-wide rule exists. A member reading through record

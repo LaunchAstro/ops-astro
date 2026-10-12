@@ -84,6 +84,8 @@ export {
 export {
   readableRecordIds,
   readableScope,
+  readableTaskCondition,
+  readableTaskParams,
   type ReadableScope,
 } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';

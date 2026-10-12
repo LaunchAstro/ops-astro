@@ -34,8 +34,10 @@ import {
   wayfinderCondition,
   INTERNAL_ROLE_KEYS,
   EFFECTIVE_GRANTS,
+  readableTaskCondition,
+  readableTaskParams,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import type {
   BoardTask,
@@ -434,24 +436,24 @@ function slotColumn(slot: string): string {
  * refuses anything else, a malformed identifier included, through
  * `boardExists` before it calls this.
  *
- * `readable` is null under a collection-wide grant; otherwise it is the
- * records the caller's record-scoped grants reach, and the filter is in the
- * query.
+ * `readers` are the caller's subjects, whose read reach each statement judges
+ * inside itself (`readableTaskCondition`); null reads every task, for a caller
+ * that has judged reach already.
  */
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null | TodoScope,
-  readable: readonly string[] | null,
+  readers: readonly Subject[] | null,
 ): Promise<readonly TaskSummary[]> {
-  return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
+  return (await readBoardStamped(tx, taskTypeId, board, readers)).tasks;
 }
 
 function readBoardRows(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null | TodoScope,
-  readable: readonly string[] | null,
+  readers: readonly Subject[] | null,
   identities: { readonly person?: string | undefined; readonly client?: string | undefined },
 ): Promise<readonly TaskRowRead[]> {
   const aggregate = typeof board === 'object' && board !== null;
@@ -459,17 +461,17 @@ function readBoardRows(
   return tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and ($5::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
-        and ($4::uuid[] is null or r.id = any($4::uuid[]))
-        and ($6::uuid is null or r.uuid_2 = $6::uuid)
-        and ($7::uuid is null or r.uuid_7 = $7::uuid)
-        and (not $5::boolean or (${OPEN_TODO_SQL}))
+        and ($6::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
+        and ($4::text[] is null or ${readableTaskCondition('r', 4)})
+        and ($7::uuid is null or r.uuid_2 = $7::uuid)
+        and ($8::uuid is null or r.uuid_7 = $8::uuid)
+        and (not $6::boolean or (${OPEN_TODO_SQL}))
       order by r.num_2 nulls last, r.created_at`,
     [
       tx.businessId,
       taskTypeId,
       aggregate ? null : board,
-      readable,
+      ...(readers === null ? [null, null] : readableTaskParams(readers)),
       aggregate,
       narrowed.person ?? null,
       narrowed.client ?? null,
@@ -499,7 +501,7 @@ async function withTodoEvidence(
  * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
  * from one query, so the stamp is of exactly the rows served and a newer task
  * the caller cannot read never moves it; null when no task is served. The
- * ranks are read over the same `readable` scope. A row whose task has an open
+ * ranks are read over the same `readers`' reach, judged in their own statement. A row whose task has an open
  * gate waits for approval, whoever may decide it (MP-5-11). `decidable` is the
  * caller's decide reach; such a row waits on the caller when their
  * `task.decide` of its gate would be admitted (MP-5-12). None when not given.
@@ -511,13 +513,13 @@ export async function readBoardStamped(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null | TodoScope,
-  readable: readonly string[] | null,
+  readers: readonly Subject[] | null,
   decidable: DecideReach | null = null,
   reader: string | null = null,
   identities: { readonly person?: string | undefined; readonly client?: string | undefined } = {},
   spine?: TaskSpine,
 ): Promise<{ readonly tasks: readonly BoardRead[]; readonly changedAt: string | null }> {
-  const rows = await readBoardRows(tx, taskTypeId, board, readable, identities);
+  const rows = await readBoardRows(tx, taskTypeId, board, readers, identities);
   let newest: Date | null = null;
   for (const row of rows) {
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
@@ -527,7 +529,7 @@ export async function readBoardStamped(
   // point 9: the reader's own agents; none for an agent).
   const served = rows.map((row) => row.id);
   const gated = await awaitingApproval(tx, served);
-  const ranks = await readRanks(tx, taskTypeId, readable);
+  const ranks = await readRanks(tx, taskTypeId, readers);
   const actuals = await readActualMinutes(tx, served);
   const agents = await readBoardAgents(tx, served, reader);
   const comments = await readBoardComments(tx, served, reader);

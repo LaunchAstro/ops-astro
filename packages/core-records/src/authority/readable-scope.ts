@@ -5,6 +5,7 @@
 // walks (grants.ts), so a list and a single-record check cannot disagree.
 
 import type { TenantQuery } from '../tenancy/database.ts';
+import { mapTicketCondition } from '../tasks/wayfinder.ts';
 import { askedFor, EFFECTIVE, type Action, type ScopeKind, type Subject } from './grants.ts';
 
 /** What a caller's live grants reach for one collection and action. */
@@ -49,16 +50,66 @@ export async function readableScope(
 }
 
 /**
+ * Whether row `alias` is reached, judged inside the statement that reads it:
+ * a live grant of the asked subjects (`kinds`, `ids`) on `collection` and
+ * `action` that is business-scoped, scoped to the row, or, for `task`/`read`
+ * only, scoped to the map the row is a ticket of (W12, `mapTicketCondition`),
+ * never a nested map. Party-scoped grants reach nothing here. Expiry is judged
+ * by the statement's own clock (`EFFECTIVE`), so a grant that lapses before a
+ * later statement reaches nothing in it.
+ */
+function reachedBy(
+  alias: string,
+  sql: { kinds: string; ids: string; collection: string; action: string },
+): string {
+  return `exists (${EFFECTIVE}
+    select 1 from effective e
+     where e.business_id = ${alias}.business_id
+       and e.collection = ${sql.collection} and e.action = ${sql.action}
+       and exists (select 1 from unnest(${sql.kinds}, ${sql.ids}) as s (kind, id)
+                    where s.kind = e.subject_kind and s.id = e.subject_id)
+       and (e.scope_kind = 'business'
+            or (e.scope_kind = 'record' and e.scope_id = ${alias}.id)
+            or (${sql.collection} = 'task' and ${sql.action} = 'read'
+                and e.scope_kind = 'record' and e.scope_id = ${alias}.uuid_4
+                and ${mapTicketCondition(alias)})))`;
+}
+
+/**
+ * Whether task row `alias` is readable by the subjects in parameters
+ * `$firstParam` (kinds) and `$firstParam + 1` (ids), from `readableTaskParams`.
+ * A list read puts this in every statement that reads task rows, or anything
+ * of a task, so each row is judged at the instant it is read: a ticket moved
+ * out of its granted map, or a map retyped, before a statement runs is not
+ * read by it, and no lock is taken.
+ */
+export function readableTaskCondition(alias: string, firstParam: number): string {
+  return reachedBy(alias, {
+    kinds: `$${String(firstParam)}::text[]`,
+    ids: `$${String(firstParam + 1)}::uuid[]`,
+    collection: `'task'`,
+    action: `'read'`,
+  });
+}
+
+/** The two parameters `readableTaskCondition` reads: the subjects asked of `task`/`read`. */
+export function readableTaskParams(subjects: readonly Subject[]): [string[], string[]] {
+  const asked = askedFor(subjects, { collection: 'task', action: 'read' });
+  return [asked.map((subject) => subject.kind), asked.map((subject) => subject.id)];
+}
+
+/**
  * The live records of one type these subjects may act on in one collection,
  * worked out by the one live-grant expression (grants.ts), inside the query.
  *
- * A read that works over many records (the derived rank's pool) filters by
- * this list rather than reading every record and checking each afterwards, so
- * a record the subjects hold no grant on never leaves the database. A business
- * grant reaches every record; a record grant, its one record. A party grant is
- * not read here, as `checkAuthority` does not read it for a record either, so
- * the list is exactly the records a single-record check would admit, a
- * subject held within ticked keys included.
+ * A read that works over many records filters by this list rather than
+ * reading every record and checking each afterwards, so a record the subjects
+ * hold no grant on never leaves the database. A business grant reaches every
+ * record; a record grant, its one record, and for `task`/`read` a map's grant
+ * its tickets too (`reachedBy`). A party grant is not read here, as
+ * `checkAuthority` does not read it for a record either, so the list is
+ * exactly the records a single-record check would admit, a subject held
+ * within ticked keys included.
  */
 export async function readableRecordIds(
   tx: TenantQuery,
@@ -71,18 +122,10 @@ export async function readableRecordIds(
 ): Promise<readonly string[]> {
   const asked = askedFor(subjects, request);
   const rows = await tx.query<{ readonly id: string }>(
-    `${EFFECTIVE}
-     select r.id
+    `select r.id
        from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and exists (
-          select 1 from effective e
-           where e.collection = $3
-             and e.action = $4
-             and exists (select 1 from unnest($5::text[], $6::uuid[]) as s (kind, id)
-                          where s.kind = e.subject_kind and s.id = e.subject_id)
-             and (e.scope_kind = 'business'
-                  or (e.scope_kind = 'record' and e.scope_id = r.id)))`,
+        and ${reachedBy('r', { kinds: '$5::text[]', ids: '$6::uuid[]', collection: '$3::text', action: '$4::text' })}`,
     [
       tx.businessId,
       request.recordTypeId,
