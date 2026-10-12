@@ -105,16 +105,24 @@ export async function recordPrivacyIncident(
   return shaped(row);
 }
 
-/** This business's incidents, the most recently found first, at most `limit`. */
+/**
+ * This business's incidents, the most recently found first: every open one,
+ * and at most `limit` closed ones. The limit never drops an open incident,
+ * because the oldest open ones are the overdue ones somebody must act on.
+ */
 export async function readPrivacyIncidents(
   tx: TenantQuery,
   limit = 200,
 ): Promise<readonly PrivacyIncident[]> {
   const rows = await tx.query<IncidentRow>(
     `select ${COLUMNS} from public.privacy_incidents
-      where business_id = $1
-      order by found_at desc, id
-      limit $2`,
+      where business_id = $1 and status = 'open'
+     union all
+     (select ${COLUMNS} from public.privacy_incidents
+       where business_id = $1 and status = 'closed'
+       order by found_at desc, id
+       limit $2)
+     order by found_at desc, id`,
     [tx.businessId, limit],
   );
   return rows.map((row) => shaped(row));

@@ -2,10 +2,10 @@
 //
 // The Work log's search, read the way a person types it (MP-8-4, CS-8.9).
 //
-// Each word is placed as a person (any word of the name of someone who acted
-// in view), else an event kind (by its plain words), else it is a free word.
-// Facets of one kind OR together and different kinds AND together. People and
-// kinds are a reading of the days in view; the free words are the ledger's
+// Each word is placed as a person (any word of the name of someone who acted,
+// the reader has seen act), else an event kind (by its plain words), else it is
+// a free word. Facets of one kind OR together and different kinds AND together.
+// People and kinds filter the days in view; the free words are the ledger's
 // `query`, which the server hands to C1's search, so no second search runs
 // here. The page says back what it understood, because a box that silently
 // reinterprets words is a trap.
@@ -59,17 +59,22 @@ export interface LedgerSearch {
 const wordsIn = (typed: string): readonly string[] =>
   (typed.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).slice(0, 8);
 
+/** The names of the people who acted in `days`, each once. */
+export const actorsIn = (days: readonly LedgerDayView[]): readonly string[] => [
+  ...new Set(days.flatMap((day) => day.events.map((event) => event.actorName))),
+];
+
 /**
- * `typed`, placed word by word against the people who acted in `days`. A word
- * `searched` (the query `days` were read for) stays a free word: the days are
- * its answer, so it is never read as one of the people they found.
+ * `typed`, placed word by word against `names`, the people the reader has seen
+ * act. A word `searched` (the query the days in view were read for) stays a
+ * free word: the days are its answer, so it is never read as one of the people
+ * they found.
  */
 export function readSearch(
   typed: string,
-  days: readonly LedgerDayView[],
+  names: readonly string[],
   searched: string | null = null,
 ): LedgerSearch {
-  const names = [...new Set(days.flatMap((day) => day.events.map((event) => event.actorName)))];
   const asked = wordsIn(searched ?? '');
   const people: string[] = [];
   const kinds: Kind[] = [];

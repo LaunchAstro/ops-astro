@@ -11,7 +11,7 @@
 // migration, the real listener and the real composition root.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import {
   connect,
@@ -49,15 +49,18 @@ const sleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-/** Poll `check` until it holds or `ms` pass; the elapsed time when it held. */
+/**
+ * Poll `check` until it holds or `ms` pass; the elapsed time when it held. It
+ * reads the monotonic clock, so a case that pins `Date` still times out.
+ */
 async function within(ms: number, check: () => boolean, what: string): Promise<number> {
-  const started = Date.now();
+  const started = performance.now();
   while (!check()) {
-    if (Date.now() - started > ms) throw new Error(`not within ${String(ms)} ms: ${what}`);
+    if (performance.now() - started > ms) throw new Error(`not within ${String(ms)} ms: ${what}`);
     // eslint-disable-next-line no-await-in-loop
     await sleep(10);
   }
-  return Date.now() - started;
+  return performance.now() - started;
 }
 
 interface Joined {
@@ -350,14 +353,25 @@ describe.skipIf(serverUrl === undefined)(
       expect(count(page.events, 'invalidate')).toBe(0);
       expect((await open(taskId, narrow)).status).not.toBe(200);
 
-      const brief = await open(
-        taskId,
-        s.decider,
-        await tokenFor(s.decider.presented.subject, { expiresIn: 1 }),
-      );
-      expect(brief.status).toBe(200);
-      await within(4_000, () => brief.ended, 'the expired session closed');
-      expect(brief.events.at(-1)).toBe('closed');
+      // The session's clock is pinned to a whole second, so the bearer lives one
+      // full second of it and only moving the clock ends it. The real wait
+      // stands in for a slow runner between minting the bearer and joining.
+      const signedAt = Math.ceil(Date.now() / 1_000) * 1_000;
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(signedAt);
+        const short = await tokenFor(s.decider.presented.subject, { expiresIn: 1 });
+        await sleep(1_100);
+        const brief = await open(taskId, s.decider, short);
+        expect(brief.status, 'a live bearer joins however slow the runner').toBe(200);
+
+        vi.setSystemTime(signedAt + 1_000);
+        await within(4_000, () => brief.ended, 'the expired session closed');
+        expect(brief.events.at(-1)).toBe('closed');
+        expect((await open(taskId, s.decider, short)).status, 'the expired bearer').toBe(401);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('T2f resync: the stream resyncs on connect and again after the listener re-listens', async () => {

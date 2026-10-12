@@ -171,3 +171,49 @@ describe('MP-8-4 the search in the address (L-01 q)', () => {
     window.history.replaceState(null, '', '/');
   });
 });
+
+describe('MP-8-4 a person read from the days in view stays a person', () => {
+  const ADA_ONLY: TaskLedgerResult = {
+    ok: true,
+    days: [{ day: '2026-09-28', events: [ev('a1', 'Ada Admin', 'task.update', 'OPS-1')] }],
+    earlier: false,
+  };
+  // The free word's answer: a task named for Ada, every event on it by Ben.
+  const BENS_HINGE: TaskLedgerResult = {
+    ok: true,
+    days: [{ day: '2026-09-27', events: [ev('b9', 'Ben Brown', 'task.update', 'OPS-9')] }],
+    earlier: false,
+  };
+
+  it('a person and a word keep the person when the answer to the word names someone else', async () => {
+    const { api, view } = await opened([
+      { body: ADA_ONLY },
+      { body: BENS_HINGE },
+      { body: BENS_HINGE },
+    ]);
+    await view.type(BOX, 'Ada hinge');
+    await tick();
+    await tick();
+    expect(api.asked.map((body) => body['query'] ?? null)).toEqual([null, 'hinge']);
+    expect(drawn(view)).not.toContain('b9');
+    expect(read(view)).toBe('Reading this as Ada Admin · the words “hinge” — 0 of them');
+  });
+
+  it('a person shown only in loaded earlier days is read as a person, with no second search', async () => {
+    const newest: TaskLedgerResult = { ...ADA_ONLY, earlier: true };
+    const older: TaskLedgerResult = {
+      ok: true,
+      days: [{ day: '2026-09-15', events: [ev('d1', 'Dee Dunn', 'task.update', 'OPS-3')] }],
+      earlier: false,
+    };
+    const { api, view } = await opened([{ body: newest }, { body: older }]);
+    await view.click('.act__more');
+    await tick();
+    expect(drawn(view)).toEqual(['a1', 'd1']);
+    await view.type(BOX, 'Dee');
+    await tick();
+    expect(api.asked).toHaveLength(2);
+    expect(drawn(view)).toEqual(['d1']);
+    expect(read(view)).toBe('Reading this as Dee Dunn — 1 of them');
+  });
+});

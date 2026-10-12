@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a notification channel named for an inherited object key such as __proto__ or toString is refused FIELD_VALUE_INVALID as an unknown channel, never answered with a server fault"
+}

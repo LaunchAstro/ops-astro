@@ -9,7 +9,8 @@
 // here writes a record, and undoing a view change never touches one.
 //
 // A press on something the board does not offer (an unknown facet, preset,
-// mode or column) changes nothing and records nothing.
+// mode or column) changes nothing and records nothing, and so does any step
+// that leaves the view as it was, such as repeating an active search.
 
 import { nextSort } from './sort.ts';
 import { boundedWords, parseQuery, pressFacet } from './filters.ts';
@@ -24,7 +25,26 @@ export function initialMachine(view: BoardView = REST): MachineState {
   return { view, history: { past: [], future: [] } };
 }
 
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((item, index) => item === b[index]);
+
+const sameWidths = (a: BoardView['widths'], b: BoardView['widths']): boolean => {
+  if (a === null || b === null) return a === b;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+};
+
+const sameView = (a: BoardView, b: BoardView): boolean =>
+  sameList(a.ids, b.ids) &&
+  sameList(a.text, b.text) &&
+  a.sort?.key === b.sort?.key &&
+  a.sort?.dir === b.sort?.dir &&
+  a.mode === b.mode &&
+  sameWidths(a.widths, b.widths);
+
+/** A step that leaves the view as it was records nothing, so redo survives it. */
 function record(state: MachineState, label: string, view: BoardView): MachineState {
+  if (sameView(state.view, view)) return state;
   return {
     view,
     history: {

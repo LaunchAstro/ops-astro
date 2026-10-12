@@ -66,9 +66,11 @@ function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   // A hold the classifier settled at its calls' spend stopped as an abandoned one did.
   const stopped = ['abandoned', 'dropped'].includes(reservation?.attempt?.state ?? '');
   if (reservation?.state === 'actual' && stopped) return 'dropped';
-  const ended = lineage.state === 'completed' || reservation?.state === 'actual';
-  if (ended) return finished(reservation);
+  if (lineage.state === 'completed') return finished(reservation);
+  // `task.observe` settles a step's spend `actual` and leaves the lease live,
+  // so a live lease outranks the settled money: the worker has not handed back.
   if (reservation?.lease?.state === 'live') return 'running';
+  if (reservation?.state === 'actual') return finished(reservation);
   const gate = head.gate;
   if (gate === null) return reservation === undefined ? 'gate-stale' : 'approved';
   if (gate.state === 'approved') return 'approved';

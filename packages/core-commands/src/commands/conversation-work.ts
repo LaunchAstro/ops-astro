@@ -93,9 +93,10 @@ async function runWork(tx: TenantQuery, conversationId: string): Promise<readonl
          on lin.business_id = run.business_id and lin.id = run.lineage_id
        left join proposal_versions version
          on version.business_id = run.business_id and version.id = run.version_id
-      where run.business_id = $1 and (run.origin_conversation_id = $2 or run.id in (
-              select run_id from plan_records
-               where business_id = $1 and origin_conversation_id = $2))
+      where run.business_id = $1 and run.id in (
+              select id from planned_runs where business_id = $1 and origin_conversation_id = $2
+              union
+              select run_id from plan_records where business_id = $1 and origin_conversation_id = $2)
       order by run.id`,
     [tx.businessId, conversationId],
   );
@@ -120,9 +121,10 @@ async function gateWork(tx: TenantQuery, conversationId: string): Promise<readon
             end as ended_at
        from gates g
        join proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
-      where g.business_id = $1 and (g.origin_conversation_id = $2 or g.id in (
-              select gate_id from plan_records
-               where business_id = $1 and origin_conversation_id = $2))
+      where g.business_id = $1 and g.id in (
+              select id from gates where business_id = $1 and origin_conversation_id = $2
+              union
+              select gate_id from plan_records where business_id = $1 and origin_conversation_id = $2)
       order by g.id`,
     [tx.businessId, conversationId],
   );

@@ -136,6 +136,18 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
 });
 
 describe('MP-5-12 Review mode drops assignee filters', () => {
+  it('the overview receives only mode and category matches and reports their count', async () => {
+    const board = await open({
+      review: (rows) => <div data-overview>{rows.map((each) => each.name).join(', ')}</div>,
+    });
+    await board.click(REVIEW);
+    expect(board.find('[data-overview]')?.textContent).toBe('Task m2, Task a1');
+    expect(board.find('tbody')).toBeNull();
+    await board.click('.cbd__preset--cat[data-preset="cat-seo"]');
+    expect(board.find('[data-overview]')?.textContent).toBe('');
+    expect(board.text()).toContain('0 of them');
+  });
+
   it('carries the live count, and narrows to the tasks waiting on the viewer with the viewer preset dropped', async () => {
     const board = await open();
     expect(one(board, `${REVIEW} .cbd__count`)?.textContent).toBe('2');
@@ -207,9 +219,12 @@ describe('MP-5-12 drawn from task.board through the Projects screen', () => {
     expect(drawn(mounted)).toStrictEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
     expect(one(mounted, `${REVIEW} .cbd__count`)?.textContent).toBe('2');
     await mounted.click(REVIEW);
-    expect(drawn(mounted)).toStrictEqual([
-      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    await settle();
+    expect(mounted.all('.rec__title').map((title) => title.textContent)).toEqual([
+      'Task TSK-2',
+      'Task TSK-3',
     ]);
+    expect(mounted.text()).toContain('2 waiting on you.');
+    expect(drawn(mounted)).toEqual([]);
   });
 });

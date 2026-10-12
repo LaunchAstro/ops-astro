@@ -92,7 +92,69 @@ afterEach(async () => {
 const runRow = (page: Mounted): string =>
   page.find('[data-cost-run="r-1"]')?.closest('tr')?.textContent ?? '';
 
+/* eslint-disable max-lines-per-function, require-await, oxc/no-map-spread, unicorn/consistent-function-scoping -- Sol's proof, kept as written */
 describe('Executive: what our agents cost us, kept fresh', () => {
+  // Sol's proof on #1369 (round 1), retitled by what it proves; its body is Sol's.
+  it('a deferred background refresh keeps all eleven expanded cost rows under the same reader and period', async () => {
+    vi.useFakeTimers({ now: NOW });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const base = costs('100');
+    const first = base.runs[0];
+    if (first === undefined) throw new Error('fixture needs one row');
+    const result: AgentCostsResult = {
+      ...base,
+      runs: Array.from({ length: 11 }, (_, at) => ({
+        ...first,
+        runId: `r-${at}`,
+        taskId: `t-${at}`,
+      })),
+      byAgent: base.byAgent.map((line) => ({ ...line, runs: 11, total: '1100' })),
+      byAttachment: base.byAttachment.map((line) => ({ ...line, runs: 11, total: '1100' })),
+    };
+    let reads = 0;
+    let release: (response: Response) => void = () => {
+      throw new Error('refresh did not leave');
+    };
+    const fetch: typeof globalThis.fetch = async (url) => {
+      if (!String(url).endsWith('/finance/agent_costs')) return json({ ok: true });
+      reads += 1;
+      if (reads === 1) return json(result);
+      return new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    };
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
+    const page = await mount(
+      SCREENS['agency:executive']({
+        client,
+        grantKey: 'alpha:a@x:0',
+        params: {},
+        notice: null,
+        storage: null,
+        navigate: () => {},
+      }),
+    );
+    opened.push(page);
+    await pass(1);
+    await page.click('[data-cost-more]');
+    expect(page.all('[data-cost-run]')).toHaveLength(11);
+    await pass(FLOOR_MS);
+    expect(reads).toBe(2);
+    expect(page.find('[data-agent-costs] [data-outcome="loading"]')).not.toBeNull();
+    expect(page.all('[data-cost-run]')).toHaveLength(11);
+    await act(async () => {
+      release(json(result));
+    });
+    expect(page.all('[data-cost-run]')).toHaveLength(11);
+    expect(page.find('[data-cost-more]')).toBeNull();
+  });
+  /* eslint-enable max-lines-per-function, require-await, oxc/no-map-spread, unicorn/consistent-function-scoping */
+
   it('the open page re-reads its costs on the 30-second floor, when shown again and when back online', async () => {
     vi.useFakeTimers({ now: NOW });
     let shown: DocumentVisibilityState = 'visible';

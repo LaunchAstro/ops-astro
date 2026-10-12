@@ -60,6 +60,7 @@ import { askedModel } from './conversation-model.ts';
 import {
   answered,
   refusedWith,
+  releasedWith,
   type ConversationReply,
   type Kept,
 } from './conversation-replies.ts';
@@ -225,7 +226,9 @@ async function answerOnce(
     },
     { ...broker, audit: auditAs(session.actorId) },
   );
-  if (!result.ok) return refusedWith(result.code);
+  if (!result.ok) {
+    return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
+  }
   if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
   const kept = await withSession(
     database,

@@ -92,13 +92,15 @@ export function placeEvents<E extends { readonly runId: string }>(
   const lineageOf = new Map(runs.map((run) => [run.runId, run.lineageId]));
   const byId = new Map(plans.map((plan) => [plan.planRecordId, plan]));
   const placementOf = (run: PlacementFact): EventPlacement => {
-    // A record accepted later on this run's lineage is not the plan it ran in.
-    const own = plans.findLast(
-      (plan) =>
-        plan.runId === run.runId ||
-        (run.boundBefore.includes(plan.planRecordId) &&
-          lineageOf.get(plan.runId) === run.lineageId),
-    );
+    // A record accepted on this run is its plan, ahead of any older one its
+    // lineage was bound to. A record accepted later on the lineage is not.
+    const own =
+      plans.find((plan) => plan.runId === run.runId) ??
+      plans.findLast(
+        (plan) =>
+          run.boundBefore.includes(plan.planRecordId) &&
+          lineageOf.get(plan.runId) === run.lineageId,
+      );
     if (own !== undefined) return { planRecordId: own.planRecordId, stepKey: null, planRun: true };
     const under = run.boundBefore.find((id) => byId.has(id));
     return { planRecordId: under ?? null, stepKey: run.planStepKey, planRun: false };

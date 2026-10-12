@@ -172,4 +172,15 @@ describe('MP-6-1 agent pane', () => {
     expect(page.find('[data-agent="roll-back-reason"]')?.textContent).toContain('own approval');
     expect(page.find('[data-agent="snapshot"]')?.textContent).toBe('snap-1');
   });
+
+  it('MP-6-1 shipped record read from the rendered evidence payload', async () => {
+    const shipped = { at: '2026-09-29', artefact: 'v1', snapshot: 'snap-1', rolledBackAt: null };
+    const body = { renderer: 'evidence', payload: { shipped } };
+    const page = await pane({
+      lineages: [
+        lineage({ state: 'completed', versions: [version({ evidence: { digest: 'e', body } })] }),
+      ],
+    });
+    expect(page.find('[data-agent="snapshot"]')?.textContent).toBe('snap-1');
+  });
 });

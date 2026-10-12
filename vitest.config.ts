@@ -75,7 +75,10 @@ const config: ViteUserConfig = defineConfig({
     ],
     // The capture chain's longer timeout, file by file (see the file); a second
     // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
-    setupFiles: ['tests/support/capture-chain-timeout.ts'],
+    setupFiles: [
+      'tests/support/capture-chain-timeout.ts',
+      'tests/support/container-proof-timeout.ts',
+    ],
     sequence: { sequencer: MeasuredShards },
     // Hooks are where every database-bound file makes a fresh database
     // (`beforeAll`), a clone or a migration from empty, and drops it

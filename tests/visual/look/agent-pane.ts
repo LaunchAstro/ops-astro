@@ -32,28 +32,8 @@ const probe = (
   ...(ruled === undefined ? {} : { ruled }),
 });
 
-// DS-TASK-7: the gate's label snaps to DS-TOK-126 --type-eyebrow (300); the
-// mockup's 400 is drift (TASK-PAGE.md S4), as the task page's probes rule.
-const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
-  at: `font-weight@${theme}`,
-  want: '300',
-  why: 'DS-TASK-7',
-}));
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }];
-
-// DS-TASK-13 and DS-TASK-14 snap the map's titles to the scale (TASK-PAGE.md
-// S7): the card title to DS-TOK-121 (500, the mockup drew 600), the
-// inspector's to DS-TOK-119 (Sans 15 600, the mockup drew 16 400).
-const SMALL_STRONG = (['light', 'dark'] as const).map((theme) => ({
-  at: `font-weight@${theme}`,
-  want: '500',
-  why: 'DS-TOK-121',
-}));
-const CARD_TITLE = (['light', 'dark'] as const).flatMap((theme) => [
-  { at: `font-weight@${theme}`, want: '600', why: 'DS-TOK-119' },
-  { at: `font-size@${theme}`, want: '15px', why: 'DS-TOK-119' },
-]);
 
 const same = (selector: string): { mockup: string; app: string } => ({
   mockup: selector,
@@ -82,7 +62,6 @@ export const AGENT_PANE: LookScreen = {
       same('.gate__word'),
       [...TYPE, 'letter-spacing', 'text-transform'],
       ALL,
-      EYEBROW,
     ),
     // MP-6-2: the section heads, the hero stats and the 21rem side column.
     probe(
@@ -103,8 +82,8 @@ export const AGENT_PANE: LookScreen = {
       'border-left-width',
     ]),
     probe('mp-6-3.node-box', same('.tg__node'), ['box.width', 'box.height'], [1480]),
-    probe('mp-6-3.node-title', same('.tg__nt'), TYPE, ALL, SMALL_STRONG),
-    probe('mp-6-3.inspector-title', same('.tg__insp__t'), TYPE, ALL, CARD_TITLE),
+    probe('mp-6-3.node-title', same('.tg__nt'), TYPE, ALL),
+    probe('mp-6-3.inspector-title', same('.tg__insp__t'), TYPE, ALL),
     probe('mp-6-3.legend-line', same('.tg__lline'), ['border-top-color', 'border-top-width']),
     // MP-6-5: the token panel's per-run figures and the allowance bar.
     probe('mp-6-5.run-n', same('.tokrun__n'), TYPE),

@@ -46,7 +46,7 @@ export const STAGES = TASK_STAGES.list().map((stage) => stage.label);
 export interface BoardPanelHost {
   readonly open: (
     taskKey: string,
-    door: 'open' | 'reply' | 'add-first',
+    door: 'open' | 'reply' | 'add-first' | 'agent',
     tab?: 'all',
     beside?: boolean,
   ) => void;

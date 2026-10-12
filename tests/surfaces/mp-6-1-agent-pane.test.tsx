@@ -60,6 +60,12 @@ describe('MP-6-1 agent pane', () => {
       'done',
       'failed',
     ]);
+    expect(
+      parallel.map((row) => row.querySelector('.wf__state')?.getAttribute('data-tone')),
+    ).toEqual(['done', 'bad']);
+    expect(page.find('[data-job="gate"] .wf__state')).toHaveProperty('textContent', 'pending');
+    expect(page.find('[data-job="gate"] .wf__state')?.getAttribute('data-tone')).toBe('gate');
+    expect(page.find('[data-job="work"] .wf__state')?.getAttribute('data-tone')).toBe('wait');
     expect(page.find('[data-agent="parallel"]')?.textContent).toContain('Run in parallel');
     expect(page.find('[data-agent="workflow"] button')?.textContent).toContain(
       'View 4-job workflow',
@@ -117,6 +123,18 @@ describe('MP-6-1 agent pane', () => {
     const link = page.find('[data-agent="artefact"]');
     expect(link?.getAttribute('href')).toBe('https://preview.example.test/');
     expect(link?.getAttribute('target')).toBe('_blank');
+  });
+
+  it('MP-6-1 staged artefact read from the rendered evidence payload', async () => {
+    // The evidence renderer keeps the proposal's content under `payload`.
+    const staged = { kind: 'preview', url: 'https://preview.example.test', built: 'b', note: 'n' };
+    const body = { renderer: 'evidence', payload: { staged } };
+    const page = await pane({
+      lineages: [lineage({ versions: [version({ evidence: { digest: 'e', body } })] })],
+    });
+    expect(page.find('[data-agent="artefact"]')?.getAttribute('href')).toBe(
+      'https://preview.example.test/',
+    );
   });
 
   it('MP-6-1 staged artefact refuses a hostile address', async () => {

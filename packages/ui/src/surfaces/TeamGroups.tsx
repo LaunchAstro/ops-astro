@@ -226,7 +226,7 @@ export function GroupHead(props: {
   };
   return (
     <div className="tmc__ghead">
-      {renaming ? (
+      {renaming && group.canManage ? (
         <Rename key={group.id} group={group} onGroup={props.onGroup} onClose={close} />
       ) : (
         <GroupName

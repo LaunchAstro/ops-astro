@@ -128,7 +128,7 @@ export async function unknownWaits(
   if (typeof asked === 'string') return await leaseRefused(asked, ports);
   if (asked) {
     await ports.raiseTask('OUTCOME_UNKNOWN').catch(async (error: unknown) => {
-      await settleAsk(db, run, at, 'none');
+      await settleAsk(db, run, at, 'none').catch(() => null);
       throw error;
     });
     await settleAsk(db, run, at, 'person');
@@ -255,7 +255,7 @@ async function dispatch(
   const observations: Observations = {
     ...pinnedObservations(correction, ports.refusals()),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
-    ...notAccepted(outcome),
+    ...notAccepted(outcome, ports.refusals()),
   };
   const state = outcome.state === 'refused' ? 'failed' : outcome.state;
   return await record(db, run, { step: 'publish', outcome: state, observations }, ports);

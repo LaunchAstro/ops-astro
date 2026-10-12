@@ -277,6 +277,30 @@
       "ruling": "R20261012"
     },
     {
+      "selector": ".rq__say",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rq__figs",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__title",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__label",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rec__text",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".rq__agent",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".dtp .sb__name",
       "ruling": "R20261012"
     },
@@ -378,6 +402,26 @@
     },
     {
       "selector": ".sb__step .av",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".gate__word",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tph__stat .tf__k",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".trs[data-summary-layout='full'] .trs__say",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__nt",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".tg__insp__t",
       "ruling": "R20261012"
     }
   ]

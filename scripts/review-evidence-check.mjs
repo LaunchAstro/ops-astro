@@ -69,6 +69,8 @@ const SENSITIVE = [
   // The record pins-check holds every pin to.
   /^docs\/supply-chain-pins\.md$/u,
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
+  // Sign-in, permissions and tenancy also live in directories of those names.
+  /(^|\/)(auth|authority|tenancy|egress|custody|audit)\//iu,
 ];
 
 const base = process.env['BASE_SHA'] ?? '';
@@ -78,12 +80,23 @@ const nonEmptyLines = (text) =>
     .split('\n')
     .map((f) => f.trim())
     .filter(Boolean);
-const changed = nonEmptyLines(
-  process.env['CHANGED_FILES'] ??
-    (base === ''
-      ? ''
-      : git('diff', '--name-only', `${git('merge-base', base, head).trim()}...${head}`)),
-);
+// Git's own reader lists paths NUL-separated, so it quotes none, and without
+// rename detection, so a file moved out of the surface still counts as a
+// removal from it.
+const changed =
+  process.env['CHANGED_FILES'] === undefined
+    ? base === ''
+      ? []
+      : git(
+          'diff',
+          '--name-only',
+          '-z',
+          '--no-renames',
+          `${git('merge-base', base, head).trim()}...${head}`,
+        )
+          .split('\0')
+          .filter(Boolean)
+    : nonEmptyLines(process.env['CHANGED_FILES']);
 
 // The builder's models: every commit's `Agent-model:` trailer in the range.
 const builders = (

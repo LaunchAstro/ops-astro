@@ -10,7 +10,8 @@
 // the caller, which sends them through the real decide path. The mockup's
 // demonstration state is not ported (R44). Its parts live in `agent/`.
 
-import { useState, type ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
+import { usePanelToolbar } from './PageToolbar.tsx';
 import { runStories, type RunStory } from '../state/agent-run.ts';
 import type { RunLineage } from '../state/run-projection.ts';
 import { Activity, type RunActivity } from './agent/activity.tsx';
@@ -33,6 +34,9 @@ export type { RecordedOutcome } from './agent/unknown.tsx';
 export type { RunActivity } from './agent/activity.tsx';
 
 export interface AgentPaneProps {
+  readonly executionMap?: ReactNode;
+  /** Drawer brief, placed below the admitted scope and above the run. */
+  readonly brief?: ReactNode;
   /** `task.read`'s proposals; absent on a read that carries none. */
   readonly lineages: readonly RunLineage[] | undefined;
   /** What approving the gate will do, in the server's words; null when it has not said. */
@@ -91,10 +95,12 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   if (current === undefined) {
     return (
       <section className="agent" data-agent="invitation">
+        {props.brief}
         <p className="sb__say">
           Nothing has been handed to the agent on this task yet. Write a brief to tell it what to
           do, and it proposes a run for a person to approve before anything happens.
         </p>
+        {props.executionMap}
       </section>
     );
   }
@@ -109,50 +115,42 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
 
 function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const { shown } = props;
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+  const compact = usePanelToolbar() !== null;
+  const lineage = lineageOf(props, shown);
   // The mockup's S6 layout: the run in main, what it was given in a side column after it.
   return (
-    <div className="tpg">
-      <div className="tpg__main" data-agent="main">
-        <ProposalHeader
-          story={shown}
-          busy={props.busy}
-          decideClosed={props.decideClosed}
-          onReject={props.onReject}
-          onCancel={props.onCancel}
-        />
-        {props.refusal === null ? null : (
-          <p className="field__error" role="alert" data-agent="refusal">
-            {props.refusal}
-          </p>
-        )}
-        <CurrentRun runId={shown.head.runId} />
-        <Summary story={shown} />
-        <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
-        <Unknown {...props} shown={shown} />
-        <StopAnswers
-          {...props}
-          runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)}
-        />
-        <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
-        <StagedOutput story={shown} />
-        <Gate
-          story={shown}
-          effect={props.effect}
-          busy={props.busy}
-          closed={props.decideClosed}
-          nameOf={props.nameOf}
-          decisions={lineage?.decisions ?? []}
-          people={props.people ?? []}
-          onDecide={props.onDecide}
-        />
-        <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
-        {props.activity === undefined ? null : (
-          <Activity activity={props.activity} hasRun={shown.head.runId !== null} />
-        )}
+    <>
+      {compact ? <RunScope {...props} /> : null}
+      {props.brief}
+      <div className="tpg">
+        <div className="tpg__main" data-agent="main">
+          {props.refusal === null ? null : (
+            <p className="field__error" role="alert" data-agent="refusal">
+              {props.refusal}
+            </p>
+          )}
+          {compact ? <CurrentRun runId={shown.head.runId} /> : null}
+          <Summary story={shown} actions={<ProposalHeader {...props} story={shown} />} />
+          {props.executionMap}
+          <RunWork {...props} />
+          <Gate
+            story={shown}
+            effect={props.effect}
+            busy={props.busy}
+            closed={props.decideClosed}
+            nameOf={props.nameOf}
+            decisions={lineage?.decisions ?? []}
+            people={props.people ?? []}
+            onDecide={props.onDecide}
+          />
+          <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
+          {props.activity === undefined ? null : (
+            <Activity activity={props.activity} hasRun={shown.head.runId !== null} />
+          )}
+        </div>
+        <RunSide {...props} shown={shown} />
       </div>
-      <RunSide {...props} shown={shown} />
-    </div>
+    </>
   );
 }
 
@@ -170,15 +168,10 @@ function CurrentRun({ runId }: { readonly runId: RunStory['head']['runId'] }): R
 
 /** The side column: the scope the run was granted, what it was given and the task's allowance. */
 function RunSide(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === props.shown.lineageId);
+  const compact = usePanelToolbar() !== null;
   return (
     <aside className="tpg__side" data-agent="side" aria-label="Scope and allowance">
-      <Scope
-        stamp={scopeStamp(lineage)}
-        head={props.shown.head}
-        nameOf={props.nameOf}
-        ledgerHref={props.ledgerHref}
-      />
+      {compact ? null : <RunScope {...props} />}
       <Given head={props.shown.head} />
       <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
     </aside>
@@ -227,4 +220,37 @@ function StopAnswers(
       ))}
     </>
   );
+}
+
+function RunWork(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
+  const { shown } = props;
+  const lineage = lineageOf(props, shown);
+  return (
+    <>
+      <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
+      <Unknown {...props} shown={shown} />
+      <StopAnswers
+        {...props}
+        runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)}
+      />
+      <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
+      <StagedOutput story={shown} />
+    </>
+  );
+}
+
+function RunScope(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
+  const lineage = lineageOf(props, props.shown);
+  return (
+    <Scope
+      stamp={scopeStamp(lineage)}
+      head={props.shown.head}
+      nameOf={props.nameOf}
+      ledgerHref={props.ledgerHref}
+    />
+  );
+}
+
+function lineageOf(props: AgentPaneProps, shown: RunStory): RunLineage | undefined {
+  return props.lineages?.find((each) => each.lineageId === shown.lineageId);
 }

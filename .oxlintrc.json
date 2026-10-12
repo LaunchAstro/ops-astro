@@ -305,6 +305,17 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/ci/production-unit-parks-and-runs-the-worker.proof.test.ts"],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-array-sort": "off" }
+    },
+    {
+      "files": [
+        "tests/ci/production-unit-liveness-and-parked-stop.proof.test.ts",
+        "tests/review/stop-ended-by-a-signal-records-nothing-proof.test.ts"
+      ],
+      "rules": { "require-await": "off", "unicorn/prefer-string-replace-all": "off" }
+    },
+    {
       "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
       "rules": { "require-await": "off" }
     },

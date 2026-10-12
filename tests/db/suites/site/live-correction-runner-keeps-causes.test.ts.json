@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's runner keeps what went wrong: a failed receipt holds the guarded calls' refusals beside its own code, a failed task call stays the run's failure when the ask's settle fails too, and the register takes an effect only at the lease's own fence."
+}

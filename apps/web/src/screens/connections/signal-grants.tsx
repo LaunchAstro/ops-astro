@@ -7,7 +7,7 @@
 // grant whose client has no `clients` row is an unnamed client, never fleet.
 
 import type { ReactElement } from 'react';
-import { SectionHead } from '@launchastro/ui';
+import { Chip, SectionHead, Term, Unavailable } from '@launchastro/ui';
 import type {
   ConnectionSignalResult,
   GrantView,
@@ -20,7 +20,12 @@ const GROUPS: readonly {
   readonly tone: 'ok' | 'idle' | 'warn';
   readonly say: string;
 }[] = [
-  { state: 'live', title: 'Live', tone: 'ok', say: 'Held now; each runs out on its own clock.' },
+  {
+    state: 'live',
+    title: 'Live',
+    tone: 'ok',
+    say: 'Held now; each runs out when its countdown ends.',
+  },
   {
     state: 'ran_out',
     title: 'Ran out',
@@ -35,11 +40,16 @@ const GROUPS: readonly {
   },
 ];
 
-export function CeilingChip(): ReactElement {
+export function Ceiling(): ReactElement {
+  return <Unavailable feature="The clearance document" label="Ceiling" variant="ghost" />;
+}
+
+/** An agent by the first eight characters of its id; the whole id is a tooltip a keyboard reaches. */
+export function Agent(props: { readonly id: string }): ReactElement {
   return (
-    <span className="chip" aria-disabled="true" title="The clearance documents are not built yet">
-      Ceiling
-    </span>
+    <Term tip={props.id}>
+      <strong>{props.id.slice(0, 8)}</strong>
+    </Term>
   );
 }
 
@@ -50,13 +60,13 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
   return (
     <li className="grl__row" data-grant={grant.id}>
       <p>
-        <strong>{grant.agentId.slice(0, 8)}</strong> {grant.purpose}
+        <Agent id={grant.agentId} /> {grant.purpose}
       </p>
       <p>
         {/* A client's name is free text: isolated, so it cannot reorder the line. */}
         {grant.client === null ? (
-          <span className="chip chip--outline is-warn" data-grant-fleet>
-            Fleet · every client
+          <span data-grant-fleet>
+            <Chip tone="warn">Fleet · every client</Chip>
           </span>
         ) : (
           <>
@@ -68,12 +78,12 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
         <span className="tag" data-grant-access title={access}>
           {grant.access}
         </span>{' '}
-        <CeilingChip />{' '}
+        <Ceiling />{' '}
         <span data-grant-ttl data-tone={ttl.tone} title={`Issued ${stamp(grant.grantedAt)}`}>
           {ttl.words}
         </span>{' '}
-        <span data-grant-reads>
-          {grant.redemptions === 0 ? 'Never redeemed' : plural(grant.redemptions, 'read')}
+        <span data-grant-calls>
+          {grant.redemptions === 0 ? 'Never redeemed' : plural(grant.redemptions, 'call')}
         </span>
       </p>
       {grant.state === 'taken_back' ? (
@@ -104,8 +114,8 @@ export function GrantsSection(props: {
             data-grant-group={group.state}
           >
             <p className="grl__banner">
-              <span className={`chip chip--outline is-${group.tone}`}>{group.title}</span>{' '}
-              {rows.length} {group.say}
+              <Chip tone={group.tone}>{group.title}</Chip> {plural(rows.length, 'grant')}.{' '}
+              {group.say}
             </p>
             <ul>
               {rows.map((grant) => (
@@ -116,8 +126,8 @@ export function GrantsSection(props: {
         );
       })}
       <p className="approval__meta">
-        Reads count the calls made under a grant; nothing records what each one reached. A grant
-        runs out on its own clock, and one that ran out stays here.
+        Calls count each use of a grant, writes included; nothing records what each one reached. A
+        grant runs out when its countdown ends, and one that ran out stays here.
       </p>
     </section>
   );

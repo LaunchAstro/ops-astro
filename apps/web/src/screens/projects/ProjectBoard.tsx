@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { NoTasks } from './NoTasks.tsx';
+import { ReviewOverview } from './ReviewOverview.tsx';
 import { BoardEditRecoveries, useBoardEditRead } from './board-edit-context.tsx';
 import { useAssignments } from '../task/assignment-context.tsx';
 import { AssignmentRecoveries } from '../task/AssignmentRecovery.tsx';
@@ -220,6 +221,16 @@ function ProjectBoardRead(
             <AssignmentRecoveries custody={assignments.custody} tasks={admitted ? rows : []} />
             <BoardEditRecoveries custody={edits.custody} tasks={admitted ? rows : []} />
             <ProjectsBoard
+              review={(reviewRows) => (
+                <ReviewOverview
+                  rows={reviewRows}
+                  snapshot={answer}
+                  client={client}
+                  grantKey={props.grantKey}
+                  taskPanel={panel}
+                  changes={panel?.changes ?? 0}
+                />
+              )}
               toolbar={props.inPanel !== true}
               // A new place is a new view: the board opens on it afresh.
               hidden={props.hidden}

@@ -129,6 +129,13 @@ export async function windowDays(tx: TenantQuery): Promise<number | undefined> {
   return window >= WINDOW_FLOOR_DAYS && window <= work ? window : undefined;
 }
 
+/**
+ * A window this long reaches back past 3400 BC, inside the database's
+ * calendar. A longer one is never due, and is answered so rather than handed
+ * to date arithmetic that overflows.
+ */
+const LONGEST_COMPUTED_WINDOW_DAYS = 2_000_000;
+
 /** A wrapped conversation as the purge weighs it. */
 export interface Wrapped {
   readonly id: string;
@@ -149,6 +156,7 @@ export async function purgeHold(
 ): Promise<'WORK_OPEN' | 'NOT_DUE' | undefined> {
   const work = await workOf(tx, conversation.id, conversation.scope_record_id, lockTask);
   if (work.some((item) => !item.terminal)) return 'WORK_OPEN';
+  if (window > LONGEST_COMPUTED_WINDOW_DAYS) return 'NOT_DUE';
   const since = work.reduce(
     (latest, item) => (item.endedAt !== null && item.endedAt > latest ? item.endedAt : latest),
     conversation.last_activity_at,

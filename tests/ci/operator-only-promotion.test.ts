@@ -42,7 +42,8 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
 
 /**
  * A docker that answers the deploy's own calls: Compose and inspects. The
- * unit's containers run their pinned images only once `compose up` has run.
+ * unit's containers run their pinned images, `running` as Docker reports a
+ * container's status, only once `compose up` has run.
  */
 function fakeDocker(path: string, calls: string): void {
   const pinned = `sha256:${'e'.repeat(64)}`;
@@ -58,7 +59,7 @@ function fakeDocker(path: string, calls: string): void {
       `  "image inspect") echo ${pinned} ;;`,
       '  "inspect --format")',
       '    shift 3',
-      `    [ -f '${up}' ] && for c in "$@"; do echo "/$c ${pinned}"; done ;;`,
+      `    [ -f '${up}' ] && for c in "$@"; do echo "/$c ${pinned} running"; done ;;`,
       `  "ps "*) echo ${'a'.repeat(64)} ;;`,
       `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
       '  *) exit 2 ;;',

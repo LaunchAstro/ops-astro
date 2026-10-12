@@ -11,10 +11,11 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { json, typeInto, unmountAll } from './perspective-support.tsx';
+import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import { NEW_ID, NEW_KEY, create, draft, store, valueOf, type Sent } from './draft-support.tsx';
 import { emptyDraft, readDraft } from '../../apps/web/src/screens/task/task-draft.ts';
+import { DraftOwner } from '../../apps/web/src/screens/task/DraftOwner.tsx';
 
 afterEach(unmountAll);
 
@@ -41,7 +42,11 @@ function api() {
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const reads = new Set(['/person/list', '/task/board']);
-  return { client, writes: () => sent.filter((one) => !reads.has(one.to)) };
+  return {
+    client,
+    reads: () => sent.filter((one) => reads.has(one.to)).map((one) => one.to),
+    writes: () => sent.filter((one) => !reads.has(one.to)),
+  };
 }
 
 /** Focus the Owner select, which reads the people and agents, then choose `value`. */
@@ -101,6 +106,39 @@ describe('Core 04 5: a person, an AI agent and nobody each read back as chosen',
     expect(valueOf(again.view, '#panel-draft-owner')).toBe('');
     await create(again.view);
     expect(server.writes().map((one) => one.to)).toStrictEqual(['/task/create']);
+  });
+});
+
+/** The real Owner select of a fresh draft, mounted alone. */
+async function ownerSelect() {
+  const server = api();
+  const view = await mount(
+    <DraftOwner client={server.client} draft={emptyDraft(null)} put={() => {}} locked={false} />,
+  );
+  return { server, view };
+}
+
+const offered = (view: Awaited<ReturnType<typeof ownerSelect>>['view']) =>
+  view.all('[role=option]').map((option) => option.textContent);
+
+describe('The visible Owner select reads the people and agents', () => {
+  it('focusing then opening the visible Owner select offers the people and agents', async () => {
+    const { server, view } = await ownerSelect();
+    await act(() => {
+      view.host.querySelector<HTMLButtonElement>('#panel-draft-owner-control')?.focus();
+    });
+    await view.click('#panel-draft-owner-control');
+    await tick();
+    expect(server.reads()).toStrictEqual(['/person/list', '/task/board']);
+    expect(offered(view)).toStrictEqual(['Unassigned', 'Ada', 'AI: Penny']);
+  });
+
+  it('opening the visible Owner select with a click alone offers the people and agents', async () => {
+    const { server, view } = await ownerSelect();
+    await view.click('#panel-draft-owner-control');
+    await tick();
+    expect(server.reads()).toStrictEqual(['/person/list', '/task/board']);
+    expect(offered(view)).toStrictEqual(['Unassigned', 'Ada', 'AI: Penny']);
   });
 });
 

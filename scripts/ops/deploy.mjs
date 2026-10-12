@@ -8,7 +8,8 @@
 //   node scripts/ops/deploy.mjs --version <id> --artefacts <store> [--production]
 //
 // `--production` starts production's unit (deploy/production/compose.json)
-// after production's preflight (deploy/production/README.md).
+// after production's preflight (deploy/production/README.md), with its worker
+// parked (deploy/production/worker.json is not started).
 //
 // The installation's operator gate (`operator.ts`, requireOperatingOperator:
 // operations:manage in the installation's operating business, since the
@@ -22,9 +23,8 @@
 // refused or failed, 2 when the arguments are unusable.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { definitionPath, deploy } from './deploy.ts';
+import { deploy, readDefinition } from './deploy.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { compare, snapshot } from './service-report.mjs';
 
@@ -53,20 +53,18 @@ try {
 }
 const { version, artefacts: store } = values;
 const environment = values.production ? 'production' : 'staging';
-const DEFINITION = definitionPath(environment);
 if (version === undefined || store === undefined)
   usage('--version and --artefacts are both needed');
 
-const definition = JSON.parse(readFileSync(DEFINITION, 'utf8'));
+const definition = readDefinition(environment);
 const containers = Object.entries(definition.services).map(([n, s]) => s.container_name ?? n);
 
 const effects = {
   snapshot,
   compare,
-  up() {
-    execFileSync('docker', ['compose', '--file', DEFINITION, 'up', '--detach', '--wait'], {
-      stdio: 'inherit',
-    });
+  up(files) {
+    const named = files.flatMap((file) => ['--file', file]);
+    execFileSync('docker', ['compose', ...named, 'up', '--detach', '--wait'], { stdio: 'inherit' });
   },
   imageId(ref) {
     const result = spawnSync('docker', ['image', 'inspect', '--format', '{{.Id}}', ref], {
@@ -74,10 +72,14 @@ const effects = {
     });
     return result.status === 0 ? result.stdout.trim() : undefined;
   },
+  // Only a container Docker reports as `running` runs its image. One that
+  // stopped after Compose waited (`exited`), waits in restart backoff
+  // (`restarting`) or was paused (`paused`) keeps the image it was created
+  // from and runs nothing.
   runningImages() {
     const result = spawnSync(
       'docker',
-      ['inspect', '--format', '{{.Name}} {{.Image}}', ...containers],
+      ['inspect', '--format', '{{.Name}} {{.Image}} {{.State.Status}}', ...containers],
       {
         encoding: 'utf8',
       },
@@ -87,6 +89,7 @@ const effects = {
         .split('\n')
         .filter(Boolean)
         .map((line) => line.split(' '))
+        .filter(([, , status]) => status === 'running')
         .map(([name, image]) => [name.replace(/^\//u, ''), image]),
     );
   },

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation's started runs and gates are listed through the origin-conversation indexes on planned_runs, gates and plan_records, never by reading the whole business under the conversation lock, and the list holds exactly its own direct and accepted-plan work"
+}

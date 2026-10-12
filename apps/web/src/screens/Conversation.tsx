@@ -9,11 +9,16 @@
 // of the conversation, and a client session is refused. After the body
 // purges the read carries no messages, so the address draws the wrap-up and
 // never a transcript. Navigation only: nothing here writes or audits.
+//
+// No live topic reaches a conversation, so the read follows the tab's floor
+// (LIVE-SYNC.md): a grant revoked elsewhere, or a purge, shows on the next
+// re-read instead of the first answer staying drawn for the life of the tab.
 
 import type { ReactElement } from 'react';
 import { ConversationRecord } from '@launchastro/ui';
 import type { ConversationReadResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import { tabRollupFloor } from '../data/rollup-floor.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 
@@ -29,6 +34,7 @@ export function ConversationScreen(props: ConversationScreenProps): ReactElement
     grantKey: props.grantKey,
     run: () => client.read<ConversationReadResult>('conversation.read', { conversationId }),
     deps: [conversationId],
+    rollup: tabRollupFloor(),
   });
   return (
     <RecordState state={state} subject="conversation" onRetry={reload}>
