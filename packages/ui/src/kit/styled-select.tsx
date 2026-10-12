@@ -47,13 +47,14 @@ function useNativeSelect(props: StyledSelectProps) {
     const page = native.current?.ownerDocument;
     if (!page) return;
     // A reset restores the select after its event, without a render or change event.
-    // It bubbles, so the page hears it from whichever form owns the select now.
+    // The page hears it on the way down, from whichever form owns the select
+    // now, so a handler on the form that stops it bubbling cannot hide it.
     const reset = (event: Event): void => {
       if (event.target !== native.current?.form) return;
       setTimeout(() => setValue(native.current?.value ?? ''));
     };
-    page.addEventListener('reset', reset);
-    return () => page.removeEventListener('reset', reset);
+    page.addEventListener('reset', reset, true);
+    return () => page.removeEventListener('reset', reset, true);
   }, []);
   const choose = (next: string): void => {
     if (native.current === null || next === native.current.value) return;
