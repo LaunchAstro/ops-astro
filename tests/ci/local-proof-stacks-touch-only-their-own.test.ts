@@ -40,7 +40,11 @@ case "$1" in
   image) exit "\${IMAGE_PRESENT:-0}" ;;
   inspect) exit 1 ;;
   run)
-    if [ -n "\${VICTIM:-}" ]; then printf '%s\\n' "$VICTIM" >>"$VICTIM_FILE"; fi
+    if [ -n "\${VICTIM:-}" ]; then
+      started=""
+      [ -n "\${VICTIM_OWNED:-}" ] && started=$(ps -o lstart= -p "$VICTIM" | tr -s ' ' | sed 's/^ //; s/ $//')
+      printf '%s %s\\n' "$VICTIM" "$started" >>"$VICTIM_FILE"
+    fi
     echo 'Conflict. The container name is already in use by another container.' >&2
     exit 125 ;;
   *) exit 0 ;;
@@ -146,6 +150,21 @@ describe('the restart proof', () => {
     const { docker, log, dir } = fakeDocker();
     restartProof(docker, dir, await freePorts(2));
     expect(calls(log).find((call) => call.startsWith('run'))).toMatch(/^run --pull never /u);
+  });
+
+  it('kills a process it recorded, while that pid is still the same process', async () => {
+    const { docker, dir } = fakeDocker();
+    const own = spawn('sleep', ['300'], { stdio: 'ignore' });
+    children.push(own);
+    restartProof(docker, dir, await freePorts(2), {
+      VICTIM: String(own.pid),
+      VICTIM_OWNED: '1',
+      VICTIM_FILE: join(dir, 'evidence.txt.pids'),
+    });
+    await new Promise((done) => {
+      setTimeout(done, 500);
+    });
+    expect(own.signalCode).toBe('SIGKILL');
   });
 
   it('does not kill a process whose recorded pid now belongs to something else', async () => {
