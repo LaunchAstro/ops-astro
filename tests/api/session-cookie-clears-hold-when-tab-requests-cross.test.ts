@@ -6,8 +6,8 @@
 // answer lands. Two tabs' reads cross on the wire, a tab signs in while
 // another's read is out, and an answer is lost and its read sent again. In
 // each, the jar ends where one read at a time would leave it: the five newest
-// other sign-ins beside a tab's own, no planted cookie, and no cookie of a
-// sign-in the answer never saw.
+// other sign-ins beside a tab's own, and no cookie of a sign-in the answer
+// never saw.
 
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
@@ -48,9 +48,6 @@ function jar() {
         if (seconds <= 0) held.delete(name);
         else held.set(name, { value: value.join('='), until: Date.now() + seconds * 1000 });
       }
-    },
-    plant(name: string, value: string): void {
-      held.set(name, { value, until: Infinity });
     },
     header: (): string =>
       live()
@@ -126,18 +123,6 @@ async function listening(api: ReturnType<typeof build>) {
 
 const names = (sessions: readonly string[]) => sessions.map((id) => cookieNameFor(id)).toSorted();
 
-/** A token whose `exp` claims ten years: no sign-in this API issued. */
-const planted = (n: number) => ({
-  name: cookieNameFor(n.toString(16).padStart(32, 'f')),
-  value: [
-    'e30',
-    Buffer.from(
-      JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 10 * 365 * 86_400 }),
-    ).toString('base64url'),
-    'sig',
-  ].join('.'),
-});
-
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -163,30 +148,6 @@ async function twoTabsAtOnceWithOneCookieTooMany() {
   // One at a time, whichever goes first clears one cookie and the other,
   // its own gone or not, clears nothing: six stay, the cap.
   expect(cookies.sessions(), 'the jar keeps the cap, not one fewer').toHaveLength(6);
-}
-
-async function twoTabsAtOnceBesidePlantedCookies() {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  const api = build();
-  const cookies = jar();
-  const signed = await tabs(api, cookies, 6);
-  for (const n of [1, 2, 3, 4, 5]) {
-    const cookie = planted(n);
-    cookies.plant(cookie.name, cookie.value);
-  }
-  const server = await listening(api);
-  try {
-    const sent = cookies.header();
-    const answers = await Promise.all([
-      server.read(signed[0] ?? '', sent),
-      server.read(signed[5] ?? '', sent),
-    ]);
-    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
-    cookies.take(answers.flatMap((answer) => answer.lines));
-  } finally {
-    server.close();
-  }
-  expect(cookies.sessions()).toEqual(names(signed));
 }
 
 async function tabSigningInWhileAnotherReadIsOut() {
@@ -237,11 +198,6 @@ describe('session cookie clears hold when tab requests cross', () => {
   it(
     'two tabs reading at once with one cookie too many leave six, as one read at a time does',
     twoTabsAtOnceWithOneCookieTooMany,
-  );
-
-  it(
-    'two tabs reading at once beside planted cookies clear every planted one and no live tab',
-    twoTabsAtOnceBesidePlantedCookies,
   );
 
   it(
