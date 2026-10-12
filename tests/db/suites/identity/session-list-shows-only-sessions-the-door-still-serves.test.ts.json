@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the session list names only sessions the door still serves: within the absolute limit, and not covered by an ending of the other sessions"
+}
