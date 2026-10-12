@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-04's planning budget (U10, migration 0107): every planning reply before
-// the accept is priced, against a small budget of its own. The business's
-// planning cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a
-// person moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes
-// that default as the business's row. Each conversation spends through one
-// planning envelope.
+// AW-04's planning budget (U10, migration 0107): every planning reply before the
+// accept is priced, against a small budget of its own. The business's planning
+// cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a person
+// moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes that
+// default as the business's row. Each conversation has one planning envelope.
 // A reply holds its operation's priced maximum as its own call row, under the
 // cap's row lock, as a task call holds out of its reservation (0191); it then
 // settles at its price, is released on proof nothing happened, or stays held
@@ -32,7 +31,7 @@ import {
   type ReservedCall,
 } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
-import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
+import { closed, hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
   Broker,
   BrokerRoute,
@@ -197,13 +196,14 @@ async function sendPlanning(
   reserved: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
+  model: string | undefined,
 ): Promise<ModelCallResult> {
   const { callId, operation, route, reservedMinor } = reserved;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId);
+  const built = adapter.build(values, callId, model);
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
     path: built.path,
@@ -222,7 +222,7 @@ async function sendPlanning(
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
       return await hold(tx, reserved, observed, null, broker);
     }
-    await settlePriced(tx, reserved, settlement, broker);
+    if (!(await settlePriced(tx, reserved, settlement, broker))) return closed(callId);
     return {
       ok: true,
       callId,
@@ -260,7 +260,7 @@ export async function callModelForPlanning(
     async (tx) => await holdPlanning(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
-  return await sendPlanning(database, businessId, held.reserved, fields, broker);
+  return await sendPlanning(database, businessId, held.reserved, fields, broker, request.model);
 }
 
 /**

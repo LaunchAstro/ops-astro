@@ -111,7 +111,13 @@ it('a delayed planning settlement cannot spend a hold already released by its ow
       .poll(async () => (await rowsFor(on, secondRequest.conversation.id))[0]?.['state'])
       .toBe('dispatched');
     resume();
-    await first;
+    const late = await first;
+    // The late answer reads as stale, with no text: the person's release stands.
+    expect(late).toStrictEqual({
+      ok: false,
+      code: 'DECISION_STALE',
+      callId: original?.['id'],
+    });
     const [old] = await rowsFor(on, request.conversation.id);
     const committed = await committedMinor(on);
     expect(

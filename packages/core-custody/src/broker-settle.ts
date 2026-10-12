@@ -114,7 +114,11 @@ const ANSWERABLE = `('reserved', 'dispatched', 'liability_unknown')`;
 const open = (state: string | undefined): boolean => state === 'reserved' || state === 'dispatched';
 
 /** The answer to a close that found its call already closed: it moved nothing. */
-const closed = (callId: string): ModelCallResult => ({ ok: false, code: 'DECISION_STALE', callId });
+export const closed = (callId: string): ModelCallResult => ({
+  ok: false,
+  code: 'DECISION_STALE',
+  callId,
+});
 
 /** Above the hold, or no answer: the maximum stays held as unknown liability until a person records an outcome. */
 export async function hold(
@@ -191,13 +195,13 @@ export async function release(
   return { ok: false, code: 'CALL_RELEASED', callId, reason };
 }
 
-/** Priced within the hold: settled at the price, the rest released. */
+/** Priced within the hold: settled at the price, the rest released; false if it closed first. */
 export async function settlePriced(
   tx: TenantQuery,
   reserved: ReservedCall,
   settlement: Settlement & { kind: 'priced' },
   broker: Broker,
-): Promise<void> {
+): Promise<boolean> {
   const { callId, operation, reservedMinor } = reserved;
   const { costMinor } = settlement;
   const moved = await tx.query(
@@ -225,7 +229,7 @@ export async function settlePriced(
       settlement.answer.usage.outputUnits,
     ],
   );
-  if (moved.length === 0) return;
+  if (moved.length === 0) return false;
   await broker.audit(tx, {
     action: 'model.call_dispatched',
     outcome: 'applied',
@@ -240,6 +244,7 @@ export async function settlePriced(
       releasedMinor: reservedMinor - costMinor,
     },
   });
+  return true;
 }
 
 export async function settle(
