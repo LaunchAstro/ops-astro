@@ -72,7 +72,7 @@ it('C2 presence shown (page): the app strip shows who else is on this page from 
   const back = await tab(api, 'ana');
   await until('Ana sees Ben again', () => onStrip(back).includes('Ben Ode'));
   await back.render(
-    <PagePresenceProvider>
+    <PagePresenceProvider owner="ana:g">
       <StripPresence />
     </PagePresenceProvider>,
   );

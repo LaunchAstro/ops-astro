@@ -36,7 +36,8 @@ const hasWord = (query: string): boolean => /[\p{L}\p{N}]/u.test(query);
 
 /**
  * Search's own state: open or not is the application's; the strip's box and
- * ⌘K open it on the agency face only, and closing returns focus to the box.
+ * ⌘K open it on the agency face only, and closing returns focus to the box
+ * once the palette, and the inert page behind it, are gone.
  * `dismiss` closes it without moving focus, for a hit that navigates away.
  */
 export function useSearch(): {
@@ -48,12 +49,20 @@ export function useSearch(): {
 } {
   const [showing, setShowing] = useState(false);
   const box = useRef<HTMLButtonElement | null>(null);
+  // Focus goes back once the palette has gone: until its cleanup runs, the
+  // page behind it is inert and the browser refuses focus to the box.
+  const giveBack = useRef(false);
+  useEffect(() => {
+    if (showing || !giveBack.current) return;
+    giveBack.current = false;
+    box.current?.focus();
+  }, [showing]);
   const open = useCallback(() => {
     setShowing(true);
   }, []);
   const close = useCallback(() => {
+    giveBack.current = true;
     setShowing(false);
-    box.current?.focus();
   }, []);
   const dismiss = useCallback(() => {
     setShowing(false);
@@ -89,7 +98,7 @@ export function SearchPalette(props: {
   const [active, setActive] = useState(0);
   const answer = useAnswer(props.client, query, setActive);
   const { onClose } = props;
-  useFocusAndOneEscape(field, onClose);
+  const dialog = useModal(field, onClose);
 
   const hits = answer.kind === 'hits' ? answer.hits : [];
   const pick = (hit: SearchHit | undefined): void => {
@@ -100,7 +109,7 @@ export function SearchPalette(props: {
   return (
     <>
       <div className="palette__scrim" aria-hidden="true" onClick={onClose} />
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Search">
+      <div ref={dialog} className="palette" role="dialog" aria-modal="true" aria-label="Search">
         <input
           ref={field}
           className="palette__field"
@@ -129,16 +138,36 @@ export function SearchPalette(props: {
   );
 }
 
-/** Focus goes to the field on open; one Escape closes the palette and nothing under it. */
-function useFocusAndOneEscape(
+/**
+ * The palette is modal. Focus goes to the field on open, and Tab and Shift+Tab
+ * keep it there: the field is the dialog's one tab stop, the hits being picked
+ * with the arrows. Everything beside the palette and its scrim is inert until
+ * it closes, so no key or pointer reaches the page behind. One Escape closes
+ * the palette and nothing under it.
+ */
+function useModal(
   field: RefObject<HTMLInputElement | null>,
   onClose: () => void,
-): void {
+): RefObject<HTMLDivElement | null> {
+  const dialog = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    const box = dialog.current;
+    const behind = [...(box?.parentElement?.children ?? [])].filter(
+      (each) => each !== box && each !== box?.previousElementSibling && !each.hasAttribute('inert'),
+    );
+    for (const each of behind) each.setAttribute('inert', '');
     field.current?.focus();
-  }, [field]);
+    return () => {
+      for (const each of behind) each.removeAttribute('inert');
+    };
+  }, [dialog, field]);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        field.current?.focus();
+        return;
+      }
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.preventDefault();
       event.stopPropagation();
@@ -150,7 +179,8 @@ function useFocusAndOneEscape(
     return () => {
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [onClose]);
+  }, [field, onClose]);
+  return dialog;
 }
 
 /**

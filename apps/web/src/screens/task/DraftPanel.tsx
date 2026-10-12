@@ -11,7 +11,8 @@
 //
 // **One create, however many presses.** An outcome nobody knows keeps the
 // create's identity for the retry, so the server's replay answers it rather
-// than a second task. Until it is settled the fields are read-only, so no
+// than a second task; so does a created task whose draft the browser would
+// not remove. Until it is settled the fields are read-only, so no
 // edit can start a second create beside it; Cancel still discards it. The identity is stored with the draft before Create goes out, so
 // a reload or Back while it is out reopens the draft with it; a new Create
 // the browser cannot store is not sent. While Create is
@@ -30,7 +31,14 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
 import { useKeptDraft, type DraftEditorProps } from './draft-editor.ts';
 export type { DraftScope } from './draft-editor.ts';
-import { draftProblem, dropDraft, newAttempt, stopTimer, type Attempt } from './task-draft.ts';
+import {
+  draftProblem,
+  dropDraft,
+  newAttempt,
+  readAttempt,
+  stopTimer,
+  type Attempt,
+} from './task-draft.ts';
 import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
 export interface DraftPanelProps extends DraftEditorProps {
@@ -76,6 +84,9 @@ export function DraftPanel(props: DraftPanelProps): ReactElement {
   );
 }
 
+/** The fields the admission sentence names: once one is edited, it no longer claims the guesses. */
+const GUESSED = ['due', 'category', 'owner', 'priority'] as const;
+
 type Kept = ReturnType<typeof useKeptDraft>;
 type Creating = ReturnType<typeof useCreate>;
 
@@ -96,7 +107,9 @@ function DraftBody(
       <DraftFields
         client={props.client}
         draft={kept.draft}
-        put={kept.put}
+        put={(next) => {
+          kept.put(GUESSED.some((field) => field in next) ? { ...next, why: null } : next);
+        }}
         name={kept.name}
         locked={creating.busy || unsettled}
       />
@@ -179,9 +192,13 @@ function DraftHead(props: {
 
 /** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
 function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
-  if (outcome.kind !== 'unknown') kept.settled(at.id);
-  if (outcome.kind !== 'created') return { refusal: outcome.because, missed: null };
+  if (outcome.kind !== 'created') {
+    if (outcome.kind !== 'unknown') kept.settled(at.id);
+    return { refusal: outcome.because, missed: null };
+  }
   dropDraft(props.storage, props.person);
+  // A draft storage would not remove keeps its create's id, so reopened it replays this task.
+  if (readAttempt(props.storage, props.person)?.id !== at.id) kept.settled(at.id);
   if (outcome.missed.length > 0) {
     return { refusal: null, missed: { taskKey: outcome.key, parts: outcome.missed } };
   }

@@ -174,7 +174,7 @@ export async function tab(api: ReturnType<typeof server>, token: string, taskKey
   });
   clients.set(token, client);
   const shown = await mount(
-    <PagePresenceProvider>
+    <PagePresenceProvider owner={`${token}:g`}>
       <StripPresence />
       <TaskDetailScreen client={client} grantKey={`${token}:g`} taskKey={taskKey} />
     </PagePresenceProvider>,
