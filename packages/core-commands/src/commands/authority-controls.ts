@@ -426,7 +426,9 @@ export async function revokeDelegationAsManager(
 
 /**
  * The person's live grants, locked in id order, and the live delegations they
- * gave. Discovery for `endPersonAuthority`; the grant rows stay locked.
+ * gave. Discovery for `endPersonAuthority`; the grant rows stay locked. An
+ * expired delegation is already ended by its own column, so it is neither
+ * revoked again nor counted.
  */
 async function heldAndGiven(
   tx: TenantQuery,
@@ -448,7 +450,7 @@ async function heldAndGiven(
     given: await ids(
       `select id from public.delegations
         where business_id = $1 and delegate_person_id = $2::uuid
-          and revoked_at is null and settled_at is null
+          and revoked_at is null and settled_at is null and expires_at > clock_timestamp()
         order by id`,
     ),
   };
