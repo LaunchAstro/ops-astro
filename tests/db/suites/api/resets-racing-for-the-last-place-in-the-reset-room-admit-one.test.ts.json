@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two resets on two connections race for the reset room's last place: the one waiting on the room key counts after the wait, so it sees the other's committed window, takes the place of one that died before commit, and finds a lapsed window gone"
+}
