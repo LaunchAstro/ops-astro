@@ -509,10 +509,11 @@ td[data-tight] {
 }
 
 /* Heads stick only where the table fits its card: a scroll container would
-   pin them to itself, so the wrap clips instead of scrolling there. Below
-   1279 the table can overflow and scrolls, and the heads do not stick. */
+   pin them to itself, so the wrap clips instead of scrolling there. A table
+   wider than its card (a narrow card or dock panel, and anything below 1279)
+   scrolls in the wrap, and its heads do not stick. */
 @media (min-width: 1279px) {
-  .cbd__wrap {
+  .cbd__wrap:not([data-overflows]) {
     overflow-x: clip;
   }
 
