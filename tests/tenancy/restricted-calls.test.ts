@@ -254,13 +254,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
             'a day', 'deleted', true, id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
   // API-2: no journey issues an agent credential, so one is written here.
-  'public.agent_credentials': `insert into public.agent_credentials
+  // The credential's agent is planted with it: a person actor may not hold one.
+  'public.agent_credentials': `with agent as (
+       insert into public.actors (business_id, id, kind) values ($1, gen_random_uuid(), 'agent')
+       returning business_id, id)
+     insert into public.agent_credentials
        (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
         credential_hash, credential_scheme, credential_key_id, expires_at)
-     select business_id, gen_random_uuid(), id, person_id, id, 'restricted calls seed',
+     select p.business_id, gen_random_uuid(), a.id, p.person_id, p.id, 'restricted calls seed',
             array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
-       from public.actors where business_id = $1 and kind = 'person'
-      order by id limit 1 returning 1`,
+       from public.actors p join agent a on a.business_id = p.business_id
+      where p.kind = 'person'
+      order by p.id limit 1 returning 1`,
   // C32: no journey makes a client, so one is written here.
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
@@ -823,6 +828,7 @@ const DEFINERS: readonly string[] = [
   'model_call_carriers_ring()',
   'model_route_room(text,integer)',
   'ops.ended_subject_sessions_at_commit()',
+  'ops.expire_auth_hook_messages()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
   'ops_carry_may_join(text)',

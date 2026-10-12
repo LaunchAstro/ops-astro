@@ -168,6 +168,11 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
   })),
+  // 20261012133600: a Send Email hook message is claimed and read by its digest alone.
+  ...['INSERT', 'SELECT'].map((act) => ({
+    from: '20261012133600',
+    line: `ops_astro_app ${act} ops.auth_hook_messages.message_digest`,
+  })),
   // C31: custody's select leaves out the three sealed columns (20261005023013).
   ...[
     'business_id',
