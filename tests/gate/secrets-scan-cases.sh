@@ -14,6 +14,7 @@
 #   N  a tracked file carrying a key is refused
 #   O  an empty file list is refused rather than passed
 #   P  a key in LICENSE is refused: an exempt path is a place to hide one
+#   Q  the real lockfile alone passes, and with a key appended is refused
 #
 # Usage:  tests/gate/secrets-scan-cases.sh
 # Exit 0 when every case passes, 1 when any case fails.
@@ -149,6 +150,25 @@ if [ "$status" -ne 0 ] && grep -q 'leak' "$dir/scan.out"; then
 else
   fail "a key added to LICENSE is refused" \
     "exit $status; output: $(tr '\n' ' ' < "$dir/scan.out")"
+fi
+rm -rf "$dir"
+
+# Q. gitleaks' own default allowlist exempts the lockfile by path, so the scan
+# reads its bytes a second way. This repository's lockfile passes as it is,
+# and the same lockfile with a key appended as a YAML comment is refused.
+dir="$(new_repo)"
+cp "$REPO_ROOT/pnpm-lock.yaml" "$dir/pnpm-lock.yaml"
+git -C "$dir" add pnpm-lock.yaml
+clean="$(scan_status "$dir")"
+write_key "$dir/key.txt"
+printf '# %s\n' "$(cat "$dir/key.txt")" >> "$dir/pnpm-lock.yaml"
+rm "$dir/key.txt"
+status="$(scan_status "$dir")"
+if [ "$clean" -eq 0 ] && [ "$status" -ne 0 ] && grep -q 'leak' "$dir/scan.out"; then
+  pass "a key appended to the lockfile is refused, and the lockfile alone passes"
+else
+  fail "a key appended to the lockfile is refused, and the lockfile alone passes" \
+    "clean exit $clean, planted exit $status; output: $(tr '\n' ' ' < "$dir/scan.out")"
 fi
 rm -rf "$dir"
 
