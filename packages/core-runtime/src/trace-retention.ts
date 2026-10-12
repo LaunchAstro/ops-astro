@@ -50,6 +50,7 @@ import {
   UNANSWERED,
   unsettled,
   type ExpiryPorts,
+  type PassBudget,
 } from './trace-store.ts';
 
 /** The deletion endpoint's cap on ids per call. */
@@ -69,7 +70,11 @@ export async function expireOnce(
   businessId: string,
   key: Buffer,
   ports: ExpiryPorts,
-  options: { readonly windowDays?: number; readonly page?: number } = {},
+  options: {
+    readonly windowDays?: number;
+    readonly page?: number;
+    readonly budget?: PassBudget;
+  } = {},
 ): Promise<readonly RetentionBatch[]> {
   const windowDays = options.windowDays ?? TRACE_WINDOW_DAYS;
   const page = Math.max(1, options.page ?? EXPIRY_PAGE);

@@ -27,11 +27,39 @@ import { derivedId } from './trace-span.ts';
 /** Unanswered reads in a row that end a pass's owed read-back: the store is not answering. */
 export const UNANSWERED = 3;
 
+/** Reads one deployment pass may make, every business's together. */
+export const READS_PER_PASS = 1_000;
+
+/** How long after its start a pass may still begin a read. */
+export const PASS_DEADLINE_MS: number = 15 * 60_000;
+
+/** A read's answer: `limited` is the store saying its allowance is spent (429). */
+export type Answer = 'absent' | 'present' | 'unknown' | 'limited';
+
 /** The trace store as retention asks it: delete ids, then read one trace back, or with `spanId` one span of it. */
 export interface ExpiryPorts {
   expire(traceIds: readonly string[]): Promise<Delivered>;
-  present(traceId: string, spanId?: string): Promise<'absent' | 'present' | 'unknown'>;
+  present(traceId: string, spanId?: string): Promise<Answer>;
 }
+
+/**
+ * One deployment pass's reads, every business's together: the pass's id, the
+ * reads made, the unanswered ones in a row, and its limit and deadline (in
+ * milliseconds since the epoch).
+ */
+export interface PassBudget {
+  readonly id: string;
+  reads: number;
+  quiet: number;
+  readonly limit: number;
+  readonly deadline: number;
+}
+
+/** A pass's budget before its first read. */
+export const passBudget = (
+  limit: number = READS_PER_PASS,
+  deadline: number = Date.now() + PASS_DEADLINE_MS,
+): PassBudget => ({ id: randomUUID(), reads: 0, quiet: 0, limit, deadline });
 
 /**
  * A pass's owed read-back: each run's sent owed events and where its last
@@ -46,12 +74,14 @@ export interface Reading {
   readonly unanswered: string[];
   readonly resumes: (string | null)[];
   readonly left: string[];
+  readonly budget: PassBudget;
   reads: number;
   quiet: number;
 }
 
 /** A pass's reading before its first read. */
-export const freshReading = (): Reading => ({
+export const freshReading = (budget: PassBudget = passBudget()): Reading => ({
+  budget,
   sent: new Map(),
   resume: new Map(),
   answered: [],

@@ -251,12 +251,13 @@ export async function exportDeployment(
   });
 }
 
-/** One retention pass over every business. */
+/** One retention pass over every business; `pass` counts the passes before it. */
 export async function retainDeployment(
   database: TraceDatabase,
   businesses: () => Promise<readonly string[]>,
   key: Buffer,
   ports: ExpiryPorts,
+  _pass = 0,
 ): Promise<void> {
   await eachTurn(businesses, async (businessId) => {
     await expireOnce(database, businessId, key, ports);
