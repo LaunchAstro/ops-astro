@@ -135,7 +135,7 @@ describe('S0-6 algorithm refused', () => {
     const verify = verifierOver(source.fetch);
     expect(await verify(await tokenFor(current))).toEqual({
       outcome: 'refused',
-      reason: 'unknown_key',
+      reason: 'key_set_unavailable',
     });
   });
 

@@ -58,7 +58,8 @@ export async function parseKeySet(body: Uint8Array): Promise<KeySet | 'shape' | 
     // A coordinate pair that is not a point on the curve.
     return 'shape';
   }
-  return usable;
+  // A set with no key this verifier uses cannot answer for any token: unusable, not a refusal.
+  return usable.size === 0 ? 'shape' : usable;
 }
 
 /** A complete ES256 public key: the only shape an ES256 entry may have. */

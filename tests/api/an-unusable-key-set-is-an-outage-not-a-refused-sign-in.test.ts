@@ -28,6 +28,10 @@ const UNUSABLE: readonly (readonly [string, () => Response])[] = [
   ],
   ['a body that is not JSON', () => new Response('{"keys": [')],
   ['an empty key list', () => Response.json({ keys: [] })],
+  [
+    'keys in no algorithm the door uses',
+    () => Response.json({ keys: [{ ...published, alg: 'ES384' }] }),
+  ],
 ];
 const PRIVATE = (): Response => Response.json({ keys: [{ ...published, d: 'not-published' }] });
 const UNREACHABLE = (): Response => {
