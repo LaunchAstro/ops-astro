@@ -735,8 +735,10 @@ operation register hold a digest and the version's id, never the words.
 characters, trimmed, one per business in any letter case, `clients_one_name`)
 and who made it and when. The name is a `drawn_name` (20261012052116): any
 script, but no control, format, private-use or unassigned character, no line
-or paragraph separator, no variation selector, and no leading combining mark, so a name hides no text
-and cannot pass for another. A connection's label is `signal_text`. It is the party a party-scoped grant names in
+or paragraph separator, no space but U+0020, no variation selector or tag, no
+character that draws as nothing (fillers and blanks), no leading combining
+mark and no run of five or more, so a name hides no text and cannot pass for
+another. A connection's label is `signal_text`. It is the party a party-scoped grant names in
 `grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
 Neither carries a foreign key to it, so `access.grant` and `task.set_party`
 check a client is of this business before writing its id. The application may
