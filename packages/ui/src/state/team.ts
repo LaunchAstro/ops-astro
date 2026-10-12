@@ -95,7 +95,13 @@ export type GroupAction =
   | { readonly do: 'read'; readonly id: string; readonly upTo: string }
   | { readonly do: 'send'; readonly id: string; readonly body: string };
 
-const timeOf = (iso: string): number => Date.parse(iso);
+/**
+ * A message's or marker's position in microseconds: its millisecond plus the
+ * microseconds the server writes past it to rank tied messages (`...288001Z`),
+ * which `Date.parse` drops.
+ */
+const timeOf = (iso: string): number =>
+  Date.parse(iso) * 1000 + Number(/\.\d{3}(\d{1,3})Z$/u.exec(iso)?.[1]?.padEnd(3, '0') ?? 0);
 
 /** Unread is derived from the read marker: others' messages after it. */
 export function unreadOf(thread: TeamConversation, me: string): number {
