@@ -6,7 +6,8 @@
 // (`gate item recorded`), a closing line with the owner's one line too (0060),
 // and `operations.change_installation_mode` moves the
 // installation from made-up to real data while every item is done
-// (`installation mode changed`).
+// (`installation mode changed`); an installation already real is refused
+// `TRANSITION_NOT_PERMITTED`, as there is nothing to change.
 //
 // Items 3 to 6 take one evidence link only: the link to their document's
 // published version in the operator's business (C81), read under the same
@@ -202,7 +203,15 @@ export async function changeInstallationMode(
       ),
     );
   }
-  if (installation.mode === 'real') return applied(null, null, { mode: 'real' });
+  if (installation.mode === 'real') {
+    return refused(
+      refuseCommand(
+        'TRANSITION_NOT_PERMITTED',
+        ['mode=real'],
+        ['This installation already uses real data. There is nothing for this command to change.'],
+      ),
+    );
+  }
   const [readiness] = await tx.query<{ readonly open_items: readonly string[] }>(
     'select open_items from public.first_client_readiness()',
   );

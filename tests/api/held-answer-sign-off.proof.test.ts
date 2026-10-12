@@ -4,6 +4,7 @@ import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { linkClient } from '../runtime/closed-stop-answer-world.ts';
 import { attempts, launched, r, useReceiptWorld } from './aw-08-receipt-world.ts';
 
 useReceiptWorld('prv942signoff');
@@ -38,6 +39,7 @@ const clientSignOff = async (value: 'true' | 'false') =>
 
 it('a held provider answer cannot bypass client sign-off enabled before its comment applies', async () => {
   const { taskId, credential } = await launched();
+  await linkClient(r.fixture, taskId);
   let loseComment = true;
   let providerEffects = 0;
   const transport: Transport = async (path, body, bearer, delegation) => {

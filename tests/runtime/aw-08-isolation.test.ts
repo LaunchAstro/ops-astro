@@ -16,6 +16,7 @@ import { cq8World } from './cq-8-world.ts';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';
 import { codeOf, rows } from './schedules-harness.ts';
 import { dispatchAs, leased, marked, otherPerson, setSignOff } from './aw-08-gate-world.ts';
+import { linkClient } from './closed-stop-answer-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -25,6 +26,9 @@ it('AW-08 isolation: another business: its sign-off never holds this one, and it
   const canary = `aw08-iso-alpha-${randomUUID()}`;
   const alpha = await leased(w.alpha, 'launch', canary);
   const bravo = await leased(w.bravo, 'launch');
+  // Both on a client, so only a business's own setting can hold its work.
+  await linkClient(w.alpha, alpha.taskId);
+  await linkClient(w.bravo, bravo.taskId);
   await setSignOff(w.alpha, true);
   try {
     // Bravo's agent presenting alpha's lease in bravo: no such lease there.
