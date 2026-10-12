@@ -6,6 +6,7 @@
 // question of whether its person is in a conversation that moved. None serves, audits or shows
 // anything (C4 live-sync 6). The board's own questions (INB-1f) sit here too.
 
+import { randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
 import { EXPIRED_FIXES } from '../../packages/core-records/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
@@ -24,7 +25,10 @@ import type {
   AdmissionAt,
   CommandRefusal,
 } from '../../packages/core-commands/src/index.ts';
+import { bearerOf, sessionCookieOf } from './auth/session.ts';
 import type { Verifier } from './auth/supabase.ts';
+import type { Gather } from './gather.ts';
+import type { BoardQuestions } from './live-board.ts';
 import type { Watch, Watching } from './live-follow.ts';
 import { UNANSWERED, type Unanswered } from './live.ts';
 
@@ -220,4 +224,70 @@ export async function mayShowInbox(
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') return undefined;
   return await shownInbox(options.database, businessId, presented, personId);
+}
+
+/** One board run's answers, in the order the rule asks them. */
+interface Run {
+  readonly tasks: string | undefined;
+  readonly inbox: string | undefined;
+  readonly joined: string | undefined | Unanswered;
+}
+
+/**
+ * The board stream's questions (INB-1f) for one tab. A run's tasks digest,
+ * inbox digest and join are asked in that order with one check of the bearer.
+ * A run a signal woke is shared with the other boards of the same credential
+ * that began after this board's signal (`gather.ts`, #620); the stream's own checks, at
+ * join and on the recheck, are its own. Every run asks again, so a bearer
+ * revoked or remapped since is caught by that run (ORCH46); a join asked after
+ * the run's own, a conversation's (C71), is asked afresh.
+ */
+export function boardQuestions(
+  options: Door,
+  context: Context,
+  businessId: string,
+  gather: Gather,
+): BoardQuestions {
+  let checked: ReturnType<Verifier> | undefined;
+  const door: Door = {
+    ...options,
+    verify: async (request) => await (checked ??= options.verify(request)),
+  };
+  const credential = bearerOf(context.req) ?? sessionCookieOf(context.req) ?? randomUUID();
+  const joinedNow = async (): Promise<string | undefined | Unanswered> => {
+    const again = await mayJoinBoard(door, context, businessId);
+    if (again === UNANSWERED) return again;
+    return isCommandRefusal(again) ? undefined : again.personId;
+  };
+  let run: Promise<Run> | undefined;
+  let joinTaken = false;
+  let since: number | undefined;
+  const asked = async (personId: string): Promise<Run> => {
+    const tasks = await mayReach(door, context, businessId, personId);
+    const inbox = await mayShowInbox(door, context, businessId, personId);
+    return { tasks, inbox, joined: await joinedNow() };
+  };
+  const ask = async (personId: string): Promise<Run> =>
+    await (run ??=
+      since === undefined
+        ? asked(personId)
+        : gather(`${businessId}\u0000${credential}\u0000${personId}`, since, async () => {
+            return await asked(personId);
+          }));
+  return {
+    newRun: (heardAt) => {
+      checked = undefined;
+      run = undefined;
+      joinTaken = false;
+      since = heardAt;
+    },
+    reach: async (personId) => (await ask(personId)).tasks,
+    shown: async (personId) => (await ask(personId)).inbox,
+    joinedAs: async () => {
+      if (run === undefined || joinTaken) return await joinedNow();
+      joinTaken = true;
+      return (await run).joined;
+    },
+    hears: hearing(door, context, businessId),
+  };
 }
