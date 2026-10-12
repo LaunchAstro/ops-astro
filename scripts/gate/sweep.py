@@ -710,8 +710,10 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
     # The exemption list must describe the fixtures as they are now. A stale
     # line means the gate is scanning a fixture it should skip, or skipping
     # bytes nobody approved.
+    # They are the scanner's own fixtures, read from beside it: under the
+    # pre-push hook that is the pushed commit, not the checkout.
     for rel, digests in sorted(exemptions.items()):
-        path = REPO / rel
+        path = OWN / rel
         if not path.is_file():
             failures.append(f"an exempt path does not exist: {rel}")
             continue
