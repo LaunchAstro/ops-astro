@@ -215,7 +215,9 @@ describe('classifyStatement', () => {
     expect(leadingVerb('-- set the schema up\n  create table t ()')).toBe('CREATE');
     expect(classifyStatement('/* quiet */ drop table t')).toBe('ddl');
   });
+});
 
+describe('classifyStatement on SELECT INTO', () => {
   it.each([
     '/* request */ select 1 into public.review_probe',
     '-- request\nselect 1 into public.review_probe',
