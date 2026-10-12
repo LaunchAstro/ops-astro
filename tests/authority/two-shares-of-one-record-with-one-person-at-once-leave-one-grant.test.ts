@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
@@ -77,94 +77,95 @@ const pausedBeforeInsert = (tx: TenantQuery, meet: () => Promise<void>): TenantQ
   },
 });
 
-describe.skipIf(serverUrl === undefined)('two shares of one record with one person at once', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let ada: Member;
-  let ext: Member;
+const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
 
-  const createTask = async (): Promise<string> => {
-    const made = await executeCommand(db.app, business, ada.presented, 'api', {
-      command: 'task.create',
-      operationId: randomUUID(),
-      fields: { title: 'shared' },
-    } as unknown as Request);
-    if (isCommandRefusal(made)) throw new Error(`create refused ${made.code}`);
-    return made.recordId ?? '';
-  };
+let db: FreshDatabase;
+let business: string;
+let ada: Member;
+let ext: Member;
 
-  /** Runs `share` on two connections at once, each paused before its insert. */
-  const twice = async (
-    share: (tx: TenantQuery) => Promise<string>,
-  ): Promise<readonly [string, string]> => {
-    const meet = meeting(db.admin);
-    const one = connect(db.appUrl);
-    const two = connect(db.appUrl);
-    try {
-      const [first, second] = await Promise.all(
-        [one, two].map(
-          async (connection) =>
-            await connection.withBusiness(
-              business,
-              async (tx) => await share(pausedBeforeInsert(tx, meet)),
-            ),
-        ),
-      );
-      return [first ?? '', second ?? ''];
-    } finally {
-      await Promise.all([one.close(), two.close()]);
-    }
-  };
+const createTask = async (): Promise<string> => {
+  const made = await executeCommand(db.app, business, ada.presented, 'api', {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title: 'shared' },
+  } as unknown as Request);
+  if (isCommandRefusal(made)) throw new Error(`create refused ${made.code}`);
+  return made.recordId ?? '';
+};
 
-  /** The person's unrevoked root read grants on the record. */
-  const unrevokedRootReads = async (request: ShareRequest): Promise<number> =>
-    (
-      await db.admin.execute<{ readonly count: number }>(
-        `select count(*)::int as count from public.grants
-          where business_id = $1 and subject_kind = 'person' and subject_id = $2
-            and scope_kind = 'record' and scope_id = $3 and collection = $4
-            and action = 'read' and parent_grant_id is null and revoked_at is null`,
-        [business, request.personId, request.recordId, request.collection],
-      )
-    )[0]?.count ?? 0;
+/** Runs `share` on two connections at once, each paused before its insert. */
+const twice = async (
+  share: (tx: TenantQuery) => Promise<string>,
+): Promise<readonly [string, string]> => {
+  const meet = meeting(db.admin);
+  const one = connect(db.appUrl);
+  const two = connect(db.appUrl);
+  try {
+    const [first, second] = await Promise.all(
+      [one, two].map(
+        async (connection) =>
+          await connection.withBusiness(
+            business,
+            async (tx) => await share(pausedBeforeInsert(tx, meet)),
+          ),
+      ),
+    );
+    return [first ?? '', second ?? ''];
+  } finally {
+    await Promise.all([one.close(), two.close()]);
+  }
+};
 
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'shareonce' });
-    business = await insertBusiness(db.app, 'two-shares-at-once');
-    await installSpine(db.app, business);
-    ada = await enrol(db.app, business, 'ada');
-    ext = await enrol(db.app, business, 'ext');
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, ada, 'write');
-      await grantTo(tx, ada, 'share');
-    });
-  }, 60_000);
+/** The person's unrevoked root read grants on the record. */
+const unrevokedRootReads = async (request: ShareRequest): Promise<number> =>
+  (
+    await db.admin.execute<{ readonly count: number }>(
+      `select count(*)::int as count from public.grants
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and scope_kind = 'record' and scope_id = $3 and collection = $4
+          and action = 'read' and parent_grant_id is null and revoked_at is null`,
+      [business, request.personId, request.recordId, request.collection],
+    )
+  )[0]?.count ?? 0;
 
-  afterAll(async () => {
-    await db?.drop();
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'shareonce' });
+  business = await insertBusiness(db.app, 'two-shares-at-once');
+  await installSpine(db.app, business);
+  ada = await enrol(db.app, business, 'ada');
+  ext = await enrol(db.app, business, 'ext');
+  await db.app.withBusiness(business, async (tx) => {
+    await grantTo(tx, ada, 'write');
+    await grantTo(tx, ada, 'share');
+  });
+}, 60_000);
+
+afterAll(async () => {
+  await db?.drop();
+});
+
+it('two record shares at once answer one grant id and leave one grant', async () => {
+  const request = { collection: 'task', recordId: await createTask(), personId: ext.personId };
+  const ids = await twice(async (tx) => {
+    const shared = await shareRecord(tx, ada, request);
+    if (!shared.ok) throw new Error(`share refused ${shared.refusal.code}`);
+    return shared.value;
   });
 
-  it('two record shares at once answer one grant id and leave one grant', async () => {
-    const request = { collection: 'task', recordId: await createTask(), personId: ext.personId };
-    const ids = await twice(async (tx) => {
-      const shared = await shareRecord(tx, ada, request);
-      if (!shared.ok) throw new Error(`share refused ${shared.refusal.code}`);
-      return shared.value;
-    });
-
-    expect({ ids: new Set(ids).size, grants: await unrevokedRootReads(request) }).toEqual({
-      ids: 1,
-      grants: 1,
-    });
+  expect({ ids: new Set(ids).size, grants: await unrevokedRootReads(request) }).toEqual({
+    ids: 1,
+    grants: 1,
   });
+});
 
-  it('two authorised share issues at once answer one grant id and leave one grant', async () => {
-    const request = { collection: 'task', recordId: await createTask(), personId: ext.personId };
-    const ids = await twice(async (tx) => await issueShare(tx, ada.actorId, request));
+it('two authorised share issues at once answer one grant id and leave one grant', async () => {
+  const request = { collection: 'task', recordId: await createTask(), personId: ext.personId };
+  const ids = await twice(async (tx) => await issueShare(tx, ada.actorId, request));
 
-    expect({ ids: new Set(ids).size, grants: await unrevokedRootReads(request) }).toEqual({
-      ids: 1,
-      grants: 1,
-    });
+  expect({ ids: new Set(ids).size, grants: await unrevokedRootReads(request) }).toEqual({
+    ids: 1,
+    grants: 1,
   });
 });
