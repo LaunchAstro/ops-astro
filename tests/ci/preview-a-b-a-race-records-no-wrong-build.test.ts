@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// Each request pushes a commit made for it, with its version's tree, as the
+// real push does (`gitPush`), so the branch holding version A again after B
+// holds another commit than the first request's.
 import { expect, it } from 'vitest';
 import { requestPreview } from '../../scripts/ops/preview.ts';
 
@@ -12,6 +16,8 @@ it('an A to B to A preview race cannot record B as a build of A', async () => {
   };
   let calls = 0;
   const built = new Map<string, string>();
+  /** Each commit a push made, by the version it was made from. */
+  const madeFrom = new Map<string, string>();
   const deps = {
     env: {
       PREVIEWS_VERCEL_PROJECT_ID: 'prj_previews01',
@@ -19,8 +25,9 @@ it('an A to B to A preview race cannot record B as a build of A', async () => {
       PREVIEW_DEPLOY_HOOK: 'https://api.vercel.com/v1/integrations/deploy/prj_previews01/synthetic',
     },
     push: (version: string) => {
-      branch = version;
-      return true;
+      branch = String(madeFrom.size).padStart(40, 'c');
+      madeFrom.set(branch, version);
+      return branch;
     },
     head: () => branch,
     post: () => {
@@ -41,7 +48,9 @@ it('an A to B to A preview race cannot record B as a build of A', async () => {
   expect(third.kind).toBe('requested');
   resolveFirst(Response.json({ job: { id: 'job1' } }));
   for (const outcome of [await first, second, third]) {
-    if (outcome.kind === 'requested')
-      expect(built.get(outcome.record.job), outcome.record.job).toBe(outcome.record.version);
+    if (outcome.kind === 'requested') {
+      expect(built.get(outcome.record.job), outcome.record.job).toBe(outcome.record.commit);
+      expect(madeFrom.get(outcome.record.commit)).toBe(outcome.record.version);
+    }
   }
 });

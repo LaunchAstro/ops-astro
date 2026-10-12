@@ -33,6 +33,9 @@ const settings = (over: Env = {}): Env => ({
 });
 
 /** A creator whose push and post are recorded, never sent anywhere. */
+/** The commit a push makes for a request, with the version's tree. */
+const MADE = 'c'.repeat(40);
+
 function creator(env: Env, answer: () => Response = () => Response.json(JOB), pushed = true) {
   const pushes: [string, string][] = [];
   const posts: [string, RequestInit][] = [];
@@ -41,8 +44,8 @@ function creator(env: Env, answer: () => Response = () => Response.json(JOB), pu
       { version },
       {
         env,
-        push: (v, branch) => (pushes.push([v, branch]), pushed),
-        head: () => pushes.at(-1)?.[0],
+        push: (v, branch) => (pushes.push([v, branch]), pushed ? MADE : undefined),
+        head: () => (pushes.length > 0 ? MADE : undefined),
         post: (url, init) => (posts.push([url, init]), Promise.resolve(answer())),
       },
     );
@@ -131,6 +134,7 @@ function requestedCases() {
       record: {
         action: 'preview requested',
         version: VERSION,
+        commit: MADE,
         branch: 'preview-request',
         project: PREVIEWS,
         job: 'job0123456789',
@@ -178,7 +182,10 @@ function pushEnvironmentCase() {
     const bin = mkdtempSync(join(tmpdir(), 's0-8-git-'));
     try {
       const seen = join(bin, 'seen');
-      writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$*" > '${seen}'\nenv >> '${seen}'\n`);
+      writeFileSync(
+        join(bin, 'git'),
+        `#!/bin/sh\necho "$*" >> '${seen}'\nenv >> '${seen}'\n[ "$1" = commit-tree ] && echo ${MADE}\nexit 0\n`,
+      );
       chmodSync(join(bin, 'git'), 0o700);
       const env = {
         ...settings(),
@@ -186,9 +193,15 @@ function pushEnvironmentCase() {
         DATABASE_ADMIN_URL: 'postgres://canary-admin',
         OPS_ASTRO_TOKEN: 'canary-bearer',
       };
-      expect(gitPush(VERSION, env)).toBe(true);
+      expect(gitPush(VERSION, env)).toBe(MADE);
       const log = readFileSync(seen, 'utf8');
-      expect(log.split('\n')[0]).toBe(pushArgs(VERSION).join(' '));
+      expect(log.split('\n')[0]).toMatch(
+        new RegExp(
+          `^commit-tree ${VERSION}\\^\\{tree\\} -p ${VERSION} -m Preview of ${VERSION} `,
+          'u',
+        ),
+      );
+      expect(log).toContain(pushArgs(MADE).join(' '));
       expect(log).not.toMatch(/canary|PREVIEW_DEPLOY_HOOK|DATABASE_|OPS_ASTRO_/u);
     } finally {
       rmSync(bin, { recursive: true, force: true });

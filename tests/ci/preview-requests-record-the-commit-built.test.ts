@@ -34,7 +34,7 @@ it('two preview requests at once never record a commit their job did not build',
   };
   const deps = {
     env: ENV,
-    push: (version: string) => ((branch = version), true),
+    push: (version: string) => ((branch = version), version),
     head: () => branch,
     post: () =>
       new Promise<Response>((done) => {

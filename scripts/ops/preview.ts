@@ -24,6 +24,7 @@
 // commit, its target), refused on every other project.
 
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -38,6 +39,8 @@ const JOB = /^[A-Za-z0-9]{1,64}$/u;
 export interface PreviewRecord {
   readonly action: 'preview requested';
   readonly version: string;
+  /** The commit made for this request, with the version's tree, that the job built. */
+  readonly commit: string;
   readonly branch: typeof PREVIEW_BRANCH;
   readonly project: string;
   readonly job: string;
@@ -47,8 +50,12 @@ export type PreviewOutcome =
 
 export interface PreviewDeps {
   readonly env: Environment;
-  /** Puts `version` on `branch` at origin; true when the push took. */
-  readonly push: (version: string, branch: string) => boolean;
+  /**
+   * Puts a commit made for this request, with `version`'s tree and `version`
+   * its parent, on `branch` at origin; that commit, or undefined when it was
+   * not pushed.
+   */
+  readonly push: (version: string, branch: string) => string | undefined;
   /** The commit `branch` holds at origin, or undefined when it cannot be read. */
   readonly head: (branch: string) => string | undefined;
   readonly post: (url: string, init: RequestInit) => Promise<Response>;
@@ -69,13 +76,28 @@ const GIT_KEPT = ['PATH', 'HOME', 'TMPDIR', 'SSH_AUTH_SOCK', 'GIT_SSH_COMMAND'];
 const gitEnvironment = (env: Environment): Environment =>
   Object.fromEntries(GIT_KEPT.flatMap((name) => (env[name] ? [[name, env[name]]] : [])));
 
-/** The push the command uses: the person's git, its environment held to `GIT_KEPT`. */
-export function gitPush(version: string, env: Environment): boolean {
-  const result = spawnSync('git', pushArgs(version), {
+/**
+ * The push the command uses: the person's git, its environment held to
+ * `GIT_KEPT`. It makes a commit of its own for this request, so no other
+ * request, one for the same version included, leaves the branch on it.
+ */
+export function gitPush(version: string, env: Environment): string | undefined {
+  const message = `Preview of ${version} (request ${randomUUID()})`;
+  const made = spawnSync(
+    'git',
+    ['commit-tree', `${version}^{tree}`, '-p', version, '-m', message],
+    {
+      env: gitEnvironment(env),
+      encoding: 'utf8',
+    },
+  );
+  const commit = made.stdout.trim();
+  if (made.status !== 0 || !VERSION.test(commit)) return undefined;
+  const result = spawnSync('git', pushArgs(commit), {
     env: gitEnvironment(env),
     stdio: 'inherit',
   });
-  return result.status === 0;
+  return result.status === 0 ? commit : undefined;
 }
 
 /** The commit the preview branch holds at origin, read as the push is made. */
@@ -123,7 +145,8 @@ export async function requestPreview(
   if (!VERSION.test(request.version)) problems.push('the version is not one full commit id');
   if (problems.length > 0)
     return { kind: 'refused', reason: `${problems.join('; ')}. Nothing was pushed or built.` };
-  if (!deps.push(request.version, PREVIEW_BRANCH))
+  const commit = deps.push(request.version, PREVIEW_BRANCH);
+  if (commit === undefined)
     return {
       kind: 'failed',
       reason: `the push to ${PREVIEW_BRANCH} failed; no preview was asked for`,
@@ -134,15 +157,24 @@ export async function requestPreview(
   );
   if (job === undefined)
     return { kind: 'failed', reason: 'the deploy hook did not answer a job; nothing was recorded' };
-  // Every request shares the branch, and the hook builds what it holds. One
-  // that moved before the hook answered may have been built in this one's
-  // place, so the record would name a commit the job did not build.
-  if (deps.head(PREVIEW_BRANCH) !== request.version)
+  // Every request shares the branch, and the hook builds what it holds. Each
+  // pushes a commit made for it alone, so a branch moved by any other request,
+  // even back to the same version, no longer holds it, and the job may have
+  // built that request's commit in this one's place. Still open: a hook that
+  // clones the branch after it answers; only reading back the commit the
+  // preview built closes that (the Viewer token's read-back, above).
+  if (deps.head(PREVIEW_BRANCH) !== commit)
     return {
       kind: 'failed',
       reason: `another request moved ${PREVIEW_BRANCH} before the hook answered; nothing was recorded, ask again`,
     };
   const project = deps.env['PREVIEWS_VERCEL_PROJECT_ID'] ?? '';
-  const record = { action: 'preview requested', version: request.version, project, job } as const;
+  const record = {
+    action: 'preview requested',
+    version: request.version,
+    commit,
+    project,
+    job,
+  } as const;
   return { kind: 'requested', record: { ...record, branch: PREVIEW_BRANCH } };
 }
