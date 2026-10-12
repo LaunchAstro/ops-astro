@@ -76,8 +76,10 @@ describe('a sealed secret and the place it was set', () => {
     ).toThrow();
   });
 
-  it('still opens a value sealed before the binding', () => {
-    expect(open(sealedBeforeTheBinding(VALUE), pair.privateKey, home)).toBe(VALUE);
+  it('opens a value sealed before the binding nowhere, asking for it to be set again', () => {
+    expect(() => open(sealedBeforeTheBinding(VALUE), pair.privateKey, home)).toThrow(
+      /set it again/u,
+    );
   });
 
   it('does not open a bound value passed off as one sealed before the binding', () => {
