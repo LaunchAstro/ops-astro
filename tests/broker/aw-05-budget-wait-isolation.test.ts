@@ -14,14 +14,18 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
-import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import { callModel, type ModelCallResult } from '../../packages/core-custody/src/index.ts';
+import {
+  callModel,
+  type ModelCaller,
+  type ModelCallResult,
+} from '../../packages/core-custody/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import { insertLogin } from '../identity/fixture.ts';
 import {
+  appliedDetail,
   approve,
+  asAgent,
   createTask,
   freshPurpose,
   liveWork,
@@ -53,8 +57,13 @@ const refusedAlike = (result: ModelCallResult): void => {
   expect(result.ok ? null : result.code).toBe('LEASE_NOT_OWNED');
 };
 
-/** Another person of the business, with their own agent holding a live delegation on their own work. */
-async function otherPersonsAgent(): Promise<string> {
+/**
+ * Another person of the business, with their own agent under the live
+ * delegation its own pickup minted: the work is that person's, proposed and
+ * approved by them, so the agent and its delegation are a valid pair that is
+ * simply not this lease's.
+ */
+async function otherPersonsAgent(): Promise<Partial<ModelCaller>> {
   const other = await enrol(s.db.app, s.business, 'aw05-other-decider');
   const subject = `agent-${randomUUID()}`;
   const agent = randomUUID();
@@ -73,25 +82,22 @@ async function otherPersonsAgent(): Promise<string> {
       [s.business, randomUUID(), await insertLogin(tx, subject), agent, other.actorId],
     );
   });
-  const theirs = await createTask(s, 'aw05 the other agent task');
+  const theirs = { ...s, decider: other, agent: { provider: 'supabase', subject } } as const;
+  const task = await createTask(theirs, 'aw05 the other agent task');
   const decision = await approve(
-    s,
-    await propose(s, theirs, { maximumMinor: AT_THE_CEILING, purpose: freshPurpose() }),
+    theirs,
+    await propose(theirs, task, { maximumMinor: AT_THE_CEILING, purpose: freshPurpose() }),
   );
-  const picked = await executeAgentCommand(
-    s.db.app,
-    s.business,
-    { provider: 'supabase', subject },
-    undefined,
-    {
+  const picked = appliedDetail(
+    await asAgent(theirs, {
       command: 'task.pickup',
       operationId: randomUUID(),
       reservationId: decision['reservationId'],
       leaseSeconds: 600,
-    } as never,
+    }),
+    'task.pickup',
   );
-  expect(isCommandRefusal(picked as object)).toBe(false);
-  return agent;
+  return { actorId: agent, delegationId: String(picked['delegationId']) };
 }
 
 const waitOf = async (leaseId: unknown) =>
@@ -105,10 +111,14 @@ const waitOf = async (leaseId: unknown) =>
     )
   )[0];
 
-/** The lease's holder swapped for `actorId`, in `businessId`: refused as a made-up lease, and the run untouched. */
-async function crossing(mine: Work, businessId: BusinessId, actorId: string): Promise<void> {
+/** The lease's caller swapped for `other`, in `businessId`: refused as a made-up lease, and the run untouched. */
+async function crossing(
+  mine: Work,
+  businessId: BusinessId,
+  other: Partial<ModelCaller>,
+): Promise<void> {
   refusedAlike(
-    await callModel(s.db.app, businessId, { ...caller(mine), actorId }, requestFor(mine), broker),
+    await callModel(s.db.app, businessId, { ...caller(mine), ...other }, requestFor(mine), broker),
   );
   expect(await waitOf(mine.picked['leaseId'])).toEqual({
     run: 'claimed',
@@ -152,8 +162,8 @@ it('AW-05 isolation', async () => {
   // 1. Another business's agent; 2. a record-scoped person of this business;
   // 3. another person's agent under its own live delegation.
   const bravo = await seedSchedules(s.db, 'aw05bravo', 1_000_000);
-  await crossing(mine, bravo.business, bravo.agentActorId);
-  await crossing(mine, s.business, await recordScopedPerson());
+  await crossing(mine, bravo.business, { actorId: bravo.agentActorId });
+  await crossing(mine, s.business, { actorId: await recordScopedPerson() });
   await crossing(mine, s.business, await otherPersonsAgent());
 
   // The run's own agent stops it, once.
