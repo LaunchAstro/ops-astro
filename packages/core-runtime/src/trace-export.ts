@@ -21,7 +21,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
-import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
+import { gapOf, rejectedSome, type Deliver, type GapCode } from './trace-delivery.ts';
 import { letGo, release, renew, take, type Cursor } from './trace-lease.ts';
 import { owedSince } from './trace-owed.ts';
 import { derivedId, otlp, traceSpan, type TraceSpan } from './trace-span.ts';
@@ -58,7 +58,8 @@ export interface TraceDatabase {
  * has lost it stops, `held`. The events owed again
  * (`owedSince`) go first, in bodies of at most `TRACE_BATCH` in the cursor's
  * order, the batch's own events with the last; one refused body stops the
- * rest, and the next export sends them all again.
+ * rest, and the next export sends them all again. A body the target took in
+ * part (OTLP's `partialSuccess`) is a gap on record too, but never sent again.
  *
  * The read takes only events whose writing transaction is below its
  * snapshot's horizon, in transaction order (0090): every transaction below
@@ -93,27 +94,30 @@ export async function exportOnce(
   const renewed = async (at: string | null): Promise<string | null> =>
     await database.withBusiness(businessId, async (tx) => await renew(tx, holder, at));
   let { version } = from;
-  let code: GapCode | null = null;
+  let code: GapCode | typeof REJECTED_SOME | null = null;
   let spans = 0;
   for (const body of sent) {
     // eslint-disable-next-line no-await-in-loop -- the lease before each body
     version = await renewed(version);
     if (version === null) return { kind: 'held' };
     spans += body.length;
+    const traced = body.map((row) => spanOf(key, businessId, row));
     // eslint-disable-next-line no-await-in-loop -- one body after another, in the cursor's order
-    code = await send(
-      deliver,
-      body.map((row) => spanOf(key, businessId, row)),
-    );
-    if (code !== null) break;
+    code = (await send(deliver, traced)) ?? code;
+    if (code !== null && code !== REJECTED_SOME) break;
   }
+  // A body taken in part is a gap on record, and the cursor moves past it: never sent again.
+  const gap = code === REJECTED_SOME ? 'target_refused' : code;
   await database.withBusiness(businessId, async (tx) => {
-    if (code === null) await advance(tx, last, holder, version);
-    else await recordGap(tx, code, from, batch.length);
-    await letGo(tx, holder, code);
+    if (code === null || code === REJECTED_SOME) await advance(tx, last, holder, version);
+    if (gap !== null) await recordGap(tx, gap, from, batch.length);
+    await letGo(tx, holder, gap);
   });
-  return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
+  return gap === null ? { kind: 'delivered', spans } : { kind: 'gap', code: gap, spans };
 }
+
+/** A body the target took in part (`rejectedSome`). */
+const REJECTED_SOME = 'rejected_some';
 
 /**
  * One body. A body larger than a plain export's (`TRACE_BATCH`) that the
@@ -121,8 +125,13 @@ export async function exportOnce(
  * resend then asks no more of the target than a plain export does, and the
  * earliest span still leaves first.
  */
-async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapCode | null> {
-  const code = gapOf(await deliver(otlp(spans)));
+async function send(
+  deliver: Deliver,
+  spans: readonly TraceSpan[],
+): Promise<GapCode | typeof REJECTED_SOME | null> {
+  const answer = await deliver(otlp(spans));
+  const code = gapOf(answer);
+  if (code === null && rejectedSome(answer)) return REJECTED_SOME;
   if (code !== 'target_oversized_body' || spans.length <= TRACE_BATCH) return code;
   const half = Math.ceil(spans.length / 2);
   return (await send(deliver, spans.slice(0, half))) ?? (await send(deliver, spans.slice(half)));
