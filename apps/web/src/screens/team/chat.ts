@@ -252,9 +252,9 @@ function commandOf(action: GroupAction): readonly [ChatCommand, Record<string, u
 
 /**
  * What the panel draws for reader `me`: each conversation whose messages are
- * held, a direct one named by its other member. `canManage` is false: the
- * list does not say who started a group, so rename and membership are not
- * offered here, and the server answers either way.
+ * held, a direct one named by its other member. `canManage` is the list's
+ * word that the reader may rename the group and change its members; the
+ * server answers either way.
  */
 export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
   const { list } = chat;
@@ -277,7 +277,7 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
     else if (view.kind === 'group') {
       const { conversationId: id, members } = view;
       const name = view.name ?? 'A group you left';
-      groups.push({ id, name, members, canManage: false, left, ...readable });
+      groups.push({ id, name, members, canManage: view.canManage, left, ...readable });
     }
   }
   const directWith = (person: string): string | undefined =>

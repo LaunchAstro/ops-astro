@@ -11,6 +11,7 @@ import {
   listConversations,
   readConversation,
   readConversationTypes,
+  subjectsOf,
   type Session,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
@@ -26,7 +27,10 @@ export async function readChatConversations(
   const types = await readConversationTypes(tx);
   return {
     ok: true,
-    conversations: types === undefined ? [] : await listConversations(tx, types, session.personId),
+    conversations:
+      types === undefined
+        ? []
+        : await listConversations(tx, types, session.personId, subjectsOf(session)),
   };
 }
 

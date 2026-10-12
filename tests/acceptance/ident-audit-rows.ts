@@ -106,9 +106,18 @@ export interface AuditExpectation {
 }
 
 /**
+ * The applied commands that also write one event per record they create
+ * (`Applied.carried`): `onboarding.start` names the client, then each step task
+ * it lays out.
+ */
+const CARRIES_CREATIONS: ReadonlySet<string> = new Set(['onboarding.start']);
+
+/**
  * Exactly one row for this attempt, in the caller's own business and nowhere
  * else, naming who, what, which operation and how it ended, and carrying the
- * request only as a digest.
+ * request only as a digest. A command in `CARRIES_CREATIONS` that applied has
+ * that row first, then one more for each record it created, each a distinct
+ * record and alike in everything but its subject.
  */
 export function expectAudited(
   label: string,
@@ -118,8 +127,21 @@ export function expectAudited(
   const elsewhere = rows.filter((row) => row.business_id !== expected.businessId);
   expect(elsewhere, `${label}: audit outside the caller's business`).toStrictEqual([]);
   const own = rows.filter((row) => row.command === expected.command);
-  expect(own, `${label}: audit rows for ${expected.command}`).toHaveLength(1);
   const row = own[0] as AuditRow;
+  const created = own.slice(1);
+  if (expected.outcome === 'applied' && CARRIES_CREATIONS.has(expected.command)) {
+    expect(created.length, `${label}: creation rows for ${expected.command}`).toBeGreaterThan(0);
+    const subjects = own.map((one) => one.subject_record_id);
+    expect(subjects, `${label}: one row per record`).toStrictEqual([...new Set(subjects)]);
+  } else {
+    expect(own, `${label}: audit rows for ${expected.command}`).toHaveLength(1);
+  }
+  for (const one of created) {
+    expect(
+      { ...one, seq: null, subject_record_id: null },
+      `${label}: creation row alike but for its subject`,
+    ).toStrictEqual({ ...row, seq: null, subject_record_id: null });
+  }
   expect(
     [row.actor_id, row.command, row.operation_id, row.outcome, row.refusal_code],
     `${label}: actor, command, operation, outcome, code`,
@@ -132,7 +154,7 @@ export function expectAudited(
   ]);
   expect(row.payload_digest, `${label}: digest`).toMatch(/^[0-9a-f]{64}$/u);
   expect(row.attempted, `${label}: attempted`).toBeNull();
-  const stored = JSON.stringify(row);
+  const stored = JSON.stringify(own);
   for (const content of contentOf(expected.body)) {
     expect(stored.includes(content), `${label}: audit row carries "${content}"`).toBe(false);
   }

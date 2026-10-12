@@ -36,6 +36,10 @@
 // run state this module does not know is kept raw (`runState`) with the
 // condition `unrecognised`, never dropped.
 
+import type {
+  ExecutionGraph as WireGraph,
+  ExecutionNode as WireNode,
+} from '../../../core-wire/src/index.ts';
 import type { RunDefinition } from './execution-definition.ts';
 import type { HelperEntry, PlacedStep } from './execution-helpers.ts';
 import { validateFacts, type RunFacts } from './execution-facts.ts';
@@ -70,7 +74,8 @@ export interface ObservedLayer {
   readonly currency: string;
 }
 
-export interface GraphNode {
+/** A wire node (`views-run.ts`) and more: the typecheck refuses a node the wire would not take. */
+export interface GraphNode extends WireNode {
   readonly nodeId: string;
   /** The observed condition, or `unplanned`: a run outside the bound plan. */
   readonly condition: NodeCondition;
@@ -91,7 +96,8 @@ export interface PlannedStepNode {
   readonly runIds: readonly string[];
 }
 
-export interface ExecutionGraph {
+/** The wire graph and more, so the contract cannot drift from what this draws. */
+export interface ExecutionGraph extends WireGraph {
   readonly plan: 'bound' | 'unbound';
   readonly planRecordId: string | null;
   /** The run the plan was accepted on. */

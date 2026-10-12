@@ -28,7 +28,10 @@ const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
     declaration.kind === 'write' &&
     // `map.scope` is a map's `task.set_party` (WF-1): a client change too.
-    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(declaration.name),
+    // `onboarding.start` names a step task only in laying it out: a creation.
+    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope', 'onboarding.start'].includes(
+      declaration.name,
+    ),
 ).map((declaration) => declaration.name);
 
 /**

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a chat conversation view says the reader may manage a group only as its creator or a member holding chat:manage, not after leaving it, never for a direct conversation, and for a credential only within its ticked keys"
+}
