@@ -11,13 +11,10 @@ describe('INB-1 mentions', () => {
       businessId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       query<Row>(sql: string): Promise<readonly Row[]> {
         if (sql.includes('from public.people p')) {
-          return Promise.resolve([{ id: person, name: 'Ada Teammate', member: true }] as Row[]);
+          return Promise.resolve([
+            { id: person, name: 'Ada Teammate', member: true, reads: true },
+          ] as Row[]);
         }
-        if (sql.includes('from public.records')) {
-          return Promise.resolve([{ trashed: false, clientId: null }] as Row[]);
-        }
-        if (sql.includes('from public.actors')) return Promise.resolve([]);
-        if (sql.includes('from effective e')) return Promise.resolve([{ id: 'grant-1' }] as Row[]);
         throw new Error(`Unexpected query: ${sql}`);
       },
     };

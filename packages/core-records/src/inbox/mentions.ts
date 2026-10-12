@@ -5,7 +5,7 @@
 // from `raise.ts` unchanged.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { REACH, taskAccess } from './access.ts';
+import { REACH, readableNow } from './access.ts';
 import { raiseInboxItem, type InboxReason } from './items.ts';
 
 /** A person a comment names, as this business knows them. */
@@ -30,29 +30,36 @@ export interface Mentioned {
  * A person of another business is not found here and is named back only by
  * the identifier the caller sent. An identifier matches in any letter case, as
  * the database compares it, and a found person comes back by their stored one.
+ * Whether each reads the task is asked in this one statement (`readableNow`),
+ * not one access walk per person under the task's lock.
  */
 export async function readMentions(
   tx: TenantQuery,
   comment: { readonly taskId: string; readonly audience: string },
   personIds: readonly string[],
 ): Promise<readonly Mentioned[]> {
-  const people = await tx.query<{ readonly id: string; name: string; member: boolean }>(
+  const people = await tx.query<{
+    readonly id: string;
+    name: string;
+    member: boolean;
+    reads: boolean;
+  }>(
     `select p.id, p.display_name as name,
             exists (select 1 from public.memberships m
                      where m.business_id = p.business_id and m.person_id = p.id and m.active)
-              as member
+              as member,
+            exists (select 1 from public.records r
+                     where r.business_id = p.business_id and r.id = $3
+                       and ${readableNow('p.id', "'infinity'")}) as reads
        from public.people p where p.business_id = $1 and p.id = any($2::uuid[])`,
-    [tx.businessId, personIds],
+    [tx.businessId, personIds, comment.taskId],
   );
   const named: Mentioned[] = [];
   const asked = new Map(personIds.map((sent) => [sent.toLowerCase(), sent] as const));
   for (const [canonical, sent] of asked) {
     const person = people.find((row) => row.id.toLowerCase() === canonical);
     const readable =
-      person !== undefined &&
-      (person.member || comment.audience === 'client') &&
-      // oxlint-disable-next-line no-await-in-loop
-      (await taskAccess(tx, person.id, comment.taskId)) === 'readable';
+      person !== undefined && (person.member || comment.audience === 'client') && person.reads;
     named.push({
       personId: person?.id ?? sent,
       label: person?.name ?? sent,
