@@ -7,7 +7,9 @@
 //
 // Approving and publishing lock the version's row (`for update`) and decide
 // from what is read under that lock, so an approval and a publication racing
-// on one version apply in one order, each seeing the other's effect.
+// on one version apply in one order, each seeing the other's effect. A
+// publication also takes its document's publication lock before it stamps,
+// so publications of different versions of one document commit in order.
 //
 // The privacy policy reads the overseas-services register (migration 0052): a
 // policy version is drafted with the rows in use and their digest, and
@@ -22,7 +24,7 @@
 // approving or publishing it is refused once they have changed since.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { readDataClasses, type ListedDataClass } from './data-classes.ts';
 import { lockRegister, readRegister, type ListedService } from './overseas-services.ts';
 
@@ -208,9 +210,10 @@ export async function publishLegalVersion(
   if (row.approved_at === null) return 'not-approved';
   const register = await registerRefusal(tx, row);
   if (register !== undefined) return register;
-  // Stamped when the publish is written, not when its transaction began, so a
-  // publication written after another committed is current whichever began
-  // first (#444); two written at once stamp in write order (#1011).
+  // One publication of a document at a time, held to commit, then stamped on
+  // the clock after that wait: of two publications of one document at once,
+  // the one that commits later is the later stamp and so the current one.
+  await advisoryLock(tx, `legal-publication:${tx.businessId}:${row.document}`);
   await tx.query(
     `update public.legal_document_versions
         set published_at = clock_timestamp(), published_by_actor = $3
