@@ -53,6 +53,10 @@ export interface AssistantProposal {
   /** The task's Due day (`YYYY-MM-DD`) and Estimate in minutes, where proposed. */
   readonly due?: string;
   readonly estimate?: number;
+  /** Who a new task's block named, as the reply wrote it. */
+  readonly assignee?: string;
+  /** Who the click assigns a new task to, and why not the one named; absent until the team is read. */
+  readonly assignedTo?: { readonly name: string; readonly note: string | null };
   readonly state: ProposalCardState;
   /** The task made or changed, once the server kept it. */
   readonly task: { readonly label: string; readonly href: string } | null;

@@ -49,7 +49,7 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
-import { sendProposal } from '../assistant/proposals.ts';
+import { useProposalCards } from '../assistant/proposals.ts';
 import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
@@ -265,10 +265,11 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
   const models = useModels(props.client, opened);
+  const cards = useProposalCards(props, store);
   return (
     <AssistantPanel
+      {...cards}
       subject={subject}
-      chats={state.chats}
       selected={state.selected}
       offer={modelOffer(subject, models, null)}
       address={
@@ -293,7 +294,6 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
       onAddPage={writes.addPage}
       onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
-      onPropose={(key, id) => void sendProposal(props, store, { key, id })}
       onClose={props.onClose}
     />
   );

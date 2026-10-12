@@ -213,6 +213,7 @@ export {
   PROPOSAL_DESCRIPTION_LIMIT,
   PROPOSAL_ESTIMATE_LIMIT,
   PROPOSAL_TITLE_LIMIT,
+  proposalAssign,
   proposalCreate,
   proposalEdit,
   readProposal,

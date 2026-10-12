@@ -10,8 +10,11 @@
 //   ```
 //
 // `due` is a calendar day and `estimate` whole minutes, both optional; they
-// fill the task's Due and Estimate fields rather than its description. The
-// model never names an id or an assignee: `edit` always means the chat's own task. Only a
+// fill the task's Due and Estimate fields rather than its description. A create
+// may name who it is for, `assignee`, by the name the person used: the card
+// matches it to one person on the team, or gives the task to whoever clicks
+// (`apps/web/src/assistant/proposals.ts`). The model never names an id: `edit`
+// always means the chat's own task, and changes no assignee. Only a
 // whole, valid block is read. Any other key, a second block, a block with
 // words after it, bad JSON or a value out of range gives no proposal, and the
 // body stays exactly as written. Nothing here writes: the person's click on the
@@ -33,6 +36,8 @@ export type TaskProposal = (
       readonly action: 'create';
       readonly title: string;
       readonly description: string | null;
+      /** Who the task is for, by name; absent, whoever clicks Create. */
+      readonly assignee?: string;
     }
   | {
       readonly action: 'edit';
@@ -52,7 +57,7 @@ export interface ProposalRead {
 const OPENING = /^ {0,3}(?:`{3,}|~{3,})[ \t]*task\b/mu;
 /** The one block, closing the reply: its JSON, then only white space. */
 const CLOSING = /(?:^|\n)```task[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*\s*$/u;
-const KEYS = new Set(['action', 'title', 'description', 'due', 'estimate']);
+const KEYS = new Set(['action', 'title', 'description', 'due', 'estimate', 'assignee']);
 
 const characters = (text: string): number => [...text].length;
 
@@ -100,13 +105,15 @@ function proposalOf(value: unknown): TaskProposal | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const fields = value as Record<string, unknown>;
   if (Object.keys(fields).some((key) => !KEYS.has(key))) return null;
-  const { action, title, description } = fields;
+  const { action, title, description, assignee } = fields;
   const plan = planOf(fields);
   if (plan === null) return null;
   if (description !== undefined && !described(description)) return null;
   if (title !== undefined && !titled(title)) return null;
+  if (assignee !== undefined && (action !== 'create' || !titled(assignee))) return null;
   if (action === 'create' && title !== undefined) {
-    return { action, title, description: description ?? null, ...plan };
+    const named = assignee === undefined ? {} : { assignee };
+    return { action, title, description: description ?? null, ...plan, ...named };
   }
   const named = title !== undefined || description !== undefined || Object.keys(plan).length > 0;
   if (action === 'edit' && named) {
@@ -161,6 +168,27 @@ export function proposalCreate(
   return {
     operationId: operationOf(messageId),
     body: { fields: fieldsOf(proposal), conversationId },
+  };
+}
+
+/**
+ * The `task.assign` a create's click sends once the task is made, for the
+ * reply `messageId`: to `personId`, at the revision the create returned.
+ */
+export function proposalAssign(
+  messageId: string,
+  task: { readonly recordId: string; readonly revision: number },
+  personId: string,
+): ProposalWrite<{
+  readonly recordId: string;
+  readonly fields: { readonly assignee: string };
+}> & {
+  readonly expectedRevision: number;
+} {
+  return {
+    operationId: `task-proposal-assign:${messageId}`,
+    expectedRevision: task.revision,
+    body: { recordId: task.recordId, fields: { assignee: personId } },
   };
 }
 

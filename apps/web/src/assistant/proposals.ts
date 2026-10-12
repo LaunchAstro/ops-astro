@@ -5,8 +5,12 @@
 // person's one click is the only write.
 //
 // **Create** sends `task.create` with the title, the description and the
-// conversation as its origin (`tasks-write.ts` `originOf`), assigning nobody
-// and starting nothing.
+// conversation as its origin (`tasks-write.ts` `originOf`), starting nothing.
+// Once it answers, `task.assign` gives the new task, at the revision the create
+// returned, to whoever clicked, or to the one teammate the block names
+// (`assigneeOf`), as the task draft assigns its own (`draft-command.ts`): the
+// existing command and its checks, no new authority. The card shows who
+// before the click.
 //
 // **Edit** applies to the chat's own task at the revision its question was
 // asked at. A question in a chat on a task first reads that task, before it is
@@ -23,18 +27,21 @@
 // presents the same attempt with the same payload, and the register replays its
 // first outcome (`register-store.ts`), refusal included.
 
+import { useMemo } from 'react';
 import type { AssistantMessage, AssistantProposal } from '@launchastro/ui';
 import {
   proposalCreate,
   proposalEdit,
   readProposal,
   type TaskReadResult,
+  type TeamListResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
+import { assign, assigned, useTeam } from './assignees.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
@@ -119,7 +126,7 @@ export function keepBaseline(
   slot.write(Object.fromEntries(kept.slice(-BASELINE_LIMIT)));
 }
 
-type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
+export type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
 
 /** One card's click, in flight or answered, in tab `key` or the tab it was folded into. */
 export function settleProposal(
@@ -174,13 +181,12 @@ async function create(
     await view.client.mutate('task.create', write.body, { operationId: write.operationId }),
   );
   if (settled.kind !== 'ok') return unsettled(settled);
-  const { detail, recordId } = settled.value;
+  const { detail, recordId, revision } = settled.value;
   const key = detail?.['key'];
-  return {
-    state: 'made',
-    refusal: null,
-    task: taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId),
-  };
+  const task = taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId);
+  const assigning = await assign(view, proposal, source, { recordId, revision });
+  if (assigning?.state === 'unknown') return { ...assigning, task: null };
+  return { state: 'made', refusal: null, task, ...assigning };
 }
 
 async function edit(
@@ -216,6 +222,8 @@ export interface ProposalStore {
 export interface ClickView {
   readonly client: OperationsClient;
   readonly grantKey?: string | undefined;
+  /** The team the cards were drawn with; unread, the click reads it. */
+  readonly team?: TeamListResult | null;
 }
 
 /** A card's one click: one write, its answer settling the card. */
@@ -234,4 +242,16 @@ export async function sendProposal(
   const send = proposal.action === 'create' ? create : edit;
   const settled = await send(view, chat, proposal, source);
   store.update((current) => settleProposal(current, key, id, settled));
+}
+
+/** The tabs as drawn, each new task's card saying who it goes to, and the cards' one click. */
+export function useProposalCards(
+  view: ClickView,
+  store: ProposalStore & { state: AssistantState },
+) {
+  const team = useTeam(view.client, store.state.chats);
+  const chats = useMemo(() => assigned(store.state.chats, team), [store.state.chats, team]);
+  const onPropose = (key: string, id: string): void =>
+    void sendProposal({ ...view, team }, store, { key, id });
+  return { chats, onPropose };
 }
