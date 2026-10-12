@@ -15,8 +15,8 @@ const BLOCK = new Set(
     'hr li main nav p section td th'
   ).split(' '),
 );
-// Elements whose text the capture never reads (capture/page.ts): these in HTML, and script and
-// style anywhere.
+// Elements whose text the capture never reads (capture/page.ts): these and any marked `hidden` in
+// HTML, and script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
 export const visible = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim();
 
@@ -46,7 +46,8 @@ function rendered(html: string): string[] | undefined {
     if ('tagName' in node) {
       const html5 = node.namespaceURI === markup.NS.HTML;
       const name = node.tagName;
-      hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
+      const marked = HIDDEN.has(name) || node.attrs.some((one) => one.name === 'hidden');
+      hides ||= html5 ? marked : name === 'script' || name === 'style';
       // An element breaks the text where it opens and closes, a block element into a new block.
       const block = html5 && BLOCK.has(name);
       if (block) blocks.push('');

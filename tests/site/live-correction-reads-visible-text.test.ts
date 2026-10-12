@@ -256,3 +256,20 @@ it.each([
   expect(job.change.files[0]?.after).not.toBe(source);
   expect(occurrenceOf(job.change, target)).toBeUndefined();
 });
+
+// A paragraph with the `hidden` attribute is never shown, so a correction inside it is never seen.
+it('text in a hidden paragraph cannot certify a correction as live', async () => {
+  const source = '<p hidden>We walk alongside you.</p>\n<p>Shown text stays.</p>\n';
+  const job = approvedJob(source, 'alongside');
+  expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('accepted');
+  expect(await capturedText(source)).toBe('Shown text stays.');
+});
+
+// The source placement leaves a `hidden` element out as the capture does, so a page holding one
+// elsewhere still places, and goes live with, a correction a reader does see.
+it('a hidden element elsewhere on the page still lets a shown correction go live', async () => {
+  const source = '<div hidden>Menu</div>\n<p>We walk alongside you.</p>\n';
+  const job = approvedJob(source);
+  expect(occurrenceOf(job.change, target)).toBeDefined();
+  expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('live');
+});

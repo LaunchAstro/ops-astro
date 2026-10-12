@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the API's occurrence sweeper fires a due scheduled activation as its business's own worker, skips a business with no worker, and stops"
+}

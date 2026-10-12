@@ -291,5 +291,5 @@ export async function capturePicture(
   state.failed ??= unapplied ? 'CAPTURE_FAILED' : undefined;
   if (state.failed !== undefined) return { ok: false, code: state.failed };
   const digest = `sha256:${createHash('sha256').update(png).digest('hex')}`;
-  return { ok: true, value: { url, digest, png, refused: state.refused } };
+  return { ok: true, value: { url: page.value.url, digest, png, refused: state.refused } };
 }

@@ -223,22 +223,24 @@ describe.skipIf(serverUrl === undefined)(
 );
 
 describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approval', () => {
-  it('writes the job after-image when the binding and proposal hold different bytes', async () => {
+  it('writes nothing when the binding holds bytes other than the stored approval', async () => {
     const id = await approved();
     const { site, ports } = await bound(id, {
       change: { before: BEFORE, after: 'unapproved bytes' },
     });
     site.state.proposed = 'unapproved proposal bytes';
-    expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect(site.state.content).toBe(AFTER);
-    expect(site.state.request?.merged).toBe(false);
+    const outcome = await publish(id, ports());
+    expect(outcome).toMatchObject({ kind: 'recorded' });
+    expect(outcome).not.toMatchObject({ state: 'live' });
+    expect(site.state.content).toBe(BEFORE);
+    expect(site.sent.filter((sent) => sent.method === 'PUT')).toEqual([]);
   });
 
   it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
     const id = await approved({ before, after });
-    const { site, ports } = await bound(id, { change: { before, after } });
+    const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);
     const write = site.sent.find((sent) => sent.method === 'PUT');

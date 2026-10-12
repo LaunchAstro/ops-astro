@@ -22,13 +22,15 @@
 // A binding is made only by `siteBindingFor`, from the correction's own
 // party's site: the one place a party is mapped to its pages and their source
 // files (#989 criterion 2). A correction of another party, or on a page or
-// file the site does not hold spelt exactly, binds to nothing.
+// file the site does not hold spelt exactly, binds to nothing; nor do bytes
+// that are not the version the proposal names, so a revert writes back only
+// the approved pre-image.
 
 import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
 import { siteOperation } from './operations.ts';
 import type { Published, PublishPorts } from './publish.ts';
 import { checkEnvelope } from './envelope.ts';
-import { contentDigest, versionDigestOf } from './version.ts';
+import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
 /** One party's site: its providers, and each catalogued page with its source file. */
 export interface PartySite {
@@ -79,7 +81,7 @@ export type MadeBinding =
   | { readonly ok: true; readonly binding: SiteBinding }
   | { readonly ok: false; readonly code: SiteRefusal };
 
-type SiteRefusal = 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE';
+type SiteRefusal = 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE' | 'PROPOSAL_SUPERSEDED';
 
 /**
  * Another party's site, or a page and file the site does not hold as one
@@ -96,16 +98,23 @@ export function partySiteRefuses(
   return held ? undefined : 'PAGE_OUTSIDE_PARTY_SITE';
 }
 
-/** The correction's binding on its own party's site, or `partySiteRefuses`'s refusal. */
+/**
+ * The correction's binding on its own party's site, or `partySiteRefuses`'s refusal. The change is
+ * the bytes of the version the proposal names, rebuilt with that version's pin, or nothing binds.
+ */
 export function siteBindingFor(
   site: PartySite,
   correction: BoundCorrection,
   made: Pick<SiteBinding, 'change'> & {
     readonly proposal: Omit<SiteBinding['proposal'], 'branch'>;
+    readonly version: Omit<VersionPin, 'change'>;
   },
 ): MadeBinding {
   const code = partySiteRefuses(site, correction);
   if (code !== undefined) return { ok: false, code };
+  const files = [{ path: correction.targetPath, ...made.change }];
+  if (versionDigestOf({ ...made.version, change: { files } }) !== made.proposal.versionDigest)
+    return { ok: false, code: 'PROPOSAL_SUPERSEDED' };
   const { partyId, repository, defaultBranch, project } = site;
   return {
     ok: true,
@@ -208,7 +217,7 @@ async function deploymentOf(
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
 
-/** `site.publish`: one approved contents write, then its deployment by the written commit. */
+/** `site.publish`: one approved contents write, through a binding holding the approved bytes its revert needs. */
 export async function mergeAndFind(
   binding: SiteBinding,
   input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
@@ -223,8 +232,8 @@ export async function mergeAndFind(
     input.target.path !== binding.path ||
     !checkEnvelope(input.change, input.target).ok ||
     file === undefined ||
-    file.before === null ||
-    file.after === null ||
+    file.before !== binding.change.before ||
+    file.after !== binding.change.after ||
     contentDigest(file.before) !== input.preImageDigest
   ) {
     return stop('refused', 'PROPOSAL_SUPERSEDED', deps);

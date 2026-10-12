@@ -17,6 +17,7 @@ import {
   PROJECT,
   REPOSITORY,
   SEAM,
+  VERSION_PIN,
 } from './c80-site-provider.ts';
 
 const PARTY_A = '0b8d6f2e-1c4a-4e7b-9a3d-5f6e7d8c9b0a';
@@ -51,7 +52,7 @@ const proposal = { request: '17', head: HEAD, versionDigest: DIGEST };
 const change = { before: BEFORE, after: AFTER };
 
 const bind = (site: PartySite, over: Parameters<typeof correction>[0] = {}) =>
-  siteBindingFor(site, correction(over), { proposal, change });
+  siteBindingFor(site, correction(over), { proposal, change, version: VERSION_PIN });
 
 describe("C80 a correction binds only through its own party's site", () => {
   it("binds a correction on its party's page and file, with the site's own providers", () => {

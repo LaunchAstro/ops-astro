@@ -85,7 +85,7 @@ function moves(length: number) {
   return adapter;
 }
 
-// Elements whose text a browser does not show: these in HTML, and script and style anywhere.
+// Elements a browser does not show: these and any marked `hidden` in HTML, script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
 // Attributes that make a browser render what the capture cannot read: a declarative shadow root
 // (its own text and sheets, the element's children hidden) and a frame's inline document. A sheet
@@ -141,8 +141,7 @@ export function readDocument(html: string): Reading | FenceCode {
     if (!('childNodes' in node)) continue;
     let hides = hidden;
     if ('tagName' in node) {
-      const html5 = node.namespaceURI === markup.NS.HTML;
-      const name = node.tagName;
+      const [html5, name] = [node.namespaceURI === markup.NS.HTML, node.tagName];
       if (html5 && node.attrs.some((one) => UNREAD.get(name)?.includes(one.name)))
         return 'CAPTURE_BODY_MALFORMED';
       const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
@@ -154,7 +153,8 @@ export function readDocument(html: string): Reading | FenceCode {
       if (html5 && name === 'base' && href !== undefined) base ??= href;
       if (name === 'style' && (html5 || node.namespaceURI === markup.NS.SVG))
         styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
-      hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
+      const marked = HIDDEN.has(name) || attribute('hidden') !== undefined;
+      hides ||= html5 ? marked : name === 'script' || name === 'style';
       text.push(' ');
       stack.push([defaultTreeAdapter.createTextNode(' '), false]);
     }

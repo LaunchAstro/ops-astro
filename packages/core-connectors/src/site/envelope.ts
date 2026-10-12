@@ -129,8 +129,8 @@ const END_TAG_FOLLOWS = /[\t\n\f\r />]/u;
 const BLANK_LINE = /\n[\t ]*(?:\n|$)/gu;
 // A Markdown word's run holds `.`, `:`, `/` or `@` only as closing punctuation: no autolink.
 const MARKDOWN_RUN = /^[\p{L}\p{M}\p{N}'’‘"“”()[\]*_~-]*[.,;:!?)\]"'’”*_~]*$/u;
-// A link label (`][l]`, `[l][]`, `[l]:`, `[l]`) is one construct, unless it holds `<`, `{` or `}`.
-const LABEL = /\]?\[(?:[^\\[\]<{}]|\\.){0,999}(?=\](?!\(|\[(?!\])))/uy;
+// A link label (`][l]`, `[l][]`, `[l]:`, `[l]`) is one construct, refused if it holds `<`, `{`, `}`.
+const LABEL = /\]?\[(?:[^\\[\]]|\\.){0,999}(?=\](?!\(|\[(?!\])))/uy;
 
 /** Lower case by ASCII only, as HTML matches an end tag's name. */
 const asciiLower = (text: string): string =>
@@ -142,8 +142,7 @@ function matchAt(grammar: RegExp, source: string, at: number): string | undefine
   return grammar.exec(source)?.[0];
 }
 
-const skipSpace = (source: string, at: number): number =>
-  at + (matchAt(SPACES, source, at)?.length ?? 0);
+const skipSpace = (source: string, at: number) => at + (matchAt(SPACES, source, at)?.length ?? 0);
 
 /** The end of the expression opening at `at` (`{`), or undefined where it holds anything else. */
 function expressionEnd(source: string, at: number, level: number): number | undefined {
@@ -250,7 +249,8 @@ function constructEnd(source: string, at: number, markdown: boolean): number | u
   if (!markdown) return at + 1;
   if (source.startsWith('](', at)) return destinationEnd(source, at + 1);
   if (source.startsWith(']:', at) || source.startsWith('![', at)) return paragraphEnd(source, at);
-  return at + (matchAt(LABEL, source, at)?.length ?? 1);
+  const label = matchAt(LABEL, source, at) ?? '';
+  return /[<{}]/u.test(label) ? undefined : at + Math.max(label.length, 1);
 }
 
 /** The run of non-space characters around `offset`. */

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "map.chart through the envelope charts a repeated blockedBy ref as one blocking edge, and a ref spelled like an inherited object key maps to its own ticket and blocks as itself"
+}

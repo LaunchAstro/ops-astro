@@ -98,6 +98,7 @@ import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
+import { startOccurrenceSweeper } from './occurrence-sweeper.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -443,6 +444,8 @@ export interface ServerParts {
   readonly mail: Stopping;
   /** R7: the conversation sweep's running pass. */
   readonly conversations: Stopping;
+  /** C33: the occurrence sweep's running pass (#1318). */
+  readonly occurrences?: Stopping;
   readonly database: Stopping;
   readonly admin: Stopping;
   readonly broker: Stopping;
@@ -457,7 +460,7 @@ export function shutdownStages(
   parts: ServerParts,
 ): readonly [readonly Stopping[], readonly Stopping[]] {
   return [
-    [parts.topics, parts.mail, parts.conversations],
+    [parts.topics, parts.mail, parts.conversations, parts.occurrences],
     [parts.database, parts.admin, parts.broker, parts.tracer],
   ];
 }
@@ -678,6 +681,12 @@ async function main(): Promise<void> {
     codeRevision: identity.commit,
   });
 
+  // C33: the occurrence sweep (#1318) over the same businesses, every minute,
+  // as system work once the port is bound: due scheduled activations fire.
+  const occurrences = startOccurrenceSweeper(database, {
+    businesses: async () => await Promise.resolve(traced),
+  });
+
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
@@ -686,6 +695,7 @@ async function main(): Promise<void> {
       topics: async () => await topics.close(),
       mail: mail?.stop,
       conversations: conversations.stop,
+      occurrences: occurrences.stop,
       database: async () => await database.close(),
       admin: async () => await admin.close(),
       broker: broker?.stop,
