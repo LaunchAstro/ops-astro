@@ -5,8 +5,16 @@
 // page task held `for share`, so the client check, the grant check and the
 // title sent are one moment's facts.
 //
-// - The page: the task's id and title only. Never its body or any other
-//   field of the record. A task with a client, a task gone, or one the
+// - The owner: `contextOf` takes only the conversation and message ids and
+//   reads the question itself, as the caller's own person message in a
+//   conversation whose body is kept; anyone else gets nothing, and nothing is
+//   written. The caller's `conversation` grants are held for share and judged
+//   at the clock after every wait (a mark's wait on the audit chain is taken
+//   first), so a revocation that committed is seen and a later one waits. The
+//   question is read again with its earlier messages in one statement, so a
+//   purge is seen whole: no question, no answer.
+// - The page: the task's id and title only (cut by whole characters). Never
+//   its body or any other field of a task record. A task with a client, a task gone, or one the
 //   caller holds no `task:read` on is `refused`: owner line 72 asks no model.
 //   A caller without the read is refused before the task is read or locked,
 //   so a revoked reader never waits behind the task's writer. A refusal is
@@ -40,12 +48,15 @@ import { payloadDigest } from '../../../core-digest/src/index.ts';
 import {
   advisoryLock,
   heldScopes,
+  isUuid,
   slotOf,
   subjectsOf,
   TASK_SPINE,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
+import { holdsOwnConversations } from './conversations.ts';
 
 /** A record the answer read, with the product's own address for it. */
 export interface Cite {
@@ -105,7 +116,9 @@ async function pageOf(
   const [task] = await tx.query<PageRow>(
     `select id, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
        from records
-      where business_id = $1 and id = $2 and deleted_at is null
+      where business_id = $1 and id = $2
+        and record_type_id = (select t.id from record_types t where t.business_id = $1 and t.key = 'task')
+        and deleted_at is null
       for share`,
     [tx.businessId, taskId],
   );
@@ -219,60 +232,114 @@ export async function waitsFirst(
   return (await reads(tx, session, taskId)) ? null : 'SCOPE_NOT_GRANTED';
 }
 
+/** The caller's own question in a conversation whose body is kept, and its page task. */
+const QUESTION = `select c.owner_person_id, m.body, c.scope_record_id
+       from conversations c
+       join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
+      where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
+        and c.owner_actor_id = $4 and c.body_purged_at is null`;
+
 /**
- * The last earlier messages before the asked one, each person's with its
- * answer, oldest first; only those of the conversation's current context
- * epoch, which a purge of the task it was opened on bumps under the row lock
- * every message write takes. A reply counts only when its question does too,
- * so one kept after the purge to a question from before it is cut with it.
+ * The question read again with the last earlier messages before it, in one
+ * statement, so a purge is seen whole or not at all: no row, no question.
+ * Earlier: each person's with its answer, oldest first; only those of the
+ * conversation's current context epoch, which a purge of the task it was
+ * opened on bumps under the row lock every message write takes. A reply
+ * counts only when its question does too, so one kept after the purge to a
+ * question from before it is cut with it.
  */
-async function earlierRows(
-  tx: TenantQuery,
-  asked: Asked,
-): Promise<readonly { readonly role: string; readonly body: string }[]> {
-  return await tx.query<{ readonly role: string; readonly body: string }>(
-    `select role, body from (
-       select m.role, m.body, m.created_at, m.id
-         from conversation_messages m
-         join conversation_messages a
-           on a.business_id = m.business_id and a.conversation_id = m.conversation_id
-         join conversations c on c.business_id = m.business_id and c.id = m.conversation_id
-         left join conversation_messages q
-           on q.business_id = m.business_id and q.id = m.answers_message_id
-        where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
-          and m.role in ('person', 'agent') and m.created_at < a.created_at
-          and m.context_epoch = c.context_epoch
-          and coalesce(q.context_epoch, m.context_epoch) = c.context_epoch
-          and (m.role = 'agent' or exists (
-            select 1 from conversation_messages r
-             where r.business_id = m.business_id and r.conversation_id = m.conversation_id
-               and r.answers_message_id = m.id))
-        order by m.created_at desc, m.id desc
-        limit $4) last
-      order by created_at, id`,
-    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT],
-  );
+const QUESTION_AND_EARLIER = `select q.body as question, e.role, e.body
+       from (${QUESTION}) q
+       left join lateral (
+         select m.role, m.body, m.created_at, m.id
+           from conversation_messages m
+           join conversation_messages a
+             on a.business_id = m.business_id and a.conversation_id = m.conversation_id
+           join conversations c on c.business_id = m.business_id and c.id = m.conversation_id
+           left join conversation_messages p
+             on p.business_id = m.business_id and p.id = m.answers_message_id
+          where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
+            and m.role in ('person', 'agent') and m.created_at < a.created_at
+            and m.context_epoch = c.context_epoch
+            and coalesce(p.context_epoch, m.context_epoch) = c.context_epoch
+            and (m.role = 'agent' or exists (
+              select 1 from conversation_messages r
+               where r.business_id = m.business_id and r.conversation_id = m.conversation_id
+                 and r.answers_message_id = m.id))
+          order by m.created_at desc, m.id desc
+          limit $5) e on true
+      order by e.created_at, e.id`;
+
+/**
+ * Whether the caller still holds their own conversations, judged at the
+ * clock after every wait on a grant held for share: a revocation committed
+ * before is seen, and one after waits for this transaction.
+ */
+async function stillOwns(tx: TenantQuery, session: Session): Promise<boolean> {
+  const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation'));
+  const at = await lockedInstant(tx);
+  return await holdsOwnConversations(tx, session, { at, held });
 }
 
-/** The page and earlier messages for the asked message, in the caller's transaction. */
+/** The caller's own question and what goes beside it. */
+export interface OwnQuestion {
+  readonly ownerPersonId: string;
+  readonly body: string;
+  readonly context: Context;
+}
+
+/**
+ * The caller's own question, and the page and earlier messages for it, in the
+ * caller's transaction; `undefined`, writing nothing, when it is not the
+ * caller's own person message in a conversation whose body is kept, or the
+ * caller no longer holds their conversations.
+ */
 export async function contextOf(
   tx: TenantQuery,
   session: Session,
-  asked: Asked & { readonly body: string },
-  scopeRecordId: string | null,
-): Promise<Context> {
-  const page = scopeRecordId === null ? null : await pageOf(tx, session, scopeRecordId);
+  asked: Asked,
+): Promise<OwnQuestion | undefined> {
+  if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
+  if (!(await holdsOwnConversations(tx, session))) return undefined;
+  const ids = [tx.businessId, asked.conversationId, asked.messageId, session.actorId];
+  const [found] = await tx.query<{
+    readonly owner_person_id: string;
+    readonly body: string;
+    readonly scope_record_id: string | null;
+  }>(QUESTION, ids);
+  if (found === undefined) return undefined;
+  const own = (body: string, context: Context): OwnQuestion => ({
+    ownerPersonId: found.owner_person_id,
+    body,
+    context,
+  });
+  const page =
+    found.scope_record_id === null ? null : await pageOf(tx, session, found.scope_record_id);
   // Asked once the page is held, so a twin's refusal committed while this waited is seen.
   const marked = await markedRefused(tx, asked);
+  const marking = typeof page === 'string' && !marked;
+  // A mark waits on the audit chain: taken before the last judgement, so a
+  // chain holder's revocation is seen and no mark lands on a stale answer.
+  if (marking) await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (!(await stillOwns(tx, session))) return undefined;
   if (typeof page === 'string') {
-    return marked ? REFUSED : await markRefusedForPage(tx, session, asked, page);
+    return own(found.body, marking ? await markRefusedForPage(tx, session, asked, page) : REFUSED);
   }
-  if (marked) return REFUSED;
-  const rows = await earlierRows(tx, asked);
+  if (marked) return own(found.body, REFUSED);
+  const rows = await tx.query<{
+    readonly question: string;
+    readonly role: string | null;
+    readonly body: string | null;
+  }>(QUESTION_AND_EARLIER, [...ids, EARLIER_COUNT]);
+  const question = rows[0]?.question;
+  if (question === undefined) return undefined;
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];
   if (page !== null) {
-    const title = (page.title ?? '').slice(0, PAGE_TITLE_LIMIT);
+    // Cut by code points, so no emoji is split.
+    const title = Array.from(page.title ?? '')
+      .slice(0, PAGE_TITLE_LIMIT)
+      .join('');
     fields.push({ name: 'page', value: JSON.stringify({ task: page.id, title }) });
     if (page.key !== null && page.key !== '') {
       cites.push({
@@ -283,9 +350,12 @@ export async function contextOf(
   }
   const around = Object.fromEntries([
     ...fields.map(({ name, value }) => [name, value]),
-    ['message', asked.body],
+    ['message', question],
   ]);
-  const earlier = earlierOf(rows, around);
+  const earlier = earlierOf(
+    rows.flatMap(({ role, body }) => (role === null || body === null ? [] : [{ role, body }])),
+    around,
+  );
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
-  return { refused: false, fields, cites };
+  return own(question, { refused: false, fields, cites });
 }

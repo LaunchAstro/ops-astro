@@ -40,12 +40,7 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import {
-  isUuid,
-  sessionEndedSince,
-  subjectsOf,
-  withSession,
-} from '../../../core-records/src/index.ts';
+import { sessionEndedSince, subjectsOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -111,31 +106,19 @@ async function questionOf(
   asked: Asked,
   provider: string,
 ): Promise<Question | undefined> {
-  if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
-  if (!(await holdsOwnConversations(tx, session))) return undefined;
-  const [found] = await tx.query<{
-    readonly owner_person_id: string;
-    readonly body: string;
-    readonly scope_record_id: string | null;
-  }>(
-    `select c.owner_person_id, m.body, c.scope_record_id
-       from conversations c
-       join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
-      where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
-        and c.owner_actor_id = $4 and c.body_purged_at is null`,
-    [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
-  );
-  if (found === undefined) return undefined;
+  // `contextOf` judges the owner, the purge and the grant itself, in each statement that reads.
+  const own = await contextOf(tx, session, asked);
+  if (own === undefined) return undefined;
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
     scope: {
       id: asked.conversationId,
       businessId: tx.businessId,
-      ownerPersonId: found.owner_person_id,
+      ownerPersonId: own.ownerPersonId,
     },
-    body: found.body,
+    body: own.body,
     reply: await replyTo(tx, asked),
-    context: await contextOf(tx, session, { ...asked, body: found.body }, found.scope_record_id),
+    context: own.context,
   };
 }
 
