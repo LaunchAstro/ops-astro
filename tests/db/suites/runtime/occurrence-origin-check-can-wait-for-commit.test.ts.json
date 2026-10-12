@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the occurrence origin check is deferrable, so a transaction can ask for it at commit"
+}

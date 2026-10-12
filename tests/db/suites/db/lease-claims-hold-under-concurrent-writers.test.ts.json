@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two lease claims on one reservation leave one lease at the first fence, a crash or lost answer leaves no second lease, and a claim whose grant, delegation or approved version changes while it waits is refused"
+}

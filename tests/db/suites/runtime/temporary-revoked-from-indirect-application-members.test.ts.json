@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "after an upgrade no role that holds the application group through a middle role, nor the middle role, keeps TEMPORARY on the database, so no temporary table can shadow records on a pooled backend"
+}
