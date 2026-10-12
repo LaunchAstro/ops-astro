@@ -209,9 +209,25 @@ function Talk(props: {
   );
 }
 
+/** The open conversation; the one a door asks for opens whenever the request changes. */
+function useSelection(
+  talk: TeamConversations | null,
+  me: string,
+): readonly [Selected, (which: Selected) => void] {
+  const [selected, setSelected] = useState<Selected>(() => opening(talk, me));
+  const asked = talk?.asked ?? null;
+  const key = asked === null ? null : `${asked.kind}:${asked.id}`;
+  const [followed, setFollowed] = useState(key);
+  if (asked !== null && key !== followed) {
+    setFollowed(key);
+    setSelected(asked);
+  }
+  return [selected, setSelected];
+}
+
 export function TeamPanel(props: TeamPanelProps): ReactElement {
   const talk = props.conversations;
-  const [selected, setSelected] = useState<Selected>(() => opening(talk, props.me));
+  const [selected, setSelected] = useSelection(talk, props.me);
   const mine = props.people.find((person) => person.personId === props.me);
   const teammates = teammatesOf(props.people, props.me);
   const read = talk === null ? null : reader(talk, props.me);
