@@ -35,9 +35,17 @@ export function BoardEditProvider(props: {
   return (
     <Edits value={custody}>
       {state.problem === null ? null : (
-        <p role="alert" data-board-edit-problem>
-          {state.problem}
-        </p>
+        <div role="alert" data-board-edit-problem>
+          <p>{state.problem}</p>
+          <button
+            className="btn btn--secondary"
+            type="button"
+            data-board-edit-discard
+            onClick={custody.discard}
+          >
+            Discard the unreadable recovery copy
+          </button>
+        </div>
       )}
       {props.children}
     </Edits>
