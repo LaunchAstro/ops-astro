@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An invitation send stalled past its token's expiry must email no link; the expiry is read by the statement that mints the token on a real database."
+}
