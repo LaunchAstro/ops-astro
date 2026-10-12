@@ -5,7 +5,7 @@
 // it; a send moves the sender's marker in the comment command's own
 // transaction (R36).
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type RefObject } from 'react';
 import type { TeamConversation, TeamMessage } from '../state/team.ts';
 
 const stamp = new Intl.DateTimeFormat('en-AU', {
@@ -45,11 +45,30 @@ function Unsent(props: { readonly words: string; readonly onPutBack: () => void 
   );
 }
 
+interface Kept {
+  readonly send: number;
+  readonly words: string;
+}
+
+/** Each refused send kept beside newer words, its own entry by the send that made it. */
+function useUnsent(typed: RefObject<string>, setText: (text: string) => void) {
+  const [list, setList] = useState<readonly Kept[]>([]);
+  return {
+    list,
+    keep: (send: number, words: string) => setList((now) => [...now, { send, words }]),
+    putBack: (one: Kept) => {
+      setText(`${one.words} ${typed.current}`.trim());
+      setList((now) => now.filter((each) => each.send !== one.send));
+    },
+  };
+}
+
 function Composer(props: { readonly to: string; readonly onSend: Send }): ReactElement {
   const [text, setText] = useState('');
   const typed = useRef('');
   typed.current = text;
-  const [unsent, setUnsent] = useState<string | null>(null);
+  const unsent = useUnsent(typed, setText);
+  const sends = useRef(0);
   const field = useRef<HTMLInputElement>(null);
   const label = `Message ${props.to}`;
   return (
@@ -59,26 +78,22 @@ function Composer(props: { readonly to: string; readonly onSend: Send }): ReactE
         event.preventDefault();
         const said = text.trim();
         if (said === '') return;
+        sends.current += 1;
+        const send = sends.current;
         setText('');
         field.current?.focus();
         // Words the server did not take go back in, or beside newer ones the person has started.
         void props.onSend(said).then((sent) => {
           if (sent) return sent;
           if (typed.current === '') setText(said);
-          else setUnsent(said);
+          else unsent.keep(send, said);
           return sent;
         });
       }}
     >
-      {unsent === null ? null : (
-        <Unsent
-          words={unsent}
-          onPutBack={() => {
-            setText(`${unsent} ${typed.current}`.trim());
-            setUnsent(null);
-          }}
-        />
-      )}
+      {unsent.list.map((one) => (
+        <Unsent key={one.send} words={one.words} onPutBack={() => unsent.putBack(one)} />
+      ))}
       <input
         ref={field}
         placeholder={label}
