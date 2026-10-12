@@ -22,7 +22,7 @@ const DENIED = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixe
 function projectServer() {
   const state = { client: CLIENT_A, name: 'Client A', refused: false };
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
-  const fetch: typeof globalThis.fetch = async (input, init) => {
+  const reply = (input: RequestInfo | URL, init?: RequestInit): Response => {
     const url = new URL(String(input), 'http://local');
     if (url.pathname.endsWith('/live')) {
       return new Response(
@@ -54,6 +54,7 @@ function projectServer() {
     if (path.endsWith('/client/list')) return json({ ok: true, clients: [] });
     return json({ ok: true });
   };
+  const fetch: typeof globalThis.fetch = (input, init) => Promise.resolve(reply(input, init));
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return {
     client,
@@ -65,6 +66,8 @@ function projectServer() {
   };
 }
 
+const went: string[] = [];
+
 const door = (view: Awaited<ReturnType<typeof mount>>) =>
   view.find('[data-projects-new-task]') as HTMLElement;
 
@@ -74,7 +77,7 @@ async function opened(server: ReturnType<typeof projectServer>) {
     <Projects
       client={server.client}
       grantKey="alpha:owner"
-      navigate={() => undefined}
+      navigate={(path) => went.push(path)}
       canFileTask
     />,
   );

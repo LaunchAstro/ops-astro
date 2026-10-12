@@ -13,11 +13,13 @@ import { FIRST, pinZone, server, tick } from './work-log-stand-in.tsx';
 
 pinZone();
 
+const opened: string[] = [];
+
 const panel = (fetch: typeof globalThis.fetch, address: string) => (
   <Projects
     client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:owner"
-    navigate={() => undefined}
+    navigate={(path) => opened.push(path)}
     address={address}
     inPanel
   />
