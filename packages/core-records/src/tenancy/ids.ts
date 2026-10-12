@@ -11,3 +11,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
 }
+
+/**
+ * The one spelling of an accepted uuid, the lower case Postgres prints. A key,
+ * an operation identity or a comparison with a selected row built from the
+ * caller's spelling would otherwise split one id in two.
+ */
+export function canonicalUuid(id: string): string {
+  return id.toLowerCase();
+}

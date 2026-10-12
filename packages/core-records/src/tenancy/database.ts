@@ -16,7 +16,7 @@
 import type postgres from 'postgres';
 import { open, type DatabaseOptions } from './driver.ts';
 import type { StatementLog } from './statements.ts';
-import { isUuid } from './ids.ts';
+import { canonicalUuid, isUuid } from './ids.ts';
 import {
   handleOn,
   type BusinessId,
@@ -128,9 +128,9 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
-    // One spelling of the id, the one Postgres prints, so a key built from
-    // `tx.businessId` (a limiter's lock) is the same key in either letter case.
-    const business = businessId.toLowerCase() as BusinessId;
+    // One spelling of the id, so a key built from `tx.businessId` (a
+    // limiter's lock) is the same key in either letter case.
+    const business = canonicalUuid(businessId) as BusinessId;
     // Read committed whatever the login's or database's default, so a count
     // read after a lock sees what the lock's last holder committed (`hasRoom`).
     // `begin` unwraps a promise-shaped result in its own types; the cast

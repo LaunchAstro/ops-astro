@@ -262,7 +262,7 @@ const siblingsOf = (suite) => {
     .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
 };
 
-/** Redact a suite's assertion text, errors or output before it reaches stderr. */
+/** Redact a failed assertion, or any problem the run reports, before it reaches stderr. */
 const redactDetail = (detail) => {
   detail = stripVTControlCharacters(detail)
     .replaceAll(`file://${repoRoot}/`, '')
@@ -390,10 +390,7 @@ if (failures.length === 0) {
     failures.push(
       'a suite produced no readable result, so nothing can be said about\n' +
         `        what ran in it:\n          ${suite}\n        Its output follows.\n\n` +
-        redactDetail(`${(run.stdout ?? '') + (run.stderr ?? '')}`)
-          .split('\n')
-          .slice(0, 20)
-          .join('\n'),
+        `${(run.stdout ?? '') + (run.stderr ?? '')}`.split('\n').slice(0, 20).join('\n'),
     );
   }
 
@@ -527,15 +524,13 @@ if (failures.length === 0) {
     }
     for (const error of Array.isArray(report.errors) ? report.errors : []) {
       reportedErrors.push(
-        where(`the report carries an error: ${redactDetail(firstLine(error?.message ?? error))}`),
+        where(`the report carries an error: ${firstLine(error?.message ?? error)}`),
       );
     }
     for (const file of report.testResults ?? []) {
       const message = String(file.message ?? '').trim();
       if (message !== '') {
-        reportedErrors.push(
-          redactDetail(`${String(file.name ?? 'unnamed file')}: ${firstLine(message)}`),
-        );
+        reportedErrors.push(`${String(file.name ?? 'unnamed file')}: ${firstLine(message)}`);
       }
     }
   }
@@ -600,7 +595,10 @@ console.log(
 
 if (failures.length > 0) {
   console.error(`\ndb-conformance: ${String(failures.length)} problem(s)\n`);
-  for (const f of failures) console.error(`  ${f}\n`);
+  // Every problem passes through the same redaction as a failed assertion, so
+  // a suite's error, its output, a skipped test's name or a database message
+  // carries no credential or private path into the log.
+  for (const f of failures) console.error(`  ${redactDetail(f)}\n`);
   console.error(
     'db-conformance: a green here means the named suites ran against a real\n' +
       'db-conformance: database and none of them skipped. It means nothing else,\n' +
