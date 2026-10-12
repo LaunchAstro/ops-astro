@@ -65,6 +65,38 @@ export const PROTECTED: readonly (readonly [string, readonly string[]])[] = [
   ],
 ];
 
+/**
+ * What this base cannot run yet, with the reason. Each prints `unrun` and
+ * fails the command until the part lands here (Rebase notes on the pull request).
+ */
+export const UNRUN: readonly (readonly [string, string, Readonly<Record<string, string>>])[] = [
+  [
+    'T2g: request changes, the revision round, journey_parity_cli',
+    'T2g (#136) is not on this base; the re-baseline brings it',
+    { owner: 'T2g', pr: '#136' },
+  ],
+  [
+    'T3a: escalate at the bound, reject, cancel and restart',
+    'T3a (#153) is not on this base; the re-baseline brings it',
+    { owner: 'T3a', pr: '#153' },
+  ],
+  [
+    'T4c: the pinned-mockup comparison at 1480, 900 and 390',
+    'T4c (#134) is not on this base; the re-baseline brings it',
+    { owner: 'T4c', pr: '#134' },
+  ],
+  [
+    'the browser pass (slice-acceptance) on this stack',
+    'the web app signs in through GoTrue, which this stack does not start yet',
+    { owner: 'T4b1' },
+  ],
+  [
+    'keyboard-only and 390-wide passes over the whole journey (T4-R9)',
+    'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
+    { owner: 'T4b2' },
+  ],
+];
+
 /** One verdict per protected component, from `output`, the same run's `db-conformance` output. */
 export function protectedVerdicts(
   output: string,
