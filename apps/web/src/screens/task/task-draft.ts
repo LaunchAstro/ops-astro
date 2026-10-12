@@ -180,7 +180,12 @@ export function keepDraft(
   }
 }
 
-/** Put `next` (null once settled) in place of attempt `id`, unless an edit has replaced it. */
+/**
+ * Put `next` (null once settled) in place of attempt `id`, unless an edit has
+ * replaced it. A settled id storage would not let go is removed with its
+ * stored copy, so a reload never offers to retry a create already answered;
+ * this tab keeps the draft in memory.
+ */
 export function saveAttempt(
   storage: Storage | null,
   person: string,
@@ -189,7 +194,12 @@ export function saveAttempt(
 ): void {
   if (readAttempt(storage, person)?.id !== id) return;
   const draft = readDraft(storage, person);
-  if (draft !== null) keepDraft(storage, person, draft, next);
+  if (draft === null || keepDraft(storage, person, draft, next) || next !== null) return;
+  try {
+    storage?.removeItem(keyOf(person));
+  } catch {
+    // Browser storage is unavailable; nothing a reload could read is left to remove.
+  }
 }
 
 export function dropDraft(storage: Storage | null, person: string): void {
