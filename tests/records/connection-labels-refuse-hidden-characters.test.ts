@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A client's name and a connection's label are drawn on screens every member
-// with the key can open, so neither may hide text or pass for another. A
-// connection's label takes the signal grammar (`signal_text`, 20261005201200).
-// A client's name stays open to every script, but refuses control, format
-// (direction overrides, zero-width and tag characters), private-use and
-// unassigned characters, line separators, variation selectors and a leading
-// combining mark.
-// Each write is the owner's, so the refusal is the table's, whoever writes.
-// A stored row either refuses stops the upgrade, named by id, and is kept.
+// A connection's label is drawn on screens every member with the key can
+// open, so it may not hide text or pass for another: it takes the signal
+// grammar (`signal_text`, 20261005201200). Each write is the owner's, so the
+// refusal is the table's, whoever writes. A stored label outside it stops the
+// upgrade, named by id, and is kept.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
@@ -27,7 +23,7 @@ let s: Schedules;
 
 beforeAll(async () => {
   if (noDatabase) return;
-  s = await openSchedules('drawnnames', 1_000_000);
+  s = await openSchedules('connectionlabels', 1_000_000);
 }, 180_000);
 
 afterAll(async () => {
@@ -49,13 +45,6 @@ const hidden = [
   ['a leading combining mark', '\u0301Acme'],
 ] as const;
 
-async function client(name: string): Promise<unknown> {
-  return await s.db.admin.execute(
-    'insert into public.clients (business_id, id, name, created_by_actor_id) values ($1, $2, $3, $4)',
-    [s.business, randomUUID(), name, s.decider.actorId],
-  );
-}
-
 async function connection(label: string): Promise<unknown> {
   return await s.db.admin.execute(
     `insert into public.connections (business_id, id, connector_key, label, status, failure_class)
@@ -63,23 +52,6 @@ async function connection(label: string): Promise<unknown> {
     [s.business, randomUUID(), label],
   );
 }
-
-it.each(hidden)("a client's name with %s is refused", async (_what, name) => {
-  await expect(client(name)).rejects.toMatchObject({ constraint_name: 'drawn_name_shape' });
-});
-
-it("a client's name in any script, with a combining mark inside a word, is written", async () => {
-  for (const name of [
-    'Ōtautahi Traders',
-    '東京商事',
-    'Ελληνικά Ltd',
-    'Jose\u0301 & Co',
-    'Café Noël',
-  ]) {
-    // eslint-disable-next-line no-await-in-loop
-    await expect(client(name), name).resolves.toBeDefined();
-  }
-});
 
 it.each(hidden)("a connection's label with %s is refused", async (_what, label) => {
   await expect(connection(label)).rejects.toMatchObject({ constraint_name: 'signal_text_shape' });
@@ -93,28 +65,18 @@ it("a connection's label outside the signal grammar is refused, and one inside i
   await expect(connection('Xero – main ledger (AU)')).resolves.toBeDefined();
 });
 
-it('an upgrade over a stored hidden name stops, naming the row, and rewrites nothing', async () => {
-  const db = await createEmptyDatabase({ part: 'drawnnamesup' });
+it('an upgrade over a stored hidden label stops, naming the row, and rewrites nothing', async () => {
+  const db = await createEmptyDatabase({ part: 'labelsup' });
   try {
     await applyMigrations(
       db.admin,
       readMigrations('migrations').filter((m) => m.version < '20261012052116'),
     );
     const business = randomUUID();
-    const actor = randomUUID();
-    const named = randomUUID();
     const labelled = randomUUID();
     await db.admin.execute(
       'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $2)',
-      [business, 'drawnnamesup'],
-    );
-    await db.admin.execute(
-      `insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`,
-      [business, actor],
-    );
-    await db.admin.execute(
-      'insert into public.clients (business_id, id, name, created_by_actor_id) values ($1, $2, $3, $4)',
-      [business, named, 'Acme\u{E0041}', actor],
+      [business, 'labelsup'],
     );
     await db.admin.execute(
       `insert into public.connections (business_id, id, connector_key, label, status, failure_class)
@@ -127,14 +89,12 @@ it('an upgrade over a stored hidden name stops, naming the row, and rewrites not
       () => new Error('the upgrade went through'),
       (error: unknown) => (error as Error).cause as Error,
     );
-    expect(stopped.message).toBe(
-      `drawn names: rename these rows first; clients ${named}, connections ${labelled}`,
+    expect(stopped.message).toBe(`connection labels: rename these rows first; ${labelled}`);
+    const [kept] = await db.admin.execute<{ readonly label: string }>(
+      'select label from public.connections where id = $1',
+      [labelled],
     );
-    const [kept] = await db.admin.execute<{ readonly name: string }>(
-      'select name from public.clients where id = $1',
-      [named],
-    );
-    expect(kept?.name).toBe('Acme\u{E0041}');
+    expect(kept?.label).toBe('Acme\uFE0F');
   } finally {
     await db.drop();
   }

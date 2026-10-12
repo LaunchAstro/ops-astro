@@ -137,14 +137,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands, security f
   });
 
   it('SEC-P05B-PR.1 a promote label never carries what the label guard refuses: such a name is shown by its identifier', async () => {
-    // A client name the label guard refuses never reaches it: storage refuses
-    // every such character (drawn_name, 20261012052116).
-    const refused = w.controls.fixture.db.app.withBusiness(
-      w.alpha,
-      async (tx) => await createClient(tx, `Client ${at(0x2800)}C`, w.admin.actorId),
-    );
-    await expect(refused).rejects.toMatchObject({ constraint_name: 'drawn_name_shape' });
+    const spoofed = await w.controls.fixture.db.app.withBusiness(w.alpha, async (tx) => {
+      const made = await createClient(tx, `Client ${at(0x202e)}C`, w.admin.actorId);
+      if (!made.ok) throw new Error('sec-p05b: the client was not made');
+      return made.value;
+    });
     const badClass = await seedClass(w.clientA, 'social.story', `Stories${at(0x0a)}${at(0x202e)}t`);
+    const badClient = await seedClass(spoofed, 'social.post', 'Class social.post');
     const promote = async (classId: string) => {
       const promoted = await w.as(w.admin, 'graduation.promote', {
         classId,
@@ -155,6 +154,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands, security f
       return await labelOfMandate(promoted);
     };
     expect(await promote(badClass)).toBe('Run social.story unattended for Client A');
+    expect(await promote(badClient)).toBe(`Run Class social.post unattended for client ${spoofed}`);
   });
 
   it('SEC-P05B-PR.2 an expiry year outside 0001 to 9999 is refused on expiresAt, never a fault', async () => {

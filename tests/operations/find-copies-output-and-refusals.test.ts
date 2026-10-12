@@ -38,12 +38,12 @@ const hex = () => randomUUID().replaceAll('-', '');
 
 it('the text is searched without the spaces around it, and a run of spaces of any kind in it is one space', async () => {
   const tess = word('tess');
-  // People's names, not clients': a client's name refuses every space but U+0020
-  // (drawn_name, 20261012052116), and this is about the search, not the column.
-  const named = [randomUUID(), randomUUID()];
+  const clients = [randomUUID(), randomUUID()];
+  const author = await person(world.alpha, `Ola ${word('ola')}`);
   await world.db.admin.execute(
-    `insert into public.people (business_id, id, display_name) values ($1, $2, $4), ($1, $3, $5)`,
-    [world.alpha, ...named, `Call ${tess}  Lee.`, `Ring ${tess}\u00A0\u2009Lee.`],
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $4, $6), ($1, $3, $5, $6)`,
+    [world.alpha, ...clients, `Call ${tess}  Lee.`, `Ring ${tess}\u00A0\u2009Lee.`, author.actor],
   );
   for (const text of [
     `${tess} Lee`,
@@ -54,8 +54,8 @@ it('the text is searched without the spaces around it, and a run of spaces of an
     // oxlint-disable-next-line no-await-in-loop
     const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
     expect(found.code, text).toBe(0);
-    expect(pairs(found.hits), text).toContainEqual(['people', named[0]]);
-    expect(pairs(found.hits), text).toContainEqual(['people', named[1]]);
+    expect(pairs(found.hits), text).toContainEqual(['clients', clients[0]]);
+    expect(pairs(found.hits), text).toContainEqual(['clients', clients[1]]);
   }
 });
 
