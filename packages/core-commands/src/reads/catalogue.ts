@@ -794,7 +794,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // recorded under, which no agent holds. The incident is looked up in the
   // business's own rows, so another business's id is NOT_FOUND like a made-up one.
   'privacy.draft_breach_notices': {
-    identifiers: [],
+    identifiers: ['incidentId'],
     parse(body) {
       const operands = parseBreachNotices(body);
       return isCommandRefusal(operands) ? { ok: false, refusal: operands } : parsed(operands);
@@ -899,7 +899,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // task `read` inside its statement (`reads/harness-trigger.ts`), so the
   // door asks for any grant and the read refuses the rest itself.
   'harness.read': {
-    identifiers: [],
+    identifiers: ['runId'],
     parse: ({ runId }) =>
       typeof runId === 'string'
         ? parsed({ runId })

@@ -31,6 +31,21 @@ import { ReadIntegrityFault } from './integrity-fault.ts';
 
 export { ReadIntegrityFault } from './integrity-fault.ts';
 
+/**
+ * The identifiers only reads take, beside the commands' list: a read that does
+ * not name one in its row's `identifiers` refuses it like any other target it
+ * does not take, rather than its parse dropping it and answering about
+ * something else.
+ */
+const READ_IDENTIFIERS: readonly string[] = [
+  'person',
+  'client',
+  'runId',
+  'attemptId',
+  'incidentId',
+  'correctionId',
+];
+
 export const READ_BODY_FIXES: readonly string[] = [
   'Send only the fields this read declares.',
   'A read about the business rather than one record takes no record identifier.',
@@ -177,7 +192,12 @@ async function admit<K extends ReadName>(
   // as on the command path, before anything is looked up: the refusal is the
   // same for an own, a foreign and a fabricated identifier, so it tells the
   // caller nothing about any of them.
-  const irrelevant = irrelevantIdentifiers(body, row.identifiers);
+  const irrelevant = [
+    ...irrelevantIdentifiers(body, row.identifiers),
+    ...READ_IDENTIFIERS.filter(
+      (field) => body[field] !== undefined && !row.identifiers.includes(field),
+    ),
+  ];
   if (irrelevant.length > 0) {
     return {
       outcome: refuseCommand('COMMAND_BODY_INVALID', irrelevant, READ_BODY_FIXES),
