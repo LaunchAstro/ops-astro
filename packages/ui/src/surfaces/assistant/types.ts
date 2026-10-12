@@ -36,6 +36,30 @@ export interface AssistantPlan {
   readonly task: { readonly label: string; readonly href: string };
 }
 
+/**
+ * The chat path's task proposal card: `offered` carries the one click,
+ * `sending` while it is out, `made` once the server kept the task, `unknown`
+ * when the click got no answer, its click offered again, and `stale` when an
+ * edit can no longer apply as proposed, with no click.
+ */
+export type ProposalCardState = 'offered' | 'sending' | 'made' | 'unknown' | 'stale';
+
+export interface AssistantProposal {
+  /** A new task, or an edit of the task the chat is open on. */
+  readonly action: 'create' | 'edit';
+  /** The words the click sends, drawn as they are sent; null is not changed. */
+  readonly title: string | null;
+  readonly description: string | null;
+  /** The task's Due day (`YYYY-MM-DD`) and Estimate in minutes, where proposed. */
+  readonly due?: string;
+  readonly estimate?: number;
+  readonly state: ProposalCardState;
+  /** The task made or changed, once the server kept it. */
+  readonly task: { readonly label: string; readonly href: string } | null;
+  /** The server's refusal of the last click, quoted as it came. */
+  readonly refusal: string | null;
+}
+
 export interface AssistantCite {
   readonly label: string;
   readonly href: string;
@@ -48,6 +72,8 @@ export interface AssistantMessage {
   readonly cites: readonly AssistantCite[];
   /** On a `plan` message: the card. */
   readonly plan?: AssistantPlan;
+  /** On an `ai` message whose reply ended in a task block: the card. */
+  readonly proposal?: AssistantProposal;
 }
 
 export interface AssistantPage {
@@ -128,6 +154,8 @@ export interface AssistantPanelProps {
   readonly onSend: (key: string, text: string) => void | Promise<void>;
   /** AW-04: the one click on a plan card, by tab and message. Absent, no accept is drawn. */
   readonly onAccept?: (key: string, messageId: string) => void;
+  /** The one click on a task proposal card, by tab and message. Absent, no click is drawn. */
+  readonly onPropose?: (key: string, messageId: string) => void;
   /** The drawer's own close, with its title: absent when a host's head (the dock's) frames it. */
   readonly onClose?: (() => void) | undefined;
 }

@@ -32,6 +32,8 @@ export interface Chat extends AssistantChat {
   readonly scope: StandingScope;
   /** A kept tab whose first read is out and whose title the person has not set. */
   readonly reading?: boolean;
+  /** A kept conversation's task, from its read: what a proposal's edit applies to. */
+  readonly taskId?: string | null;
 }
 
 export interface AssistantState {
@@ -254,12 +256,9 @@ export function asking(state: AssistantState, key: string, by: 1 | -1): Assistan
 }
 
 /** A conversation as `conversation.read` gave it, or `reading` while its read is out. */
-export interface Reopened {
+export type Reopened = Pick<Chat, 'title' | 'messages' | 'reading' | 'taskId'> & {
   readonly conversationId: string;
-  readonly title: string;
-  readonly messages: Chat['messages'];
-  readonly reading?: boolean;
-}
+};
 
 /**
  * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation
@@ -290,11 +289,12 @@ export function reopened(
 export const transcript = (
   state: AssistantState,
   key: string,
-  read: Pick<Chat, 'messages'> & { readonly title?: string },
+  read: Pick<Chat, 'messages' | 'taskId'> & { readonly title?: string },
 ): AssistantState =>
   change(state, key, (chat) => ({
     ...chat,
     title: chat.reading === true ? (read.title ?? chat.title) : chat.title,
+    taskId: read.taskId ?? chat.taskId ?? null,
     reading: false,
     messages: [...read.messages, ...chat.messages],
   }));

@@ -41,9 +41,11 @@ export type {
   AssistantPanelProps,
   AssistantPast,
   AssistantPlan,
+  AssistantProposal,
   AssistantRole,
   AssistantSubjectView,
   PlanCardState,
+  ProposalCardState,
 } from './assistant/types.ts';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
@@ -191,17 +193,21 @@ function Thread(props: {
   readonly chat: AssistantChat | undefined;
   readonly answering: boolean;
   readonly onAccept: AssistantPanelProps['onAccept'];
+  readonly onPropose: AssistantPanelProps['onPropose'];
 }): ReactElement {
-  const { chat, onAccept } = props;
+  const { chat, onAccept, onPropose } = props;
+  const byMessage = (
+    click: ((key: string, messageId: string) => void) | undefined,
+  ): ((messageId: string) => void) | undefined =>
+    click === undefined || chat === undefined
+      ? undefined
+      : (messageId) => click(chat.key, messageId);
   return (
     <>
       <Transcript
         messages={chat?.messages ?? NO_MESSAGES}
-        onAccept={
-          onAccept === undefined || chat === undefined
-            ? undefined
-            : (messageId) => onAccept(chat.key, messageId)
-        }
+        onAccept={byMessage(onAccept)}
+        onPropose={byMessage(onPropose)}
       />
       {props.answering ? (
         <p className="aip__msg aip__msg--note" role="status" data-assistant="answering">
@@ -243,7 +249,12 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
       {props.allowance}
-      <Thread chat={chat} answering={props.answering === true} onAccept={props.onAccept} />
+      <Thread
+        chat={chat}
+        answering={props.answering === true}
+        onAccept={props.onAccept}
+        onPropose={props.onPropose}
+      />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}

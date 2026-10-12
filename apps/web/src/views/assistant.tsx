@@ -49,10 +49,11 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
+import { sendProposal } from '../assistant/proposals.ts';
 import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
-import type { Store } from '../assistant/store.ts';
+import { answersTo, type Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {
@@ -94,7 +95,7 @@ interface Opening {
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
   else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.line(key, 'ai', reply.body, undefined, citesOf(reply.cites));
+  else if (reply.answered) store.answer(key, reply, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
 
@@ -106,9 +107,10 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
-  const { title, page, model } = store.chat(chat.key) ?? chat;
-  // A model chosen before the first question rides in the start, so the first
-  // answer is asked of it (CS-7.30); none chosen, the default.
+  // The tab as the question was asked: a model chosen before it rides in the
+  // start, so the first answer is asked of it (CS-7.30); none chosen, the
+  // default. A title, page or model chosen while it waits follows it in turn.
+  const { title, page, model } = chat;
   const chosen = model === null ? {} : { model };
   const settled = settle(
     await client.mutate('conversation.start', {
@@ -146,34 +148,31 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const task = store.now().scope.task;
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
-  const start = (chat: Chat, body: string, on: Store): Promise<string | null> =>
-    startWith(props.client, on, { chat, body, subject, scope: scope() }, report);
+  const start = (opening: Omit<Opening, 'subject'>, on: Store): Promise<string | null> =>
+    startWith(props.client, on, { ...opening, subject }, report);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
     const question = store.line(key, 'user', body);
-    const on: Store = {
-      ...store,
-      line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
-      plan: (k, words, offer) => store.plan(k, words, offer, question),
-    };
-    let known = chat.conversationId;
-    // A started tab's question waits for its writes so far: a model just chosen is the one asked.
-    if (known !== null) await starts.current.get(key);
-    if (known === null) {
-      // Queued behind the tab's last start: joins what it made, or starts
-      // itself only once that start is refused.
-      let asked = false;
-      const before = starts.current.get(key) ?? Promise.resolve(null);
-      const turn = before.then(async (id) => {
-        if (id !== null) return id;
-        asked = true;
-        return await start(chat, body, on);
-      });
-      starts.current.set(key, turn);
-      known = await turn;
-      if (asked || known === null) return;
-    }
+    // The asking tab's scope, as the question is asked: a tab selected while
+    // its task is read changes neither the start nor the card.
+    const opening = { chat, body, scope: scope() };
+    const { on, read } = answersTo(props, store, chat, question);
+    // Each question waits for the tab's writes so far and then its task's
+    // read, in the tab's queue, so a model chosen after it lands after it.
+    // A tab not yet started joins what its last start made, or starts itself
+    // only once that start is refused.
+    let asked = false;
+    const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
+    const turn = before.then(async (id) => {
+      await read;
+      if (id !== null) return id;
+      asked = true;
+      return await start(opening, on);
+    });
+    starts.current.set(key, turn);
+    const known = await turn;
+    if (asked || known === null) return;
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
     );
@@ -294,6 +293,7 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
       onAddPage={writes.addPage}
       onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
+      onPropose={(key, id) => void sendProposal(props, store, { key, id })}
       onClose={props.onClose}
     />
   );

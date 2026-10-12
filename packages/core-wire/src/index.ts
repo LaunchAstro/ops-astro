@@ -209,6 +209,17 @@ export type {
 } from './signal-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
+export {
+  PROPOSAL_DESCRIPTION_LIMIT,
+  PROPOSAL_ESTIMATE_LIMIT,
+  PROPOSAL_TITLE_LIMIT,
+  proposalCreate,
+  proposalEdit,
+  readProposal,
+  type ProposalRead,
+  type ProposedPlan,
+  type TaskProposal,
+} from './task-proposal.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

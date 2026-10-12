@@ -169,6 +169,8 @@ function commandsTheAppCalls(): Set<string> {
  */
 const CREATE_UI = [
   'agency:task-detail (screens/task/Subtasks.tsx)',
+  // The drawer's task proposal card (the chat path's piece 2).
+  'app shell (assistant/proposals.ts)',
   'app shell (screens/task/draft-command.ts)',
   'app shell (screens/task/draft-parts.ts)',
   'app shell (screens/task/draft-receipts.ts)',

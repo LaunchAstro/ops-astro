@@ -10,6 +10,15 @@ import type { AssistantCite, AssistantRole } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import { initial, keyIn, said, type AssistantState, type Chat } from './chats.ts';
 import { usePlanCards } from './plans.ts';
+import {
+  baselineOf,
+  keepBaseline,
+  PROPOSAL_LINE,
+  replyLine,
+  taskOf,
+  type Baseline,
+  type ClickView,
+} from './proposals.ts';
 
 type Move = (state: AssistantState) => AssistantState;
 
@@ -26,6 +35,16 @@ export interface Store {
     after?: string,
     cites?: readonly AssistantCite[],
   ) => string;
+  /**
+   * An agent's answer as the tab's newest line: a task proposal it ends in
+   * drawn as a card, its line carrying the reply's message id for the click.
+   */
+  readonly answer: (
+    key: string,
+    reply: { readonly messageId: string; readonly body: string },
+    after?: string,
+    cites?: readonly AssistantCite[],
+  ) => void;
   /** A reply's plan as the tab's newest card, and the offer kept for its click. */
   readonly plan: (key: string, body: string, offer: PlanOffer, after?: string) => void;
   readonly offer: (id: string) => PlanOffer | undefined;
@@ -65,6 +84,19 @@ export function useStore(start: () => AssistantState = initial): Store {
       update((current) => placed(said(current, into, { id, role, body, cites }), into, after));
       return id;
     },
+    answer: (key, reply, after, cites = []) => {
+      const into = keyIn(latest.current, key);
+      const chat = latest.current.chats.find((each) => each.key === into);
+      const line = replyLine(reply.body, chat !== undefined && taskOf(chat) !== null);
+      count.current += 1;
+      const id =
+        line.proposal === undefined
+          ? `ai-${String(count.current)}`
+          : `${PROPOSAL_LINE}${reply.messageId}`;
+      update((current) =>
+        placed(said(current, into, { id, role: 'ai', cites, ...line }), into, after),
+      );
+    },
     plan: (key, body, offer, after) => {
       const into = keyIn(latest.current, key);
       cards.plan(into, body, offer);
@@ -72,4 +104,29 @@ export function useStore(start: () => AssistantState = initial): Store {
     },
     offer: cards.offer,
   };
+}
+
+/**
+ * The store a question's answers land through, after the question, and the
+ * read of the chat's task made before it is sent: the question waits for
+ * `read`, and an edit its answer proposes is kept bound to what it read.
+ */
+export function answersTo(
+  view: ClickView,
+  store: Store,
+  chat: Chat,
+  question: string,
+): { readonly on: Store; readonly read: Promise<Baseline | null> } {
+  let baseline: Baseline | null = null;
+  const read = baselineOf(view.client, chat).then((found) => (baseline = found));
+  const on: Store = {
+    ...store,
+    line: (key, role, words, _after, cites) => store.line(key, role, words, question, cites),
+    plan: (key, words, offer) => store.plan(key, words, offer, question),
+    answer: (key, reply, _after, cites) => {
+      keepBaseline(view.grantKey, reply, baseline);
+      store.answer(key, reply, question, cites);
+    },
+  };
+  return { on, read };
 }

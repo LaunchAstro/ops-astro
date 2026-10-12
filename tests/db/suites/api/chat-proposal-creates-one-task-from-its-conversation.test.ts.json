@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A stand-in model's reply ending in a task block is kept as words and writes nothing; the drawer's create, sent twice under the reply's operation id, is one task with its conversation as origin, on the no-board list and in the wrap-up's tasks created, its due day and estimate in the task's own fields; its edit applies once at the question's revision, to the chat's own task only, and a task changed since refuses it as stale."
+}
