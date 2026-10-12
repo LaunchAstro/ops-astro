@@ -28,5 +28,7 @@ export function inAppAddress(event: MouseEvent<HTMLElement>): string | null {
   const target = anchor.getAttribute('target');
   if ((target !== null && target !== '_self') || anchor.hasAttribute('download')) return null;
   const href = anchor.getAttribute('href') ?? '';
-  return href.startsWith('/') && !href.startsWith('//') ? href : null;
+  // Resolved as the browser would: `/\host` and `/<tab>/host` reach another origin.
+  const origin = URL.parse(href, anchor.baseURI)?.origin;
+  return href.startsWith('/') && origin === window.location.origin ? href : null;
 }
