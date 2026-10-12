@@ -41,7 +41,7 @@ import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
 import { affectedByVersions, checkAuthorityAt, classifyVersions } from './recovery.ts';
 import type { LockSet } from './locks.ts';
-import { lockRediscovered } from './rediscovery.ts';
+import { AffectedSetChanged, lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
   LINK_VERSION,
@@ -459,6 +459,11 @@ async function recheckDecision(
       'the decide grant this decision rested on ended before it could be recorded',
       'A person with decide authority on this task decides it.',
     );
+  }
+  // A covering grant issued after the hold is not held, so its revocation would
+  // not wait for this write: roll back, and the retry holds it.
+  if (current.value.some((grant) => !found.held_grants.includes(grant.id))) {
+    throw new AffectedSetChanged('decide: a decide grant appeared after the grant hold');
   }
   const gate = await recheckGate(tx, request, locked.lockedAt);
   if (!gate.ok) return gate;
