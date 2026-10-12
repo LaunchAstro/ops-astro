@@ -3,7 +3,7 @@
 //
 // The map's history says when each version was written as a person reads a
 // time, on the business's clock, and never shows the writer's internal id:
-// the map read carries only that id, so the row says "someone" instead.
+// the map read carries only that id, so no writer is named.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -23,7 +23,6 @@ describe('the map history', () => {
     const page = await openMadeUpMap(open);
     const row = page.find('[data-version="2"]')?.textContent ?? '';
     expect(row).toMatch(/13 Oct 2026, 12:36/u);
-    expect(row).toContain('someone');
     expect(row).not.toContain(WRITTEN_AT);
     expect(page.find('[data-map-section="history"]')?.textContent).not.toContain(WRITER_ID);
   });
