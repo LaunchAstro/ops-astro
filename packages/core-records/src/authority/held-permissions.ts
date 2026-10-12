@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Every permission in effect in a business and the person each one reaches,
-// read through the grant check's own walk (`EFFECTIVE` in grants.ts), so a
-// preview built from it is what the check grants.
+// Every live grant in a business and the person each one names, read through
+// the grant check's own walk (`EFFECTIVE` in grants.ts).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { EFFECTIVE, type Action, type Scope, type ScopeKind } from './grants.ts';
 
-/** One live permission and the person it reaches. */
+/** One live grant and the person it names. */
 export interface HeldPermission {
   /** The grant row it comes from, what `access.revoke` takes. */
   readonly grantId: string;
@@ -20,11 +19,14 @@ export interface HeldPermission {
 }
 
 /**
- * Every permission in effect in this business, with the person it reaches:
- * the person the grant names, or the person behind the acting identity it
- * names. It is `EFFECTIVE`, the walk `effectiveGrants` asks, so a preview
- * built from it is what the grant check grants. A group grant reaches nobody
- * here, because no group has members yet.
+ * Every live grant in this business, with its person: the person the grant
+ * names, or the person behind the acting identity it names, active or not, so
+ * a grant left on a deactivated identity can still be found and revoked. It
+ * is `EFFECTIVE`, the walk `effectiveGrants` asks. The grant check grants
+ * nothing to an inactive identity, so a preview built from this is what the
+ * check grants only for a person with an active acting identity: `readAccess`
+ * previews no one else. A group grant reaches nobody here, because no group
+ * has members yet.
  */
 export async function heldPermissions(tx: TenantQuery): Promise<readonly HeldPermission[]> {
   const rows = await tx.query<{
@@ -43,7 +45,7 @@ export async function heldPermissions(tx: TenantQuery): Promise<readonly HeldPer
        from effective e
        left join public.actors a
          on e.subject_kind = 'actor' and a.business_id = e.business_id
-        and a.id = e.subject_id and a.kind = 'person' and a.active
+        and a.id = e.subject_id and a.kind = 'person'
       where e.business_id = $1
         and (e.subject_kind = 'person' or a.person_id is not null)
       order by 2, 4, 5, 6, 7, 1`,
