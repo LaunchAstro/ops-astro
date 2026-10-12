@@ -183,6 +183,7 @@ const BUILT_PAGES = [
   'agency:connections',
   'agency:executive',
   'agency:onboarding',
+  'agency:password',
   'agency:settings',
   'agency:access',
   'agency:telemetry',

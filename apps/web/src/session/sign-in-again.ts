@@ -71,7 +71,7 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
 }
 
 /** GoTrue's own sign-out of this one session (`scope=local`), with the token it issued. */
-async function signOutAtProvider(
+export async function signOutAtProvider(
   gotrueUrl: string,
   token: string,
   fetch: typeof globalThis.fetch,
