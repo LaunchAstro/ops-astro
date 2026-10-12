@@ -188,8 +188,7 @@ export interface HeldGrant {
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
 // A person's writes pass the envelope's own standing check (`member`, from the session). A row
 // asking no grant: a self-scoped write needs none; a read (the inbox, session.capabilities) is
-// served only to a holder of some live grant. A read naming several grants is
-// admitted on any one of them, by its rule (`conversation.read`); a write needs them all.
+// served only to a holder of some live grant.
 export function reachableBy(
   rows: readonly CatalogueRow[],
   principal:
@@ -212,9 +211,7 @@ export function reachableBy(
         (agent && row.agent === 'before-pickup') ||
         (row.authority.length === 0
           ? (row.kind === 'write' && row.authorisedOn === 'self') || principal.grants.length > 0
-          : row.kind === 'read'
-            ? row.authority.some((key) => holds(key, row.authorisedOn === 'business'))
-            : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
+          : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({
       command: row.command,

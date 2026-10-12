@@ -32,7 +32,7 @@ const DUPLICATE = COMMAND_SURFACE.find(
 describe('API-1 command catalogue', () => {
   replacesDiscovery();
   agentDecideAndPersonOnly();
-  stricterSurfacesAndReadsOnAnyGrant();
+  stricterSurfaces();
 });
 
 function replacesDiscovery(): void {
@@ -128,22 +128,7 @@ function agentDecideAndPersonOnly(): void {
   });
 }
 
-function stricterSurfacesAndReadsOnAnyGrant(): void {
-  it('a read is discovered on any one of the grants its rule admits on: the owner and the read-any holder', () => {
-    const rows = buildCatalogue([]);
-    const finds = (key: string): boolean =>
-      reachableBy(rows, {
-        kind: 'person',
-        member: true,
-        grants: [{ key, scope: { kind: 'business', id: null } }],
-      }).some((one) => one.command === 'conversation.read');
-    expect({
-      owner: finds('conversation:write'),
-      readAny: finds('conversation:read'),
-      neither: finds('task:read'),
-    }).toStrictEqual({ owner: true, readAny: true, neither: false });
-  });
-
+function stricterSurfaces(): void {
   it('a surface stricter than the owning command fails parity: an added grant or an added person-only marker', () => {
     const rows = buildCatalogue([]);
     const surfaces = realSurfaces([]);
