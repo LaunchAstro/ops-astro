@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The first save of a business setting creates only its own row under the settings install lock: one row for two saves at once, none after a rollback, nothing more on a replay."
+}
