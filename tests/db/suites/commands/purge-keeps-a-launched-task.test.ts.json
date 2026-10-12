@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a waiting launch keys to its task with no cascade, so the purge keeps a launched task, reports it retained, and purges the other aged trash"
+}
