@@ -20,9 +20,12 @@
 // an ended access takes it exclusively first (`lockAccess`), so it committed
 // before this read, which then refuses with the door's own code
 // (`AUTH_ACCESS_ENDED` for an ended access), or waits for this write to commit.
-// Lock order: pair, conversation, access; nothing that holds the access lock
-// takes a conversation's. A conversation the send has just started goes with
-// the refusal (the envelope's savepoint).
+// Lock order: the access lock (shared), then the pair and conversation locks.
+// A send takes the access lock at the door, as it asks the grant
+// (`prepareCommand`); `chat.mark_read` asks none there, so it takes the access
+// lock, shared, only after its conversation lock. Nothing that holds the
+// access lock exclusively takes a conversation's. A conversation the send has
+// just started goes with the refusal (the envelope's savepoint).
 //
 // A message's `mentions` (CS-7.42) take a task comment's path, after that re-read: each person
 // named must be a current member of the conversation, or the message is refused
