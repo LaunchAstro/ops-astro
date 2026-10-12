@@ -22,7 +22,7 @@ import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
-import { proposeStep, selfOf, type Proposer } from './proposal.ts';
+import { proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
@@ -41,13 +41,8 @@ export interface WorkerOptions {
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
 
 export type WorkerOutcome =
-  | {
-      readonly proposed: {
-        readonly taskId: string;
-        readonly version: number;
-        readonly gateId: string;
-      };
-    }
+  /** A proposal's answer, or its own approved one in the queue after a restart (`proposal.ts`). */
+  | Proposed
   | {
       readonly applied: {
         readonly taskId: string;
@@ -145,7 +140,7 @@ async function ask(
   options: WorkerOptions,
   taskId: string,
   self: () => Promise<string | Unanswered>,
-): Promise<Asked | WorkerOutcome> {
+): Promise<Asked | { readonly idle: { readonly taskId: string } } | Unanswered> {
   const actorId = await self();
   if (typeof actorId !== 'string') return actorId;
   const queued = await agentCall(options)('task.queue', {});
@@ -292,6 +287,9 @@ export function createWorker(options: WorkerOptions): {
       running.set(taskId, pass);
       return await pass;
     },
-    proposeOnce: async () => await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter),
+    proposeOnce: async () =>
+      await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter, async (taskId) => {
+        return await ask(options, taskId, self);
+      }),
   };
 }
