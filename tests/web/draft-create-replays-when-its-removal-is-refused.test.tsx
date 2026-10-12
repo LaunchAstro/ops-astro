@@ -294,4 +294,28 @@ describe('a refused Create', () => {
     expect(heldId(storage)).toBeNull();
     await reloaded.view.unmount();
   });
+
+  it('settled while storage would not write, Create again in the same tab is a new operation', async () => {
+    const storage = store();
+    const api = server();
+    const { view } = await openDraft(api, storage);
+    await view.type('#panel-draft-name', 'Renew the domain');
+    api.next.refuse = true;
+    api.next.hold = true;
+    await view.click('[data-draft="create"]');
+    const setItem = storage.setItem.bind(storage);
+    storage.setItem = () => {
+      throw new DOMException('full', 'QuotaExceededError');
+    };
+    await release(api, 0);
+    storage.setItem = setItem;
+    api.next.hold = false;
+    expect(createLabel(view)).toBe('Create task');
+    await pressCreate(view);
+    expect(api.creates).toHaveLength(2);
+    expect(api.creates[1]).not.toBe(api.creates[0]);
+    expect(api.tasks).toStrictEqual([api.creates[1]]);
+    expect(storage.getItem(DRAFT_KEY)).toBeNull();
+    await view.unmount();
+  });
 });
