@@ -125,11 +125,12 @@ async function applyOnce(
     work = picked.held;
   }
   kept.set(taskId, work);
-  const outcome = await effectOnce(options, taskId, work, (dropped) => {
-    kept.set(taskId, dropped);
+  const outcome = await effectOnce(options, taskId, work, (next) => {
+    work = next;
+    kept.set(taskId, next);
   });
-  // A fault may be a lost answer, and a resume refused until sign-off clears
-  // keeps its provider answer for a later pass: anything else ends it here.
+  // A fault may be a lost answer, and a provider answer refused until sign-off
+  // clears is kept for a later pass: anything else ends it here.
   const signOff = 'refused' in outcome && outcome.refused.code === 'CLIENT_SIGNOFF_REQUIRED';
   if (!('fault' in outcome) && !(signOff && work.effected !== undefined)) kept.delete(taskId);
   return outcome;
@@ -208,9 +209,15 @@ async function effectOnce(
     return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
   };
   if (held.review !== undefined) return await handBackForReview(held.review.operationId);
+  // The provider has answered. Before the comment, dispatch answers its checks
+  // again, so a sign-off required since the mark refuses it, whether the
+  // answer came in this pass or a lost answer left it for a later one; once
+  // the comment applied, observe alone accounts for the effect already made.
   const commentAndObserve = async (effected: NonNullable<Held['effected']>) => {
     let commentId = effected.commentId;
     if (commentId === undefined) {
+      const again = await call('task.dispatch', lease);
+      if (!('body' in again)) return again;
       const effect = await call('task.comment', {
         operationId: effectOperationId(attemptId),
         recordId: taskId,
@@ -228,16 +235,8 @@ async function effectOnce(
     return { applied: { taskId, attemptId, commentId } };
   };
   // The provider answered and a later answer was lost: send only what is left,
-  // never the provider again. Before the comment, dispatch answers its checks
-  // again (a sign-off required since refuses it); once the comment applied,
-  // observe alone accounts for the effect already made.
-  if (held.effected !== undefined) {
-    if (held.effected.commentId === undefined) {
-      const again = await call('task.dispatch', lease);
-      if (!('body' in again)) return again;
-    }
-    return await commentAndObserve(held.effected);
-  }
+  // never the provider again.
+  if (held.effected !== undefined) return await commentAndObserve(held.effected);
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
