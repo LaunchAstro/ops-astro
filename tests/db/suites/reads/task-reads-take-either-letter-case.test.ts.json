@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A task's comments, family, rank and shared view read the same for an uppercase spelling of its id as for the stored lowercase one, which only a real database comparing stored text shows."
+}
