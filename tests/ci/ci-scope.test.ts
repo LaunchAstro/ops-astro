@@ -133,6 +133,21 @@ describe('the heavy checks on a pull request', () => {
     expect(fixtureScope(['tests/visual/x.ts'])).toMatchObject({ everything: false, areas: [] });
   });
 
+  it('keeps a suite in scope when a fixture it names is deleted', () => {
+    const tree = mkdtempSync(join(tmpdir(), 'ci-scope-deleted-'));
+    try {
+      const suite = 'tests/db/reads-a-fixture.test.ts';
+      mkdirSync(join(tree, 'tests/db'), { recursive: true });
+      // The fixture the suite reads is gone at the head; the suite still names it.
+      writeFileSync(join(tree, suite), "readFileSync('tests/db/fixtures/rows.json');\n");
+      expect(dependentsOf(tree, [suite])('tests/db/fixtures/rows.json')).toStrictEqual([
+        areaOf(suite),
+      ]);
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+    }
+  });
+
   it('runs database conformance and isolation only with a named suite in scope', () => {
     const suites = ['tests/web/a.test.ts', 'tests/runtime/b.test.ts'];
     const web = fixtureScope(['tests/visual/x.ts']);
