@@ -38,13 +38,14 @@ function teammate(member: TeamMemberView): Teammate {
  */
 function useSetAvailability(
   client: OperationsClient,
+  grantKey: string,
   say: (because: string | null) => void,
   reload: () => void,
 ): (change: AvailabilityChange) => void {
-  const [save] = useState(() => availabilitySaver(client));
+  const [save] = useState(availabilitySaver);
   return (change) => {
     say(null);
-    save(change, (result) => {
+    save(client, grantKey, change, (result) => {
       if (isRefusal(result)) say(describeRefusal(result));
       else if (isUnavailable(result)) say(result.because);
       else reload();
@@ -65,7 +66,7 @@ export function TeamScreen(props: {
   });
   const [because, setBecause] = useState<string | null>(null);
   const chat = useChat(client, props.grantKey, setBecause);
-  const onSetAvailability = useSetAvailability(client, setBecause, reload);
+  const onSetAvailability = useSetAvailability(client, props.grantKey, setBecause, reload);
 
   return (
     <div className="stack">
