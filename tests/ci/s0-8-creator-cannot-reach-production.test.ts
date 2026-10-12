@@ -56,6 +56,7 @@ describe('S0-8 creator cannot reach production', () => {
   refusedAddresses();
   refusedSettings();
   requestedCases();
+  secretCase();
   pushEnvironmentCase();
 });
 
@@ -166,7 +167,9 @@ function requestedCases() {
     const outcomes = await Promise.all(answers.map((a) => creator(settings(), a).run(VERSION)));
     expect(outcomes.map((o) => o.kind)).toEqual(['failed', 'failed']);
   });
+}
 
+function secretCase() {
   it("never names the hook's secret in a record or a refusal", async () => {
     const outcomes = [
       await creator(settings()).run(VERSION),
