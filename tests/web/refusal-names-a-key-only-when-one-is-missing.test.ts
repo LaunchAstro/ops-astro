@@ -9,11 +9,21 @@ import { describe, expect, it } from 'vitest';
 import { REFUSAL_REGISTER } from '../../packages/core-records/src/register.ts';
 import { needsKey } from '../../apps/web/src/records/needs-key.ts';
 
-const refusal = (code: string) => ({ code, names: [], fixes: [] }) as never;
+const refusal = (code: string, names: readonly string[] = []) =>
+  ({ code, names, fixes: [] }) as never;
 
 describe('the key a refused map write names', () => {
   it('a missing grant names the key the command is declared with', () => {
     expect(needsKey('task.set_blocking', refusal('SCOPE_NOT_GRANTED'))).toBe(
+      'You need task:write.',
+    );
+  });
+
+  it('a missing grant that names a key names that key, and otherwise the declared one', () => {
+    expect(needsKey('map.revise', refusal('SCOPE_NOT_GRANTED', ['task:assign']))).toBe(
+      'You need task:assign.',
+    );
+    expect(needsKey('map.revise', refusal('SCOPE_NOT_GRANTED', ['recordId']))).toBe(
       'You need task:write.',
     );
   });
