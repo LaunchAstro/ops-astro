@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An OTLP partial rejection is a gap on record and the batch is not sent again; judged through the exporter's own transactions on a real migrated database."
+}

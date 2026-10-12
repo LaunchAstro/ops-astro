@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's comment or owned field write that waits on its task applies nothing once its delegation runs out during the wait; judged with the task row held on a second connection over a real migrated database."
+}
