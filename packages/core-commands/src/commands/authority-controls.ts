@@ -496,7 +496,8 @@ export interface EndedAuthority {
  * `access.end` (C58): every live grant the person holds, as themselves or as
  * their acting identity, and every delegation they gave an agent, ended in one
  * authority-loss classification, so the work they carried is classified
- * exactly as a revocation classifies it.
+ * exactly as a revocation classifies it, and each quarantined hold raises its
+ * incident to the task's managers as a revocation's does.
  *
  * The caller holds the access lock. The person's grant rows are locked next,
  * all of them and in id order, before any runtime lock: the order a single
@@ -545,6 +546,7 @@ export async function endPersonAuthority(
       return written;
     },
   });
+  await raiseIncident(tx, loss.classified);
   return {
     grantsRevoked: loss.value,
     delegationsRevoked,
