@@ -31,6 +31,7 @@ import { createHash } from 'node:crypto';
 import {
   advisoryLock,
   ENDED_FIXES,
+  refuseStaleMoneyStep,
   sessionEndedSince,
   standingOf,
   withSession,
@@ -504,9 +505,17 @@ async function attempt(
       presented === undefined || !keepsWrites
         ? undefined
         : await (ownEnding ? signedOut(tx, session) : standingOf(tx, presented, 'required'));
-    if (standing === undefined || !('refused' in standing)) return answer;
+    // The money step-up, asked again after the same waits: one that expired
+    // while the handler waited (a setting row, the audit chain) keeps nothing.
+    const late =
+      standing !== undefined && 'refused' in standing
+        ? standing
+        : keepsWrites
+          ? await refuseStaleMoneyStep(tx, session, declaration, request)
+          : undefined;
+    if (late === undefined) return answer;
     await tx.query('rollback to savepoint command_attempt');
-    return await settle(tx, session, request, digest, standing, 'none');
+    return await settle(tx, session, request, digest, late, 'none');
   } catch (cause) {
     // The savepoint is rolled back so the statement log reads honestly, and
     // then the fault leaves: this driver has already condemned the
