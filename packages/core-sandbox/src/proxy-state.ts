@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// P3, P4 and P6 (docs/plan/sandbox-contract.md, section 6): the proxy's one
-// decision point over its two durable records, kept in one file so that a
-// create's container id and candidate count land in one write. A create is
-// taken alone, from its count check until that write, and answered after
-// it, so one the daemon made but the record never held counts nothing and
-// is swept. Its image is pinned for its class (a site's only with its own
-// entry's `Env`, once B8 accepted it) or, for S1 only, a pin's open
-// candidate. B8 runs on every pin-list read, open included.
+// P3, P4 and P6 (docs/plan/sandbox-contract.md, section 6): the proxy's one decision point over
+// its two durable records, kept in one file so that a create's container id and candidate count
+// land in one write. A create is taken alone, from its count check until that write, and answered
+// after it, so one the daemon made but the record never held counts nothing and is swept. Its
+// image is pinned for its class (a site's only with its own entry's `Env`, once B8 accepted it)
+// or, for S1 only, a pin's open candidate. B8 runs on every pin-list read, open included.
 //
-// The proxy sweeps on open, on a count mismatch and on a failed delete;
-// until a sweep passes every request is `unavailable` and it repeats every
-// 30 s. A run whose container a sweep removed, or answered while a failed
-// sweep waits, is `unavailable`; a delete only when another sweep, passed
-// or not, took it. A throw in a request answers `internal`; in the timer or a note it
-// leaves the record for the next tick. A wait counts only after a 204 start
-// and is judged when it lands; an attach once its start was sent and a
-// start at the deadline are refused. `tick` kills at every tick from the
-// deadline, latched against a clock step back (a container held across a
-// restart is past it), and deletes when P4 and P6 say so, its daemon calls
-// without the lock. Loads and image calls are P5's (piece 2d-ii).
+// The proxy sweeps on open, on a count mismatch, on a failed delete and at the next tick after a
+// create's failed write; until a sweep passes every request is `unavailable` and it repeats every
+// 30 s. A run whose container a sweep removed, or answered while a failed sweep waits, is
+// `unavailable`; a delete only when another sweep, passed or not, took it. A throw in a request
+// answers `internal`; in the timer or a note it leaves the record for the next tick. A wait
+// counts only after a 204 start for the container still held, judged when it lands; an attach
+// once its start was sent and a start at the deadline are refused. `tick` kills at every tick
+// from the deadline, latched against a clock step back (a container held across a restart is
+// past it), and deletes when P4 and P6 say so, its daemon calls without the lock. Loads and
+// image calls are P5's (piece 2d-ii).
 
 import {
   candidateCreate,
@@ -139,9 +136,8 @@ export class ProxyState {
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
-    // A start answered for a container since replaced is that container's, never the next one's.
-    const current = 'id' in op && this.#containers.container?.id === op.id;
-    if (op.kind === 'start' && reply.status === NO_CONTENT && current) this.#started = op.id;
+    const held = this.#containers.container?.id;
+    if (op.kind === 'start' && reply.status === NO_CONTENT && held === op.id) this.#started = op.id;
     const at = this.#ports.now();
     if (op.kind === 'wait') {
       const late = this.#reached(op.id, at);
@@ -249,7 +245,11 @@ export class ProxyState {
     const candidates =
       candidate === null ? this.#candidates : countCandidateCreate(this.#candidates, op.image);
     const now = this.#ports.now();
-    await this.#save(candidates, recordContainer(this.#containers, made.id, now, wallMs, wall));
+    const book = recordContainer(this.#containers, made.id, now, wallMs, wall);
+    await this.#save(candidates, book).catch((error: unknown) => {
+      this.#retryAt = now;
+      throw error;
+    });
     const runs = candidates.candidates.findLast((held) => held.id === op.image)?.runs.length;
     this.#run =
       candidate === null || runs === undefined ? null : { image: op.image, run: runs - 1 };
