@@ -50,6 +50,8 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/session/password-grant.ts': 'the password grant, to the sign-in provider only',
   'apps/web/src/session/sign-in-again.ts':
     'signs out, at the sign-in provider, a new session the tab never adopted (C59)',
+  'apps/web/src/session/password-change.ts':
+    "hands the app's fetch to the password grant, the password set and the sign-out at the sign-in provider",
   // Batch 1's, taken at 5d3e129 (reviewed there):
   'apps/api/auth/jwks.ts':
     "reads the sign-in provider's published key set at its pinned address (S0-6b)",
