@@ -712,6 +712,15 @@ type Carried = {
 };
 type AsOperator = { drillAsOperator: (options: Record<string, unknown>) => Promise<DrillRecord> };
 
+/** The gate's hold, as a fake gate passes it straight through. */
+const passThroughHold = async <T>(
+  during: (release: () => void, stillHeld: () => Promise<void>) => Promise<T>,
+): Promise<T> =>
+  await during(
+    () => {},
+    () => Promise.resolve(),
+  );
+
 /**
  * The fixture's sealed dump carried and drilled as an admitted operator, in a
  * folder of its own: the receipt, its log line and what is kept beside the archive.
@@ -738,7 +747,7 @@ async function carriedRestore(
       operator: { personId: randomUUID(), business: 'made-up' },
       records,
       recordSignIn: () => Promise.resolve(),
-      holdingGrant: <T>(during: (release: () => void) => Promise<T>) => during(() => {}),
+      holdingGrant: passThroughHold,
     };
     const drill = '../../scripts/ops/restore-drill.mjs';
     const { drillAsOperator } = (await import(

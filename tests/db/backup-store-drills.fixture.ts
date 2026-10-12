@@ -64,7 +64,13 @@ export async function operatorReceiptCase(): Promise<void> {
       operator: { personId: operator, business: OPERATING_BUSINESS },
       records,
       recordSignIn: async () => {},
-      holdingGrant: <T>(during: (release: () => void) => Promise<T>) => during(() => {}),
+      holdingGrant: <T>(
+        during: (release: () => void, stillHeld: () => Promise<void>) => Promise<T>,
+      ) =>
+        during(
+          () => {},
+          () => Promise.resolve(),
+        ),
       // C55: only the pass stamps the operations view's date (migration 0070).
       recordTestedRestore: () => Promise.resolve(String((stamped += 1))),
     };

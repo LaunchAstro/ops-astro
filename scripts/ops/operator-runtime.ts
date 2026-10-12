@@ -10,6 +10,7 @@
 import { createBusinessResolver, LOOKUP_ROLE } from '../../apps/api/server.ts';
 import {
   connect,
+  lockAccess,
   OPERATIONS_MANAGE,
   SESSION_ABSOLUTE_SECONDS,
   standingOf,
@@ -128,8 +129,10 @@ const LIVE_THROUGH = `${EFFECTIVE}, instant as materialized (
 
 /**
  * Lock first, judge second. Everything the gate's answer rests on is locked:
- * the grant chain covering the person and their actor, the login's rows, and
- * the session's ending keys (`sessionEndedHeld`). Then, inside this
+ * the business's access key shared, which every change to who may do what
+ * takes first and exclusively (`lockAccess`), so none of them deadlocks with
+ * this; then the grant chain covering the person and their actor, the login's
+ * rows, and the session's ending keys (`sessionEndedHeld`). Then, inside this
  * transaction, the same person and actor must stand and be covered for the
  * whole budget. The operating business is written once, at installation.
  */
@@ -138,6 +141,7 @@ async function standsThrough(
   admitted: Admitted,
   seconds: number,
 ): Promise<boolean> {
+  await lockAccess(tx, 'shared');
   const first = await standingOf(tx, admitted.presented, 'required');
   if ('refused' in first || first.personId !== admitted.personId) return false;
   const covering = { subjects: subjectsOf(first), ...OPERATIONS_MANAGE };
@@ -161,58 +165,116 @@ async function standsThrough(
 }
 
 /**
- * `during`, handed `release`, under a hold on everything the operator's
- * admission rests on (`standsThrough`), judged again once it is locked, in a
- * transaction of its own: a revocation, a sign-out or a remapping waits until
- * `during` calls `release` or ends, and never past `budgetMs`. A hold that
- * cannot be judged, or is not released within the budget, refuses: `release`
- * then throws, so whatever it guards is never started.
+ * `tx`, each statement bounded by what is left of the hold's budget, so its
+ * lock waits together end there. A statement timeout ends the statement, not
+ * the connection, which the driver survives where a session timeout's
+ * termination mid-statement it does not.
+ */
+function within(tx: TenantQuery, until: number): TenantQuery {
+  const limit = async (): Promise<void> => {
+    const left = until - Date.now();
+    if (left <= 0) throw new Error(ENDED);
+    await tx.query("select set_config('statement_timeout', $1, true)", [String(left)]);
+  };
+  return {
+    businessId: tx.businessId,
+    query: async <Row>(text: string, parameters?: readonly unknown[]) => {
+      await limit();
+      return await tx.query<Row>(text, parameters);
+    },
+  };
+}
+
+/**
+ * A hold's budget, and how it ends. Released in time, its transaction commits.
+ * Expired (its timer, its clock, a refusal or a lost connection), it is never
+ * woken: the server's idle bound, a second after the budget, ends it, so no
+ * commit is ever sent on a connection the server may be closing.
+ */
+interface Budget {
+  readonly until: number;
+  /** Settles when the hold is released in time. */
+  readonly released: Promise<void>;
+  readonly expire: () => void;
+  /** Read on the clock too, so a process that stalled past its timer is refused. */
+  readonly expired: () => boolean;
+  /** Ends the hold; throws once it has expired, so what it guards never starts. */
+  readonly release: () => void;
+}
+
+function budgetOf(budgetMs: number): Budget {
+  const until = Date.now() + budgetMs;
+  let [end] = [(): void => {}];
+  const released = new Promise<void>((resolve) => {
+    end = resolve;
+  });
+  let state: 'holding' | 'released' | 'expired' = 'holding';
+  const expire = (): void => {
+    clearTimeout(deadline);
+    if (state === 'holding') state = 'expired';
+  };
+  const deadline = setTimeout(expire, budgetMs);
+  const expired = (): boolean => state === 'expired' || Date.now() >= until;
+  const release = (): void => {
+    if (expired()) throw new Error(ENDED);
+    if (state !== 'holding') return;
+    clearTimeout(deadline);
+    state = 'released';
+    end();
+  };
+  return { until, released, expire, expired, release };
+}
+
+/** What a hold hands `during`: `release` ends it, `stillHeld` proves its transaction still lives. */
+export type During<T> = (release: () => void, stillHeld: () => Promise<void>) => Promise<T>;
+
+/**
+ * `during`, under a hold on everything the operator's admission rests on
+ * (`standsThrough`), judged again once it is locked, in a transaction of its
+ * own: a revocation, a sign-out or a remapping waits until `during` calls
+ * `release` or ends, and never past `budgetMs` from the hold's start, its own
+ * lock waits included (`within`). A hold that
+ * cannot be judged, or is released after its budget, refuses: `release` then
+ * throws, so whatever it guards is never started (`budgetOf`). `stillHeld` asks the hold's
+ * transaction itself, so one ended under it (a crash, a terminated backend)
+ * is refused too.
  */
 export async function holdingGrant<T>(
   url: string,
   admitted: Admitted,
-  during: (release: () => void) => Promise<T>,
+  during: During<T>,
   budgetMs: number = HOLD_BUDGET_MS,
 ): Promise<T> {
   const database = connect(url, { source: 'runtime' });
-  let [end, held] = [(): void => {}, (): void => {}];
-  const ended = new Promise<void>((resolve) => {
-    end = resolve;
-  });
-  const taken = new Promise<void>((resolve) => {
+  const { until, released, expire, expired, release } = budgetOf(budgetMs);
+  let [held] = [(_tx: TenantQuery): void => {}];
+  const taken = new Promise<TenantQuery>((resolve) => {
     held = resolve;
   });
-  let state: 'holding' | 'released' | 'expired' = 'holding';
-  const finish = (to: 'released' | 'expired'): void => {
-    state = to;
-    clearTimeout(deadline);
-    end();
-  };
-  const deadline = setTimeout(() => finish('expired'), budgetMs);
-  const expired = (): boolean => state === 'expired';
-  const release = (): void => {
-    if (expired()) throw new Error(ENDED);
-    if (state === 'holding') finish('released');
-  };
-  const hold = database.withBusiness(admitted.businessId, async (tx) => {
-    // The server's own bound, a second past the client's, should this process stall.
-    await tx.query(
-      `select set_config('statement_timeout', $1, true),
-              set_config('idle_in_transaction_session_timeout', $1, true)`,
-      [String(budgetMs + 1000)],
-    );
+  const hold = database.withBusiness(admitted.businessId, async (whole) => {
+    const tx = within(whole, until);
     if (!(await standsThrough(tx, admitted, Math.ceil(budgetMs / 1000)))) throw new Error(ENDED);
-    held();
-    await ended;
+    // Held: the server ends it a second after the budget, should it never be released.
+    const left = String(Math.max(1, until - Date.now()) + 1000);
+    await tx.query("select set_config('idle_in_transaction_session_timeout', $1, true)", [left]);
+    held(tx);
+    await released;
   });
+  hold.catch(expire);
   try {
     await Promise.race([taken, hold]);
+    const tx = await taken;
     if (expired()) throw new Error(ENDED);
-    return await during(release);
+    return await during(release, async () => {
+      if (expired()) throw new Error(ENDED);
+      await tx.query('select 1');
+    });
   } finally {
-    finish(expired() ? 'expired' : 'released');
+    // An expired hold's ending (the server's bound) is no news: `during`'s own answer stands.
+    const ending = expired() ? hold.catch(expire) : hold;
+    if (!expired()) release();
     try {
-      await hold;
+      await ending;
     } finally {
       await database.close();
     }

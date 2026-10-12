@@ -75,7 +75,11 @@ export const gateOf = (personId: string = randomUUID()): Receipt & { records: st
   operator: { personId, business: 'made-up' },
   records: folder('records'),
   recordSignIn: () => Promise.resolve(),
-  holdingGrant: <T>(during: (release: () => void) => Promise<T>) => during(() => {}),
+  holdingGrant: <T>(during: (release: () => void, stillHeld: () => Promise<void>) => Promise<T>) =>
+    during(
+      () => {},
+      () => Promise.resolve(),
+    ),
   recordTestedRestore: () => Promise.resolve(new Date().toISOString()),
 });
 

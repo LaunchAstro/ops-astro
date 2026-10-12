@@ -113,9 +113,10 @@ function askingAgain(reach, gate) {
     await gate.stillOperator?.();
     if (onLine === undefined) return await reach(url, script, onLine);
     const hold = gate.holdingGrant ?? ((during) => during(() => {}));
-    const answer = await hold(async (release) => {
+    const answer = await hold(async (release, stillHeld) => {
       async function* asked() {
         await gate.stillOperator?.();
+        await stillHeld?.();
         release();
         yield* typeof script === 'string' ? [script] : script;
       }
