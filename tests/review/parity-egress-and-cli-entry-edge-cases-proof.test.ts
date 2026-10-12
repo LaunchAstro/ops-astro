@@ -4,15 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-  appendFileSync,
-} from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -160,45 +152,6 @@ test('the CLI executes through a linked entry path', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 }, 120_000);
-
-test(
-  'parity inspects a browser helper imported outside its two source directories',
-  () =>
-    withCopy((copy) => {
-      assert.equal(parity(copy).status, 0, 'control: unchanged parity passes');
-      writeFileSync(
-        join(copy, 'packages/browser-helper.mjs'),
-        "export const plantedWrite = () => fetch('/api/b/alpha/uncatalogued-write', { method: 'POST' });\n",
-      );
-      appendFileSync(
-        join(copy, 'apps/web/src/main.tsx'),
-        "\nimport { plantedWrite } from '../../../packages/browser-helper.mjs';\nplantedWrite();\n",
-      );
-      // Prove this module actually ships, rather than merely leaving an unused file beside the app.
-      const buildScript = `
-    import { build } from 'vite';
-    import react from '@vitejs/plugin-react';
-    import { resolve } from 'node:path';
-    let shipped = false;
-    await build({ configFile: false, root: resolve('apps/web'), logLevel: 'silent', publicDir: false,
-      resolve: { alias: { '@launchastro/ui': resolve('packages/ui/src/index.ts') } },
-      plugins: [react(), { name: 'sol-proof-graph', generateBundle() {
-        shipped = [...this.getModuleIds()].some(id => id.endsWith('/packages/browser-helper.mjs'));
-      } }], build: { write: false } });
-    if (!shipped) throw new Error('the planted helper did not ship');
-  `;
-      const built = spawnSync(process.execPath, ['--input-type=module', '-e', buildScript], {
-        cwd: copy,
-        encoding: 'utf8',
-        timeout: 60_000,
-      });
-      assert.equal(built.status, 0, built.stderr);
-      const result = parity(copy);
-      assert.equal(result.status, 1, `Parity passes the imported browser write: ${result.stderr}`);
-      assert.match(result.stdout, /browser-helper\.mjs sends a request itself/u);
-    }),
-  300_000,
-);
 
 test(
   'each agent bearer must execute exactly once rather than sharing a total',

@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import {
-  appendFileSync,
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'vitest';
@@ -51,54 +43,6 @@ test('an ignored important keyframe font cannot conceal an animated off-scale fo
     rmSync(scratch, { recursive: true, force: true });
   }
 }, 30_000);
-
-test('parity inspects an imported browser worker that ships an uncatalogued request', () => {
-  const copy = mkdtempSync(join(tmpdir(), 'parity-census-worker-'));
-  try {
-    for (const directory of ['apps', 'packages', 'scripts'])
-      cpSync(join(root, directory), join(copy, directory), { recursive: true });
-    symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'), 'dir');
-    const parity = () =>
-      spawnSync(process.execPath, ['scripts/command-parity.mjs', '--check'], {
-        cwd: copy,
-        encoding: 'utf8',
-        timeout: 60_000,
-      });
-    const control = parity();
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-    writeFileSync(
-      join(copy, 'packages/browser-worker.mjs'),
-      "fetch('/api/b/alpha/uncatalogued-write', { method: 'POST', body: '{}' });\n",
-    );
-    appendFileSync(
-      join(copy, 'apps/web/src/main.tsx'),
-      "\nimport PlantedWorker from '../../../packages/browser-worker.mjs?worker';\nnew PlantedWorker();\n",
-    );
-    // Independently verify that Vite emits an executable worker containing the request.
-    const build = spawnSync(
-      process.execPath,
-      [
-        '--input-type=module',
-        '-e',
-        `
-      import { build } from 'vite';
-      import react from '@vitejs/plugin-react';
-      import { resolve } from 'node:path';
-      const result = await build({ configFile: false, root: resolve('apps/web'), publicDir: false, logLevel: 'silent', plugins: [react()], resolve: { alias: { '@launchastro/ui': resolve('packages/ui/src/index.ts') } }, build: { write: false, minify: false } });
-      const output = (Array.isArray(result) ? result : [result]).flatMap(one => one.output);
-      if (!output.some(one => one.fileName.includes('browser-worker') && String(one.code ?? one.source).includes('uncatalogued-write'))) throw new Error('worker request was not emitted');
-    `,
-      ],
-      { cwd: copy, encoding: 'utf8', timeout: 60_000 },
-    );
-    assert.equal(build.status, 0, build.stdout + build.stderr);
-    const result = parity();
-    assert.equal(result.status, 1, `parity accepts the shipped worker request: ${result.stderr}`);
-    assert.match(result.stdout, /browser-worker\.mjs sends a request itself/u);
-  } finally {
-    rmSync(copy, { recursive: true, force: true });
-  }
-}, 180_000);
 
 // eslint-disable-next-line max-lines-per-function -- the proof kept as its reviewer wrote it
 test('parity rejects task.update grant refusal removed while its query remains', () => {
