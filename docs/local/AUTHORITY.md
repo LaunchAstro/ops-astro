@@ -488,11 +488,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:790-816`, run at `:949-957`). It gets a login and an acting identity,
+  user (`:801-827`, run at `:960-968`). It gets a login and an acting identity,
   and no membership and no business grant (`:182-185`, `:335-337`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:818-847`, `:986-995`).
+  (`:829-858`, `:997-1006`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a

@@ -608,22 +608,33 @@ function ensureGateKey() {
     linkSync(staging, gateFile);
   } catch (cause) {
     if (cause.code !== 'EEXIST') throw cause;
-    const { GATE_SIGNING_KEY_ID: keptId, GATE_SIGNING_SECRET: kept } = readEnvFile(gateFile);
-    if (keptId && kept) return { id: keptId, secret: kept, fresh: false };
-    // A file there that holds no key is replaced, under an exclusive lock and
-    // only while it still holds none: another seed that replaced it first has
-    // already handed its key out, so that key is the one kept and returned.
-    const lock = `${gateFile}.lock`;
-    writeFileSync(lock, '', { flag: 'wx' });
+    // An empty file (an interrupted run) is replaced through one claim, the
+    // first seed's key; a seed recovering at the same time takes that key.
+    const claim = `${gateFile}.recover`;
+    let key = { id, secret };
+    let owned = true;
     try {
-      const now = readFileSync(gateFile, 'utf8');
-      const field = (name) => new RegExp(`^${name}=(.+)$`, 'mu').exec(now)?.[1];
-      const [nowId, nowSecret] = [field('GATE_SIGNING_KEY_ID'), field('GATE_SIGNING_SECRET')];
-      if (nowId && nowSecret) return { id: nowId, secret: nowSecret, fresh: false };
-      renameSync(staging, gateFile);
-    } finally {
-      rmSync(lock, { force: true });
+      linkSync(staging, claim);
+    } catch (taken) {
+      if (taken.code !== 'EEXIST') throw taken;
+      owned = false;
+      const { GATE_SIGNING_KEY_ID: claimedId, GATE_SIGNING_SECRET: claimed } = readEnvFile(claim);
+      if (!claimedId || !claimed)
+        throw new Error(`${claim} holds no key: remove it and seed again`, { cause: taken });
+      key = { id: claimedId, secret: claimed };
     }
+    const { GATE_SIGNING_KEY_ID: keptId, GATE_SIGNING_SECRET: kept } = readEnvFile(gateFile);
+    if (keptId && kept) {
+      if (owned) rmSync(claim, { force: true });
+      return { id: keptId, secret: kept, fresh: false };
+    }
+    try {
+      renameSync(claim, gateFile);
+    } catch (gone) {
+      // Another seed recovering at once has already put the claim in place.
+      if (gone.code !== 'ENOENT') throw gone;
+    }
+    return { ...key, fresh: true };
   } finally {
     rmSync(staging, { force: true });
   }
