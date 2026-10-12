@@ -459,7 +459,8 @@ does not record 0031, because a file and its ledger row commit together
 `tests/runtime/upgrade-guards.test.ts`). 0031's loop revokes
 TEMPORARY from every login in the application group that still exists when it
 reaches it; a login dropped while the loop runs is skipped rather than failing
-the upgrade (FR8-0031).
+the upgrade (FR8-0031). Migration 20261012052116 repeats it for every role that
+holds the group through another role, and for that middle role.
 
 **Upgrading a running install.** The migration runner refuses to apply a
 pending migration while any other client session is connected to the database
@@ -2172,7 +2173,9 @@ route, command-line verb or agent operation reaches it.
   row goes in through
   `ops_astro_occurrence`, taken for the one insert with
   `set_config('role', ..., true)`; 0097's trigger refuses an origin written by
-  any other role, and any change to an origin after the insert.
+  any other role, and any change to an origin after the insert, and
+  20261012052116's refuses one whose occurrence is not approved or whose
+  definition is not its activation's.
 - **What refuses it.** An unknown or malformed occurrence
   (`OCCURRENCE_UNKNOWN`); a revoked, ended or superseded approval, or one that
   names no person of the business (`APPROVAL_NOT_STANDING`); a revoked version

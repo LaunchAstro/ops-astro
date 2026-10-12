@@ -101,16 +101,17 @@ export function authorityFor(
 
 /**
  * A real occurrence of the business's automation, owner-written, for a run to
- * name: the run's origin keys reach C33's occurrence and definition rows.
+ * name: the run's origin keys reach C33's occurrence and definition rows, and
+ * only an approved occurrence starts a run. Any other outcome names no approval.
  */
-export async function occurrence(on: Schedules): Promise<string> {
+export async function occurrence(on: Schedules, outcome = 'approved'): Promise<string> {
   const id = randomUUID();
-  const { activationId, versionId } = automationOf(on);
+  const { activationId, versionId, approvalId } = automationOf(on);
   await on.db.admin.execute(
     `insert into public.activation_occurrences
-       (business_id, id, activation_id, version_id, event_id, outcome)
-     values ($1, $2, $3, $4, $5, 'activation_off')`,
-    [on.business, id, activationId, versionId, `aw01-${id}`],
+       (business_id, id, activation_id, version_id, event_id, outcome, approval_id)
+     values ($1, $2, $3, $4, $5, $6, case when $6 = 'approved' then $7::uuid end)`,
+    [on.business, id, activationId, versionId, `aw01-${id}`, outcome, approvalId],
   );
   return id;
 }
