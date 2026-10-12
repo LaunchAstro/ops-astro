@@ -4,14 +4,17 @@
 // a task: `task.execution`'s own admission, with the bearer verified again. C71 (CS-7.42) adds a
 // team conversation, admitted for a current member alone (`reads/live-chat.ts`), and the board's
 // question of whether its person is in a conversation that moved. None serves, audits or shows
-// anything (C4 live-sync 6).
+// anything (C4 live-sync 6). The board's own questions (INB-1f) sit here too.
 
 import type { Context } from 'hono';
 import { EXPIRED_FIXES } from '../../packages/core-records/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 import {
   admitConversations,
+  boardReach,
   hearsConversation,
+  joinLiveBoard,
+  shownInbox,
   isCommandRefusal,
   refuseCommand,
   refuseNotFound,
@@ -175,4 +178,46 @@ export function hearing(
       conversationIds,
     );
   };
+}
+
+/**
+ * Whether this caller may hold the board's stream (INB-1f), with the bearer
+ * verified again; no answer when the sign-in provider could not be asked.
+ */
+export async function mayJoinBoard(
+  options: Door,
+  context: Context,
+  businessId: string,
+): Promise<{ readonly personId: string } | CommandRefusal | Unanswered> {
+  const presented = await options.verify(context.req);
+  if (presented === 'unavailable') return UNANSWERED;
+  if (typeof presented !== 'object') {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
+export async function mayReach(
+  options: Door,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  return typeof presented === 'object'
+    ? await boardReach(options.database, businessId, presented, personId)
+    : undefined;
+}
+
+/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
+export async function mayShowInbox(
+  options: Door,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  if (typeof presented !== 'object') return undefined;
+  return await shownInbox(options.database, businessId, presented, personId);
 }

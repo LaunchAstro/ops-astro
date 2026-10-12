@@ -46,9 +46,6 @@ import {
   agentAnswer,
   isCommandRefusal,
   isReadName,
-  boardReach,
-  joinLiveBoard,
-  shownInbox,
   atUnheldKey,
   refuseCommand,
   refuseNotFound,
@@ -97,7 +94,14 @@ import {
   type Seated,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
-import { hearing, watching, type DoorWatching } from './live-watching.ts';
+import {
+  hearing,
+  mayJoinBoard,
+  mayReach,
+  mayShowInbox,
+  watching,
+  type DoorWatching,
+} from './live-watching.ts';
 import { liveStream } from './live-stream.ts';
 import { recordsIn } from './records-in.ts';
 import { settleAfterCommit } from './settle-after-commit.ts';
@@ -566,7 +570,6 @@ export function createApi(options: ApiOptions): Hono {
               tasks,
             );
       const board = named.board ? await mayJoinBoard(options, context, businessId) : undefined;
-      // The provider could not be asked at the door: unavailable, as the door itself answers.
       if (board === UNANSWERED || answers.includes(UNANSWERED)) return unavailable(context);
       const watched = tasks.filter((_, at) => typeof answers[at] === 'string');
       const joined = board === undefined || isCommandRefusal(board) ? undefined : board;
@@ -775,48 +778,6 @@ async function followBoardOn(
   );
 }
 
-/**
- * Whether this caller may hold the board's stream (INB-1f), with the bearer
- * verified again; no answer when the sign-in provider could not be asked.
- */
-async function mayJoinBoard(
-  options: ApiOptions,
-  context: Context,
-  businessId: string,
-): Promise<{ readonly personId: string } | CommandRefusal | Unanswered> {
-  const presented = await options.verify(context.req);
-  if (presented === 'unavailable') return UNANSWERED;
-  if (typeof presented !== 'object') {
-    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
-  }
-  return await joinLiveBoard(options.database, businessId, presented);
-}
-
-/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
-async function mayReach(
-  options: ApiOptions,
-  context: Context,
-  businessId: string,
-  personId: string,
-): Promise<string | undefined> {
-  const presented = await options.verify(context.req);
-  return typeof presented === 'object'
-    ? await boardReach(options.database, businessId, presented, personId)
-    : undefined;
-}
-
-/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
-async function mayShowInbox(
-  options: ApiOptions,
-  context: Context,
-  businessId: string,
-  personId: string,
-): Promise<string | undefined> {
-  const presented = await options.verify(context.req);
-  if (typeof presented !== 'object') return undefined;
-  return await shownInbox(options.database, businessId, presented, personId);
-}
-
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
@@ -847,18 +808,7 @@ export async function follow(
     const signal = pending;
     pending = null;
     if (signal === null || stream.aborted) return;
-    const answer = await may();
-    // The tab may have left while the caller was asked: nothing is written after.
-    if (stream.aborted) return;
-    if (answer === UNANSWERED) {
-      owed = signal;
-      return;
-    }
-    const allowed = typeof answer === 'string';
-    if (!allowed) {
-      await stream.writeSSE({ event: 'closed', data: '' });
-      stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
+    if (!(await deliver(stream, signal, await may()))) owed = signal;
   };
   const want = (signal: LiveSignal | 'check'): void => {
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
@@ -886,6 +836,25 @@ export async function follow(
     unsubscribe();
     finished();
   }
+}
+
+/**
+ * One delivery, once the caller was asked: `closed` when refused, the signal
+ * when allowed. False when the provider gave no answer, so it is still owed.
+ */
+async function deliver(
+  stream: SSEStreamingApi,
+  signal: LiveSignal | 'check',
+  answer: string | CommandRefusal | Unanswered,
+): Promise<boolean> {
+  // The tab may have left while the caller was asked: nothing is written after.
+  if (stream.aborted) return true;
+  if (answer === UNANSWERED) return false;
+  if (typeof answer !== 'string') {
+    await stream.writeSSE({ event: 'closed', data: '' });
+    stream.abort();
+  } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
+  return true;
 }
 
 /**

@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier, type Verifier } from '../../apps/api/auth/supabase.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
@@ -94,117 +94,116 @@ async function open(api: Hono, path: string, token: string): Promise<Opened> {
 const events = (opened: Opened, name: string): number =>
   opened.frames.filter((frame) => frame.event === name).length;
 
-describe.skipIf(serverUrl === undefined)(
-  'live streams through a sign-in provider outage',
+let s: Schedules;
+let key: string;
+let pool: Database;
+let topics: LiveTopics;
+let api: Hono;
+let token: string;
+const outage = { on: false };
+const streams: Opened[] = [];
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  s = await openSchedules('liveoutage', 1_000_000);
+  const [row] = await s.db.admin.execute<{ key: string }>(
+    'select key from public.businesses where id = $1',
+    [s.business],
+  );
+  key = String(row?.key);
+  pool = connect(s.db.appUrl, { max: 4 });
+  topics = await startLiveTopics(connectListener(s.db.appUrl));
+  const real = createSupabaseVerifier(testSignIn(ISSUER));
+  const verify: Verifier = async (request) =>
+    outage.on ? await Promise.resolve('unavailable' as const) : await real(request);
+  api = createApi({
+    database: pool,
+    verify,
+    resolveBusiness: createBusinessResolver(s.db.admin),
+    executeRead,
+    executeCommand,
+    live: { topics, recheckMs: RECHECK_MS, admit: admitReads },
+  });
+  token = await tokenFor(s.decider.presented.subject);
+}, 180_000);
+
+afterAll(async () => {
+  await Promise.allSettled(streams.map(async (stream) => await stream.stop()));
+  await topics?.close();
+  await pool?.close();
+  await s?.db.drop();
+});
+
+const touch = async (recordId: string): Promise<void> => {
+  await pool.withBusiness(s.business, async (tx) => {
+    await tx.query('update public.records set data = data where id = $1', [recordId]);
+  });
+};
+
+async function opening(path: string): Promise<Opened> {
+  const opened = await open(api, `${PREFIX.person}${key}${path}`, token);
+  streams.push(opened);
+  expect(opened.status).toBe(200);
+  await within(2_000, () => events(opened, 'resync') >= 1, 'resync on connect');
+  return opened;
+}
+
+/** `change` made while the provider cannot answer, over several rechecks: the stream stays open and says nothing. */
+async function throughOutage(stream: Opened, change: () => Promise<void>): Promise<void> {
+  const before = stream.frames.length;
+  outage.on = true;
+  try {
+    await change();
+    await sleep(RECHECK_MS * 6);
+    expect(stream.ended, 'the stream ended during the outage').toBe(false);
+    expect(stream.frames.slice(before)).toEqual([]);
+  } finally {
+    outage.on = false;
+  }
+}
+
+const withDatabase = it.skipIf(serverUrl === undefined);
+
+withDatabase.each([
+  ["a task's own stream", (task: string) => `/live/task/${task}`],
+  ['a tab stream following a task topic', (task: string) => `/live?topic=task:${task}`],
+] as const)(
+  '%s stays open and says nothing while the provider cannot answer, then tells the change',
   { timeout: 30_000 },
-  () => {
-    let s: Schedules;
-    let key: string;
-    let pool: Database;
-    let topics: LiveTopics;
-    let api: Hono;
-    let token: string;
-    const outage = { on: false };
-    const streams: Opened[] = [];
-
-    const touch = async (recordId: string): Promise<void> => {
-      await pool.withBusiness(s.business, async (tx) => {
-        await tx.query('update public.records set data = data where id = $1', [recordId]);
-      });
-    };
-
-    beforeAll(async () => {
-      s = await openSchedules('liveoutage', 1_000_000);
-      const [row] = await s.db.admin.execute<{ key: string }>(
-        'select key from public.businesses where id = $1',
-        [s.business],
-      );
-      key = String(row?.key);
-      pool = connect(s.db.appUrl, { max: 4 });
-      topics = await startLiveTopics(connectListener(s.db.appUrl));
-      const real = createSupabaseVerifier(testSignIn(ISSUER));
-      const verify: Verifier = async (request) =>
-        outage.on ? await Promise.resolve('unavailable' as const) : await real(request);
-      api = createApi({
-        database: pool,
-        verify,
-        resolveBusiness: createBusinessResolver(s.db.admin),
-        executeRead,
-        executeCommand,
-        live: { topics, recheckMs: RECHECK_MS, admit: admitReads },
-      });
-      token = await tokenFor(s.decider.presented.subject);
-    }, 180_000);
-
-    afterAll(async () => {
-      await Promise.allSettled(streams.map(async (stream) => await stream.stop()));
-      await topics?.close();
-      await pool?.close();
-      await s?.db.drop();
-    });
-
-    const opening = async (path: string): Promise<Opened> => {
-      const opened = await open(api, `${PREFIX.person}${key}${path}`, token);
-      streams.push(opened);
-      expect(opened.status).toBe(200);
-      await within(2_000, () => events(opened, 'resync') >= 1, 'resync on connect');
-      return opened;
-    };
-
-    for (const [what, path] of [
-      ["a task's own stream", (task: string) => `/live/task/${task}`],
-      ['a tab stream following a task topic', (task: string) => `/live?topic=task:${task}`],
-    ] as const) {
-      it(`${what} stays open and says nothing while the provider cannot answer, then tells the change`, async () => {
-        const taskId = await createTask(s, `live-outage-${randomUUID()}`);
-        const stream = await opening(path(taskId));
-        const before = stream.frames.length;
-
-        outage.on = true;
-        try {
-          await touch(taskId);
-          await sleep(RECHECK_MS * 6);
-          expect(stream.ended, 'the stream ended during the outage').toBe(false);
-          expect(stream.frames.slice(before)).toEqual([]);
-        } finally {
-          outage.on = false;
-        }
-        await within(2_000, () => events(stream, 'invalidate') > 0, 'the change once answered');
-        expect(events(stream, 'closed')).toBe(0);
-        expect(stream.ended).toBe(false);
-      });
-    }
-
-    it("the board's stream stays open and says nothing while the provider cannot answer", async () => {
-      const stream = await opening('/live');
-      const before = stream.frames.length;
-
-      outage.on = true;
-      try {
-        await touch(await createTask(s, `live-outage-board-${randomUUID()}`));
-        await sleep(RECHECK_MS * 6);
-        expect(stream.ended, 'the stream ended during the outage').toBe(false);
-        expect(stream.frames.slice(before)).toEqual([]);
-      } finally {
-        outage.on = false;
-      }
-      await within(2_000, () => events(stream, 'resync') > 1, 'the change once answered');
-      expect(events(stream, 'closed')).toBe(0);
-      expect(stream.ended).toBe(false);
-    });
-
-    it('the door answers 503 while the provider cannot be asked', async () => {
-      outage.on = true;
-      try {
-        const taskId = await createTask(s, `live-outage-door-${randomUUID()}`);
-        for (const path of [`/live/task/${taskId}`, `/live?topic=task:${taskId}`, '/live']) {
-          // eslint-disable-next-line no-await-in-loop -- one door after another
-          const opened = await open(api, `${PREFIX.person}${key}${path}`, token);
-          expect(opened.status, path).toBe(503);
-        }
-      } finally {
-        outage.on = false;
-      }
-    });
+  async (_what, path) => {
+    const taskId = await createTask(s, `live-outage-${randomUUID()}`);
+    const stream = await opening(path(taskId));
+    await throughOutage(stream, async () => await touch(taskId));
+    await within(2_000, () => events(stream, 'invalidate') > 0, 'the change once answered');
+    expect(events(stream, 'closed')).toBe(0);
+    expect(stream.ended).toBe(false);
   },
 );
+
+withDatabase(
+  "the board's stream stays open and says nothing while the provider cannot answer",
+  { timeout: 30_000 },
+  async () => {
+    const stream = await opening('/live');
+    await throughOutage(stream, async () => {
+      await touch(await createTask(s, `live-outage-board-${randomUUID()}`));
+    });
+    await within(2_000, () => events(stream, 'resync') > 1, 'the change once answered');
+    expect(events(stream, 'closed')).toBe(0);
+    expect(stream.ended).toBe(false);
+  },
+);
+
+withDatabase('the door answers 503 while the provider cannot be asked', async () => {
+  const taskId = await createTask(s, `live-outage-door-${randomUUID()}`);
+  outage.on = true;
+  try {
+    for (const path of [`/live/task/${taskId}`, `/live?topic=task:${taskId}`, '/live']) {
+      // eslint-disable-next-line no-await-in-loop -- one door after another
+      const opened = await open(api, `${PREFIX.person}${key}${path}`, token);
+      expect(opened.status, path).toBe(503);
+    }
+  } finally {
+    outage.on = false;
+  }
+});

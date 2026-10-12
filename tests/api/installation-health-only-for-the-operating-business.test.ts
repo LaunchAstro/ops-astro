@@ -33,7 +33,7 @@ function build() {
     resolveBusiness: async (key) =>
       await Promise.resolve({ operator: OPERATOR, other: OTHER }[key as 'operator']),
     executeRead: (async () => await Promise.resolve({ ok: true, securityAlerts: [] })) as never,
-    executeCommand: (() => undefined) as never,
+    executeCommand: vi.fn() as never,
     health: { tracing },
     errorSink: SINK,
   });

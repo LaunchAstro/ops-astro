@@ -9,16 +9,16 @@
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 import {
-  CONVERSATION_TOPIC,
-  TOPIC,
   UNANSWERED,
   type LiveSignal,
   type LiveTopics,
   type Unanswered,
+  type Watch,
 } from './live.ts';
 import type { Seated, Sitter } from './live-presence.ts';
 import type { LiveStream } from './live-stream.ts';
 
+export { BOARD, topicsOf, TOPICS, type Watch } from './live.ts';
 export { seatFor, type Seated } from './live-presence.ts';
 export { endsWithRequest, type LiveStream } from './live-stream.ts';
 
@@ -35,42 +35,6 @@ export interface Watching {
    * conversation's id, the refusal, or no answer from the sign-in provider; writes nothing.
    */
   again(id: string, watch?: Watch): Promise<string | CommandRefusal | Unanswered>;
-}
-
-/** One followed task or conversation, and the name the stream gives it: the caller's own topic. */
-export interface Watch {
-  readonly label: string;
-  /** The record followed: a task's id, or a conversation's where `kind` says so. */
-  readonly taskId: string;
-  readonly kind?: 'conversation';
-}
-
-const MOST_TOPICS = 32;
-export const TOPICS: string = `Name each topic once, as task:<id>, conversation:<id> or board, from one to ${String(MOST_TOPICS)}.`;
-
-/** The board's stream (INB-1f) as one topic on the tab's stream: every frame it sends is labelled so. */
-export const BOARD = 'board';
-
-/** The topics a tab named, or undefined when any is malformed, repeated or too many. */
-export function topicsOf(
-  named: readonly string[],
-): { readonly watches: readonly Watch[]; readonly board: boolean } | undefined {
-  if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
-  if (new Set(named).size !== named.length) return undefined;
-  const topics = named.filter((label) => label !== BOARD);
-  const watches = topics.map((label) => watchOf(label));
-  if (!watches.every((watch) => watch !== undefined)) return undefined;
-  return { watches, board: topics.length < named.length };
-}
-
-/** A topic's kind and id, or undefined when it names neither a task nor a conversation. */
-function watchOf(label: string): Watch | undefined {
-  const task = TOPIC.exec(label)?.[1];
-  if (task !== undefined) return { label, taskId: task };
-  const conversation = CONVERSATION_TOPIC.exec(label)?.[1];
-  return conversation === undefined
-    ? undefined
-    : { label, taskId: conversation, kind: 'conversation' };
 }
 
 /**
