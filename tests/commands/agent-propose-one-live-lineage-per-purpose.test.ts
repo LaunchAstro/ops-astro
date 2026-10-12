@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // An agent opens at most one live lineage of a purpose on a task while that
-// lineage is still waiting: its gate pending and unexpired, or its approved
+// lineage is still waiting: its gate pending and unexpired, or its decided
 // work held as a reservation. A second `task.propose` that would open a new
-// lineage of the same purpose is refused `TRANSITION_NOT_PERMITTED` and writes
-// nothing, so a worker restarted mid-propose, or two worker copies on one
-// delegation, cannot open a second gate, and a worker restarted between
-// approval and apply finds its approved work instead. Another purpose, a
-// lapsed gate, or a person proposing is not held to it.
+// lineage of the same purpose is answered with the waiting proposal and
+// writes nothing, so a worker restarted mid-propose, or two worker copies on
+// one delegation, find one gate, and a worker restarted between the decision
+// and apply finds its work. Another purpose, a lapsed gate, or a person
+// proposing is not held to it.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -100,16 +100,15 @@ const proposal = async (taskId: string, purpose: string) => ({
 });
 
 describe.skipIf(serverUrl === undefined)('an agent opens one live lineage per purpose', () => {
-  it('a second new lineage while the first gate waits is refused, and nothing is written', async () => {
+  it('a second new lineage while the first gate waits is answered with that gate, and nothing is written', async () => {
     const { taskId, credential } = await delegatedTask('waiting gate');
-    const first = await world.asAgent(await proposal(taskId, 'draft'), credential);
-    expect(outcome(first)).toBe('applied');
-    const second = await world.asAgent(await proposal(taskId, 'draft'), credential);
-    expect(outcome(second)).toBe('TRANSITION_NOT_PERMITTED');
+    const first = detail(await world.asAgent(await proposal(taskId, 'draft'), credential));
+    const second = detail(await world.asAgent(await proposal(taskId, 'draft'), credential));
+    expect(second).toStrictEqual(first);
     expect(await lineagesOn(taskId)).toBe(1);
   });
 
-  it('a second new lineage once the first is approved and its work held is refused', async () => {
+  it('a second new lineage once the first is decided and its work held is answered with it', async () => {
     const { taskId, credential } = await delegatedTask('approved, not applied');
     const first = detail(await world.asAgent(await proposal(taskId, 'draft'), credential));
     const decided = await world.asPerson(decider, {
@@ -121,8 +120,8 @@ describe.skipIf(serverUrl === undefined)('an agent opens one live lineage per pu
       note: 'approved before the worker applied it',
     });
     expect(outcome(decided)).toBe('applied');
-    const again = await world.asAgent(await proposal(taskId, 'draft'), credential);
-    expect(outcome(again)).toBe('TRANSITION_NOT_PERMITTED');
+    const again = detail(await world.asAgent(await proposal(taskId, 'draft'), credential));
+    expect(again).toStrictEqual(first);
     expect(await lineagesOn(taskId)).toBe(1);
   });
 
