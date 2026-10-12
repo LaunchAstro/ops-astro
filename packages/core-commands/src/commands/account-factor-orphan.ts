@@ -43,6 +43,9 @@ export async function removeAtProvider(
     // oxlint-disable-next-line no-await-in-loop
     if ((await provider.remove(accessToken, providerFactorId)).ok) return;
   }
+  // Removed by another act at once, or by an ask whose answer was lost: gone, not orphaned.
+  const held = await provider.heldFactors(accessToken);
+  if (held.ok && !held.value.includes(providerFactorId)) return;
   await reportOrphan(caller, { providerFactorId }, attempt, 'PROVIDER_ANSWER_INVALID');
 }
 
