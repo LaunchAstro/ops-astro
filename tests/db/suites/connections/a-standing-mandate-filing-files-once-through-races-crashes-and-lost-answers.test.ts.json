@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "One standing mandate per filing under attack: each read-then-write of a filing met by a revoke, a grant revoke, another client or another value on a second connection, a crash at each step, a lost answer retried both ways, and the trigger raced directly under read committed and Repeatable Read"
+}
