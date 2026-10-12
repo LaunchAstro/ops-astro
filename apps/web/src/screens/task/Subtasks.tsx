@@ -53,7 +53,7 @@ function AddStep(props: {
   const box = useRef<HTMLInputElement>(null);
   const held = useHeldOperations();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
     event.preventDefault();
     const wanted = title.trim();
     if (wanted === '' || busy) return;
