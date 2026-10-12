@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "An installation already on real data is refused a change to real as no transition, writing nothing and auditing no applied change; the move from made-up still applies and audits once."
+}
