@@ -105,13 +105,29 @@ export interface DatabaseOptions {
   readonly max?: number;
 }
 
+/**
+ * The driver over `url`. postgres.js parses the address at once, and its
+ * parse error carries the whole address, password and all, as its input; the
+ * server and the hosted function log what they catch. So the refusal names
+ * the problem and carries nothing of the address, not even as its cause.
+ */
+function parsed(url: string, options: postgres.Options<Record<string, never>>): postgres.Sql {
+  try {
+    return postgres(url, options);
+  } catch {
+    throw new Error(
+      'The database address could not be read. Check its form; it is not repeated here because it holds a password.',
+    );
+  }
+}
+
 export function open(
   url: string,
   options: DatabaseOptions,
 ): { sql: postgres.Sql; log: StatementLog } {
   const log = options.log ?? createStatementLog({ keep: 1_000 });
   const source = options.source ?? 'runtime';
-  const sql = postgres(url, {
+  const sql = parsed(url, {
     max: options.max ?? 1,
     prepare: false,
     onnotice: () => {},
