@@ -148,6 +148,9 @@ function keysOf<Row>(at: {
         to.done();
       }
     } else if (event.key === 'Escape') {
+      // Escape closes the suggestions and keeps the typed words: a search
+      // field's own Escape would clear them. On an empty field it is the page's.
+      if (items.length > 0 || draft !== '') event.preventDefault();
       to.setOpen(false);
     } else if (event.key === 'Backspace' && draft === '') {
       props.onDropLast();
