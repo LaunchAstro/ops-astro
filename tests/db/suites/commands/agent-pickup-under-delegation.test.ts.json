@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent holding a live delegation for one client cannot pick up another client's reservation it learned earlier, and the refusal names nothing of that client; judged under the claim's locks on a real migrated database."
+}
