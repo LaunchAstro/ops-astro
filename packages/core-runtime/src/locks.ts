@@ -77,6 +77,9 @@
 // mandate; any transaction writing `graduation_classes` takes the client's row
 // `for no key update` first, and work over several clients takes their rows in
 // id order.
+// A mandate writer's own re-check (`stillManagesMandates`, `mandate-authority.ts`)
+// then holds its grant rows `for share`, after the client and class rows: no
+// grant writer takes a client or class row, so this order meets none in reverse.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

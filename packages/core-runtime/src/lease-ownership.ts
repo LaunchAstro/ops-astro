@@ -167,13 +167,13 @@ export async function readLease(
 ): Promise<LeaseRow | undefined> {
   const rows = await tx.query<LeaseRow>(
     `select l.task_id, l.state, l.fence::text as fence, l.holder_actor_id, l.delegation_id,
-            (l.expires_at <= $3::timestamptz) as expired,
+            (l.expires_at <= $3::text::timestamptz) as expired,
             (select max(fence) from public.leases
               where business_id = l.business_id and task_id = l.task_id)::text as current_fence,
             exists (select 1 from public.delegations d
                      where d.business_id = l.business_id and d.id = l.delegation_id
                        and d.revoked_at is null and d.settled_at is null
-                       and d.expires_at > $3::timestamptz) as delegation_live
+                       and d.expires_at > $3::text::timestamptz) as delegation_live
        from public.leases l where l.business_id = $1 and l.id = $2`,
     [tx.businessId, leaseId, lockedAt],
   );

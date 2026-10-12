@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A lease that expired earlier in the locked instant's millisecond reads expired: the instant is compared to the microsecond on a real migrated database, never rounded through the driver."
+}
