@@ -292,3 +292,20 @@ it('a map grant lists nothing across a business, a client or a person', async ()
     expect(body, foreign).not.toContain(foreign);
   }
 }, 30_000);
+
+it("search gives a member outside the team no ticket through a map's grant", async () => {
+  const { map, first, second } = world;
+  const client = await w.member('Client map reader', ['read'], { kind: 'record', id: map.id });
+  await w.db.admin.execute(
+    `update public.memberships set role_key = 'client' where business_id = $1 and person_id = $2`,
+    [w.business, client.personId],
+  );
+  // `task.read` keeps a map's tickets off a client surface (WF-1); search agrees.
+  expect(codeOf(await w.read(client, { read: 'task.read', recordId: first.id }))).not.toBe(
+    'applied',
+  );
+  const found = JSON.stringify(await search(client));
+  for (const ticket of [first.id, second.id, TITLES.first, TITLES.second]) {
+    expect(found, ticket).not.toContain(ticket);
+  }
+}, 30_000);
