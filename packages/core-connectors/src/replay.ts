@@ -114,8 +114,9 @@ export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
   // earlier messages, the person's words and the agent's replies; `page` the
   // id and title of the task the conversation is on, and nothing else of it.
   // Each is any string a person typed, so free text: local routes only, or
-  // LA-1's laptop carve-out.
+  // LA-1's laptop carve-out. Unpriced, as the conversation seam requires (#1508, option B).
   fields: { page: 'free_text', earlier: 'free_text', message: 'free_text' },
+  maximumMinor: 0,
 };
 
 /** The price of an answer, in minor units, from what the provider says it used. Never above the maximum. */

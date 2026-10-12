@@ -16,6 +16,7 @@ import {
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
   localGptAdapter,
+  OLLAMA_CONVERSATION,
   OLLAMA_MODELS,
   OLLAMA_PROVIDER,
   ollamaAdapter,
@@ -36,13 +37,15 @@ describe('CS-7.30 the conversation model catalogue', () => {
     const operations = new Map([
       [CONVERSATION_ANSWER.provider, CONVERSATION_ANSWER],
       [LOCAL_GPT_CONVERSATION.provider, LOCAL_GPT_CONVERSATION],
+      [OLLAMA_PROVIDER, OLLAMA_CONVERSATION],
     ]);
+    // #1508, option B: every conversation model is unpriced.
+    expect(CONVERSATION_MODELS.map((model) => model.ceilingMinor)).toStrictEqual(
+      CONVERSATION_MODELS.map(() => 0),
+    );
     for (const model of CONVERSATION_MODELS) {
       expect(readModelId(model.id)).toBe(model.id);
-      // Ollama's models run on the M5's own hardware, so their price-book entry is nothing.
-      const ceiling =
-        model.provider === OLLAMA_PROVIDER ? 0 : operations.get(model.provider)?.maximumMinor;
-      expect(model.ceilingMinor).toBe(ceiling);
+      expect(model.ceilingMinor).toBe(operations.get(model.provider)?.maximumMinor);
     }
     expect(conversationModelsOf(LOCAL_GPT_PROVIDER).map((model) => model.reach)).toStrictEqual([
       'cloud',

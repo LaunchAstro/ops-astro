@@ -188,7 +188,8 @@ async function sendAndSettle(
 
 /**
  * A person's model call from their own conversation. Every check runs before
- * anything is written: the owner, the catalogue, a local route (a cloud one is
+ * anything is written: the owner, the catalogue, an unpriced operation (#1508,
+ * option B: a priced one is refused), a local route (a cloud one is
  * refused, AW-03 egress off), then AW-01's ceilings. The answer settles at
  * nothing; a priced answer is above a hold of nothing, so it is held as
  * unknown liability for a person, as any call above its hold is (O9).
@@ -204,6 +205,8 @@ export async function callModelInConversation(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
+  if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);

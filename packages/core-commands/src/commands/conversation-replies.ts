@@ -28,6 +28,9 @@ const WORDS: Readonly<Record<string, string>> = {
   MODEL_NOT_OFFERED:
     'The model chosen for this conversation is not offered for it now, so nothing was sent. ' +
     'Your message is kept; choose another model.',
+  BUDGET_UNAVAILABLE:
+    'The chat sends only to models that cost nothing per message, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
   LOCAL_PLAN_LIMIT:
     'The ChatGPT plan is at its usage limit, so there is no answer. ' +
     'Your message is kept; ask again once the plan resets.',

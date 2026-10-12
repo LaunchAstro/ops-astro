@@ -18,7 +18,7 @@ import {
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
 } from './local-gpt.ts';
-import { OLLAMA_MODELS, OLLAMA_PROVIDER } from './ollama.ts';
+import { OLLAMA_CONVERSATION, OLLAMA_MODELS, OLLAMA_PROVIDER } from './ollama.ts';
 import { CONVERSATION_ANSWER, REPLAY_MODEL_WINDOW } from './replay.ts';
 
 export interface ConversationModel {
@@ -50,13 +50,12 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     egressName: 'chatgpt',
     ceilingMinor: LOCAL_GPT_CONVERSATION.maximumMinor,
   },
-  // On this machine's own hardware: no call costs anything.
   ...OLLAMA_MODELS.map((id): ConversationModel => ({
     id,
     provider: OLLAMA_PROVIDER,
     reach: 'local',
     egressName: null,
-    ceilingMinor: 0,
+    ceilingMinor: OLLAMA_CONVERSATION.maximumMinor,
   })),
 ];
 

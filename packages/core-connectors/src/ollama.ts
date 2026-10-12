@@ -8,9 +8,8 @@
 // port is never reached over a network. Ollama asks for no key; custody sends
 // the route's local token, which Ollama ignores.
 //
-// The model runs on hardware already paid for, so every answer costs nothing.
-// The catalogue takes no priced maximum below one minor unit, so the
-// operation declares that; the conversation seam holds nothing for it either way.
+// The model runs on hardware already paid for, so every answer costs nothing
+// and the operation is unpriced, as the conversation seam requires (#1508, option B).
 
 import { conversationInstructions } from './conversation-prompt.ts';
 import {
@@ -129,7 +128,7 @@ export const OLLAMA_CONVERSATION: ModelOperationDeclaration = {
   // A cold model takes a while to load on the M5; the catalogue's longest wait.
   timeoutMs: 120_000,
   maxResponseBytes: 256 * 1024,
-  maximumMinor: 1,
+  maximumMinor: 0,
   settlesAt: 'completed',
   // Ollama's own answers before any work: a body it cannot read, or a model it does not have.
   nothingHappened: ['http_400', 'http_404'],
