@@ -145,6 +145,29 @@ it('a remount while the retry is out offers Stop waiting only once the refusal l
   expect(new Set(api.sent).size, 'the let-go id, then one new id').toBe(2);
 });
 
+it('a mount does not offer Stop waiting while another mount retries the same Create', async () => {
+  const storage = store();
+  const api = server();
+  const first = await heldAndRefused(api, storage);
+  const other = await open(api, storage);
+  api.world.hold = true;
+  await other.view.click('[data-draft="create"]');
+  expect(first.view.find('[data-draft="let-go"]'), 'the other mount is retrying').toBeNull();
+  await release(api);
+});
+
+it('a Create let go on one mount is not sent again from another mount', async () => {
+  const storage = store();
+  const api = server();
+  const first = await heldAndRefused(api, storage);
+  const other = await open(api, storage);
+  const letGo = api.sent[0];
+  await press(first.view, 'let-go');
+  api.world.granted = true;
+  await press(other.view, 'create');
+  expect(api.sent.slice(2), 'the let-go id is not sent again').not.toContain(letGo);
+});
+
 it('Stop waiting the browser cannot save mints a new id in this tab', async () => {
   const storage = store();
   const api = server();
