@@ -66,7 +66,7 @@ import { stripVTControlCharacters } from 'node:util';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
-import { manifestPathIn, readIsolationSuites, readNamedSuites } from './named-suites.ts';
+import { manifestPathIn, readIsolationSuites, readNamedSuites, suiteList } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -103,22 +103,23 @@ if (!existsSync(manifestPath)) {
   process.exit(2);
 }
 
-let manifest;
+// A list that is not an array of strings is refused, never read as empty: a
+// suite category that silently disappears leaves the others to make a green.
+let named;
 try {
+  let manifest;
   if (manifestFlag === -1) {
     manifest = isolationRun ? readIsolationSuites(repoRoot) : readNamedSuites(repoRoot);
   } else {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   }
+  named = ['invariant', 'conformance'].flatMap((kind) =>
+    suiteList(manifestPath, kind, manifest?.[kind]),
+  );
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);
 }
-
-const named = [
-  ...(Array.isArray(manifest.invariant) ? manifest.invariant : []),
-  ...(Array.isArray(manifest.conformance) ? manifest.conformance : []),
-].map(String);
 
 const failures = [];
 
@@ -261,7 +262,7 @@ const siblingsOf = (suite) => {
     .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
 };
 
-/** Redact assertion text before it reaches stderr. */
+/** Redact a failed assertion, or any problem the run reports, before it reaches stderr. */
 const redactDetail = (detail) => {
   detail = stripVTControlCharacters(detail)
     .replaceAll(`file://${repoRoot}/`, '')
@@ -594,7 +595,10 @@ console.log(
 
 if (failures.length > 0) {
   console.error(`\ndb-conformance: ${String(failures.length)} problem(s)\n`);
-  for (const f of failures) console.error(`  ${f}\n`);
+  // Every problem passes through the same redaction as a failed assertion, so
+  // a suite's error, its output, a skipped test's name or a database message
+  // carries no credential or private path into the log.
+  for (const f of failures) console.error(`  ${redactDetail(f)}\n`);
   console.error(
     'db-conformance: a green here means the named suites ran against a real\n' +
       'db-conformance: database and none of them skipped. It means nothing else,\n' +

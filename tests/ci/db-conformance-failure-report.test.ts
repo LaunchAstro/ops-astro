@@ -1,135 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createEmptyDatabase } from '../support/fresh-database.ts';
+import { reachesDatabase, root, withSuite } from './db-conformance-report-fixture.ts';
 
-const root = resolve(import.meta.dirname, '../..');
 const databaseUrl = process.env['DATABASE_URL'] ?? '';
-const reachesDatabase = `
-import { describe, expect, test } from 'vitest';
-import pg from 'pg';
-
-describe('database assertion detail', () => {
-  test('compares the SQL result', async () => {
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-    try {
-      const { rows } = await client.query('select value from public.report_fixture');
-      expect(rows[0].value).toBe('db-report-actual-3917');
-    } finally {
-      await client.end();
-    }
-  });
-});
-`;
-
-function reportRemovalPreload(directory: string): string {
-  const preload = join(directory, 'remove-report.mjs');
-  writeFileSync(
-    preload,
-    `
-import fs from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-const read = fs.readFileSync;
-fs.readFileSync = function (path, ...args) {
-  if (String(path).includes('hub-db-conformance-') && String(path).endsWith('/report.json')) {
-    fs.rmSync(path, { force: true });
-  }
-  return read.call(this, path, ...args);
-};
-syncBuiltinESMExports();
-`,
-  );
-  return preload;
-}
-
-function counterReadDelayPreload(directory: string): string {
-  const preload = join(directory, 'delay-counter-read.mjs');
-  writeFileSync(
-    preload,
-    `
-import pg from 'pg';
-const query = pg.Client.prototype.query;
-let reads = 0;
-pg.Client.prototype.query = function (statement, ...args) {
-  if (typeof statement === 'string' && statement.includes('from pg_stat_database') && ++reads === 3) {
-    return new Promise((resolve) => setTimeout(resolve, 1100)).then(() => query.call(this, statement, ...args));
-  }
-  return query.call(this, statement, ...args);
-};
-`,
-  );
-  return preload;
-}
-
-async function withSuite(
-  source: string,
-  check: (run: ReturnType<typeof spawnSync>) => void,
-  removeReport = false,
-  delayCounterRead = false,
-): Promise<void> {
-  const database = await createEmptyDatabase({ part: 'report' });
-  try {
-    await database.admin.execute('create table public.report_fixture (value text not null)');
-    await database.admin.execute('insert into public.report_fixture values ($1)', [
-      'db-report-actual-3917',
-    ]);
-    await database.admin.execute(
-      `grant select on public.report_fixture to "${database.loginRole}"`,
-    );
-    // Close setup before the child calibrates and reads this database's counter.
-    await database.admin.close();
-    runFixture(source, check, database.appUrl, removeReport, delayCounterRead);
-  } finally {
-    await database.drop();
-  }
-}
-
-function runFixture(
-  source: string,
-  check: (run: ReturnType<typeof spawnSync>) => void,
-  fixtureUrl: string,
-  removeReport: boolean,
-  delayCounterRead: boolean,
-): void {
-  const directory = mkdtempSync(join(root, 'tests/ci/tmp-db-report-'));
-  const scratch = mkdtempSync(join(tmpdir(), 'db-report-output-'));
-  try {
-    const suite = join(directory, 'assertion.test.ts');
-    writeFileSync(suite, source);
-    const manifest = join(directory, 'manifest.json');
-    writeFileSync(manifest, JSON.stringify({ invariant: [relative(root, suite)] }));
-    const args = ['scripts/db-conformance.mjs', '--manifest', manifest];
-    if (delayCounterRead) args.unshift('--import', counterReadDelayPreload(directory));
-    if (removeReport) {
-      const preload = reportRemovalPreload(directory);
-      args.unshift('--import', preload);
-    }
-    const run = spawnSync(process.execPath, args, {
-      cwd: root,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        DATABASE_URL: fixtureUrl,
-        TMPDIR: scratch,
-        DB_REPORT_TEST_TOKEN: 'synthetic-env-credential-5159',
-      },
-      timeout: 120_000,
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    check(run);
-    expect(readdirSync(scratch).filter((name) => name.startsWith('hub-db-conformance-'))).toEqual(
-      [],
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-    rmSync(scratch, { recursive: true, force: true });
-  }
-}
 
 async function reportsSqlFailure(): Promise<void> {
   await withSuite(
@@ -171,6 +49,43 @@ test('keeps diagnostic values private', () => {
       expect(run.stderr).not.toContain('/private/example/report-detail.txt');
       expect(run.stderr).not.toContain(root);
     },
+  );
+}
+
+const privateMarkers = [
+  'synthetic-env-credential-5159',
+  'synthetic-collection-secret',
+  '/private/example/credentials.env',
+];
+
+async function redactsSuiteError(): Promise<void> {
+  await withSuite(
+    reachesDatabase +
+      `
+throw new Error('suite-error-marker password=synthetic-collection-secret ' + process.env.DB_REPORT_TEST_TOKEN + ' /private/example/credentials.env');
+`,
+    (run) => {
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain('suite-error-marker');
+      for (const marker of privateMarkers) expect(run.stderr).not.toContain(marker);
+      expect(run.stderr).not.toContain(root);
+    },
+  );
+}
+
+async function redactsMissingReportOutput(): Promise<void> {
+  await withSuite(
+    reachesDatabase +
+      `
+process.stderr.write('missing-report-marker password=synthetic-collection-secret ' + process.env.DB_REPORT_TEST_TOKEN + ' /private/example/credentials.env\\n');
+`,
+    (run) => {
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain('a suite produced no readable result');
+      expect(run.stderr).toContain('missing-report-marker');
+      for (const marker of privateMarkers) expect(run.stderr).not.toContain(marker);
+    },
+    true,
   );
 }
 
@@ -272,6 +187,16 @@ describe.skipIf(databaseUrl === '')('database conformance failure reporting', ()
   );
   it('redacts credentials and private paths from assertion detail', redactsPrivateDetail, 120_000);
   it(
+    'redacts credentials and private paths from an error raised outside any test',
+    redactsSuiteError,
+    120_000,
+  );
+  it(
+    'redacts credentials and private paths from a suite output printed without a report',
+    redactsMissingReportOutput,
+    120_000,
+  );
+  it(
     'bounds assertion detail across multiple failures and reports truncation',
     boundsDetail,
     120_000,
@@ -285,4 +210,38 @@ describe.skipIf(databaseUrl === '')('database conformance failure reporting', ()
     separatesDelayedReaderCost,
     120_000,
   );
+});
+
+describe('database conformance manifest', () => {
+  it('refuses a manifest whose suite list is not an array of strings, before running anything', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'db-manifest-'));
+    try {
+      for (const body of [
+        {
+          invariant: ['tests/runtime/aw-01-durable-limit.test.ts'],
+          conformance: 'tests/x.test.ts',
+        },
+        { invariant: ['tests/runtime/aw-01-durable-limit.test.ts', 7] },
+        { invariant: 'tests/runtime/aw-01-durable-limit.test.ts' },
+      ]) {
+        const manifest = join(directory, 'manifest.json');
+        writeFileSync(manifest, JSON.stringify(body));
+        const run = spawnSync(
+          process.execPath,
+          ['scripts/db-conformance.mjs', '--manifest', manifest],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            env: { ...process.env, DATABASE_URL: 'postgres://nobody@127.0.0.1:1/never' },
+            timeout: 60_000,
+          },
+        );
+        expect(run.status, JSON.stringify(body)).toBe(2);
+        expect(run.stderr).toMatch(/must be an array of strings/u);
+        expect(run.stderr).not.toContain('did not answer');
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

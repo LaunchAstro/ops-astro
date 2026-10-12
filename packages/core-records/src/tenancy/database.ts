@@ -13,8 +13,9 @@
 // holding a `TenantQuery` is, by construction, inside a transaction whose
 // business is already set.
 
-import postgres from 'postgres';
-import { createStatementLog, type StatementLog } from './statements.ts';
+import type postgres from 'postgres';
+import { open, type DatabaseOptions } from './driver.ts';
+import type { StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
 import {
   handleOn,
@@ -24,6 +25,7 @@ import {
 } from './transaction.ts';
 
 export type { BusinessId, TenantQuery, TransactionQuery } from './transaction.ts';
+export { open, type DatabaseOptions } from './driver.ts';
 
 export function isBusinessId(value: string): value is BusinessId {
   return isUuid(value);
@@ -56,7 +58,7 @@ export async function advisoryLock(
 }
 
 export interface Connection {
-  /** Everything this connection has sent, for the no-runtime-DDL assertion. */
+  /** What this connection has sent, for the no-runtime-DDL assertion (`DatabaseOptions.log`). */
   readonly log: StatementLog;
   close(): Promise<void>;
 }
@@ -90,57 +92,6 @@ export interface TransactionOptions {
    * commands in one string leave it off.
    */
   readonly oneCommandEach?: boolean;
-}
-
-export interface DatabaseOptions {
-  /** What to label this connection's statements: `runtime`, `migration`, `harness`. */
-  readonly source?: string;
-  /** Share one log across connections when the run wants a single trail. */
-  readonly log?: StatementLog;
-  readonly max?: number;
-}
-
-export function open(
-  url: string,
-  options: DatabaseOptions,
-): { sql: postgres.Sql; log: StatementLog } {
-  const log = options.log ?? createStatementLog();
-  const source = options.source ?? 'runtime';
-  const sql = postgres(url, {
-    max: options.max ?? 1,
-    prepare: false,
-    onnotice: () => {},
-    debug: (_connection: number, query: string) => {
-      log.record(source, query);
-    },
-    // The log reads a plain string as standard_conforming_strings = on does.
-    // Every connection starts with it on, so a database or role default of
-    // off does not apply, and RESET comes back to on. The server reports each
-    // change of it however it was made (SET, SET LOCAL, set_config, a function
-    // body), and a change away from on is recorded as a point the log cannot
-    // read past.
-    connection: { standard_conforming_strings: 'on' },
-    onparameter: (key: string, value: unknown) => {
-      if (key === 'standard_conforming_strings' && value !== 'on') {
-        log.unreadable(source, `standard_conforming_strings = ${String(value)}`);
-      }
-    },
-  });
-  // postgres.js puts a URL's query parameters into the startup packet after
-  // `connection` above, so one naming the setting, in any case and with any
-  // value or none, would have its way. The wrapper
-  // owns the setting instead of refusing the URL: it rewrites the parameters
-  // postgres.js resolved, which every connection of this handle shares and
-  // reads when it builds its startup packet (connection.js, StartupMessage),
-  // to hold exactly one `on`. Nothing has connected yet; postgres.js connects
-  // on the first query. An `options=-c ...` switch is no conflict: the server
-  // applies the named parameter after it.
-  const startup = sql.options.connection as Record<string, unknown>;
-  for (const key of Object.keys(startup)) {
-    if (key.toLowerCase() === 'standard_conforming_strings') delete startup[key];
-  }
-  startup['standard_conforming_strings'] = 'on';
-  return { sql, log };
 }
 
 /**
@@ -177,13 +128,18 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
+    // One spelling of the id, the lower case Postgres prints, so a key built
+    // from `tx.businessId` (a limiter's lock) is one key in either letter case.
+    const business = businessId.toLowerCase() as BusinessId;
+    // Read committed whatever the login's or database's default, so a count
+    // read after a lock sees what the lock's last holder committed (`hasRoom`).
     // `begin` unwraps a promise-shaped result in its own types; the cast
     // restores the caller's type and nothing else.
-    return (await sql.begin(async (tx) => {
+    return (await sql.begin('isolation level read committed', async (tx) => {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
-      await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
-      return await run(handleOn(tx, businessId));
+      await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
+      return await run(handleOn(tx, business));
     })) as T;
   };
 }
