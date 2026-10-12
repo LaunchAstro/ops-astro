@@ -28,87 +28,88 @@ import {
   type ApiFixture,
 } from './fixture.ts';
 
+let fixture: ApiFixture;
+let api: Hono;
+let personToken: string;
+let agentToken: string;
+
+const transport: Transport = async (path, body, bearer, delegation) =>
+  await api.request(path, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...authorised(bearer),
+      ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
+    },
+    body,
+  });
+
+const person = async (name: Parameters<typeof pathOf>[0], body: object) =>
+  await post(api, `/api/b/${BUSINESS_KEY}${pathOf(name)}`, body, authorised(personToken));
+
+const workerOn = (delegation: string) =>
+  createWorker({
+    transport,
+    businessKey: BUSINESS_KEY,
+    credential: agentToken,
+    delegation,
+    reporter: SYNTHETIC_USAGE,
+  });
+
+async function approved() {
+  const created = await person('task.create', {
+    operationId: randomUUID(),
+    fields: { title: `restart proof ${randomUUID()}` },
+  });
+  expect(created.status).toBe(200);
+  const taskId = String(created.body['recordId']);
+  const credential = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+    const minted = await mintDelegation(tx, {
+      agentActorId: fixture.agentActorId,
+      delegatePersonId: fixture.member.personId,
+      mintedByActorId: fixture.member.actorId,
+      purpose: `restart_${randomUUID().slice(0, 8)}`,
+      collections: ['task'],
+      actions: ['read', 'comment', 'write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
+    return minted.value.credential;
+  });
+  const worker = workerOn(credential);
+  const proposed = await worker.proposeOnce();
+  if (!('proposed' in proposed)) throw new Error(JSON.stringify(proposed));
+  const [version] = await fixture.db.admin.execute<{ readonly id: string }>(
+    'select version_id as id from public.gates where id = $1',
+    [proposed.proposed.gateId],
+  );
+  const decided = await person('task.decide', {
+    operationId: randomUUID(),
+    gateId: proposed.proposed.gateId,
+    versionId: version?.id,
+    decision: 'approve',
+    note: 'approved before restart',
+  });
+  expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+  return { taskId, credential, worker, proposed };
+}
+
+beforeAll(async () => {
+  if (databaseUrlFromEnvironment() === undefined) return;
+  fixture = await createApiFixture('restart_case');
+  api = fixture.compose(undefined, readIdentity(resolve(import.meta.dirname, '../..')));
+  personToken = await tokenFor(fixture.member.presented.subject);
+  agentToken = await tokenFor(fixture.agent.subject);
+}, 180_000);
+
+afterAll(async () => {
+  await fixture?.db.drop();
+});
+
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'a restarted worker, and reads given either id case',
   () => {
-    let fixture: ApiFixture;
-    let api: Hono;
-    let personToken: string;
-    let agentToken: string;
-
-    const transport: Transport = async (path, body, bearer, delegation) =>
-      await api.request(path, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...authorised(bearer),
-          ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
-        },
-        body,
-      });
-
-    const person = async (name: Parameters<typeof pathOf>[0], body: object) =>
-      await post(api, `/api/b/${BUSINESS_KEY}${pathOf(name)}`, body, authorised(personToken));
-
-    const workerOn = (delegation: string) =>
-      createWorker({
-        transport,
-        businessKey: BUSINESS_KEY,
-        credential: agentToken,
-        delegation,
-        reporter: SYNTHETIC_USAGE,
-      });
-
-    async function approved() {
-      const created = await person('task.create', {
-        operationId: randomUUID(),
-        fields: { title: `restart proof ${randomUUID()}` },
-      });
-      expect(created.status).toBe(200);
-      const taskId = String(created.body['recordId']);
-      const credential = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-        const minted = await mintDelegation(tx, {
-          agentActorId: fixture.agentActorId,
-          delegatePersonId: fixture.member.personId,
-          mintedByActorId: fixture.member.actorId,
-          purpose: `restart_${randomUUID().slice(0, 8)}`,
-          collections: ['task'],
-          actions: ['read', 'comment', 'write'],
-          purposeScope: { kind: 'record', id: taskId },
-          expiresAt: new Date(Date.now() + 3_600_000),
-        });
-        if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
-        return minted.value.credential;
-      });
-      const worker = workerOn(credential);
-      const proposed = await worker.proposeOnce();
-      if (!('proposed' in proposed)) throw new Error(JSON.stringify(proposed));
-      const [version] = await fixture.db.admin.execute<{ readonly id: string }>(
-        'select version_id as id from public.gates where id = $1',
-        [proposed.proposed.gateId],
-      );
-      const decided = await person('task.decide', {
-        operationId: randomUUID(),
-        gateId: proposed.proposed.gateId,
-        versionId: version?.id,
-        decision: 'approve',
-        note: 'approved before restart',
-      });
-      expect(decided.status, JSON.stringify(decided.body)).toBe(200);
-      return { taskId, credential, worker, proposed };
-    }
-
-    beforeAll(async () => {
-      fixture = await createApiFixture('restart_case');
-      api = fixture.compose(undefined, readIdentity(resolve(import.meta.dirname, '../..')));
-      personToken = await tokenFor(fixture.member.presented.subject);
-      agentToken = await tokenFor(fixture.agent.subject);
-    }, 180_000);
-
-    afterAll(async () => {
-      await fixture?.db.drop();
-    });
-
     it('a restarted propose-then-apply worker recovers its approved proposal', async () => {
       const { credential, proposed } = await approved();
       const restarted = workerOn(credential);
