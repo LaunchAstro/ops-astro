@@ -11,11 +11,12 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 
 const script = resolve(import.meta.dirname, '../../scripts/migration-ids.mjs');
 const dir = mkdtempSync(join(tmpdir(), 'migration-ids-case-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+beforeAll(() => git(['init', '-q', '-b', 'main']));
 
 const git = (args: readonly string[], input?: string): string =>
   execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
@@ -39,18 +40,35 @@ const commit = (paths: readonly string[]): string => {
   return git(['rev-parse', 'HEAD']);
 };
 
-it('refuses a migration in a directory named migrations in another case, naming it', () => {
-  git(['init', '-q', '-b', 'main']);
-  const base = commit(['migrations/0001_m.sql']);
-  const head = commit(['Migrations/0002_m.sql', 'MIGRATIONS/0003_m.sql']);
-  const run = spawnSync(process.execPath, [script], {
+/** The real script over `base..head`, as CI runs it. */
+const check = (base: string, head: string) =>
+  spawnSync(process.execPath, [script], {
     cwd: dir,
     encoding: 'utf8',
     env: { ...process.env, BASE_SHA: base, HEAD_SHA: head },
   });
+
+it('refuses a migration in a directory named migrations in another case, naming it', () => {
+  const base = commit(['migrations/0001_m.sql']);
+  const head = commit(['Migrations/0002_m.sql', 'MIGRATIONS/0003_m.sql']);
+  const run = check(base, head);
   expect([run.status, run.stderr]).toStrictEqual([
     1,
     expect.stringContaining('Migrations/ is not migrations/ in lower case'),
   ]);
   expect(run.stderr).toContain('MIGRATIONS/ is not migrations/ in lower case');
+});
+
+// U+017F (long s) lower-cases to itself, so `toLowerCase` keeps `migrationſ`
+// apart from `migrations`, but a Mac's case-insensitive disk folds it to `s`
+// and puts the file in `migrations/`, which no check then read.
+it('refuses a migration in a directory a Mac folds onto migrations, though lower case does not', () => {
+  git(['update-index', '--force-remove', 'Migrations/0002_m.sql', 'MIGRATIONS/0003_m.sql']);
+  const base = commit([]);
+  const head = commit(['migration\u017F/0004_m.sql']);
+  const run = check(base, head);
+  expect([run.status, run.stderr]).toStrictEqual([
+    1,
+    expect.stringContaining('migration\u017F/ is not migrations/ in lower case'),
+  ]);
 });
