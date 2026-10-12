@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { checkCandidate, indexFiles, options } from './candidate-snapshot.mjs';
 import { historyReader } from './history-objects.mjs';
@@ -271,7 +271,9 @@ export function publicHistory(repository, range) {
   return { files, commits: commits.length, blobPaths: seen.size };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Node resolves its own address through symlinks, so the path it was started
+// by is resolved too: a checker reached through a symlink still checks.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
     const outgoingAt = args.indexOf('--outgoing');
