@@ -3,13 +3,20 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { verifySecondFactor } from '../../packages/core-commands/src/commands/account-factor.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
-import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
+import {
+  createFreshDatabase,
+  databaseUrlFromEnvironment,
+  type FreshDatabase,
+} from '../support/fresh-database.ts';
 import { insertBusiness } from './fixture.ts';
 import { factorCaller } from './factor-lock-wait-fixture.ts';
 
 let db: FreshDatabase;
 let business: BusinessId;
+const live = databaseUrlFromEnvironment() !== undefined;
+
 beforeAll(async () => {
+  if (!live) return;
   db = await createFreshDatabase({ part: 'sol1470lockout' });
   business = await insertBusiness(db.app, 'sol-1470-lockout');
 }, 180_000);
@@ -17,7 +24,7 @@ afterAll(async () => {
   await db?.drop();
 });
 
-it('provider challenge rate limits do not spend the wrong-code lockout', async () => {
+it.skipIf(!live)('provider challenge rate limits do not spend the wrong-code lockout', async () => {
   const { caller } = await factorCaller(db, business, true);
   const challengePaths: string[] = [];
   let rateLimited = true;
