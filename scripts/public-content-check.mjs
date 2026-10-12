@@ -106,7 +106,7 @@ export function scanPublicFiles(entries) {
     // read itself. Everything else -- the index, a candidate directory, every
     // blob in the history's trees -- is ordinary content.
     const scope = declared === 'commit' && commitMetadataPath.test(path) ? 'commit' : 'content';
-    const pathRules = contentRules(path);
+    const pathRules = contentRules(path, 'path');
     // A prohibited value can be in the filename itself. Withhold that path.
     const display = pathRules.length ? '<withheld-path>' : path;
     for (const rule of pathRules) findings.push({ file: display, rule });
