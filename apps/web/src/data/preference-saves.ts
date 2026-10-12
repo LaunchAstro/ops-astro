@@ -13,11 +13,14 @@
 // gives the same person a new client, and a save still unanswered through the
 // old one is still theirs. A sign-out or a switch of the tab's owner drops
 // every ledger. Only the order is the client's, so a save that never answers
-// holds back that client's later saves, never a new sign-in's. The price, as
-// before this ledger: a save the old client sent can still land after the new
-// client's save of the same key, and the server then keeps the older choice.
+// holds back that client's later saves, never a new sign-in's. An old client's
+// save can then land after a newer one the server has already answered, so
+// the newest value of that key is sent again through the newest client, as a
+// new intent with its own operation id: the old id would only replay its
+// stored outcome.
 
 import {
+  isRefusal,
   isUnavailable,
   type CallResult,
   type CommandOutcome,
@@ -35,7 +38,15 @@ interface Ledger {
    * request number its answer arrived at, or Infinity while it is unanswered.
    */
   readonly unsettledUntil: Map<string, number>;
+  /** Per key, the last save once it has answered: sent again over an older one that lands later. */
+  readonly settled: Map<string, Settled>;
   readonly intents: Intents;
+}
+
+interface Settled {
+  readonly client: OperationsClient;
+  readonly value: unknown;
+  readonly tag: Tag;
 }
 
 let ledgers = { tab: tabOwnerGeneration(), byOwner: new Map<string, Ledger>() };
@@ -50,6 +61,7 @@ function ledgerOf(owner: Owner): Ledger {
     ledger = {
       last: new Map(),
       unsettledUntil: new Map(),
+      settled: new Map(),
       intents: new Intents(),
     };
     ledgers.byOwner.set(key, ledger);
@@ -79,6 +91,9 @@ export function savePreference(
     if (!isUnavailable(result)) ledger.intents.answered(preference, operationId);
     if (ledger.last.get(preference) === tag.request) {
       ledger.unsettledUntil.set(preference, nextRequest());
+      if (!isUnavailable(result)) ledger.settled.set(preference, { client, value, tag });
+    } else if (!isRefusal(result)) {
+      repair(ledger, preference);
     }
     return result;
   });
@@ -87,4 +102,16 @@ export function savePreference(
     sent.catch(() => null),
   );
   return sent;
+}
+
+/**
+ * An older save of `preference` answered after the last one: it may have been
+ * stored over it, so send the last one's value again, through its client, once
+ * the last one has answered, under the same tab owner.
+ */
+function repair(ledger: Ledger, preference: string): void {
+  const last = ledger.settled.get(preference);
+  if (last === undefined || last.tag.request !== ledger.last.get(preference)) return;
+  if (last.tag.tab !== tabOwnerGeneration()) return;
+  void savePreference(last.client, preference, last.value, { ...last.tag, request: nextRequest() });
 }
