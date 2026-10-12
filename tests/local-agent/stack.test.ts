@@ -6,9 +6,11 @@
 // through a symlink, and writes the API's settings for a `local-gpt` broker
 // that the composition root accepts as they stand.
 
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   readdirSync,
   readFileSync,
   statSync,
@@ -77,6 +79,12 @@ describe('what the stack refuses before writing anything', () => {
       {},
       'SETTING_MALFORMED',
     ],
+    [
+      'a key custody cannot file',
+      { OPS_LOCAL_AGENT_KEY: `a key with spaces ${RUNNER_KEY}` },
+      {},
+      'KEY_REFUSED',
+    ],
   ])('refuses %s', async (_label, overrides, knobs, code) => {
     const w = fresh();
     w.knobs(knobs);
@@ -88,6 +96,7 @@ describe('what the stack refuses before writing anything', () => {
   it.each([
     ['a home others can write to', 0o777, {}, 'HOME_NOT_PRIVATE'],
     ['a home its group can write to', 0o770, {}, 'HOME_NOT_PRIVATE'],
+    ['a home only others can write to', 0o702, {}, 'HOME_NOT_PRIVATE'],
     ['a port that is not a port', 0o700, { OPS_LOCAL_AGENT_PORT: '70000' }, 'SETTING_MALFORMED'],
   ])('refuses %s', async (_label, mode, overrides, code) => {
     const w = fresh();
@@ -95,6 +104,25 @@ describe('what the stack refuses before writing anything', () => {
     const before = tree(w.agentHome);
     expect(await start(w, overrides)).toMatchObject({ ok: false, code });
     expect(tree(w.agentHome)).toEqual(before);
+  });
+});
+
+describe('a home the stack cannot take', () => {
+  it.skipIf(process.getuid?.() === 0)('refuses a home someone else owns', async () => {
+    const w = fresh();
+    const started = await start(w, { OPS_LOCAL_AGENT_HOME: '/' });
+    expect(started).toMatchObject({ ok: false, code: 'HOME_NOT_OWNED' });
+  });
+
+  it('refuses a home whose takeover was left unfinished, and names the file to remove', async () => {
+    const w = fresh();
+    const { pid } = spawnSync(process.execPath, ['-e', '']);
+    writeFileSync(join(w.agentHome, 'runner.lock'), String(pid));
+    const takeover = join(w.agentHome, 'runner.lock.takeover');
+    writeFileSync(takeover, '1 left');
+    const started = await start(w);
+    expect(started).toMatchObject({ ok: false, code: 'LOCAL_HOME_IN_USE' });
+    expect(started.ok ? '' : started.message).toContain(`remove ${takeover}`);
   });
 });
 
@@ -183,7 +211,8 @@ describe('a started stack', () => {
     const started = await start(w, { OPS_LOCAL_AGENT_PORT: String(port) });
     if (!started.ok) throw new Error(started.code);
     expect(started.stack.runner.origin).toBe(`http://127.0.0.1:${String(port)}`);
-    expect(printed.join('\n')).toMatch(/source .*api\.env.*restart the API/u);
+    // In brackets, so the API's settings stay out of the owner's terminal afterwards.
+    expect(printed.join('\n')).toContain(`(. '${started.stack.apiEnvFile}' && pnpm api:up)`);
   });
 
   it('a second start on a live home is refused, the filed key still the one the runner serves', async () => {
@@ -196,16 +225,24 @@ describe('a started stack', () => {
     expect(readFileSync(first.stack.credentialsFile, 'utf8')).toBe(filed);
   });
 
-  it('replaces a credentials file left at 0644, and never writes through a symlink there', async () => {
-    const w = fresh();
-    const elsewhere = join(w.userHome, 'elsewhere.json');
-    writeFileSync(elsewhere, 'untouched');
-    w.write('api.env', 'old');
-    symlinkSync(elsewhere, join(w.agentHome, 'credentials.json'));
-    const started = await start(w);
-    if (!started.ok) throw new Error(started.code);
-    expect(readFileSync(elsewhere, 'utf8')).toBe('untouched');
-    expect(statSync(started.stack.credentialsFile).mode & 0o777).toBe(0o600);
-    expect(statSync(started.stack.apiEnvFile).mode & 0o777).toBe(0o600);
-  });
+  it.each([
+    ['credentials.json', 'api.env'],
+    ['api.env', 'credentials.json'],
+  ])(
+    'replaces %s left at 0644 with its own file, never writing through a symlink at %s',
+    async (left, linked) => {
+      const w = fresh();
+      const elsewhere = join(w.userHome, 'elsewhere.json');
+      writeFileSync(elsewhere, 'untouched');
+      writeFileSync(join(w.agentHome, left), 'old', { mode: 0o644 });
+      symlinkSync(elsewhere, join(w.agentHome, linked));
+      const started = await start(w);
+      if (!started.ok) throw new Error(started.code);
+      expect(readFileSync(elsewhere, 'utf8')).toBe('untouched');
+      for (const file of [started.stack.credentialsFile, started.stack.apiEnvFile]) {
+        expect(lstatSync(file).isFile()).toBe(true);
+        expect(lstatSync(file).mode & 0o777).toBe(0o600);
+      }
+    },
+  );
 });
