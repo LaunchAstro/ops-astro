@@ -9,15 +9,40 @@
 // of every operand here at a valid value is one it takes.
 
 import type { CommandName } from './command-names.ts';
-import type { OperandSpec } from './write-operands.ts';
+import type { Operand } from './write-operands.ts';
+
+/** The JSON an operand holds when no operand kind says it: an object's fields, a list's items. */
+export interface OperandShape {
+  readonly type: 'array' | 'object' | 'string';
+  readonly properties?: Readonly<Record<string, OperandShape>>;
+  readonly required?: readonly string[];
+  readonly items?: OperandShape;
+  readonly minItems?: number;
+  readonly maxItems?: number;
+  readonly enum?: readonly string[];
+}
+
+/** An operand by kind, or by shape (required unless `optional`). */
+export type ReadOperand = Operand | { readonly shape: OperandShape; readonly optional?: true };
+
+export type ReadOperands = Readonly<Record<string, ReadOperand>>;
+
+/** One body, or one of several forms the read takes in its place (`task.board`). */
+export type ReadBody = ReadOperands | { readonly oneOf: readonly ReadOperands[] };
 
 const NONE = {} as const;
 const RECORD = { recordId: 'id' } as const;
 // The detail level, page size and page token of a task read (`reads/detail.ts`).
 const PAGING = { detail: 'text?', limit: 'count?', page: 'text?' } as const;
 const TODO_SCOPE = { person: 'id?', client: 'id?' } as const;
+// A notice's recipient (`reads/operations.ts`): a name and an address, both required.
+const RECIPIENT: OperandShape = {
+  type: 'object',
+  properties: { name: { type: 'string' }, address: { type: 'string' } },
+  required: ['name', 'address'],
+};
 
-export const READ_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
+export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'map.view': RECORD,
   'map.frontier': RECORD,
   // The read refuses a missing one itself, after the door (`reads/conversation.ts`).
@@ -26,9 +51,13 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> 
   'conversation.allowance': { conversationId: 'id?|null' },
   'conversation.models': { conversationId: 'id?|null' },
   'task.read': { ...RECORD, ...PAGING, historyEventId: 'id?' },
-  // `mode: 'aggregate'` stands in place of `board`, never beside it, and one
-  // body schema cannot say either-or, so the board's body is the one declared.
-  'task.board': { board: 'id|null', ...TODO_SCOPE, ...PAGING },
+  // `mode: 'aggregate'` stands in place of `board`, never beside it: two forms.
+  'task.board': {
+    oneOf: [
+      { board: 'id|null', ...TODO_SCOPE, ...PAGING },
+      { mode: { shape: { type: 'string', enum: ['aggregate'] } }, ...TODO_SCOPE, ...PAGING },
+    ],
+  },
   'task.search': { query: 'text' },
   'task.ledger': { timeZone: 'text', before: 'text?|null', query: 'text?|null' },
   'person.list': NONE,
@@ -39,8 +68,11 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> 
   'task.execution': { ...RECORD, cursor: 'count?' },
   'definition.attribution': { digest: 'text' },
   'gate.pending': NONE,
-  // An array of field objects, which `map` (an object, not an array) is not.
-  'preset.plan': { recordTypeKey: 'text', presetKey: 'text', fields: 'any' },
+  'preset.plan': {
+    recordTypeKey: 'text',
+    presetKey: 'text',
+    fields: { shape: { type: 'array', items: { type: 'object' } } },
+  },
   'secret.list': NONE,
   'connection.fleet': NONE,
   'connection.signal': NONE,
@@ -56,11 +88,10 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> 
   'access.read': NONE,
   'client.list': NONE,
   'operations.read': NONE,
-  // `people` is a list of the same `{ name, address }` recipient `oaic` is.
   'privacy.draft_breach_notices': {
     incidentId: 'id',
-    oaic: 'map',
-    people: 'any',
+    oaic: { shape: RECIPIENT },
+    people: { shape: { type: 'array', minItems: 1, maxItems: 500, items: RECIPIENT } },
     containment: 'text',
     steps: 'text',
   },

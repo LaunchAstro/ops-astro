@@ -13,10 +13,13 @@ import {
   pathOf,
   PREFIX,
   type CommandDeclaration,
-  type Operand,
-  type OperandSpec,
 } from '../../packages/core-wire/src/surface.ts';
-import { READ_OPERANDS } from '../../packages/core-wire/src/read-operands.ts';
+import {
+  READ_OPERANDS,
+  type ReadBody,
+  type ReadOperand,
+  type ReadOperands,
+} from '../../packages/core-wire/src/read-operands.ts';
 
 export class DefinitionRefused extends Error {}
 
@@ -26,6 +29,11 @@ export interface Schema {
   readonly nullable?: boolean;
   readonly properties?: Readonly<Record<string, Schema>>;
   readonly required?: readonly string[];
+  readonly items?: Schema;
+  readonly minItems?: number;
+  readonly maxItems?: number;
+  readonly enum?: readonly string[];
+  readonly oneOf?: readonly Schema[];
 }
 
 interface Post {
@@ -72,7 +80,9 @@ function origin(target: string): string {
   return url.origin;
 }
 
-function operandSchema(operand: Operand): { schema: Schema; required: boolean } {
+function operandSchema(operand: ReadOperand): { schema: Schema; required: boolean } {
+  if (typeof operand !== 'string')
+    return { schema: operand.shape, required: operand.optional !== true };
   const kind = operand.replaceAll(/\?|\|null/gu, '');
   const base = KIND_SCHEMA[kind];
   if (base === undefined) throw new DefinitionRefused(`an operand kind is unknown: ${kind}`);
@@ -84,7 +94,7 @@ function operandSchema(operand: Operand): { schema: Schema; required: boolean } 
 function objectOf(
   properties: Record<string, Schema>,
   required: string[],
-  operands: OperandSpec,
+  operands: ReadOperands,
 ): Schema {
   for (const [name, operand] of Object.entries(operands)) {
     const typed = operandSchema(operand);
@@ -96,12 +106,19 @@ function objectOf(
     : { type: 'object', properties, required };
 }
 
+/** A read that takes one of several bodies, rather than one. */
+function formsOf(body: ReadBody): body is { readonly oneOf: readonly ReadOperands[] } {
+  return Array.isArray(body['oneOf']);
+}
+
 function bodyOf(command: CommandDeclaration): Schema {
   if (command.kind === 'read') {
     const operands = READ_OPERANDS[command.name];
     if (operands === undefined)
       throw new DefinitionRefused(`a read declares no operands: ${command.name}`);
-    return objectOf({}, [], operands);
+    return formsOf(operands)
+      ? { oneOf: operands.oneOf.map((form) => objectOf({}, [], form)) }
+      : objectOf({}, [], operands);
   }
   const properties: Record<string, Schema> = { operationId: KIND_SCHEMA['id'] ?? {} };
   const required = ['operationId'];

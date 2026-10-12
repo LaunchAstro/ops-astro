@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { irrelevantIdentifiers } from '../../packages/core-commands/src/commands/prepare.ts';
+import { READ_IDENTIFIER_FIELDS } from '../../packages/core-commands/src/commands/operands.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
 import { pathOf, PREFIX, READS } from '../../packages/core-wire/src/surface.ts';
 import { apiDefinition, type Schema } from '../../scripts/security/api-definition.ts';
@@ -23,6 +24,9 @@ function bodyOf(name: string): Schema {
   if (schema === undefined) throw new Error(`${name} has no route in the document`);
   return schema;
 }
+
+/** The bodies a read takes: its one body, or each of its forms. */
+const formsOf = (schema: Schema): readonly Schema[] => schema.oneOf ?? [schema];
 
 const UUID = '6f1c2a4e-8b3d-4c5a-9e7f-0a1b2c3d4e5f';
 const RECIPIENT = { name: 'The OAIC', address: 'drill-oaic@example.test' };
@@ -45,11 +49,13 @@ const BY_NAME: Readonly<Record<string, unknown>> = {
 
 function sampleOf(name: string, schema: Schema): unknown {
   if (Object.hasOwn(BY_NAME, name)) return BY_NAME[name];
+  if (schema.enum !== undefined) return schema.enum[0];
   if (schema.format === 'uuid') return UUID;
   if (schema.type === 'string') return 'a value';
   if (schema.type === 'number') return 1;
   if (schema.type === 'boolean') return true;
   if (schema.type === 'object') return {};
+  if (schema.type === 'array') return [];
   throw new Error(`no sample for ${name}: give it one in BY_NAME`);
 }
 
@@ -68,7 +74,9 @@ const CHECKED_AFTER_THE_DOOR: Readonly<Partial<Record<ReadName, string>>> = {
 
 it('every read on the surface has a described body in the document', () => {
   expect(READ_NAMES.toSorted()).toStrictEqual([...READS].toSorted());
-  for (const name of READ_NAMES) expect(bodyOf(name).properties, name).toBeDefined();
+  for (const name of READ_NAMES) {
+    for (const form of formsOf(bodyOf(name))) expect(form.properties, name).toBeDefined();
+  }
 });
 
 it.each([
@@ -82,7 +90,7 @@ it.each([
   ['task.receipt', ['attemptId']],
   ['task.board', ['board']],
 ])('%s requires its identifier in the document', (name, required) => {
-  expect(bodyOf(name).required).toStrictEqual(required);
+  expect(formsOf(bodyOf(name))[0]?.required).toStrictEqual(required);
 });
 
 it.each([
@@ -92,22 +100,48 @@ it.each([
   ['conversation.allowance', ['conversationId']],
   ['conversation.models', ['conversationId']],
 ])('%s declares its optional operands', (name, optional) => {
-  const schema = bodyOf(name);
+  const [schema = {}] = formsOf(bodyOf(name));
   for (const each of optional) {
     expect(Object.keys(schema.properties ?? {}), name).toContain(each);
     expect(schema.required ?? [], name).not.toContain(each);
   }
 });
 
-describe.each(READ_NAMES)('%s', (name) => {
-  const schema = bodyOf(name);
+it('the board takes its aggregate form in place of a board, never beside it', () => {
+  const [board, aggregate] = formsOf(bodyOf('task.board'));
+  expect(aggregate?.required).toStrictEqual(['mode']);
+  expect(aggregate?.properties?.['board']).toBeUndefined();
+  expect(board?.properties?.['mode']).toBeUndefined();
+});
+
+it('a structured operand is described down to its fields', () => {
+  const breach = bodyOf('privacy.draft_breach_notices').properties ?? {};
+  expect(breach['oaic']?.required).toStrictEqual(['name', 'address']);
+  expect(breach['people']).toMatchObject({ type: 'array', minItems: 1 });
+  expect(breach['people']?.items?.required).toStrictEqual(['name', 'address']);
+  expect(bodyOf('preset.plan').properties?.['fields']).toMatchObject({
+    type: 'array',
+    items: { type: 'object' },
+  });
+});
+
+const FORMS = READ_NAMES.flatMap((name) =>
+  formsOf(bodyOf(name)).map(
+    (schema, index) => [`${name} form ${index + 1}`, name, schema] as const,
+  ),
+);
+
+describe.each(FORMS)('%s', (_label, name, schema) => {
   const parse = (body: Readonly<Record<string, unknown>>) => READ_CATALOGUE[name].parse(body);
 
   it('a body of every declared operand at a valid value is taken by the read', () => {
     const body = fullBody(schema);
     const parsed = parse(body);
     expect(parsed.ok ? 'taken' : parsed.refusal, name).toBe('taken');
-    expect(irrelevantIdentifiers(body, READ_CATALOGUE[name].identifiers), name).toStrictEqual([]);
+    expect(
+      irrelevantIdentifiers(body, READ_CATALOGUE[name].identifiers, READ_IDENTIFIER_FIELDS),
+      name,
+    ).toStrictEqual([]);
   });
 
   it('each operand the document requires is refused by the read when absent', () => {
