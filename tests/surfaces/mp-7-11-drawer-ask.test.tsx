@@ -123,7 +123,7 @@ describe('MP-7-11 drawer: asking', () => {
         }),
       ],
     });
-    expect(page.find('[data-message-role="failed"]')?.textContent).toBe(
+    expect(page.find('[data-message-role="failed"] .aip__body')?.textContent).toBe(
       '<b>The reply could not be read.</b>',
     );
     expect(page.find('[data-message-role="failed"] b')).toBeNull();
