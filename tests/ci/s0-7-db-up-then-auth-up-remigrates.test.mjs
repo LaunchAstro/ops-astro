@@ -31,7 +31,8 @@ case "$1" in
           *State.Running*) printf '%s\\n' true ;;
           *signing-key*) printf '%s\\n' '__LABEL__' ;;
           *Config.Labels*) printf '%s\\n' pg-18 ;;
-          *) printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' ;;
+          # Every setting auth-up checks is current, so only the Postgres id can replace it.
+          *) printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' '"GOTRUE_MFA_MAX_VERIFIED_FACTORS=1"' ;;
         esac ;;
     esac ;;
   rm)
