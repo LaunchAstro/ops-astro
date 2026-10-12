@@ -20,6 +20,7 @@ const serverUrl = databaseUrlFromEnvironment();
 /** A time on the hour, so an hourly activation's due time is that hour. */
 const hour = (h: number): Date => new Date(Date.UTC(2026, 10, 2, h, 0, 0));
 
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('the occurrence sweep', () => {
   let w: AutomationWorld;
   let f: Firing;
