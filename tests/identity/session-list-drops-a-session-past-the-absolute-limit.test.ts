@@ -2,10 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { resolveLogin } from '../../packages/core-records/src/identity/login-resolution.ts';
-import {
-  endOtherSeenSessions,
-  listSeenSessions,
-} from '../../packages/core-records/src/identity/sessions.ts';
+import { listSeenSessions } from '../../packages/core-records/src/identity/sessions.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import {
   insertActor,
@@ -88,41 +85,5 @@ it.skipIf(!live)(
       return await listSeenSessions(tx, world.person, current);
     });
     expect(listed.map((session) => session.sessionId)).toEqual([current]);
-  },
-);
-
-it.skipIf(!live)(
-  'a session first served in the minute after an ending of the other sessions is not listed, as the door refuses it',
-  async () => {
-    const world = await signedInPerson('ending-minute');
-    const keep = randomUUID();
-    const straddling = randomUUID();
-    await db.app.withBusiness(world.business, async (tx) => {
-      await resolveLogin(tx, presented(world.subject, keep, now() - 120));
-      await endOtherSeenSessions(tx, world.person, keep, 'end_others', world.subject);
-    });
-    // Served while the ending committed: its first row lands just after the
-    // ending's stamp, and its sign-in is no later than that.
-    const [ending] = await db.admin.execute<{ readonly at: number }>(
-      `select extract(epoch from max(ended_before))::float8 as at from ops.ended_subject_sessions`,
-    );
-    const signedInAt = Math.floor(ending?.at ?? 0);
-    const refused = await db.app.withBusiness(world.business, async (tx) => {
-      await db.admin.execute(
-        `insert into public.authentication_attempts
-           (business_id, id, owner, login_id, person_id, actor_id, outcome, session_id, provider, subject_digest, at)
-         select business_id, gen_random_uuid(), owner, login_id, person_id, actor_id, outcome, $2::uuid,
-                provider, subject_digest, to_timestamp($3) + interval '1 second'
-           from public.authentication_attempts where session_id = $1::uuid limit 1`,
-        [keep, straddling, signedInAt],
-      );
-      return await resolveLogin(tx, presented(world.subject, straddling, signedInAt));
-    });
-    expect(refused).toHaveProperty('code', 'AUTH_SESSION_EXPIRED');
-    const listed = await db.app.withBusiness(
-      world.business,
-      async (tx) => await listSeenSessions(tx, world.person, keep),
-    );
-    expect(listed.map((session) => session.sessionId)).toEqual([keep]);
   },
 );

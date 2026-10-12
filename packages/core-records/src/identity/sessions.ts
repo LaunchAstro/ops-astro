@@ -52,8 +52,8 @@ const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
  * What the door still serves. Sign-in is no later than first serving, so a
  * session first served over the limit plus the clock minute ago is past it
  * (its servings span at most the limit, so twice the window holds them all).
- * An ending of the login's other sessions (0063) covers one first served by
- * the ending plus that minute: login resolution's rule for the sign-in time.
+ * An ending of the login's other sessions (0063) covers one first served at or
+ * before it: a later one may carry a sign-in stamp past the door's minute.
  */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
@@ -72,7 +72,7 @@ const SEEN = `
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to(l.subject, 'UTF8')), 'hex')
           and s.kept_session is distinct from a.session_id
-          and min(a.at) <= s.ended_before + make_interval(secs => $5))
+          and min(a.at) <= s.ended_before)
    order by max(a.at) desc, a.session_id limit $4`;
 
 /** The person's live sessions, newest first; `current` marks the one asking. */
@@ -85,7 +85,7 @@ export async function listSeenSessions(
     readonly session_id: string;
     readonly first_seen: Date;
     readonly last_seen: Date;
-  }>(SEEN, [tx.businessId, personId, WINDOW_SECONDS, LISTED, SIGN_IN_CLOCK_SKEW_SECONDS]);
+  }>(SEEN, [tx.businessId, personId, WINDOW_SECONDS, LISTED]);
   return rows.map((row) => ({
     sessionId: row.session_id,
     firstSeenAt: row.first_seen,
