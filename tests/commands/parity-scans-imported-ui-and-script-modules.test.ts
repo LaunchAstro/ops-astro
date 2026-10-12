@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Parity reads every module the web app ships: the UI kit it imports from
-// packages/ui and a plain script module beside its TypeScript. A copy of the
+// packages/ui and a plain script module the app imports. A copy of the
 // sources has a direct request planted in each, and `--check` names both.
 
 import { spawnSync } from 'node:child_process';
@@ -27,6 +27,11 @@ it('names a direct request in an imported UI kit component and in a script modul
     writeFileSync(
       join(copy, 'apps/web/src/data/planted-helper.mjs'),
       `export const plantedWrite = () => ${POST}\n`,
+    );
+    // Imported and called, so the build ships it.
+    appendFileSync(
+      join(copy, 'apps/web/src/main.tsx'),
+      "\nimport { plantedWrite } from './data/planted-helper.mjs';\nplantedWrite();\n",
     );
     const result = spawnSync(process.execPath, ['scripts/command-parity.mjs', '--check'], {
       cwd: copy,
