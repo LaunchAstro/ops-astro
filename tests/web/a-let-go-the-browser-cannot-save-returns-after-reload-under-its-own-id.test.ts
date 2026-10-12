@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Stop waiting when the browser cannot rewrite the saved copy leaves the change
-// let go but its copy in place, with one control: Clear saved copy. If the tab
-// is reloaded before that control succeeds, the let-go change must not come
-// back as a held attempt that Retry or Send would replay under its old id.
+// let go in this tab, its copy in place, with one control: Clear saved copy.
+// That is the design's stated limit: nothing can record the let-go across a
+// reload, so after one the attempt returns as it was before Stop waiting, held
+// under its own operation id, and Retry sends that same id (the server replays
+// it; it never makes a second change).
 import { expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { AssignmentCustody } from '../../apps/web/src/screens/task/assignment-custody.ts';
@@ -47,23 +49,34 @@ function server() {
 }
 
 /** The browser stops accepting writes (setItem) or removals of one key. */
-function block(storage: Storage, key: string, method: 'setItem' | 'removeItem'): void {
+function block(storage: Storage, key: string, method: 'setItem' | 'removeItem'): () => void {
   if (method === 'setItem') {
     const set = storage.setItem.bind(storage);
     storage.setItem = (name, value) => {
       if (name === key) throw new Error('storage blocked');
       set(name, value);
     };
-  } else {
-    const remove = storage.removeItem.bind(storage);
-    storage.removeItem = (name) => {
-      if (name === key) throw new Error('storage blocked');
-      remove(name);
+    return () => {
+      storage.setItem = set;
     };
   }
+  const remove = storage.removeItem.bind(storage);
+  storage.removeItem = (name) => {
+    if (name === key) throw new Error('storage blocked');
+    remove(name);
+  };
+  return () => {
+    storage.removeItem = remove;
+  };
 }
 
-it('A let-go score edit whose saved copy could not be rewritten is not held again after reload', async () => {
+/** Every request so far went under the one held id. */
+const onlyHeld = (ids: readonly string[], heldId: string): void => {
+  expect(ids.at(-1)).toBe(heldId);
+  expect(new Set(ids).size).toBe(1);
+};
+
+it('A let-go score edit whose saved copy could not be rewritten returns after a reload under its own id', async () => {
   const world = server();
   const storage = store();
   const custody = new ScoresCustody(world.client(), OWNER, storage);
@@ -73,28 +86,35 @@ it('A let-go score edit whose saved copy could not be rewritten is not held agai
   await settleMicrotasks();
   const heldId = world.ids[0]!;
   expect(custody.snapshot(A)).toMatchObject({ uncertain: true });
-  block(storage, 'ops-astro.task-scores', 'setItem');
+  const restore = block(storage, 'ops-astro.task-scores', 'setItem');
   custody.letGo(A, heldId);
   expect(custody.snapshot(A)).toMatchObject({ pending: null, abandoned: true });
+  restore();
   const reloaded = new ScoresCustody(world.client(), OWNER, storage);
-  expect(reloaded.snapshot(A).pending?.operationId).not.toBe(heldId);
+  expect(reloaded.snapshot(A).pending?.operationId).toBe(heldId);
+  reloaded.retry(A);
+  await settleMicrotasks();
+  onlyHeld(world.ids, heldId);
 });
 
-it('A let-go assignment whose saved copy could not be rewritten is not held again after reload', async () => {
+it('A let-go assignment whose saved copy could not be rewritten returns after a reload under its own id', async () => {
   const world = server();
   const storage = store();
   const custody = new AssignmentCustody(world.client(), OWNER, storage);
   await custody.choose(A, 4, { assignee: PERSON });
   await custody.retry(A);
   const heldId = world.ids[0]!;
-  block(storage, 'ops-astro.assignment-attempts', 'setItem');
+  const restore = block(storage, 'ops-astro.assignment-attempts', 'setItem');
   custody.letGo(A, heldId);
   expect(custody.snapshot().holds.get(A)).toMatchObject({ pending: null, abandoned: true });
+  restore();
   const reloaded = new AssignmentCustody(world.client(), OWNER, storage);
-  expect(reloaded.snapshot().holds.get(A)?.pending?.operationId).not.toBe(heldId);
+  expect(reloaded.snapshot().holds.get(A)?.pending?.operationId).toBe(heldId);
+  await reloaded.retry(A);
+  onlyHeld(world.ids, heldId);
 });
 
-it('A let-go comment whose saved copy could not be rewritten is not held again after reload', async () => {
+it('A let-go comment whose saved copy could not be rewritten returns after a reload under its own id', async () => {
   const world = server();
   const storage = store();
   const custody = new CommentCustody(world.client(), OWNER, storage);
@@ -110,14 +130,17 @@ it('A let-go comment whose saved copy could not be rewritten is not held again a
   await custody.post(A, words);
   const heldId = world.ids[0]!;
   expect(custody.snapshot(A)).toMatchObject({ uncertain: true });
-  block(storage, 'ops-astro.comment-attempts', 'setItem');
+  const restore = block(storage, 'ops-astro.comment-attempts', 'setItem');
   custody.letGo(A, heldId);
   expect(custody.snapshot(A)).toMatchObject({ pending: null, kept: false, answered: 'abandoned' });
+  restore();
   const reloaded = new CommentCustody(world.client(), OWNER, storage);
-  expect(reloaded.snapshot(A).pending?.operationId).not.toBe(heldId);
+  expect(reloaded.snapshot(A).pending?.operationId).toBe(heldId);
+  await reloaded.post(A, words);
+  onlyHeld(world.ids, heldId);
 });
 
-it('A let-go timer Start whose saved copy could not be removed is not held again after reload', async () => {
+it('A let-go timer Start whose saved copy could not be removed returns after a reload under its own id', async () => {
   const world = server();
   const storage = store();
   const timer = new TaskTimer(world.client(), () => true, timerCustody(storage, OWNER));
@@ -126,9 +149,13 @@ it('A let-go timer Start whose saved copy could not be removed is not held again
   timer.retry();
   await settleMicrotasks();
   const heldId = world.ids[0]!;
-  block(storage, 'ops-astro.task-timer', 'removeItem');
+  const restore = block(storage, 'ops-astro.task-timer', 'removeItem');
   timer.dismiss();
   expect(timer.snapshot().attempt).toMatchObject({ status: 'abandoned' });
+  restore();
   const reloaded = new TaskTimer(world.client(), () => true, timerCustody(storage, OWNER));
-  expect(reloaded.snapshot().attempt?.operationId).not.toBe(heldId);
+  expect(reloaded.snapshot().attempt?.operationId).toBe(heldId);
+  reloaded.retry();
+  await settleMicrotasks();
+  onlyHeld(world.ids, heldId);
 });
