@@ -152,6 +152,8 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).
   { from: '0069', line: 'ops_astro_forwarder INSERT ops.security_alert_log.kind' },
+  // The forwarder prunes the log to ninety days (20261012132706).
+  { from: '20261012132706', line: 'ops_astro_forwarder SELECT ops.security_alert_log.at' },
   ...['at', 'kind'].map((column) => ({
     from: '0069',
     line: `ops_astro_app SELECT ops.security_alert_log.${column}`,
