@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the operations view keeps the oldest open privacy incident, overdue, behind two hundred newer ones, and still lists the most recently found first"
+}

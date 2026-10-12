@@ -236,7 +236,11 @@ function byKey(left: FieldDefinition, right: FieldDefinition): number {
   return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
-/** The canonical form a unique value is claimed under, matching the schema's own check. */
+/**
+ * The canonical form a unique value is claimed under, matching the schema's
+ * `lower(btrim(value))`. One-argument `btrim` removes ordinary spaces only, so
+ * a tab or newline at either end stays, as it does in the store.
+ */
 export function canonicalUniqueValue(value: string): string {
-  return value.trim().toLowerCase();
+  return value.replaceAll(/^ +| +$/gu, '').toLowerCase();
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a slot named only in an index INCLUDE list reads from the catalogue as unindexed, is refused by slot planning, and fails index conformance when a field is assigned to it"
+}
