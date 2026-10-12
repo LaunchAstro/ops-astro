@@ -3,9 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { apiDefinition } from '../../scripts/security/api-definition.ts';
 import { READ_CATALOGUE } from '../../packages/core-commands/src/reads/catalogue.ts';
 import { createSourceMutant } from '../support/source-mutant.ts';
+
+// The mutation runs copy database suites, which skip without a database and so prove nothing.
+const withDatabase = it.skipIf(databaseUrlFromEnvironment() === undefined);
 
 const graduation = 'tests/connections/mp-14-10a-graduation-read.test.ts';
 const identifiers = 'tests/reads/a-read-refuses-identifiers-it-does-not-take.test.ts';
@@ -44,51 +48,63 @@ function runCopy(file: string, from: string, to: string, name?: string, suite?: 
   }
 }
 
-it('Sol proof, criterion 1: the client-list assertion survives the client C case running first', () => {
-  const source = readFileSync(graduation, 'utf8');
-  const first = source.indexOf("  it('MP-14-10a one select drives");
-  const second = source.indexOf("  it('MP-14-10a every reachable client");
-  const third = source.indexOf("  it('MP-14-10a the client list, graduation rows");
-  expect(first >= 0 && second > first && third > second).toBe(true);
-  const original = source.slice(first, third);
-  const reordered = source.slice(second, third) + source.slice(first, second);
-  const result = runCopy(
-    graduation,
-    original,
-    reordered,
-    'one select drives|every reachable client',
-  );
-  expect(result.status, result.output).toBe(0);
-}, 150_000);
+withDatabase(
+  'the client-list assertion survives the client C case running first',
+  () => {
+    const source = readFileSync(graduation, 'utf8');
+    const first = source.indexOf("  it('MP-14-10a one select drives");
+    const second = source.indexOf("  it('MP-14-10a every reachable client");
+    const third = source.indexOf("  it('MP-14-10a the client list, graduation rows");
+    expect(first >= 0 && second > first && third > second).toBe(true);
+    const original = source.slice(first, third);
+    const reordered = source.slice(second, third) + source.slice(first, second);
+    const result = runCopy(
+      graduation,
+      original,
+      reordered,
+      'one select drives|every reachable client',
+    );
+    expect(result.status, result.output).toBe(0);
+  },
+  150_000,
+);
 
-it('Sol proof, criterion 1: the expiry proof survives five seconds of host delay before taking its lock', () => {
-  const source = readFileSync(graduation, 'utf8');
-  const expiry = source.indexOf("  it('MP-14-10a core: expiry is judged");
-  const after = source.indexOf("  it('MP-14-10a revoking stops", expiry);
-  const original = source.slice(expiry, after);
-  // This delay models a descheduled worker after the database has filed the mandate.
-  const delayed = original.replace(
-    /(const mandateId = await seedMandate\([\s\S]*?\);)/u,
-    '$1\n    await pause(5000);',
-  );
-  const result = runCopy(graduation, original, delayed, 'expiry is judged');
-  expect(result.status, result.output).toBe(0);
-}, 150_000);
+withDatabase(
+  'the expiry proof survives five seconds of host delay before taking its lock',
+  () => {
+    const source = readFileSync(graduation, 'utf8');
+    const expiry = source.indexOf("  it('MP-14-10a core: expiry is judged");
+    const after = source.indexOf("  it('MP-14-10a revoking stops", expiry);
+    const original = source.slice(expiry, after);
+    // This delay models a descheduled worker after the database has filed the mandate.
+    const delayed = original.replace(
+      /(const mandateId = await seedMandate\([\s\S]*?\);)/u,
+      '$1\n    await pause(5000);',
+    );
+    const result = runCopy(graduation, original, delayed, 'expiry is judged');
+    expect(result.status, result.output).toBe(0);
+  },
+  150_000,
+);
 
-it('Sol proof, criterion 2: the named proof rejects unaudited content-bearing identifier refusals', () => {
-  const anchor =
-    '  if (refusal === undefined && !declarationOf(request.read).audited) return outcome;';
-  const result = runCopy(
-    'packages/core-commands/src/reads/dispatch.ts',
-    anchor,
-    "  if (refusal?.code === 'COMMAND_BODY_INVALID') return { ...outcome, tasks: [{ title: 'Sol leaked content' }] };\n" +
+withDatabase(
+  'the named proof rejects unaudited content-bearing identifier refusals',
+  () => {
+    const anchor =
+      '  if (refusal === undefined && !declarationOf(request.read).audited) return outcome;';
+    const result = runCopy(
+      'packages/core-commands/src/reads/dispatch.ts',
       anchor,
-  );
-  expect(result.output).toContain('a-read-refuses-identifiers-it-does-not-take.test.ts');
-  expect(result.status, result.output).not.toBe(0);
-}, 150_000);
+      "  if (refusal?.code === 'COMMAND_BODY_INVALID') return { ...outcome, tasks: [{ title: 'Sol leaked content' }] };\n" +
+        anchor,
+    );
+    expect(result.output).toContain('a-read-refuses-identifiers-it-does-not-take.test.ts');
+    expect(result.status, result.output).not.toBe(0);
+  },
+  150_000,
+);
 
-it('Sol proof, criterion 3: required structured read operands have usable schemas', () => {
+it('required structured read operands have usable schemas', () => {
   const doc = apiDefinition('https://staging.example.test', 'alpha');
   const breach =
     doc.paths['/api/b/alpha/privacy/draft_breach_notices']?.post?.requestBody.content[
@@ -128,7 +144,7 @@ it('Sol proof, criterion 3: required structured read operands have usable schema
   });
 });
 
-it('Sol proof, criterion 3: the board schema describes the accepted aggregate read', () => {
+it('the board schema describes the accepted aggregate read', () => {
   const body = { mode: 'aggregate' };
   expect(READ_CATALOGUE['task.board'].parse(body).ok).toBe(true);
   const doc = apiDefinition('https://staging.example.test', 'alpha');
@@ -137,17 +153,21 @@ it('Sol proof, criterion 3: the board schema describes the accepted aggregate re
   expect(JSON.stringify(schema)).toContain('"mode"');
 });
 
-it('Sol proof, criterion 2: the named tests detect the original ignored-identifier bug', () => {
-  const result = runCopy(
-    'packages/core-commands/src/reads/dispatch.ts',
-    'irrelevantIdentifiers(body, row.identifiers, READ_IDENTIFIER_FIELDS)',
-    'irrelevantIdentifiers(body, row.identifiers)',
-  );
-  expect(result.status, result.output).toBe(1);
-  expect(result.output).toContain('COMMAND_BODY_INVALID');
-}, 150_000);
+withDatabase(
+  'the named tests detect the original ignored-identifier bug',
+  () => {
+    const result = runCopy(
+      'packages/core-commands/src/reads/dispatch.ts',
+      'irrelevantIdentifiers(body, row.identifiers, READ_IDENTIFIER_FIELDS)',
+      'irrelevantIdentifiers(body, row.identifiers)',
+    );
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain('COMMAND_BODY_INVALID');
+  },
+  150_000,
+);
 
-it('Sol proof, criterion 3: the named tests detect the original empty-read-schema bug', () => {
+it('the named tests detect the original empty-read-schema bug', () => {
   const file = 'scripts/security/api-definition.ts';
   const source = readFileSync(file, 'utf8');
   const start = source.indexOf("  if (command.kind === 'read') {");
@@ -164,8 +184,8 @@ it('Sol proof, criterion 3: the named tests detect the original empty-read-schem
   expect(result.output).toContain('task.read requires its identifier');
 }, 150_000);
 
-it.each(['edit', 'revive'])(
-  'Sol proof, criterion 1: the strengthened mandate tests detect removal of the %s trigger branch',
+withDatabase.each(['edit', 'revive'])(
+  'the strengthened mandate tests detect removal of the %s trigger branch',
   (branch) => {
     const file = 'migrations/20261006080000_standing_mandates.sql';
     const source = readFileSync(file, 'utf8');
