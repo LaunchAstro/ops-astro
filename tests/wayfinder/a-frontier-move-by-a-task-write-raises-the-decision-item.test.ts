@@ -13,6 +13,7 @@ import { must, wayfinderWorld, type Decider, type WayfinderWorld } from './world
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('WF-2 decision item, other writes', () => {
   let w: WayfinderWorld;
   let owner: Decider;
