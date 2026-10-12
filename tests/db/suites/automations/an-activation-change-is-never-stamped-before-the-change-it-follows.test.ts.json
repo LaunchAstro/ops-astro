@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an activation change whose transaction began before the last change committed is refused or stamped after it, on two connections"
+}
