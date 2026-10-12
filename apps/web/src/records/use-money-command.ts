@@ -180,15 +180,28 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
   const run: MoneyCommand['run'] = (work, then) => {
     prompt.withdraw();
     const mine = withdrawn.current;
+    // The first answer and a step-up's resend alike: once withdrawn, it draws nothing.
+    const kept = (): boolean => {
+      if (withdrawn.current === mine) return true;
+      latest.current.command.reset();
+      return false;
+    };
     const send: Send = (to) => {
-      latest.current.command.run(() => work(to), then);
+      latest.current.command.run(
+        () => work(to),
+        (settlement) => {
+          kept();
+          then?.(settlement);
+        },
+      );
     };
     command.run(
       () => work(latest.current.client),
       (settlement) => {
         const refusal = settlement.kind === 'failed' ? settlement.refusal : null;
-        if (withdrawn.current !== mine) command.reset();
-        else if (refusal?.code === 'STEP_UP_REQUIRED') prompt.hold?.(send, refusal.names);
+        if (kept() && refusal?.code === 'STEP_UP_REQUIRED') {
+          prompt.hold?.(send, refusal.names);
+        }
         then?.(settlement);
       },
     );
