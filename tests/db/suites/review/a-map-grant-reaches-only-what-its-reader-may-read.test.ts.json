@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a map grant reaches only what its reader may read one by one: map steps, the rank pool, a board after a ticket moves, and no gate the map decider cannot decide"
+}
