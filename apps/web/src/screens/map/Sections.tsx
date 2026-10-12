@@ -14,7 +14,7 @@ import { Decisions, Section, ticketLink, Versions } from './ReadSections.tsx';
 import type { Drafts } from './model.ts';
 
 /** One edit: the operands of `map.revise` beyond its target and revision, and its draft slot. */
-export type Revise = (body: Readonly<Record<string, unknown>>, slot?: string) => void;
+type Revise = (body: Readonly<Record<string, unknown>>, slot?: string) => void;
 
 interface SectionsProps {
   readonly map: MapView;

@@ -77,10 +77,10 @@ const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${
  * stale. `sending(slot)` notes what a save sends and answers its two steps:
  * `applied` drops the slot only if it still holds that, so words typed while
  * the save was on its way stay in the editor (a graduate form keeps only its
- * lines changed since); `stale` draws the conflict only
- * if those words were not dropped meanwhile. Words dropped unsaved (Cancel,
- * Dismiss, an emptied line) take their conflict with them, a late one
- * included: nothing is kept, so nothing is offered to save again.
+ * lines changed since); `stale` draws the conflict only if those words were
+ * not dropped meanwhile. Words dropped unsaved (Cancel, Dismiss, an emptied
+ * line) take their conflict with them, a late one included: nothing is kept,
+ * so nothing is offered to save again.
  */
 function useDrafts() {
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
