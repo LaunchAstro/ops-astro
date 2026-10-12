@@ -12,7 +12,6 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { isIP } from 'node:net';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
@@ -243,7 +242,7 @@ export function dsnTransport(
     const answer = await post({
       url: store,
       address,
-      family: isIP(address) === 6 ? 6 : 4,
+      family: address.includes(':') ? 6 : 4,
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
       body: new TextEncoder().encode(JSON.stringify(event)),
