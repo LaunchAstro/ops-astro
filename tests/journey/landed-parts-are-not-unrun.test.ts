@@ -32,7 +32,9 @@ it('landed T2g and T3a are not unrun', async () => {
     while (ports.length < 3) {
       // eslint-disable-next-line no-await-in-loop -- one port at a time
       const port = await freePort();
-      if (port < 54390 || port > 54403) ports.push(String(port));
+      // The restart legs take the next port up from the database's and the API's.
+      const apart = ports.every((chosen) => Math.abs(Number(chosen) - port) > 1);
+      if ((port < 54390 || port > 54403) && port < 65535 && apart) ports.push(String(port));
     }
     const [pg = '', api = '', web = ''] = ports;
     const ran = spawnSync(

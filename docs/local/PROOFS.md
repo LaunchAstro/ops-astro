@@ -498,8 +498,9 @@ run as one job with a process group of its own (`process group: <id>` in the
 evidence). Its first member, a keeper, waits on a FIFO that only the script
 writes to, opened before the fork so that the script's death at any later
 point still reaches it. When the script exits, on success, on failure or
-killed with SIGKILL, the keeper reads end of file and kills its own group with
-SIGKILL, so every API and worker process the suites started ends with it. The
+killed with SIGKILL, the keeper reads end of file and kills that group with
+SIGKILL until it is empty (a process forked while one kill lands can miss it),
+so every API and worker process the suites started ends with it. The
 trap then checks that no member of the group is left (`process group ended:
 <id>`, or exit 1). Nothing is signalled by a pid read from a file: the pid
 file the suites write is evidence only. The container is held by the id
