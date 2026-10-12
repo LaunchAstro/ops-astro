@@ -334,11 +334,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, session, operands, { spine }) {
       const admitted = await boardAdmission(tx, session, operands, spine);
       if ('refusal' in admitted) return admitted.refusal;
-      const { scope } = admitted;
-      const { tasks, changedAt } = await boardOf(tx, session, spine.taskTypeId, operands, spine);
+      const { tasks, changedAt, wholeBusiness } = await boardOf(
+        tx,
+        session,
+        spine.taskTypeId,
+        operands,
+        spine,
+      );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
-      // narrower collection-wide rule exists. A member reading through record
+      // narrower collection-wide rule exists; that grant is judged in the
+      // statement that reads the rows (`wholeBusiness`). A member reading through record
       // grants is a client login under owner answer 22 and is told no count
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
@@ -356,7 +362,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const viewer = session.personId;
       const owed = await countOwed(tx, viewer, subjectsOf(session));
       const myAgents = await readerAgents(tx, viewer);
-      return scope.business
+      return wholeBusiness
         ? { ok: true, tasks, changedAt, viewer, owed, myAgents, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed, myAgents };
     },

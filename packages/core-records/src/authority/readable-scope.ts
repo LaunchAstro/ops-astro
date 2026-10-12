@@ -107,6 +107,23 @@ export function readableTaskCondition(
 }
 
 /**
+ * Whether the subjects in `$firstParam` and `$firstParam + 1` hold a live
+ * business-scoped `task`/`read` grant in `business` (SQL), judged by the
+ * statement's own clock: a list read that tells its reader nothing is
+ * withheld asks it in the statement that reads the rows.
+ */
+export function readsWholeBusiness(business: string, firstParam: number): string {
+  return `exists (${EFFECTIVE}
+    select 1 from effective e
+     where e.business_id = ${business} and e.collection = 'task' and e.action = 'read'
+       and e.scope_kind = 'business'
+       and exists (select 1
+                     from unnest($${String(firstParam)}::text[], $${String(firstParam + 1)}::uuid[])
+                       as s (kind, id)
+                    where s.kind = e.subject_kind and s.id = e.subject_id))`;
+}
+
+/**
  * The two parameters `readableTaskCondition` and `readableTaskIds` read: the
  * subjects asked of `task`/`read`, or two nulls for a caller that has judged
  * reach already (`readableTaskIds` then keeps every id).

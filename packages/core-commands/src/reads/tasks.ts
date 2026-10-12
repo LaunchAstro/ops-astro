@@ -36,6 +36,7 @@ import {
   EFFECTIVE_GRANTS,
   readableTaskCondition,
   readableTaskParams,
+  readsWholeBusiness,
 } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -108,8 +109,8 @@ const STATE_JOIN = `
 // `revision` is bigint and this driver hands a bigint back as a string, so it
 // is read as text and converted once, here. `priority` is numeric, which is
 // the same story for the same reason.
-export const SELECT: string = `
-  select r.id,
+const selectTasks = (extra: string): string => `
+  select ${extra}r.id,
          r.revision::text as revision,
          r.updated_at,
          r.txt_1 as key,
@@ -140,6 +141,8 @@ export const SELECT: string = `
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
+
+export const SELECT: string = selectTasks('');
 
 export function summaryOf(row: TaskRowRead): TaskSummary {
   return {
@@ -449,24 +452,35 @@ export async function readBoard(
   return (await readBoardStamped(tx, taskTypeId, board, readers)).tasks;
 }
 
-function readBoardRows(
+/**
+ * The board's rows the readers may read, and whether they read the whole
+ * business, both judged in one statement at one instant: a board says nothing
+ * is withheld only when the grant that served its rows reached every task.
+ */
+async function readBoardRows(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null | TodoScope,
   readers: readonly Subject[] | null,
   identities: { readonly person?: string | undefined; readonly client?: string | undefined },
-): Promise<readonly TaskRowRead[]> {
+): Promise<{ readonly rows: readonly TaskRowRead[]; readonly wholeBusiness: boolean }> {
   const aggregate = typeof board === 'object' && board !== null;
   const narrowed = aggregate ? board : identities;
-  return tx.query<TaskRowRead>(
-    `${SELECT}
-      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and ($6::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
-        and ($4::text[] is null or ${readableTaskCondition('r', 4)})
-        and ($7::uuid is null or r.uuid_2 = $7::uuid)
-        and ($8::uuid is null or r.uuid_7 = $8::uuid)
-        and (not $6::boolean or (${OPEN_TODO_SQL}))
-      order by r.num_2 nulls last, r.created_at`,
+  const read = await tx.query<
+    TaskRowRead & { readonly whole_business: boolean; readonly ord: string | null }
+  >(
+    `with reach as (
+       select $4::text[] is null or ${readsWholeBusiness('$1', 4)} as whole_business),
+     served as (
+       ${selectTasks('row_number() over (order by r.num_2 nulls last, r.created_at) as ord, ')}
+        where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+          and ($6::boolean or (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid))
+          and ($4::text[] is null or ${readableTaskCondition('r', 4)})
+          and ($7::uuid is null or r.uuid_2 = $7::uuid)
+          and ($8::uuid is null or r.uuid_7 = $8::uuid)
+          and (not $6::boolean or (${OPEN_TODO_SQL})))
+     select reach.whole_business, served.* from reach left join served on true
+      order by served.ord`,
     [
       tx.businessId,
       taskTypeId,
@@ -477,6 +491,10 @@ function readBoardRows(
       narrowed.client ?? null,
     ],
   );
+  return {
+    rows: read.filter((row) => row.ord !== null),
+    wholeBusiness: read[0]?.whole_business === true,
+  };
 }
 
 async function withTodoEvidence(
@@ -519,8 +537,12 @@ export async function readBoardStamped(
   reader: string | null = null,
   identities: { readonly person?: string | undefined; readonly client?: string | undefined } = {},
   spine?: TaskSpine,
-): Promise<{ readonly tasks: readonly BoardRead[]; readonly changedAt: string | null }> {
-  const rows = await readBoardRows(tx, taskTypeId, board, readers, identities);
+): Promise<{
+  readonly tasks: readonly BoardRead[];
+  readonly changedAt: string | null;
+  readonly wholeBusiness: boolean;
+}> {
+  const { rows, wholeBusiness } = await readBoardRows(tx, taskTypeId, board, readers, identities);
   let newest: Date | null = null;
   for (const row of rows) {
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
@@ -552,7 +574,7 @@ export async function readBoardStamped(
     }),
   );
   const projected = spine === undefined ? tasks : await withTodoEvidence(tx, spine, tasks, readers);
-  return { tasks: projected, changedAt: newest?.toISOString() ?? null };
+  return { tasks: projected, changedAt: newest?.toISOString() ?? null, wholeBusiness };
 }
 
 /**
