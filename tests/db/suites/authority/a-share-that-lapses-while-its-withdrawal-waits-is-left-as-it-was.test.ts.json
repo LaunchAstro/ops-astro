@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a share that lapses while its withdrawal waits on the share's lock is judged by the clock after the wait, and left as it was"
+}

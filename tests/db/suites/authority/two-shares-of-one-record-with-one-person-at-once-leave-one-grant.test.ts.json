@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two shares of one record with one person on separate connections at once return one grant id and leave one live share"
+}
