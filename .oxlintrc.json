@@ -314,6 +314,15 @@
       }
     },
     {
+      "files": ["tests/ci/production-unit-liveness-and-parked-stop.proof.test.ts"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "require-await": "off",
+        "unicorn/no-array-callback-reference": "off",
+        "unicorn/prefer-string-replace-all": "off"
+      }
+    },
+    {
       "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
       "rules": { "require-await": "off" }
     },

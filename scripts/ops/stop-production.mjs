@@ -18,7 +18,11 @@
 // It takes no argument, so no caller can name another service. A container is
 // stopped, never removed, so it can be started again. Last, it writes the
 // deployment record. Exit 0 when both are stopped, 1 when refused or failed,
-// 2 when given any argument.
+// 2 when given any argument. A container that is not there is stopped
+// already: a parked unit has a forwarder and no worker
+// (deploy/production/worker.json), and `docker stop` fails on the missing one
+// after stopping the other: a failure that names only missing containers
+// still stops the unit.
 
 import { spawnSync } from 'node:child_process';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
@@ -37,8 +41,20 @@ if (!gate.ok) {
   process.exit(1);
 }
 
-const stopped = spawnSync('docker', ['stop', ...SERVICES], { stdio: 'inherit' });
-if (stopped.status !== 0) {
+// `docker stop` stops every container it finds and fails on any it cannot.
+// Its arguments are the two names above and nothing else, so a failure whose
+// every line is Docker's "No such container" left nothing running.
+const stopped = spawnSync('docker', ['stop', ...SERVICES], {
+  stdio: ['ignore', 'inherit', 'pipe'],
+  encoding: 'utf8',
+});
+const errors = String(stopped.stderr ?? '')
+  .split('\n')
+  .filter((line) => line.trim() !== '');
+if (errors.length > 0) console.error(errors.join('\n'));
+const onlyAbsent =
+  errors.length > 0 && errors.every((line) => /No such container: \S+$/u.test(line));
+if (stopped.status !== 0 && !onlyAbsent) {
   console.error(
     'stop-production: FAILED: docker stop did not complete; no record written. ' +
       'Check both containers with the service manager before anything else.',

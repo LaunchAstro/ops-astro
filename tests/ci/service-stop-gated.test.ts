@@ -136,6 +136,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
 
   gatedStopCases1();
   gatedStopCases2();
+  parkedStopCases();
 });
 
 function gatedStopCases1() {
@@ -227,6 +228,35 @@ function gatedStopCases2() {
     expect(result.out).toMatch(/docker:ops-astro-api is running/u);
     expect(readFileSync(at.calls, 'utf8')).not.toMatch(/stop|start/u);
     expect(existsSync(current)).toBe(false);
+    expect(readdirSync(at.records)).toEqual([]);
+  });
+}
+
+function parkedStopCases() {
+  it('a parked unit, with no worker container, stops its forwarder and records the stop', async () => {
+    const at = fake(1, 'Error response from daemon: No such container: ops-astro-worker\n');
+    const signIn = await token(subjects.operator);
+    const result = spawn(STOP, [], environment(at, { OPS_ASTRO_TOKEN: signIn }));
+    expect(result.status, result.out).toBe(0);
+    expect(readFileSync(at.calls, 'utf8')).toBe(`${THE_STOP}\n`);
+    const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
+    expect(records).toHaveLength(1);
+    expect(JSON.parse(records[0]!)).toMatchObject({ action: 'production stopped' });
+  });
+
+  it('a stop that fails for any other reason fails, beside a missing container', async () => {
+    const errors = [
+      'Error response from daemon: No such container: ops-astro-worker',
+      'Error response from daemon: cannot stop container: ops-astro-forwarder: permission denied',
+    ].join('\n');
+    const at = fake(1, `${errors}\n`);
+    const result = spawn(
+      STOP,
+      [],
+      environment(at, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
+    );
+    expect(result.status, result.out).toBe(1);
+    expect(result.out).toMatch(/FAILED/u);
     expect(readdirSync(at.records)).toEqual([]);
   });
 }

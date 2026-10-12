@@ -74,12 +74,15 @@ const effects = {
     });
     return result.status === 0 ? result.stdout.trim() : undefined;
   },
-  // Only a running container runs its image: one that stopped after Compose
-  // waited keeps the image it was created from, and runs nothing.
+  // Only a container with a live process runs its image: one that stopped
+  // after Compose waited, or waits in Docker's restart backoff (Running, but
+  // Restarting with no process), keeps the image it was created from and runs
+  // nothing.
   runningImages() {
+    const state = '{{.State.Running}} {{.State.Restarting}} {{.State.Pid}}';
     const result = spawnSync(
       'docker',
-      ['inspect', '--format', '{{.Name}} {{.Image}} {{.State.Running}}', ...containers],
+      ['inspect', '--format', `{{.Name}} {{.Image}} ${state}`, ...containers],
       {
         encoding: 'utf8',
       },
@@ -89,7 +92,10 @@ const effects = {
         .split('\n')
         .filter(Boolean)
         .map((line) => line.split(' '))
-        .filter(([, , running]) => running === 'true')
+        .filter(
+          ([, , running, restarting, pid]) =>
+            running === 'true' && restarting === 'false' && pid !== '0',
+        )
         .map(([name, image]) => [name.replace(/^\//u, ''), image]),
     );
   },

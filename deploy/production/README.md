@@ -122,7 +122,11 @@ in the business. A profile cannot park it, because Compose requires every
 `${...:?}` setting in a file, profile or not. `--worker` adds `worker.json`
 and its settings, and then the worker must run too. A deploy without it
 leaves a worker that is already running alone. `--worker` is production's
-only: staging's worker is in its own unit.
+only: staging's worker is in its own unit. A deploy records the unit only
+when each of its containers has a live process, so a worker that stopped,
+or waits in Docker's restart backoff, fails it. `stop-production.mjs` stops
+a parked unit's forwarder and records the stop: a worker that is not there
+is stopped already.
 
 The deploy reads this definition, checks every image against its pin row and
 runs production's preflight, as the web deploy does. Then it starts the unit

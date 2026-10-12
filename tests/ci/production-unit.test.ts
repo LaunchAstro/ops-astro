@@ -155,42 +155,6 @@ describe("production's worker starts only when asked", () => {
   });
 });
 
-describe("the deploy reads each container's running state", () => {
-  it('fails when the worker stopped after Compose waited, though its image matches', async () => {
-    const whole = withWorker(production(), workerFile());
-    const containers = Object.values(whole.services).map((s) => String(s.container_name));
-    // deploy.mjs's own effects, with Docker answering that every container is
-    // on its pinned image and only the worker has stopped.
-    const body = /const effects = (\{[\s\S]*?\n\});/u.exec(read('scripts/ops/deploy.mjs'))?.[1];
-    const inspect = containers
-      .map((name) => `/${name} ${containersOf(whole)[name]} ${name !== 'ops-astro-worker'}`)
-      .join('\n');
-    const docker = (_command: string, args: string[]) =>
-      args[0] === 'inspect' ? { status: 0, stdout: `${inspect}\n` } : { status: 1, stdout: '' };
-    const machine = new Function(
-      'snapshot',
-      'compare',
-      'execFileSync',
-      'spawnSync',
-      'containers',
-      `return (${String(body)});`,
-    )(
-      () => snapshot([live]),
-      () => ({ unchanged: true, report: '' }),
-      () => {},
-      docker,
-      containers,
-    ) as DeployEffects;
-    const outcome = await deploy(
-      { version: STAGED, store: store(), worker: true },
-      { ...machine, imageId: (ref) => ref },
-      clean,
-      'production',
-    );
-    expect(outcome.kind === 'failed' && outcome.reason).toContain('ops-astro-worker runs nothing');
-  });
-});
-
 describe('the M5 deploy checks its own environment', () => {
   it('refuses the worker flag for staging, whose worker is in its unit', async () => {
     const watched = effects();
