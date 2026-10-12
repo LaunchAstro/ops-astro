@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a task's rank, family, record-scoped board and shared client comments read the same with the id in upper or lower case"
+}
