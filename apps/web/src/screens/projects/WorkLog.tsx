@@ -18,27 +18,24 @@
 // a new reader starts again from the newest days, and a page that arrives for
 // a first page no longer drawn is dropped rather than drawn under it.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Button, Empty, Ledger, SearchBox } from '@launchastro/ui';
-import type {
-  LedgerDayView,
-  TaskLedgerResult,
-} from '../../../../../packages/core-wire/src/index.ts';
-import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type OperationsClient,
-} from '../../operations/client.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import { tabRollupFloor } from '../../data/rollup-floor.ts';
 import { useRead } from '../../data/use-read.ts';
-import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
 import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
-
-const UTC = 'UTC';
+import {
+  continues,
+  NONE,
+  ownZone,
+  readNewest,
+  useEarlierDays,
+  type EarlierDays,
+  type LedgerRead,
+} from './work-log-reads.ts';
 
 /** The Work log's section tip (MP-9-1): a tab of the Projects page, named by that route. */
 export const WORK_LOG_TIP = {
@@ -48,25 +45,6 @@ export const WORK_LOG_TIP = {
   text: 'Every change to a task you can see, newest day first. Search by a name, a kind of change or any words.',
 } as const;
 
-/** The first page, the zone it was read in, and the search words it was read for. */
-interface LedgerRead {
-  readonly zone: string;
-  readonly query: string | null;
-  readonly ledger: TaskLedgerResult;
-}
-
-/** The pages after the first, and the first page they continue. */
-interface Earlier {
-  readonly from: LedgerRead | null;
-  readonly days: readonly LedgerDayView[];
-  readonly earlier: boolean;
-  readonly failed: string | null;
-}
-
-const NONE: Earlier = { from: null, days: [], earlier: false, failed: null };
-
-const ownZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 /** `YYYY-MM-DD` now, in `zone`. */
 const todayIn = (zone: string): string =>
   new Intl.DateTimeFormat('en-CA', {
@@ -75,24 +53,6 @@ const todayIn = (zone: string): string =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-
-const unknownZone = (result: CallResult<unknown>): boolean =>
-  isRefusal(result) && result.code === 'FIELD_VALUE_INVALID' && result.names.includes('timeZone');
-
-/** A page's body: `query` only when there are words to search for. */
-const pageBody = (zone: string, before: string | null, query: string | null) =>
-  query === null ? { timeZone: zone, before } : { timeZone: zone, before, query };
-
-async function readNewest(
-  client: OperationsClient,
-  zone: string,
-  query: string | null,
-): Promise<CallResult<LedgerRead>> {
-  const result = await client.read<TaskLedgerResult>('task.ledger', pageBody(zone, null, query));
-  if (zone !== UTC && unknownZone(result)) return readNewest(client, UTC, query);
-  if (isRefusal(result) || isUnavailable(result)) return result;
-  return { ok: true, value: { zone, query, ledger: result.value } };
-}
 
 export interface WorkLogProps {
   readonly client: OperationsClient;
@@ -133,7 +93,7 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   const query = queryOf(search);
   const { state, reload } = useRead<LedgerRead>({
     grantKey,
-    run: () => readNewest(client, ownZone(), query),
+    run: () => readNewest(client, grantKey, ownZone(), query),
     deps: [query],
     rollup: tabRollupFloor(),
   });
@@ -166,49 +126,6 @@ export function WorkLog(props: WorkLogProps): ReactElement {
       </RecordState>
     </div>
   );
-}
-
-interface EarlierDays {
-  readonly more: Earlier;
-  /** The first page an earlier page is on its way for. */
-  readonly asking: LedgerRead | null;
-  readonly loadEarlier: (from: LedgerRead, days: readonly LedgerDayView[]) => void;
-}
-
-/**
- * The pages after a first page, asked for one at a time: `Load earlier days`
- * is disabled while one is on its way. Each is kept against the first page it
- * continues, so one that arrives after the first page changed is never drawn.
- */
-function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): EarlierDays {
-  const [more, setMore] = useState<Earlier>(NONE);
-  const [asking, setAsking] = useState<LedgerRead | null>(null);
-  const current = useRef(answer);
-  current.current = answer;
-
-  const loadEarlier = (from: LedgerRead, days: readonly LedgerDayView[]): void => {
-    const last = days.at(-1);
-    if (last === undefined) return;
-    setAsking(from);
-    void (async () => {
-      const result = await client.read<TaskLedgerResult>(
-        'task.ledger',
-        pageBody(from.zone, last.day, from.query),
-      );
-      setAsking((now) => (now === from ? null : now));
-      setMore((now) => {
-        // For a first page no longer current: dropped, and the current one's days kept.
-        if (current.current !== from) return now;
-        const kept = now.from === from ? now : { ...NONE, from };
-        if (isRefusal(result) || isUnavailable(result)) {
-          return { ...kept, failed: describeFailure(result) };
-        }
-        const { days: next, earlier } = result.value;
-        return { from, days: [...kept.days, ...next], earlier, failed: null };
-      });
-    })();
-  };
-  return { more, asking, loadEarlier };
 }
 
 /**
@@ -252,7 +169,7 @@ function LedgerPages(props: {
   readonly navigate: (path: string) => void;
 }): ReactElement {
   const { first, pages, search, navigate } = props;
-  const continued = pages.more.from === first ? pages.more : NONE;
+  const continued = continues(pages.more.from, first) ? pages.more : NONE;
   const days = [...first.ledger.days, ...continued.days];
   const earlier = continued.days.length === 0 ? first.ledger.earlier : continued.earlier;
   const shown = passing(days, search);
