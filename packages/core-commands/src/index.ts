@@ -48,6 +48,13 @@ export {
 } from './commands/occurrence-run.ts';
 // C52-A's dispatch hands the worker's occurrence to AW-01 J's write.
 export { occurrenceRunStarter } from './commands/automation-run.ts';
+// The API's interval pass that claims due occurrences and dispatches them (#1318).
+export {
+  latestDue,
+  sweepOccurrences,
+  type OccurrenceSweepReport,
+  type OccurrenceSweepRequest,
+} from './commands/occurrence-sweep.ts';
 export {
   GATE_ITEMS,
   gateDecision,

@@ -7,7 +7,7 @@
 // outcomes are in `c52a-firing.test.ts`; AW-01 J's own refusals are in
 // `aw-01-occurrence-run*.test.ts`.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startOccurrenceRun } from '../../packages/core-commands/src/index.ts';
 import {
@@ -25,7 +25,7 @@ import {
   workerStarter,
   type Workers,
 } from './run-start.ts';
-import { codeOf, DEFINING, RUN_START, sourcesUnder } from './run-start-scan.ts';
+import { codeOf, DEFINING, RUN_START, SWEEP, sourcesUnder } from './run-start-scan.ts';
 import { DIGEST, createAutomationWorld, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -69,6 +69,18 @@ describe('C52-A run start has no route', () => {
       ),
     );
     expect(bound).toEqual([]);
+  });
+
+  it('an approved occurrence is claimed and its run started by the occurrence sweep, a production caller', () => {
+    const sweep = existsSync(SWEEP) ? codeOf(readFileSync(SWEEP, 'utf8')) : '';
+    expect({
+      claims: /\bclaimOccurrence\(/u.test(sweep),
+      dispatches: /\bdispatchOccurrence\(/u.test(sweep),
+      startsRuns: /\boccurrenceRunStarter\(/u.test(sweep),
+      exported: /\bsweepOccurrences\b/u.test(
+        readFileSync('packages/core-commands/src/index.ts', 'utf8'),
+      ),
+    }).toEqual({ claims: true, dispatches: true, startsRuns: true, exported: true });
   });
 });
 
