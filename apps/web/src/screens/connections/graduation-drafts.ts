@@ -14,7 +14,7 @@
 // changes and step-ups, so a retry under any operation is the same filing to
 // the server; only that filing's settlement starts a new draft.
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { GraduationRowView } from '../../../../../packages/core-wire/src/index.ts';
 import type { Settlement } from '../../records/use-command.ts';
 import type { MandateFiling } from './graduation-forms.tsx';
@@ -92,6 +92,12 @@ export class GraduationDrafts {
     const slots = new Map(this.#state.slots);
     if (gone !== null) slots.delete(gone);
     this.#set({ chosen: clientId, slots });
+  }
+
+  /** The region shows no client: nothing is chosen, and every slot goes. */
+  leave(): void {
+    if (this.#state.chosen === null && this.#state.slots.size === 0) return;
+    this.#set({ chosen: null, slots: new Map() });
   }
 
   /** Changes the standing approval form, minting its draft id on the first input. */
@@ -183,6 +189,20 @@ export function useChosenClient<C extends { readonly id: string }>(
     if (client !== undefined && client.id !== chosen) selectClient(client.id);
   });
   return [client, selectClient];
+}
+
+/**
+ * A read with no client left skips `Shown` and its client change, so the
+ * withdrawal happens here: a held write (`drop`) and every draft go with them.
+ */
+export function useLeftEmpty(drafts: GraduationDrafts, empty: boolean, drop: () => void): void {
+  const withdraw = useRef(drop);
+  withdraw.current = drop;
+  useEffect(() => {
+    if (!empty) return;
+    withdraw.current();
+    drafts.leave();
+  }, [drafts, empty]);
 }
 
 /**

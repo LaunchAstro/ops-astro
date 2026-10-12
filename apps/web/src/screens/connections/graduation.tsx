@@ -15,14 +15,12 @@
 // 13); demoting sends one command, and revoking waits on a confirmation
 // first. Every command goes through `useMoneyCommand`, since mandate:manage
 // needs a fresh sign-in (C59), says its refusal in the server's words, and
-// reads the region again; a form clears only once its write succeeds. A write
-// held for that sign-in is withdrawn when the client changes or the form that
-// sent it is cancelled, and one whose answer was lost goes again under its
-// operation.
+// reads the region again; a form clears only once its write succeeds. A write held for that
+// sign-in is withdrawn when the client changes, the last client leaves or the form that sent it
+// is cancelled, and one whose answer was lost goes again under its operation.
 //
-// The chosen client and every client's forms are kept above the read
-// (`graduation-drafts.ts`), so an outage gives them back, and a standing
-// approval files under its draft id, so a retry is the same filing.
+// The chosen client and every client's forms are kept above the read (`graduation-drafts.ts`),
+// so an outage gives them back; a standing approval files under its draft id, one per intent.
 
 import { useState, type ReactElement } from 'react';
 import { Empty, SectionHead } from '@launchastro/ui';
@@ -42,6 +40,7 @@ import {
   GraduationDrafts,
   useChosenClient,
   useMandateDraft,
+  useLeftEmpty,
   useOpenPromotion,
 } from './graduation-drafts.ts';
 import { MandateForm } from './graduation-forms.tsx';
@@ -269,6 +268,7 @@ export function GraduationRegion(props: {
   const { command, send, drop } = useSend(client, reload);
   // Above the read, so an outage keeps it; the region's key is the grant's.
   const [drafts] = useState(() => new GraduationDrafts());
+  useLeftEmpty(drafts, state.outcome === 'empty', drop);
   return (
     <div className="secs" data-graduation>
       <RecordState
