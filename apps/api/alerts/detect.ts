@@ -54,13 +54,18 @@ const CROSS_SCOPE = new Set([
   'AUTH_NO_AGENT_IDENTITY',
   'SCOPE_NOT_GRANTED',
 ]);
-// Who may act on what changed: a grant given, revoked or ended, or a delegation revoked.
+// Who may act on what changed: a grant given, revoked or ended, a delegation
+// revoked, a secret set or cleared, or a task shared with its client or unshared.
 const AUTHORITY = new Set([
   'grant.revoke',
   'delegation.revoke',
   'access.grant',
   'access.revoke',
   'access.end',
+  'secret.set',
+  'secret.clear',
+  'task.share_with_client',
+  'task.revoke_client_share',
 ]);
 
 /** What an answer tells the detector, if anything. */
