@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { randomUUID } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { endPersonAuthority } from '../../packages/core-commands/src/commands/authority-controls.ts';
@@ -9,9 +9,13 @@ import { mintDelegation } from '../../packages/core-records/src/authority/delega
 import { readBusinessSetting } from '../../packages/core-records/src/records/business-settings.ts';
 import { enrol, grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import { harness, openWorld } from '../api/api-2-agent-credential-world.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { blockedBefore, holdRow, instantOf, waitPast } from '../support/lock-wait-race.ts';
 
-openWorld();
+const serverUrl = databaseUrlFromEnvironment();
+const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
+
+if (serverUrl !== undefined) openWorld();
 
 it('a money step-up expiring during the setting row wait cannot change the threshold', async () => {
   const { db, alpha } = harness.world;
