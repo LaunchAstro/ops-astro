@@ -33,7 +33,7 @@ function observedDatabase(
     statement: string,
     parameters: readonly unknown[] | undefined,
     rows: readonly unknown[],
-  ) => Promise<void>,
+  ) => Promise<void> | void,
 ): Database {
   return {
     log: w.db.app.log,
@@ -54,6 +54,7 @@ function observedDatabase(
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- one race, its schedule read top to bottom
 it('an expired map grant reaches no later map content when its last ticket leaves during the lock wait', async () => {
   const map = await w.create(owner, { title: 'Before expiry' }, { taskType: 'map' });
   const other = await w.create(owner, { title: 'Other map' }, { taskType: 'map' });
@@ -101,7 +102,7 @@ it('an expired map grant reaches no later map content when its last ticket leave
   await locked.promise;
   const observed = observedDatabase(
     async () => {},
-    async (statement, parameters, rows) => {
+    (statement, parameters, rows) => {
       received.push(JSON.stringify(rows));
       if (
         statement.includes('select distinct e.scope_kind, e.scope_id') &&
@@ -150,7 +151,7 @@ it('a map retyped before board content is fetched grants no access to its former
         );
       }
     },
-    async (_statement, _parameters, rows) => {
+    (_statement, _parameters, rows) => {
       received.push(JSON.stringify(rows));
     },
   );

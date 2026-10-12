@@ -101,6 +101,7 @@ it('a map ticket rank counts its higher-scored sibling while a map writer waits 
   expect(answer.task.rank.number).toBe(2);
 }, 30_000);
 
+// eslint-disable-next-line max-lines-per-function -- one race, its schedule read top to bottom
 it('a map grant lapsing after board admission reaches no map content', async () => {
   const mapTitle = 'MAP-INSTANT-MAP-TITLE-AFTER-LAPSE';
   const ticketTitle = 'MAP-INSTANT-TICKET-TITLE-AFTER-LAPSE';

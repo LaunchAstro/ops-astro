@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Database, TransactionQuery } from '../../packages/core-records/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { gate } from '../support/lock-waits.ts';
 import { codeOf, wayfinderWorld, type Decider, type WayfinderWorld } from '../wayfinder/world.ts';
 
+const it = databaseUrlFromEnvironment() === undefined ? vitestIt.skip : vitestIt;
 let w: WayfinderWorld;
 let owner: Decider;
 beforeAll(async () => {
+  if (databaseUrlFromEnvironment() === undefined) return;
   w = await wayfinderWorld('sol1364expiry', 'sol1364expiry');
   owner = await w.decider('Sol expiry owner');
 }, 180_000);
 afterAll(async () => await w?.drop());
 
+// eslint-disable-next-line max-lines-per-function -- one race, its schedule read top to bottom
 it('a map grant expiring during the ticket lock wait fetches no later ticket content', async () => {
   const map = await w.create(owner, { title: 'Expiring map' }, { taskType: 'map' });
   const ticket = await w.create(owner, { title: 'Before expiry' }, { parentId: map.id });
