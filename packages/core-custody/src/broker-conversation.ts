@@ -48,6 +48,12 @@ export interface ConversationCallRequest {
   readonly fields: readonly ClaimedField[];
   /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
   readonly model?: string;
+  /**
+   * The caller's authority judged again in the transaction that writes the
+   * call's row, before any of the broker's locks: false refuses the call with
+   * nothing written or sent. The command layer's, for what it checked earlier.
+   */
+  readonly stillHeld?: (tx: TenantQuery) => Promise<boolean>;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -209,11 +215,13 @@ export async function callModelInConversation(
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
   const account = await sendingAccount(broker, route, operation.destination);
-  const callId = await database.withBusiness(businessId, async (tx) =>
-    (await atCeiling(tx, operation, route))
+  const callId = await database.withBusiness(businessId, async (tx) => {
+    if (request.stillHeld !== undefined && !(await request.stillHeld(tx))) return 'lost';
+    return (await atCeiling(tx, operation, route))
       ? null
-      : await insertStarted(tx, request.conversation.id, operation, route, account),
-  );
+      : await insertStarted(tx, request.conversation.id, operation, route, account);
+  });
+  if (callId === 'lost') return refused('AUTHORITY_LOST');
   if (callId === null) {
     return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
   }
