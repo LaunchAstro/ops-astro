@@ -2,7 +2,8 @@
 //
 // The frontier and fog views (WF-4). The frontier is read from its read model
 // (`map.frontier`), in its own order, only while its tab is open, so it is
-// always as current as the map it sits in; the filters narrow it without
+// always as current as the map it sits in, and again on the live channel when
+// any task the reader reads changes; the filters narrow it without
 // reordering. The fog view lists the patches not yet specified and graduates
 // one into tickets through `map.graduate`, which retires the patch in the same
 // version. The open form and its lines are held above the read (`Drafts`), so
@@ -14,6 +15,7 @@ import type { ReactElement } from 'react';
 import type { MapFrontierResult, MapView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
+import { dependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Section, ticketLink } from './ReadSections.tsx';
 import { TICKET_TYPES, passes, type Drafts, type Filters, type Line, type Send } from './model.ts';
@@ -25,13 +27,15 @@ export function FrontierView(props: {
   readonly filters: Filters;
 }): ReactElement {
   const { client, map } = props;
-  const { state, reload } = useRead<MapFrontierResult>({
+  const { state, reload, refresh, live, own } = useRead<MapFrontierResult>({
     grantKey: props.grantKey,
     run: () => client.read<MapFrontierResult>('map.frontier', { recordId: map.id }),
     deps: [map.id, map.revision],
   });
+  // A ticket started, done or unblocked moves the frontier without moving the map.
+  useTaskDependencies(client, props.grantKey, refresh, dependencyAdmission(state, own));
   return (
-    <RecordState state={state} subject="frontier" onRetry={reload}>
+    <RecordState state={state} subject="frontier" onRetry={reload} keep={live}>
       {(value) => {
         const shown = value.frontier.filter((ticket) => passes(props.filters, ticket));
         return (

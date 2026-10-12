@@ -11,7 +11,9 @@
 // the revisions a write sends back. Every write carries its target's revision,
 // so a second writer who moved it on gets `VERSION_STALE`, not a lost update.
 // After an applied edit the page reads the map again: the new version in the
-// history is the server's, never one this file numbered.
+// history is the server's, never one this file numbered. It also reads it
+// again on the live channel (C4), on a change to the map or to any task the
+// reader reads, keeping the page drawn through that reread.
 //
 // **The command's state and the drafts live above the read.** A reread
 // unmounts the loaded view unless kept, so a refusal or typed words held
@@ -28,6 +30,8 @@ import { useRef, useState, type ReactElement } from 'react';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import { hubOf } from '../data/live.ts';
+import { dependencyAdmission, useTaskDependencies } from '../data/board-live.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { useCommand } from '../records/use-command.ts';
 import { keyOf, needsKey } from '../records/needs-key.ts';
@@ -188,11 +192,15 @@ function patchGone(state: ReadState<MapViewResult>, drafts: Drafts): boolean {
 
 export function MapScreen(props: MapScreenProps): ReactElement {
   const client = props.client;
-  const { state, reload } = useRead<MapViewResult>({
+  const { state, reload, refresh, live, own } = useRead<MapViewResult>({
     grantKey: props.grantKey,
     run: () => client.read<MapViewResult>('map.view', { recordId: props.mapKey }),
     deps: [props.mapKey],
+    // The map's topic on the tab's one live stream (C4), as the task page follows its task.
+    live: { hub: hubOf(client), topic: (read) => `task:${read.map.id}` },
   });
+  // A ticket's state or blocking is another task's change: the board's topic says so.
+  useTaskDependencies(client, props.grantKey, refresh, dependencyAdmission(state, own));
   const rereading = state.outcome === 'loading';
   const { command, sent, send, locked, drafts, open } = useWrites(client, reload, rereading);
   // Held above the read, so a reread after a write keeps the view and filters.
@@ -213,7 +221,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
           to write it over the latest version.
         </p>
       )}
-      <RecordState state={state} subject="map" onRetry={reload} keep={open}>
+      <RecordState state={state} subject="map" onRetry={reload} keep={open || live}>
         {(value) => (
           <MapViews
             map={value.map}
