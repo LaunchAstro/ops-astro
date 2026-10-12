@@ -67,7 +67,8 @@ recovery mail lands with `access_token`, `refresh_token` and `type=invite` or
 product's own links (C39-T, C40, not built yet), so the app opens no session
 with these. `Root` clears such a fragment from the address bar and the tab's
 history entry before it first reads the address, and again on every move within
-the page (`popstate`, `hashchange`) (`session/sign-in-link.ts`),
+the page: `popstate`, `hashchange` and the app's own pushed or replaced address,
+which fires neither (`session/sign-in-link.ts`),
 and the page draws as it would without it: sign-in, for someone signed out.
 A fragment with no sign-in token in it stays.
 `tests/web/sign-in-link-fragment-never-signs-in.test.tsx` holds it.
@@ -85,8 +86,11 @@ then asks for the code. The code is checked on the tab's own sign-in through
 token that answers. The token that set it is traded for a new cookie and the
 tab moves to it. `/account/sessions/end-others` then ends every other session,
 here and at GoTrue, and the old cookie is cleared. A confirming sign-in the
-tab will not hold is signed out at GoTrue, asked again until GoTrue acknowledges it
-(a lost or refused sign-out is not cleanup). A sign-out or a switch while the
+tab will not hold is signed out at GoTrue, asked again with a doubling wait
+until GoTrue acknowledges it: its 204 with an empty body, or its word that the
+session is already gone (`session_not_found`). A 200, a refusal or no answer is
+not cleanup, and no count of them ends the asking; only the token's own life
+does, and its refresh token is never kept. A sign-out or a switch while the
 password or code is checked sends no `PUT /user`. The other sessions are said to
 have ended only when GoTrue confirmed it too (`signedOutAtProvider`). A wrong current password, a new
 password GoTrue refuses (its words are shown) or a missing code changes
