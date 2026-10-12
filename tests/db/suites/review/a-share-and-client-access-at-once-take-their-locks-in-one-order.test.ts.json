@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a share and Client access on one task at once take the task row and the share key in one order, so both complete without a deadlock"
+}
