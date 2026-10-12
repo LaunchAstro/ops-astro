@@ -654,9 +654,14 @@ and says on every run that those identities cannot sign in.
 provider, which one (the provider's factor id, a bounded identifier, never a
 secret) and where it stands: `unverified` from enrolment until the first code
 completes it, `verified`, then `removed` when it is replaced or taken away.
-One live factor per person (`second_factors_one_live`). The application may
-select, insert and update; nothing deletes a row, so a person's factor history
-stays readable. The authenticator secret and the codes a person types are
+The factor is a sign-in login's, so each live row names the login that holds
+it by its subject's digest (`subject_digest`, 20261012135116), and a person
+has one live factor per login (`second_factors_one_live`); every read and
+change of a row names that login. The upgrade gave each live row a login on
+evidence (the one subject that verified it, else the person's one login) and
+ended any it could not, held removed for each candidate login. The
+application may select, insert and update; nothing deletes a row, so a
+person's factor history stays readable. The authenticator secret and the codes a person types are
 never written here. Whether a person has a verified factor is mirrored onto
 `people.second_factor_verified` by the same writers in the same transaction
 (`identity/second-factor.ts`), so login resolution reads it inside the one

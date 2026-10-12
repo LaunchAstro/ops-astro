@@ -332,6 +332,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   // 0049 (C59): no journey enrols a second factor.
   'public.second_factors': {
     person_id: randomUUID(),
+    subject_digest: SEED_DIGEST,
     provider: 'supabase',
     provider_factor_id: 'restricted-calls-seed',
   },

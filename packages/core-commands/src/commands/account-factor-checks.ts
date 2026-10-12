@@ -148,15 +148,28 @@ export async function settleUnsent(
   });
 }
 
-/** A first enrolment's precondition: a password sign-in inside the window. */
-export async function freshSignIn(tx: TenantQuery, session: Session): Promise<boolean> {
-  const signedInAt = session.assurance.signedInAt;
-  if (signedInAt === null) return false;
+const FRESH_FIXES: readonly string[] = [
+  'Sign in again with your password, then set up the authenticator app within 60 minutes.',
+];
+
+/**
+ * A first enrolment's precondition: a password sign-in inside the window, or
+ * `FRESH_SIGN_IN_REQUIRED`. Judged on `clock_timestamp()`, not `now()`, the
+ * transaction's start, so a sign-in that leaves the window while the record
+ * step waits for the login's lock is judged as it stands after the wait.
+ */
+export async function freshSignIn(
+  tx: TenantQuery,
+  session: Session,
+): Promise<CommandRefusal | undefined> {
+  const signedInAt = session.assurance.signedInAt ?? Number.NEGATIVE_INFINITY;
   const rows = await tx.query<{ readonly now: number }>(
-    'select floor(extract(epoch from now()))::float8 as now',
+    'select floor(extract(epoch from clock_timestamp()))::float8 as now',
   );
   const age = (rows[0]?.now ?? Number.POSITIVE_INFINITY) - signedInAt;
-  return age <= STEP_UP_WINDOW_SECONDS && age >= -60;
+  return age <= STEP_UP_WINDOW_SECONDS && age >= -60
+    ? undefined
+    : refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
 }
 
 /** `{ "code": "123456" }` and nothing else: six digits, as authenticator apps show. */
