@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "an agent comment whose delegating person's grant is revoked during its task lock wait is refused and writes nothing"
+  "why": "an agent comment whose delegating person's grant is revoked while it waits for its locks is judged again after its task lock wait, refused, and writes nothing"
 }

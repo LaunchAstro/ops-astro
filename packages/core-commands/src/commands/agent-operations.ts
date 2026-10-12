@@ -298,13 +298,13 @@ async function serveComment(
   // team, never text a client reads without a person having written it.
   const { session, request, declaration } = call;
   if (taskId === undefined) return NOT_FOUND();
+  // Grants held `for share` before the task, as `grant.revoke` takes its grant
+  // then the agent's work (this task too), and asked again after the task's
+  // wait: one committed first refuses, one still to come waits for the comment.
+  await holdCoveringGrants(tx, await delegatingSubjects(tx, delegation), declaration.collection);
   const spine = await readTaskSpine(tx);
   const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
-  // After the task's wait, the person's covering grants held `for share` and
-  // the authority asked again: a revocation that committed during the wait
-  // refuses the comment, and one still to come waits for it.
-  await holdCoveringGrants(tx, await delegatingSubjects(tx, delegation), declaration.collection);
   const lost = await askedAgain(tx, call, delegation, task);
   if (lost !== undefined) return refused(lost);
   return await writeTaskComment(

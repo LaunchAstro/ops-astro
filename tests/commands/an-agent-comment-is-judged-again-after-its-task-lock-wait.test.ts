@@ -10,7 +10,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { aiWorld, created, type AiWorld } from './ai-assign-world.ts';
 import { codeOf } from './agent-fixture.ts';
-import { holdRow, waiterOf, waitPast } from '../support/lock-wait-race.ts';
+import { holdRow, latch, waiterOf, waitPast } from '../support/lock-wait-race.ts';
 
 let w: AiWorld;
 beforeAll(async () => {
@@ -21,7 +21,7 @@ afterAll(async () => {
 });
 
 // oxlint-disable-next-line max-lines-per-function -- the delegation, the held task, the revoke and the answer
-it('an agent comment cannot commit on a grant revoked during its task lock wait', async () => {
+it('an agent comment cannot commit on a grant revoked while it waits for its locks', async () => {
   const task = await created(w, w.p, 'comment grant race');
   const credential = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
     const minted = await mintDelegation(tx, {
@@ -40,30 +40,49 @@ it('an agent comment cannot commit on a grant revoked during its task lock wait'
   const held = await holdRow(w.world.db, 'select id from public.records where id = $1 for update', [
     task,
   ]);
-  const pending = w.world.asAgent(
-    {
-      command: 'task.comment',
-      operationId: randomUUID(),
-      recordId: task,
-      body: 'written after its grant was revoked',
-      audience: 'internal',
-    },
-    credential,
-  );
+  // The revocation holds the grant row as `grant.revoke` does, so the comment,
+  // which holds its grants before the task, waits on it first.
   const revoker = connect(w.world.db.appUrl);
+  const locked = latch<number>();
+  const released = latch();
+  const revoking = revoker.withBusiness(w.world.business, async (tx) => {
+    await lockAccess(tx);
+    await tx.query('select id from public.grants where business_id = $1 and id = $2 for update', [
+      tx.businessId,
+      w.p.grants.comment,
+    ]);
+    const [me] = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
+    locked.open(Number(me?.pid));
+    await released.promise;
+    await revokeGrant(tx, w.p.grants.comment);
+  });
+  let pending: ReturnType<typeof w.world.asAgent> | undefined;
   try {
-    await waiterOf(w.world.db, held);
-    await revoker.withBusiness(w.world.business, async (tx) => {
-      await lockAccess(tx);
-      await revokeGrant(tx, w.p.grants.comment);
-    });
+    const revokerPid = await locked.promise;
+    pending = w.world.asAgent(
+      {
+        command: 'task.comment',
+        operationId: randomUUID(),
+        recordId: task,
+        body: 'written after its grant was revoked',
+        audience: 'internal',
+      },
+      credential,
+    );
+    await waiterOf(w.world.db, { pid: revokerPid, letGo: async () => await Promise.resolve() });
+    released.open();
+    await revoking;
     const [grant] = await w.world.db.admin.execute<{ revoked: boolean }>(
       'select revoked_at is not null as revoked from public.grants where id = $1',
       [w.p.grants.comment],
     );
     expect(grant?.revoked).toBe(true);
+    // The revocation committed; the comment now waits on its task, and is judged after.
+    await waiterOf(w.world.db, held);
   } finally {
+    released.open();
     await held.letGo();
+    await Promise.allSettled([revoking]);
     await revoker.close();
   }
   const answer = await pending;
