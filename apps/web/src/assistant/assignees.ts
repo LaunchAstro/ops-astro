@@ -13,7 +13,6 @@ import { proposalAssign, type TeamListResult } from '../../../../packages/core-w
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import type { Chat } from './chats.ts';
-import type { ClickView, Settled } from './proposals.ts';
 
 export const NOT_ON_TEAM =
   'No one person on your team here matches the name in this reply, so the task is assigned to you.';
@@ -95,11 +94,11 @@ export function assigned(chats: readonly Chat[], team: TeamListResult | null): C
 
 /** The new task's assignment under the reply's own id: null once kept, else how the card settles. */
 export async function assign(
-  view: ClickView,
+  view: { readonly client: OperationsClient; readonly team?: TeamListResult | null },
   proposal: AssistantProposal,
   source: string,
   task: { readonly recordId: string; readonly revision: number },
-): Promise<Pick<Settled, 'state' | 'refusal'> | null> {
+): Promise<Pick<AssistantProposal, 'state' | 'refusal'> | null> {
   const team = view.team ?? (await teamOf(view.client));
   if (team === null)
     return { state: 'made', refusal: `${NOT_ASSIGNED} the team could not be read.` };

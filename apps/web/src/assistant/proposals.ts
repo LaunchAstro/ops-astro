@@ -126,7 +126,7 @@ export function keepBaseline(
   slot.write(Object.fromEntries(kept.slice(-BASELINE_LIMIT)));
 }
 
-export type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
+type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
 
 /** One card's click, in flight or answered, in tab `key` or the tab it was folded into. */
 export function settleProposal(
