@@ -111,6 +111,44 @@ run_case "the gate itself is a sensitive surface" 1 "$GOOD_BLOCK" "scripts/gate/
 run_case "a workflow change is a sensitive surface" 1 "$GOOD_BLOCK" ".github/workflows/ci.yml"
 run_case "an ordinary docs change needs no security review, only the fixed line" 0 "$GOOD_BLOCK$NOT_SENSITIVE" "docs/plan/README.md"
 
+# Sign-in, permissions and tenancy live in directories of those names, and a
+# file inside one is as sensitive as a file named after it.
+for boundary in apps/api/auth/session.ts apps/api/auth/jwks.ts apps/api/auth/provider-logins.ts \
+  packages/core-records/src/tenancy/database.ts packages/core-records/src/authority/access.ts; do
+  run_case "a change only to $boundary needs a security review" 1 "$GOOD_BLOCK$NOT_SENSITIVE" "$boundary"
+done
+run_case "a word inside a longer directory name is not the sign-in directory" 0 "$GOOD_BLOCK$NOT_SENSITIVE" "docs/authoring/README.md"
+
+# The real Git reader, with no CHANGED_FILES override: a path Git quotes, and a
+# workflow moved out of .github/workflows/, both still touch the surface.
+git_case() {
+  local label="$1" expect="$2" output actual
+  output="$(cd "$GIT_FIXTURE" && PR_BODY="${RECORD//@HEAD@/$GIT_HEAD}${GOOD_BLOCK//$HEAD/$GIT_HEAD}$NOT_SENSITIVE" \
+    PR_LABELS="" HEAD_SHA="$GIT_HEAD" BASE_SHA="$GIT_BASE" AGENT_MODELS="$BUILDER" node "$CHECKER" 2>&1)"
+  actual=$?
+  if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual: $output"; fi
+}
+GIT_FIXTURE="$(mktemp -d)"
+(
+  cd "$GIT_FIXTURE" && git init -q && git config user.email t@example.invalid && git config user.name t &&
+    git config commit.gpgsign false && mkdir -p .github/workflows scripts && echo 'on: push' > .github/workflows/ci.yml &&
+    echo one > README.md && git add -A && git commit -qm base
+) || fail "the Git fixture builds" "git failed in $GIT_FIXTURE"
+GIT_BASE="$(git -C "$GIT_FIXTURE" rev-parse HEAD)"
+echo 'x' > "$GIT_FIXTURE/scripts/caf"$'\xc3\xa9'".mjs"
+git -C "$GIT_FIXTURE" add -A && git -C "$GIT_FIXTURE" commit -qm quoted
+GIT_HEAD="$(git -C "$GIT_FIXTURE" rev-parse HEAD)"
+git_case "a gate script whose name Git quotes needs a security review" 1
+git -C "$GIT_FIXTURE" reset -q --hard "$GIT_BASE"
+mkdir -p "$GIT_FIXTURE/docs" && git -C "$GIT_FIXTURE" mv .github/workflows/ci.yml docs/ci.yml
+git -C "$GIT_FIXTURE" commit -qm moved
+GIT_HEAD="$(git -C "$GIT_FIXTURE" rev-parse HEAD)"
+git_case "a workflow moved out of .github/workflows needs a security review" 1
+echo two > "$GIT_FIXTURE/README.md" && git -C "$GIT_FIXTURE" commit -qam readme
+GIT_BASE="$GIT_HEAD" GIT_HEAD="$(git -C "$GIT_FIXTURE" rev-parse HEAD)"
+git_case "an ordinary change read from Git needs only the fixed line" 0
+rm -rf "$GIT_FIXTURE"
+
 # Round five, 7 September. The check matched the words "security review" and
 # a hash, so a body saying the review was NOT RUN, with the current hash
 # beside it, passed. Matching text is not establishing that a review happened.
