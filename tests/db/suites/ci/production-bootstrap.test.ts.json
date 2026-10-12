@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Production's bootstrap writes the first business, its owner and grants, the operating business and the installation's operator in one transaction, refused when a business exists; it must be judged on a real migrated database, by the command through its address as well."
+}

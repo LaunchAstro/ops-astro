@@ -37,6 +37,37 @@ writes each address to an owner-only file in a new `OPS_LOGINS_DIR` for the
 password manager and the M5's settings files. The owner deletes the folder
 after use.
 
+## The first business and its owner
+
+Production starts with no business. After the migrations and the logins, the
+operator makes the first business and its owner, once, in two steps.
+
+1. Make the owner's sign-in through Supabase Auth's admin API with
+   production's secret key: `POST /auth/v1/admin/users` with the owner's
+   email, a generated password and `"email_confirm": true`, so no mail is
+   sent. Store the password in the password manager before the call. Keep the
+   `id` from the reply.
+2. Run the bootstrap with that `id`, and with `PRODUCTION_PROJECT_REF`,
+   `STAGING_PROJECT_REF` and `DATABASE_ADMIN_URL` set as for the logins:
+
+```sh
+node scripts/ops/production-bootstrap.mjs --business-key <key> \
+  --business-name <name> --owner-name <name> --owner-subject <sign-in id>
+```
+
+Before it connects, the command refuses an admin address on staging's project,
+on any project but production's, or without TLS. It refuses when any business
+already exists, so it runs once. In one transaction it writes:
+
+- the business, with the task model and its default settings installed;
+- the owner's person, acting identity, login and admin membership;
+- the local seed's admin grants plus `operations:manage`;
+- the business as the operating business and the installation's operator.
+
+A failure keeps nothing. Every value is the operator's, so it writes no
+made-up row. The installation mode stays `made-up` until every first-client
+gate item is done (migration 0058).
+
 ## The web deploy
 
 ```sh
