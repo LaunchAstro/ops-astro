@@ -24,6 +24,7 @@ import { createApiFixture } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one install through the composition root, asked in turn
 describe.skipIf(serverUrl === undefined)('the replay stand-in on the conversation seam', () => {
   let provider: ReplayProvider;
   let folder: string;
