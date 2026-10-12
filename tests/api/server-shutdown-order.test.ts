@@ -169,7 +169,8 @@ it("server shutdown: the database closes only after the reconciliation sweep's r
   expect(events).toEqual(['pass started', 'pass ended', 'database closed']);
 });
 
-it("server shutdown: the trace export's custody and the database stop only after its running export has ended", async () => {
+/** Trace export on, over a stand-in key and a closed port on this machine. */
+function traceSettings(): Extract<ReturnType<typeof traceExportSettings>, { kind: 'on' }> {
   const credentialsFile = join(folder, 'trace-credentials.json');
   const keyFile = join(folder, 'trace-key');
   writeFileSync(
@@ -194,6 +195,11 @@ it("server shutdown: the trace export's custody and the database stop only after
     TRACE_EXPORT_KEY_FILE: keyFile,
   });
   if (settings.kind !== 'on') throw new Error(`trace export settings: ${settings.kind}`);
+  return settings;
+}
+
+it("server shutdown: the trace export's custody and the database stop only after its running export has ended", async () => {
+  const settings = traceSettings();
   const { held, release } = latch();
   const events: string[] = [];
   const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});

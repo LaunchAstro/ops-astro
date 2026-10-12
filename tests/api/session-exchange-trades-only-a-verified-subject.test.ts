@@ -12,6 +12,10 @@ import type { Verifier } from '../../apps/api/auth/supabase.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 import { CSRF_HEADER, SESSION_PATH } from '../../packages/core-wire/src/index.ts';
 
+const unused = (): never => {
+  throw new Error('the exchange reached past the verifier');
+};
+
 it.each(['revoked', null, 0, ''])(
   'a verdict that is not a verified subject (%s) is refused and sets no cookie',
   async (verdict) => {
@@ -19,9 +23,9 @@ it.each(['revoked', null, 0, ''])(
     const api = createApi({
       database: {} as Database,
       verify,
-      resolveBusiness: async () => await Promise.resolve(undefined),
-      executeRead: (() => undefined) as never,
-      executeCommand: (() => undefined) as never,
+      resolveBusiness: unused,
+      executeRead: unused as never,
+      executeCommand: unused as never,
     });
     const response = await api.fetch(
       new Request(`http://api.test${SESSION_PATH}`, {
