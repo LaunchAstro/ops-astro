@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Each uuid operand a read takes, optional ones included, answers the same in either letter case."
+}
