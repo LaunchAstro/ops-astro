@@ -51,6 +51,11 @@ export function MapInspector(props: { readonly step: MapStep | null }): ReactEle
     );
   }
   const newest = step.runs.at(-1);
+  // `task.read`'s gate is a snapshot: a pending gate the run has moved past,
+  // or any gate on a superseded run, no longer speaks for the step.
+  const overtaken =
+    step.gate !== null &&
+    ((step.gate.state === 'pending' && !step.armed) || newest?.observed.condition === 'superseded');
   const waiting = step.after.filter((one) => !one.satisfied).map((one) => one.key);
   return (
     <div className="tg__insp" data-map="detail" data-map-step={step.key}>
@@ -63,7 +68,10 @@ export function MapInspector(props: { readonly step: MapStep | null }): ReactEle
         <div className={step.armed ? 'gate gate--armed' : 'gate'}>
           <span className="gate__mark" aria-hidden="true" />
           <div>
-            <div className="gate__word">Human approval gate · {words(step.gate.state)}</div>
+            <div className="gate__word">
+              Human approval gate · {words(step.gate.state)}
+              {overtaken ? ' earlier, no longer current' : ''}
+            </div>
             <p className="gate__say" data-map="binds">
               Binds v{step.gate.version} · {step.gate.digest}.
             </p>
