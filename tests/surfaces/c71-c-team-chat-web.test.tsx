@@ -66,6 +66,24 @@ const strip = ({ at, body }: { at: string; body: Record<string, unknown> }) => {
   return { at, ...rest };
 };
 
+describe('C71 web (5) the live Team screen acts on what its reads say', () => {
+  it('the live Team screen offers management when the group read authorises it', async () => {
+    const api = server();
+    const group = api.chats[GROUP];
+    if (group === undefined) throw new Error('group fixture absent');
+    group.view['canManage'] = true;
+    view = await mount(<TeamScreen client={api.client} grantKey="alpha:ana" />);
+    const m = view;
+    await until('the conversation open on Bo', () => shown(m).length > 0);
+    await m.click(`[data-group="${GROUP}"]`);
+    expect(m.find('.tmc__leave')).not.toBeNull();
+    expect({
+      rename: m.find('.tmc__rename') !== null,
+      remove: m.find('.tmc__remove') !== null,
+    }).toEqual({ rename: true, remove: true });
+  });
+});
+
 describe('C71 web (1) the Team panel shows the real conversations, with no mock label', () => {
   it('feeds TeamPanel from chat.conversations and chat.messages and opens on the first unread', async () => {
     const { api, m } = await team();
