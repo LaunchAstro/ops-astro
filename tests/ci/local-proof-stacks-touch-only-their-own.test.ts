@@ -85,7 +85,7 @@ describe('the journey stack', () => {
     expect(calls(log).filter((call) => call.startsWith('run'))).toStrictEqual([]);
   });
 
-  it('removes no container it did not create, even with --remove', async () => {
+  it('starts its container with pulling off, and with --remove removes no container it did not create', async () => {
     const { docker, log, dir } = fakeDocker();
     const [pg, api, web] = await freePorts(3);
     const result = spawnSync(
@@ -106,18 +106,13 @@ describe('the journey stack', () => {
       { cwd: ROOT, env: { ...process.env, DOCKER: docker }, encoding: 'utf8' },
     );
     expect(
-      calls(log).some((call) => call.startsWith('run')),
+      calls(log).find((call) => call.startsWith('run')),
       result.stdout,
-    ).toBe(true);
+    ).toMatch(/^run --pull never /u);
     expect(
       calls(log).filter((call) => call.startsWith('rm')),
       result.stdout,
     ).toStrictEqual([]);
-  });
-
-  it('starts its container with pulling turned off', () => {
-    const source = readFileSync(join(ROOT, 'scripts/local/journey-stack.ts'), 'utf8');
-    expect(source).toMatch(/\['run', '--pull', 'never',/u);
   });
 });
 
