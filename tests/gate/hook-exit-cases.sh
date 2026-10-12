@@ -209,6 +209,8 @@ proof_case hooks-refuse-when-not-installed \
   "a checkout without installed hooks refuses to push, whatever commit it is on"
 proof_case path-sweep-withholds-denied-name-in-all-evidence \
   "the path sweep withholds a denied file name in its summary as well"
+proof_case pre-push-cleanup-keeps-files-beside-a-spaced-tmpdir \
+  "the hook's cleanup keeps unrelated files when TMPDIR holds a space, and the scan still runs"
 proof_case sweep-refuses-denied-messages-and-symlinked-paths \
   "a denied commit message under any display encoding, and a denied path through a symlinked folder, are refused"
 
