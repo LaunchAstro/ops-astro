@@ -105,19 +105,30 @@ const NOT_RUN = new Set(['skipped', 'pending', 'todo']);
 /** One run item's verdict line, judged from that item's own report and counter reads. */
 export function verdictLine(item: string, result: ItemResult): string {
   const { run: vitest, report } = result;
-  const assertions = (report?.testResults ?? []).flatMap((file) => file.assertionResults ?? []);
+  const files = report?.testResults ?? [];
+  const assertions = files.flatMap((file) => file.assertionResults ?? []);
+  // Only the requested file, or the counts and the counter are not its own.
+  const alone =
+    files.length > 0 &&
+    files.every(
+      (file) => resolve(ROOT, String(file.name ?? '')) === resolve(ROOT, itemOf(item).suite),
+    );
   const reasons = [
     report === undefined && 'no readable report',
     vitest.error !== undefined && vitest.error !== null && 'vitest could not be started',
     typeof vitest.signal === 'string'
       ? `vitest was killed by ${vitest.signal}`
       : vitest.status !== 0 && `vitest exited with status ${String(vitest.status)}`,
+    report !== undefined && !alone && 'the report is not of this file alone',
     report?.success === false && 'the report says the run failed',
     ((report?.errors ?? []).length > 0 ||
-      (report?.testResults ?? []).some((file) => String(file.message ?? '').trim() !== '')) &&
+      files.some((file) => String(file.message ?? '').trim() !== '')) &&
       'the report carries an error',
     assertions.some((test) => test.status === 'failed') && 'failed assertion',
     assertions.some((test) => NOT_RUN.has(String(test.status))) && 'skipped',
+    report !== undefined &&
+      assertions.every((test) => NOT_RUN.has(String(test.status))) &&
+      'no executed assertions',
     result.readError !== undefined && 'a counter read failed',
     result.moved <= result.cost && `no database movement (${String(result.moved)})`,
     result.clientSessions <= 0 && 'no client session',
