@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reset's deadline is this host's now plus the database window's time left, so a host clock ten minutes off either way still sends inside the window and sets the password"
+}

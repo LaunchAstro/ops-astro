@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reset's provider call ends at its window's end: an answer held past it is cut there, the reset is never set, and its window settles so the room frees"
+}

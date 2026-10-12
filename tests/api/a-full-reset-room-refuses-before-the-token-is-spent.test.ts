@@ -200,3 +200,49 @@ LIVE(
     expect(await reset(room, secondToken, 'the second reset password')).toEqual({ ok: true });
   },
 );
+
+LIVE(
+  'a reset whose process dies after its spend keeps its place in the room until its window lapses',
+  async () => {
+    const dead = await freshMember('room-crash-dead');
+    const next = await freshMember('room-crash-next');
+    const deadToken = await mintToken(dead.presented.subject);
+    const nextToken = await mintToken(next.presented.subject);
+    const room = limited(1, 4);
+    const reached = latch();
+    // The other process dies at its dispatch: its spend has committed, and nothing after it runs.
+    // Its custody is its own, so its place with the provider is not this process's.
+    const dying: Broker = {
+      ...room,
+      custody: Object.assign(Object.create(broker.custody) as Broker['custody'], {
+        dispatch: async () => {
+          reached.open();
+          return await new Promise<never>(() => {
+            // Never answers: the process is gone.
+          });
+        },
+      }),
+    };
+    void reset(dying, deadToken, 'the dead reset password');
+    await reached.promise;
+    expect({
+      next: await reset(room, nextToken, 'the next reset password'),
+      nextSpent: await spent(nextToken),
+      retry: await reset(room, deadToken, 'the dead reset password'),
+    }).toEqual({
+      next: { ok: false, code: 'RESET_UNAVAILABLE' },
+      nextSpent: false,
+      retry: { ok: false, code: 'RESET_LINK_INVALID' },
+    });
+    // The dead window's five minutes pass: its end moves into the past, as no settle ever comes.
+    await world.db.admin.execute(
+      `do $$ begin
+         set local session_replication_role = replica;
+         update ops.subject_resets set open_until = clock_timestamp() - interval '1 second'
+          where subject_digest = encode(sha256(convert_to('${dead.presented.subject}', 'UTF8')), 'hex')
+            and settled_at is null;
+       end $$`,
+    );
+    expect(await reset(room, nextToken, 'the next reset password')).toEqual({ ok: true });
+  },
+);
