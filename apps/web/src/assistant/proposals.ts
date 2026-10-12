@@ -27,7 +27,7 @@
 // presents the same attempt with the same payload, and the register replays its
 // first outcome (`register-store.ts`), refusal included.
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { AssistantMessage, AssistantProposal } from '@launchastro/ui';
 import {
   proposalCreate,
@@ -222,8 +222,10 @@ export interface ProposalStore {
 export interface ClickView {
   readonly client: OperationsClient;
   readonly grantKey?: string | undefined;
-  /** The team the cards were drawn with; unread, the click reads it. */
+  /** The team the card was matched with; none, the click reads it. */
   readonly team?: TeamListResult | null;
+  /** Who each reply's click sent, while the drawer is open. */
+  readonly sent?: Map<string, string>;
 }
 
 /** A card's one click: one write, its answer settling the card. */
@@ -249,13 +251,22 @@ export function useProposalCards(
   view: ClickView,
   store: ProposalStore & { state: AssistantState },
 ) {
-  const team = useTeam(view.client, store.state.chats);
+  const read = useTeam(view.client, store.state.chats);
+  const sent = useRef(new Map<string, string>()).current;
   const { grantKey } = view;
+  const keptFor = (line: string): string | undefined => {
+    const source = sourceOf(line);
+    return source === null ? undefined : (sent.get(source) ?? keptAssignee(grantKey, source));
+  };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- `keptFor` reads the session's slot and `sent`, which change only with a click, itself a state change.
   const chats = useMemo(
-    () => assigned(store.state.chats, team, (line) => keptAssignee(grantKey, sourceOf(line))),
-    [store.state.chats, team, grantKey],
+    () => assigned(store.state.chats, read, keptFor),
+    [store.state.chats, read],
   );
-  const onPropose = (key: string, id: string): void =>
-    void sendProposal({ ...view, team }, store, { key, id });
+  // A card no read since it was drawn has matched reads the team itself on its click.
+  const onPropose = (key: string, id: string): void => {
+    const team = read.cards.has(id) ? read.team : null;
+    void sendProposal({ ...view, team, sent }, store, { key, id });
+  };
   return { chats, onPropose };
 }

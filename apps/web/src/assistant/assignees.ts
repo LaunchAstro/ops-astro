@@ -55,37 +55,55 @@ const creating = (chats: readonly Chat[]): string =>
     .map((each) => each.id)
     .join(' ');
 
-/** The team, read again as each new task's card is drawn: who that card's task goes to. */
-export function useTeam(client: OperationsClient, chats: readonly Chat[]): TeamListResult | null {
-  const [team, setTeam] = useState<TeamListResult | null>(null);
+/** A team read, and the cards drawn before it was asked: the ones it may match. */
+export interface TeamRead {
+  readonly team: TeamListResult | null;
+  readonly cards: ReadonlySet<string>;
+}
+
+/**
+ * The team, read again as each new task's card is drawn. A card is matched,
+ * and its click uses this read, only once a read asked after it was drawn has
+ * landed; until then its click reads the team itself.
+ */
+export function useTeam(client: OperationsClient, chats: readonly Chat[]): TeamRead {
+  const [read, setRead] = useState<TeamRead>({ team: null, cards: new Set() });
   const cards = creating(chats);
   useEffect(() => {
     let live = true;
-    const read = async (): Promise<void> => {
-      const found = await teamOf(client);
-      if (live) setTeam(found);
+    const ask = async (): Promise<void> => {
+      const team = await teamOf(client);
+      if (live) setRead({ team, cards: new Set(cards.split(' ')) });
     };
-    if (cards !== '') void read();
+    if (cards !== '') void ask();
     return () => {
       live = false;
     };
   }, [client, cards]);
-  return team;
+  return read;
 }
 
-/** At most this many first-sent assignees are kept in a tab, the newest. */
+/** Settled assignments past this many are let go in a tab, the oldest first. */
 const KEPT_LIMIT = 32;
 
-const isKept = (value: unknown): value is Readonly<Record<string, string>> =>
+/** The person a click sent, and whether its answer is still owed. */
+interface Kept {
+  readonly person: string;
+  readonly open: boolean;
+}
+
+const isKept = (value: unknown): value is Readonly<Record<string, Kept>> =>
   isRecord(value) &&
-  Object.keys(value).length <= KEPT_LIMIT &&
-  Object.entries(value).every(([id, person]) => isUuid(id) && isUuid(person));
+  Object.entries(value).every(
+    ([id, each]) =>
+      isUuid(id) && isRecord(each) && isUuid(each['person']) && typeof each['open'] === 'boolean',
+  );
 
 /**
  * The person each reply's click first sent its assignment to, by the reply's
- * message id, so every retry of that click, a reload's included, sends the
- * same body under its one operation id. Ids only, as `kept.ts` keeps the tabs;
- * with no session, none.
+ * message id, so a retry after a reload sends the same body under its one
+ * operation id. Ids only, as `kept.ts` keeps the tabs; with no session, none.
+ * One still owed an answer is never let go: it is the body its retry must send.
  */
 const keptSlot = (grantKey: string | undefined) =>
   jsonSlot(
@@ -94,8 +112,16 @@ const keptSlot = (grantKey: string | undefined) =>
     isKept,
   );
 
-export const keptAssignee = (grantKey: string | undefined, source: string | null) =>
-  source === null ? undefined : keptSlot(grantKey).read()?.[source];
+function keep(grantKey: string | undefined, source: string, kept: Kept): void {
+  const slot = keptSlot(grantKey);
+  const all = Object.entries({ ...slot.read(), [source]: kept });
+  let over = all.length - KEPT_LIMIT;
+  const letGo = (id: string, each: Kept): boolean => over > 0 && !each.open && id !== source;
+  slot.write(Object.fromEntries(all.filter(([id, each]) => !(letGo(id, each) && over-- > 0))));
+}
+
+export const keptAssignee = (grantKey: string | undefined, source: string) =>
+  keptSlot(grantKey).read()?.[source]?.person;
 
 /** Who a card shows: the one its click first sent, where kept, else who the team matches. */
 function shownTo(team: TeamListResult, named: string | undefined, kept: string | undefined) {
@@ -105,17 +131,19 @@ function shownTo(team: TeamListResult, named: string | undefined, kept: string |
   return held === undefined ? undefined : { name: held.name, note: null };
 }
 
-/** The tabs as drawn: each new task's card says who it goes to, once the team is read. */
+/** The tabs as drawn: each new task's card says who it goes to, once a read after it lands. */
 export function assigned(
   chats: readonly Chat[],
-  team: TeamListResult | null,
+  { team, cards }: TeamRead,
   keptFor: (line: string) => string | undefined,
 ): Chat[] {
-  if (team === null) return [...chats];
   const shown = (line: string, proposal: AssistantProposal): AssistantProposal => {
     if (proposal.action !== 'create') return proposal;
     const { assignedTo: _drawn, ...rest } = proposal;
-    const to = shownTo(team, proposal.assignee, keptFor(line));
+    const to =
+      team === null || !cards.has(line)
+        ? undefined
+        : shownTo(team, proposal.assignee, keptFor(line));
     return to === undefined ? rest : { ...rest, assignedTo: to };
   };
   return chats.map((chat) => ({
@@ -126,37 +154,42 @@ export function assigned(
   }));
 }
 
+/** What the click's assignment reads: the team its card was matched with, and who was sent. */
+export interface AssignView {
+  readonly client: OperationsClient;
+  readonly team?: TeamListResult | null;
+  readonly grantKey?: string | undefined;
+  /** Who each reply's click sent, while the drawer is open, whatever the tab could keep. */
+  readonly sent?: Map<string, string>;
+}
+
 /** The new task's assignment under the reply's own id: null once kept, else how the card settles. */
 export async function assign(
-  view: {
-    readonly client: OperationsClient;
-    readonly team?: TeamListResult | null;
-    readonly grantKey?: string | undefined;
-  },
+  view: AssignView,
   proposal: AssistantProposal,
   source: string,
   task: { readonly recordId: string; readonly revision: number },
 ): Promise<Pick<AssistantProposal, 'state' | 'refusal'> | null> {
-  const slot = keptSlot(view.grantKey);
-  let personId = slot.read()?.[source];
-  if (personId === undefined) {
+  let person = view.sent?.get(source) ?? keptAssignee(view.grantKey, source);
+  if (person === undefined) {
     const team = view.team ?? (await teamOf(view.client));
     if (team === null) {
       return { state: 'made', refusal: `${NOT_ASSIGNED} the team could not be read.` };
     }
-    personId = assigneeOf(proposal.assignee, team).personId;
-    // Kept before it is sent: the click's intent, whatever the team becomes.
-    const kept = Object.entries({ ...slot.read(), [source]: personId });
-    slot.write(Object.fromEntries(kept.slice(-KEPT_LIMIT)));
+    person = assigneeOf(proposal.assignee, team).personId;
   }
-  const write = proposalAssign(source, task, personId);
+  // Held before it is sent: the click's intent, whatever the team becomes.
+  view.sent?.set(source, person);
+  keep(view.grantKey, source, { person, open: true });
+  const write = proposalAssign(source, task, person);
   const settled = settle(
     await view.client.mutate('task.assign', write.body, {
       operationId: write.operationId,
       expectedRevision: write.expectedRevision,
     }),
   );
-  if (settled.kind === 'ok') return null;
   if (settled.kind === 'unknown') return { state: 'unknown', refusal: settled.because };
+  keep(view.grantKey, source, { person, open: false });
+  if (settled.kind === 'ok') return null;
   return { state: 'made', refusal: `${NOT_ASSIGNED} ${settled.because}` };
 }
