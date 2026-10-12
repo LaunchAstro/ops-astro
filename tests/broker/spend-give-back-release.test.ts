@@ -134,7 +134,7 @@ it('a counted call released at its retried start gives its maximum back once', a
 
 it('a counted call the model-call sweep releases gives its maximum back once', async () => {
   const { work, before, request, reserved } = await stoppedUnsent();
-  expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+  expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
 
   await sweepCalls();
@@ -203,7 +203,7 @@ it('a call released before any top-up or end gives nothing back, and a later top
 
 it('a counted call whose hold another transaction holds is left to the next sweep, which gives back once', async () => {
   const { work, before } = await stoppedUnsent();
-  expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+  expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   const other = racer(s);
   let locked: (() => void) | undefined;
   let release: (() => void) | undefined;

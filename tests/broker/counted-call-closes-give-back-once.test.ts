@@ -109,7 +109,7 @@ it.each(['top_up', 'end'] as const)(
             s.business,
             async (tx) => await endAtBudgetStop(tx, decider(s, runId)),
           ),
-        ).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+        ).toMatchObject({ ok: true, value: { spentMinor: '500' } });
       }
       expect(await envelopeActual(active.work)).toBe(active.before + 500);
       const figures = await holdFigures(active.work);
