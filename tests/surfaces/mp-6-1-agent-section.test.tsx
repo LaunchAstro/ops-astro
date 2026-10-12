@@ -228,7 +228,9 @@ describe('MP-6-1 agent section on the task page', () => {
     await tick();
     expect(sent.map((call) => call.route)).toStrictEqual(['task/cancel']);
     expect(sent[0]?.body).toMatchObject({ recordId: TASK_ID, lineageId: 'l-7' });
-    expect(page.find(`${IN_PANE} [data-agent="refusal"]`)?.textContent).not.toBe('');
     expect(reads()).toBeGreaterThan(before);
+    const refusal = page.find(`${IN_PANE} [data-agent="refusal"]`);
+    expect(refusal).not.toBeNull();
+    expect(refusal?.textContent).toContain('SCOPE_NOT_GRANTED');
   });
 });
