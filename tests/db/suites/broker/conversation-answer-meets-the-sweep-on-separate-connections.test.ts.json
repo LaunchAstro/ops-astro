@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A conversation call's or planning reply's answer and the sweep meet on the call's row in either queue order, a lock wait before the row keeps custody's end inside the sweep's, and a cut commit at the row or the settlement never settles a call twice; the races need separate real connections and a cut relay."
+}
