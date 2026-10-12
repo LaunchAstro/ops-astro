@@ -122,7 +122,7 @@ describe('sign-in opens one identity through crossed or lost answers', () => {
     const { fetcher, holding } = world({ held: 'code check' });
     const { view, opened, submit, code } = await page(fetcher);
     await submit(MIA);
-    expect(view.find(CODE), 'Mia is asked for her code').not.toBeNull();
+    expect(view.find(`${CODE}`), 'Mia is asked for her code').not.toBeNull();
     await code();
     await view.click(CANCEL);
     await settle();
@@ -192,7 +192,7 @@ describe('sign-in opens one identity through crossed or lost answers', () => {
       await submit(MIA);
       await code();
       expect(opened, 'the lost answer opens nothing').toEqual([]);
-      expect(view.find(CODE), 'the code is asked again').not.toBeNull();
+      expect(view.find(`${CODE}`), 'the code is asked again').not.toBeNull();
       await code();
       expect(opened).toEqual([{ ...MIA, sessionId: 'mia-full' }]);
       await view.unmount();
