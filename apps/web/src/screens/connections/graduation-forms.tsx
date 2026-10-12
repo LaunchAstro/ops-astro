@@ -53,6 +53,8 @@ function CeilingAndExpiry(props: {
   readonly setCeiling: (value: string) => void;
   readonly ceilingRef: RefObject<HTMLInputElement | null>;
   readonly noCeiling?: boolean;
+  /** Locked while a write is in flight, so an answer clearing the form clears nothing newer. */
+  readonly locked: boolean;
   readonly expiry: string;
   readonly setExpiry: (value: string) => void;
   readonly expiryRef: RefObject<HTMLInputElement | null>;
@@ -66,7 +68,7 @@ function CeilingAndExpiry(props: {
         inputMode="decimal"
         aria-label={`Value ceiling${props.what}, in dollars`}
         placeholder="Ceiling, $"
-        disabled={props.noCeiling === true}
+        disabled={props.locked || props.noCeiling === true}
         value={props.noCeiling === true ? '' : props.ceiling}
         onChange={(event) => props.setCeiling(event.target.value)}
         {...{ [`data-${props.marks}-ceiling`]: '' }}
@@ -76,6 +78,7 @@ function CeilingAndExpiry(props: {
         className="connnote__field"
         type="date"
         aria-label={`Expiry${props.what}`}
+        disabled={props.locked}
         value={props.expiry}
         onChange={(event) => props.setExpiry(event.target.value)}
         {...{ [`data-${props.marks}-expiry`]: '' }}
@@ -130,7 +133,12 @@ export function PromoteForm(props: {
   };
   return (
     <div className="fieldrow" data-promote-form={props.id}>
-      <CeilingAndExpiry what={` for ${props.label}`} marks="promote" {...values} />
+      <CeilingAndExpiry
+        what={` for ${props.label}`}
+        marks="promote"
+        locked={props.locked}
+        {...values}
+      />
       <button
         type="button"
         className="btn btn--sm btn--primary"
@@ -164,11 +172,13 @@ function ScopePicker(props: {
   readonly setScope: (value: string) => void;
   readonly refuses: boolean;
   readonly setRefuses: (value: boolean) => void;
+  readonly locked: boolean;
 }): ReactElement {
   return (
     <>
       <select
         aria-label="Action classes"
+        disabled={props.locked}
         value={props.scope}
         onChange={(event) => props.setScope(event.target.value)}
         data-mandate-scope
@@ -183,6 +193,7 @@ function ScopePicker(props: {
         <input
           type="checkbox"
           checked={props.refuses}
+          disabled={props.locked}
           onChange={(event) => props.setRefuses(event.target.checked)}
           data-mandate-refuses
         />{' '}
@@ -220,7 +231,7 @@ export function MandateForm(props: {
   readonly file: (mandate: MandateFiling, done: () => void) => void;
   readonly locked: boolean;
 }): ReactElement {
-  const { draft, edit } = props;
+  const { draft, edit, locked } = props;
   const { label, refuses } = draft;
   const scope = props.scopes.includes(draft.scope) ? draft.scope : (props.scopes[0] ?? '');
   const setLabel = (value: string): void => edit({ label: value });
@@ -242,16 +253,16 @@ export function MandateForm(props: {
         placeholder="Write the rule the way you would say it out loud"
         aria-label="New standing approval sentence"
         value={label}
-        disabled={props.locked}
+        disabled={locked}
         onChange={(event) => setLabel(event.target.value)}
         data-mandate-label
       />
-      <ScopePicker scopes={props.scopes} {...{ scope, setScope, refuses, setRefuses }} />
-      <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...values} />
+      <ScopePicker scopes={props.scopes} {...{ scope, setScope, refuses, setRefuses, locked }} />
+      <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...{ locked, ...values }} />
       <button
         type="button"
         className="btn btn--sm btn--secondary"
-        disabled={props.locked}
+        disabled={locked}
         onClick={add}
         data-mandate-add
       >
