@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a written-off step takes one later recorded outcome, and only its latest attempt recovers"
+}
