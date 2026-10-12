@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "hook message claims older than a day are removed by the upkeep job; the application group claims by digest alone"
+}
