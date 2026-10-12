@@ -17,6 +17,7 @@
 // team chat's audience, 27 September 2026).
 
 import { randomUUID } from 'node:crypto';
+import { checkAuthority, type Subject } from '../authority/grants.ts';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { chatsNow } from '../inbox/access.ts';
@@ -163,8 +164,12 @@ export async function moveReadMarker(
   return moved.length > 0;
 }
 
-/** The reader's marker as ISO text, with the count of its millisecond's messages it covers (`shownAt`). */
-const LAST_READ = `regexp_replace(to_char(m.last_read_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), '000Z$', 'Z') as last_read`;
+/** A time as ISO text to the millisecond, or with `US`, to the microsecond. */
+const iso = (time: string, digits = 'MS'): string =>
+  `to_char(${time} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.${digits}"Z"')`;
+
+/** The reader's marker, with the count of its millisecond's messages it covers (`shownAt`). */
+const LAST_READ = `regexp_replace(${iso('m.last_read_at', 'US')}, '000Z$', 'Z') as "lastRead"`;
 
 /** The messages a member may read: written while they were a member, and live. */
 const MEMBER_READS = `
@@ -185,6 +190,8 @@ export interface ConversationSummary {
   readonly lastMessageAt: string | null;
   /** Others' messages after the reader's marker. */
   readonly unread: number;
+  /** A group the reader may manage (`chat-groups.ts`), by the caller's own subjects' grants. */
+  readonly canManage: boolean;
 }
 
 /** The reader's conversations, newest message first, each with its unread derived now. */
@@ -192,27 +199,25 @@ export async function listConversations(
   tx: TenantQuery,
   types: ConversationTypes,
   personId: string,
+  subjects: readonly Subject[],
 ): Promise<readonly ConversationSummary[]> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly kind: ConversationKind;
-    readonly name: string | null;
-    readonly members: readonly string[];
-    readonly joined_at: Date | null;
-    readonly last_read: string | null;
-    readonly last_message_at: Date | null;
-    readonly unread: string;
-  }>(
-    `select m.conversation_id as id, r.txt_1 as kind, ${LAST_READ},
+  const manager = await checkAuthority(tx, subjects, {
+    collection: 'chat',
+    action: 'manage',
+    scope: { kind: 'business', id: null },
+  });
+  return await tx.query<ConversationSummary>(
+    `select m.conversation_id as "conversationId", r.txt_1 as kind, ${LAST_READ},
             case when m.left_at is null then r.txt_2 end as name,
-            case when m.left_at is null then m.joined_at end as joined_at,
+            case when m.left_at is null then ${iso('m.joined_at')} end as "joinedAt",
+            r.txt_1 = 'group' and m.left_at is null and (r.uuid_1 = m.person_id or $5) as "canManage",
             case when m.left_at is null then array(
               select o.person_id::text from public.team_conversation_members o
                where o.business_id = m.business_id and o.conversation_id = m.conversation_id
                  and o.left_at is null order by o.joined_at, o.person_id)
             else '{}' end as members,
-            (select max(c.ts_1) from public.records c where ${MEMBER_READS}) as last_message_at,
-            (select count(*) from public.records c
+            ${iso(`(select max(c.ts_1) from public.records c where ${MEMBER_READS})`)} as "lastMessageAt",
+            (select count(*)::int from public.records c
                join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
               where ${MEMBER_READS} and a.person_id is distinct from m.person_id
                 and (m.last_read_at is null or ${POSITION} > m.last_read_at)) as unread
@@ -220,19 +225,9 @@ export async function listConversations(
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
         and r.record_type_id = $3 and r.deleted_at is null
       where m.business_id = $1 and m.person_id = $4 and ${chatsNow('m.person_id')}
-      order by last_message_at desc nulls last, m.conversation_id`,
-    [tx.businessId, types.commentTypeId, types.conversationTypeId, personId],
+      order by "lastMessageAt" desc nulls last, m.conversation_id`,
+    [tx.businessId, types.commentTypeId, types.conversationTypeId, personId, manager.ok],
   );
-  return rows.map((row) => ({
-    conversationId: row.id,
-    kind: row.kind,
-    name: row.name,
-    members: row.members,
-    joinedAt: row.joined_at?.toISOString() ?? null,
-    lastRead: row.last_read,
-    lastMessageAt: row.last_message_at?.toISOString() ?? null,
-    unread: Number(row.unread),
-  }));
 }
 
 export interface ConversationMessage {
@@ -246,7 +241,7 @@ export interface ConversationMessage {
 }
 
 /** The reader's member row with each message, or none: one statement, so a revocation serves neither. */
-type MemberMessage = { readonly last_read: string | null } & (
+type MemberMessage = { readonly lastRead: string | null } & (
   | { readonly id: null }
   | (Omit<ConversationMessage, 'at'> & { readonly at: Date; readonly tied: string })
 );
@@ -282,7 +277,7 @@ export async function readConversation(
   );
   if (rows[0] === undefined) return undefined;
   return {
-    lastRead: rows[0].last_read,
+    lastRead: rows[0].lastRead,
     messages: rows.flatMap((row) =>
       row.id === null
         ? []
