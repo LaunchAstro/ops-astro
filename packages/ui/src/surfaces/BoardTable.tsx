@@ -12,7 +12,7 @@ import type { ColumnSpec, LaidColumn } from '../board/types.ts';
 import { BOARD_ICONS, type BoardMachineProps } from './board-props.ts';
 
 const ROW_CONTROLS =
-  'a,button,input,select,textarea,summary,[role="button"],[role="checkbox"],[role="listbox"],[role="option"],[contenteditable]';
+  'a,button,input,select,textarea,summary,[role="button"],[role="checkbox"],[role="listbox"],[role="option"],[contenteditable],.cbd__cell.is-editing';
 
 type Sort = { readonly key: string; readonly dir: 'asc' | 'desc' } | null;
 
