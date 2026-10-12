@@ -43,6 +43,7 @@ import {
   type ExpiryPorts,
   type TraceDatabase,
 } from '../../packages/core-runtime/src/index.ts';
+import { passBudget } from '../../packages/core-runtime/src/trace-store.ts';
 import type { CustodyOutcome } from '../../packages/core-custody/src/index.ts';
 import { every } from './every.ts';
 
@@ -182,10 +183,7 @@ export function deliverThrough(custody: Custody, timeoutMs = 5_000): Deliver {
     );
 }
 
-/**
- * Retention's delete and read-back through the same custody: a trace by its id, or one span of it
- * by the span's. Only a 404 proves absence; any 2xx is present; anything else proves nothing.
- */
+/** Retention's delete and read-back through custody: only 404 is absent, 2xx present, 429 limited. */
 export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts {
   const ask = async (method: 'DELETE' | 'GET', path: string, body: string): Promise<Delivered> =>
     outboundOf(
@@ -208,6 +206,7 @@ export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts 
           : `${TRACE_OBSERVATION_PATH}/${spanId}`;
       const read = await ask('GET', path, '');
       if (read.status === 404) return 'absent';
+      if (read.status === 429) return 'limited';
       return read.status !== null && read.status >= 200 && read.status < 300
         ? 'present'
         : 'unknown';
@@ -216,15 +215,18 @@ export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts 
 }
 
 /**
- * `turn` for every business, one after another. A business that fails ends its
- * own turn and the next still has its own; the pass then fails with the first.
+ * `turn` for every business, one after another, from the `start`th round. A business that fails
+ * ends its own turn and the next still has its own; the pass then fails with the first.
  */
 async function eachTurn(
   businesses: () => Promise<readonly string[]>,
   turn: (businessId: string) => Promise<void>,
+  start = 0,
 ): Promise<void> {
   let failed: { readonly cause: unknown } | undefined;
-  for (const businessId of await businesses()) {
+  const listed = await businesses();
+  const at = start % Math.max(1, listed.length);
+  for (const businessId of [...listed.slice(at), ...listed.slice(0, at)]) {
     try {
       // eslint-disable-next-line no-await-in-loop -- one business after another
       await turn(businessId);
@@ -251,17 +253,19 @@ export async function exportDeployment(
   });
 }
 
-/** One retention pass over every business; `pass` counts the passes before it. */
+/** One retention pass, every business on one read budget, from the `pass`th: each first in turn. */
 export async function retainDeployment(
   database: TraceDatabase,
   businesses: () => Promise<readonly string[]>,
   key: Buffer,
   ports: ExpiryPorts,
-  _pass = 0,
+  pass = 0,
 ): Promise<void> {
-  await eachTurn(businesses, async (businessId) => {
-    await expireOnce(database, businessId, key, ports);
-  });
+  const budget = passBudget();
+  const turn = async (businessId: string): Promise<void> => {
+    await expireOnce(database, businessId, key, ports, { budget });
+  };
+  await eachTurn(businesses, turn, pass);
 }
 
 /** Custody's own process for the target, started, and the export and retention intervals over it. */
@@ -277,12 +281,13 @@ export async function startTraceExporter(
   });
   const deliver = deliverThrough(custody);
   const ports = expiryThrough(custody);
+  let passes = 0;
   const jobs = [
     every(everyMs, 'trace export', async () => {
       await exportDeployment(database, businesses, settings.key, deliver);
     }),
     every(RETAIN_EVERY_MS, 'trace retention', async () => {
-      await retainDeployment(database, businesses, settings.key, ports);
+      await retainDeployment(database, businesses, settings.key, ports, passes++);
     }),
   ];
   return {
