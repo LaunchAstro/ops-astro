@@ -40,7 +40,7 @@ export { classOf } from './data-effects-types.ts';
  * the act's audit, which is no record kind.
  */
 export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {
-  'task.create': TASK,
+  'task.create': writing([...TASK.writes, ...client('conversations')]),
   'task.update': TASK,
   'task.complete': TASK,
   'task.reopen': TASK,
