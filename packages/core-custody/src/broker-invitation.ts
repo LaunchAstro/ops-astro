@@ -16,7 +16,8 @@
 //    names and one link, the enrolment page carrying the token. A sender that
 //    paused past the fence since its ask (`lapsed`), or past the token's
 //    expiry on either host clock (`outlived`), calls nothing and records
-//    `failed`, evidence `expired`, as the inbox send does.
+//    `failed`, evidence `expired`, as the inbox send does; custody sends
+//    nothing past the ask's place under the ceiling (`sendOnce`).
 // 3. Record what came back as the attempt's next observation, read as the
 //    inbox send reads it; a message id long enough to hold a token is kept
 //    as its SHA-256. Nothing returned or written holds a token.
@@ -45,11 +46,10 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute, type Routed } from './broker-email-route.ts';
+import { sendOnce, sendRoute, type Routed } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
 import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
-import { isLoopbackMock } from './email-mock-custody.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -231,27 +231,16 @@ async function deliver(
   database: Database,
   businessId: BusinessId,
   broker: Broker,
-  { operation, route, adapter }: Routed,
+  routed: Routed,
   sent: { readonly mail: MailSettings; readonly asked: Asked },
 ): Promise<InvitationSendResult> {
   const { mail, asked } = sent;
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
-  const built = adapter.build({ to: asked.to, from: mail.from, address: link });
+  const built = routed.adapter.build({ to: asked.to, from: mail.from, address: link });
   const stale = lapsed(asked.reserved) || outlived(asked);
   const read = stale
     ? ({ state: 'failed', evidence: 'expired' } as const)
-    : observed(
-        await broker.custody.dispatch(route.credentialRef, {
-          destination: operation.destination,
-          path: built.path,
-          method: built.method,
-          body: built.body,
-          timeoutMs: operation.timeoutMs,
-          maxResponseBytes: operation.maxResponseBytes,
-        }),
-        operation,
-        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
-      );
+    : await sendOnce(broker, routed, built, asked.reserved);
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
   const seen = {
