@@ -88,9 +88,9 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const facets = useKnownFacets(props.facets);
   const context = useStepContext(props, facets);
   const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
-  const { machine, dispatch } = useBoardMachine(context, props, props);
-  const held = heldOf(facets, props.facets.length, machine.view.ids);
   const card = useRef<HTMLDivElement>(null);
+  const { machine, dispatch } = useBoardMachine(context, props, props, card);
+  const held = heldOf(facets, props.facets.length, machine.view.ids);
   const bare = props.nothing !== undefined && isBare(props.rows, machine.view);
   const available = useMeasuredWidth(card, props.width, !bare);
   const viewport =

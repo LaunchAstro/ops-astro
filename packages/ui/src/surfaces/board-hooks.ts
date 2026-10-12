@@ -6,21 +6,14 @@
 // funnel menu's own state, and the chip row's fit. `BoardMachine` calls them
 // in this order, which is the order their effects run in.
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { BoardFollow as Follow } from './board-props.ts';
 import { layoutColumns } from '../board/columns.ts';
 import { widthsAfterDrag } from '../board/widths.ts';
 import { useStoredWidths } from './board-stored-widths.ts';
 import { fitChipRow, type ChipTier } from '../board/funnel.ts';
 import { initialMachine, reduceBoard } from '../board/machine.ts';
+import { useUndoKeys } from './board-undo-keys.ts';
 import { readView, writeView } from '../board/address.ts';
 import type {
   BoardAction,
@@ -40,7 +33,8 @@ type Send = (action: BoardAction) => void;
 export function useBoardMachine<Row>(
   context: (on: readonly string[]) => BoardContext<Row>,
   opening: { readonly address?: string; readonly widths?: ColumnWidths | null },
-  follow: Follow,
+  follow: Follow & { readonly bar?: HTMLElement | null | undefined },
+  card: RefObject<HTMLDivElement | null>,
 ): { readonly machine: MachineState; readonly dispatch: Send } {
   const [machine, setMachine] = useState<MachineState>(() => {
     const opened = readView(opening.address ?? '', context([]));
@@ -58,7 +52,10 @@ export function useBoardMachine<Row>(
   }, [follow.reveal, follow.hidden, context]);
   useStoredWidths(setMachine, machine.view.widths, opening.widths ?? null, follow.onWidths);
   useFollow(machine.view, follow);
-  useUndoKeys(setMachine, context, follow.hidden === true);
+  // This board's own: its card, and the page's title row while its bar is there.
+  useUndoKeys(setMachine, context, follow.hidden === true, (node) =>
+    [card.current, follow.bar].some((own) => own?.contains(node) === true),
+  );
   return { machine, dispatch };
 }
 
@@ -78,38 +75,6 @@ function useFollow(view: BoardView, follow: Follow): void {
     written.current = next;
     onAddress?.(next);
   }, [view, onAddress, hidden]);
-}
-
-/**
- * ⌘Z and ⌘⇧Z (Ctrl on other systems) step the view anywhere on the page,
- * except in a field that has its own undo: the search field and any other.
- * A hidden board listens for neither.
- */
-function useUndoKeys<Row>(
-  setMachine: Dispatch<SetStateAction<MachineState>>,
-  context: (on: readonly string[]) => BoardContext<Row>,
-  hidden: boolean,
-): void {
-  useEffect(() => {
-    if (hidden) return;
-    const onKey = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest('[data-board-search], input, textarea, select, [contenteditable]') !== null
-      ) {
-        return;
-      }
-      event.preventDefault();
-      const type = event.shiftKey ? 'redo' : 'undo';
-      setMachine((current) => reduceBoard(current, { type }, context(current.view.ids)));
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [setMachine, context, hidden]);
 }
 
 /** The card's width: handed in, else measured as it resizes; a card drawn again is watched anew. */
