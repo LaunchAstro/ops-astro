@@ -16,7 +16,7 @@ import { renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_GPT_PROVIDER } from '../../packages/core-connectors/src/index.ts';
-import { parseCredentials } from '../../packages/core-custody/src/credentials.ts';
+import { parseCredentials } from '../../packages/core-custody/src/index.ts';
 import { codexLogin } from './codex.ts';
 import { createRunner, type Runner } from './runner.ts';
 import { readSettings, type RunnerSettings } from './settings.ts';
