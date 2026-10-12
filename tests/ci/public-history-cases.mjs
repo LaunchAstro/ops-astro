@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import './public-history-batch-cases.mjs';
 import { exportCandidate } from '../../scripts/candidate-snapshot.mjs';
-import { addressRules } from '../../scripts/public-content-check.mjs';
+import { addressRules } from '../../scripts/public-addresses.mjs';
 
 const source = resolve(import.meta.dirname, '../..');
 const guard = join(source, 'scripts/public-content-check.mjs');
