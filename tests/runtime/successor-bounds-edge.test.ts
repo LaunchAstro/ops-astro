@@ -119,7 +119,9 @@ describe.skipIf(serverUrl === undefined)('a successor whose purpose a proposal c
         where business_id = $1 and operation_id = $2`,
       [shaped.business, body['operationId']],
     );
-    expect(audited).toStrictEqual([{ outcome: 'refused', code: 'FIELD_VALUE_INVALID' }]);
+    expect(audited.map((row) => [row.outcome, row.code])).toStrictEqual([
+      ['refused', 'FIELD_VALUE_INVALID'],
+    ]);
     expect(await retainedCodes(shaped, picked['leaseId'])).toStrictEqual([]);
     expect(await handbackFootprint(shaped, picked['leaseId'])).toStrictEqual(before);
 
