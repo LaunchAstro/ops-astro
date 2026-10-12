@@ -4,11 +4,14 @@
 // task its delegation is for, and the agent identity it proposes as. A
 // proposal sent with no answer may have committed, so it is kept and sent
 // again under its own operation id, which replays it rather than opening a
-// second lineage and gate. Like the rest of the worker, this only shapes
-// calls to the API.
+// second lineage and gate. A worker that restarted, or a second copy on the
+// same delegation, knows nothing it sent: it looks in the queue first for its
+// own approved proposal, and while an earlier one still waits for a person the
+// server refuses another (`TRANSITION_NOT_PERMITTED`), which reads as nothing
+// to do yet. Like the rest of the worker, this only shapes calls to the API.
 
 import { randomUUID } from 'node:crypto';
-import type { Call, Unanswered } from './agent-call.ts';
+import type { Answered, Call, Unanswered } from './agent-call.ts';
 import type { UsageReporter } from './usage.ts';
 
 /** What one worker knows of its own proposing: who it is, and a proposal not yet answered. */
@@ -27,7 +30,16 @@ export type Proposed =
         readonly gateId: string;
       };
     }
+  /** Its own proposal, approved and in the queue: the next pass applies it. */
+  | { readonly queued: { readonly taskId: string } }
+  /** An earlier proposal still waits for a person. */
+  | { readonly idle: { readonly taskId: string } }
   | Unanswered;
+
+/** This agent's own proposal of the step in the queue on `taskId`, if it waits there. */
+export type Queued = (
+  taskId: string,
+) => Promise<{ readonly reservationId: unknown } | { readonly idle: unknown } | Unanswered>;
 
 /** The agent's own acting identity, read from its capabilities once and kept. */
 export async function selfOf(call: Call, mine: Proposer): Promise<string | Unanswered> {
@@ -44,8 +56,9 @@ export async function proposeStep(
   mine: Proposer,
   step: { readonly kind: string },
   reporter: Pick<UsageReporter, 'estimate'>,
+  queued: Queued,
 ): Promise<Proposed> {
-  mine.running ??= proposeAlone(call, mine, step, reporter).finally(() => {
+  mine.running ??= proposeAlone(call, mine, step, reporter, queued).finally(() => {
     mine.running = undefined;
   });
   return await mine.running;
@@ -77,6 +90,7 @@ async function proposeAlone(
   mine: Proposer,
   step: { readonly kind: string },
   reporter: Pick<UsageReporter, 'estimate'>,
+  queued: Queued,
 ): Promise<Proposed> {
   const capabilities = await call('session.capabilities', {});
   if (!('body' in capabilities)) return capabilities;
@@ -84,6 +98,10 @@ async function proposeAlone(
   if (mine.unanswered === undefined) {
     const scope = capabilities.body['purposeScope'] as { id?: unknown } | null | undefined;
     const recordId = String(scope?.id ?? '');
+    const own = await queued(recordId);
+    // A queue the agent may not read yet tells nothing: the proposal goes on as before.
+    if ('reservationId' in own) return { queued: { taskId: recordId } };
+    if ('fault' in own) return own;
     const read = await call('task.read', { recordId });
     if (!('body' in read)) return read;
     const task = read.detail['task'] as { revision?: unknown } | undefined;
@@ -110,10 +128,18 @@ async function proposeAlone(
     return proposed;
   }
   mine.unanswered = undefined;
+  return answered(sent.recordId, proposed);
+}
+
+/** A proposal the server settled: its gate, or a refusal while an earlier one still waits. */
+function answered(taskId: string, proposed: Answered | Unanswered): Proposed {
+  if ('refused' in proposed && proposed.refused.code === 'TRANSITION_NOT_PERMITTED') {
+    return { idle: { taskId } };
+  }
   if (!('body' in proposed)) return proposed;
   return {
     proposed: {
-      taskId: sent.recordId,
+      taskId,
       version: Number(proposed.detail['version']),
       gateId: String(proposed.detail['gateId']),
     },
