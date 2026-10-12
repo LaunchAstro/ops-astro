@@ -4,6 +4,7 @@ import { beforeAll, afterAll, expect, it } from 'vitest';
 import { chromium, type Browser } from 'playwright';
 import { createServer, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import { launchChromium } from '../support/chromium.ts';
 
 let server: ViteDevServer;
 let browser: Browser;
@@ -19,7 +20,7 @@ beforeAll(async () => {
   if (typeof address !== 'object' || address === null) throw new Error('no proof server');
   origin = `http://${process.env['SOL_BROWSER_HOST'] ?? '127.0.0.1'}:${address.port}`;
   const remote = process.env['SOL_BROWSER_WS'];
-  browser = remote === undefined ? await chromium.launch() : await chromium.connect(remote);
+  browser = remote === undefined ? await launchChromium() : await chromium.connect(remote);
 });
 afterAll(async () => {
   await browser?.close();
