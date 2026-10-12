@@ -53,7 +53,8 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
            and $1::int = any(pg_blocking_pids(pid))`,
           [held.pid],
         );
-        expect(wait?.query.toLowerCase()).toBe('commit');
+        // The wait is inside the write, before its last sign-in check, never at COMMIT.
+        expect(wait?.query.toLowerCase()).not.toBe('commit');
         // This is the no-membership sign-out path's production function. It
         // holds the session's ending key, and writes no business audit event.
         ending = w.db.app.withBusiness(w.business, async (tx) => {

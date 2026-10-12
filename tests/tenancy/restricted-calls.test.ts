@@ -672,12 +672,13 @@ async function roleClasses(
  * The security definer functions, by signature. WF-1 added the map read
  * models' four writers, so the summary and frontier tables have one writer and
  * the application only reads them; WF-2's decision item on a frontier move is
- * raised as that same role.
+ * raised, and a passing one taken back at commit, as that same role.
  */
 const DEFINERS: readonly string[] = [
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_frontier_raise_decision()',
+  'map_frontier_take_back_passing()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
   'map_summary_on_record()',
@@ -964,7 +965,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly thirteen, each with its search path pinned', () => {
+    it('are exactly fourteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 

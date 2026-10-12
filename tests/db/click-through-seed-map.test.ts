@@ -156,6 +156,7 @@ const READ_MODEL_FUNCTIONS = [
   'map_summary_on_map_part',
   'map_summary_on_link',
   'map_frontier_raise_decision',
+  'map_frontier_take_back_passing',
 ];
 
 function guardCases() {
@@ -184,7 +185,7 @@ const FUNCTION_FACTS = `select p.proname as fn, p.prosecdef as definer, p.procon
         where n.nspname = 'public' and p.proname = any($1) order by 1`;
 
 function roleCases() {
-  it('runs the four map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
+  it('runs the map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
     const functions = await world.db.admin.execute<Record<string, unknown>>(FUNCTION_FACTS, [
       READ_MODEL_FUNCTIONS,
     ]);
@@ -217,8 +218,8 @@ function roleCases() {
         group by c.relname order by 1`,
     );
     expect(held.map((row) => row.held)).toStrictEqual([
-      // WF-2's decision item, raised when a ticket stays on the frontier at commit.
-      'inbox_items:insert,select',
+      // WF-2's decision item, raised as a ticket lands on the frontier, taken back at commit if it left.
+      'inbox_items:delete,insert,select',
       'map_components:select',
       'map_frontier:delete,insert,select',
       'map_summaries:delete,insert,select,update',
