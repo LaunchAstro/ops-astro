@@ -43,6 +43,13 @@ const KIT_PLACED = [
   'visually-hidden',
 ];
 
+// The roles the kit's primitives render, with the classes they mark: a rule on
+// the role reaches the primitive as surely as one on its class.
+const KIT_ROLES: Readonly<Record<string, readonly string[]>> = {
+  tooltip: ['term__tip'],
+  region: ['tablewrap'],
+};
+
 const styles = (name: string): string =>
   readFileSync(join(process.cwd(), 'packages/ui/src/styles', name), 'utf8');
 
@@ -157,8 +164,8 @@ function take(cursor: Cursor, token: RegExp): string {
   return found;
 }
 
-// The classes an attribute selector, read from just past its `[`, names. Only
-// `class` counts, in any case or namespace. `~=` and `=` name their value's
+// The classes an attribute selector, read from just past its `[`, names:
+// `class`, in any case or namespace, and `role`, through the kit's roles. `~=` and `=` name their value's
 // classes (any of the kit's under the `i` flag). A bare `[class]`, `^=`, `$=`,
 // `*=` or `|=` can match a class list carrying any kit class beside the
 // pattern, as can a selector this reader cannot close, so it names them all.
@@ -174,9 +181,15 @@ function attributeNames(cursor: Cursor, kit: ReadonlySet<string>): string[] {
       .toLowerCase() === 'i';
   const closed = take(cursor, /^\]/u) !== '';
   if (!closed) take(cursor, /^[^\]]*\]?/u);
-  if (decoded(name).toLowerCase() !== 'class') return [];
-  if (!closed || (operator !== '=' && operator !== '~=')) return [...kit];
+  const attribute = decoded(name).toLowerCase();
   const tokens = value.split(/\s+/u).filter((token) => token !== '');
+  if (attribute === 'role') {
+    // A bare `[role]`, a pattern or an unclosed selector may reach any of them.
+    if (!closed || (operator !== '=' && operator !== '~=')) return Object.values(KIT_ROLES).flat();
+    return tokens.flatMap((token) => KIT_ROLES[loose ? token.toLowerCase() : token] ?? []);
+  }
+  if (attribute !== 'class') return [];
+  if (!closed || (operator !== '=' && operator !== '~=')) return [...kit];
   return tokens.flatMap((token) => {
     const same = [...kit].filter((kitClass) => kitClass.toLowerCase() === token.toLowerCase());
     return loose && same.length > 0 ? same : [token];
