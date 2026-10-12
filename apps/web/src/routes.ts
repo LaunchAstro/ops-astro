@@ -266,8 +266,9 @@ export function matchRoute(path: string): RouteMatch | null {
         matched = false;
         break;
       }
-      if (part.startsWith(':')) params[part.slice(1)] = decodeURIComponent(given);
-      else if (part !== given) {
+      const value = part.startsWith(':') ? decoded(given) : null;
+      if (value !== null) params[part.slice(1)] = value;
+      else if (part.startsWith(':') || part !== given) {
         matched = false;
         break;
       }
@@ -295,6 +296,15 @@ export function pathTo<Id extends RouteId>(
     path = path.replace(`:${name}`, encodeURIComponent(value));
   }
   return path;
+}
+
+/** One address segment decoded, or null for a broken escape, which names nothing. */
+export function decoded(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');

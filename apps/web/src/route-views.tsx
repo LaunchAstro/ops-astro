@@ -20,7 +20,7 @@ import {
 } from './manifest.ts';
 import { isLegacy } from './legacy.ts';
 import { RAIL_GLYPHS } from './rail-glyphs.ts';
-import { matchRoute, pathTo, type RouteMatch } from './routes.ts';
+import { decoded, matchRoute, pathTo, type RouteMatch } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
 /**
@@ -142,8 +142,9 @@ export function frameAt(bare: string, businessKey: string | null, access: Client
  * is shown in words, and only for a client the person may open.
  */
 export function stripClient(slug: string | null): StripClient | null {
-  if (slug === null) return null;
-  const name = decodeURIComponent(slug)
+  const words = slug === null ? null : decoded(slug);
+  if (words === null) return null;
+  const name = words
     .split('-')
     .filter((word) => word !== '')
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
