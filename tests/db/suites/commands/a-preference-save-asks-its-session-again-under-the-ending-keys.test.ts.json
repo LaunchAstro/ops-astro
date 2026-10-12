@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a preference save asks its session again under the chain and ending keys: a sign-out committed while it waited refuses it, a crash at the ask keeps nothing and records the failed attempt, and the same operation sent again applies once"
+}

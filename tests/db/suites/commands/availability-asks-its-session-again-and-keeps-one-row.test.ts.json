@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "availability asks its session again under the ending keys and upserts one row: a sign-out after the ask waits for the set, two sets at once leave the one the chain records last, and a crash at the ask or the write keeps nothing"
+}
