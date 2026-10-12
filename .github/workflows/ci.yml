@@ -526,9 +526,12 @@ jobs:
     # passed, and nowhere else: a failed gate skips the shards too, and
     # always() would otherwise pass that skip as green. A failure or a cancel
     # fails everywhere. docs/agents/database-conformance.md holds what the
-    # check means.
+    # check means. The isolation suites are named suites the `isolation tests`
+    # shards run, not these shards, so a group runs each once
+    # (scripts/db-shards.ts databaseItems); outside a pull request this passes
+    # only when those shards succeeded too.
     name: database conformance
-    needs: [gate, full, database-shard]
+    needs: [gate, full, database-shard, isolation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
@@ -537,12 +540,13 @@ jobs:
       - name: Every shard succeeded, or on a pull request whose gate passed none ran
         env:
           SHARDS: ${{ needs.database-shard.result }}
+          ISOLATION: ${{ needs.isolation.result }}
           GATE: ${{ needs.gate.result }}
           # The event reaches the script as a value, never as script text.
           EVENT: ${{ github.event_name }}
           SCOPE: ${{ needs.gate.outputs.scope }}
         run: |
-          echo "database conformance shards: $SHARDS, contamination gate: $GATE, scope: $SCOPE"
+          echo "database conformance shards: $SHARDS, isolation shards: $ISOLATION, contamination gate: $GATE, scope: $SCOPE"
           if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             if [ "$EVENT" = push ]; then
               echo "database conformance: a green merge group tested this tree"
@@ -556,6 +560,7 @@ jobs:
             exit 0
           fi
           test "$SHARDS" = success
+          test "$ISOLATION" = success
 
   licences:
     name: OSI licence allowlist
@@ -672,7 +677,9 @@ jobs:
 
   isolation:
     # The client-isolation, restricted-call, pooled-crossover and permission
-    # refusal suites (also in `database conformance`), named on their own.
+    # refusal suites, named on their own. They are named suites, and these
+    # shards are the only ones that run them: `database conformance` waits on
+    # this job rather than running them a second time.
     # In shards (CI-SHARDS-2): run whole it took 29 of the merge queue's 38
     # minutes, so each shard runs its share of the suites and of the steps
     # beside the runner, split by measured time (scripts/ci-shards.ts); every

@@ -51,8 +51,10 @@
 //   (scripts/named-suites.ts readIsolationSuites).
 //   DATABASE_URL  the database to run against. Required.
 //   --shard       run only shard i of n (scripts/db-shards.ts decides which
-//                 suites; for --isolation, scripts/ci-shards.ts). Rules 2 and
-//                 3 still read the whole manifest.
+//                 suites; for --isolation, scripts/ci-shards.ts). Without
+//                 --isolation or --manifest the shards leave the isolation
+//                 suites to the isolation shards. Rules 2 and 3 still read
+//                 the whole manifest.
 //   --list        print the run items it would run, one a line, and stop
 //                 before reaching the database (tests/ci/ci-shards.test.ts).
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
@@ -64,7 +66,14 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import pg from 'pg';
-import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
+import {
+  assignShards,
+  databaseItems,
+  itemOf,
+  parseShard,
+  planItems,
+  readPlan,
+} from './db-shards.ts';
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
 import { manifestPathIn, readIsolationSuites, readNamedSuites } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
@@ -126,13 +135,22 @@ const failures = [];
 // except 2 and 3, which read the whole manifest in every shard.
 const plan = readPlan(join(repoRoot, 'tests/db/shard-plan.json'));
 const items = planItems(named, plan.parts);
-/** This shard's items: an isolation shard's from the split beside its steps, which run outside this. */
+/**
+ * This shard's items: an isolation shard's from the split beside its steps,
+ * which run outside this; a database shard's from the repository's items but
+ * the isolation suites, which the isolation shards run. A given manifest is
+ * split whole.
+ */
 const shareOf = ({ index, count }) =>
   isolationRun
     ? (isolationShards(items, readShardPlan(repoRoot), count)[index - 1] ?? []).filter(
         (item) => !ISOLATION_STEPS.includes(item),
       )
-    : (assignShards(items, plan.seconds, count)[index - 1] ?? []);
+    : (assignShards(
+        manifestFlag === -1 ? databaseItems(items, readIsolationSuites(repoRoot).invariant) : items,
+        plan.seconds,
+        count,
+      )[index - 1] ?? []);
 const toRun = shard === undefined ? items : shareOf(shard);
 // Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
 // it never exits 0: a stray --list in a CI command fails that shard. It exits
