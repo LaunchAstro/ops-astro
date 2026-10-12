@@ -17,7 +17,6 @@
 // which shows a group left read-only; a change re-reads a group it shows departed as such.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { timeOf as positionOf } from '@launchastro/ui';
 import type { DirectThread, GroupAction, GroupThread, TeamConversations } from '@launchastro/ui';
 import type {
   ChatConversationView,
@@ -65,15 +64,15 @@ interface Reads {
   readonly messages: (conversationId: string, left: boolean) => void;
 }
 
-const timeOf = (iso: string | null | undefined, of = Date.parse): number | null =>
-  iso === null || iso === undefined ? null : of(iso);
+const timeOf = (iso: string | null | undefined): number | null =>
+  iso === null || iso === undefined ? null : Date.parse(iso);
 
-/** Whether the list says more than the messages held: a marker moved within a millisecond too. */
+/** Whether the list says more than the messages held: a newer message or a moved marker. */
 function stale(view: ChatConversationView, held: ChatMessagesResult | null | undefined): boolean {
   if (held === null || held === undefined) return true;
+  const newest = held.messages.at(-1)?.at;
   return (
-    timeOf(view.lastRead, positionOf) !== timeOf(held.lastRead, positionOf) ||
-    timeOf(view.lastMessageAt) !== timeOf(held.messages.at(-1)?.at)
+    timeOf(view.lastRead) !== timeOf(held.lastRead) || timeOf(view.lastMessageAt) !== timeOf(newest)
   );
 }
 

@@ -89,32 +89,11 @@ export interface NewComment {
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /**
- * The millisecond a conversation's next write is cut on, read under its lock (conversations.ts):
- * the wall clock, but never before the conversation's last message, its furthest read marker,
- * its latest member joining, or the millisecond after its latest member leaving. It only moves
- * forward, so a clock that steps back stamps nothing before a marker or membership boundary
- * already set, and cuts no boundary before a message already sent (`team/groups.ts`).
+ * A conversation message's time and place, read under its lock (conversations.ts):
+ * the wall clock, so a send that waited is stamped after the one before, and
+ * `created_at`, a strict order of writes that ranks one millisecond's messages.
  */
-export const conversationMillisecond = (
-  business: string,
-  commentType: string,
-  conversation: string,
-): string => `greatest(date_trunc('milliseconds', clock_timestamp()),
-  (select max(c.ts_1) from public.records c where c.business_id = ${business}
-      and c.record_type_id = ${commentType} and c.uuid_4 = ${conversation} and c.deleted_at is null),
-  (select greatest(date_trunc('milliseconds', max(m.last_read_at)), max(m.joined_at),
-                   max(m.left_at) + interval '1 millisecond')
-     from public.team_conversation_members m
-    where m.business_id = ${business} and m.conversation_id = ${conversation}))`;
-
-/**
- * A conversation message's time and place: its millisecond (`conversationMillisecond`), and
- * `created_at`, a strict order of writes that ranks one millisecond's messages. Both only move
- * forward: a message stamped in the millisecond of the last message or furthest marker ranks
- * after both, so it never hides behind a marker already set.
- */
-const CLOCK_TEXT = `to_char(${conversationMillisecond('$1', '$3', '($11::text)::uuid')}
-  at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
   from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 

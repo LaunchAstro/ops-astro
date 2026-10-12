@@ -164,12 +164,12 @@ export async function moveReadMarker(
   return moved.length > 0;
 }
 
-/** A time as ISO text to the millisecond, or with `US`, to the microsecond. */
-const iso = (time: string, digits = 'MS'): string =>
-  `to_char(${time} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.${digits}"Z"')`;
+/** A time as ISO text to the millisecond. */
+const iso = (time: string): string =>
+  `to_char(${time} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 
-/** The reader's marker, with the count of its millisecond's messages it covers (`shownAt`). */
-const LAST_READ = `regexp_replace(${iso('m.last_read_at', 'US')}, '000Z$', 'Z') as "lastRead"`;
+/** The reader's marker. */
+const LAST_READ = `${iso('m.last_read_at')} as "lastRead"`;
 
 /** The messages a member may read: written while they were a member, and live. */
 const MEMBER_READS = `

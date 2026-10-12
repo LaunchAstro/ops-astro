@@ -1,5 +1,0 @@
-{
-  "kind": "conformance",
-  "isolation": false,
-  "why": "A chat message sent while the database clock reads earlier than an existing read marker still sorts after that marker and counts as unread."
-}

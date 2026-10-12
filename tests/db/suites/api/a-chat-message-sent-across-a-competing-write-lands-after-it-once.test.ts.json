@@ -1,5 +1,0 @@
-{
-  "kind": "conformance",
-  "isolation": false,
-  "why": "A chat message sent while another connection holds its conversation for a marker move, a message or a member change lands after them on a clock that steps back; a send that dies before its commit leaves nothing; the same send twice posts once."
-}

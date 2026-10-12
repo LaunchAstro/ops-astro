@@ -67,29 +67,6 @@ const strip = ({ at, body }: { at: string; body: Record<string, unknown> }) => {
 };
 
 describe('C71 web (5) the live Team screen acts on what its reads say', () => {
-  it('the live Team screen can mark the unread message at a tied timestamp', async () => {
-    const api = server();
-    const direct = api.chats[DIRECT];
-    if (direct === undefined) throw new Error('direct fixture absent');
-    // The exact response shape from the database tie proof: one of two messages is read.
-    direct.view['lastRead'] = '2026-10-01T10:00:00.000001Z';
-    direct.view['lastMessageAt'] = '2026-10-01T10:00:00.000Z';
-    direct.view['unread'] = 1;
-    for (const message of direct.messages) message.at = '2026-10-01T10:00:00.000002Z';
-    view = await mount(<TeamScreen client={api.client} grantKey="alpha:ana" />);
-    const m = view;
-    await until('the conversations loaded', () => shown(m).length > 0);
-    await m.click('[data-person="p-bo"] .tmc__face');
-    await until('both tied messages shown', () => shown(m).length === 2);
-    await m.click('.tmc__conv .tmc__scroll');
-    await settle();
-    expect(api.sent.map(strip)).toContainEqual({
-      at: '/chat/mark_read',
-      conversationId: DIRECT,
-      upTo: '2026-10-01T10:00:00.000002Z',
-    });
-  });
-
   it('the live Team screen offers management when the group read authorises it', async () => {
     const api = server();
     const group = api.chats[GROUP];

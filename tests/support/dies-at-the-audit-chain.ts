@@ -3,14 +3,11 @@
 // A command that dies after its writes and before its commit. A fixture
 // transaction on its own connection holds what the command's last writes
 // need: the business's audit-chain lock (the trigger's transaction-scoped
-// advisory key), or, for a command that writes no applied event, its own
-// register row's identity, claimed and not yet committed. The command makes
-// every other write it makes and parks there. The parked statement is
-// cancelled, so the server aborts the transaction at that step as a crash
-// would (the connection stays up, so the pool lives on), and the hold is let
-// go. What the command wrote must be gone.
+// advisory key). The command makes every other write it makes and parks
+// there. The parked statement is cancelled, so the server aborts the
+// transaction at that step as a crash would (the connection stays up, so the
+// pool lives on), and the hold is let go. What the command wrote must be gone.
 
-import { randomUUID } from 'node:crypto';
 import type {
   AdminConnection,
   TenantQuery,
@@ -71,29 +68,6 @@ export async function diesAtTheAuditChain<T>(
     ending: 'commit',
     event: 'advisory',
     statement: 'insert into audit_events',
-  };
-  return await diesParkedAt(db, businessId, park, run);
-}
-
-/** `run`'s answer once its transaction died while it waited to write its own register row. */
-export async function diesAtItsRegisterRow<T>(
-  db: ChainDatabase,
-  businessId: string,
-  attempt: { readonly actorId: string; readonly operationId: string; readonly command: string },
-  run: () => Promise<T>,
-): Promise<Died<T>> {
-  const take = async (tx: TenantQuery): Promise<void> => {
-    await tx.query(
-      `insert into operations (business_id, id, operation_id, command, actor_id, payload_digest,
-         outcome, result) values ($1, $2, $3, $4, $5, repeat('0', 64), 'refused', '{"code":"HELD"}')`,
-      [businessId, randomUUID(), attempt.operationId, attempt.command, attempt.actorId],
-    );
-  };
-  const park: Park = {
-    take,
-    ending: 'rollback',
-    event: 'transactionid',
-    statement: 'insert into operations',
   };
   return await diesParkedAt(db, businessId, park, run);
 }
