@@ -10,6 +10,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -23,8 +24,24 @@ const NOBODY: readonly PresenceView[] = [];
 const Seen = createContext<readonly PresenceView[]>(NOBODY);
 const Show = createContext<((seen: readonly PresenceView[]) => void) | null>(null);
 
-export function PagePresenceProvider(props: { readonly children: ReactNode }): ReactElement {
-  const [seen, show] = useState<readonly PresenceView[]>(NOBODY);
+/**
+ * `owner` is the tab's grant key. The viewers are held for the owner whose page
+ * showed them, so a business or person switch draws nobody at once rather than
+ * the previous page's viewers until that page's cleanup runs.
+ */
+export function PagePresenceProvider(props: {
+  readonly owner: string;
+  readonly children: ReactNode;
+}): ReactElement {
+  const { owner } = props;
+  const [held, setHeld] = useState({ owner, seen: NOBODY });
+  const seen = held.owner === owner ? held.seen : NOBODY;
+  const show = useCallback(
+    (next: readonly PresenceView[]) => {
+      setHeld({ owner, seen: next });
+    },
+    [owner],
+  );
   return (
     <Show.Provider value={show}>
       <Seen.Provider value={seen}>{props.children}</Seen.Provider>
