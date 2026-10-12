@@ -14,6 +14,7 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Card, Empty, StatusMark, Table } from '@launchastro/ui';
+import { initialState } from '../data/authorised-read.ts';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -159,7 +160,7 @@ function Incidents(props: {
 export function OperationsScreen(props: OperationsScreenProps): ReactElement {
   const { client, grantKey } = props;
   const pin = runbookPinOf(props.address);
-  const { state, reload } = useRead<OperationsReadResult>({
+  const { state, reload, own } = useRead<OperationsReadResult>({
     grantKey,
     run: () => client.read<OperationsReadResult>('operations.read', pin ?? {}),
     deps: [client, pin?.runbookVersion, pin?.runbookDigest],
@@ -171,7 +172,12 @@ export function OperationsScreen(props: OperationsScreenProps): ReactElement {
         What needs an operator in {client.businessKey}: unattended items, privacy incidents and
         service health.
       </p>
-      <RecordState state={state} subject="the operations view" onRetry={reload}>
+      {/* Until the read is this address's own, an earlier link's runbook is not drawn under it. */}
+      <RecordState
+        state={own ? state : initialState<OperationsReadResult>(grantKey)}
+        subject="the operations view"
+        onRetry={reload}
+      >
         {(result) => (
           <>
             <Unattended items={result.unattended} />
