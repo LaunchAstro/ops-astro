@@ -129,4 +129,15 @@ describe('a rename pressed again', () => {
     expect(api.sent).toHaveLength(2);
     expect(idOf(api.sent, 1)).not.toBe(idOf(api.sent, 0));
   });
+
+  it('after the server stored it with the answer lost is the same operation, answered as stored', async () => {
+    const api = world();
+    const { view, counted } = await panelName(api);
+    api.fates.push('lose');
+    await rename(view, 'New name');
+    expect(await renameAgain(view)).toBe('New name');
+    expect(idOf(api.sent, 1)).toBe(idOf(api.sent, 0));
+    expect(view.find('[role="alert"]')).toBeNull();
+    expect(counted.changed).toBe(1);
+  });
 });
