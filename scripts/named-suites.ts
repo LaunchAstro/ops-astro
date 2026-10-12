@@ -72,6 +72,8 @@ export const manifestPathIn = (root: string): string =>
       ? join(root, FOLDER)
       : join(root, SINGLE);
 
+type Kept = Record<string, unknown>;
+
 /** A manifest's list of `kind`: absent is empty, and anything but an array of strings is refused. */
 export function suiteList(file: string, kind: string, value: unknown): string[] {
   if (value === undefined) return [];
@@ -88,21 +90,15 @@ export function readNamedSuites(root: string): NamedSuites {
     const of = (kind: 'invariant' | 'conformance') =>
       files.filter((entry) => entry.kind === kind).map((entry) => entry.suite);
     const history = join(root, SUITES_HISTORY);
-    const comment = existsSync(history)
-      ? suiteList(
-          SUITES_HISTORY,
-          'comment',
-          (JSON.parse(readFileSync(history, 'utf8')) as Record<string, unknown>)['comment'],
-        )
-      : [];
+    const read = existsSync(history) ? (JSON.parse(readFileSync(history, 'utf8')) as Kept) : {};
     return {
-      comment,
+      comment: suiteList(SUITES_HISTORY, 'comment', read['comment']),
       invariant: of('invariant').toSorted(),
       conformance: of('conformance').toSorted(),
     };
   }
   if (existsSync(join(root, FOLDER))) return readFolder(root);
-  const manifest = JSON.parse(readFileSync(join(root, SINGLE), 'utf8')) as Record<string, unknown>;
+  const manifest = JSON.parse(readFileSync(join(root, SINGLE), 'utf8')) as Kept;
   return {
     comment: suiteList(SINGLE, 'comment', manifest['comment']),
     invariant: suiteList(SINGLE, 'invariant', manifest['invariant']),
@@ -251,10 +247,7 @@ export function readIsolationSuites(root: string): { invariant: string[] } {
     const files = readSuiteFiles(root, [FOLDER, SINGLE, ISOLATION]);
     return { invariant: files.filter((entry) => entry.isolation).map((entry) => entry.suite) };
   }
-  const manifest = JSON.parse(readFileSync(join(root, ISOLATION), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+  const manifest = JSON.parse(readFileSync(join(root, ISOLATION), 'utf8')) as Kept;
   return { invariant: suiteList(ISOLATION, 'invariant', manifest['invariant']) };
 }
 
