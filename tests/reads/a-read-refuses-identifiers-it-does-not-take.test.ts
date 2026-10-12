@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { READ_BODY_FIXES } from '../../packages/core-commands/src/reads/dispatch.ts';
 import type { ReadRequest } from '../../packages/core-commands/src/reads/requests.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -42,6 +43,25 @@ afterAll(async () => {
 const ask = async (request: Readonly<Record<string, unknown>>) =>
   await executeRead(db.app, business, member.presented, request as unknown as ReadRequest);
 
+/** The refusal and nothing else: no content beside it. */
+const bodyInvalid = (field: string) => ({
+  refused: true,
+  code: 'COMMAND_BODY_INVALID',
+  names: [field],
+  fixes: READ_BODY_FIXES,
+});
+
+/** The member's refused audit rows for this read, newest last. */
+const refusedRows = async (read: string): Promise<readonly string[]> =>
+  (
+    await db.admin.execute<{ readonly code: string }>(
+      `select refusal_code as code from public.audit_events
+        where business_id = $1 and actor_id = $2 and command = $3 and outcome = 'refused'
+        order by seq`,
+      [business, member.actorId, read],
+    )
+  ).map((row) => row.code);
+
 const READ_IDENTIFIERS = ['person', 'client', 'runId', 'attemptId', 'incidentId', 'correctionId'];
 
 it.skipIf(serverUrl === undefined)(
@@ -50,17 +70,18 @@ it.skipIf(serverUrl === undefined)(
     for (const field of READ_IDENTIFIERS) {
       // oxlint-disable-next-line no-await-in-loop
       const answer = await ask({ read: 'task.search', query: 'anything', [field]: randomUUID() });
-      expect(answer, field).toStrictEqual(
-        expect.objectContaining({ refused: true, code: 'COMMAND_BODY_INVALID', names: [field] }),
-      );
+      expect(answer, field).toStrictEqual(bodyInvalid(field));
     }
+    expect(await refusedRows('task.search')).toStrictEqual(
+      READ_IDENTIFIERS.map(() => 'COMMAND_BODY_INVALID'),
+    );
   },
   120_000,
 );
 
 it.skipIf(serverUrl === undefined)('a null read identifier counts as sent', async () => {
   const answer = await ask({ read: 'task.search', query: 'anything', client: null });
-  expect(answer).toMatchObject({ refused: true, code: 'COMMAND_BODY_INVALID', names: ['client'] });
+  expect(answer).toStrictEqual(bodyInvalid('client'));
 });
 
 it.skipIf(serverUrl === undefined)(
@@ -68,10 +89,12 @@ it.skipIf(serverUrl === undefined)(
   async () => {
     expect(
       await ask({ read: 'harness.read', runId: randomUUID(), incidentId: randomUUID() }),
-    ).toMatchObject({ refused: true, code: 'COMMAND_BODY_INVALID', names: ['incidentId'] });
+    ).toStrictEqual(bodyInvalid('incidentId'));
     expect(
       await ask({ read: 'task.receipt', attemptId: randomUUID(), runId: randomUUID() }),
-    ).toMatchObject({ refused: true, code: 'COMMAND_BODY_INVALID', names: ['runId'] });
+    ).toStrictEqual(bodyInvalid('runId'));
+    expect(await refusedRows('harness.read')).toContain('COMMAND_BODY_INVALID');
+    expect(await refusedRows('task.receipt')).toContain('COMMAND_BODY_INVALID');
   },
 );
 
