@@ -230,9 +230,8 @@ function checked(): void {
 const hex = (bytes: number): string => randomBytes(bytes).toString('hex');
 
 /**
- * A run's own secrets and first-start keys, in a file only its owner may read.
- * A target already up keeps its volumes, made with the file's secrets and keys,
- * so an `up` again keeps them too and changes only the port.
+ * A run's own secrets and first-start keys, in a file only its owner may read;
+ * an `up` again keeps them, as Compose keeps the volumes, and changes the port.
  */
 function runSettings(port: number): string {
   const kept = existsSync(ENV_FILE)
@@ -240,48 +239,47 @@ function runSettings(port: number): string {
         .split('\n')
         .filter((line) => line !== '' && !line.startsWith('TRACE_TARGET_PORT='))
     : undefined;
-  const lines = [`TRACE_TARGET_PORT=${String(port)}`, ...(kept ?? firstSettings())];
+  const lines = [
+    `TRACE_TARGET_PORT=${String(port)}`,
+    ...(kept ?? [
+      ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
+        (store) => `TRACE_TARGET_${store}_PASSWORD=${hex(16)}`,
+      ),
+      `TRACE_TARGET_SALT=${hex(16)}`,
+      `TRACE_TARGET_ENCRYPTION_KEY=${hex(32)}`,
+      `TRACE_TARGET_NEXTAUTH_SECRET=${hex(32)}`,
+      'LANGFUSE_INIT_ORG_ID=aw13-local',
+      'LANGFUSE_INIT_ORG_NAME=aw13-local',
+      'LANGFUSE_INIT_PROJECT_ID=aw13-local',
+      'LANGFUSE_INIT_PROJECT_NAME=aw13-local',
+      `LANGFUSE_INIT_PROJECT_PUBLIC_KEY=pk-lf-${hex(12)}`,
+      `LANGFUSE_INIT_PROJECT_SECRET_KEY=sk-lf-${hex(24)}`,
+      'LANGFUSE_INIT_USER_EMAIL=operator@example.invalid',
+      'LANGFUSE_INIT_USER_NAME=operator',
+      `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
+    ]),
+  ];
   mkdirSync(dirname(ENV_FILE), { recursive: true });
   writeFileSync(ENV_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
   return ENV_FILE;
 }
 
-/** The secrets and first-start keys of a target not yet made. */
-function firstSettings(): string[] {
-  return [
-    ...['POSTGRES', 'CLICKHOUSE', 'MINIO', 'REDIS'].map(
-      (store) => `TRACE_TARGET_${store}_PASSWORD=${hex(16)}`,
-    ),
-    `TRACE_TARGET_SALT=${hex(16)}`,
-    `TRACE_TARGET_ENCRYPTION_KEY=${hex(32)}`,
-    `TRACE_TARGET_NEXTAUTH_SECRET=${hex(32)}`,
-    'LANGFUSE_INIT_ORG_ID=aw13-local',
-    'LANGFUSE_INIT_ORG_NAME=aw13-local',
-    'LANGFUSE_INIT_PROJECT_ID=aw13-local',
-    'LANGFUSE_INIT_PROJECT_NAME=aw13-local',
-    `LANGFUSE_INIT_PROJECT_PUBLIC_KEY=pk-lf-${hex(12)}`,
-    `LANGFUSE_INIT_PROJECT_SECRET_KEY=sk-lf-${hex(24)}`,
-    'LANGFUSE_INIT_USER_EMAIL=operator@example.invalid',
-    'LANGFUSE_INIT_USER_NAME=operator',
-    `LANGFUSE_INIT_USER_PASSWORD=${hex(16)}`,
-  ];
-}
-
+// A shell value of a name the model reads beats the settings file and the default
+// the pin check read (a raw event prefix outside the 14-day rule, say): none goes.
 function compose(...args: string[]): void {
+  const model = readFileSync(join(HERE, 'profile.resolved.json'), 'utf8');
+  const read = new Set([...model.matchAll(/\$\{([A-Z0-9_]+)/gu)].map(([, name]) => name));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !read.has(name)));
   execFileSync(
     'docker',
     ['compose', '-p', PROJECT, '-f', 'profile.resolved.json', '--env-file', ENV_FILE, ...args],
-    {
-      cwd: HERE,
-      stdio: 'inherit',
-    },
+    { cwd: HERE, env, stdio: 'inherit' },
   );
 }
 
 // `node scripts/local/trace-target.ts check | up <port> | down`: check the pin,
 // start the disposable target on a loopback port with generated secrets
-// (`.local/trace-target.env`, kept by an `up` again), or destroy it with every
-// volume and that file.
+// (`.local/trace-target.env`), or destroy it with every volume and that file.
 if (import.meta.main) {
   const [command, port] = process.argv.slice(2);
   checked();
