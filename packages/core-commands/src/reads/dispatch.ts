@@ -191,7 +191,7 @@ async function admit<K extends ReadName>(
   // HTTP boundary, it is audited like every other refused read (I13).
   const parsed = row.parse(body);
   if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
-  const operands = canonicalIds(parsed.operands);
+  const operands = canonicalIds(parsed.operands, row.identifiers);
   const readied = await ready(tx, session, row, operands);
   const refused = (outcome: CommandRefusal): Refused => ({
     outcome,
