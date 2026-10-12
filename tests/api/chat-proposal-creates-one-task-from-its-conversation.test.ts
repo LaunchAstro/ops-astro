@@ -162,7 +162,7 @@ describe.skipIf(serverUrl === undefined)('chat proposal on the stand-in model', 
     expect(JSON.stringify(created?.['pointers'])).toContain(taskId);
   });
 
-  it('a reply’s edit applies to the chat’s own task at its question’s revision, once, and to no other task (Sol F5)', async () => {
+  it('a reply’s edit applies to the chat’s own task at its question’s revision, once, and to no other task', async () => {
     const own = await make('Spring brief');
     const other = await make('Autumn brief');
     says = block('{"action":"edit","title":"Spring brief, second draft"}');
@@ -192,7 +192,7 @@ describe.skipIf(serverUrl === undefined)('chat proposal on the stand-in model', 
     expect(await tasksTitled('Autumn brief')).toBe(1);
   });
 
-  it('Sol F4: an edit whose task changed after the question is refused as stale and overwrites nothing', async () => {
+  it('an edit whose task changed after the question is refused as stale and overwrites nothing', async () => {
     const own = await make('Winter brief');
     says = block('{"action":"edit","title":"Winter brief, from the chat"}');
     const { reply, proposal } = await asked(own.id);

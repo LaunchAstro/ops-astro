@@ -58,7 +58,7 @@ describe('chat proposal edit', () => {
     expect(page.find('[data-proposal="done"]')?.textContent).toContain('Task updated');
   });
 
-  it('Sol F4: a task changed after the question keeps the card’s revision, and the stale refusal applies nothing and offers no click', async () => {
+  it('a task changed after the question keeps the card’s revision, and the stale refusal applies nothing and offers no click', async () => {
     let revision = 7;
     const { page, ask, click, writes } = await drawer(
       {
@@ -79,7 +79,7 @@ describe('chat proposal edit', () => {
     expect(page.find('[data-proposal="task"]')).toBeNull();
   });
 
-  it('Sol F5: an edit whose click got no answer is sent again with the same operation id and revision, even once the task has moved', async () => {
+  it('an edit whose click got no answer is sent again with the same operation id and revision, even once the task has moved', async () => {
     let revision = 7;
     const { page, ask, click, writes } = await drawer(
       {
@@ -104,7 +104,7 @@ describe('chat proposal edit', () => {
     });
   });
 
-  it('Sol F5, F6: after a reload a kept edit card sends the write its live card would, from the baseline kept in the tab', async () => {
+  it('after a reload a kept edit card sends the write its live card would, from the baseline kept in the tab', async () => {
     const live = await drawer({ replies: [answered(EDIT)] }, true);
     await live.ask('Rename this for the second draft');
     await live.page.unmount();
