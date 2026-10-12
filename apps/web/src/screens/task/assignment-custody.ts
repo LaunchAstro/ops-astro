@@ -22,6 +22,8 @@ export interface AssignmentHold {
   readonly uncertain: boolean;
   readonly failure: Failure | null;
   readonly kept: boolean;
+  /** Let go by the person while its stored copy could not be cleared: cleanup only. */
+  readonly abandoned: boolean;
 }
 interface AssignmentState {
   readonly holds: ReadonlyMap<string, AssignmentHold>;
@@ -33,6 +35,7 @@ export const EMPTY_ASSIGNMENT: AssignmentHold = {
   uncertain: false,
   failure: null,
   kept: true,
+  abandoned: false,
 };
 const KEY = 'ops-astro.assignment-attempts';
 
@@ -68,6 +71,7 @@ export class AssignmentCustody {
   readonly #owner: string;
   readonly #storage: StorageLike | null;
   readonly #memoryOnly: boolean;
+  readonly #lenient: boolean;
   readonly #generation = tabOwnerGeneration();
   readonly #listeners = new Set<() => void>();
   #state: AssignmentState = { holds: new Map(), changed: 0 };
@@ -79,12 +83,16 @@ export class AssignmentCustody {
     client: OperationsClient,
     owner: string,
     storage: StorageLike | null,
+    /** Recovery stays in memory: nothing is written to tab storage. */
     memoryOnly = false,
+    /** Only the isolated board row sender: an assignment may go without a revision. */
+    lenient = false,
   ) {
     this.#client = client;
     this.#owner = owner;
     this.#storage = storage;
     this.#memoryOnly = memoryOnly;
+    this.#lenient = lenient;
     const value = jsonSlot(storage, KEY, isRecord).read();
     if (value?.['version'] !== 1 || value['owner'] !== owner || !isRecord(value['tasks'])) return;
     const holds = new Map<string, AssignmentHold>();
@@ -151,7 +159,7 @@ export class AssignmentCustody {
       previous.pending !== null ||
       !previous.kept ||
       previous.failure?.kind === 'closed' ||
-      (revision === undefined && !this.#memoryOnly)
+      (revision === undefined && !this.#lenient)
     )
       return;
     const pending = Object.freeze({
@@ -166,8 +174,20 @@ export class AssignmentCustody {
     const hold = this.#state.holds.get(id) ?? EMPTY_ASSIGNMENT;
     if (!this.#current() || hold.busy) return;
     if (hold.pending !== null) return await this.#post(id, hold.pending);
-    if (!hold.kept) this.#put(id, { ...hold, kept: this.#save() });
+    if (hold.kept) return undefined;
+    const kept = this.#save();
+    this.#put(id, { ...hold, kept, abandoned: hold.abandoned && !kept });
     return undefined;
+  }
+
+  /** Stop waiting: drops only this held attempt and rewrites the stored copy without it. */
+  letGo(id: string, operationId: string): void {
+    const hold = this.#state.holds.get(id) ?? EMPTY_ASSIGNMENT;
+    if (!this.#current() || hold.busy || hold.pending?.operationId !== operationId) return;
+    const next = { ...EMPTY_ASSIGNMENT };
+    this.#put(id, next);
+    const kept = this.#save();
+    this.#put(id, { ...next, kept, abandoned: !kept });
   }
 
   async #post(id: string, pending: PendingAssignment): Promise<Settlement | undefined> {
@@ -206,6 +226,7 @@ export class AssignmentCustody {
       uncertain: unknown,
       failure: answer.kind === 'ok' ? null : answer,
       kept: true,
+      abandoned: false,
     };
     this.#put(id, next);
     const kept = this.#save();
