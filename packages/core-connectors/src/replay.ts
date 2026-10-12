@@ -113,9 +113,9 @@ export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
   // `message` is the person's own typed words; `earlier` this conversation's earlier messages,
   // the person's words and the agent's replies; `page` the id and title of the task the
   // conversation is on, and nothing else of it. Each is any string a person typed, so free
-  // text: local routes only, or LA-1's laptop carve-out. Unpriced, as the seam requires (#1508).
+  // text: local routes only, or LA-1's laptop carve-out. The stand-in prices every answer
+  // (`replayCostMinor`), so it keeps the compose's priced maximum, and the seam refuses it (#1508).
   fields: { page: 'free_text', earlier: 'free_text', message: 'free_text' },
-  maximumMinor: 0,
 };
 
 /** The price of an answer, in minor units, from what the provider says it used. Never above the maximum. */

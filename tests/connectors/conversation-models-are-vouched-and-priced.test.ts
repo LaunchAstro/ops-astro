@@ -39,10 +39,11 @@ describe('CS-7.30 the conversation model catalogue', () => {
       [LOCAL_GPT_CONVERSATION.provider, LOCAL_GPT_CONVERSATION],
       [OLLAMA_PROVIDER, OLLAMA_CONVERSATION],
     ]);
-    // #1508, option B: every conversation model is unpriced.
-    expect(CONVERSATION_MODELS.map((model) => model.ceilingMinor)).toStrictEqual(
-      CONVERSATION_MODELS.map(() => 0),
+    // #1508, option B: every real provider's model is unpriced; the stand-in's is priced, and refused.
+    const real = CONVERSATION_MODELS.filter(
+      (model) => model.provider !== CONVERSATION_ANSWER.provider,
     );
+    expect(real.map((model) => model.ceilingMinor)).toStrictEqual(real.map(() => 0));
     for (const model of CONVERSATION_MODELS) {
       expect(readModelId(model.id)).toBe(model.id);
       expect(model.ceilingMinor).toBe(operations.get(model.provider)?.maximumMinor);

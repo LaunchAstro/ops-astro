@@ -78,7 +78,8 @@ export async function localModel(
   const exchange = conversationExchange({
     custody,
     operations: catalogue([
-      answer === undefined ? CONVERSATION_ANSWER : { ...CONVERSATION_ANSWER, answer },
+      // Priced at nothing below, so declared at zero, as the seam requires (#1508, option B).
+      { ...CONVERSATION_ANSWER, maximumMinor: 0, ...(answer === undefined ? {} : { answer }) },
     ]),
     providers: new Map([['replay', { build: replayAdapter, price: () => 0 }]]),
     routes: settings.routes,
