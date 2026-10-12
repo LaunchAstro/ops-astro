@@ -10,9 +10,8 @@
 // four-eyes band is T2e's stored setting, read and not restated; a lost
 // response replays by operation identity; absence proved resumes the work
 // while the first hold stays unknown until a person writes it off (O6); two
-// people writing off at once have exactly one winner; a write-off racing a
-// recorded outcome charges the hold once (a write-off first still lets the
-// outcome decide the work).
+// people writing off at once, and a write-off racing a recorded outcome, have
+// exactly one winner.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -235,7 +234,7 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
     }
   });
 
-  it('two people writing off at once have one winner, and a write-off racing a recorded outcome charges once', async () => {
+  it('two people writing off at once, and a write-off racing a recorded outcome: exactly one winner', async () => {
     const other = racer(s);
     try {
       const w = await h.unknownStep({ applied: false });
@@ -255,12 +254,7 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
         h.outcome(raced, 'happened_differently'),
       ]);
       const answers = pair.map((one) => (one.status === 'fulfilled' ? codeOf(one.value) : 'threw'));
-      // The outcome first leaves nothing to write off; a write-off first keeps its charge and
-      // the outcome still decides the work. Either way the hold is charged once.
-      expect([
-        ['LIABILITY_NOT_UNKNOWN', 'applied'],
-        ['applied', 'applied'],
-      ]).toContainEqual(answers.toSorted());
+      expect(answers.toSorted()).toStrictEqual(['LIABILITY_NOT_UNKNOWN', 'applied']);
       expect(await holdOf(s, raced)).toMatchObject({ reservation_state: 'actual' });
     } finally {
       await other.close();

@@ -7,9 +7,7 @@
 // whole hold is spent, the work is finished, and a replacement the pass
 // reserved is stopped before it dispatches) or it happened differently (the
 // whole hold is spent, the work reopens). An unknown effect not yet known is
-// no fourth outcome: it keeps its stop. A step a person wrote off still takes
-// its outcome later: the write-off's charge stands, and the outcome decides
-// only the work.
+// no fourth outcome: it keeps its stop.
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
@@ -113,45 +111,6 @@ async function stopReplacement(tx: TenantQuery, one: Replacement, causeId: strin
   await release(tx, one, causeId);
 }
 
-/** Whether the step's hold was closed by a person's write-off (`write-off.ts`). */
-async function writtenOff(tx: TenantQuery, row: Unknown): Promise<boolean> {
-  const [hold] = await tx.query<{ readonly written_off: boolean }>(
-    `select classified_cause is not distinct from 'written_off' as written_off
-       from public.reservations where business_id = $1 and id = $2`,
-    [tx.businessId, row.reservation_id],
-  );
-  return hold?.written_off === true;
-}
-
-/**
- * The outcome of a step already written off: no money moves, the charge
- * stands. Nothing happened, or it happened differently, resumes the work on a
- * fresh hold within the budget, unless the step already went on (an absence
- * the pass proved, or an outcome recorded before), so a second answer resumes
- * nothing.
- */
-async function afterWriteOff(
-  tx: TenantQuery,
-  row: Unknown,
-  outcome: RecordedOutcome,
-): Promise<OutcomeRecorded> {
-  const [later] = await tx.query<{ readonly went_on: boolean }>(
-    `select exists (select 1 from public.attempts a
-                      join public.reservations r on r.business_id = a.business_id
-                                                and r.id = a.reservation_id
-                     where a.business_id = $1 and r.run_id = $2 and a.step_id = $3
-                       and a.id <> $4) as went_on`,
-    [tx.businessId, row.run_id, row.step_id, row.attempt_id],
-  );
-  const resumes = outcome !== 'happened' && !row.absence_proved && later?.went_on !== true;
-  return {
-    attemptId: row.attempt_id,
-    outcome,
-    settlement: settledAt(BigInt(row.held_minor), BigInt(row.spent_minor)),
-    resumed: resumes ? await resume(tx, { ...row, spent_minor: '0' }, false) : null,
-  };
-}
-
 export interface OutcomeRequest {
   readonly taskId: string;
   readonly attemptId: string;
@@ -216,9 +175,7 @@ export async function recordOutcome(
       'A person holding budget permission on this task records it.',
     );
   }
-  const closed = row !== undefined && row.attempt_state !== 'liability_unknown';
-  const wroteOff = closed && (await writtenOff(tx, row));
-  if (row === undefined || (!wroteOff && (closed || row.reservation_state !== 'held'))) {
+  if (row?.attempt_state !== 'liability_unknown' || row.reservation_state !== 'held') {
     return refuse(
       'LIABILITY_NOT_UNKNOWN',
       'this attempt is not held as an unknown liability',
@@ -240,7 +197,6 @@ export async function recordOutcome(
       await stopReplacement(tx, one, row.attempt_id);
     }
   }
-  if (wroteOff) return { ok: true, value: await afterWriteOff(tx, row, request.outcome) };
   const settlement =
     request.outcome === 'nothing_happened'
       ? await release(tx, row)
