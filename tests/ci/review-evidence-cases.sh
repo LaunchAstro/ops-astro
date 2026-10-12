@@ -1094,6 +1094,20 @@ for claim in "Code review: no findings" "Security review: run against $HEAD, no 
   "The review passed."; do
   run_case "domain first: contradictory review claim '$claim' refuses" 1 "$DEFER_BODY$P2$claim" "README.md"
 done
+# A pasted checkpoint names files and commit subjects; words in them are no claim.
+CHECKPOINT_FENCE="$FENCE
+Review checkpoint
+  head:        $HEAD
+  commits:     1
+    53307ba15 test(gate): a slow Git read on a busy machine is not a bad approval
+  files:
+    tests/x/approval-at-commit.test.ts
+    tests/y/accepted-and-reviewed-paths.test.ts
+$FENCE"
+run_case "domain first: approval words in a checkpoint's paths and subjects are no claim" 0 "$CHECKPOINT_FENCE$P2$DEFERRAL" "README.md"
+for claim in "Approved by the second model." "The fix was reviewed." "Code review: no findings"; do
+  run_case "domain first: a claim beside a checkpoint still refuses: '$claim'" 1 "$CHECKPOINT_FENCE$P2$claim$P2$DEFERRAL" "README.md"
+done
 for hidden in "- $DEFERRAL" "> $DEFERRAL" "\`$DEFERRAL\`" "<!--$P2$DEFERRAL$P2-->"; do
   run_case "domain first: valid marker plus hidden second marker refuses" 1 "$DEFER_BODY$P2$hidden" "README.md"
 done
@@ -1126,7 +1140,13 @@ run_case "domain first: unknown builder company refuses" 1 "$DEFER_BODY" "README
 BUILDER=""
 run_case "domain first: missing builder provenance refuses" 1 "$DEFER_BODY" "README.md"
 BUILDER=$'gpt-6.1-sol\nclaude-opus-5-5'
+LABELS=$'needs-second-model\nneeds-sol\nunreviewed'
 run_case "domain first: truthful mixed builder companies pass" 0 "$DEFER_BODY" "README.md"
+for labels in $'needs-second-model\nunreviewed' $'needs-sol\nunreviewed'; do
+  LABELS="$labels"
+  run_case "domain first: a build by both companies owes both reviews, not only '${labels%%$'\n'*}'" 1 "$DEFER_BODY" "README.md"
+done
+LABELS=$'needs-second-model\nunreviewed'
 BUILDER=claude-opus-5-5
 LABELS=$'needs-sol\nunreviewed'
 run_case "domain first: Anthropic build owes Sol and passes" 0 "$DEFER_BODY" "README.md"
