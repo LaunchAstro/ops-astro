@@ -203,20 +203,28 @@ export async function releaseUnstarted(
  * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
  * Both stamps are now(), each its transaction's start, which can invert across transactions,
  * so only equal stamps mark a settle and ask in one transaction, which would still top up;
- * no path raises that today.
+ * no path raises that today. A step a person wrote off (its hold closed under `written_off`)
+ * is refused alike: its effect is unknown, so a fresh hold would run it again.
  */
 export async function recordedRefusal(
   tx: TenantQuery,
   stop: { readonly reservation_id: string; readonly ask_id: string },
 ): Promise<RuntimeResult<never> | null> {
-  const done = await tx.query(
-    `select 1 from public.attempts a join public.budget_asks k on k.business_id = a.business_id
-      where a.business_id = $1 and a.reservation_id = $2 and k.id = $3 and a.state = 'settled'
-        and a.outcome = 'completed' and a.settled_at is distinct from k.raised_at`,
+  const [done] = await tx.query<{ readonly written_off: boolean }>(
+    `select r.classified_cause is not distinct from 'written_off' as written_off
+       from public.attempts a
+       join public.budget_asks k on k.business_id = a.business_id
+       join public.reservations r on r.business_id = a.business_id and r.id = a.reservation_id
+      where a.business_id = $1 and a.reservation_id = $2 and k.id = $3
+        and ((a.state = 'settled' and a.outcome = 'completed'
+              and a.settled_at is distinct from k.raised_at)
+          or r.classified_cause = 'written_off')`,
     [tx.businessId, stop.reservation_id, stop.ask_id],
   );
-  if (done.length === 0) return null;
-  const why = "this step's outcome was recorded after the run stopped, so a top-up cannot apply";
+  if (done === undefined) return null;
+  const why = done.written_off
+    ? 'this step was written off with its effect unknown, so a top-up would run it again'
+    : "this step's outcome was recorded after the run stopped, so a top-up cannot apply";
   return refuse('TRANSITION_NOT_PERMITTED', why, 'End the work instead.');
 }
 

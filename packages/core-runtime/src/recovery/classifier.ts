@@ -216,7 +216,9 @@ export async function classifyUnderLocks(
   // either way the row records the cause that stopped it and the cause's
   // identity (T5; 20261004040100 admits a cause on `actual`).
   const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
-  const closed = await closeHold(tx, hold, request, calls.spentMinor, { stopped: true });
+  const closed = await closeHold(tx, hold, request, calls.spentMinor, {
+    recordCause: true,
+  });
   if (!closed) {
     return {
       reservationId: request.reservationId,

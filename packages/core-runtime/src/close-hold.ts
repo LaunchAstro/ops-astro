@@ -9,18 +9,19 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
  * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
  * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
  * The envelope gives the hold back once and takes only that spend, never an invented zero.
- * A hold the classifier `stopped` records its cause on `actual` too (20261004040100); a person's
- * write-off or recorded outcome that settles it records none, as before.
+ * A hold the classifier stopped, or a person wrote off, records its cause on `actual` too
+ * (20261004040100, `recordCause`), so a top-up at the stop can tell a written-off step; a
+ * recorded outcome that settles it records none, as before.
  */
 export async function closeHold(
   tx: TenantQuery,
   hold: { readonly reservationId: string; readonly envelopeId: string },
   cause: { readonly cause: string; readonly causeId: string },
   spentMinor: bigint,
-  { stopped = false }: { readonly stopped?: boolean } = {},
+  { recordCause = false }: { readonly recordCause?: boolean } = {},
 ): Promise<boolean> {
   const spent = spentMinor > 0n;
-  const recorded = !spent || stopped;
+  const recorded = !spent || recordCause;
   const [changed] = await tx.query<{ readonly held_minor: string }>(
     `update public.reservations
         set state = $3, actual_minor = $4, classified_cause = $5, classified_cause_id = $6,
