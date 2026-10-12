@@ -32,80 +32,22 @@
 //   4. Every `*IMAGE=` line in scripts/local/*.sh is held to rules 2 and 3
 //      (CQ-3). An image named inline on a `docker run` line is not read.
 //
-// This is not a YAML parser. It reads the workflows line by line, with LF,
-// CRLF or CR endings. It reads a `uses`, `image` or `container` key written
-// plain or quoted, with space before its colon, and with its value on the same
-// line or the next. It refuses a line where such a key follows `{` or `[`
-// outside quotes and before a comment, and any explicit `? ` key line. Other
-// key forms are refused too: a tagged key (`!!str uses:`) and a double-quoted
-// key with an escape. A key inside a flow collection, or a quoted scalar, that
-// spans lines is not guaranteed to be read. The flow scan does not know block scalars either, so a
-// `run: |` line holding an unquoted `{` or `[` followed by a `uses:`, `image:`
-// or `container:` string can be refused: a false red, not a pin getting
-// through (Sol's recheck of 022034a). The follow-up is to parse the workflows
-// as YAML (security reruns at d1a2cef, S2, and 3f2b259, T2).
+// Each workflow is parsed with the repository's YAML parser and every mapping
+// key that resolves to `uses`, `image` or `container` is checked, wherever it
+// sits. Quoting, escapes, tags, anchors, aliases, flow collections and
+// explicit `? ` keys all resolve before the check reads the key, so none of
+// them hides one (the line reader this replaced was bypassed by each in turn).
+// A workflow that does not parse is refused.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { parseAllDocuments } from 'yaml';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const workflowDir = join(repoRoot, '.github', 'workflows');
 const recordPath = join(repoRoot, 'docs', 'supply-chain-pins.md');
 
-// YAML allows space before the colon and a quoted key. Sol's recheck of
-// 356dbe5: `container : node:20` read as no key at all.
-const KEY = /^\s*-?\s*(['"]?)(?<key>uses|image|container)\1[ \t]*:[ \t]*(?<value>.*)$/u;
 const PINNED = /^(?<action>[^@]+)@(?<sha>[0-9a-f]{40})$/u;
-const MAPPING_KEY = /^\s*(['"]?)[\w-]+\1[ \t]*:(?:\s|$)/u;
-// The security rerun at 974d039, R2: the check reads block style by line, so
-// a key inside a flow collection (`- { uses: … }`, `steps: [ uses: … ]`) or an
-// explicit `? ` key was never seen. Parsing YAML would need a dependency this
-// gate does not take on, so both are refused and the author writes the key in
-// block style.
-const FLOW_KEY = /(?:^|[\s{[,'"])(?:uses|image|container)['"]?[ \t]*:/u;
-
-/**
- * Does a `uses`, `image` or `container` key follow a flow bracket on this
- * line? Sol's recheck of d1a2cef: a key straight after the bracket, and a `#`
- * inside a scalar before the key, hid it. So the line is scanned the way YAML
- * reads it: a quote opens a scalar only at the start of a token, `''` inside
- * single quotes and `\"` inside double quotes are text, a `#` starts a
- * comment only outside quotes and after a space or at the start of the line,
- * and a bracket inside quotes is text. A comment line is never flagged.
- */
-const flowKey = (line) => {
-  let quote = '';
-  let bracket = -1;
-  let end = line.length;
-  for (let i = 0; i < line.length; i += 1) {
-    const c = line[i] ?? '';
-    const before = i === 0 ? ' ' : (line[i - 1] ?? '');
-    if (quote === '"' && c === '\\') i += 1;
-    // T1 at 3f2b259: YAML escapes a single quote by doubling it, so `''` in a
-    // single-quoted scalar is text, not a close and a reopen.
-    else if (quote === "'" && c === "'" && line[i + 1] === "'") i += 1;
-    else if (quote !== '' && c === quote) quote = '';
-    else if (quote !== '') continue;
-    else if ((c === '"' || c === "'") && /[\s{[,:]/u.test(before)) quote = c;
-    else if (c === '#' && /\s/u.test(before)) {
-      end = i;
-      break;
-    } else if ((c === '{' || c === '[') && bracket === -1) bracket = i;
-  }
-  if (bracket === -1) return false;
-  if (FLOW_KEY.test(line.slice(bracket + 1, end))) return true;
-  // A tagged or escaped key inside the collection is refused as well: this
-  // scan decodes neither. `${{ … }}` expressions are not collections, so they
-  // go first.
-  const plain = line.slice(0, end).replaceAll(/\$\{\{.*?\}\}/gu, '');
-  const open = plain.search(/[{[]/u);
-  return open !== -1 && /[{[,]\s*(?:!|"(?:[^"\\]|\\.)*\\)/u.test(plain.slice(open));
-};
-const EXPLICIT_KEY = /^\s*(?:-\s+)?\?(?:\s|$)/u;
-// A double-quoted key with an escape (`"us\u0065s"`) or a tagged key
-// (`!!str uses`) is still a key, and this reader decodes neither, so such a
-// line is refused rather than skipped.
-const UNREAD_KEY = /^\s*(?:-\s+)?(?:"(?:[^"\\]|\\.)*\\(?:[^"\\]|\\.)*"[ \t]*:|!)/u;
 const DIGESTED = /^(?<image>[^@]+)@sha256:(?<digest>[0-9a-f]{64})$/u;
 
 /** A value without its comment and its quotes. */
@@ -130,94 +72,75 @@ if (workflows.length === 0) {
   process.exit(2);
 }
 
+/** Every key in a parsed workflow, with its value and where it sits. */
+function* entries(node, path, seen = new Set()) {
+  if (node === null || typeof node !== 'object' || seen.has(node)) return;
+  seen.add(node);
+  for (const [key, value] of Array.isArray(node) ? node.entries() : Object.entries(node)) {
+    const at = Array.isArray(node) ? `${path}[${key}]` : `${path}.${key}`;
+    if (!Array.isArray(node)) yield { key, value, at };
+    yield* entries(value, at, seen);
+  }
+}
+
+const checkImage = (where, ref) => {
+  if (ref.includes('${{')) {
+    failures.push(
+      `${where}: the container image ${ref} is an expression.\n` +
+        '        It chooses the image at run time, so no digest here pins it.\n' +
+        '        Write the image itself: `image@sha256:<64 hex>`.',
+    );
+  } else if (DIGESTED.exec(ref)?.groups === undefined) {
+    failures.push(
+      `${where}: the container image ${ref} is not pinned to a sha256 digest.\n` +
+        '        A service container runs code in the job. Pin it the way an\n' +
+        '        action is pinned: `image@sha256:<64 hex>`, with the tag it\n' +
+        '        came from in a comment beside it.',
+    );
+  } else images.set(ref, where);
+};
+
+const checkUses = (where, ref) => {
+  if (ref.startsWith('./')) return;
+  // The security rerun at 356dbe5, N2: a `docker://` step runs a container
+  // like `image:` does, so it is held to the same digest and the same record.
+  if (ref.startsWith('docker://')) {
+    const image = ref.slice('docker://'.length);
+    if (DIGESTED.exec(image)?.groups === undefined) {
+      failures.push(
+        `${where}: the step image ${ref} is not pinned to a sha256 digest.\n` +
+          '        Pin it as `docker://image@sha256:<64 hex>` and record it.',
+      );
+    } else images.set(image, where);
+  } else if (PINNED.exec(ref)?.groups === undefined) {
+    failures.push(
+      `${where}: ${ref} is not pinned to a 40 character commit hash.\n` +
+        '        A tag can be moved by whoever owns it. A hash cannot.',
+    );
+  } else pins.set(ref, where);
+};
+
 for (const file of workflows) {
-  const text = readFileSync(join(workflowDir, file), 'utf8');
-  // The security rerun at d1a2cef, S1: a split on LF alone left `\r` on every
-  // line of a CRLF workflow, no key matched, and the check said green.
-  const lines = text.split(/\r\n|\r|\n/u);
-  const significant = (from) =>
-    lines.slice(from).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
-  for (const [i, line] of lines.entries()) {
-    const where = `${file}:${i + 1}`;
-    if (flowKey(line) || EXPLICIT_KEY.test(line)) {
-      failures.push(
-        `${where}: a \`uses\`, \`image\` or \`container\` key in flow style, or an\n` +
-          '        explicit `? ` key. This check reads block style only. Write the key\n' +
-          '        on its own line: `uses: owner/action@<40 hex>`.',
-      );
-      continue;
-    }
-    if (UNREAD_KEY.test(line)) {
-      failures.push(
-        `${where}: a key written with an escape or a tag. This check does not\n` +
-          '        decode either, so it cannot tell whether the key is `uses`, `image`\n' +
-          '        or `container`. Write the key plainly.',
-      );
-      continue;
-    }
-    const match = KEY.exec(line);
-    if (match?.groups === undefined) continue;
-    const { key = '' } = match.groups;
-    let ref = clean(match.groups['value'] ?? '');
-    if (ref === '') {
-      // The security rerun at 974d039, R1: a value may continue on the next
-      // line. 974d039 stopped reading `uses:` written that way. A bare
-      // `container:` opening a mapping is the one empty value that is not a
-      // continuation; its own `image:` line is read.
-      const next = significant(i + 1);
-      if (key === 'container' && next !== undefined && MAPPING_KEY.test(next)) continue;
-      ref = clean(next ?? '');
-      if (ref === '') {
-        failures.push(`${where}: \`${key}:\` names nothing.`);
+  const documents = parseAllDocuments(readFileSync(join(workflowDir, file), 'utf8'));
+  const broken = documents.flatMap((d) => d.errors);
+  if (broken.length > 0) {
+    failures.push(
+      `${file}: does not parse as YAML, so its pins cannot be read: ${broken[0]?.message}`,
+    );
+    continue;
+  }
+  for (const document of documents) {
+    for (const { key, value, at } of entries(document.toJS(), file)) {
+      if (key !== 'uses' && key !== 'image' && key !== 'container') continue;
+      // A `container:` mapping is checked through its own `image` key.
+      if (key === 'container' && value !== null && typeof value === 'object') continue;
+      if (typeof value !== 'string' || value.trim() === '') {
+        failures.push(`${at}: \`${key}:\` names no action or image.`);
         continue;
       }
+      if (key === 'uses') checkUses(at, value.trim());
+      else checkImage(at, value.trim());
     }
-    if (key === 'uses' && ref.startsWith('./')) continue;
-    // The security rerun at 356dbe5, N2: a `docker://` step was skipped, so a
-    // step image on a movable tag passed. It runs a container like `image:`
-    // does, so it is held to the same digest and the same record.
-    if (key === 'uses' && ref.startsWith('docker://')) {
-      const image = ref.slice('docker://'.length);
-      if (DIGESTED.exec(image)?.groups === undefined) {
-        failures.push(
-          `${where}: the step image ${ref} is not pinned to a sha256 digest.\n` +
-            '        Pin it as `docker://image@sha256:<64 hex>` and record it.',
-        );
-        continue;
-      }
-      images.set(image, file);
-      continue;
-    }
-    if (key === 'uses') {
-      if (PINNED.exec(ref)?.groups === undefined) {
-        failures.push(
-          `${where}: ${ref} is not pinned to a 40 character commit hash.\n` +
-            '        A tag can be moved by whoever owns it. A hash cannot.',
-        );
-        continue;
-      }
-      pins.set(ref, file);
-      continue;
-    }
-    if (ref.includes('${{')) {
-      failures.push(
-        `${where}: the container image ${ref} is an expression.\n` +
-          '        It chooses the image at run time, so no digest here pins it.\n' +
-          '        Write the image itself: `image@sha256:<64 hex>`.',
-      );
-      continue;
-    }
-    const digested = DIGESTED.exec(ref);
-    if (digested?.groups === undefined) {
-      failures.push(
-        `${where}: the container image ${ref} is not pinned to a sha256 digest.\n` +
-          '        A service container runs code in the job. Pin it the way an\n' +
-          '        action is pinned: `image@sha256:<64 hex>`, with the tag it\n' +
-          '        came from in a comment beside it.',
-      );
-      continue;
-    }
-    images.set(ref, file);
   }
 }
 

@@ -94,8 +94,14 @@ export function protectedVerdicts(
   manifest: { readonly invariant?: readonly string[]; readonly conformance?: readonly string[] },
 ): readonly CaseLine[] {
   const named = new Set([...(manifest.invariant ?? []), ...(manifest.conformance ?? [])]);
+  // The runner's own failure forms (scripts/db-conformance.mjs): a failed
+  // assertion, and its closing list of runs vitest ended in error, which still
+  // names a suite once the assertion detail has run out.
   const failed = new Set(
-    [...output.matchAll(/FAIL\s+(tests\/\S+?\.test\.tsx?)/gu)].map((m) => m[1]),
+    [
+      ...output.matchAll(/db-conformance: failed assertion in (tests\/\S+?\.test\.tsx?)/gu),
+      ...output.matchAll(/^\s+(tests\/\S+?\.test\.tsx?)\S*: (?:vitest|the report) /gmu),
+    ].map((m) => m[1]),
   );
   // A suite run in parts prints one line per part, `<path>#i/k`.
   const reached = new Set(

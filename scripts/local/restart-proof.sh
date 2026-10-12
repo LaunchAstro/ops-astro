@@ -76,6 +76,9 @@ created=no
 PIDFILE=
 cleanup() {
   status=$?
+  # The trap runs to the end: `ps` exits 1 for a recorded pid that has already
+  # gone, and under -e that would skip the later pids and the container.
+  set +e
   # The API and worker processes the run started, by the pids it wrote down. A
   # runner that died mid-case never reached its own afterAll, so they are
   # killed here. SIGKILL, because a worker parked with SIGSTOP never runs a
