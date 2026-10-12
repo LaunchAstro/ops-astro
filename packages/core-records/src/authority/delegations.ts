@@ -489,12 +489,22 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
  * cause. The holder presented a live
  * child credential, so the parent's state is named, not folded into
  * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
+ *
+ * A held parent is locked by a statement of its own before it is read: a
+ * locking select computes its columns before it waits, so an expiry read in
+ * the same statement would be the clock from before the wait.
  */
 async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',
 ): Promise<DelegationDecision<Delegation>> {
+  if (lock !== '') {
+    await tx.query(`select 1 from public.delegations where business_id = $1 and id = $2 ${lock}`, [
+      tx.businessId,
+      parentId,
+    ]);
+  }
   const rows = await tx.query<
     DelegationRow & {
       readonly settled: boolean;
@@ -506,7 +516,7 @@ async function parentStanding(
     `select ${delegationColumns()}, settled_at is not null as settled,
             expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
             revocation_cause as cause
-       from public.delegations where business_id = $1 and id = $2 ${lock}`,
+       from public.delegations where business_id = $1 and id = $2`,
     [tx.businessId, parentId],
   );
   const found = rows[0];
@@ -681,8 +691,8 @@ export async function resolveNarrowedDelegation(
 }
 
 /**
- * This agent's own live delegation, by its id: unexpired, unrevoked and
- * unsettled. `delegationId` must already be a UUID.
+ * This agent's own live delegation, by its id: unexpired at the statement's
+ * clock, unrevoked and unsettled. `delegationId` must already be a UUID.
  *
  * A pickup's replay, whose lost response carried the credential, has only the
  * id its receipt names to reach the delegation by (root ruling 6).
@@ -696,7 +706,7 @@ export async function resolveLiveById(
     `select ${delegationColumns('d')}
        from public.delegations d
       where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
-        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is null and d.expires_at > clock_timestamp()`,
     [tx.businessId, agentActorId, delegationId],
   );
   const row = rows[0];
@@ -705,8 +715,8 @@ export async function resolveLiveById(
 
 /**
  * This agent's settled delegation, through the lease it settled and the
- * credential it was minted with: unexpired and unrevoked. `leaseId` must
- * already be a UUID.
+ * credential it was minted with: unexpired at the statement's clock and
+ * unrevoked. `leaseId` must already be a UUID.
  *
  * A handback settles its own delegation, so its replay cannot resolve the
  * credential as live; this is the binding it is released to instead.
@@ -723,7 +733,8 @@ export async function resolveSettledByLease(
        join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
       where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
         and d.credential_hash = $4
-        and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is not null
+        and d.expires_at > clock_timestamp()`,
     [tx.businessId, agentActorId, leaseId, digestOf(credential)],
   );
   const row = rows[0];

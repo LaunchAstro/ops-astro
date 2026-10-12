@@ -389,8 +389,15 @@ export async function revokeDelegationAsManager(
     delegationIds: [delegationId],
     actorId: context.session.actorId,
     revoke: async () => {
+      // Locked first and judged after, on the statement's clock: a delegation
+      // that expired while this waited on its row is not live.
+      await tx.query(
+        `select 1 from public.delegations where business_id = $1 and id = $2 for update`,
+        [tx.businessId, delegationId],
+      );
       const live = await tx.query<{ readonly live: boolean }>(
-        `select (revoked_at is null and settled_at is null and expires_at > now()) as live
+        `select (revoked_at is null and settled_at is null and expires_at > clock_timestamp())
+                as live
            from public.delegations where business_id = $1 and id = $2`,
         [tx.businessId, delegationId],
       );
