@@ -18,8 +18,8 @@ import {
   type BudgetAnswerResult,
   type Opened,
 } from './budget-answer-facts.ts';
+import { decidesOnTask } from './budget-answer-scope.ts';
 import { holdFirstApprovers, pairFor, type FirstApprover, type Holds } from './four-eyes.ts';
-import { checkAuthorityAt } from './recovery/classifier.ts';
 import { refuse } from './refusals.ts';
 
 /** The figure a top-up names: what a second approval must match. */
@@ -121,14 +121,10 @@ function asFirstApprovers(pending: readonly Approval[]): readonly (Approval & Fi
   }));
 }
 
-/** Whether subjects hold `billing:decide` on the run's task at the answer's locked instant. */
+/** Whether subjects hold `billing:decide` on the run's task, or across its client, at the answer's locked instant. */
 function billingHoldsAt(tx: TenantQuery, opened: Opened): Holds {
-  const scope = {
-    collection: 'billing',
-    action: 'decide',
-    scope: { kind: 'record', id: opened.locked.task_id },
-  } as const;
-  return async (subjects) => (await checkAuthorityAt(tx, subjects, scope, opened.lockedAt)).ok;
+  return async (subjects) =>
+    await decidesOnTask(tx, subjects, 'billing', opened.locked, opened.lockedAt);
 }
 
 /** A first approval of the top-up's figure, by the answering person, for a second to pair with. */
