@@ -6,7 +6,7 @@
 // stood in for by a table whose read is taken back after every grant.
 
 import { expect, it } from 'vitest';
-import { stoppedBecause } from '../../scripts/ops/staging-reset.ts';
+import { stoppedBecause } from '../../scripts/ops/staging-reset-stops.ts';
 import {
   onDatabase,
   quiet,

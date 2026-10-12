@@ -65,32 +65,23 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 
 export class Refusal extends Error {}
 
-// Migration 20261006140500's stop: a closed list of plain names, so no address.
-const NAME = String.raw`(?:schema )?[a-z_][a-z0-9_]{0,62}(?:\.[a-z_][a-z0-9_]{0,62})?`;
-const BACKUP_GAP = new RegExp(
-  String.raw`^the backup identity cannot read ${NAME}(?:, ${NAME}){0,49}$`,
-  'u',
-);
+/** The provider's list, read this many sign-ins a page, up to this many pages. */
+const PAGE = 200;
+const PAGES = 50;
 
-/**
- * Why a run stopped: the backup identity's gap by name, any other error by its
- * class and SQLSTATE alone, since its message may carry an address.
- */
-export function stoppedBecause(error: unknown): string {
-  const { cause } = (error ?? {}) as { cause?: { code?: unknown; message?: unknown } };
-  if (
-    cause?.code === '42501' &&
-    typeof cause.message === 'string' &&
-    BACKUP_GAP.test(cause.message)
-  )
-    return cause.message;
-  const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown };
-  return [
-    typeof name === 'string' ? name : 'error',
-    typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code) ? code : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+type ProviderCall = (path: string, method: string) => Promise<{ body?: unknown }>;
+
+/** A sign-in's id from the provider's list, read page by page until it is found. */
+export async function listedId(call: ProviderCall, email: string): Promise<unknown> {
+  for (let page = 1; page <= PAGES; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- one page after another, until it is found
+    const listed = await call(`/admin/users?page=${page}&per_page=${PAGE}`, 'GET');
+    const { users } = (listed.body ?? {}) as { users?: unknown };
+    const list = Array.isArray(users) ? (users as { email?: unknown; id?: unknown }[]) : [];
+    const found = list.find((user) => user.email === email);
+    if (found !== undefined || list.length < PAGE) return found?.id;
+  }
+  return undefined;
 }
 
 const REF = /^[a-z]{20}$/u;
