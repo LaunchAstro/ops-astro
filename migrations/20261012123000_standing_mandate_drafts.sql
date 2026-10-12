@@ -56,3 +56,59 @@ create policy authority_standing_mandate_drafts on public.standing_mandate_draft
 -- Bound with its own fields only: `bound_at` is the database's.
 grant select, insert (business_id, client_id, draft_id, mandate_id)
   on public.standing_mandate_drafts to ops_astro_app;
+
+-- A filing with no binding yet is judged by content: the client's unrevoked,
+-- unexpired mandate with exactly these classes (as a set), refusal, ceiling,
+-- currency, expiry, label and graduation class. Compared whole, never by a
+-- hash or a prefix. Volatile, so each call reads the database's clock and a
+-- fresh snapshot after its caller's client lock.
+create function public.standing_mandate_live_filing(
+  business uuid, client uuid, words text[], refusal boolean, ceiling bigint, money text,
+  expiry timestamptz, sentence text, graduation text
+) returns uuid
+  language sql volatile
+  set search_path = pg_catalog
+  as $$
+    select m.id from public.standing_mandates m
+     where m.business_id = business and m.client_id = client
+       and m.revoked_at is null and m.expires_at > clock_timestamp()
+       and m.refuses = refusal
+       and m.ceiling_minor is not distinct from ceiling
+       and m.currency is not distinct from money
+       and m.graduation_class is not distinct from graduation
+       and m.expires_at = expiry and m.label = sentence
+       and array(select distinct word from unnest(m.classes) as word order by word)
+           = array(select distinct word from unnest(words) as word order by word)
+     order by m.created_at, m.id
+     limit 1
+  $$;
+
+revoke execute on function public.standing_mandate_live_filing(
+  uuid, uuid, text[], boolean, bigint, text, timestamptz, text, text) from public;
+grant execute on function public.standing_mandate_live_filing(
+  uuid, uuid, text[], boolean, bigint, text, timestamptz, text, text) to ops_astro_app;
+
+-- The backstop for a writer that skips the command: a second live mandate
+-- identical to one already filed is refused, judged after the client's lock.
+create function public.standing_mandates_one_live_filing() returns trigger
+  language plpgsql
+  as $$
+  begin
+    perform 1 from public.clients
+      where business_id = new.business_id and id = new.client_id
+      for no key update;
+    if public.standing_mandate_live_filing(new.business_id, new.client_id, new.classes,
+         new.refuses, new.ceiling_minor, new.currency, new.expires_at, new.label,
+         new.graduation_class) is not null then
+      raise exception 'a live standing mandate already carries this filing'
+        using errcode = 'unique_violation', constraint = 'standing_mandates_one_live_filing';
+    end if;
+    return new;
+  end;
+  $$;
+
+revoke execute on function public.standing_mandates_one_live_filing() from public;
+
+create trigger standing_mandates_one_live_filing
+  before insert on public.standing_mandates
+  for each row execute function public.standing_mandates_one_live_filing();

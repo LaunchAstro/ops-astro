@@ -188,7 +188,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'finance.skill_costs': READ,
   'finance.agent_costs': READ,
   'connector.repair': writing(business('connection_repairs')),
-  'mandate.file': writing(client('standing_mandates')),
+  // A filing binds its draft to the mandate it was answered with (#1427).
+  'mandate.file': writing(client('standing_mandates', 'standing_mandate_drafts')),
   'mandate.revoke': writing(client('standing_mandates', 'graduation_classes')),
   'graduation.promote': writing(client('standing_mandates', 'graduation_classes')),
   'graduation.demote': writing(client('standing_mandates', 'graduation_classes')),

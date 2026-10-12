@@ -28,6 +28,7 @@
 // check holds it, and an effect already past that check stands.
 
 import {
+  bindDraft,
   bumpGraduationClass,
   clientClasses,
   clientOfClass,
@@ -38,8 +39,12 @@ import {
   isUuid,
   lockClientMandates,
   lockClientForWrite,
+  lockDraftMandate,
   lockGraduationClass,
+  lockLiveFiling,
   lockMandate,
+  mandateStillLive,
+  type MandateFiling,
   promotingMandate,
   revokeMandate,
   scopeChoices,
@@ -48,7 +53,15 @@ import {
 import type { CommandContext } from './context.ts';
 import { notGranted, standsAtCommit, stillManagesMandates } from './mandate-authority.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { ceilingOf, classesOf, expiryOf, isRevision, labelOf, shownAs } from './mandate-inputs.ts';
+import {
+  ceilingOf,
+  classesOf,
+  expiryOf,
+  isRevision,
+  labelOf,
+  sameFiling,
+  shownAs,
+} from './mandate-inputs.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const FIXES: Readonly<Record<string, string>> = {
@@ -76,6 +89,8 @@ const stale = (revision: number): HandlerOutcome =>
 
 const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [`state=${state}`], [fix]));
+
+const FILED_ONCE = 'This filing was already made; start a new one.';
 
 /** The class's client's row, then the class's row, both locked; null when not this business's. */
 async function lockClassInOrder(tx: TenantQuery, classId: string) {
@@ -120,7 +135,7 @@ export async function fileMandate(
   if (expiresAt === null) return invalid('expiresAt');
   const label = labelOf(request.label);
   if (label === null) return invalid('label');
-  const mandate = await insertMandate(tx, {
+  const filing = {
     clientId: request.clientId,
     classes,
     refuses,
@@ -129,11 +144,39 @@ export async function fileMandate(
     label,
     graduationClass: null,
     actorId: context.session.actorId,
-  });
+  };
+  return await fileOnce(tx, context, filing, request.draftId);
+}
+
+/**
+ * One filing per draft (#1427), under the client's lock: a bound draft answers with its mandate
+ * or is refused; an unbound one is bound to the identical live mandate, or to one filed now.
+ */
+async function fileOnce(
+  tx: TenantQuery,
+  context: CommandContext,
+  filing: MandateFiling,
+  draftId: string,
+): Promise<HandlerOutcome> {
+  const bound = await lockDraftMandate(tx, filing.clientId, draftId);
+  if (bound?.revoked === true) return notPermitted('revoked', FILED_ONCE);
+  if (bound?.live === false) return notPermitted('expired', FILED_ONCE);
+  if (bound !== null && !sameFiling(bound, filing)) return invalid('draftId');
+  const repeat = bound ?? (await lockLiveFiling(tx, filing));
+  const mandate = repeat ?? (await insertMandate(tx, filing));
   if (mandate === null) return invalid('expiresAt');
+  if (bound === null) await bindDraft(tx, filing.clientId, draftId, mandate.id);
   const last = await standsAtCommit(tx, context);
   if (last !== null) return last;
-  return applied(mandate.id, mandate.revision, { mandateId: mandate.id, refuses });
+  // A repeat answers only with authority still live at the clock past the last wait, lock held.
+  if (repeat !== null && !(await mandateStillLive(tx, filing.clientId, repeat.id))) {
+    return invalid('expiresAt');
+  }
+  return applied(mandate.id, mandate.revision, {
+    mandateId: mandate.id,
+    refuses: filing.refuses,
+    ...(repeat === null ? {} : { repeat: true }),
+  });
 }
 
 export async function revokeStandingMandate(

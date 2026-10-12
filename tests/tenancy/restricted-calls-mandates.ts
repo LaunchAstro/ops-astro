@@ -25,7 +25,11 @@ export const MANDATE_GROUPS: readonly (readonly [string, string])[] = [
 ];
 
 /** Executed: a mandate's word list checked whole, in its check constraint. */
-export const MANDATE_EXECUTES: readonly string[] = ['public.standing_mandate_words_known'];
+export const MANDATE_EXECUTES: readonly string[] = [
+  'public.standing_mandate_words_known',
+  // 20261012123000 (#1427): a filing's identity, judged by the command and by the insert trigger.
+  'public.standing_mandate_live_filing',
+];
 
 /**
  * Update: promoting and demoting serialise on a class's revision; a mandate is revoked,
