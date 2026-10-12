@@ -102,8 +102,9 @@ export async function events(business: string, command: string): Promise<readonl
 }
 
 /** A provider's calls these cases never decide on: no factor listed, every sign-out done. */
-const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'signOut'> = {
+const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'heldFactors' | 'signOut'> = {
   verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+  heldFactors: () => Promise.resolve({ ok: true, value: [] }),
   signOut: () => Promise.resolve({ ok: true, value: undefined }),
 };
 

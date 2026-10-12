@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C59, security review 2b2 rounds 7, 8 and 10: only a lost enrolment removes
-// anything at the provider (`c59-factor-orphan.test.ts`). A step-up, a tab
-// beaten by another, an enrolment racing a verify in another business and a
-// refused removal each leave the provider's factor where it is.
+// C59, security review 2b2 rounds 7, 8 and 10: only a factor the committed
+// record holds removed goes at the provider (`c59-factor-orphan.test.ts`). A
+// step-up, a tab beaten by another, an enrolment racing a verify in another
+// business and a refused removal each leave the provider's factor where it is.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';

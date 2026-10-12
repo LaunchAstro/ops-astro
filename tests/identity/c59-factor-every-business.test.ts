@@ -128,6 +128,7 @@ function lenientProvider(asked: string[]): FactorProvider {
     remove: () => done,
     signOut: () => done,
     verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    heldFactors: () => Promise.resolve({ ok: true, value: [] }),
   };
 }
 

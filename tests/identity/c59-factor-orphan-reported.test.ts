@@ -2,8 +2,8 @@
 //
 // C59, security review 2b2 round 11: a factor that lost under the lock is ended
 // there, so a later verify cannot record it verified (r11-1); and a good code
-// or an issued factor the record refuses is reported orphaned under its
-// attempt's operation id, with nothing removed at the provider.
+// for a factor the record has since removed, or an issued factor the record
+// refuses, is removed at the provider, once the record holds it removed.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -90,7 +90,7 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'C59 a refused enrolment is not left at the provider',
   () => {
-    it('C59: a good code refused because the factor was replaced meanwhile is reported orphaned with the attempt id, and nothing is removed', async () => {
+    it('C59: a good code refused because the factor was replaced meanwhile removes that factor at the provider, and reports no orphan', async () => {
       const subject = `sub-${randomUUID()}`;
       const person = await personIn(bravo, subject);
       const f = await factorIn(person, subject, false);
@@ -111,12 +111,8 @@ describe.skipIf(serverUrl === undefined)(
       const answer = await verifySecondFactor(tab, { code: '123456' }, provider);
 
       expect('code' in answer ? answer.code : 'verified').toBe('FACTOR_NOT_ENROLLED');
-      expect(asked).toEqual(['verify']);
-      const orphaned = (await events(bravo, 'account.factor_orphaned')).slice(before);
-      const attempt = (await events(bravo, 'account.factor_verify')).at(-1);
-      expect(orphaned).toHaveLength(1);
-      expect(orphaned[0]?.operation_id).not.toBeNull();
-      expect(orphaned[0]?.operation_id).toBe(attempt?.operation_id);
+      expect(asked).toEqual(['verify', `remove ${f.providerFactorId}`]);
+      expect((await events(bravo, 'account.factor_orphaned')).slice(before)).toEqual([]);
     });
   },
 );
@@ -124,7 +120,7 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'C59 a refused enrolment is not left at the provider',
   () => {
-    it('C59: an issued factor the record refuses as already enrolled is reported orphaned with the attempt id, and nothing is removed', async () => {
+    it('C59: an issued factor the record refuses as already enrolled is removed at the provider, and reports no orphan', async () => {
       const subject = `sub-${randomUUID()}`;
       const alphaPerson = await personIn(alpha, subject);
       const person = await personIn(bravo, subject);
@@ -142,13 +138,9 @@ describe.skipIf(serverUrl === undefined)(
       const answer = await enrolSecondFactor(callerFor(subject), racing);
 
       expect('code' in answer ? answer.code : 'issued').toBe('FACTOR_ALREADY_ENROLLED');
-      expect(asked).toEqual(['enrol']);
+      expect(asked).toEqual(['enrol', expect.stringMatching(/^remove factor-/u)]);
       expect(await statusOf(person)).toEqual([]);
-      const orphaned = (await events(bravo, 'account.factor_orphaned')).slice(before);
-      const attempt = (await events(bravo, 'account.factor_enrol')).at(-1);
-      expect(orphaned).toHaveLength(1);
-      expect(orphaned[0]?.operation_id).not.toBeNull();
-      expect(orphaned[0]?.operation_id).toBe(attempt?.operation_id);
+      expect((await events(bravo, 'account.factor_orphaned')).slice(before)).toEqual([]);
     });
   },
 );

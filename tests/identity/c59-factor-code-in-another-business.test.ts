@@ -89,6 +89,7 @@ function listingProvider(
       asked.push('list');
       return Promise.resolve({ ok: true, value: listed } as const);
     },
+    heldFactors: () => Promise.resolve({ ok: true, value: [] } as const),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async (_token, factorId) => {
       asked.push(`verify ${factorId}`);
