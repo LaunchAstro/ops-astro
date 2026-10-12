@@ -10,6 +10,7 @@ import { afterEach, expect, it } from 'vitest';
 import { AgentCostSection } from '../../apps/web/src/screens/executive/agent-costs.tsx';
 import { SkillCostingSection } from '../../apps/web/src/screens/connections/costing.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 import type {
   AgentCostRowView,
   AgentCostsResult,
@@ -159,6 +160,36 @@ const CASES = VIEWS.flatMap(([view, draw, answer]) =>
 it.each(CASES)(
   "$view: drawn for $crossing, the earlier reader's late answer is never shown",
   async ({ draw, answer, business, grantKey }) => {
+    const first = reader('alpha', answer('Alpha private marker'), true);
+    mounted = await mount(draw(first.client, 'alpha:ada@example.test:0'));
+    await tick();
+    const next = reader(business, answer('Second reader marker'));
+    await mounted.render(draw(next.client, grantKey));
+    await tick();
+    first.release();
+    await tick();
+    expect(mounted.text()).toContain('Second reader marker');
+    expect(mounted.text()).not.toContain('Alpha private marker');
+  },
+);
+
+// Sol's proof on #1369 (round 1), retitled by what it proves; its body is Sol's.
+it.each(CASES)(
+  '$view screen drops a deferred answer after crossing to $crossing',
+  async ({ view, answer, business, grantKey }) => {
+    const draw = (client: OperationsClient, key: string): ReactElement => {
+      const context = {
+        client,
+        grantKey: key,
+        params: {},
+        notice: null,
+        storage: null,
+        navigate: () => {},
+      };
+      return view === 'agent costs'
+        ? SCREENS['agency:executive'](context)
+        : SCREENS['agency:connections'](context);
+    };
     const first = reader('alpha', answer('Alpha private marker'), true);
     mounted = await mount(draw(first.client, 'alpha:ada@example.test:0'));
     await tick();

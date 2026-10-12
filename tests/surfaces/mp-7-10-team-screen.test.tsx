@@ -167,3 +167,45 @@ it('MP-7-10 two quick changes of availability are stored in the order the person
   ]);
   await page.unmount();
 });
+
+// Sol's proof on #1369 (round 1), retitled by what it proves; its body is Sol's.
+it('reopening Team cannot let an older queued availability choice overwrite the latest saved choice', async () => {
+  const api = server(true);
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'b',
+    signedIn: true,
+    fetch: api.fetch,
+  });
+  const page = await mount(<TeamScreen client={client} grantKey="b:me" />);
+  try {
+    await until('initial strip', () => page.find('.tmc__strip') !== null);
+    await page.click('.tmc__me button.tmc__set');
+    await page.type('.tmc__me input[name="reason"]', 'First choice');
+    await page.click('.tmc__me button[type="submit"]');
+    await until('first save held', () => api.asked() === 1);
+    await page.click('.tmc__me button.tmc__set');
+    await page.type('.tmc__me input[name="reason"]', 'Older queued choice');
+    await page.click('.tmc__me button[type="submit"]');
+    await page.render(<div>Another page</div>);
+    await page.render(<TeamScreen client={client} grantKey="b:me" />);
+    await until('reopened strip', () => page.find('.tmc__strip') !== null);
+    await page.click('.tmc__me button.tmc__set');
+    await page.type('.tmc__me input[name="reason"]', 'Latest choice');
+    await page.click('.tmc__me button[type="submit"]');
+    await until('latest save stored', () =>
+      api.sent.some((body) => JSON.stringify(body).includes('Latest choice')),
+    );
+    api.release();
+    await until('all saves stored', () => api.sent.length === 3);
+    await page.render(<div>Another page</div>);
+    await page.render(<TeamScreen client={client} grantKey="b:me" />);
+    await until('stored availability reread', () => page.find('.tmc__strip') !== null);
+    expect(mine(page)).toContain('Latest choice');
+    expect(api.sent.at(-1)).toEqual({ state: 'away', reason: 'Latest choice' });
+  } finally {
+    api.release();
+    await settle();
+    await page.unmount();
+  }
+});

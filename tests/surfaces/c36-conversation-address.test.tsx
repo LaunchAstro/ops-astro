@@ -10,7 +10,8 @@
 // routes in `tests/api/c36-address.test.ts` and `c36-isolation.test.ts`.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationReadResult } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
@@ -260,5 +261,32 @@ describe('C36 conversation address, another reader', () => {
     const who = page.all('.convrec__who').map((each) => each.textContent);
     expect(who).not.toContain('You');
     expect(who).toStrictEqual(['Person', 'Agent']);
+  });
+
+  // Sol's proof on #1369 (round 1), retitled by what it proves; its body is Sol's.
+  it('an open conversation withdraws private contents after server-side revocation with the same grant key', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      const { page, asked, answer } = await address(`/agent/${ID}`, LIVE);
+      expect(page.text()).toContain('What did the supplier quote?');
+      answer(refusal('SCOPE_NOT_GRANTED', 'The conversation read grant was revoked.'));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('online'));
+      });
+      await settle();
+      expect(
+        page.text(),
+        `conversation reads after revocation: ${asked.filter((call) => call.name === 'conversation.read').length}`,
+      ).not.toContain('What did the supplier quote?');
+      expect(page.find('[data-outcome="denied"]')).not.toBeNull();
+      expect(asked.filter((call) => call.name === 'conversation.read').length).toBeGreaterThan(1);
+    } finally {
+      await unmountAll();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
   });
 });
