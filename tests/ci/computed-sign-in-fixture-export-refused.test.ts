@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { expect, it } from 'vitest';
 
 it('a computed unmarked issuer exported by a fixture makes the guard red', () => {
@@ -20,9 +21,12 @@ it('a computed unmarked issuer exported by a fixture makes the guard red', () =>
     );
     expect(run.status).not.toBe(0);
     // Red for this export, by the guard's own case, not for any other reason.
-    const out = `${run.stdout}${run.stderr}`;
+    // Colour codes sit between the glyph and the title on a coloured run.
+    const out = stripVTControlCharacters(`${run.stdout}${run.stderr}`);
     expect(out).toContain('× no fixture or support module exports an unmarked sign-in value');
-    expect(out).toContain(`"fixture/${basename(fixture)}: ISSUER"`);
+    const named = `fixture/${basename(fixture)}: ISSUER`;
+    expect(out).toContain(`"${named}"`);
+    process.stderr.write(`${basename(import.meta.filename)}: the guard refused ${named}\n`);
   } finally {
     rmSync(fixture, { force: true });
   }
