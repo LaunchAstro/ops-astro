@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an incident's foundAt and a credential's expiresAt on a date the calendar does not have, or in year zero, are refused FIELD_VALUE_INVALID and write nothing"
+}
