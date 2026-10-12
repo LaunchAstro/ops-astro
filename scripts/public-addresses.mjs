@@ -79,12 +79,19 @@ export function addressRules(text, scope) {
   const found = new Set();
   for (const { 0: address, index } of text.matchAll(addressPattern)) {
     // A file name has no quotes or emphasis to frame an address: it is read whole.
-    const value = (scope === 'path' ? address : framed(text, index, address)).toLowerCase();
+    // Every frame comes off, outermost first (`'`a`'`).
+    let [value, at] = [address, index];
+    for (let next = framed(text, at, value); scope !== 'path' && next !== value;) {
+      [at, value] = [at + value.length - next.length, next];
+      next = framed(text, at, value);
+    }
+    value = value.toLowerCase();
     const local = value.slice(0, value.lastIndexOf('@'));
-    // Not a written address: only quote marks left of the local part once
-    // its frame goes (a quoted bare `'@host'`), or a local part a
-    // placeholder's `}` ends (`${...}`), which code fills in when it runs.
-    if (/^['`]*$/u.test(local) || local.endsWith('}')) continue;
+    // Not a written address: nothing left of the local part once its frames
+    // go (a quoted bare `'@host'`), or a placeholder's lone `}` closing a
+    // call (`${f(x)}@host`), which code fills in when it runs.
+    if (local === '' || /\$\{[^}]*\}$/u.test(local) || (local === '}' && text[index - 1] === ')'))
+      continue;
     const end = index + address.length;
     const whole =
       !touchesBefore.test(text.slice(Math.max(0, index - 2), index)) &&
