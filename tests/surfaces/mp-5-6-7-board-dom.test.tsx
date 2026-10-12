@@ -363,9 +363,8 @@ describe('MP-5-7 on the gallery fixture', () => {
     expect(SHEET).toMatch(
       /\.cbd__tbl \.cbd__hd\s*\{[^}]*position:\s*sticky;[^}]*top:\s*calc\(var\(--chrome-h, 0px\) \+ var\(--catbar-h, 0px\)\)/u,
     );
-    // A scroll container would pin the heads to itself, not the page: a table
-    // that fits its card clips; one wider than its card scrolls instead.
-    expect(SHEET).toMatch(/\.cbd__wrap:not\(\[data-overflows\]\)\s*\{[^}]*overflow-x:\s*clip/u);
+    // A scroll container would pin the heads to itself, not the page.
+    expect(SHEET).toMatch(/\.cbd__wrap\s*\{[^}]*overflow-x:\s*clip/u);
   });
 
   it('MP-5-7 board only: the bar sits in the title row and leaves it with the board', async () => {

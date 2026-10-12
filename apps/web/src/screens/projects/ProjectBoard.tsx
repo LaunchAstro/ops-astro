@@ -61,8 +61,6 @@ export function ProjectBoard(
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     /** The clients the board's doors may name, for the page's own New task. */
     readonly onClients: (clients: readonly ClientView[]) => void;
-    /** Whether the board's reads were refused, which withdraws the page's door context too. */
-    readonly onDenied: (denied: boolean) => void;
     /** The selected project's own client, which the board's doors file. */
     readonly project: ClientView | null;
   },
@@ -89,7 +87,6 @@ function ProjectBoardRead(
     readonly place: ReturnType<typeof useProjectBoardAddress>;
     readonly widths: BoardWidths;
     readonly onClients: (clients: readonly ClientView[]) => void;
-    readonly onDenied: (denied: boolean) => void;
     readonly project: ClientView | null;
   },
 ): ReactElement {
@@ -174,11 +171,10 @@ function ProjectBoardRead(
     () => doorClients(reached.state, admitted ? (answer?.tasks ?? []) : []),
     [reached.state, admitted, answer],
   );
-  const { onClients, onDenied } = props;
+  const { onClients } = props;
   useEffect(() => {
     onClients(known);
-    onDenied(denied);
-  }, [onClients, onDenied, known, denied]);
+  }, [onClients, known]);
   const door = {
     address: props.place.view,
     canFileTask: props.canFileTask === true,
