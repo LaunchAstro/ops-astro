@@ -190,8 +190,10 @@ function ProjectBoardRead(
     address: props.place.view,
     canFileTask: props.canFileTask === true,
     clients: known,
+    project: project.client,
+    admitted: admitted && project.settled,
   };
-  const noTasks = <NoTasks {...door} project={project} />;
+  const noTasks = <NoTasks {...door} />;
   const empty = scopedView ? <></> : noTasks;
   const drawn =
     admitted && (scopedView || board.outcome !== 'empty') && (!named || clients !== null);
@@ -203,8 +205,8 @@ function ProjectBoardRead(
         canFileTask={door.canFileTask}
         address={door.address}
         clients={known}
-        project={project}
-        admitted={admitted}
+        project={project.client}
+        admitted={door.admitted}
       />
       {reading === null ? null : <p data-board-reading>{reading}</p>}
       {props.scope.client === undefined || waiting === 0 ? null : (

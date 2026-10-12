@@ -92,7 +92,7 @@ export function ProjectsToolbar(props: {
   readonly clients?: readonly ClientView[];
   /** The selected project's own client, read for its door; null for none or unread. */
   readonly project?: ClientView | null;
-  /** Whether the board admits the reader now; a board that does not names no client. */
+  /** Whether the board admits the reader and the project's client is settled; else no client. */
   readonly admitted: boolean;
 }): ReactElement | null {
   const control = (

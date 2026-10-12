@@ -11,7 +11,9 @@
 // once the board admits the reader again gives it back. While a reread is in
 // flight it gives none, so a door clicked mid-refresh never files the client
 // the project had before. A refused or failed read, or a project with no
-// client the reader can name, gives none.
+// client the reader can name, gives none. Until the read has answered, the
+// project's client is not settled, and a door names no client from any
+// other source (a Client filter's), since the project's own may differ.
 
 import { useState } from 'react';
 import type { ClientView, TaskReadResult } from '../../../../../packages/core-wire/src/index.ts';
@@ -44,6 +46,9 @@ async function readProjectClient(
 }
 
 const skip = (): void => {};
+/** A board that is no selected project of its own has no project client to wait for. */
+const NOT_SELECTED = { client: null, settled: true };
+const UNSETTLED = { client: null, settled: false };
 
 export function useProjectClient(
   client: OperationsClient,
@@ -59,7 +64,7 @@ export function useProjectClient(
   },
   /** The task panel's count of changes, each a reread while the board admits the reader. */
   changes: number,
-): ClientView | null {
+): { readonly client: ClientView | null; readonly settled: boolean } {
   const scope = addressScope(query);
   // A board scoped to a client already names it.
   const boardId = scope?.kind === 'selected' && scope.client === undefined ? scope.boardId : null;
@@ -75,6 +80,7 @@ export function useProjectClient(
     deps: [client, boardId, since.admissions],
   });
   useRereadOn(changes, board.admitted ? reload : skip);
-  if (!board.admitted || since.withdrawn || !own) return null;
-  return state.outcome === 'ready' ? state.value : null;
+  if (boardId === null) return NOT_SELECTED;
+  if (!board.admitted || since.withdrawn || !own || state.outcome !== 'ready') return UNSETTLED;
+  return { client: state.value, settled: true };
 }
