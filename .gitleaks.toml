@@ -17,7 +17,9 @@ useDefault = true
 # this repository generates and checks itself are here. LICENSE is not: a key
 # added to it is refused (tests/gate/secrets-scan-cases.sh case P). The
 # lockfile is also exempt under gitleaks' own default allowlist, which this
-# file extends and cannot narrow, so removing its line here would not scan it.
+# file extends and cannot narrow, so scripts/secrets-scan.mjs (`pnpm check`
+# on every pull request) reads its bytes through `gitleaks stdin`, where no
+# path is matched (case Q).
 #
 # There is no entry here for `.local/`, and there must not be one. That
 # directory holds the local runtime's generated credentials and is gitignored,

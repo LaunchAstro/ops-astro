@@ -44,6 +44,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -128,6 +129,19 @@ try {
   );
   if (result.error !== undefined) fail(`gitleaks could not be run: ${result.error.message}`);
   status = result.status ?? 1;
+
+  // gitleaks' default allowlist, which .gitleaks.toml extends and cannot
+  // narrow, exempts the lockfile by path, so a key added to it would be read
+  // by nobody. Its bytes go through stdin too, where no path is matched.
+  if (status === 0 && files.includes('pnpm-lock.yaml')) {
+    const lockfile = spawnSync(
+      'gitleaks',
+      ['stdin', '--no-banner', '--redact', '--exit-code', '1', '--config', config],
+      { input: readFileSync(join(root, 'pnpm-lock.yaml')), stdio: ['pipe', 'inherit', 'inherit'] },
+    );
+    if (lockfile.error !== undefined) fail(`gitleaks could not be run: ${lockfile.error.message}`);
+    status = lockfile.status ?? 1;
+  }
 } finally {
   rmSync(mirror, { recursive: true, force: true });
 }
