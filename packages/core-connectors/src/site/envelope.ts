@@ -129,8 +129,8 @@ const END_TAG_FOLLOWS = /[\t\n\f\r />]/u;
 const BLANK_LINE = /\n[\t ]*(?:\n|$)/gu;
 // A Markdown word's run holds `.`, `:`, `/` or `@` only as closing punctuation: no autolink.
 const MARKDOWN_RUN = /^[\p{L}\p{M}\p{N}'’‘"“”()[\]*_~-]*[.,;:!?)\]"'’”*_~]*$/u;
-// A link's label (`][label]`, `[label][]`, `[label]:`, `[label]`) is one construct, never copy.
-const LABEL = /\]?\[(?:[^\\[\]]|\\.){0,999}(?=\](?!\(|\[(?!\])))/uy;
+// A link label (`][l]`, `[l][]`, `[l]:`, `[l]`) is one construct, unless it holds `<`, `{` or `}`.
+const LABEL = /\]?\[(?:[^\\[\]<{}]|\\.){0,999}(?=\](?!\(|\[(?!\])))/uy;
 
 /** Lower case by ASCII only, as HTML matches an end tag's name. */
 const asciiLower = (text: string): string =>

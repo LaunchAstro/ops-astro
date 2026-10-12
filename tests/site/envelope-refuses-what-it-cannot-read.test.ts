@@ -163,4 +163,14 @@ describe('Envelope bounds: nesting depth, long runs and Markdown reference label
     const text = 'See [our friendly studio][s].\n\n[s]: https://studio.example/\n';
     expect(verdict(text, page)).toMatchObject({ ok: true, value: { line: 1 } });
   });
+  it('reads markup inside a Markdown bracket as markup, never as a label to skip', () => {
+    refusedEach(
+      [
+        'See [<script>][] a friendly studio.\n',
+        'See [<script>] a friendly studio.\n',
+        'See [<style>][x] a friendly studio.\n',
+      ],
+      page,
+    );
+  });
 });
