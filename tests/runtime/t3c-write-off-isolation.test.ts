@@ -55,6 +55,8 @@ describe('T3 no machine path: one caller of the write-off', () => {
       .filter((file) => readFileSync(join(ROOT, file), 'utf8').includes("'written_off'"))
       .toSorted();
     expect(causes).toStrictEqual([
+      // Reads it only: a top-up at the stop refuses a written-off step.
+      'packages/core-runtime/src/budget-stop.ts',
       // AW-10: records the write-off on the step's held broker calls, called only by the write-off.
       'packages/core-runtime/src/recovery/broker-effect.ts',
       'packages/core-runtime/src/recovery/write-off.ts',

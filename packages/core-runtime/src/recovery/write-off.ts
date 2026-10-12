@@ -10,8 +10,10 @@
 // recorded outcome takes (`outcome.ts`), so the two race to one winner. It
 // writes no row of its own among the money tables: no new attempt, hold or
 // envelope (split 2.2, "no ledger row"). It moves no work: a step proved
-// absent has already resumed on its own hold, and a step not proved absent
-// keeps its stop until a person records an outcome for the work.
+// absent has already resumed on its own hold. It is final for the attempt:
+// no outcome is recorded after it, and a step not proved absent stays stopped
+// (a top-up at its stop is refused, `budget-stop.ts`) until a person ends the
+// work and starts it again.
 //
 // Above the four-eyes band, T2e's stored setting read here, a second person
 // names the same figure, exactly as a top-up pairs (`budget.ts`). The band is
@@ -113,6 +115,7 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
     { reservationId: row.reservation_id, envelopeId: row.envelope_id },
     { cause: 'written_off', causeId: row.attempt_id },
     charge,
+    { recordCause: true },
   );
   if (charge > 0n) {
     await raiseAlert(tx, {
