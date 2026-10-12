@@ -173,6 +173,13 @@ jobs:
           ./gitleaks version
       - name: Scan every commit, not just the diff
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
+      # gitleaks' own default allowlist, which .gitleaks.toml extends and
+      # cannot narrow, skips pnpm-lock.yaml by path; stdin has no path.
+      - name: Every version of the lockfile, which gitleaks' allowlist skips
+        run: |
+          git log --format=%H -- pnpm-lock.yaml | while read -r c; do
+            git show "$c:pnpm-lock.yaml" | ./gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml || exit 1
+          done
 
   check:
     # `local checks` in shards (CI-SHARDS-2). Run whole it took 35 of the merge
