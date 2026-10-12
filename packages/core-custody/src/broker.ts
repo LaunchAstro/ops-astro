@@ -32,7 +32,8 @@
 //    after this point leaves a call the sweep holds as unknown liability and
 //    never releases.
 // 3. Send, through custody, with a request the adapter built from registered
-//    fields. The broker's process opens no connection.
+//    fields, ending before the lease read at the start does (`endBy`): a call
+//    that waited past it is never sent. The broker's process opens no connection.
 // 4. Settle, under the same locks taken by the call's own rows, with the
 //    audit event in the same transaction: priced within the hold settles and
 //    releases the rest; positive proof that nothing happened releases it all;
@@ -52,6 +53,8 @@ import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
+import { endBy } from './custody.ts';
+import { CONVERSATION_CALL_LIFE_MS } from './broker-conversation.ts';
 import { settle, settlementOf } from './broker-settle.ts';
 import type {
   Broker,
@@ -87,6 +90,8 @@ export {
   type ReserveRefusal,
 } from './broker-reserve.ts';
 
+type Started = { readonly fields: readonly ResolvedField[]; readonly notAfter: number };
+
 /**
  * Step 2, as the effect applies: the six facts and the client link again
  * under their locks, so a lease, delegation or reservation lost since the
@@ -109,7 +114,7 @@ async function markStarted(
   reserved: ReservedCall,
   broker: Broker,
   account: string | null,
-): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
+): Promise<Started | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const { key, reach, credentialKind, provider, credentialRef } = reserved.route;
     const route = [key, reach, credentialKind, provider, credentialRef, account];
@@ -148,8 +153,19 @@ async function markStarted(
       [tx.businessId, reserved.callId, ...route],
     );
     if (started.length === 0) return 'EFFECT_NOT_RECONCILABLE';
-    return { fields: checked.fields };
+    return { fields: checked.fields, notAfter: await leaseEnd(tx, request.leaseId) };
   });
+}
+
+/** A started call's `notAfter`: its lease, locked, as it stands now. The sweep holds the call once it ends. */
+async function leaseEnd(tx: TenantQuery, leaseId: string): Promise<number> {
+  const at = Date.now();
+  const [lease] = await tx.query<{ left_ms: number }>(
+    `select (extract(epoch from expires_at - clock_timestamp()) * 1000)::float8 as left_ms
+       from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, leaseId],
+  );
+  return endBy(at, lease?.left_ms ?? 0);
 }
 
 /**
@@ -231,6 +247,7 @@ export async function sendReservedCall(
     body: built.body,
     timeoutMs: reserved.operation.timeoutMs,
     maxResponseBytes: reserved.operation.maxResponseBytes,
+    notAfter: started.notAfter,
   });
   const settlement = settlementOf(outcome, reserved.operation, adapter);
   return await settle(database, businessId, caller, request, reserved, settlement, broker);
@@ -256,16 +273,16 @@ export async function sweepModelCalls(
     [tx.businessId],
   );
   // A conversation call has no lease: started, it is dropped once it has
-  // outlived five times the longest wait custody allows (120 s) and held,
-  // so a lost process never leaves it counting as in flight.
+  // outlived its time (`CONVERSATION_CALL_LIFE_MS`) and held, so a lost
+  // process never leaves it counting as in flight.
   const conversations = await tx.query(
     `update public.model_calls
         set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
             unknown_since = clock_timestamp()
       where business_id = $1 and conversation_id is not null and state = 'dispatched'
-        and started_at <= clock_timestamp() - interval '10 minutes'
+        and started_at <= clock_timestamp() - $2::float8 * interval '1 millisecond'
       returning id`,
-    [tx.businessId],
+    [tx.businessId, CONVERSATION_CALL_LIFE_MS],
   );
   const released = await releaseUnsent(tx);
   return { held: held.length + conversations.length, released: released.length };

@@ -35,7 +35,8 @@
 // transaction that read the gate, still under its locks, takes the lookup's
 // slot on the asked call's row (`lookup_until`, migration 20261004040000), which every
 // one of those counts sees, so a second pass or a model call cannot take the
-// same place. The slot is given back when the lookup ends, whatever it
+// same place. Custody sends nothing past the slot, and ends the lookup before
+// it (`endBy`). The slot is given back when the lookup ends, whatever it
 // answered or if custody threw; a worker lost while asking leaves it to
 // expire at the operation's timeout plus `SLOT_MARGIN_MS`.
 
@@ -45,7 +46,7 @@ import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { giveSlot, takeSlot, waitsItsTurn } from './broker-lookup-slot.ts';
 import { atCeiling } from './broker-reserve.ts';
 import type { Broker, BrokerRoute } from './broker-types.ts';
-import type { CustodyOutcome } from './custody.ts';
+import { endBy, type CustodyOutcome } from './custody.ts';
 
 /** The most a lookup answer is read: one short code. */
 const LOOKUP_BYTES = 4 * 1024;
@@ -152,10 +153,12 @@ async function ask(
     return nothing("the route's credential is a person's own; a person records the outcome");
   }
   const request = adapter.lookup(call.id);
+  const slotMs = operation.timeoutMs + SLOT_MARGIN_MS;
+  const notAfter = endBy(Date.now(), slotMs);
   const slot = await database.withBusiness(businessId, async (tx) =>
     (await atCeiling(tx, operation, route))
       ? await waitsItsTurn(tx, call.id)
-      : await takeSlot(tx, call.id, operation.timeoutMs + SLOT_MARGIN_MS),
+      : await takeSlot(tx, call.id, slotMs),
   );
   if (slot === null) return 'waits';
   try {
@@ -166,6 +169,7 @@ async function ask(
       body: request.body,
       timeoutMs: operation.timeoutMs,
       maxResponseBytes: LOOKUP_BYTES,
+      notAfter,
     });
     if (!sameCarrier(outcome, call)) {
       return nothing('custody asked through another account than the one that carried it');

@@ -199,7 +199,7 @@ function redact(text: string, credential: StoredCredential): string {
   }
 }
 
-/** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
+/** These keys and an optional `notAfter`: one naming a header, an origin or more is refused whole. */
 const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
 
 /** The longest delay a timer keeps: past it, or below one, a deadline is no request. */
@@ -209,8 +209,13 @@ function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
   const deadline = shape['timeoutMs'];
+  const lease = shape['notAfter'];
   return (
-    Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
+    Object.keys(shape)
+      .filter((key) => key !== 'notAfter')
+      .toSorted()
+      .join() === REQUEST_KEYS &&
+    (lease === undefined || Number.isFinite(lease)) &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
@@ -262,9 +267,16 @@ process.on('message', (message: unknown) => {
     reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
     return;
   }
+  // Nothing sent once the caller's lease has ended, and nothing still running when it does.
+  const left = Math.floor((request.notAfter ?? Infinity) - Date.now());
+  if (left < 1) {
+    reply({ type: 'refused', code: 'CUSTODY_PAST_LEASE' });
+    return;
+  }
   reply({ type: 'started' });
+  const timeoutMs = Math.min(request.timeoutMs, left);
   void (async (): Promise<void> => {
-    const outcome = await send(loaded.destinations, request, credential);
+    const outcome = await send(loaded.destinations, { ...request, timeoutMs }, credential);
     const safe = outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
     reply({
       type: 'answer',

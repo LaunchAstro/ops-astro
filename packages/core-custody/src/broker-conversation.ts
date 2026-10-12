@@ -13,6 +13,7 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, mayCarry } from './credentials.ts';
 import { sendingAccount } from './broker-carrier.ts';
+import { endBy } from './custody.ts';
 import {
   atCeiling,
   registerPromptCopy,
@@ -55,6 +56,13 @@ export interface ConversationCallRequest {
    */
   readonly stillHeld?: (tx: TenantQuery) => Promise<boolean>;
 }
+
+/**
+ * How long a started conversation call counts as in flight under its route's ceiling before
+ * the sweep holds it (`sweepModelCalls`): five times the longest wait custody allows (120 s).
+ * Custody ends the call before then (`endBy`), so a call that waited past it is never sent.
+ */
+export const CONVERSATION_CALL_LIFE_MS: number = 10 * 60_000;
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
   ok: false,
@@ -155,21 +163,25 @@ async function insertStarted(
   return callId;
 }
 
-/** Through custody, then the answer settles at nothing or is held (never settled above nothing). */
-async function sendAndSettle(
+/**
+ * Through custody, then the answer settles at its price within the hold (nothing, on the
+ * conversation seam; the planning reply's maximum, `broker-planning.ts`), is released on proof
+ * nothing happened, or is held for a person.
+ */
+export async function sendAndSettle(
   database: Database,
   businessId: BusinessId,
   called: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
-  model: string | undefined,
+  sent: { readonly model: string | undefined; readonly notAfter: number },
 ): Promise<ModelCallResult> {
-  const { callId, operation, route } = called;
+  const { callId, operation, route, reservedMinor } = called;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId, model);
+  const built = adapter.build(values, callId, sent.model);
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
     path: built.path,
@@ -177,18 +189,21 @@ async function sendAndSettle(
     body: built.body,
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
+    notAfter: sent.notAfter,
   });
   const settlement = settlementOf(outcome, operation, adapter);
   return await database.withBusiness(businessId, async (tx) => {
     if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
     if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
-    if (settlement.costMinor !== 0) {
-      const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
+    const { costMinor } = settlement;
+    if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
+      const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
       return await hold(tx, called, observed, null, broker);
     }
     if (!(await settlePriced(tx, called, settlement, broker))) return closed(callId);
     const { text } = settlement.answer;
-    return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
+    const releasedMinor = reservedMinor - costMinor;
+    return { ok: true, callId, text, reservedMinor, actualMinor: costMinor, releasedMinor };
   });
 }
 
@@ -215,6 +230,7 @@ export async function callModelInConversation(
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
   const account = await sendingAccount(broker, route, operation.destination);
+  const notAfter = endBy(Date.now(), CONVERSATION_CALL_LIFE_MS);
   const callId = await database.withBusiness(businessId, async (tx) => {
     if (request.stillHeld !== undefined && !(await request.stillHeld(tx))) return 'lost';
     return (await atCeiling(tx, operation, route))
@@ -231,6 +247,6 @@ export async function callModelInConversation(
     { callId, operation, route, reservedMinor: 0 },
     fields,
     broker,
-    request.model,
+    { model: request.model, notAfter },
   );
 }
