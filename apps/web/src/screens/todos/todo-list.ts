@@ -40,7 +40,8 @@ export const dueToday = (due: string | null, today: string): boolean =>
  * One filter chip (PJ-02, PJ-03): what a typed word was read as. A word that
  * names an urgency, a waiting reply, whose move it is, a priority or a
  * category (three letters or more of its label) is read as that; `tag:` names
- * a tag; any other word without a colon is a name word.
+ * a tag; any other word without a colon, or any word in double quotes, is a
+ * name word.
  */
 export type IdentityChip = {
   readonly kind: 'person' | 'client';
@@ -85,6 +86,9 @@ const MOVE_WORDS: ReadonlyMap<string, TodoView['whoseMove']> = new Map([
 ]);
 
 function chipOf(token: string): Chip | null {
+  // A quoted word is a name word, whatever it reads as bare (report, today).
+  const quoted = /^"([^"]+)"$/u.exec(token)?.[1];
+  if (quoted !== undefined) return { kind: 'words', value: quoted };
   const due = DUE_WORDS.get(token);
   if (due !== undefined) return { kind: 'due', value: due };
   if (WAITING_WORDS.has(token)) return { kind: 'waiting' };
