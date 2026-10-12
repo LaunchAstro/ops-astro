@@ -165,13 +165,18 @@ export interface Said {
   readonly body: unknown;
 }
 
-/** A wire answer, refusal or success, read the same way whichever client carried it. */
-function said(answer: unknown): Said {
+/**
+ * A wire answer, refusal or success, read the same way whichever client
+ * carried it. Success is a 2xx answer that is not a refusal: a fault (a 500,
+ * a 503) whose body says no `refused` is that status, never `ok`.
+ */
+function said(answer: unknown, status: number): Said {
   const named = (answer ?? {}) as Record<string, unknown>;
   const refused = named['refused'] === true;
+  const succeeded = !refused && status >= 200 && status < 300;
   return {
-    ok: !refused,
-    code: refused ? String(named['code']) : 'ok',
+    ok: succeeded,
+    code: refused ? String(named['code']) : succeeded ? 'ok' : `HTTP_${String(status)}`,
     names: refused ? (named['names'] as readonly string[]) : [],
     body: answer,
   };
@@ -215,16 +220,20 @@ export function surfacesOf(
     const caller = isInvitation(name) ? harness.inviter() : world.ada;
     if (surface === 'api') {
       const answer = await harness.asPerson(name, body, 'alpha', caller);
-      return said(answer.body);
+      return said(answer.body, answer.status);
     }
     const { cli, web } = caller === world.ada ? admin : doors(caller.token);
-    if (surface === 'cli') return said((await cli.run(name, body)).body);
+    if (surface === 'cli') {
+      const answer = await cli.run(name, body);
+      return said(answer.body, answer.status);
+    }
     const result =
       declarationFor(name).kind === 'read'
         ? await web.read(name as ReadName, body)
         : await web.mutate(name, body, { operationId: String(body['operationId']) });
     if ('unavailable' in result) throw new Error(`d06: web unavailable ${result.because}`);
-    return 'ok' in result && result.ok ? said(result.value) : said(result);
+    // The web client answers a refusal as one and any other non-2xx as unavailable.
+    return 'ok' in result && result.ok ? said(result.value, 200) : said(result, 400);
   };
 }
 
