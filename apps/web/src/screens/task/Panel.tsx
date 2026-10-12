@@ -245,6 +245,7 @@ function PanelWork(props: SideProps): ReactElement {
   return (
     <TeamSubtasks
       client={props.client}
+      grantKey={props.grantKey}
       task={props.task}
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
