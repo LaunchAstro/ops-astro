@@ -90,13 +90,18 @@ grant execute on function public.standing_mandate_live_filing(
 
 -- The backstop for a writer that skips the command: a second live mandate
 -- identical to one already filed is refused, judged after the client's lock.
+-- The lock is a write of the client's row, unchanged, as
+-- 20261007035000_mapping_claims_its_login.sql claims a login: a row lock
+-- alone does not refresh a repeatable read snapshot, so a second writer whose
+-- snapshot predates the first's commit would find nothing and file too. Under
+-- read committed it waits and then reads a fresh snapshot; under repeatable
+-- read or serializable it fails with `serialization_failure` and retries.
 create function public.standing_mandates_one_live_filing() returns trigger
   language plpgsql
   as $$
   begin
-    perform 1 from public.clients
-      where business_id = new.business_id and id = new.client_id
-      for no key update;
+    update public.clients k set no_agent_edits = k.no_agent_edits
+      where k.business_id = new.business_id and k.id = new.client_id;
     if public.standing_mandate_live_filing(new.business_id, new.client_id, new.classes,
          new.refuses, new.ceiling_minor, new.currency, new.expires_at, new.label,
          new.graduation_class) is not null then
