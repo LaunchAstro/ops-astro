@@ -16,7 +16,7 @@ afterEach(unmountAll);
 it('a to-do drawn again at a new revision after its tick landed can be ticked again', async () => {
   const sent: Sent[] = [];
   let revision = 3;
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const reply = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
     if (at.endsWith('/live?topic=board'))
       return new Response(new ReadableStream(), {
@@ -32,7 +32,9 @@ it('a to-do drawn again at a new revision after its tick landed can be ticked ag
     // The tick lands, and the to-do is reopened elsewhere, two revisions on.
     revision += 2;
     return json({ recordId: body['recordId'], revision });
-  }) as unknown as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL, init?: RequestInit) =>
+    Promise.resolve(reply(url, init))) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const { view } = await todos({ client });
   const completes = () => sent.filter((one) => one.to === '/task/complete');
