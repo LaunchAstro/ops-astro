@@ -100,7 +100,7 @@ export type GroupAction =
  * microseconds the server writes past it to rank tied messages (`...288001Z`),
  * which `Date.parse` drops.
  */
-const timeOf = (iso: string): number =>
+export const timeOf = (iso: string): number =>
   Date.parse(iso) * 1000 + Number(/\.\d{3}(\d{1,3})Z$/u.exec(iso)?.[1]?.padEnd(3, '0') ?? 0);
 
 /** Unread is derived from the read marker: others' messages after it. */
