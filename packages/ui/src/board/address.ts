@@ -13,9 +13,38 @@
 import { boundedWords } from './filters.ts';
 import type { BoardContext, BoardView, SortState } from './types.ts';
 
-// A replacement character means the address did not decode; control
-// characters are never typed.
-const UNREADABLE = /[�\p{Cc}]/u;
+// Control characters are never typed, and `decoded` marks an escape that is
+// not UTF-8 with one, so its word is dropped.
+const UNREADABLE = /\p{Cc}/u;
+const NOT_UTF8 = '\u0000';
+const FATAL = new TextDecoder('utf-8', { fatal: true });
+const LENIENT = new TextDecoder('utf-8');
+
+/**
+ * A query component decoded as URLSearchParams decodes it, except that bytes
+ * which are not UTF-8 read as NOT_UTF8 rather than U+FFFD. A replacement
+ * character the board wrote itself (`%EF%BF%BD`) decodes and is kept.
+ */
+function decoded(raw: string): string {
+  return raw.replaceAll('+', ' ').replaceAll(/(?:%[\dA-Fa-f]{2})+/gu, (run) => {
+    const bytes = Uint8Array.from(run.slice(1).split('%'), (hex) => Number.parseInt(hex, 16));
+    try {
+      return FATAL.decode(bytes);
+    } catch {
+      return LENIENT.decode(bytes).replaceAll('\uFFFD', NOT_UTF8);
+    }
+  });
+}
+
+/** The first `name` value in `search`, decoded by `decoded`; null when absent. */
+function queryParam(search: string, name: string): string | null {
+  for (const pair of search.split('&')) {
+    const at = pair.indexOf('=');
+    if (decoded(at === -1 ? pair : pair.slice(0, at)) === name)
+      return at === -1 ? '' : decoded(pair.slice(at + 1));
+  }
+  return null;
+}
 
 /**
  * The address for a view. `f` is always written, empty when no filter is on,
@@ -33,11 +62,12 @@ export function writeView(view: BoardView): string {
 }
 
 export function readView<Row>(search: string, context: BoardContext<Row>): BoardView {
-  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const query = search.startsWith('?') ? search.slice(1) : search;
+  const params = new URLSearchParams(query);
   const facetIds = new Set(context.facets.map((facet) => facet.id));
   const ids = [...new Set((params.get('f') ?? '').split(','))].filter((id) => facetIds.has(id));
   const text = boundedWords(
-    [...new Set((params.get('q') ?? '').split(/\s+/u))]
+    [...new Set((queryParam(query, 'q') ?? '').split(/\s+/u))]
       .filter((word) => word !== '' && !UNREADABLE.test(word))
       .map((word) => word.toLowerCase()),
   );
