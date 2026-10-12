@@ -118,6 +118,8 @@ interface WindowRead {
   readonly read: UseReadLive<LedgerRead>;
   /** The window's epoch, as committed: a new reader or search starts another. */
   readonly epoch: { readonly current: number };
+  /** The reader and search committed, which the window on screen must belong to. */
+  readonly seen: { readonly current: { readonly grantKey: string; readonly query: string | null } };
   /** The oldest day loaded, which a refresh reads down to. */
   readonly through: { current: string | null };
 }
@@ -132,7 +134,7 @@ function useWindow(client: OperationsClient, grantKey: string, query: string | n
     rollup: tabRollupFloor(),
     coalesce: true,
   });
-  return { read, epoch: useEpoch(grantKey, query, through), through };
+  return { read, ...useEpoch(grantKey, query, through), through };
 }
 
 /**
@@ -149,7 +151,7 @@ function useEpoch(grantKey: string, query: string | null, through: { current: st
     through.current = null;
     epoch.current += 1;
   }, [grantKey, query, through]);
-  return epoch;
+  return { epoch, seen };
 }
 
 interface EarlierDays {
@@ -168,11 +170,14 @@ interface EarlierDays {
  */
 function useEarlierDays(client: OperationsClient, log: WindowRead): EarlierDays {
   const [asking, setAsking] = useState<Asking | null>(null);
-  const { read, epoch, through } = log;
+  const { read, epoch, seen, through } = log;
 
   const loadEarlier = async (from: LedgerRead): Promise<void> => {
     const boundary = from.ledger.days.at(-1)?.day;
-    if (boundary === undefined) return;
+    // A window drawn for a reader or search no longer committed: its read is about to start again.
+    const { grantKey, query } = seen.current;
+    if (boundary === undefined || from.query !== query || read.now().state?.grantKey !== grantKey)
+      return;
     const sent: Asking = {
       epoch: epoch.current,
       failures: read.now().failures,
