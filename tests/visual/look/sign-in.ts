@@ -71,8 +71,12 @@ export const SIGN_IN: LookScreen = {
         '.signin label[for="signin-email"]',
         ['font-family', 'font-size', 'letter-spacing', 'text-transform', 'color'],
       ),
-      // DR-10 folded the dark faint and muted inks to 55 percent; the mockup drew 46.
-      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
+      // A field label is text a person needs, so it takes --text-2 for 4.5:1
+      // in both themes (#929), where the mockup drew the faint ink.
+      ruled: [
+        { at: 'color@light', want: 'rgba(107,99,93,255)', why: '#929 essential text 4.5:1' },
+        { at: 'color@dark', want: 'rgba(248,248,248,184)', why: '#929 essential text 4.5:1' },
+      ],
     },
     // The adder focuses its first input on opening; the second is at rest.
     probe('input', { ...ADDER, selector: '.lassetadd input[data-af="what"]' }, '#signin-email', [
