@@ -5,9 +5,10 @@
 // denied, and needs none. A tool the framework registers that reaches for the
 // network (a vendor's telemetry, a call home) through this process's socket,
 // DNS or fetch is refused and recorded, so the catalogue is not the only
-// barrier. The guard swaps those methods in this process: a tool holding one
-// it saved before the guard, or a child process, is outside it, and is part
-// two's (deny-egress.ts), the candidate's own environment with no network.
+// barrier. A socket is refused at its TCP handle, so a tool holding the
+// socket method from before the guard is refused too. The guard is this
+// process's: a child process is outside it, and is part two's
+// (deny-egress.ts), the candidate's own environment with no network.
 // No database.
 
 import dns from 'node:dns';

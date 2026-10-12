@@ -44,6 +44,44 @@ function denyResolves(refuse: (what: string) => Error): () => void {
   };
 }
 
+type Handle = Methods & Record<symbol, unknown>;
+
+/** The TCP handle class every connect reaches, beneath `Socket.prototype.connect`. */
+const TCP_HANDLE = (
+  process as unknown as { binding(name: 'tcp_wrap'): { TCP: { prototype: Methods } } }
+).binding('tcp_wrap').TCP.prototype;
+
+/**
+ * Swap the handle's connects: a tool holding `Socket.prototype.connect` from
+ * before the guard still reaches these, and its socket ends with the refusal.
+ */
+function denyHandleConnects(refuse: (what: string) => Error): () => void {
+  const saved = (['connect', 'connect6'] as const).map((name) => {
+    const original = TCP_HANDLE[name];
+    TCP_HANDLE[name] = function denied(
+      this: Handle,
+      _request: unknown,
+      _address: unknown,
+      port: unknown,
+    ): number {
+      const error = refuse(`socket ${String(port)}`);
+      const owner = Object.getOwnPropertySymbols(this).find(
+        (symbol) => symbol.description === 'owner_symbol',
+      );
+      const socket = owner === undefined ? undefined : (this[owner] as Socket | undefined);
+      if (socket === undefined) throw error;
+      process.nextTick(() => socket.destroy(error));
+      return 0;
+    };
+    return () => {
+      TCP_HANDLE[name] = original;
+    };
+  });
+  return () => {
+    for (const restore of saved) restore();
+  };
+}
+
 export interface EgressGuard {
   readonly attempts: readonly string[];
   release(): void;
@@ -65,6 +103,7 @@ export function denyEgress(): EgressGuard {
     throw refuse(`udp ${String(typeof args[2] === 'number' ? args[3] : args[1])}`);
   } as typeof dgram.Socket.prototype.send;
   const resolves = denyResolves(refuse);
+  const handles = denyHandleConnects(refuse);
   Socket.prototype.connect = function denied(this: Socket, ...args: unknown[]): Socket {
     // `net.connect` hands the socket its arguments already normalised, as one array.
     const target: unknown = Array.isArray(args[0]) ? (args[0] as unknown[])[0] : args[0];
@@ -91,6 +130,7 @@ export function denyEgress(): EgressGuard {
       globalThis.fetch = fetched;
       dgram.Socket.prototype.send = send;
       resolves();
+      handles();
     },
   };
 }
