@@ -55,7 +55,7 @@ export interface ConversationCallRequest {
   readonly model?: string;
   /**
    * The caller's authority judged again in the transaction that writes the
-   * call's row, before any of the broker's locks: false refuses the call with
+   * call's row, after the ceiling's lock wait: false refuses the call with
    * nothing written or sent. The command layer's, for what it checked earlier.
    */
   readonly stillHeld?: (tx: TenantQuery) => Promise<boolean>;
@@ -264,10 +264,10 @@ export async function callModelInConversation(
   const account = await sendingAccount(broker, route, operation.destination);
   const notAfter = endBy(Date.now(), CONVERSATION_CALL_LIFE_MS);
   const callId = await database.withBusiness(businessId, async (tx) => {
+    if (await atCeiling(tx, operation, route)) return null;
+    // After the ceiling's lock wait: a grant that ended while it waited no longer counts.
     if (request.stillHeld !== undefined && !(await request.stillHeld(tx))) return 'lost';
-    return (await atCeiling(tx, operation, route))
-      ? null
-      : await insertStarted(tx, request.conversation.id, operation, route, account);
+    return await insertStarted(tx, request.conversation.id, operation, route, account);
   });
   if (callId === 'lost') return refused('AUTHORITY_LOST');
   if (callId === null) {
