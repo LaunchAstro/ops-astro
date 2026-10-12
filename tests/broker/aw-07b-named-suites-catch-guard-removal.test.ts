@@ -118,8 +118,8 @@ mutationIt(
     await namedTestsCatch(
       {
         file: 'apps/api/server.ts',
-        from: 'if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);',
-        to: 'void config.mailHook;',
+        from: 'mountMailHook(server, database, { ...config.mailHook, ...observe });',
+        to: 'void observe;',
       },
       [
         'tests/api/mail-hook-settings.test.ts',
