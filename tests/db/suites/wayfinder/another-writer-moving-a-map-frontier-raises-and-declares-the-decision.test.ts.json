@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "another writer moving a map frontier raises and declares the decision"
+}
