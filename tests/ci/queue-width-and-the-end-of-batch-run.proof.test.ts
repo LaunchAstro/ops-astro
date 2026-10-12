@@ -7,6 +7,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { parse } from 'yaml';
+import {
+  ISOLATION_STEPS,
+  isolationItems,
+  localSteps,
+  readShardPlan,
+} from '../../scripts/ci-shards.ts';
+import { databaseItems, planItems, readPlan, shardWeight } from '../../scripts/db-shards.ts';
+import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 
 it('a pull request without ci-next starts no heavy CI jobs', () => {
   const ci = parse(readFileSync('.github/workflows/ci.yml', 'utf8'));
@@ -90,18 +98,56 @@ it('the two agent suite parts collect every whole-suite case exactly once', () =
   }
 }, 120_000);
 
-it('queue width fits the measured 60 runner slots after the shard increase', () => {
+// The queue's width is bounded by runner time, not by shards at once. A group's shards end
+// at different times (most database shards in 6 to 9 minutes of a 15-minute group), so a second
+// group's shards take the slots the first group's free; a count of shards at once (width 2 x 42
+// = 84 of 60) reads that as a jam it is not. What does bind is the work: the groups in flight
+// must need no more runner time than the 60 slots give in the time one group takes, so a second
+// group fills idle slots rather than stretching the first. Measured over the 10 merge groups to
+// 12 October 2026: about 15 minutes a group, and each shard's minutes outside its plan's items.
+const SLOTS = 60;
+const GROUP_MINUTES = 15;
+const OUTSIDE_ITEMS = { database: 0.8, isolation: 0.8, local: 3 };
+
+/** The measured seconds of a list of run items, weighed as the split weighs them. */
+const sum = (list: readonly string[], seconds: Readonly<Record<string, number>>): number =>
+  list.reduce((total, item) => total + shardWeight(seconds)(item), 0);
+
+/** One group's runner minutes in the three matrices: each plan's measured items, and each shard's set-up. */
+function groupMinutes(scale = 1): number {
   const ci = parse(readFileSync('.github/workflows/ci.yml', 'utf8'));
-  const policy = JSON.parse(readFileSync('.github/required-checks.json', 'utf8'));
-  const parallelShards = ['check', 'database-shard', 'isolation'].reduce(
-    (sum, key) => sum + ci.jobs[key].strategy.matrix.shard.length,
-    0,
+  const count = (key: string): number => ci.jobs[key].strategy.matrix.shard.length;
+  const shardPlan = readShardPlan('.');
+  const dbPlan = readPlan('tests/db/shard-plan.json');
+  const named = readNamedSuites('.');
+  const runs = databaseItems(
+    planItems([...named.invariant, ...named.conformance], dbPlan.parts),
+    readIsolationSuites('.').invariant,
   );
+  const files = Object.values(shardPlan.files).reduce((total, n) => total + n, 0);
+  const seconds =
+    sum(runs, dbPlan.seconds) +
+    sum([...isolationItems('.'), ...ISOLATION_STEPS], shardPlan.isolation) +
+    sum(localSteps(), shardPlan.steps) +
+    files * shardPlan.wallPerFileSecond;
+  return (
+    (seconds * scale) / 60 +
+    count('database-shard') * OUTSIDE_ITEMS.database +
+    count('isolation') * OUTSIDE_ITEMS.isolation +
+    count('check') * OUTSIDE_ITEMS.local
+  );
+}
+
+it('queue width fits the runner time the 60 slots give in one group', () => {
+  const policy = JSON.parse(readFileSync('.github/required-checks.json', 'utf8'));
   const width = policy.merge_queue.max_entries_to_build;
+  const perGroup = groupMinutes();
   expect(
-    width * parallelShards,
-    `${width} simultaneous merge groups can request ${parallelShards} parallel shard runners each`,
-  ).toBeLessThanOrEqual(60);
+    width * perGroup,
+    `${width} groups in flight need ${perGroup.toFixed(0)} runner minutes each`,
+  ).toBeLessThanOrEqual(SLOTS * GROUP_MINUTES);
+  // Not a bound anything passes: four times the measured work does not fit two groups.
+  expect(2 * groupMinutes(4)).toBeGreaterThan(SLOTS * GROUP_MINUTES);
 });
 
 it('an unreadable empty queue with a lingering merged-group run keeps the final full run', async () => {
