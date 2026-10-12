@@ -14,10 +14,12 @@
 // old one is still theirs. A sign-out or a switch of the tab's owner drops
 // every ledger. Only the order is the client's, so a save that never answers
 // holds back that client's later saves, never a new sign-in's. An old client's
-// save can then land after a newer one the server has already answered, so
-// the newest value of that key is sent again through the newest client, as a
-// new intent with its own operation id: the old id would only replay its
-// stored outcome.
+// save can then be stored after a newer one, so when an older save answers
+// while a newer one is out, the newest value of that key is sent again through
+// the newest client once both have answered (an answer lost on the way counts:
+// the save may be stored). It goes as a new intent with its own operation id,
+// since the old id would only replay its stored outcome. A save waiting in a
+// client's queue when the tab's owner changes is never sent.
 
 import {
   isRefusal,
@@ -28,25 +30,28 @@ import {
 } from '../operations/client.ts';
 import { tabOwnerGeneration } from '../session/token.ts';
 import { Intents } from './intents.ts';
-import { nextRequest, type Owner, type Tag } from './owned.ts';
+import { LEFT_BEHIND, nextRequest, type Owner, type Tag } from './owned.ts';
 
 interface Ledger {
-  /** The request number of the last save of each key. */
-  readonly last: Map<string, number>;
+  /** The last save of each key. */
+  readonly last: Map<string, Newest>;
   /**
    * Per key, from when no read can be trusted to have seen its last save: the
    * request number its answer arrived at, or Infinity while it is unanswered.
    */
   readonly unsettledUntil: Map<string, number>;
-  /** Per key, the last save once it has answered: sent again over an older one that lands later. */
-  readonly settled: Map<string, Settled>;
   readonly intents: Intents;
 }
 
-interface Settled {
+/** The last save of a key, sent again over an older save that may be stored after it. */
+interface Newest {
   readonly client: OperationsClient;
   readonly value: unknown;
   readonly tag: Tag;
+  /** An answer came that does not rule out its being stored. */
+  answered: boolean;
+  /** An older save answered before it did, so it may have been stored after it. */
+  overtaken: boolean;
 }
 
 let ledgers = { tab: tabOwnerGeneration(), byOwner: new Map<string, Ledger>() };
@@ -61,7 +66,6 @@ function ledgerOf(owner: Owner): Ledger {
     ledger = {
       last: new Map(),
       unsettledUntil: new Map(),
-      settled: new Map(),
       intents: new Intents(),
     };
     ledgers.byOwner.set(key, ledger);
@@ -80,21 +84,28 @@ export function savePreference(
   preference: string,
   value: unknown,
   tag: Tag,
+  operationId?: string,
 ): Promise<CallResult<CommandOutcome>> {
   const ledger = ledgerOf(tag);
-  ledger.last.set(preference, tag.request);
+  const mine: Newest = { client, value, tag, answered: false, overtaken: false };
+  ledger.last.set(preference, mine);
   ledger.unsettledUntil.set(preference, Number.POSITIVE_INFINITY);
   const sent = (tails.get(client) ?? Promise.resolve()).then(async () => {
-    const operationId = ledger.intents.idFor(preference, value);
-    const result = await client.mutate('preference.save', { preference, value }, { operationId });
+    if (tag.tab !== tabOwnerGeneration()) return LEFT_BEHIND;
+    const id = operationId ?? ledger.intents.idFor(preference, value);
+    const result = await client.mutate(
+      'preference.save',
+      { preference, value },
+      { operationId: id },
+    );
     // No answer arrived: the save may have been stored, and the same choice again replays it.
-    if (!isUnavailable(result)) ledger.intents.answered(preference, operationId);
-    if (ledger.last.get(preference) === tag.request) {
-      ledger.unsettledUntil.set(preference, nextRequest());
-      if (!isUnavailable(result)) ledger.settled.set(preference, { client, value, tag });
-    } else if (!isRefusal(result)) {
-      repair(ledger, preference);
-    }
+    if (!isUnavailable(result)) ledger.intents.answered(preference, id);
+    const last = ledger.last.get(preference);
+    if (last === mine) ledger.unsettledUntil.set(preference, nextRequest());
+    if (isRefusal(result) || last === undefined) return result;
+    if (last === mine) mine.answered = true;
+    else last.overtaken = true;
+    if (last.answered && last.overtaken) repair(last, preference);
     return result;
   });
   tails.set(
@@ -105,13 +116,12 @@ export function savePreference(
 }
 
 /**
- * An older save of `preference` answered after the last one: it may have been
- * stored over it, so send the last one's value again, through its client, once
- * the last one has answered, under the same tab owner.
+ * An older save of `preference` answered while `last` was out: it may have
+ * been stored after it, so send `last`'s value again through its client, as a
+ * new intent.
  */
-function repair(ledger: Ledger, preference: string): void {
-  const last = ledger.settled.get(preference);
-  if (last === undefined || last.tag.request !== ledger.last.get(preference)) return;
-  if (last.tag.tab !== tabOwnerGeneration()) return;
-  void savePreference(last.client, preference, last.value, { ...last.tag, request: nextRequest() });
+function repair(last: Newest, preference: string): void {
+  last.overtaken = false;
+  const tag = { ...last.tag, request: nextRequest() };
+  void savePreference(last.client, preference, last.value, tag, crypto.randomUUID());
 }
