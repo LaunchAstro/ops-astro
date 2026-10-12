@@ -412,6 +412,12 @@ const ROWS_HEAD = [
     meaning: 'This version is already published',
     source: 'C81 CS-16.20',
   },
+  {
+    code: 'LEGAL_VERSION_SUPERSEDED',
+    status: 409,
+    meaning: 'A later version of this document is already published',
+    source: 'C81 CS-16.20',
+  },
   // C81: a privacy policy reads the overseas-services register (SP-25).
   {
     code: 'LEGAL_REGISTER_CHANGED',
