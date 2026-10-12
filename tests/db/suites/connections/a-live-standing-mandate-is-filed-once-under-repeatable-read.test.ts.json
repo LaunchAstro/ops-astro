@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "races: two Repeatable Read writers whose snapshots predate either insert cannot both file one live standing mandate past standing_mandates_one_live_filing"
+}
