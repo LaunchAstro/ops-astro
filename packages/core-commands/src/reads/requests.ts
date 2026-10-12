@@ -202,14 +202,8 @@ export interface ReadOperands {
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
   readonly 'client.list': NoOperands;
-  /**
-   * What needs the operator's eye: privacy incidents first (C55), with the
-   * breach runbook an evidence link pins, both or neither.
-   */
-  readonly 'operations.read': {
-    readonly runbookVersion?: string;
-    readonly runbookDigest?: string;
-  };
+  /** What needs the operator's eye (C55), with the runbook a link pins, both or neither. */
+  readonly 'operations.read': Partial<Record<'runbookVersion' | 'runbookDigest', string>>;
   /**
    * The breach drill's notices from the published runbook (C81), for the
    * recipients named. It writes nothing and sends nothing, so it is a read.
