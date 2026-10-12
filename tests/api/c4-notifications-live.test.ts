@@ -20,6 +20,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
 import { tokenFor } from './fixture.ts';
 import {
+  carriesOnly,
   count,
   delegatedRead,
   join,
@@ -88,43 +89,18 @@ const still = async (joined: Joined): Promise<number> => {
 };
 
 /**
- * `forbidden` says nothing to `tab`. Once the board is quiet again, a write
- * `tab` itself hears is its own barrier: the stream says frames in the order
- * it heard their signals, so when it says that write, it has already handled
- * `forbidden`, and the one frame since is that write's. Another tab hearing
- * a write says nothing of how far this one has got.
+ * A write on `forbidden` says nothing to `tab`. Then a write `tab` hears, on `own`, is its own
+ * barrier: frames come in the order their signals came, so the one frame since is `own`'s.
  */
-const saysNothingOf = async (
-  tab: Joined,
-  forbidden: () => Promise<void>,
-  own: { readonly business: string; readonly recordId: string },
-): Promise<void> => {
+type Row = readonly [business: string, recordId: string];
+const saysNothingOf = async (tab: Joined, forbidden: Row, own: Row): Promise<void> => {
   const before = await still(tab);
-  await forbidden();
+  await touch(...forbidden);
   expect(await still(tab), 'a frame for a write the tab cannot read').toBe(before);
-  await touch(own.business, own.recordId);
+  await touch(...own);
   await within(2_000, () => moves(tab) > before, 'the tab’s own write');
   expect(await still(tab), 'one frame, for the tab’s own write').toBe(before + 1);
 };
-
-/**
- * Every byte the stream carried is a frame of one `event` line, one of the
- * channel's, and one `data` line naming one of the caller's own topics: no
- * `id`, `retry` or comment line, so nothing rides beside the fields read.
- */
-function carriesOnly(joined: Joined, named: readonly string[]): void {
-  expect(joined.raw.endsWith('\n\n') || joined.raw === '', joined.raw).toBe(true);
-  for (const frame of joined.raw.split('\n\n').filter((one) => one !== '')) {
-    const lines = frame.split('\n');
-    expect(
-      lines.map((line) => line.split(':')[0]),
-      frame,
-    ).toEqual(['event', 'data']);
-    const [event, data] = lines.map((line) => line.slice(line.indexOf(':') + 1).trim());
-    expect(['resync', 'invalidate', 'inbox', 'closed'], frame).toContain(event);
-    expect(named, frame).toContain(data);
-  }
-}
 
 async function oneConnection(): Promise<void> {
   const taskId = await createTask(s, `c4n-one-${randomUUID()}`);
@@ -148,8 +124,7 @@ async function oneConnection(): Promise<void> {
   await within(2_000, () => moves(tab) > joined, 'the board');
   expect(tab.raw).not.toContain(`data: ${taskId}`);
 
-  // An inbox item alone, no task changed: the board resyncs for it, so it is
-  // the inbox that moved it, and the task topic hears nothing.
+  // An inbox item alone, no task changed: the board resyncs, and the task topic hears nothing.
   const quiet = await still(tab);
   const invalidated = count(tab, 'invalidate', topic(taskId));
   await s.db.admin.execute(
@@ -213,13 +188,8 @@ async function isolation(): Promise<void> {
   expect(witness.status, JSON.stringify(witness.refusal)).toBe(200);
   await within(2_000, () => count(witness, 'resync', BOARD) === 1, 'this board');
   const witnessJoined = await still(witness);
-  await saysNothingOf(theirs, async () => await touch(s.business, mine), {
-    business: other.id,
-    recordId: otherTask.id,
-  });
-  expect(moves(witness), 'this business’s board heard its own write').toBeGreaterThan(
-    witnessJoined,
-  );
+  await saysNothingOf(theirs, [s.business, mine], [other.id, otherTask.id]);
+  expect(moves(witness), 'this board heard its own write').toBeGreaterThan(witnessJoined);
   const theirsJoined = await still(theirs);
   await touch(other.id, otherTask.id);
   await within(2_000, () => moves(theirs) > theirsJoined, 'their own task');
@@ -254,8 +224,7 @@ async function delegated(
   otherTaskId: string,
 ): Promise<void> {
   const delegate = await enrol(s.db.app, s.business, `c4n-delegate-${randomUUID()}`);
-  // A task of the delegate's own, read on their own grant: the write their
-  // board says after the delegation is revoked, as its barrier.
+  // The delegate's own task: the barrier their board says once the delegation is revoked.
   const own = await createTask(s, `c4n-delegate-own-${randomUUID()}`);
   const parent = await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, delegate, 'read', { kind: 'record', id: own });
@@ -264,16 +233,10 @@ async function delegated(
   const tab = await open([BOARD], delegate);
   expect(tab.status, JSON.stringify(tab.refusal)).toBe(200);
   await within(2_000, () => count(tab, 'resync', BOARD) === 1, 'the delegate joined');
-  await saysNothingOf(tab, async () => await touch(s.business, mine), {
-    business: s.business,
-    recordId: sibling,
-  });
+  await saysNothingOf(tab, [s.business, mine], [s.business, sibling]);
   await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, parent));
   await still(tab);
-  await saysNothingOf(tab, async () => await touch(s.business, sibling), {
-    business: s.business,
-    recordId: own,
-  });
+  await saysNothingOf(tab, [s.business, sibling], [s.business, own]);
   for (const each of [witness, ...others, tab]) {
     carriesOnly(each, [BOARD]);
     expect(each.raw).not.toContain(mine);
