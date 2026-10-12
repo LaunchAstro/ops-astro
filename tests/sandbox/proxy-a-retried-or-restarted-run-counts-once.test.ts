@@ -6,7 +6,9 @@
 // `unavailable` until the timer's sweep, then its retry is recorded and
 // counted once. A proxy restarted while a start reply is out sweeps that
 // container, and the next run counts in time. A start whose reply was lost
-// and is sent again counts its run once. Against the fixture's doubles.
+// and is sent again counts its run once. A start sent while a create waits on
+// its record write runs nothing on the container that write then misses.
+// Against the fixture's doubles.
 
 import { expect, it } from 'vitest';
 import {
@@ -81,4 +83,31 @@ it('a start sent again after its reply was lost counts its run once, in time', a
   w.now = T0 + S1_WALL - GRACE;
   await state.handle(op('wait', containerId(1)));
   expect(candidateOf(w)?.runs).toEqual([{ statusCode: 0, inTime: true }]);
+});
+
+it('a run operation sent while a create waits on its record write runs nothing on the container that write misses', async () => {
+  const w = world();
+  const state = await opened(w);
+  w.crashAfterCreate = true;
+  // The create's first write is the pin list's; the second, held, is its record's.
+  const pinsWritten = hold(w, 'write');
+  const creating = state.handle(create(C));
+  await settle();
+  const release = hold(w, 'write');
+  pinsWritten();
+  for (let turn = 0; turn < 10 && w.held.size === 0; turn += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- one turn at a time, until the daemon made it
+    await settle();
+  }
+  // The daemon made the container; the record does not hold it yet.
+  expect(w.held).toEqual(new Set([containerId(1)]));
+  const starting = state.handle(op('start', containerId(1)));
+  release();
+  expect(await creating).toMatchObject({ ok: false, reason: 'internal' });
+  expect(await starting).toMatchObject({ ok: false });
+  expect(w.calls.filter((call) => call === 'start')).toEqual([]);
+  w.crash = false;
+  w.crashAfterCreate = false;
+  await state.tick();
+  expect(w.held.size).toBe(0);
 });
