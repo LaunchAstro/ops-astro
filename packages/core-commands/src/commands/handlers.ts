@@ -24,6 +24,7 @@ import { duplicateTask } from './tasks-duplicate.ts';
 import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
+import { refuseMistypedPlacement } from './move-operands.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
@@ -110,8 +111,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.revoke_client_share': (tx, context) => revokeClientShare(tx, context),
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
-  'task.move': (tx, context, request) =>
-    moveTask(tx, context, request.board, request.boardSection ?? null),
+  'task.move': async (tx, context, request) =>
+    (await refuseMistypedPlacement(tx, context, request.board, request.boardSection ?? null)) ??
+    (await moveTask(tx, context, request.board, request.boardSection ?? null)),
   'task.rank': (tx, context, request) =>
     rankTask(tx, context, request.afterId ?? null, request.beforeId ?? null),
 
