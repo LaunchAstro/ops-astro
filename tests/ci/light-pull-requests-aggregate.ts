@@ -25,14 +25,16 @@ const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
 export function aggregateProblems(step: { run?: string; env?: Env } | undefined): string[] {
   if (step?.run === undefined) return ['the aggregate has no script'];
   const problems = step.run.includes('${{') ? ['the script interpolates an expression'] : [];
-  for (const event of ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'])
-    for (const gate of RESULTS)
-      for (const shards of RESULTS)
-        for (const isolation of RESULTS)
-          for (const scope of ['full', 'light', ''])
-            problems.push(
-              ...aggregateRun(step.run, step.env ?? {}, { event, gate, shards, isolation, scope }),
-            );
+  const runs = ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'].flatMap((event) =>
+    RESULTS.flatMap((gate) =>
+      RESULTS.flatMap((shards) =>
+        RESULTS.flatMap((isolation) =>
+          ['full', 'light', ''].map((scope) => ({ event, gate, shards, isolation, scope })),
+        ),
+      ),
+    ),
+  );
+  for (const run of runs) problems.push(...aggregateRun(step.run, step.env ?? {}, run));
   return problems;
 }
 
