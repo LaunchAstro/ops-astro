@@ -19,6 +19,13 @@ export const TASK = {
   clientId: null,
 };
 export const GRANT = 'alpha:ada';
+/** The clicker, and the staff `team.list` gives this business by default. */
+export const ADA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+export const TEAM: Answer = {
+  ok: true,
+  you: ADA,
+  people: [{ personId: ADA, name: 'Ada Lovelace', availability: null }],
+};
 
 export const block = (json: string): string =>
   `Here is a task for that.\n\n\`\`\`task\n${json}\n\`\`\``;
@@ -51,6 +58,12 @@ export interface Script {
   readonly replies?: readonly Answer[];
   /** Each task write's answer in turn, or one still out; once used up, the write is kept. */
   readonly writes?: readonly (Answer | Promise<Answer>)[];
+  /** Each `task.assign`'s answer in turn; once used up, the assignment is kept. */
+  readonly assigns?: readonly Answer[];
+  /** What `team.list` gives; absent, `TEAM`. */
+  readonly team?: Answer;
+  /** What `person.list` gives, were it asked. */
+  readonly persons?: Answer;
   /** What `conversation.read` gives a kept tab. */
   readonly kept?: { readonly body: string; readonly scope: Answer | null };
   /** The task's revision as `task.read` gives it now. */
@@ -80,6 +93,7 @@ const keptRead = (kept: NonNullable<Script['kept']>): Answer =>
     wrapUpHistory: [],
   });
 
+// eslint-disable-next-line max-lines-per-function -- one stand-in client, each read and write it answers
 function recorder(script: Script) {
   const sent: Sent[] = [];
   const reads: { readonly name: string; readonly body: Answer }[] = [];
@@ -87,6 +101,7 @@ function recorder(script: Script) {
   const order: string[] = [];
   const replies = [...(script.replies ?? [])];
   const writes = [...(script.writes ?? [])];
+  const assigns = [...(script.assigns ?? [])];
   const client = {
     newOperationId: () => 'op-fresh-1',
     read: (name: string, body: Answer) => {
@@ -98,6 +113,10 @@ function recorder(script: Script) {
           ok({ ok: true, task: { id: TASK.id, key: 'T-12', title: TASK.title, revision } }),
         );
       }
+      if (name === 'team.list') return Promise.resolve(script.team ?? ok(TEAM));
+      if (name === 'person.list' && script.persons !== undefined) {
+        return Promise.resolve(script.persons);
+      }
       if (name === 'conversation.read' && script.kept !== undefined) {
         return Promise.resolve(keptRead(script.kept));
       }
@@ -106,6 +125,9 @@ function recorder(script: Script) {
     mutate: (name: string, body: Answer, options: Answer = {}) => {
       sent.push({ name, body, options });
       order.push(name);
+      if (name === 'task.assign') {
+        return Promise.resolve(assigns.shift() ?? ok({ recordId: 'new-task-id', revision: 2 }));
+      }
       if (name === 'task.create' || name === 'task.update') {
         return Promise.resolve(
           writes.shift() ??
@@ -151,5 +173,6 @@ export async function drawer(script: Script, onTask = false) {
   };
   const writes = (): readonly Sent[] =>
     sent.filter((each) => each.name === 'task.create' || each.name === 'task.update');
-  return { page, sent, reads, order, ask, click, writes };
+  const assigned = (): readonly Sent[] => sent.filter((each) => each.name === 'task.assign');
+  return { page, sent, reads, order, ask, click, writes, assigned };
 }

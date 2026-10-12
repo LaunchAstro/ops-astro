@@ -182,7 +182,7 @@ describe('chat proposal card', () => {
   });
 
   it('a malformed block draws no card and its words show exactly as written', async () => {
-    const bad = block('{"action":"create","title":"T","assignee":"me"}');
+    const bad = block('{"action":"create","title":"T","client":"North"}');
     const { page, ask } = await drawer({ replies: [answered(bad)] });
     track(page);
     await ask('Anything');
