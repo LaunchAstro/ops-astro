@@ -98,6 +98,25 @@ export function useMeasuredWidth(
   return width ?? measured;
 }
 
+/** The screen's width: handed in, else the window's, followed as it resizes. */
+export function useViewport(viewport: number | undefined, fallback: number): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === 'undefined' ? null : window.innerWidth,
+  );
+  useEffect(() => {
+    if (viewport !== undefined) return;
+    const follow = (): void => {
+      setWidth(window.innerWidth);
+    };
+    follow();
+    window.addEventListener('resize', follow);
+    return () => {
+      window.removeEventListener('resize', follow);
+    };
+  }, [viewport]);
+  return viewport ?? width ?? fallback;
+}
+
 /** A drag in progress: its column and the widths drawn live, null before the first move. */
 export interface LiveDrag {
   readonly key: string;
