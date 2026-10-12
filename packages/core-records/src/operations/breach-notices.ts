@@ -50,7 +50,8 @@ const businessDay = new Intl.DateTimeFormat('en-CA', {
 /** What stands in a person's notice for any other affected person. */
 const SOMEONE_ELSE = 'another person';
 
-const SYNTAX = /[\\^$.*+?()[\]{}|/]/gu;
+/** A letter or digit: a name matches only where neither side is one. */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
 
 const TEMPLATE_HEADING = /^##\s+template:\s*notice to affected people\s*$/iu;
 const PLACEHOLDER = /`<([^`<>]*)>`/gu;
@@ -127,13 +128,12 @@ function fill(
  */
 function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub {
   const words = [...new Set(input.people.flatMap((person) => [person.name, person.address]))]
-    .map((word) => word.trim())
-    .toSorted((a, b) => b.length - a.length)
-    .map((word) => word.replaceAll(SYNTAX, '\\$&'));
-  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${words.join('|')})(?![\\p{L}\\p{N}])`, 'iu');
+    .map((word) => word.trim().toLowerCase())
+    .filter((word) => word !== '')
+    .toSorted((a, b) => b.length - a.length);
   const texts = [input.incident.whatHappened, input.containment, input.steps];
-  // Split with one group: the names found sit at the odd places.
-  const pieces = new Map(texts.map((text) => [text, text.split(pattern)]));
+  // The names found sit at the odd places.
+  const pieces = new Map(texts.map((text) => [text, splitOnNames(text, words)]));
   return (person) => {
     const own = new Set([person.name, person.address].map((word) => word.trim().toLowerCase()));
     return (text) =>
@@ -141,6 +141,39 @@ function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub
         .map((piece, at) => (at % 2 === 1 && !own.has(piece.toLowerCase()) ? SOMEONE_ELSE : piece))
         .join('');
   };
+}
+
+/**
+ * `text` split on whole-word, any-case matches of `words` (lowercase, longest
+ * first), each match kept as its own piece at an odd index, as a split on a
+ * pattern with one group gives. A scan, not a pattern built from the names.
+ */
+function splitOnNames(text: string, words: readonly string[]): string[] {
+  const pieces: string[] = [];
+  let from = 0;
+  let at = 0;
+  while (at < text.length) {
+    const word =
+      at > 0 && WORD_CHAR.test(text.charAt(at - 1)) ? undefined : nameAt(text, at, words);
+    if (word === undefined) {
+      at += 1;
+      continue;
+    }
+    pieces.push(text.slice(from, at), text.slice(at, at + word.length));
+    at += word.length;
+    from = at;
+  }
+  pieces.push(text.slice(from));
+  return pieces;
+}
+
+/** The longest of `words` that `text` holds at `at` as a whole word, in any case. */
+function nameAt(text: string, at: number, words: readonly string[]): string | undefined {
+  return words.find(
+    (word) =>
+      text.slice(at, at + word.length).toLowerCase() === word &&
+      !WORD_CHAR.test(text.charAt(at + word.length)),
+  );
 }
 
 /**
