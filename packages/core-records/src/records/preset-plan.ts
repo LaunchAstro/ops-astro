@@ -74,7 +74,7 @@ export interface PresetSyncRequest {
   readonly recordTypeKey: string;
   readonly presetKey: string;
   readonly fields: readonly PresetField[];
-  readonly operations: ReadonlySet<string>; // the catalogue's writes, for owning operations
+  readonly operations: ReadonlySet<string>;
 }
 export type PlannedAction =
   | { readonly action: 'create_field'; readonly key: string; readonly slot: string }

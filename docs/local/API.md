@@ -3791,7 +3791,7 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
 - `credential.issue` (`agent credential issued`) takes
   `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
   caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
-  held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
+  held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage`, nor a key no agent may hold (`account:write`, `chat:comment`, `conversation:read`, `credential:write`, `operations:read`) (`CREDENTIAL_ACTION_EXCLUDED`
   403). It never holds a money key (C59's set, `billing:read` included): an
   agent may hold none (`docs/design-system/CAPABILITY-SLICES.md`), so a scope
   with one is `CREDENTIAL_MONEY_KEY_EXCLUDED` 403 on any sign-in. `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
