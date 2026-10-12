@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A chat mark_read that waited on a send into the millisecond it read covers only the message it saw; one that dies at its register row leaves the marker where it was; the same mark_read again answers as before."
+}
