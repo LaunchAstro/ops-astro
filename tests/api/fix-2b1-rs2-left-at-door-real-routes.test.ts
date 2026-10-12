@@ -78,6 +78,7 @@ async function countedTopics(): Promise<{
     get listening() {
       return real.listening;
     },
+    hears: async (notify, withinMs) => await real.hears(notify, withinMs),
     close: async () => await real.close(),
   };
   return { topics, now };

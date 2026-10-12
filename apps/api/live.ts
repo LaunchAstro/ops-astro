@@ -19,9 +19,13 @@
 // P11: `business:settings:priority_stages` (migration 20261011105055) goes to
 // every board of its business, since every task's rank derives from it.
 
+import { randomUUID } from 'node:crypto';
 import type { Listener } from '../../packages/core-records/src/index.ts';
 
 export const LIVE_CHANNEL = 'ops_astro_live';
+
+/** How long `/api/health` waits to hear its own probe back. */
+export const PROBE_MS = 1_000;
 
 export type LiveSignal = 'invalidate' | 'resync';
 
@@ -61,8 +65,15 @@ export interface LiveTopics {
     send: (signal: BoardSignal) => void,
     stop: Stop,
   ): () => void;
-  /** Whether LISTEN has been in force since the last (re)connect, for `/api/health`. */
+  /** Whether LISTEN has been in force since the last (re)connect. */
   readonly listening: boolean;
+  /**
+   * Whether LISTEN hears now, for `/api/health`: `notify` sends a probe on the
+   * channel, and only the probe heard back within `withinMs` is true. The
+   * driver says nothing when the connection drops, so a listener cut off and
+   * not yet listening again hears nothing, however the runtime database answers.
+   */
+  hears(notify: (payload: string) => Promise<void>, withinMs?: number): Promise<boolean>;
   /** Stops every stream, waiting out their questions in flight, then stops listening; one admitted meanwhile is stopped at once. */
   close(): Promise<void>;
 }
@@ -73,11 +84,17 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
   // A business to its board streams.
   const boards = new Map<string, Set<Board>>();
   const held: Held = { stops: new Set<Stop>(), stopping: undefined };
+  // A probe's payload to the one waiting to hear it.
+  const probes = new Map<string, () => void>();
   let listening = false;
 
   await listener.listen(
     LIVE_CHANNEL,
-    (payload) => hand(payload, subscribers, boards),
+    (payload) => {
+      const heard = probes.get(payload);
+      if (heard === undefined) hand(payload, subscribers, boards);
+      else heard();
+    },
     () => {
       if (listening) {
         for (const sends of subscribers.values()) for (const send of sends) send('resync');
@@ -108,6 +125,25 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     get listening() {
       return listening;
+    },
+    async hears(notify, withinMs = PROBE_MS) {
+      if (!listening) return false;
+      // Two parts, so every hand on the channel, this one included, takes it for no topic.
+      const payload = `probe:${randomUUID()}`;
+      let timer: NodeJS.Timeout | undefined;
+      const heard = new Promise<boolean>((resolve) => {
+        probes.set(payload, () => resolve(true));
+        timer = setTimeout(() => resolve(false), withinMs);
+      });
+      try {
+        await notify(payload);
+        return await heard;
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(timer);
+        probes.delete(payload);
+      }
     },
     async close() {
       listening = false;

@@ -19,11 +19,12 @@
 // so the function runs the reconciliation pass (`passDeployment`: sweep,
 // replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
 // names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
-// `none`. Each business passes on its own, awaited by every request while it
-// runs, again each `SWEEP_INTERVAL_MS` after it succeeds, since an instance may
-// be frozen once it answers. Instances that pass at once meet
-// on the pass's own row locks. `server.ts` runs the same pass only where there
-// is no function.
+// `none`. Every business passes on one tick each `SWEEP_INTERVAL_MS`, each on
+// its own, and a request waits on the pass in flight for at most
+// `RECOVERY_WAIT_MS`, since an instance may be frozen once it answers: a pass
+// frozen mid-way resumes when the instance does, or rolls back and runs on the
+// next tick. Instances that pass at once meet on the pass's own row locks.
+// `server.ts` runs the same pass only where there is no function.
 //
 // **No admin login (G2).** The business key, the one read before tenancy, is
 // read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
@@ -70,7 +71,7 @@ import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import {
   parseRecoveryScope,
-  passDeployment,
+  passEachBusiness,
   RECOVERY_SCOPE_SETTING,
   registerEffectLookup,
   SWEEP_INTERVAL_MS,
@@ -184,13 +185,19 @@ function perInstance(setting: string | undefined): AgentLimits {
   };
 }
 
+/** The longest a request waits on the reconciliation pass in flight. */
+export const RECOVERY_WAIT_MS = 2_000;
+
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
- * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request while it runs. A business passes on its own, so a key
- * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
- * `none` does nothing; unset does nothing only where no environment is named,
- * and a malformed value throws at start.
+ * every business on one tick, at most once each `SWEEP_INTERVAL_MS` from the
+ * tick's start, so the businesses never drift onto ticks of their own. A
+ * business passes on its own, so a key that does not resolve, or a pass that
+ * rolls back, holds up no other (#287 A8), and it waits for the next tick
+ * rather than running again on every request. A request waits on the pass in
+ * flight for at most `RECOVERY_WAIT_MS`. `none` does nothing; unset does
+ * nothing only where no environment is named, and a malformed value throws at
+ * start.
  */
 function recoveryPass(
   settings: Settings,
@@ -203,33 +210,31 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  const due = new Map<string, number>();
+  const owed = scope?.keys ?? [];
+  let due = 0;
   let running: Promise<void> | undefined;
-  const run = async (owed: readonly string[]): Promise<void> => {
-    for (const key of owed) {
-      // One business at a time, as `passDeployment` runs them.
-      // eslint-disable-next-line no-await-in-loop
-      const outcome = await withRuntimeKeys(
-        keys,
-        async () => await passDeployment(database, resolveBusiness, [key], registerEffectLookup),
-      ).catch((cause: unknown) => ({
-        ok: false as const,
-        problem: cause instanceof Error ? cause.message : 'unknown',
-      }));
-      // Only a pass that finished marks its interval done; a failed one runs again.
-      if (outcome.ok) due.set(key, Date.now() + SWEEP_INTERVAL_MS);
-      else console.error(`api: reconciliation pass: ${outcome.problem}`);
+  const run = async (): Promise<void> => {
+    const outcomes = await withRuntimeKeys(
+      keys,
+      async () => await passEachBusiness(database, resolveBusiness, owed, registerEffectLookup),
+    );
+    for (const outcome of outcomes) {
+      if (!outcome.ok) console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
-  // Every request waits on the pass in flight, so none is served beside it.
   return async (): Promise<void> => {
-    const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
-    if (running === undefined && owed.length > 0) {
-      running = run(owed).finally(() => {
+    if (running === undefined && owed.length > 0 && Date.now() >= due) {
+      due = Date.now() + SWEEP_INTERVAL_MS;
+      running = run().finally(() => {
         running = undefined;
       });
     }
-    await running;
+    if (running === undefined) return;
+    let timer: NodeJS.Timeout | undefined;
+    const waited = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, RECOVERY_WAIT_MS);
+    });
+    await Promise.race([running, waited]).finally(() => clearTimeout(timer));
   };
 }
 

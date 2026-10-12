@@ -212,32 +212,38 @@ export const SWEEP_INTERVAL_MS = 60_000;
 
 /**
  * Run `pass` every `everyMs`, one pass at a time: a pass still running when
- * the next is due is skipped rather than stacked. A pass that fails is logged
- * with its problem and the next one runs anyway. `stop` ends the interval.
+ * the next is due is skipped rather than stacked. A business whose pass fails
+ * is logged with its problem and the next one runs anyway. `stop` ends the
+ * interval and resolves once the running pass has ended, so the server closes
+ * no pool under it.
  */
 export function startSweeper(
-  pass: () => Promise<RecoveryOutcome>,
+  pass: () => Promise<readonly RecoveryOutcome[]>,
   everyMs: number = SWEEP_INTERVAL_MS,
-): { readonly stop: () => void } {
-  let running = false;
+): { readonly stop: () => Promise<void> } {
+  let running: Promise<void> | undefined;
   const once = async (): Promise<void> => {
     try {
-      const outcome = await pass();
-      if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
-      else console.error(`api: ${outcome.problem}`);
+      for (const outcome of await pass()) {
+        if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
+        else console.error(`api: ${outcome.problem}`);
+      }
     } catch (cause) {
       console.error(`api: sweep failed: ${cause instanceof Error ? cause.message : 'unknown'}`);
     } finally {
-      running = false;
+      running = undefined;
     }
   };
   const timer = setInterval(() => {
-    if (running) return;
-    running = true;
-    void once();
+    running ??= once();
   }, everyMs);
   timer.unref();
-  return { stop: () => clearInterval(timer) };
+  return {
+    stop: async () => {
+      clearInterval(timer);
+      await running;
+    },
+  };
 }
 
 /** One line per business the sweep changed, after its transaction committed. */
@@ -341,4 +347,32 @@ export async function passDeployment(
       reconciled: answered.businesses[at]?.classified ?? [],
     })),
   };
+}
+
+/**
+ * The recurring pass, one business at a time (#841): a key that does not
+ * resolve, or a business whose pass rolls back or throws, is that business's
+ * outcome alone, and every business after it still has its turn. Restart
+ * recovery stays one pass whose failure stops the start.
+ */
+export async function passEachBusiness(
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+  lookup: EffectLookup,
+  providers?: Parameters<typeof passDeployment>[4],
+): Promise<readonly RecoveryOutcome[]> {
+  const outcomes: RecoveryOutcome[] = [];
+  for (const key of keys) {
+    // One business after another, each in its own transactions.
+    // eslint-disable-next-line no-await-in-loop
+    const outcome = await passDeployment(database, resolveBusiness, [key], lookup, providers).catch(
+      (cause: unknown) => ({
+        ok: false as const,
+        problem: `recurring pass for business ${JSON.stringify(key)} failed: ${cause instanceof Error ? cause.message : 'unknown'}`,
+      }),
+    );
+    outcomes.push(outcome);
+  }
+  return outcomes;
 }
