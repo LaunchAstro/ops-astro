@@ -16,6 +16,11 @@ import { dropLogins, hostReach, job, loginIn, serverUrl } from './backup-identit
 
 const UPKEEP = 'ops_astro_upkeep';
 const EXPIRE = 'select ops.expire_second_factor_codes()';
+/** What the upkeep identity may run: the two expiries (20261002105957, 20261012133600). */
+const UPKEEP_HOLDS = [
+  'ops.expire_auth_hook_messages() EXECUTE',
+  'ops.expire_second_factor_codes() EXECUTE',
+];
 let db: FreshDatabase;
 let upkeep: { url: string; name: string };
 
@@ -74,7 +79,11 @@ function purgeCases() {
       reach: async (url, script) =>
         url === upkeep.url ? await hostReach(url, script) : '{"count":0,"fresh":false}',
     });
-    expect(record['secondFactorCodes']).toStrictEqual({ outcome: 'recorded', count: 2 });
+    expect(record['secondFactorCodes']).toStrictEqual({
+      outcome: 'recorded',
+      count: 2,
+      hookMessages: 0,
+    });
     const kept = await db.admin.execute<{ hours: number }>(
       `select round(extract(epoch from now() - recorded_at) / 3600)::int as hours
          from ops.second_factor_codes order by recorded_at`,
@@ -114,7 +123,7 @@ function grantCases() {
     });
   });
 
-  it('the upkeep identity logs in as nobody, owns nothing and holds the expiry alone', async () => {
+  it('the upkeep identity logs in as nobody, owns nothing and holds the two expiries alone', async () => {
     const [role] = await db.admin.execute<Record<string, boolean>>(
       `select rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, rolreplication
          from pg_roles where rolname = $1`,
@@ -132,7 +141,7 @@ function grantCases() {
        order by 1`,
       [UPKEEP],
     );
-    expect(held.map((row) => row.held)).toStrictEqual(['ops.expire_second_factor_codes() EXECUTE']);
+    expect(held.map((row) => row.held)).toStrictEqual(UPKEEP_HOLDS);
     for (const text of [
       'select 1 from ops.second_factor_codes',
       'delete from ops.second_factor_codes',

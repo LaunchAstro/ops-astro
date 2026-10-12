@@ -47,11 +47,21 @@ const entriesAt = (commit) =>
       version: entry.path.slice('migrations/'.length, -'.sql'.length),
     }));
 
+/**
+ * Top-level names that are `migrations` in another case. The runner reads
+ * `migrations/` alone, and a Mac checkout folds the other onto it.
+ */
+const caseVariantsAt = (commit) =>
+  git('ls-tree', '-z', '--name-only', commit)
+    .split('\0')
+    .filter((name) => name !== 'migrations' && name.toLowerCase() === 'migrations');
+
 /** What is wrong with `commit` as a change to `parent`. */
 function judge(parent, commit) {
   const entries = entriesAt(commit);
   const versions = entries.map((entry) => entry.version);
   return [
+    ...caseVariantsAt(commit).map((name) => `${name}/ is not migrations/ in lower case`),
     // The runner skips it on Linux; a Mac checkout folds it onto the .sql of the same name.
     ...treeAt(commit)
       .filter((entry) => /\.sql$/iu.test(entry.path) && !entry.path.endsWith('.sql'))
