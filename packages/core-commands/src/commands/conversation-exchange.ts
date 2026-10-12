@@ -32,7 +32,8 @@
 // kept and answers with it, and the model is not asked again; a repeat while
 // the answer is with the model, in the same process, waits for it. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
-// words, never the model's or the person's.
+// words, never the model's or the person's. Words the store cannot hold as
+// sent (a NUL, half a split character) are refused as unusable, never a fault.
 
 import { randomUUID } from 'node:crypto';
 import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
@@ -66,6 +67,7 @@ import {
 } from './conversation-replies.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
+import { storableText } from './values.ts';
 
 export type { ConversationReply } from './conversation-replies.ts';
 
@@ -229,7 +231,10 @@ async function answerOnce(
   if (!result.ok) {
     return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
   }
-  if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
+  // A model's words pass no command's door: what a message may not hold, a reply may not either.
+  if (!bounded(result.text, REPLY_LIMIT) || !storableText(result.text)) {
+    return refusedWith('ANSWER_UNUSABLE');
+  }
   const kept = await withSession(
     database,
     businessId,
