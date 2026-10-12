@@ -158,6 +158,14 @@ export async function sweepDeployment(
   );
 }
 
+/**
+ * How long a pass's transaction may sit idle before the database ends it. A
+ * hosted instance may be frozen mid-pass once it has answered (`function.ts`):
+ * the database then ends that transaction and lets its locks go, and the pass
+ * rolls back and runs again on the next tick.
+ */
+const IDLE_LIMIT = '10s';
+
 async function eachBusiness<T>(
   database: Database,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
@@ -187,7 +195,10 @@ async function eachBusiness<T>(
       // Sequential by design: one tenant's transaction commits or rolls back
       // before the next one opens.
       // eslint-disable-next-line no-await-in-loop
-      const classified = await database.withBusiness(target.businessId, run);
+      const classified = await database.withBusiness(target.businessId, async (tx) => {
+        await tx.query(`set local idle_in_transaction_session_timeout = '${IDLE_LIMIT}'`);
+        return await run(tx);
+      });
       businesses.push({ ...target, classified });
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : 'unknown';
