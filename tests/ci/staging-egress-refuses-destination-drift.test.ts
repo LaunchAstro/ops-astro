@@ -11,7 +11,7 @@ const { allowList } = (await import(
 
 it('staging egress refuses an API destination that differs from the worker API URL', () => {
   const configured = {
-    STAGING_WEB_URL: 'https://api.example.test',
+    OPS_ASTRO_API_URL: 'https://api.example.test',
     OPS_EGRESS_API_HOST: 'elsewhere.example.test',
     OPS_EGRESS_POOLER_HOST: 'aws-0-ap-southeast-2.pooler.supabase.com',
     OPS_EGRESS_POOLER_PORT: '6543',

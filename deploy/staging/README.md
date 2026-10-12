@@ -84,8 +84,9 @@ ours (`scripts/ops/egress.mjs`, `S0-1 egress allow-list` in
 `tests/ci/staging-egress.test.ts`). `egress` sits on `staging` and answers
 there for exactly five host names:
 
-- the API, taken from the worker's own `STAGING_WEB_URL` (the relay refuses to
-  start unless its API alias, `STAGING_EGRESS_API_HOST`, is that host);
+- the API, taken from the worker's own address, `OPS_ASTRO_API_URL`, set from
+  `STAGING_WEB_URL` (the relay refuses to start unless its API alias,
+  `STAGING_EGRESS_API_HOST`, is that host);
 - the pooler's host and port (`STAGING_EGRESS_POOLER_HOST`,
   `STAGING_EGRESS_POOLER_PORT`);
 - the watcher's heartbeat host (`STAGING_EGRESS_HEARTBEAT_HOST`);

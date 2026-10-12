@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-1 egress allow-list, one source for each place (REVB1SL01S34B finding 1).
-// The relay's API place is the worker's own STAGING_WEB_URL, and the relay
+// The relay's API place is the worker's own OPS_ASTRO_API_URL, and the relay
 // refuses to start unless its API alias is that host. The relay lists host
 // names only, so the worker, the forwarder and the backup dump each refuse to
 // start when an address of theirs would leave anywhere but the egress host
@@ -25,7 +25,7 @@ const POOLER = 'pooler.example.test';
 const ELSEWHERE = 'elsewhere.example.test';
 const CANARY = 'canary-one-source-4e1d';
 const LIST = {
-  STAGING_WEB_URL: 'https://api.example.test',
+  OPS_ASTRO_API_URL: 'https://api.example.test',
   OPS_EGRESS_POOLER_HOST: POOLER,
   OPS_EGRESS_POOLER_PORT: '6543',
   OPS_EGRESS_HEARTBEAT_HOST: BEAT,
@@ -63,10 +63,12 @@ function relayCases() {
       `https://${CANARY}.example.test/elsewhere`,
       `https://${CANARY}.example.test?x=1`,
     ]) {
-      expect(() => allowList({ ...LIST, STAGING_WEB_URL: bad }), bad).toThrow(/^STAGING_WEB_URL /u);
-      expect(() => allowList({ ...LIST, STAGING_WEB_URL: bad })).not.toThrow(CANARY);
+      expect(() => allowList({ ...LIST, OPS_ASTRO_API_URL: bad }), bad).toThrow(
+        /^OPS_ASTRO_API_URL /u,
+      );
+      expect(() => allowList({ ...LIST, OPS_ASTRO_API_URL: bad })).not.toThrow(CANARY);
     }
-    const [api] = allowList({ ...LIST, STAGING_WEB_URL: 'https://API.example.test:443/' });
+    const [api] = allowList({ ...LIST, OPS_ASTRO_API_URL: 'https://API.example.test:443/' });
     expect(api).toEqual(['api.example.test', 443]);
   });
 
@@ -76,7 +78,7 @@ function relayCases() {
       OPS_EGRESS_API_ALIAS: `${CANARY}.example.test`,
     });
     expect(relay.status).toBe(1);
-    expect(relay.stderr).toContain('OPS_EGRESS_API_ALIAS is not the host of STAGING_WEB_URL');
+    expect(relay.stderr).toContain('OPS_EGRESS_API_ALIAS is not the host of OPS_ASTRO_API_URL');
     expect(relay.stderr.includes(CANARY)).toBe(false);
   });
 }

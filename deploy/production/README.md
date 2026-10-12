@@ -97,6 +97,35 @@ to the operator's record folder (`OPS_ASTRO_DEPLOYMENTS`), as staging's does,
 with `environment: "production"`. `--maintenance --production` puts the
 maintenance page on production's address.
 
+## The M5 unit
+
+`compose.json` here is production's unit on the M5: the worker and its
+forwarder, the backup store, and the two egress hops. It is staging's
+definition with only the names changed (`tests/ci/production-unit.test.ts`
+proves it). Everything production owns is named `ops-astro-*`, and every
+credential is a `${PRODUCTION_*}` placeholder. So staging's containment,
+limits, image pins and egress allow-list hold for production too: see
+[Containment and limits](../staging/README.md#containment-and-limits). The
+worker and forwarder containers are `ops-astro-worker` and
+`ops-astro-forwarder`, the pair `scripts/ops/stop-production.mjs` stops.
+
+```sh
+node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production
+```
+
+The deploy reads this definition, checks every image against its pin row and
+runs production's preflight, as the web deploy does. Then it starts the unit
+with `docker compose --file deploy/production/compose.json up`. It takes the
+service report's snapshot before and after. Production's own containers are
+left out of the compare, and staging's count as live services, so a
+production deploy that restarts staging fails. A staging deploy likewise
+counts production's containers as live. The record is `deploy recorded` with
+`environment: "production"`.
+
+The forwarder reports as `OPS_ENVIRONMENT=production`. The egress relay takes
+the API's host from the worker's own `OPS_ASTRO_API_URL`, set from
+`PRODUCTION_WEB_URL`.
+
 ## The promotion step
 
 `scripts/ops/promote.mjs` predates the Vercel plan. A real run stops and

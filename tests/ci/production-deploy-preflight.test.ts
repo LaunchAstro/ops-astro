@@ -5,7 +5,9 @@
 // production's asks the opposite question: did the made-up seed or its guard
 // ever run here? It answers from the seed's own mark, guard schema and watch,
 // and reads no business, person or sign-in row. A database holding a real
-// sign-in passes it, and fails staging's; one the seed marked fails it.
+// sign-in passes it, and fails staging's; one the seed marked fails it. Before
+// it connects, the address must be production's project, so a throwaway
+// database here is judged directly, and the command refuses its address.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -58,7 +60,6 @@ describe.skipIf(serverUrl === undefined)("production's deploy preflight, on a da
 
   it('passes a database holding a real sign-in, which staging’s preflight refuses', async () => {
     expect(await madeUpSeedSigns(db.admin)).toStrictEqual([]);
-    expect(await productionPreflight()).toStrictEqual([]);
     expect(await productionSigns(db.admin)).toContain('it carries no made-up mark');
     expect(await stagingSigns()).toContain('it carries no made-up mark');
   });
@@ -71,6 +72,13 @@ describe.skipIf(serverUrl === undefined)("production's deploy preflight, on a da
       "the made-up guard's watch is installed",
     ];
     expect(await madeUpSeedSigns(db.admin)).toStrictEqual(signs);
-    expect(await productionPreflight()).toStrictEqual(signs);
+  });
+
+  it("refuses this database's address before connecting: it is not production's project", async () => {
+    vi.stubEnv('STAGING_PROJECT_REF', 'abcdefghijabcdefghij');
+    vi.stubEnv('PRODUCTION_PROJECT_REF', 'zyxwvutsrqzyxwvutsrq');
+    expect(await productionPreflight()).toStrictEqual([
+      'DATABASE_ADMIN_URL is not a Supabase database host',
+    ]);
   });
 });

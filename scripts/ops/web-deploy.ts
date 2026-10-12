@@ -52,10 +52,9 @@ import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
 import { type StoredArtefact, storedArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
-import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
+import { type DeployEnvironment, productionAddressRefusal } from './deploy.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
-export type DeployEnvironment = 'staging' | 'production';
 
 export interface WebDeployRecord {
   readonly action: 'deploy recorded';
@@ -171,18 +170,11 @@ function settingProblems(env: Environment): string[] {
 
 /** Production's addresses: its database and sign-in on its own project, never staging's. */
 function productionProblems(env: Environment): string[] {
-  try {
-    const { other, ref, otherRef } = projectRefs(env, true);
-    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
-    if (project === otherRef) return [`DATABASE_ADMIN_URL reaches ${other}'s project`];
-    if (project !== ref) return ["DATABASE_ADMIN_URL is not production's project"];
-    if (env['GOTRUE_URL'] !== `https://${ref}.supabase.co/auth/v1`)
-      return ["GOTRUE_URL is not production's sign-in"];
-    return [];
-  } catch (error) {
-    if (error instanceof Refusal) return [error.message];
-    throw error;
-  }
+  const refusal = productionAddressRefusal(env);
+  if (refusal !== undefined) return [refusal];
+  return env['GOTRUE_URL'] === `https://${env['PRODUCTION_PROJECT_REF'] ?? ''}.supabase.co/auth/v1`
+    ? []
+    : ["GOTRUE_URL is not production's sign-in"];
 }
 
 const refused = (why: string): Unrecorded => ({
