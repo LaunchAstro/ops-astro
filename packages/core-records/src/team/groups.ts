@@ -7,16 +7,20 @@
 //
 // **One conversation's writes take one lock.** Every message, read-marker
 // move, member change and leave holds the conversation's lock first
-// (`lockConversation`), and each reads the wall clock under it. A member's
-// window is cut on a millisecond boundary nothing else in the conversation
-// shares: the change reads the clock, then waits out that millisecond before it
-// commits. A message stamped before the change is at or before the boundary,
-// and one stamped after it is past it, so a member removed reads nothing
-// written after, and a member added reads nothing written before.
+// (`lockConversation`), and each reads the conversation's millisecond under it
+// (`conversationMillisecond`): the wall clock, never before its last message or
+// past membership boundary. A member's window is cut on whole milliseconds: a
+// member leaves at the boundary and joins one millisecond after it. Every
+// message already sent is at or before the boundary, and every message sent
+// later is stamped at least one millisecond past it, so no millisecond's
+// messages fall on both sides. A member removed reads nothing written after,
+// and a member added reads nothing written before, even on a clock that steps
+// back.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { conversationMillisecond } from '../tasks/comments.ts';
 import { lockConversation, type ConversationTypes } from './conversations.ts';
 
 /** The longest group name, after trimming. */
@@ -102,16 +106,19 @@ export async function renameGroup(
 }
 
 /**
- * The boundary a member change is cut on: the wall clock's millisecond, held
- * past before this returns, so no message in this conversation shares it.
+ * The boundary a member change is cut on: the conversation's millisecond, so no earlier than
+ * any message already sent. The change then waits out a wall-clock millisecond, so a message
+ * sent after it is stamped by the clock rather than pushed past the boundary.
  */
-async function boundary(tx: TenantQuery): Promise<string> {
+async function boundary(tx: TenantQuery, conversationId: string): Promise<string> {
+  const commentType = `(select id from public.record_types where business_id = $1 and key = 'task_comment')`;
   const rows = await tx.query<{ readonly at: string }>(
-    `select to_char(date_trunc('milliseconds', clock_timestamp()) at time zone 'utc',
+    `select to_char(${conversationMillisecond('$1', commentType, '$2::uuid')} at time zone 'utc',
                     'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at, pg_sleep(0.002)`,
+    [tx.businessId, conversationId],
   );
   const at = rows[0]?.at;
-  if (at === undefined) throw new Error('boundary: the clock answered no row');
+  if (at === undefined) throw new Error('boundary: the conversation answered no row');
   return at;
 }
 
@@ -125,7 +132,7 @@ export async function changeGroupMembers(
   conversationId: string,
   change: { readonly add: readonly string[]; readonly remove: readonly string[] },
 ): Promise<void> {
-  const at = await boundary(tx);
+  const at = await boundary(tx, conversationId);
   if (change.add.length > 0) {
     await tx.query(
       `insert into public.team_conversation_members
