@@ -7,7 +7,8 @@
 // function inside the refused command's own transaction. A made-up-data
 // installation (this harness, staging) runs every command. A real-data
 // installation refuses every command the catalogue classes `client-data` or
-// `invitation` while any item is open, and writes nothing.
+// `invitation` while any item is open, and writes nothing; the stop and removal
+// controls alone still run (`a-shut-first-client-gate-still-lets-work-be-stopped-and-data-erased.test.ts`).
 //
 // The cases run in order on one database: the mode only ever moves one way,
 // so once it is real it stays real. Every command's body is prepared first,
@@ -23,6 +24,7 @@ import {
   type CommandDeclaration,
 } from '../../packages/core-wire/src/index.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { STOP_CONTROLS } from '../../packages/core-commands/src/commands/first-client-gate.ts';
 import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
@@ -39,7 +41,9 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 ]);
 
 const GATED = COMMAND_SURFACE.filter(
-  (declaration) => classOf(COMMAND_EFFECTS[declaration.name]) !== 'made-up-safe',
+  (declaration) =>
+    classOf(COMMAND_EFFECTS[declaration.name]) !== 'made-up-safe' &&
+    !STOP_CONTROLS.has(declaration.name),
 );
 
 let harness: Harness;
