@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a sign-in provider outage leaves a task's stream, a tab's topic stream and the board's stream open and silent, and a change made meanwhile is told once the provider answers"
+}

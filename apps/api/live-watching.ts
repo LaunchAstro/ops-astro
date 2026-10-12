@@ -23,6 +23,7 @@ import type {
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { Watch, Watching } from './live-follow.ts';
+import { UNANSWERED, type Unanswered } from './live.ts';
 
 /** What the questions need of the app: its database and its one way to verify a bearer. */
 interface Door {
@@ -35,7 +36,7 @@ interface Admitting {
   readonly admit: typeof admitReads;
 }
 
-type Answers = readonly (string | CommandRefusal)[] | CommandRefusal;
+type Answers = readonly (string | CommandRefusal)[] | CommandRefusal | Unanswered;
 /** A task the caller may watch, and the person admitted to it. */
 type Watched = { readonly taskId: string; readonly personId: string };
 /** A stream's questions, and the person its door admitted: the only person its seat is for. */
@@ -50,10 +51,10 @@ export function watching(
   let admitted: string | undefined;
   // Door: the task's topic, its person kept as the stream's. Recheck: the person admitted now.
   const topics = (
-    answers: readonly (Watched | CommandRefusal)[] | CommandRefusal,
+    answers: readonly (Watched | CommandRefusal)[] | CommandRefusal | Unanswered,
     at: AdmissionAt,
   ) =>
-    isCommandRefusal(answers)
+    answers === UNANSWERED || isCommandRefusal(answers)
       ? answers
       : answers.map((answer) => {
           if (isCommandRefusal(answer)) return answer;
@@ -96,14 +97,21 @@ export function watching(
 const tasksOf = (ids: readonly string[]): readonly Watch[] =>
   ids.map((taskId) => ({ label: '', taskId }));
 
-/** One answer per id, in order: each its own, or the one refusal for all of them. */
-function perId(ids: readonly string[], answers: Answers): readonly (string | CommandRefusal)[] {
-  return isCommandRefusal(answers) ? ids.map(() => answers) : answers;
+/** One answer per id, in order: each its own, or the one refusal (or no answer) for all of them. */
+function perId(
+  ids: readonly string[],
+  answers: Answers,
+): readonly (string | CommandRefusal | Unanswered)[] {
+  return answers === UNANSWERED || isCommandRefusal(answers) ? ids.map(() => answers) : answers;
 }
 
-/** The bearer verified again, or the refusal an expired one is owed. */
+/**
+ * The bearer verified again, or the refusal an expired one is owed; no answer
+ * when the provider could not be asked, which ends nothing.
+ */
 async function presentedOf(options: Door, context: Context) {
   const presented = await options.verify(context.req);
+  if (presented === 'unavailable') return UNANSWERED;
   return typeof presented === 'object'
     ? presented
     : refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
@@ -118,7 +126,7 @@ async function mayFollow(
   at: AdmissionAt,
 ): Promise<Answers> {
   const presented = await presentedOf(options, context);
-  if (isCommandRefusal(presented)) return presented;
+  if (presented === UNANSWERED || isCommandRefusal(presented)) return presented;
   return await admitConversations(options.database, businessId, presented, conversationIds, at);
 }
 
@@ -137,9 +145,9 @@ async function mayWatch(
   businessId: string,
   taskIds: readonly string[],
   at: AdmissionAt,
-): Promise<readonly (Watched | CommandRefusal)[] | CommandRefusal> {
+): Promise<readonly (Watched | CommandRefusal)[] | CommandRefusal | Unanswered> {
   const presented = await presentedOf(options, context);
-  if (isCommandRefusal(presented)) return presented;
+  if (presented === UNANSWERED || isCommandRefusal(presented)) return presented;
   const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
   const admitted = await live.admit(options.database, businessId, presented, requests, at);
   if (isCommandRefusal(admitted)) return admitted;
