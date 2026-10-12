@@ -97,6 +97,7 @@ it.each([
   ['task.read', ['detail', 'limit', 'page', 'historyEventId']],
   ['task.board', ['person', 'client', 'detail', 'limit', 'page']],
   ['task.execution', ['cursor']],
+  ['task.todos', ['person', 'client']],
   ['conversation.allowance', ['conversationId']],
   ['conversation.models', ['conversationId']],
 ])('%s declares its optional operands', (name, optional) => {
