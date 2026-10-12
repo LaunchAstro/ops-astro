@@ -217,7 +217,7 @@ async function deploymentOf(
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
 
-/** `site.publish`: one approved contents write, then its deployment by the written commit. */
+/** `site.publish`: one approved contents write, through a binding holding the approved bytes its revert needs. */
 export async function mergeAndFind(
   binding: SiteBinding,
   input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
@@ -232,8 +232,8 @@ export async function mergeAndFind(
     input.target.path !== binding.path ||
     !checkEnvelope(input.change, input.target).ok ||
     file === undefined ||
-    file.before === null ||
-    file.after === null ||
+    file.before !== binding.change.before ||
+    file.after !== binding.change.after ||
     contentDigest(file.before) !== input.preImageDigest
   ) {
     return stop('refused', 'PROPOSAL_SUPERSEDED', deps);

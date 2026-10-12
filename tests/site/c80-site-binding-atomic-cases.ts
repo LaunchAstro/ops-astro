@@ -28,8 +28,7 @@ import {
 
 export async function writesApprovedImage(): Promise<void> {
   const site = proposed();
-  const staleBinding = { ...binding, change: { before: BEFORE, after: 'unapproved bytes' } };
-  expect(await mergeAndFind(staleBinding, APPROVED, site.deps)).toEqual({
+  expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
     kind: 'ok',
     value: { revision: MERGED, deploymentId: 'dpl_merged', liveUrl: PAGE },
   });
