@@ -615,6 +615,18 @@ def mode_tracked(hashes, shapes, patterns, binary_allow, exemptions, reveal: boo
     return report(violations, reveal, f"{len(rels)} tracked file(s)")
 
 
+def policy_key(path: Path) -> str:
+    """The path the rules are written against: relative to the repository
+    when the file is inside it, however the target was given, and as given
+    otherwise. Only the folder is resolved, so a symlink is still judged as
+    the link itself."""
+    full = Path(os.path.realpath(path.parent)) / path.name
+    try:
+        return full.relative_to(REPO).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, reveal: bool) -> int:
     if not target.exists():
         die(f"no such path: {target}")
@@ -626,12 +638,12 @@ def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, 
         found = [target]
     else:
         def note(error: OSError) -> None:
-            unlisted.append(str(error.filename))
+            unlisted.append(policy_key(Path(error.filename)))
 
         for dirpath, dirnames, filenames in os.walk(target, onerror=note):
             dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
             found.extend(Path(dirpath) / n for n in filenames)
-    rels = [str(p) for p in found]
+    rels = [policy_key(p) for p in found]
     shown, violations = path_texts([("", r) for r in rels + unlisted], hashes, shapes)
     unlisted_reason = "the gate could not list this folder"
     violations += [(shown[d], "unreadable", unlisted_reason, unlisted_reason) for d in unlisted]
