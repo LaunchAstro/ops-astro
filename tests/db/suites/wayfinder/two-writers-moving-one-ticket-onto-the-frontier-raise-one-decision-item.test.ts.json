@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two writers moving one ticket onto the frontier raise one decision item"
+}

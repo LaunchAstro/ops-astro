@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the commit take back removes only an item its own transaction raised"
+}
