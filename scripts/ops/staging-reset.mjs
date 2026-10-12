@@ -56,6 +56,7 @@ import {
   STAGING_CAST,
   TENANT_TABLES,
   refusalBeforeConnecting,
+  stoppedBecause,
 } from './staging-reset.ts';
 
 const SEED = new URL('../local-seed.mjs', import.meta.url).pathname;
@@ -91,12 +92,6 @@ const redact = (text) =>
   secrets
     .filter((secret) => typeof secret === 'string' && secret.length >= 4)
     .reduce((out, secret) => out.replaceAll(secret, '[a setting]'), text);
-
-/** An error by its class and SQLSTATE alone: its message may carry an address. */
-const named = (error) =>
-  [error?.name ?? 'error', /^[0-9A-Z]{5}$/u.test(error?.code ?? '') ? error.code : '']
-    .filter(Boolean)
-    .join(' ');
 
 function refuse(why) {
   console.error(`staging-reset: ${why}. Nothing was done.`);
@@ -229,7 +224,7 @@ try {
   });
 } catch (error) {
   await admin.close();
-  const said = error instanceof Refusal ? error.message : named(error);
+  const said = error instanceof Refusal ? error.message : stoppedBecause(error);
   console.error(`staging-reset: stopped while ${step} (${said}); run it again.`);
   process.exit(1);
 }
@@ -293,7 +288,7 @@ try {
       'put them in the password manager entry "Ops Astro staging", then delete the folder.',
   );
 } catch (error) {
-  const said = error instanceof Refusal ? error.message : named(error);
+  const said = error instanceof Refusal ? error.message : stoppedBecause(error);
   console.error(`staging-reset: stopped while ${step} (${said}); empty and run it again.`);
   process.exit(1);
 }
