@@ -48,7 +48,8 @@
 
   /* -- The one interactive signal. Swapping it is a one-line edit. -------- */
   --accent: oklch(0.58 0.21 285);
-  --accent-ink: oklch(0.98 0 0);
+  /* R20261012: the reference's white ink also clears 4.5:1 on the accent. */
+  --accent-ink: oklch(1 0 0);
   --accent-ring: color-mix(in oklch, var(--accent) 35%, transparent);
   --brand: var(--accent);
   /* The only accent tint: a selected row, an armed drop zone, today. */
@@ -272,8 +273,8 @@
 
   /* -- Icon sizes (DS-TOK-102 to DS-TOK-106). A door mark is sized from
         its host's text. ------------------------------------------------------ */
-  --icon-xs: 8px;
-  --icon-sm: 12px;
+  --icon-xs: 13px;
+  --icon-sm: var(--icon-md);
   --icon-md: 16px;
   --icon-lg: 24px;
   --icon-door: 0.85em;

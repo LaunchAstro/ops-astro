@@ -205,7 +205,7 @@ describe('MP-3-1 the Task panel sits in the dock like any other panel', () => {
   it('a link inside the task panel is its own, never a walk of the dock', async () => {
     const went: string[] = [];
     const view = await opened(1100, went);
-    await view.click(`${TASK} [data-panel-head="page"]`);
+    await view.click(`${TASK} [data-act="door"]`);
     await tick();
     expect(went).toContain(`/task/${KEY}`);
   });

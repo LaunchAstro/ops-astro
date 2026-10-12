@@ -7,6 +7,7 @@
 
 import type { ReactElement, ReactNode, Ref } from 'react';
 import { Chevron } from './TabRow.tsx';
+import { Icon } from '../primitives/Icon.tsx';
 
 export interface StripClient {
   /** One letter. */
@@ -111,11 +112,17 @@ function StripSearch(props: {
   readonly onSearch: (() => void) | null | undefined;
   readonly searchRef: Ref<HTMLButtonElement> | undefined;
 }): ReactElement {
+  const content = (
+    <>
+      <Icon name="search" size="xs" />
+      <span>Search…</span>
+      <kbd className="appbar__key">⌘K</kbd>
+    </>
+  );
   if (!props.onSearch) {
     return (
       <div className="appbar__search" aria-disabled="true" title="Search is not built yet">
-        <span>Search…</span>
-        <kbd className="appbar__key">⌘K</kbd>
+        {content}
       </div>
     );
   }
@@ -127,8 +134,7 @@ function StripSearch(props: {
       aria-keyshortcuts="Meta+K Control+K"
       onClick={props.onSearch}
     >
-      <span>Search…</span>
-      <kbd className="appbar__key">⌘K</kbd>
+      {content}
     </button>
   );
 }

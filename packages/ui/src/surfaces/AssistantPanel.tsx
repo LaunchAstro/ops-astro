@@ -13,7 +13,10 @@
 // **With no model on offer and a reason in words, the drawer sends nothing**
 // (owner line 72): the picker is empty and disabled, the reason sits under the
 // head, and a question asked anyway is answered in the drawer, not sent.
+import { StyledSelect } from '../kit/styled-select.tsx';
 import { useRef, type ReactElement } from 'react';
+import { createPortal } from 'react-dom';
+import { usePanelToolbar } from './PageToolbar.tsx';
 import type {
   AssistantChat,
   AssistantMessage,
@@ -52,7 +55,7 @@ function ModelPicker(props: {
 }): ReactElement {
   const { chat, offer } = props;
   return (
-    <select
+    <StyledSelect
       className="aip__hmodel"
       data-assistant="model"
       aria-label="Which model you are talking to"
@@ -67,7 +70,7 @@ function ModelPicker(props: {
           {model.label}
         </option>
       ))}
-    </select>
+    </StyledSelect>
   );
 }
 
@@ -102,10 +105,11 @@ function Head(props: {
   readonly history: ReactElement | null;
 }): ReactElement {
   const { onClose } = props;
+  const toolbar = usePanelToolbar();
   // In a host's frame (the dock's `ai` panel) the host's head names the drawer
   // and closes it, so this row keeps only the model picker and Page.
   const Row = onClose === undefined ? 'div' : 'header';
-  return (
+  const head = (
     <Row className="aip__head">
       <div className="aip__id">
         {onClose === undefined ? null : (
@@ -134,6 +138,7 @@ function Head(props: {
       </div>
     </Row>
   );
+  return toolbar === null ? head : createPortal(head, toolbar);
 }
 
 /** Where this tab lives (its own address, once started) and what the ask came from. */

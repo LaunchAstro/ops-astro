@@ -99,8 +99,8 @@ describe('CS-7.29 client group head opens the Clients panel by the gesture law',
 
   it('a plain press solos the Clients panel, marking that client', async () => {
     const page = await inbox();
-    await press(page.find('.dock__tab[data-panel="settings"]'));
-    expect(openIds(page)).toEqual(['settings']);
+    await press(page.find('.dock__tab[data-panel="todos"]'));
+    expect(openIds(page)).toEqual(['todos']);
     await press(head(page, 'Zenith Physio'));
     expect(openIds(page)).toEqual(['clients']);
     const panel = page.find('[data-panel-id="clients"]');
@@ -114,9 +114,9 @@ describe('CS-7.29 client group head opens the Clients panel by the gesture law',
 
   it('a Shift press opens the Clients panel beside what is open', async () => {
     const page = await inbox();
-    await press(page.find('.dock__tab[data-panel="settings"]'));
+    await press(page.find('.dock__tab[data-panel="todos"]'));
     await press(head(page, 'Zenith Physio'), true);
-    expect(openIds(page)).toEqual(['clients', 'settings']);
+    expect(openIds(page)).toEqual(['clients', 'todos']);
   });
 });
 
@@ -154,7 +154,8 @@ describe('CS-7.29 Clients panel at a named client', () => {
     expect(marked[0]?.querySelector('.clbook__name')?.textContent).toBe('Zenith Physio');
     expect(marked[0]?.closest('.is-mock')).toBeNull();
     // The made-up book still draws below it, under its mark.
-    expect(page.find('.is-mock .clbook__list')).not.toBeNull();
+    expect(page.find('.clbook__note summary')?.textContent).toBe('Sample data');
+    expect(page.find('.clbook__list')).not.toBeNull();
   });
 
   it('says in a sentence when the named client is not in the book', async () => {

@@ -4,16 +4,8 @@
 // error (DS-PRIM-30), the text field, the search box and the select with its
 // option menu. The rules for every control are in controls.tsx.
 
-import {
-  useId,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-  type ReactElement,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useId, useEffect, type ChangeEvent, type ReactElement, type ReactNode } from 'react';
+import { useSelect } from './select-state.ts';
 import { Icon } from '../primitives/Icon.tsx';
 
 interface FieldFrame {
@@ -112,6 +104,7 @@ export function SearchBox(props: SearchBoxProps): ReactElement {
 export interface Option {
   readonly value: string;
   readonly label: string;
+  readonly disabled?: boolean;
 }
 
 /** DS-PRIM-5, opening DS-PRIM-19's option menu. */
@@ -122,6 +115,7 @@ export interface SelectProps extends FieldFrame {
   readonly disabled?: boolean | undefined;
   /** Drawn open, for the gallery's capture of the open state. */
   readonly defaultOpen?: boolean | undefined;
+  readonly optionLeading?: ((value: string) => ReactNode) | undefined;
 }
 
 /** DS-PRIM-19's option menu: the listbox a select owns while it is open. */
@@ -131,10 +125,11 @@ function SelectMenu(props: {
   readonly value: string;
   readonly active: number;
   readonly choose: (index: number) => void;
+  readonly optionLeading?: ((value: string) => ReactNode) | undefined;
 }): ReactElement {
   const { id } = props;
   return (
-    <ul className="menu" role="listbox" id={`${id}-menu`} aria-labelledby={id}>
+    <ul className="menu menu--select" role="listbox" id={`${id}-menu`} aria-labelledby={id}>
       {props.options.map((option, index) => (
         <li
           key={option.value}
@@ -142,119 +137,88 @@ function SelectMenu(props: {
           role="option"
           className={`menu__opt${index === props.active ? ' is-active' : ''}`}
           aria-selected={option.value === props.value}
+          aria-disabled={option.disabled === true ? true : undefined}
           onMouseDown={(event) => {
             event.preventDefault();
           }}
           onClick={() => {
-            props.choose(index);
+            if (option.disabled !== true) props.choose(index);
           }}
         >
-          {option.label}
-          {option.value === props.value ? <Icon name="check" size="sm" /> : null}
+          <span className="menu__check" aria-hidden="true">
+            {option.value === props.value ? <Icon name="check" size="xs" /> : null}
+          </span>
+          {props.optionLeading?.(option.value)}
+          <span>{option.label}</span>
         </li>
       ))}
     </ul>
   );
 }
 
-/** Where the select's value sits among its options, or the first option. */
-const valueIndex = (props: SelectProps): number =>
-  Math.max(
-    0,
-    props.options.findIndex((o) => o.value === props.value),
-  );
-
-/**
- * A select's open state, its active option and its keys: arrows open and walk, Enter and Space
- * choose, Escape closes the menu and goes no further. Opening starts at the current value; a
- * disabled select draws no menu.
- */
-function useSelect(props: SelectProps): {
-  readonly open: boolean;
-  readonly toggle: () => void;
-  readonly active: number;
-  readonly trigger: RefObject<HTMLButtonElement | null>;
-  readonly choose: (index: number) => void;
-  readonly onKey: (event: KeyboardEvent) => void;
-} {
-  const [open, setOpen] = useState(props.defaultOpen === true);
-  const [active, setActive] = useState(() => valueIndex(props));
-  const trigger = useRef<HTMLButtonElement>(null);
-  const shown = open && props.disabled !== true;
-  const at = Math.min(active, props.options.length - 1);
-  const openAtValue = (): void => {
-    setActive(valueIndex(props));
-    setOpen(true);
-  };
-  const close = (): void => {
-    setOpen(false);
-    trigger.current?.focus();
-  };
-  const choose = (index: number): void => {
-    const option = props.options[index];
-    if (option !== undefined) props.onChange(option.value);
-    close();
-  };
-  const onKey = (event: KeyboardEvent): void => {
-    const last = props.options.length - 1;
-    if (event.key === 'Escape' && shown) {
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      // Walk from the option drawn active, so a list that shrank while open
-      // never walks from an option it no longer has.
-      if (shown)
-        setActive(event.key === 'ArrowDown' ? Math.min(last, at + 1) : Math.max(0, at - 1));
-      else openAtValue();
-    } else if ((event.key === 'Enter' || event.key === ' ') && shown) {
-      event.preventDefault();
-      choose(at);
-    }
-  };
-  const toggle = (): void => {
-    if (shown) setOpen(false);
-    else openAtValue();
-  };
-  return { open: shown, toggle, active: at, trigger, choose, onKey };
-}
-
 export function Select(props: SelectProps): ReactElement {
   const id = useId();
-  const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
-  const current = props.options.find((o) => o.value === props.value);
   return (
     <Field id={id} label={props.label} hint={props.hint} error={props.error}>
-      <div className="sel">
-        <button
-          ref={trigger}
-          id={id}
-          type="button"
-          className="sel__btn"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={`${id}-menu`}
-          aria-activedescendant={open ? `${id}-opt-${String(active)}` : undefined}
-          aria-invalid={props.error === undefined ? undefined : true}
-          aria-describedby={describedBy(id, props)}
-          disabled={props.disabled}
-          onClick={toggle}
-          onKeyDown={onKey}
-        >
-          <span className="sel__value">{current?.label ?? ''}</span>
-          <span className="sel__caret" aria-hidden="true" />
-        </button>
-        {open ? (
-          <SelectMenu
-            id={id}
-            options={props.options}
-            value={props.value}
-            active={active}
-            choose={choose}
-          />
-        ) : null}
-      </div>
+      <SelectControl {...props} id={id} />
     </Field>
+  );
+}
+
+/** Keeps the active option in view by scrolling the open menu alone, never the page. */
+function useActiveInView(id: string, open: boolean, active: number): void {
+  useEffect(() => {
+    // eslint-disable-next-line unicorn/prefer-query-selector -- opaque React ids need no CSS escaping here.
+    const option = open ? document.getElementById(`${id}-opt-${String(active)}`) : null;
+    const menu = option?.parentElement;
+    if (!option || !menu) return;
+    const shown = menu.getBoundingClientRect();
+    const at = option.getBoundingClientRect();
+    if (at.top < shown.top) menu.scrollTop -= shown.top - at.top;
+    else if (at.bottom > shown.bottom) menu.scrollTop += at.bottom - shown.bottom;
+  }, [id, open, active]);
+}
+
+/** The same menu without a second label, for inline forms and drawer fields. */
+export function SelectControl(
+  props: SelectProps & { readonly id: string; readonly leading?: ReactNode },
+): ReactElement {
+  const { id } = props;
+  const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
+  const current = props.options.find((o) => o.value === props.value);
+  useActiveInView(id, open, active);
+  return (
+    <div className={`sel${open ? ' is-open' : ''}`}>
+      <button
+        ref={trigger}
+        id={id}
+        type="button"
+        className="sel__btn"
+        aria-label={props.label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-menu`}
+        aria-activedescendant={open ? `${id}-opt-${String(active)}` : undefined}
+        aria-invalid={props.error === undefined ? undefined : true}
+        aria-describedby={describedBy(id, props)}
+        disabled={props.disabled}
+        onClick={toggle}
+        onKeyDown={onKey}
+      >
+        {props.leading}
+        <span className="sel__value">{current?.label ?? ''}</span>
+        <span className="sel__caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <SelectMenu
+          id={id}
+          options={props.options}
+          value={props.value}
+          active={active}
+          choose={choose}
+          optionLeading={props.optionLeading}
+        />
+      ) : null}
+    </div>
   );
 }

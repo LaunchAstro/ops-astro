@@ -46,14 +46,8 @@ const SMALL: ClientBook = {
 };
 
 describe('Clients panel registers and draws its tab in rank', () => {
-  it('is the clients tab, after team and before settings, on the users glyph, drawn at /clients/', () => {
-    expect(dockTabs().map((tab) => tab.id)).toEqual([
-      'notifs',
-      'team',
-      'clients',
-      'todos',
-      'settings',
-    ]);
+  it('is the clients tab, after team and before Projects, on the users glyph, drawn at /clients/', () => {
+    expect(dockTabs().map((tab) => tab.id)).toEqual(['notifs', 'team', 'clients', 'todos']);
     const tab = dockTabs().find((each) => each.id === 'clients');
     expect(tab?.label).toBe('Clients');
     expect(tab?.icon).toBe('users');
@@ -66,7 +60,7 @@ describe('Clients panel registers and draws its tab in rank', () => {
     await press(view.find('.dock__tab[data-panel="clients"]'));
     const panel = view.find('[data-panel-id="clients"]');
     expect(panel?.querySelector('[data-act="door"]')?.getAttribute('href')).toBe('/clients/');
-    expect(panel?.querySelector('.clbook .is-mock .mocktag')?.textContent).toBe('Mock');
+    expect(panel?.querySelector('.clbook .clbook__note summary')?.textContent).toBe('Sample data');
   });
 });
 
@@ -75,7 +69,7 @@ describe('Clients panel reached from the rail and Back to Clients', () => {
     const { view } = await open('/projects/');
     live.push(view);
     await follow(view, '.rail__item[href="/clients/"]');
-    expect(view.find('.content .clbook .is-mock')).not.toBeNull();
+    expect(view.find('.content .clbook .clbook__note')).not.toBeNull();
     expect(view.find('[data-outcome="placeholder"]')).toBeNull();
   });
 
@@ -83,7 +77,7 @@ describe('Clients panel reached from the rail and Back to Clients', () => {
     const { view } = await open('/clients/acme-dental/');
     live.push(view);
     await follow(view, '.rail .rail__back');
-    expect(view.find('.content .clbook .is-mock')).not.toBeNull();
+    expect(view.find('.content .clbook .clbook__note')).not.toBeNull();
   });
 });
 
@@ -91,8 +85,8 @@ describe('Clients panel made-up book', () => {
   it('draws every client in the book A to Z inside the mock mark, and says the book is made up', async () => {
     const page = await book();
     expect(names(page)).toEqual(MADE_UP_BOOK.clients.map((each) => each.name).toSorted());
-    const region = page.find('.is-mock');
-    expect(region?.querySelector('.mocktag')?.textContent).toBe('Mock');
+    const region = page.find('.clbook [data-provenance="mock"]');
+    expect(region?.querySelector('.clbook__note summary')?.textContent).toBe('Sample data');
     expect(region?.querySelectorAll('.clbook__row')).toHaveLength(MADE_UP_BOOK.clients.length);
     expect(page.find('.clbook__note')?.textContent).toMatch(/made up/iu);
   });

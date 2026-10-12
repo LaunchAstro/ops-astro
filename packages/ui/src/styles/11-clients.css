@@ -6,18 +6,31 @@
    R37 (D-10): a row's door shows at rest below 900 and on any device that
    cannot hover; above 900 with a hovering pointer it shows on hover or focus. */
 
+.clbook {
+  position: relative;
+}
 .clbook__note {
-  margin: 0 0 var(--s-3);
+  position: absolute;
+  top: 58px;
+  right: 0;
+  margin: 0;
   color: var(--text-muted);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
 }
+.clbook__note > summary {
+  width: auto;
+  height: auto;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
 .clbook__find {
-  margin-bottom: var(--s-2);
+  margin-bottom: var(--s-5);
 }
 .clbook__count {
-  margin: 0 0 var(--s-3);
+  margin: 0 0 var(--s-5);
   color: var(--ink-faint);
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
@@ -115,7 +128,7 @@
   display: inline-grid;
   place-items: center;
   margin-right: 0.1rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  padding: 0.35rem var(--s-2) 0.35rem 0.35rem;
   color: var(--text-muted);
   font: var(--type-badge);
   letter-spacing: var(--type-badge-tracking);

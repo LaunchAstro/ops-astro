@@ -17,7 +17,13 @@
 // opens it in the dock's Task panel beside the rest, where there is a dock.
 
 import type { ReactElement } from 'react';
-import { InboxPage, type InboxGroupRef, type OpenHow } from '@launchastro/ui';
+import {
+  InboxPage,
+  NotificationsPanel,
+  usePanelToolbar,
+  type InboxGroupRef,
+  type OpenHow,
+} from '@launchastro/ui';
 import type {
   InboxCountResult,
   InboxReadResult,
@@ -90,6 +96,7 @@ export function InboxScreen(props: {
   readonly taskPanel?: InboxPanelHost;
 }): ReactElement {
   const { client, navigate, openPanel, taskPanel } = props;
+  const List = usePanelToolbar() === null ? InboxPage : NotificationsPanel;
   const { state, reload } = useRead<Inbox>({
     grantKey: props.grantKey,
     run: async () => await readInbox(client),
@@ -112,7 +119,7 @@ export function InboxScreen(props: {
   return (
     <RecordState state={state} subject="inbox" onRetry={reload} keep>
       {(inbox) => (
-        <InboxPage
+        <List
           items={inbox.items}
           owedCount={inbox.owed}
           groupOf={groupsByEntry(inbox.items)}

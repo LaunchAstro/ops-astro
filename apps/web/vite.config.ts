@@ -27,7 +27,7 @@
 // artefact as `build.json`. The dev server stamps its page too, with the
 // checkout it started from, so a browser run can tell which build served it.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -185,6 +185,7 @@ export default defineConfig({
     // repeated here rather than lost. Source imports are untouched: `.local/`
     // holds runtime scratch that nothing in `src` imports.
     fs: {
+      allow: [root, realpathSync(new URL('../../node_modules', import.meta.url))],
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.local/**', '**/*.local'],
     },
   },

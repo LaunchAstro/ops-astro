@@ -233,6 +233,18 @@
       "ruling": "DS-COMP-28"
     },
     {
+      "selector": ".sel__btn",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".menu--select .menu__opt",
+      "ruling": "R20261012"
+    },
+    {
+      "selector": ".dpanel__extra .styled-select:has(.aip__hmodel) .sel__btn",
+      "ruling": "R20261012"
+    },
+    {
       "selector": ".cbd__chip",
       "ruling": "DS-COMP-17"
     },

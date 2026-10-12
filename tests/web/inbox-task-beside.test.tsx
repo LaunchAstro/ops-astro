@@ -70,7 +70,7 @@ async function inbox(): Promise<{ page: Mounted; seen: string[] }> {
   const { view, seen } = await open('/inbox/', { fetch: alpha });
   live.push(view);
   await settled();
-  await press(view.find('.dock__tab[data-panel="settings"]'));
+  await press(view.find('.dock__tab[data-panel="clients"]'));
   return { page: view, seen };
 }
 
@@ -86,7 +86,7 @@ describe('CS-7.29 an inbox task row opens by the gesture law', () => {
     const { page, seen } = await inbox();
     const before = seen.length;
     await press(row(page), true);
-    expect(openIds(page)).toEqual(['task', 'settings']);
+    expect(openIds(page)).toEqual(['clients', 'task']);
     expect(page.find('[data-panel-id="task"] [data-act="door"]')?.getAttribute('href')).toBe(
       '/task/T-1',
     );

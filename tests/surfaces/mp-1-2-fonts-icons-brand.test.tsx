@@ -159,8 +159,8 @@ it('MP-1-2 icons from an open-licence set drawn to match', () => {
     `${root}tests/surfaces/fixtures/mp-1-2-mockup-glyphs.json`,
   );
   expect(mockup.glyphs.length).toBeGreaterThan(60);
-  // Every glyph the mockup draws has a replacement, and no other name exists.
-  expect([...GLYPH_NAMES].toSorted()).toEqual([...mockup.glyphs].toSorted());
+  // Every reference glyph has a replacement, plus the running timer’s stop control.
+  expect([...GLYPH_NAMES].toSorted()).toEqual([...mockup.glyphs, 'stop'].toSorted());
   for (const name of GLYPH_NAMES) {
     const html = renderToStaticMarkup(<Icon name={name} />);
     expect(html, name).toMatch(/^<svg[^>]*\bclass="[^"]*\bicon icon--md"/u);
