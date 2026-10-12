@@ -192,6 +192,16 @@ async function keep(
   return { id, body };
 }
 
+/**
+ * At the call, before its row is written: the session has not ended and the
+ * caller still holds their own conversations. Nothing is held past the row's
+ * commit, since the send comes after it; `keep` judges the reply under its
+ * own holds.
+ */
+async function stillHeld(tx: TenantQuery, session: Session): Promise<boolean> {
+  return !(await sessionEndedSince(tx, session)) && (await holdsOwnConversations(tx, session));
+}
+
 /** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */
 function heldElsewhere(cause: unknown): undefined {
   if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
@@ -223,6 +233,7 @@ async function answerOnce(
         { name: 'message', source: 'outside', value: question.body },
       ],
       ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+      stillHeld: async (tx) => await stillHeld(tx, session),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );

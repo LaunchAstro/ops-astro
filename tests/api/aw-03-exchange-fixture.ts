@@ -26,7 +26,7 @@ import {
   type ModelOperationDeclaration,
   type ReplayProvider,
 } from '../../packages/core-connectors/src/index.ts';
-import { startCustody } from '../../packages/core-custody/src/index.ts';
+import { startCustody, type Custody } from '../../packages/core-custody/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { testSignIn } from '../support/sign-in.ts';
 import { ISSUER, type ApiFixture } from './fixture.ts';
@@ -47,8 +47,25 @@ const LOCAL_ROUTE = {
   ceiling: 1_000,
 };
 
+/** Custody, with `describing` run before each account question when given. */
+const describedThrough = (
+  custody: Custody,
+  describing: (() => Promise<void>) | undefined,
+): Custody =>
+  describing === undefined
+    ? custody
+    : {
+        ...custody,
+        describe: async (ref, destination) => {
+          await describing();
+          return await custody.describe(ref, destination);
+        },
+      };
+
 export async function localModel(
   answer?: ModelOperationDeclaration['answer'],
+  /** Runs as the broker asks custody which account carries the call, before its row is written. */
+  describing?: () => Promise<void>,
 ): Promise<LocalModel> {
   const folder = mkdtempSync(join(tmpdir(), 'aw03-exchange-'));
   const provider = await startReplayProvider();
@@ -76,7 +93,7 @@ export async function localModel(
   if (settings.kind !== 'configured') throw new Error(`local model: ${settings.kind}`);
   const custody = await startCustody(settings.custody);
   const exchange = conversationExchange({
-    custody,
+    custody: describedThrough(custody, describing),
     operations: catalogue([
       answer === undefined ? CONVERSATION_ANSWER : { ...CONVERSATION_ANSWER, answer },
     ]),
