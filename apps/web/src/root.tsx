@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { App } from './App.tsx';
 import type { AppProps } from './app-props.ts';
+import { dropSignInLink } from './session/sign-in-link.ts';
 import { TabHistory } from './tab-history.ts';
 
 export interface RootProps extends Omit<AppProps, 'path' | 'navigate' | 'steps'> {
@@ -22,7 +23,11 @@ const addressOf = (at: Location): string => `${at.pathname}${at.search}${at.hash
 
 export function Root(props: RootProps): ReactElement {
   const { window: tab, ...app } = props;
-  const history = useMemo(() => new TabHistory(tab), [tab]);
+  // A sign-in service's link is cleared before the address is first read (`sign-in-link.ts`).
+  const history = useMemo(() => {
+    dropSignInLink(tab);
+    return new TabHistory(tab);
+  }, [tab]);
   const read = () => ({
     path: addressOf(tab.location),
     canBack: history.canBack,
