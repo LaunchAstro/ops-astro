@@ -619,14 +619,22 @@ def mode_path(target: Path, hashes, shapes, patterns, binary_allow, exemptions, 
     if not target.exists():
         die(f"no such path: {target}")
     found: list[Path] = []
+    # A folder that cannot be listed was never inspected, so the sweep is
+    # incomplete and must not report clean.
+    unlisted: list[str] = []
     if target.is_file():
         found = [target]
     else:
-        for dirpath, dirnames, filenames in os.walk(target):
+        def note(error: OSError) -> None:
+            unlisted.append(str(error.filename))
+
+        for dirpath, dirnames, filenames in os.walk(target, onerror=note):
             dirnames[:] = [d for d in dirnames if d not in {".git", "node_modules", "dist"}]
             found.extend(Path(dirpath) / n for n in filenames)
     rels = [str(p) for p in found]
-    shown, violations = path_texts([("", r) for r in rels], hashes, shapes)
+    shown, violations = path_texts([("", r) for r in rels + unlisted], hashes, shapes)
+    unlisted_reason = "the gate could not list this folder"
+    violations += [(shown[d], "unreadable", unlisted_reason, unlisted_reason) for d in unlisted]
     violations += path_violations([(shown[r], r) for r in rels], patterns)
     items = [(shown[rel], rel, read_path(path)) for path, rel in zip(found, rels)]
     violations += content_violations(items, hashes, shapes, binary_allow, exemptions)
