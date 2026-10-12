@@ -10,6 +10,7 @@ import {
   ENDED_FIXES,
   endProviderSession,
   sessionEndedSince,
+  standingOf,
   withSession,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -76,21 +77,42 @@ export async function judged(
       };
       await tx.query('savepoint factor_act');
       const refusal = await settle(await check(tx, session));
-      // The session asked again after the act's last wait (the factor lock,
-      // the audit chain), its ending keys held (C52-A): one signed out
-      // meanwhile undoes the act, whatever it decided (a refusal can change
-      // records too: a verify's losing enrolment is removed), and the refusal
-      // is recorded in its place (#443); one ending now, in any business,
-      // waits for the act to commit.
+      // Asked again after the act's last wait (`undoneSince`): a caller who
+      // signed out or lost standing here meanwhile keeps nothing.
       if (stage === 'before') return refusal;
-      const { sessionId } = caller.presented;
-      if (sessionId === undefined || !(await sessionEndedSince(tx, session))) return refusal;
-      return await undo(tx, sessionId, settle);
+      return (await undoneSince(tx, session, settle)) ?? refusal;
     },
     'enrolling',
   );
   if (outcome === undefined) return undefined;
   return asCallerVisible(outcome);
+}
+
+/**
+ * The session asked again after the act's last wait (the factor lock, the
+ * audit chain), its ending keys held (C52-A): one signed out meanwhile undoes
+ * the act, whatever it decided (a refusal can change records too: a verify's
+ * losing enrolment is removed), and the refusal is recorded in its place
+ * (#443); one ending now, in any business, waits for the act to commit. Then
+ * the caller's standing here, as the door would judge it now: an access ended
+ * meanwhile (C58) writes no session ending, and undoes the act the same way
+ * (#1450); one not yet committed here waits on the audit chain the act holds.
+ * Undefined while the caller still stands.
+ */
+async function undoneSince(
+  tx: TenantQuery,
+  session: Session,
+  settle: (refusal: CommandRefusal) => Promise<CommandRefusal | undefined>,
+): Promise<CommandRefusal | undefined> {
+  const presented = session.presented;
+  if (presented === undefined) return undefined;
+  const { sessionId } = presented;
+  if (sessionId !== undefined && (await sessionEndedSince(tx, session)))
+    return await undo(tx, sessionId, settle);
+  const standing = await standingOf(tx, presented, 'enrolling');
+  if (!('refused' in standing)) return undefined;
+  await tx.query('rollback to savepoint factor_act');
+  return await settle(standing);
 }
 
 /**

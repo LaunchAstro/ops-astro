@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor change and an access ending queued on the audit chain commit in that order, without deadlock"
+}
