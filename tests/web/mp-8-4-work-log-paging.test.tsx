@@ -59,7 +59,7 @@ describe('MP-8-4 paging per the long-lists ruling (web)', () => {
     await view.unmount();
   });
 
-  it('an earlier page that is refused withdraws the days already drawn', async () => {
+  it('an earlier page that fails says so and keeps the days already drawn', async () => {
     const api = server([
       { body: FIRST },
       { body: refused('SCOPE_NOT_GRANTED', ['task']), status: 403 },
@@ -70,8 +70,9 @@ describe('MP-8-4 paging per the long-lists ruling (web)', () => {
 
     await view.click('.act__more');
     await tick();
-    expect(view.all('.act__row')).toHaveLength(0);
-    expect(view.find('[data-outcome="denied"]')).not.toBeNull();
+    expect(view.all('.act__row')).toHaveLength(2);
+    expect(view.find('[data-ledger-more="failed"]')?.getAttribute('role')).toBe('alert');
+    expect(view.find('.act__more')).not.toBeNull();
     await view.unmount();
   });
 });
