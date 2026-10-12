@@ -19,6 +19,7 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import {
   CONVERSATION_CALL_LIFE_MS,
+  conversationOperation,
   localRoute,
   outsideFields,
   ownsConversation,
@@ -198,9 +199,8 @@ export async function callModelForPlanning(
   broker: Broker,
 ): Promise<ModelCallResult> {
   if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
-  const operation = broker.operations.get(request.operation);
-  if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
-  if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  const operation = conversationOperation(broker, request);
+  if (typeof operation === 'string') return refused(operation);
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);

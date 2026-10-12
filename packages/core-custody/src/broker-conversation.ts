@@ -10,7 +10,11 @@
 
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
-import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
+import {
+  conversationModelsOf,
+  eligibleRoutes,
+  type ModelOperation,
+} from '../../core-connectors/src/index.ts';
 import { carriesLocally, mayCarry } from './credentials.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import { endBy } from './custody.ts';
@@ -47,7 +51,7 @@ export interface ConversationCallRequest {
   readonly conversation: ConversationScope;
   readonly operation: string;
   readonly fields: readonly ClaimedField[];
-  /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
+  /** The conversation's model (CS-7.30), refused unless its provider offers it; absent, the default. */
   readonly model?: string;
   /**
    * The caller's authority judged again in the transaction that writes the
@@ -69,6 +73,32 @@ export const refused = (code: BrokerRefusal): ModelCallResult => ({
   code,
   callId: null,
 });
+
+/**
+ * CS-7.30: the model a call asks for, its provider's default when none is chosen, if the
+ * operation's provider offers it (`conversationModelsOf`). The broker checks the command
+ * layer's choice again, and an answer must name this model (`sendAndSettle`).
+ */
+const offeredModel = (operation: ModelOperation, model: string | undefined): string | undefined =>
+  conversationModelsOf(operation.provider).find((one) => model === undefined || one.id === model)
+    ?.id;
+
+/**
+ * The checks every conversation call takes before its route: the catalogued operation, one a
+ * lookup can reconcile, and a model its provider offers. None writes or sends anything.
+ */
+export function conversationOperation(
+  broker: Broker,
+  request: ConversationCallRequest,
+): ModelOperation | BrokerRefusal {
+  const operation = broker.operations.get(request.operation);
+  if (operation === undefined) return 'OPERATION_NOT_CATALOGUED';
+  if (operation.nothingHappened === 'not_reconcilable') return 'EFFECT_NOT_RECONCILABLE';
+  const unoffered =
+    request.model !== undefined && offeredModel(operation, request.model) === undefined;
+  // The command layer's own refusal of a model not offered (`MODEL_NOT_OFFERED`) has this code.
+  return unoffered ? 'FIELD_VALUE_INVALID' : operation;
+}
 
 /** S3: a claim of business-internal only narrows; the person's words are outside. */
 export function outsideFields(fields: readonly ClaimedField[]): readonly ResolvedField[] {
@@ -196,7 +226,10 @@ export async function sendAndSettle(
     if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
     if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
     const { costMinor } = settlement;
-    if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
+    // An answer naming a model other than the one asked for is held, never settled as that one.
+    const { model } = settlement.answer;
+    const another = model !== null && model !== offeredModel(operation, sent.model);
+    if (another || !Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
       return await hold(tx, called, observed, null, broker);
     }
@@ -222,9 +255,8 @@ export async function callModelInConversation(
   broker: Broker,
 ): Promise<ModelCallResult> {
   if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
-  const operation = broker.operations.get(request.operation);
-  if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
-  if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  const operation = conversationOperation(broker, request);
+  if (typeof operation === 'string') return refused(operation);
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
