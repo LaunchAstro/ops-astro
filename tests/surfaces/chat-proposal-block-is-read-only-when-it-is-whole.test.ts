@@ -119,6 +119,17 @@ describe('chat proposal block', () => {
       reply(JSON.stringify({ action: 'create', title: 'T', description: 'y'.repeat(4001) })),
     ],
     ['a title that is not text', reply('{"action":"create","title":12}')],
+    ['a title of only an invisible mark', reply('{"action":"create","title":"\\u200b"}')],
+    ['a title with a line break', reply('{"action":"create","title":"One\\nTwo"}')],
+    ['a title with a NUL', reply('{"action":"create","title":"A\\u0000B"}')],
+    [
+      'a description with a NUL',
+      reply('{"action":"create","title":"T","description":"A\\u0000B"}'),
+    ],
+    [
+      'a tilde-fenced second block',
+      `Here.\n~~~task\n{"action":"create","title":"One"}\n~~~\n\n${block('{"action":"create","title":"Two"}')}`,
+    ],
     ['a description that is not text', reply('{"action":"create","title":"T","description":null}')],
     ['an edit naming nothing', reply('{"action":"edit"}')],
     [

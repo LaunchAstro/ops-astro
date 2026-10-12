@@ -36,18 +36,26 @@ export interface ProposalRead {
   readonly proposal: TaskProposal | null;
 }
 
-const OPENING = /^```task[ \t]*$/mu;
+/** Anything a reader would take for a task block's opening: indented, tilde-fenced or with words after. */
+const OPENING = /^ {0,3}(?:```|~~~)[ \t]*task\b/mu;
 /** The one block, closing the reply: its JSON, then only white space. */
 const CLOSING = /(?:^|\n)```task[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*\s*$/u;
 const KEYS = new Set(['action', 'title', 'description']);
 
 const characters = (text: string): number => [...text].length;
 
+/** One line with something to read: no control character, and more than spaces and invisible marks. */
 const titled = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim() !== '' && characters(value) <= PROPOSAL_TITLE_LIMIT;
+  typeof value === 'string' &&
+  /[^\s\p{Cf}]/u.test(value) &&
+  !/\p{Cc}/u.test(value) &&
+  characters(value) <= PROPOSAL_TITLE_LIMIT;
 
+/** Any text a person could write, lines and tabs included, but no NUL, which no text field stores. */
 const described = (value: unknown): value is string =>
-  typeof value === 'string' && characters(value) <= PROPOSAL_DESCRIPTION_LIMIT;
+  typeof value === 'string' &&
+  !value.includes('\u0000') &&
+  characters(value) <= PROPOSAL_DESCRIPTION_LIMIT;
 
 function parsed(json: string): unknown {
   try {

@@ -147,32 +147,31 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const task = store.now().scope.task;
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
-  const start = (chat: Chat, body: string, on: Store): Promise<string | null> =>
-    startWith(props.client, on, { chat, body, subject, scope: scope() }, report);
+  const start = (opening: Omit<Opening, 'subject'>, on: Store): Promise<string | null> =>
+    startWith(props.client, on, { ...opening, subject }, report);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
     const question = store.line(key, 'user', body);
+    // The asking tab's scope, as the question is asked: a tab selected while
+    // its task is read changes neither the start nor the card.
+    const opening = { chat, body, scope: scope() };
     const { on, read } = answersTo(props, store, chat, question);
-    let known = chat.conversationId;
-    // A started tab's question waits for its writes so far: a model just chosen is the one asked.
-    if (known !== null) await starts.current.get(key);
-    if (known === null) {
-      // Queued behind the tab's last start: joins what it made, or starts
-      // itself only once that start is refused.
-      let asked = false;
-      const before = starts.current.get(key) ?? Promise.resolve(null);
-      const turn = before.then(async (id) => {
-        if (id !== null) return id;
-        asked = true;
-        await read;
-        return await start(chat, body, on);
-      });
-      starts.current.set(key, turn);
-      known = await turn;
-      if (asked || known === null) return;
-    }
-    await read;
+    // Each question waits for the tab's writes so far and then its task's
+    // read, in the tab's queue, so a model chosen after it lands after it.
+    // A tab not yet started joins what its last start made, or starts itself
+    // only once that start is refused.
+    let asked = false;
+    const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
+    const turn = before.then(async (id) => {
+      await read;
+      if (id !== null) return id;
+      asked = true;
+      return await start(opening, on);
+    });
+    starts.current.set(key, turn);
+    const known = await turn;
+    if (asked || known === null) return;
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
     );
