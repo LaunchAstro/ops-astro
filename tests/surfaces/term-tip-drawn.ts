@@ -7,20 +7,8 @@
 // A tip counts as shown only when it paints, so a transparent or covered tip
 // is not.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { launchChromium } from '../support/chromium.ts';
-
-const ui = join(import.meta.dirname, '../../packages/ui/src');
-
-const packageSheets = (): string =>
-  [
-    ...readFileSync(join(ui, 'index.ts'), 'utf8').matchAll(
-      /^import '\.\/(styles\/[\w-]+\.css)';$/gmu,
-    ),
-  ]
-    .map((match) => readFileSync(join(ui, match[1] ?? ''), 'utf8'))
-    .join('\n');
+import { packageSheets } from './kit-drawn.ts';
 
 export async function tipShown(html: string): Promise<Record<string, boolean>> {
   const browser = await launchChromium();
