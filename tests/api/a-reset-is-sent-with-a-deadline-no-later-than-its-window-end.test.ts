@@ -17,6 +17,10 @@ import {
   usePasswordWorld,
   world,
 } from './c40-password-set-world.ts';
+import { serverUrl } from '../acceptance/world.ts';
+
+/** A database is needed: without one, the file skips. */
+const LIVE = it.skipIf(serverUrl === undefined);
 
 usePasswordWorld();
 
@@ -53,7 +57,7 @@ async function clockOffset(): Promise<{ offset: number; within: number }> {
   return { offset: Number(row?.at) - (sent + back) / 2, within: (back - sent) / 2 + 1 };
 }
 
-it.each(['before', 'after'] as const)(
+LIVE.each(['before', 'after'] as const)(
   'a reset whose window end is read slowly (%s the statement) is sent with a deadline no later than that end',
   async (when) => {
     const member = await freshMember(`reset-deadline-${when}`);

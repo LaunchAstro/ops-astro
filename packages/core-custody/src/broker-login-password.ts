@@ -22,8 +22,9 @@ import {
   AUTH_UPDATE_USER_PASSWORD,
   PASSWORD_REFUSED_STATUS,
   type AdapterRequest,
+  type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import type { Broker } from './broker-types.ts';
+import type { Broker, BrokerRoute } from './broker-types.ts';
 
 export type LoginPasswordSet = 'set' | 'refused' | 'fault';
 
@@ -58,6 +59,38 @@ async function placeFor(
   };
 }
 
+type Outcome = Awaited<ReturnType<Broker['custody']['dispatch']>>;
+
+/** The built call through custody once it has a place, or undefined when none comes by its deadline. */
+async function dispatchInPlace(
+  broker: Broker,
+  sent: {
+    readonly operation: ModelOperation;
+    readonly route: BrokerRoute;
+    readonly built: AdapterRequest;
+  },
+  notAfter: number | undefined,
+): Promise<Outcome | undefined> {
+  const { operation, route, built } = sent;
+  const deadline = notAfter ?? Date.now() + operation.timeoutMs;
+  const limit = Math.min(operation.concurrency, route.ceiling);
+  const release = await placeFor(broker.custody, limit, deadline);
+  if (release === undefined) return undefined;
+  try {
+    return await broker.custody.dispatch(route.credentialRef, {
+      destination: operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: operation.timeoutMs,
+      maxResponseBytes: operation.maxResponseBytes,
+      ...(notAfter === undefined ? {} : { notAfter }),
+    });
+  } finally {
+    release();
+  }
+}
+
 /**
  * Set the password of the login whose provider id is `id`: set, refused, or a
  * fault. `notAfter` (wall-clock ms) is the reset window's end: no call goes
@@ -79,28 +112,8 @@ export async function setLoginPassword(
   } catch {
     return 'fault';
   }
-  const deadline = notAfter ?? Date.now() + operation.timeoutMs;
-  const release = await placeFor(
-    broker.custody,
-    Math.min(operation.concurrency, route.ceiling),
-    deadline,
-  );
-  if (release === undefined) return 'fault';
-  let outcome: Awaited<ReturnType<typeof broker.custody.dispatch>>;
-  try {
-    outcome = await broker.custody.dispatch(route.credentialRef, {
-      destination: operation.destination,
-      path: built.path,
-      method: built.method,
-      body: built.body,
-      timeoutMs: operation.timeoutMs,
-      maxResponseBytes: operation.maxResponseBytes,
-      ...(notAfter === undefined ? {} : { notAfter }),
-    });
-  } finally {
-    release();
-  }
-  if (outcome.kind !== 'answered') return 'fault';
+  const outcome = await dispatchInPlace(broker, { operation, route, built }, notAfter);
+  if (outcome === undefined || outcome.kind !== 'answered') return 'fault';
   const { outbound } = outcome;
   if (!outbound.ok) {
     return outbound.fault === 'status' && outbound.status === PASSWORD_REFUSED_STATUS

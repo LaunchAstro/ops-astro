@@ -11,17 +11,23 @@ import {
 import { aiWorld, created, type AiWorld } from './ai-assign-world.ts';
 import { codeOf } from './agent-fixture.ts';
 import { holdRow, latch, waiterOf, waitPast } from '../support/lock-wait-race.ts';
+import { serverUrl } from '../acceptance/world.ts';
+
+/** A database is needed: without one, the file skips. */
+const LIVE = it.skipIf(serverUrl === undefined);
 
 let w: AiWorld;
 beforeAll(async () => {
+  if (serverUrl === undefined) return;
   w = await aiWorld('commentgrantwait');
 }, 180_000);
 afterAll(async () => {
+  if (serverUrl === undefined) return;
   await w?.world.drop();
 });
 
 // oxlint-disable-next-line max-lines-per-function -- the delegation, the held task, the revoke and the answer
-it('an agent comment cannot commit on a grant revoked while it waits for its locks', async () => {
+LIVE('an agent comment cannot commit on a grant revoked while it waits for its locks', async () => {
   const task = await created(w, w.p, 'comment grant race');
   const credential = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
     const minted = await mintDelegation(tx, {
@@ -98,7 +104,7 @@ it('an agent comment cannot commit on a grant revoked while it waits for its loc
   });
 });
 
-it('a delegation expired during a task lock wait cannot resolve live afterwards', async () => {
+LIVE('a delegation expired during a task lock wait cannot resolve live afterwards', async () => {
   const task = await created(w, w.q, 'delegation expiry race');
   const expiry = new Date(Date.now() + 2000);
   const credential = await w.world.db.app.withBusiness(w.world.business, async (tx) => {

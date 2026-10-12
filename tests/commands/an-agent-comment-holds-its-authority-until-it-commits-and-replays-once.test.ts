@@ -30,10 +30,15 @@ import { holdRow, latch, waiterOf, type Held } from '../support/lock-wait-race.t
 import { aiWorld, created, type AiWorld } from './ai-assign-world.ts';
 import { codeOf, detailOf, type Decider } from './agent-fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
+import { serverUrl } from '../acceptance/world.ts';
+
+/** A database is needed: without one, the file skips. */
+const LIVE = it.skipIf(serverUrl === undefined);
 
 let w: AiWorld;
 let manager: Member;
 beforeAll(async () => {
+  if (serverUrl === undefined) return;
   w = await aiWorld('commentholdsauthority');
   manager = await enrol(w.world.db.app, w.world.business, `mgr_${randomUUID().slice(0, 8)}`);
   await w.world.db.app.withBusiness(w.world.business, async (tx) => {
@@ -44,6 +49,7 @@ beforeAll(async () => {
   });
 }, 180_000);
 afterAll(async () => {
+  if (serverUrl === undefined) return;
   await w?.world.drop();
 });
 
@@ -97,80 +103,90 @@ const bodies = async (body: string): Promise<number> =>
     ])
   ).length;
 
-it('a delegation revoked while an agent comment waits for its task refuses the comment', async () => {
-  const { task, delegationId, credential } = await delegated('delegation revoke race');
-  const body = `after its delegation was revoked ${randomUUID()}`;
-  const held = await holdRow(w.world.db, 'select id from public.records where id = $1 for update', [
-    task,
-  ]);
-  const revoker = connect(w.world.db.appUrl);
-  let pending: ReturnType<typeof w.world.asAgent> | undefined;
-  try {
-    pending = w.world.asAgent(comment(task, body, randomUUID()), credential);
-    await waiterOf(w.world.db, held);
-    const revoked = await executeCommand(revoker, w.world.business, manager.presented, 'api', {
-      command: 'delegation.revoke',
-      operationId: randomUUID(),
-      delegationId,
+LIVE(
+  'a delegation revoked while an agent comment waits for its task refuses the comment',
+  async () => {
+    const { task, delegationId, credential } = await delegated('delegation revoke race');
+    const body = `after its delegation was revoked ${randomUUID()}`;
+    const held = await holdRow(
+      w.world.db,
+      'select id from public.records where id = $1 for update',
+      [task],
+    );
+    const revoker = connect(w.world.db.appUrl);
+    let pending: ReturnType<typeof w.world.asAgent> | undefined;
+    try {
+      pending = w.world.asAgent(comment(task, body, randomUUID()), credential);
+      await waiterOf(w.world.db, held);
+      const revoked = await executeCommand(revoker, w.world.business, manager.presented, 'api', {
+        command: 'delegation.revoke',
+        operationId: randomUUID(),
+        delegationId,
+      });
+      expect(codeOf(revoked), 'the revocation commits while the comment waits').toBe(
+        'not-a-refusal',
+      );
+    } finally {
+      await held.letGo();
+      await revoker.close();
+    }
+    expect({ code: codeOf(await pending), written: await bodies(body) }).toEqual({
+      code: 'DELEGATION_NOT_LIVE',
+      written: 0,
     });
-    expect(codeOf(revoked), 'the revocation commits while the comment waits').toBe('not-a-refusal');
-  } finally {
-    await held.letGo();
-    await revoker.close();
-  }
-  expect({ code: codeOf(await pending), written: await bodies(body) }).toEqual({
-    code: 'DELEGATION_NOT_LIVE',
-    written: 0,
-  });
-});
+  },
+);
 
 // oxlint-disable-next-line max-lines-per-function -- the held delegation, both racers and the order they commit in
-it('a grant revoke that arrives once an agent comment holds its authority waits for the comment to commit', async () => {
-  const { person, task, delegationId, credential } = await delegated('revoke after the hold');
-  const body = `before its grant was revoked ${randomUUID()}`;
-  const agentPid = await pidOf(w.world.db.app);
-  // The comment's last lock wait: the delegation, asked again after the grants and the task.
-  const held = await holdRow(
-    w.world.db,
-    'select id from public.delegations where id = $1 for update',
-    [delegationId],
-  );
-  const revoker = connect(w.world.db.appUrl);
-  const revokerPid = await pidOf(revoker);
-  let pending: ReturnType<typeof w.world.asAgent> | undefined;
-  let revoking: ReturnType<typeof executeCommand> | undefined;
-  let revokeWaitedOnComment = false;
-  try {
-    pending = w.world.asAgent(comment(task, body, randomUUID()), credential);
-    await waiterOf(w.world.db, held);
-    revoking = executeCommand(revoker, w.world.business, manager.presented, 'api', {
-      command: 'grant.revoke',
-      operationId: randomUUID(),
-      grantId: person.grants.comment,
-    });
-    await waiterOf(w.world.db, backend(agentPid));
-    const [waits] = await w.world.db.admin.execute<{ readonly on: boolean }>(
-      'select $2::int = any(pg_blocking_pids($1)) as on',
-      [revokerPid, agentPid],
+LIVE(
+  'a grant revoke that arrives once an agent comment holds its authority waits for the comment to commit',
+  async () => {
+    const { person, task, delegationId, credential } = await delegated('revoke after the hold');
+    const body = `before its grant was revoked ${randomUUID()}`;
+    const agentPid = await pidOf(w.world.db.app);
+    // The comment's last lock wait: the delegation, asked again after the grants and the task.
+    const held = await holdRow(
+      w.world.db,
+      'select id from public.delegations where id = $1 for update',
+      [delegationId],
     );
-    revokeWaitedOnComment = waits?.on === true;
-  } finally {
-    await held.letGo();
-    await Promise.allSettled([pending, revoking]);
-    await revoker.close();
-  }
-  expect({
-    revokeWaitedOnComment,
-    comment: codeOf(await pending),
-    revoke: codeOf(await revoking),
-    written: await bodies(body),
-  }).toEqual({
-    revokeWaitedOnComment: true,
-    comment: 'not-a-refusal',
-    revoke: 'not-a-refusal',
-    written: 1,
-  });
-});
+    const revoker = connect(w.world.db.appUrl);
+    const revokerPid = await pidOf(revoker);
+    let pending: ReturnType<typeof w.world.asAgent> | undefined;
+    let revoking: ReturnType<typeof executeCommand> | undefined;
+    let revokeWaitedOnComment = false;
+    try {
+      pending = w.world.asAgent(comment(task, body, randomUUID()), credential);
+      await waiterOf(w.world.db, held);
+      revoking = executeCommand(revoker, w.world.business, manager.presented, 'api', {
+        command: 'grant.revoke',
+        operationId: randomUUID(),
+        grantId: person.grants.comment,
+      });
+      await waiterOf(w.world.db, backend(agentPid));
+      const [waits] = await w.world.db.admin.execute<{ readonly on: boolean }>(
+        'select $2::int = any(pg_blocking_pids($1)) as on',
+        [revokerPid, agentPid],
+      );
+      revokeWaitedOnComment = waits?.on === true;
+    } finally {
+      await held.letGo();
+      await Promise.allSettled([pending, revoking]);
+      await revoker.close();
+    }
+    expect({
+      revokeWaitedOnComment,
+      comment: codeOf(await pending),
+      revoke: codeOf(await revoking),
+      written: await bodies(body),
+    }).toEqual({
+      revokeWaitedOnComment: true,
+      comment: 'not-a-refusal',
+      revoke: 'not-a-refusal',
+      written: 1,
+    });
+  },
+);
 
 /** The app database, but the transaction that reaches the comment's authority re-check dies there. */
 function diesAtTheRecheck(app: Database): { database: Database; died: () => boolean } {
@@ -198,73 +214,79 @@ function diesAtTheRecheck(app: Database): { database: Database; died: () => bool
   return { database, died: () => died };
 }
 
-it('an agent comment whose transaction dies at its authority re-check writes nothing, and its resend writes it once', async () => {
-  const { task, credential } = await delegated('crash at the re-check');
-  const body = `sent again after a crash ${randomUUID()}`;
-  const operationId = randomUUID();
-  const dying = diesAtTheRecheck(w.world.db.app);
-  const crashed = await executeAgentCommand(
-    dying.database,
-    w.world.business,
-    { provider: 'supabase', subject: w.world.agentSubject() },
-    credential,
-    comment(task, body, operationId) as never,
-  ).then(
-    () => 'answered',
-    (cause: unknown) => cause,
-  );
-  expect({ died: dying.died(), crashed, written: await bodies(body) }).toEqual({
-    died: true,
-    crashed: new Error('the process died at the re-check'),
-    written: 0,
-  });
-  // The answer was lost: the same request again, then once more.
-  const resent = await w.world.asAgent(comment(task, body, operationId), credential);
-  const replayed = await w.world.asAgent(comment(task, body, operationId), credential);
-  expect({
-    resent: codeOf(resent),
-    replayed: codeOf(replayed),
-    same: detailOf(replayed)['commentId'] === detailOf(resent)['commentId'],
-    written: await bodies(body),
-  }).toEqual({ resent: 'not-a-refusal', replayed: 'not-a-refusal', same: true, written: 1 });
-});
+LIVE(
+  'an agent comment whose transaction dies at its authority re-check writes nothing, and its resend writes it once',
+  async () => {
+    const { task, credential } = await delegated('crash at the re-check');
+    const body = `sent again after a crash ${randomUUID()}`;
+    const operationId = randomUUID();
+    const dying = diesAtTheRecheck(w.world.db.app);
+    const crashed = await executeAgentCommand(
+      dying.database,
+      w.world.business,
+      { provider: 'supabase', subject: w.world.agentSubject() },
+      credential,
+      comment(task, body, operationId) as never,
+    ).then(
+      () => 'answered',
+      (cause: unknown) => cause,
+    );
+    expect({ died: dying.died(), crashed, written: await bodies(body) }).toEqual({
+      died: true,
+      crashed: new Error('the process died at the re-check'),
+      written: 0,
+    });
+    // The answer was lost: the same request again, then once more.
+    const resent = await w.world.asAgent(comment(task, body, operationId), credential);
+    const replayed = await w.world.asAgent(comment(task, body, operationId), credential);
+    expect({
+      resent: codeOf(resent),
+      replayed: codeOf(replayed),
+      same: detailOf(replayed)['commentId'] === detailOf(resent)['commentId'],
+      written: await bodies(body),
+    }).toEqual({ resent: 'not-a-refusal', replayed: 'not-a-refusal', same: true, written: 1 });
+  },
+);
 
 // oxlint-disable-next-line max-lines-per-function -- the held grant, the revoke, the refusal and its resend
-it('an agent comment refused for a grant revoked while it waited is refused again when sent again', async () => {
-  const { person, task, credential } = await delegated('refused and sent again');
-  const body = `refused then resent ${randomUUID()}`;
-  const operationId = randomUUID();
-  const revoker = connect(w.world.db.appUrl);
-  const revokerPid = await pidOf(revoker);
-  const released = latch();
-  const locked = latch();
-  // A revocation as `grant.revoke` makes one: the access lock, the grant row, then the write.
-  const revoking = revoker.withBusiness(w.world.business, async (tx) => {
-    await lockAccess(tx);
-    await tx.query('select id from public.grants where business_id = $1 and id = $2 for update', [
-      tx.businessId,
-      person.grants.comment,
-    ]);
-    locked.open();
-    await released.promise;
-    await revokeGrant(tx, person.grants.comment);
-  });
-  let pending: ReturnType<typeof w.world.asAgent> | undefined;
-  try {
-    await locked.promise;
-    pending = w.world.asAgent(comment(task, body, operationId), credential);
-    await waiterOf(w.world.db, backend(revokerPid));
-  } finally {
-    released.open();
-    await Promise.allSettled([revoking, pending]);
-    await revoker.close();
-  }
-  await revoking;
-  const first = await pending;
-  const again = await w.world.asAgent(comment(task, body, operationId), credential);
-  expect({ first: codeOf(first), again: codeOf(again), written: await bodies(body) }).toEqual({
-    first: 'DELEGATION_NARROWED',
-    again: 'DELEGATION_NARROWED',
-    written: 0,
-  });
-});
+LIVE(
+  'an agent comment refused for a grant revoked while it waited is refused again when sent again',
+  async () => {
+    const { person, task, credential } = await delegated('refused and sent again');
+    const body = `refused then resent ${randomUUID()}`;
+    const operationId = randomUUID();
+    const revoker = connect(w.world.db.appUrl);
+    const revokerPid = await pidOf(revoker);
+    const released = latch();
+    const locked = latch();
+    // A revocation as `grant.revoke` makes one: the access lock, the grant row, then the write.
+    const revoking = revoker.withBusiness(w.world.business, async (tx) => {
+      await lockAccess(tx);
+      await tx.query('select id from public.grants where business_id = $1 and id = $2 for update', [
+        tx.businessId,
+        person.grants.comment,
+      ]);
+      locked.open();
+      await released.promise;
+      await revokeGrant(tx, person.grants.comment);
+    });
+    let pending: ReturnType<typeof w.world.asAgent> | undefined;
+    try {
+      await locked.promise;
+      pending = w.world.asAgent(comment(task, body, operationId), credential);
+      await waiterOf(w.world.db, backend(revokerPid));
+    } finally {
+      released.open();
+      await Promise.allSettled([revoking, pending]);
+      await revoker.close();
+    }
+    await revoking;
+    const first = await pending;
+    const again = await w.world.asAgent(comment(task, body, operationId), credential);
+    expect({ first: codeOf(first), again: codeOf(again), written: await bodies(body) }).toEqual({
+      first: 'DELEGATION_NARROWED',
+      again: 'DELEGATION_NARROWED',
+      written: 0,
+    });
+  },
+);
