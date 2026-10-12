@@ -15,7 +15,6 @@
 // the server; only that filing's settlement starts a new draft.
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import type { GraduationRowView } from '../../../../../packages/core-wire/src/index.ts';
 import type { Settlement } from '../../records/use-command.ts';
 import type { MandateFiling } from './graduation-forms.tsx';
 import type { Send } from './graduation-send.ts';
@@ -205,21 +204,9 @@ export function useLeftEmpty(drafts: GraduationDrafts, empty: boolean, drop: () 
   }, [drafts, empty]);
 }
 
-/**
- * The client's open promotion while its class is among `rows` and ready; one
- * whose class is not is closed, and what was typed in it discarded.
- */
-export function useOpenPromotion(
-  drafts: GraduationDrafts,
-  clientId: string,
-  rows: readonly GraduationRowView[],
-): Promotion | null {
-  const open = slotIn(useDrafts(drafts), clientId).promoting;
-  const ready = rows.some((row) => row.id === open?.classId && row.state === 'ready');
-  useEffect(() => {
-    if (open !== null && !ready) drafts.closePromotion(clientId, open.classId);
-  }, [drafts, clientId, open, ready]);
-  return ready ? open : null;
+/** The client's open promotion, as typed; it stays open, as on main, until it settles or is cancelled. */
+export function useOpenPromotion(drafts: GraduationDrafts, clientId: string): Promotion | null {
+  return slotIn(useDrafts(drafts), clientId).promoting;
 }
 
 /**
