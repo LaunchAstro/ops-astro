@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Database, TransactionQuery } from '../../packages/core-records/src/index.ts';
 import { codeOf, wayfinderWorld, type Decider, type WayfinderWorld } from '../wayfinder/world.ts';
 
+const serverUrl = databaseUrlFromEnvironment();
+const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
+
 let w: WayfinderWorld;
 let owner: Decider;
 beforeAll(async () => {
+  if (serverUrl === undefined) return;
   w = await wayfinderWorld('sol1364expiry', 'sol1364expiry');
   owner = await w.decider('Sol expiry owner');
 }, 180_000);
