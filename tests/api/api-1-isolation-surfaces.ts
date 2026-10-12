@@ -94,11 +94,12 @@ export async function threeWays(
     signedIn: true,
     fetch: asBrowser(token, async (url, init) => await recording(url, init)),
   });
-  const operationId = randomUUID();
   await (row.kind === 'read'
     ? app.read(row.command as never, body)
-    : app.mutate(row.command as never, body, { operationId, expectedRevision: 1 }));
-  const payload = row.kind === 'read' ? body : { ...body, operationId, expectedRevision: 1 };
+    : app.mutate(row.command as never, body, { operationId: randomUUID(), expectedRevision: 1 }));
+  // Each surface's own operation id: a shared one makes the CLI's and the API's answers replays.
+  const payload = (): Body =>
+    row.kind === 'read' ? body : { ...body, operationId: randomUUID(), expectedRevision: 1 };
   const cli = createCli({
     businessKey,
     credential: token,
@@ -109,11 +110,11 @@ export async function threeWays(
         body: sent,
       }),
   });
-  await cli.run(row.command, payload);
+  await cli.run(row.command, payload());
   await recording(row.api.person.replace(':businessKey', businessKey), {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload()),
   });
   return heard;
 }
