@@ -22,12 +22,14 @@ export const money = (minor: number, currency: string): string =>
 /** A stored code such as `request_changes`, read as words. */
 export const words = (code: string): string => code.replaceAll('_', ' ');
 
-/** A figure in the currency as whole minor units, or null for anything that is not one of 0 or more. */
+/** A figure in the currency as whole minor units, or null unless it is one of 0 or more held exactly. */
 export function minorOf(amount: string, currency: string): number | null {
   const digits = minorDigits(currency);
-  const parts = /^\d+(?:\.(\d+))?$/u.exec(amount.trim());
+  const parts = /^(\d+)(?:\.(\d+))?$/u.exec(amount.trim());
   if (parts === null) return null;
-  const fraction = parts[1];
-  if (fraction !== undefined && fraction.length > digits) return null;
-  return Math.round(Number(amount.trim()) * 10 ** digits);
+  const fraction = parts[2] ?? '';
+  if (fraction.length > digits) return null;
+  // From the digits as written, never through a float: a typed cent stays that cent.
+  const minor = Number(`${parts[1] ?? '0'}${fraction.padEnd(digits, '0')}`);
+  return Number.isSafeInteger(minor) ? minor : null;
 }
