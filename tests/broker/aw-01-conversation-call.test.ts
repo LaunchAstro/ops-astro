@@ -18,7 +18,11 @@ import {
   type ModelCaller,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
-import { REPLAY_COMPOSE, replayAdapter } from '../../packages/core-connectors/src/index.ts';
+import {
+  catalogue,
+  REPLAY_COMPOSE,
+  replayAdapter,
+} from '../../packages/core-connectors/src/index.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
 import { seedConversation } from './conversation-fixture.ts';
 import {
@@ -56,7 +60,7 @@ beforeAll(async () => {
   work = await liveWork(s, `aw01conv-${randomUUID()}`, 2_000);
 }, 180_000);
 
-/** The owner in their own session, no delegation. */
+/** The owner in their own session, no delegation. Each case asks an unpriced operation (#1508). */
 const person = (): ModelCaller => ({
   actorId: s.decider.actorId,
   delegationId: null,
@@ -76,12 +80,16 @@ const local = (): Broker => ({
   providers: new Map([['replay', { build: replayAdapter, price: () => 0 }]]),
 });
 
+const unpriced = (with_: Broker): Broker => ({
+  ...with_,
+  operations: catalogue([{ ...REPLAY_COMPOSE, maximumMinor: 0 }]),
+});
 const inConversation = async (
   caller: ModelCaller,
   request: ConversationCallRequest,
   with_: Broker = local(),
 ): Promise<ModelCallResult> =>
-  await callModelInConversation(s.db.app, s.business, caller, request, with_);
+  await callModelInConversation(s.db.app, s.business, caller, request, unpriced(with_));
 
 const rowsFor = async (conversationId: string): Promise<readonly Record<string, unknown>[]> =>
   await s.db.admin.execute(`select * from public.model_calls where conversation_id = $1`, [

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a model chosen on the priced replay install, at start, by set_model raced with a message, or cleared, is never sent (#1508 option B)"
+}

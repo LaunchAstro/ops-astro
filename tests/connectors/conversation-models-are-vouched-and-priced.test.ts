@@ -16,6 +16,10 @@ import {
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
   localGptAdapter,
+  OLLAMA_CONVERSATION,
+  OLLAMA_MODELS,
+  OLLAMA_PROVIDER,
+  ollamaAdapter,
   REPLAY_MODEL_WINDOW,
   replayAdapter,
 } from '../../packages/core-connectors/src/index.ts';
@@ -24,15 +28,22 @@ import { readModelId } from '../../packages/core-connectors/src/operation.ts';
 const modelIn = (body: string): unknown => (JSON.parse(body) as Record<string, unknown>)['model'];
 
 describe('CS-7.30 the conversation model catalogue', () => {
-  it('lists only the replay model and the laptop runner’s default, each priced by its operation', () => {
+  it('lists only the replay model, the laptop runner’s default and the M5’s Ollama models, each priced', () => {
     expect(CONVERSATION_MODELS.map((model) => model.id)).toStrictEqual([
       REPLAY_MODEL_WINDOW.model,
       LOCAL_GPT_DEFAULT_MODEL,
+      ...OLLAMA_MODELS,
     ]);
     const operations = new Map([
       [CONVERSATION_ANSWER.provider, CONVERSATION_ANSWER],
       [LOCAL_GPT_CONVERSATION.provider, LOCAL_GPT_CONVERSATION],
+      [OLLAMA_PROVIDER, OLLAMA_CONVERSATION],
     ]);
+    // #1508, option B: every real provider's model is unpriced; the stand-in's is priced, and refused.
+    const real = CONVERSATION_MODELS.filter(
+      (model) => model.provider !== CONVERSATION_ANSWER.provider,
+    );
+    expect(real.map((model) => model.ceilingMinor)).toStrictEqual(real.map(() => 0));
     for (const model of CONVERSATION_MODELS) {
       expect(readModelId(model.id)).toBe(model.id);
       expect(model.ceilingMinor).toBe(operations.get(model.provider)?.maximumMinor);
@@ -56,5 +67,7 @@ describe('CS-7.30 the conversation model catalogue', () => {
     expect(modelIn(replayAdapter(values, 'op-1').body)).toBe(REPLAY_MODEL_WINDOW.model);
     expect(modelIn(localGptAdapter(values, 'op-1', 'gpt-chosen').body)).toBe('gpt-chosen');
     expect(modelIn(localGptAdapter(values).body)).toBe(LOCAL_GPT_DEFAULT_MODEL);
+    expect(modelIn(ollamaAdapter(values, 'op-1', 'gemma4:31b-mlx').body)).toBe('gemma4:31b-mlx');
+    expect(modelIn(ollamaAdapter(values).body)).toBe(OLLAMA_MODELS[0]);
   });
 });

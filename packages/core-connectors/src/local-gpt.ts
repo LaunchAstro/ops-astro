@@ -127,4 +127,6 @@ export const LOCAL_GPT_CONVERSATION: ModelOperationDeclaration = {
   ...LOCAL_GPT_COMPOSE,
   key: CONVERSATION_ANSWER.key,
   fields: CONVERSATION_ANSWER.fields,
+  // The plan is paid for already: unpriced, as the conversation seam requires (#1508, option B).
+  maximumMinor: 0,
 };

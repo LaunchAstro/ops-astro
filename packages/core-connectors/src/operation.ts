@@ -14,7 +14,8 @@
 //   5. answer            the schema every answer is validated against
 //   6. timeoutMs         how long custody waits for the answer
 //   7. maxResponseBytes  how much of the answer custody reads
-//   8. maximumMinor      the priced maximum the reservation holds before dispatch
+//   8. maximumMinor      the priced maximum the reservation holds before dispatch; zero
+//                        is unpriced, the only kind the conversation seam sends (#1508)
 //   9. settlesAt         the highest of accepted, started, completed, landed it reaches
 //  10. nothingHappened   the provider answers that are positive proof nothing happened,
 //                        or `not_reconcilable`, which the broker refuses to dispatch
@@ -123,7 +124,7 @@ const WELL_FORMED: Readonly<Record<Declaration, (value: unknown) => boolean>> = 
   answer: (value) => typeof value === 'function',
   timeoutMs: (value) => positiveWhole(value, 120_000),
   maxResponseBytes: (value) => positiveWhole(value, 4 * 1024 * 1024),
-  maximumMinor: (value) => positiveWhole(value, 100_000_000),
+  maximumMinor: (value) => value === 0 || positiveWhole(value, 100_000_000),
   settlesAt: (value) =>
     typeof value === 'string' && (SETTLE_LEVELS as readonly string[]).includes(value),
   nothingHappened: (value) =>

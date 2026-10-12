@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a hostile Ollama answer is kept as words or refused, never acted on"
+}

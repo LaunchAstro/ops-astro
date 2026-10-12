@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// What the agent in the side panel is told before the person's words, for a
+// provider whose adapter writes the whole chat (Ollama). The reply is text the
+// server keeps and never acts on. It may end with one task block, which the
+// panel draws as a card; only the person's click on that card sends
+// `task.create` or `task.update`. An edit always means the task the chat is
+// open on, so the model is never shown, and never names, a task id.
+
+/** The info string of the fenced block the panel reads as a task proposal. */
+export const TASK_BLOCK_FENCE = '```task';
+
+const INSTRUCTIONS = [
+  'You are the assistant in Ops Astro, the team’s work app. Answer the person briefly and plainly, in Australian English.',
+  'You cannot create, change or set up anything yourself, and you must never say or suggest that you have: you only propose. When the person asks for a task to be written, or for the open task to be changed, say in one short sentence that here is a task for them to create, then end your reply with one block in exactly this form, and nothing after it:',
+  `${TASK_BLOCK_FENCE}\n{"action":"create","title":"Short task title","description":"What needs doing"}\n\`\`\``,
+  'Use "create" for a new task, or "edit" to change the task the person has open, giving only the keys to change. Two keys are optional: "due", the date it is due as YYYY-MM-DD (never put the date in the description), and "estimate", the work it needs in whole minutes. The title is at most 200 characters and the description at most 4,000. Write at most one block. Nothing happens until the person clicks the button under it.',
+].join('\n\n');
+
+/** Today on this machine's clock, as YYYY-MM-DD, so a due date the model writes lands in the right year. */
+const today = (now: Date): string => now.toLocaleDateString('en-CA');
+
+/** The system message: the instructions, today's date, then the title of the task the chat is open on, if any. */
+export function conversationInstructions(pageTitle: string | null, now: Date = new Date()): string {
+  const page =
+    pageTitle === null
+      ? 'The person has no task open.'
+      : `The person has this task open: ${JSON.stringify(pageTitle)}.`;
+  return `${INSTRUCTIONS}\n\nToday is ${today(now)}. ${page}`;
+}
