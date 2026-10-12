@@ -119,3 +119,20 @@ describe('C71 web a send the API refuses or cannot answer keeps the words', () =
     },
   );
 });
+
+/* eslint-disable unicorn/no-array-callback-reference -- Sol's proof, kept as written */
+// Sol's proof on #1378 (round 2), retitled by what it proves; its body is Sol's.
+it('another mention changes the conversation in an already open Team screen', async () => {
+  const client = sendsFail(refused);
+  mounted = await mount(
+    <TeamScreen client={client} grantKey="alpha:ana" address={`/team/?conversation=${DIRECT}`} />,
+  );
+  const m = mounted;
+  await until('the requested direct conversation', () => typed(m) !== undefined);
+  expect(m.find(FIELD)?.getAttribute('aria-label')).toBe('Message Bo');
+  await m.render(
+    <TeamScreen client={client} grantKey="alpha:ana" address={`/team/?conversation=${GROUP}`} />,
+  );
+  expect(m.find(FIELD)?.getAttribute('aria-label')).toBe('Message Shoot crew');
+});
+/* eslint-enable unicorn/no-array-callback-reference */
