@@ -55,7 +55,11 @@ export function drawContent(props: {
   }
 }
 
-/** The command custodians outlive page, panel and ordinary authorised rereads. */
+/**
+ * The command custodians outlive page, panel and ordinary authorised rereads.
+ * With site data blocked there is no tab storage: they keep recovery in memory,
+ * and one line says so.
+ */
 export function frameCustody(
   owner: Parameters<typeof timerFrame>[0],
   active: boolean,
@@ -86,6 +90,12 @@ export function frameCustody(
             grantKey={owner.grantKey}
             storage={owner.storage ?? null}
           >
+            {active && (owner.storage ?? null) === null ? (
+              <p className="banner banner--hint" data-tab-only-recovery>
+                Site data is blocked in this browser, so an interrupted change can be recovered only
+                in this tab.
+              </p>
+            ) : null}
             {children}
           </BoardEditProvider>
         </ScoresCustodyProvider>
