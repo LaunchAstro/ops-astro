@@ -157,7 +157,11 @@ const HOSTED_SERVICE_LOGINS: ReadonlySet<string> = new Set([
   'supabase_storage_admin',
 ]);
 
-async function otherSessions(
+/**
+ * The sessions a run refuses to apply beside, by the rule `migrate` applies:
+ * exported so a caller about to make work it cannot undo asks first.
+ */
+export async function otherSessions(
   execute: AdminConnection['execute'],
 ): Promise<readonly ConnectedSession[]> {
   await execute(`select pg_stat_clear_snapshot()`);
