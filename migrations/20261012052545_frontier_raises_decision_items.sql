@@ -20,8 +20,9 @@
 -- commit. One command can rewrite the frontier several times (a chart files a
 -- ticket before the link that blocks it), so at commit a second, deferred
 -- trigger takes back an item this transaction raised for a ticket no longer
--- on the frontier: only this transaction's own uncommitted rows, which no
--- other transaction holds, so it waits on nothing.
+-- on the frontier: only the rows the raise listed in a transaction-local
+-- setting, this transaction's own and uncommitted, which no other transaction
+-- holds, so it waits on nothing.
 --
 -- Both run as the map read models' role, the frontier's one writer (security
 -- definer, 20261006181500), under row security, which holds them to the
@@ -34,6 +35,8 @@ create function public.map_frontier_raise_decision()
   security definer
   set search_path = pg_catalog, public
 as $$
+declare
+  v_raised uuid;
 begin
   insert into public.inbox_items
     (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id, owed,
@@ -52,13 +55,22 @@ begin
           and i.subject_record_id = new.ticket_id and i.reason = 'decision'
           and i.fact_kind = 'record' and i.fact_id = new.ticket_id)
   on conflict (business_id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
-    where work_state = 'open' do nothing;
+    where work_state = 'open' do nothing
+  returning id into v_raised;
+  -- The items this transaction raised, by id, for the take-back at commit: a
+  -- setting local to the transaction, undone with a rolled-back savepoint.
+  if v_raised is not null then
+    perform set_config('ops_astro.frontier_raised',
+      coalesce(current_setting('ops_astro.frontier_raised', true), '') || v_raised::text || ',',
+      true);
+  end if;
   return null;
 end;
 $$;
 
--- `now()` is this transaction's start: an open decision item raised at it is
--- this transaction's own, which a ticket that left the frontier no longer owes.
+-- Only an item this transaction raised (`ops_astro.frontier_raised`), which a
+-- ticket that left the frontier no longer owes; never another's, whenever it
+-- was raised.
 create function public.map_frontier_take_back_passing()
   returns trigger
   language plpgsql
@@ -69,7 +81,9 @@ begin
   delete from public.inbox_items i
    where i.business_id = new.business_id and i.subject_record_id = new.ticket_id
      and i.reason = 'decision' and i.fact_kind = 'record' and i.fact_id = new.ticket_id
-     and i.work_state = 'open' and i.raised_at = now()
+     and i.work_state = 'open'
+     and position(i.id::text || ','
+                  in coalesce(current_setting('ops_astro.frontier_raised', true), '')) > 0
      and not exists (
        select 1 from public.map_frontier f
         where f.business_id = new.business_id and f.map_id = new.map_id
