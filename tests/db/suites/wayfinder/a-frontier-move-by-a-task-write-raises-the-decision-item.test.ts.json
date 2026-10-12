@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a grilling ticket moved onto its map's frontier by any task write raises the map owner's decision item once, in its own business"
+}

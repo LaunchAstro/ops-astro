@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a session ended while a frontier write waits keeps no task write"
+}
