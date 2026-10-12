@@ -32,8 +32,10 @@ import { connect, createServer } from 'node:net';
 const HOST =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const LINK_PORT = 9443;
-// The largest TLS record, header and all: a hello is read until it is whole or past this.
-const HELLO_LIMIT = 5 + 16_384;
+// The largest hello read, in message bytes, across any number of records. A handshake record is
+// never empty, so its wire bytes stay within six times this.
+const HELLO_LIMIT = 16_384;
+const WIRE_LIMIT = 6 * HELLO_LIMIT;
 
 /** The API's host from the worker's own address: https, port 443, nothing but a host. */
 function apiHost(env) {
@@ -68,21 +70,28 @@ export function allowList(env) {
 const listed = (list, host, port) => list.some(([h, p]) => h === host && p === port);
 
 /**
- * The handshake message a hello's records carry, joined across them, or undefined until it is
- * whole: a client may split its hello over several records.
+ * The handshake message a hello's records carry, joined across them once it is whole; `'more'`
+ * while a hello of at most HELLO_LIMIT bytes is still arriving, in any chunks; undefined when
+ * these bytes cannot be one.
  */
 function handshakeOf(bytes) {
   const parts = [];
-  for (let at = 0; at + 5 <= bytes.length && bytes[at] === 0x16;) {
-    const end = at + 5 + bytes.readUInt16BE(at + 3);
-    if (end > bytes.length) return;
-    parts.push(bytes.subarray(at + 5, end));
+  for (let at = 0; at + 5 <= bytes.length;) {
+    const length = bytes.readUInt16BE(at + 3);
+    if (bytes[at] !== 0x16 || length === 0) return;
+    const end = at + 5 + length;
+    parts.push(bytes.subarray(at + 5, Math.min(end, bytes.length)));
     const message = Buffer.concat(parts);
-    const size = message.length < 4 ? Infinity : 4 + message.readUIntBE(1, 3);
-    if (message.length >= size) return message.subarray(0, size);
+    const size = message.length < 4 ? HELLO_LIMIT : 4 + message.readUIntBE(1, 3);
+    if (size > HELLO_LIMIT) return;
+    if (message.length >= 4 && message.length >= size) return message.subarray(0, size);
     at = end;
   }
+  return 'more';
 }
+
+/** Whether more bytes could still complete a hello: the relay waits for them. */
+export const helloArriving = (bytes) => handshakeOf(bytes) === 'more';
 
 /**
  * The server name in a TLS ClientHello, or undefined when there is none to read. Only a whole
@@ -92,7 +101,7 @@ function handshakeOf(bytes) {
 export function serverName(bytes) {
   try {
     const hello = handshakeOf(bytes);
-    if (hello?.[0] !== 0x01) return;
+    if (typeof hello === 'string' || hello?.[0] !== 0x01) return;
     let at = 4 + 2 + 32;
     at += 1 + hello[at];
     at += 2 + hello.readUInt16BE(at);
@@ -115,13 +124,16 @@ export function serverName(bytes) {
   }
 }
 
-/** Reads until `pick` names a pair or gives up; the bytes read so far travel on with it. */
+/**
+ * Reads while `pick` answers null, until it names a pair or answers undefined to give up; the
+ * bytes read so far travel on with it.
+ */
 export function firstBytes(socket, pick, done) {
   let held = Buffer.alloc(0);
   const read = (chunk) => {
     held = Buffer.concat([held, chunk]);
     const pair = pick(held);
-    if (pair === null && held.length < HELLO_LIMIT) return;
+    if (pair === null && held.length < WIRE_LIMIT) return;
     socket.off('data', read);
     socket.pause();
     // The limit is for the first bytes only: a pooled connection may idle after.
@@ -152,7 +164,8 @@ function relay(list, out) {
       (held) => {
         if (port !== 443) return [list[1][0], port];
         const name = serverName(held);
-        return name === undefined ? null : [name, 443];
+        if (name !== undefined) return [name, 443];
+        return helloArriving(held) ? null : undefined;
       },
       (pair, held) => {
         if (pair === undefined || !listed(list, ...pair)) return socket.destroy();

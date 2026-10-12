@@ -24,6 +24,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -510,7 +511,8 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-if (process.argv[1] !== undefined && import.meta.filename === process.argv[1]) {
+// The entry point by real path, so a link to it, or a checkout reached through one, still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   process.exitCode = await main(process.argv.slice(2), process.env, {
     out: (line) => process.stdout.write(`${line}\n`),
     err: (line) => process.stderr.write(`${line}\n`),
