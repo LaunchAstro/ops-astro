@@ -49,11 +49,14 @@ const LISTED = 50;
 const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
 
 /**
- * Less the sessions an ending of the login's other sessions (0063) covers:
- * first served here at or before it. Login resolution refuses those (a
- * session's sign-in is no later than its first serving plus the minute of
- * clock), so the list follows what the door serves, but for a request served
- * in the instant the ending takes to commit, which stays listed.
+ * The sessions the door still serves, as far as this business has seen them.
+ * A session's sign-in is no later than its first serving here, so one first
+ * served more than the absolute limit and the minute of clock ago has passed
+ * the door's limit, however recently it was served since. Less the sessions
+ * an ending of the login's other sessions (0063) covers: first served no
+ * later than the ending plus the minute of clock, the rule login resolution
+ * applies to the sign-in time, so a request served while the ending
+ * committed is not listed either.
  */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
@@ -66,12 +69,19 @@ const SEEN = `
      and a.at > now() - make_interval(secs => $3)
      and not exists (
        select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
+     and not exists (
+       select 1 from public.authentication_attempts f
+        where f.business_id = a.business_id
+          and f.person_id = a.person_id
+          and f.session_id = a.session_id
+          and f.outcome = 'resolved'
+          and f.at <= now() - make_interval(secs => $3))
    group by a.session_id, l.subject
   having not exists (
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to(l.subject, 'UTF8')), 'hex')
           and s.kept_session is distinct from a.session_id
-          and min(a.at) <= s.ended_before)
+          and min(a.at) <= s.ended_before + make_interval(secs => $5))
    order by max(a.at) desc, a.session_id
    limit $4`;
 
@@ -85,7 +95,7 @@ export async function listSeenSessions(
     readonly session_id: string;
     readonly first_seen: Date;
     readonly last_seen: Date;
-  }>(SEEN, [tx.businessId, personId, WINDOW_SECONDS, LISTED]);
+  }>(SEEN, [tx.businessId, personId, WINDOW_SECONDS, LISTED, SIGN_IN_CLOCK_SKEW_SECONDS]);
   return rows.map((row) => ({
     sessionId: row.session_id,
     firstSeenAt: row.first_seen,
