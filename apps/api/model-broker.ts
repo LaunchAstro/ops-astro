@@ -13,11 +13,11 @@
 // real-provider run (AW-RP).
 //
 // One more setting picks the provider per install (LA-1, #859):
-// `OPS_AGENT_PROVIDER` unset or `api` is the broker exactly as above;
-// `local-gpt` adds the owner's own ChatGPT plan through the local runner,
-// and is refused unless `OPS_ENVIRONMENT` is `local`. Under it the
-// conversation operation's key answers with the local declaration, and the
-// broker carries LA-1's local carve-out for unattended work on that route.
+// `OPS_AGENT_PROVIDER` unset or `api` is the broker exactly as above. `local-gpt`
+// adds the owner's ChatGPT plan through the local runner, only where `OPS_ENVIRONMENT`
+// is `local`, with the broker's local carve-out for unattended work on its route.
+// `ollama`, anywhere, is Ollama on this machine's loopback, local only. Under either,
+// the conversation operation's key answers with that provider's declaration.
 
 import {
   catalogue,
@@ -28,6 +28,10 @@ import {
   LOCAL_GPT_PROVIDER,
   localGptAdapter,
   localGptCostMinor,
+  OLLAMA_CONVERSATION,
+  OLLAMA_PROVIDER,
+  ollamaAdapter,
+  ollamaCostMinor,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
@@ -60,7 +64,7 @@ export const MODEL_BROKER_SETTINGS = [
 
 /** Which provider this install's agent work runs on (LA-1). */
 export const AGENT_PROVIDER_SETTING = 'OPS_AGENT_PROVIDER';
-export type AgentProvider = 'api' | 'local-gpt';
+export type AgentProvider = 'api' | 'local-gpt' | 'ollama';
 
 export type BrokerSettings =
   | { readonly kind: 'absent' }
@@ -85,6 +89,7 @@ const LOCAL_GPT = { build: localGptAdapter, price: localGptCostMinor };
 const OPERATIONS = {
   api: catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]),
   'local-gpt': catalogue([REPLAY_COMPOSE, LOCAL_GPT_COMPOSE, LOCAL_GPT_CONVERSATION]),
+  ollama: catalogue([OLLAMA_CONVERSATION]),
 } as const;
 const PROVIDERS = {
   api: new Map([['replay', REPLAY]]),
@@ -92,6 +97,7 @@ const PROVIDERS = {
     ['replay', REPLAY],
     [LOCAL_GPT_PROVIDER, LOCAL_GPT],
   ]),
+  ollama: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
 } as const;
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
@@ -136,8 +142,10 @@ function routeOf(entry: unknown, provider: AgentProvider): BrokerRoute | undefin
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
   if (!PROVIDERS[provider].has(text('provider'))) return undefined;
-  // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes through.
+  // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes
+  // through. Ollama is on this machine: a `cloud` label would let its route leave it.
   if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
+  if (text('provider') === OLLAMA_PROVIDER && text('reach') !== 'local') return undefined;
   return shape as unknown as BrokerRoute;
 }
 
@@ -183,7 +191,8 @@ function routesOf(
     : undefined;
 }
 
-const LOCAL_WITHOUT_BROKER = `${AGENT_PROVIDER_SETTING} local-gpt needs the credential broker's four settings`;
+const withoutBroker = (named: AgentProvider): string =>
+  `${AGENT_PROVIDER_SETTING} ${named} needs the credential broker's four settings`;
 
 /** The install's provider, or why the setting is refused (never echoing its value). */
 function agentProvider(
@@ -191,8 +200,9 @@ function agentProvider(
 ): AgentProvider | { readonly problem: string } {
   const named = environment[AGENT_PROVIDER_SETTING] ?? '';
   if (named === '' || named === 'api') return 'api';
+  if (named === 'ollama') return 'ollama';
   if (named !== 'local-gpt') {
-    return { problem: `${AGENT_PROVIDER_SETTING} is not one of api, local-gpt` };
+    return { problem: `${AGENT_PROVIDER_SETTING} is not one of api, local-gpt, ollama` };
   }
   if (environment['OPS_ENVIRONMENT'] !== 'local') {
     return {
@@ -210,7 +220,7 @@ export function brokerSettings(
   const value = (name: (typeof MODEL_BROKER_SETTINGS)[number]): string => environment[name] ?? '';
   const missing = MODEL_BROKER_SETTINGS.filter((name) => value(name) === '');
   if (missing.length === MODEL_BROKER_SETTINGS.length) {
-    return provider === 'api' ? { kind: 'absent' } : invalid(LOCAL_WITHOUT_BROKER);
+    return provider === 'api' ? { kind: 'absent' } : invalid(withoutBroker(provider));
   }
   if (missing.length > 0) {
     return invalid(`the credential broker needs all four settings; not set: ${missing.join(', ')}`);

@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Eight companion files describe the parts:
+does not do. Nine companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
@@ -15,6 +15,8 @@ does not do. Eight companion files describe the parts:
 - [CLI.md](CLI.md): the command line, which calls the same API as the app.
 - [LOCAL-AGENT.md](LOCAL-AGENT.md): the agent side panel on GPT through the owner's
   ChatGPT plan, on the laptop only (`local-gpt`).
+- [OLLAMA.md](OLLAMA.md): the agent side panel on Qwen or Gemma through Ollama
+  on the same machine as the API (`ollama`).
 
 If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
 how a request travels, what to check before restarting anything, which command
@@ -25,7 +27,7 @@ proves what, and what a bug report has to carry.
 If you are new to this checkout, read this section first.
 
 - **Where state lives in the repository.** How the slice is built:
-  `docs/local/` (this file and the seven above). Settled decisions:
+  `docs/local/` (this file and the others above). Settled decisions:
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites

@@ -212,6 +212,17 @@ export {
   readLocalGptAnswer,
 } from './local-gpt.ts';
 export {
+  OLLAMA_CONVERSATION,
+  OLLAMA_DEFAULT_MODEL,
+  OLLAMA_MODELS,
+  OLLAMA_PATH,
+  OLLAMA_PROVIDER,
+  ollamaAdapter,
+  ollamaCostMinor,
+  readOllamaAnswer,
+} from './ollama.ts';
+export { conversationInstructions, TASK_BLOCK_FENCE } from './conversation-prompt.ts';
+export {
   CONVERSATION_MODELS,
   conversationModelsOf,
   conversationProviderOf,

@@ -9,23 +9,27 @@
 // maximum.
 //
 // Only a model the server can vouch for is listed: the replay stand-in's one
-// model, and the laptop runner's default. A model the owner approves on the
-// laptop is the runner's own business (`apps/local-agent/gate.ts`), so it is
-// never offered here.
+// model, the laptop runner's default, and the models Ollama runs on the M5. A
+// model the owner approves on the laptop is the runner's own business
+// (`apps/local-agent/gate.ts`), so it is never offered here.
 
 import {
   LOCAL_GPT_CONVERSATION,
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
 } from './local-gpt.ts';
+import { OLLAMA_MODELS, OLLAMA_PROVIDER } from './ollama.ts';
 import { CONVERSATION_ANSWER, REPLAY_MODEL_WINDOW } from './replay.ts';
 
 export interface ConversationModel {
   readonly id: string;
   readonly provider: string;
   readonly reach: 'local' | 'cloud';
-  /** The provider's name in a client's privacy settings. */
-  readonly egressName: 'replay' | 'chatgpt';
+  /**
+   * The provider's name in a client's privacy settings; null for one no setting
+   * names yet, which no client's conversation is offered (internal work only).
+   */
+  readonly egressName: 'replay' | 'chatgpt' | null;
   /** The price-book entry: the most one call may cost, in AUD minor units. */
   readonly ceilingMinor: number;
 }
@@ -46,6 +50,14 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     egressName: 'chatgpt',
     ceilingMinor: LOCAL_GPT_CONVERSATION.maximumMinor,
   },
+  // On this machine's own hardware: no call costs anything.
+  ...OLLAMA_MODELS.map((id): ConversationModel => ({
+    id,
+    provider: OLLAMA_PROVIDER,
+    reach: 'local',
+    egressName: null,
+    ceilingMinor: 0,
+  })),
 ];
 
 /** The models one provider's conversation operation runs, its default first. */
@@ -54,15 +66,17 @@ export const conversationModelsOf = (provider: string): readonly ConversationMod
 
 /**
  * The provider this install's conversation operation is on, by the rule the
- * API's composition root applies (`apps/api/model-broker.ts`): `local-gpt`
- * only where `OPS_ENVIRONMENT` is `local`, the replay provider otherwise. A
- * setting the root refuses never serves a request, so this never has to.
+ * API's composition root applies (`apps/api/model-broker.ts`): `ollama` in
+ * any environment, `local-gpt` only where `OPS_ENVIRONMENT` is `local`, the
+ * replay provider otherwise. A setting the root refuses never serves a
+ * request, so this never has to.
  */
 export function conversationProviderOf(
   environment: Readonly<Record<string, string | undefined>>,
 ): string {
-  return environment['OPS_AGENT_PROVIDER'] === 'local-gpt' &&
-    environment['OPS_ENVIRONMENT'] === 'local'
+  const named = environment['OPS_AGENT_PROVIDER'];
+  if (named === 'ollama') return OLLAMA_PROVIDER;
+  return named === 'local-gpt' && environment['OPS_ENVIRONMENT'] === 'local'
     ? LOCAL_GPT_PROVIDER
     : CONVERSATION_ANSWER.provider;
 }

@@ -14,7 +14,8 @@
 //   catalogue (`conversation-models.ts` in core-connectors), the default first;
 // - on a conversation opened on a client's task, only those the client's
 //   model-egress setting allows (CS-7.40, `checkClientModelUse`): egress off,
-//   nothing; a providers list, those providers only, each assessed;
+//   nothing; a providers list, those providers only, each assessed; a model
+//   no setting names (Ollama's) never, so it serves internal work only;
 // - on a conversation whose task this session cannot see (gone, or its read
 //   grant revoked since the conversation was opened), nothing, so the offer
 //   tells nothing of its client, and a model chosen for it is refused.
@@ -98,6 +99,8 @@ export async function offeredModels(
   if (clientId === null) return models;
   const offered: ConversationModel[] = [];
   for (const model of models) {
+    // A model no client's setting can name is for internal work only.
+    if (model.egressName === null) continue;
     // oxlint-disable-next-line no-await-in-loop -- one privacy read per model, at most two
     if ((await checkClientModelUse(tx, clientId, model.egressName)).ok) offered.push(model);
   }
