@@ -7,8 +7,11 @@ import type { DataEffects } from './data-effects-types.ts';
 import { business, client, writing } from './data-effects-types.ts';
 
 export const READ: DataEffects = writing([]);
-// A task is a row of `records`, with its unique values beside it.
-export const TASK: DataEffects = writing(client('records', 'record_unique_values'));
+// A task is a row of `records`, with its unique values beside it. A write to a map's ticket also
+// refreshes the map's summary and frontier (the records trigger, `map_summary_on_record`).
+export const TASK: DataEffects = writing(
+  client('records', 'record_unique_values', 'map_summaries', 'map_frontier'),
+);
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(
   client(
