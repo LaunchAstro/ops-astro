@@ -11,8 +11,7 @@
 // and sends its free words as the ledger's `query`, which C1's search answers;
 // the box stays put while a new first page is read. A name is a person once the
 // reader has seen them act on any page read here, earlier days included, so a
-// new answer cannot turn a person back into a word. In a dock panel the search
-// is the panel's own: read from its address and written to no page address.
+// new answer cannot turn a person back into a word (`work-log-typed.ts`).
 //
 // `Load earlier days` asks for the page before the last day drawn and adds it
 // below. The earlier pages belong to the first page they continue: a reload or
@@ -20,7 +19,7 @@
 // a first page no longer drawn is dropped rather than drawn under it.
 
 import { useRef, useState, type ReactElement } from 'react';
-import { Button, Empty, Ledger, SearchBox } from '@launchastro/ui';
+import { Button, Ledger, SearchBox } from '@launchastro/ui';
 import type {
   LedgerDayView,
   TaskLedgerResult,
@@ -36,14 +35,9 @@ import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
-import {
-  actorsIn,
-  passing,
-  queryOf,
-  readingLine,
-  readSearch,
-  type LedgerSearch,
-} from './ledger-search.ts';
+import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
+import { usePeopleSeen, useTyped } from './work-log-typed.ts';
+import { NoMatch, SearchLines } from './work-log-lines.tsx';
 
 const UTC = 'UTC';
 
@@ -110,51 +104,14 @@ export interface WorkLogProps {
   readonly inPanel?: boolean;
 }
 
-/** The search's words in the address (L-01 `q`), so a reload or a shared link opens it searched. */
-const typedInAddress = (address: string | undefined): string =>
-  (address === undefined
-    ? new URLSearchParams(globalThis.location?.search ?? '')
-    : new URL(address, 'http://here').searchParams
-  ).get('q') ?? '';
-
-/** The people the reader has seen act, for the reader they were read for. */
-interface Seen {
-  readonly grantKey: string;
-  readonly names: readonly string[];
-}
-
-function writeTyped(typed: string): void {
-  const here = globalThis.location;
-  if (here === undefined) return;
-  const query = new URLSearchParams(here.search);
-  if (typed === '') query.delete('q');
-  else query.set('q', typed);
-  const search = query.size === 0 ? '' : `?${query.toString()}`;
-  globalThis.history.replaceState(
-    globalThis.history.state,
-    '',
-    `${here.pathname}${search}${here.hash}`,
-  );
-}
-
 export function WorkLog(props: WorkLogProps): ReactElement {
   const { client, grantKey, navigate } = props;
-  const inPanel = props.inPanel === true;
-  const [typed, setWords] = useState(() =>
-    typedInAddress(inPanel ? (props.address ?? '') : undefined),
-  );
-  const setTyped = (words: string): void => {
-    setWords(words);
-    if (!inPanel) writeTyped(words);
-  };
-  // The first page the read last accepted, and the people seen act on it and
-  // the pages it continues. An answer the read dropped names nobody, and the
-  // words a page was searched for stay words, so its own answer cannot turn
-  // them into people.
+  const [typed, setTyped] = useTyped(props.address, props.inPanel === true);
+  // The first page the read last accepted. An answer the read dropped names
+  // nobody, and a page's searched words stay words, never its people.
   const [answer, setAnswer] = useState<LedgerRead | null>(null);
-  const [seen, setSeen] = useState<Seen>({ grantKey, names: [] });
-  const names = seen.grantKey === grantKey ? seen.names : [];
-  const search = readSearch(typed, names, answer?.query ?? null);
+  const people = usePeopleSeen(grantKey);
+  const search = readSearch(typed, people.names, answer?.query ?? null);
   const query = queryOf(search);
   const { state, reload } = useRead<LedgerRead>({
     grantKey,
@@ -165,12 +122,8 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   if (accepted !== null && accepted !== answer) setAnswer(accepted);
   const pages = useEarlierDays(client, answer);
   // Only this reader's: `accepted` is always the current grant's read.
-  const ownDays =
-    accepted === null
-      ? []
-      : [...accepted.ledger.days, ...(pages.more.from === accepted ? pages.more.days : [])];
-  const known = [...new Set([...names, ...actorsIn(ownDays)])];
-  if (known.length !== names.length) setSeen({ grantKey, names: known });
+  if (accepted !== null)
+    people.see([...accepted.ledger.days, ...(pages.more.from === accepted ? pages.more.days : [])]);
   const clear = (): void => {
     setTyped('');
   };
@@ -244,39 +197,6 @@ function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): Ea
   return { more, asking, loadEarlier };
 }
 
-/**
- * What the search was read as, and how many events pass of those in view.
- * No time is tracked in the ledger yet, so the count line never sums any.
- * `partial`: the search's matches go past what it reads (C1's bound, 500),
- * so some are not listed and the count says so.
- */
-function SearchLines(props: {
-  readonly reading: string | null;
-  readonly passed: number;
-  readonly inView: number;
-  readonly partial: boolean;
-}): ReactElement {
-  return (
-    <>
-      {props.reading === null ? null : (
-        <p className="act__read" data-ledger-read>
-          {props.reading}
-        </p>
-      )}
-      {props.inView === 0 ? null : (
-        <p
-          className="act__count"
-          data-ledger-count
-          data-ledger-more-matches={props.partial ? '' : undefined}
-        >
-          {`${String(props.passed)} of ${String(props.inView)} entries`}
-          {props.partial ? '; more match than the search reads (500+)' : null}
-        </p>
-      )}
-    </>
-  );
-}
-
 function LedgerPages(props: {
   readonly first: LedgerRead;
   readonly pages: EarlierDays;
@@ -294,32 +214,17 @@ function LedgerPages(props: {
   const reading = readingLine(search, passed);
   const partial = first.query !== null && first.ledger.more === true;
   const loading = pages.asking === first;
-  const loadEarlier = (): void => {
-    pages.loadEarlier(first, days);
-  };
+  const loadEarlier = (): void => pages.loadEarlier(first, days);
   return (
     <>
       <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
       {reading !== null && passed === 0 ? (
-        <>
-          <Empty
-            title="Nothing matches that."
-            description="This log holds every change to a task you can see: try a name on its own."
-            onClearFilters={props.onClear}
-          />
-          {/* People and kinds filter only the days read: older days may still match. */}
-          {earlier ? (
-            <button
-              type="button"
-              className="btn btn--secondary btn--sm act__more"
-              disabled={loading}
-              aria-busy={loading}
-              onClick={loadEarlier}
-            >
-              Load earlier days
-            </button>
-          ) : null}
-        </>
+        <NoMatch
+          earlier={earlier}
+          loading={loading}
+          onClear={props.onClear}
+          onLoadEarlier={loadEarlier}
+        />
       ) : (
         <Ledger
           days={shown}
