@@ -23,6 +23,7 @@ import type { BusinessId, Database } from '../../../core-records/src/index.ts';
 import {
   claimOccurrence,
   dispatchOccurrence,
+  lockActivation,
   waitingOccurrences,
   type Dispatch,
 } from '../../../core-records/src/index.ts';
@@ -72,8 +73,8 @@ async function fireScheduled(
   const due = await database.withBusiness(
     businessId,
     async (tx) =>
-      await tx.query<{ readonly id: string; readonly every_minutes: number }>(
-        `select id, every_minutes from public.activations
+      await tx.query<{ readonly id: string }>(
+        `select id from public.activations
           where business_id = $1 and mode = 'scheduled' and enabled order by id`,
         [tx.businessId],
       ),
@@ -83,8 +84,11 @@ async function fireScheduled(
       // What the transaction wrote is tallied once it commits, never from inside it.
       // oxlint-disable-next-line no-await-in-loop -- one activation, one transaction, in turn
       const fired = await database.withBusiness(businessId, async (tx) => {
+        // The schedule as it stands once the activation is locked, as the claim reads it.
+        const locked = await lockActivation(tx, activation.id);
+        if (locked?.mode !== 'scheduled' || locked.everyMinutes === null) return;
         const claim = await claimOccurrence(tx, activation.id, {
-          dueAt: latestDue(activation.every_minutes, now),
+          dueAt: latestDue(locked.everyMinutes, now),
         });
         if (claim.kind !== 'claimed' && claim.kind !== 'replayed') return;
         const { occurrence } = claim;
