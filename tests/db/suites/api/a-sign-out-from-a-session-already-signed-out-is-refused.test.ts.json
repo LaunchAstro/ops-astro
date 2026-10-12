@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a sign-out from a session already signed out is refused as an ended session and ends nothing more (catalogue #690)"
+}

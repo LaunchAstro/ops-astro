@@ -196,7 +196,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
   }, 60_000);
 });
 describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
-  it('C58 end other sessions: a body, a session id that is no uuid and a stale sign-out are refused or ignored', async () => {
+  it('C58 end other sessions: a body and a session id that is no uuid are refused or ignored', async () => {
     const here = randomUUID();
     const token = await tokenFor(world.mia.subject, here);
     const before = await endedCount();
@@ -219,24 +219,6 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
       expect(listed.some((row) => row.current)).toBe(false);
       expect(JSON.stringify(listed)).not.toContain(CANARY);
     }
-    expect(await served(token)).toEqual(OK);
-
-    // A stale sign-out: the bearer's session has already signed out, so the
-    // second is refused as the door refuses an ended session, and nothing more
-    // is ended here. A refused sign-out still asks the provider to sign that
-    // token out, which is idempotent; the person's other session is served.
-    const gone = await tokenFor(world.mia.subject, randomUUID());
-    expect(await served(gone)).toEqual(OK);
-    expect((await sessions('sign-out', gone)).body).toEqual({
-      ended: 1,
-      signedOutAtProvider: true,
-    });
-    forgetSeen();
-    const endedOnce = await endedCount();
-    const stale = await sessions('sign-out', gone);
-    expect({ status: stale.status, code: stale.code }).toEqual(EXPIRED);
-    expect(seen).toEqual([{ route: 'POST /logout?scope=local', authorization: `Bearer ${gone}` }]);
-    expect(await endedCount()).toBe(endedOnce);
     expect(await served(token)).toEqual(OK);
   });
 });
