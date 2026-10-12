@@ -2,21 +2,19 @@
 //
 // Team conversations (C71-D; C71-G builds its groups on the same rows).
 //
-// A conversation is a record of its own type, `team_conversation`: its kind,
-// a group's name, who started it and, for a direct conversation, the pair it
-// is between. Its messages are comments on the one comment record
-// (`tasks/comments.ts`), anchored by the comment's `conversation` field in
-// place of a task, so no other table or store holds a message body (RA-12).
-// Who is in it is `team_conversation_members` (20261006074341): each member from
-// `joined_at` to `left_at`, with their own read marker.
+// A conversation is a record of its own type, `team_conversation`: its kind, a group's name, who
+// started it and, for a direct conversation, the pair it is between. Its messages are comments on
+// the one comment record (`tasks/comments.ts`), anchored by the comment's `conversation` field in
+// place of a task, so no other table or store holds a message body (RA-12). Who is in it is
+// `team_conversation_members` (20261006074341): each member from `joined_at` to `left_at`, with
+// their own read marker.
 //
-// **Membership is the filter, inside every query.** A conversation is read,
-// listed and counted only through the reader's own member row, so another
-// person's conversation, or another business's, is not there to be answered.
-// A member reads nothing written before they joined or after they left, and
-// nothing once they may no longer chat (`chatsNow`, asked in the same query). The
-// owner and administrators hold no way round it: a conversation is private to
-// its members (CAPABILITY-SLICES, team chat's audience, 27 September 2026).
+// **Membership is the filter, inside every query.** A conversation is read, listed and counted only
+// through the reader's own member row, so another person's conversation, or another business's, is
+// not there to be answered. A member reads nothing written before they joined or after they left,
+// and nothing once they may no longer chat (`chatsNow`, asked in the same query). The owner and
+// administrators hold no way round it: a conversation is private to its members (CAPABILITY-SLICES,
+// team chat's audience, 27 September 2026).
 
 import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
@@ -165,6 +163,9 @@ export async function moveReadMarker(
   return moved.length > 0;
 }
 
+/** The reader's marker as ISO text, with the count of its millisecond's messages it covers (`shownAt`). */
+const LAST_READ = `regexp_replace(to_char(m.last_read_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), '000Z$', 'Z') as last_read`;
+
 /** The messages a member may read: written while they were a member, and live. */
 const MEMBER_READS = `
   c.business_id = m.business_id and c.record_type_id = $2 and c.uuid_4 = m.conversation_id
@@ -198,11 +199,11 @@ export async function listConversations(
     readonly name: string | null;
     readonly members: readonly string[];
     readonly joined_at: Date | null;
-    readonly last_read_at: Date | null;
+    readonly last_read: string | null;
     readonly last_message_at: Date | null;
     readonly unread: string;
   }>(
-    `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
+    `select m.conversation_id as id, r.txt_1 as kind, ${LAST_READ},
             case when m.left_at is null then r.txt_2 end as name,
             case when m.left_at is null then m.joined_at end as joined_at,
             case when m.left_at is null then array(
@@ -228,7 +229,7 @@ export async function listConversations(
     name: row.name,
     members: row.members,
     joinedAt: row.joined_at?.toISOString() ?? null,
-    lastRead: row.last_read_at?.toISOString() ?? null,
+    lastRead: row.last_read,
     lastMessageAt: row.last_message_at?.toISOString() ?? null,
     unread: Number(row.unread),
   }));
@@ -245,7 +246,7 @@ export interface ConversationMessage {
 }
 
 /** The reader's member row with each message, or none: one statement, so a revocation serves neither. */
-type MemberMessage = { readonly last_read_at: Date | null } & (
+type MemberMessage = { readonly last_read: string | null } & (
   | { readonly id: null }
   | (Omit<ConversationMessage, 'at'> & { readonly at: Date; readonly tied: string })
 );
@@ -265,7 +266,7 @@ export async function readConversation(
 > {
   if (!isUuid(conversationId)) return undefined;
   const rows = await tx.query<MemberMessage>(
-    `select m.last_read_at, c.id, p.id as "authorId", p.display_name as author, c.ts_1 as at,
+    `select ${LAST_READ}, c.id, p.id as "authorId", p.display_name as author, c.ts_1 as at,
             count(*) over (partition by c.ts_1) as tied, c.data ->> 'body' as body
        from public.team_conversation_members m
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
@@ -281,7 +282,7 @@ export async function readConversation(
   );
   if (rows[0] === undefined) return undefined;
   return {
-    lastRead: rows[0].last_read_at?.toISOString() ?? null,
+    lastRead: rows[0].last_read,
     messages: rows.flatMap((row) =>
       row.id === null
         ? []
