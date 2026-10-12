@@ -4,8 +4,9 @@
 // file is parsed with swc (the parser .dependency-cruiser.cjs uses), never a
 // line pattern, and every string literal in it is read: one that resolves to a
 // source file is followed as an import (static, dynamic or a URL it reads),
-// one that names an existing path is recorded. A path built at run time is
-// not seen here; the merge queue runs everything, which catches that.
+// one that names a repository path is recorded, whether it exists or was
+// deleted. A path built at run time is not seen here; the merge queue runs
+// everything, which catches that.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
@@ -80,7 +81,9 @@ function direct(root: string, file: string): { imports: string[]; paths: string[
     if (base === undefined) continue;
     const resolved = resolveFile(root, normalize(base));
     if (resolved !== undefined && SOURCE.test(resolved)) imports.push(resolved);
-    else if (existsSync(join(root, base))) paths.push(normalize(base));
+    // A named path counts whether or not it exists: one deleted at the head
+    // is still what the suite reads, so its change keeps the suite in scope.
+    else paths.push(normalize(base));
   }
   parsed.set(key, { imports, paths });
   return { imports, paths };

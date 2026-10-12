@@ -28,6 +28,11 @@ try {
   process.exit(2);
 }
 
+// Presets checked to turn no automatic merging on. Renovate resolves a preset
+// when it runs, which this check cannot, so any other is refused until it is
+// read and added here.
+const CHECKED_PRESETS = new Set(['config:recommended', ':semanticCommits']);
+
 const walk = (node, path) => {
   if (node === null || typeof node !== 'object') return;
   if (Array.isArray(node)) {
@@ -43,6 +48,15 @@ const walk = (node, path) => {
           '        each merge on a green head (CONTRIBUTING.md, who invokes the\n' +
           '        merge). Either turn this off, or amend ADR 0046 and say why.',
       );
+    }
+    if (key === 'extends') {
+      for (const preset of [value].flat().filter((name) => !CHECKED_PRESETS.has(name))) {
+        failures.push(
+          `renovate.json: ${here} extends ${JSON.stringify(preset)}, a preset this check\n` +
+            '        has not read. A preset can turn automatic merging on without\n' +
+            '        `true` appearing here. Read it, then add it to CHECKED_PRESETS.',
+        );
+      }
     }
     walk(value, here);
   }

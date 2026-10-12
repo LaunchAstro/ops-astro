@@ -147,6 +147,34 @@ for candidate_policy in memory-off memory-on memory-malformed absent; do
   fi
 done
 
+# The answer key reads the seven questions where they now live, CONTRIBUTING.md.
+if ( cd "$REPO_ROOT" && bash "$CHECK" --expect ) | grep 'How many merge questions' | grep -q ' seven$'; then
+  pass "the answer key says there are seven merge questions"
+else
+  fail "the answer key says there are seven merge questions" "it did not answer seven"
+fi
+
+# .codex/skills must resolve to .claude/skills itself, not merely be a link.
+CHECKOUT="$TMP/checkout"
+git clone -q --shared "$REPO_ROOT" "$CHECKOUT"
+# The check reads the repository it sits in, so the clone runs its own copy.
+cp "$CHECK" "$CHECKOUT/scripts/agent-session-check.sh"
+for link in dangling elsewhere same; do
+  rm -f "$CHECKOUT/.codex/skills"
+  case "$link" in
+    dangling) ln -s ../.claude/no-such-skills "$CHECKOUT/.codex/skills" ;;
+    elsewhere) mkdir -p "$TMP/other-skills" && ln -s "$TMP/other-skills" "$CHECKOUT/.codex/skills" ;;
+    same) ln -s ../.claude/skills "$CHECKOUT/.codex/skills" ;;
+  esac
+  output="$(HUB_CODEX_GLOBAL="$TMP/harmless.md" bash "$CHECKOUT/scripts/agent-session-check.sh" 2>&1)"
+  if printf '%s\n' "$output" | grep -q 'PROBLEM.*\.codex/skills'; then refused=yes; else refused=no; fi
+  if { [ "$link" = same ] && [ "$refused" = no ]; } || { [ "$link" != same ] && [ "$refused" = yes ]; }; then
+    pass ".codex/skills ($link) is judged by where it resolves"
+  else
+    fail ".codex/skills ($link) is judged by where it resolves" "refused=$refused"
+  fi
+done
+
 echo
 echo "session check cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

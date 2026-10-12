@@ -102,6 +102,39 @@ describe('CI-SCOPED lint ratchet per area', () => {
   });
 });
 
+describe('lint ratchet: the base has the folder, the head goes back to one total file', () => {
+  const back = () => {
+    const fresh = repo({
+      [WEB]: useless(1),
+      [PKG]: useless(1),
+      [area('apps-web')]: baseline({ [RULE]: 1 }),
+      [area('packages-p')]: baseline({ [RULE]: 1 }),
+    });
+    rmSync(join(fresh.dir, 'lint-baseline'), { recursive: true });
+    // Both warnings now in one area, the total unchanged.
+    write(fresh.dir, {
+      [WEB]: useless(2),
+      [PKG]: '',
+      'lint-baseline.json': baseline({ [RULE]: 2 }),
+    });
+    return fresh;
+  };
+
+  it("refuses the change, so no area can take another area's allowance", () => {
+    const { dir, base } = back();
+    const run = ratchet(dir, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('per-area baseline');
+  });
+
+  it('refuses it under --write too', () => {
+    const { dir, base } = back();
+    const run = ratchet(dir, base, '--write');
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('per-area baseline');
+  });
+});
+
 describe('CI-SCOPED lint ratchet at the cut: the base has the single file, the head the folder', () => {
   const cut = () => {
     const fresh = repo({

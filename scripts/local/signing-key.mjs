@@ -8,7 +8,7 @@
 // reads: it fetches the public half from GoTrue. An unusable key is refused by
 // what is wrong with it, never by its content, which is private key material.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 const CURVE = { name: 'ECDSA', namedCurve: 'P-256' };
@@ -67,6 +67,8 @@ export async function localServiceToken(root) {
   return await serviceToken(keys);
 }
 
-if (import.meta.main) {
+// By real path: Node 24.0.0, which engines admits, has no main flag on import.meta.
+const entry = process.argv[1];
+if (entry !== undefined && realpathSync(entry) === realpathSync(import.meta.filename)) {
   process.stdout.write(`${JSON.stringify(await generateSigningKeys())}\n`);
 }

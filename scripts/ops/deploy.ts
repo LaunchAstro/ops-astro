@@ -33,6 +33,7 @@
 // tested with the effects watched and the command stays thin.
 
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
@@ -80,7 +81,7 @@ export type DeployOutcome =
 
 /** The unit's definition: staging's, or production's beside it. */
 export function definitionPath(environment: DeployEnvironment): string {
-  return new URL(`../../deploy/${environment}/compose.json`, import.meta.url).pathname;
+  return resolve(import.meta.dirname, '../../deploy', environment, 'compose.json');
 }
 
 /** Production's worker, apart from its unit so a parked unit needs no worker setting. */
