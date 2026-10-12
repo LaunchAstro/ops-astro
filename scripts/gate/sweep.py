@@ -62,15 +62,19 @@ sys.dont_write_bytecode = True
 from literal_history import HistoricalLiterals
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+# The scanner's own tree, where its self-test canaries sit beside its rules.
+OWN = HERE.parent.parent
+# The repository it reads. The pre-push hook runs each pushed commit's own
+# scanners from a temporary export and names the repository here.
+REPO = Path(os.environ.get("HUB_GATE_REPO") or OWN).resolve()
 
 DENYLIST = HERE / "denylist.sha256"
 PATH_DENYLIST = HERE / "path-denylist.txt"
 SHAPE_RULES = HERE / "shape-rules.txt"
 BINARY_ALLOWLIST = HERE / "binary-allowlist.txt"
 
-CANARY_FILE = REPO / "tests" / "gate" / "canary.txt"
-SHAPE_CANARY_FILE = REPO / "tests" / "gate" / "shape-canary.txt"
+CANARY_FILE = OWN / "tests" / "gate" / "canary.txt"
+SHAPE_CANARY_FILE = OWN / "tests" / "gate" / "shape-canary.txt"
 
 # The private clear-text list is supplied explicitly and never stored in git.
 LITERAL_LIST_ENV = "HUB_GATE_TERMS"
