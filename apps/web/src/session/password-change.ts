@@ -6,9 +6,9 @@
 //
 // 1. The current password is confirmed by the password grant, as sign-in's is.
 // 2. The new one is set at GoTrue with that token. A login with an authenticator app is
-//    refused there below `aal2`, so its code is asked; the confirming sign-in is signed out at
-//    GoTrue, and the code is checked on the tab's own sign-in through the account route, which
-//    counts the codes (C59), and answers the `aal2` token the set is made with.
+//    refused there below `aal2`, so its code is asked; the code is checked on the tab's own
+//    sign-in through the account route, which counts the codes (C59), and answers the `aal2`
+//    token the set is made with; then the confirming sign-in is signed out at GoTrue.
 // 3. The token that set it goes to the API for a new cookie and the tab moves there; then the
 //    person's other sessions end, here and at GoTrue, and the old cookie is cleared.
 //
@@ -109,11 +109,30 @@ export async function changePassword(
   });
   if (!confirmed.ok) return confirmed;
   // The confirming token signs its own session out until its life runs out (GoTrue's default).
-  const until = Date.now() + (confirmed.expiresIn ?? 3600) * 1000;
-  let token = confirmed.token;
+  const life = tokenLife(confirmed.expiresIn ?? 3600);
+  try {
+    return await changeWith(request, confirmed.token, life.signal);
+  } finally {
+    life.abort();
+  }
+}
+
+async function changeWith(
+  request: PasswordChangeRequest,
+  confirming: string,
+  until: AbortSignal,
+): Promise<PasswordChangeResult> {
+  const { gotrueUrl, route } = request;
+  let token = confirming;
   if (request.code !== undefined) {
-    await endAtProvider(gotrueUrl, token, route.fetch, until);
+    // Left while the password was checked: no code is checked, and so none counted, for them.
+    if (!request.current()) {
+      await endAtProvider(gotrueUrl, confirming, route.fetch, until);
+      return { ok: false, because: LEFT };
+    }
+    // The code first: it lives one 30-second step, and the sign-out may be asked for an hour.
     const raised = await raiseWithCode(request.client, request.code);
+    await endAtProvider(gotrueUrl, confirming, route.fetch, until);
     if (!raised.ok) return raised;
     token = raised.token;
   }
@@ -143,7 +162,7 @@ export async function changePassword(
 async function dropConfirming(
   request: PasswordChangeRequest,
   token: string,
-  until: number,
+  until: AbortSignal,
 ): Promise<void> {
   if (request.code === undefined)
     await endAtProvider(request.gotrueUrl, token, request.route.fetch, until);
@@ -152,28 +171,81 @@ async function dropConfirming(
 /** The wait before a confirming sign-in's sign-out is asked again, doubled each time to the most. */
 const FIRST_WAIT_MS = 250;
 const LONGEST_WAIT_MS = 30_000;
+/** How long one sign-out ask waits for GoTrue's answer before it is given up and asked again. */
+const ASK_WITHIN_MS = 10_000;
+/** The longest life a timer is set for: GoTrue's tokens live an hour unless configured. */
+const LONGEST_LIFE_S = 86_400;
+
+/**
+ * The token's life as a span timed from now, aborted when it is over. A timer, not the wall
+ * clock: a clock set forward or back mid-change moves neither end of it.
+ */
+function tokenLife(expiresInSeconds: number): AbortController {
+  const life = new AbortController();
+  const timer = setTimeout(
+    () => {
+      life.abort();
+    },
+    Math.min(expiresInSeconds, LONGEST_LIFE_S) * 1000,
+  );
+  life.signal.addEventListener('abort', () => {
+    clearTimeout(timer);
+  });
+  return life;
+}
+
+/** A wait of `ms`, over early when `until` is. */
+async function pause(ms: number, until: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      until.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    until.addEventListener('abort', done);
+  });
+}
+
+/** `send`, with each ask given up after `ms` or when `until` is over. */
+function askWithin(send: ApiRoute['fetch'], ms: number, until: AbortSignal): ApiRoute['fetch'] {
+  return async (input, init) => {
+    const ask = new AbortController();
+    const giveUp = (): void => {
+      ask.abort();
+    };
+    const timer = setTimeout(giveUp, ms);
+    until.addEventListener('abort', giveUp);
+    if (until.aborted) giveUp();
+    try {
+      return await send(input, { ...init, signal: ask.signal });
+    } finally {
+      clearTimeout(timer);
+      until.removeEventListener('abort', giveUp);
+    }
+  };
+}
 
 /**
  * A confirming sign-in signed out at GoTrue, asked again until GoTrue acknowledges it: a refused,
- * lost or gateway-answered sign-out is not cleanup, and no count of them ends the asking. It ends
- * when the token's life does, `until`: GoTrue then refuses the token for a sign-out, and the
- * session's refresh token was never kept (`password-grant.ts` reads only the access token).
+ * lost, hung or gateway-answered sign-out is not cleanup, and no count of them ends the asking. It
+ * ends when the token's life does, `until`, mid-ask or mid-wait: GoTrue then refuses the token
+ * for a sign-out, and the session's refresh token was never kept (`password-grant.ts` reads only
+ * the access token).
  */
 async function endAtProvider(
   gotrueUrl: string,
   token: string,
   send: ApiRoute['fetch'],
-  until: number,
+  until: AbortSignal,
 ): Promise<void> {
-  for (let wait = FIRST_WAIT_MS; ; wait = Math.min(wait * 2, LONGEST_WAIT_MS)) {
-    // One after another: a second ask only once the first has failed.
+  const ask = askWithin(send, ASK_WITHIN_MS, until);
+  for (let wait = FIRST_WAIT_MS; !until.aborted; wait = Math.min(wait * 2, LONGEST_WAIT_MS)) {
+    // One after another: a second ask only once the first has failed or been given up.
     // eslint-disable-next-line no-await-in-loop
-    if (await signOutAtProvider(gotrueUrl, token, send)) return;
-    if (Date.now() + wait >= until) return;
+    if (await signOutAtProvider(gotrueUrl, token, ask)) return;
     // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => {
-      setTimeout(resolve, wait);
-    });
+    await pause(wait, until);
   }
 }
 
@@ -198,7 +270,7 @@ async function raiseWithCode(
 async function moveAndEndOthers(
   request: PasswordChangeRequest,
   token: string,
-  until: number,
+  until: AbortSignal,
 ): Promise<PasswordChangeResult> {
   const { route, from } = request;
   const traded = request.current() ? await tradeForCookie(route, token) : undefined;
