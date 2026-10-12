@@ -18,6 +18,7 @@ import {
   FIRST_DIRECTION,
 } from '../../apps/web/src/screens/connections/fleet-view.ts';
 import { FLOOR_MS } from '../../apps/web/src/data/live.ts';
+import type { RollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { SCREENS, type ScreenContext } from '../../apps/web/src/screen-registry.tsx';
 import type { ConnectionView } from '../../packages/core-wire/src/index.ts';
@@ -290,6 +291,13 @@ function alphaContext(stub: Stub): ScreenContext<'agency:connections'> {
 const shownIds = (page: Mounted): readonly string[] =>
   page.all('[data-connection]').map((row) => (row as HTMLElement).dataset['connection'] ?? '');
 
+/** The focusable wrapper of an open detail's unavailable control, found by its label. */
+const unavailable = (page: Mounted, id: string, label: string): HTMLElement | undefined =>
+  page
+    .all(`[data-connection-detail="${id}"] .unavail`)
+    .find((control) => control.querySelector('button')?.textContent === label) as
+    HTMLElement | undefined;
+
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('MP-14-7a Connections & signal fleet', () => {
   it('MP-14-7a owner check: every connector shows its status and clients, and a broken one has a Repair button', async () => {
@@ -504,21 +512,30 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await page.click('[data-fleet-more]');
     await page.click('[data-connection="c-00"]');
     await page.click('[data-connection="c-11"]');
-    expect(page.find('[data-connection-detail="c-00"] [data-action="sync"]')).toBeNull();
+    expect(unavailable(page, 'c-00', 'Sync now')).toBeUndefined();
     // A degraded source has failed, so its Sync now shows too.
     await page.click('[data-connection="c-10"]');
-    expect(page.find('[data-connection-detail="c-10"] [data-action="sync"]')).not.toBeNull();
-    for (const action of ['sync', 'reauthorise', 'test']) {
-      const control = page.find(
-        `[data-connection-detail="c-11"] [data-action="${action}"]`,
-      ) as HTMLButtonElement | null;
-      expect(control?.disabled).toBe(true);
-      expect(control?.getAttribute('title')).toContain('until');
+    expect(unavailable(page, 'c-10', 'Sync now')).not.toBeUndefined();
+    for (const label of ['Sync now', 'Re-authorise', 'Test']) {
+      expect(unavailable(page, 'c-11', label)?.querySelector('button')?.disabled).toBe(true);
     }
-    const test = page.find(
-      '[data-connection-detail="c-00"] [data-action="test"]',
-    ) as HTMLButtonElement | null;
-    expect(test?.disabled).toBe(true);
+    expect(unavailable(page, 'c-00', 'Test')?.querySelector('button')?.disabled).toBe(true);
+    await page.unmount();
+  });
+
+  it('MP-14-7a a keyboard reaches the reason each unavailable fleet control gives', async () => {
+    const { page } = await open();
+    await page.click('[data-fleet-facet="broken"]');
+    await page.click('[data-connection="c-11"]');
+    for (const label of ['Sync now', 'Re-authorise', 'Test']) {
+      const control = unavailable(page, 'c-11', label);
+      expect(control?.tabIndex).toBe(0);
+      const tip = document.querySelector(
+        `[id="${control?.getAttribute('aria-describedby') ?? ''}"]`,
+      );
+      expect(tip?.getAttribute('role')).toBe('tooltip');
+      expect(tip?.textContent).toMatch(/^[A-Z][a-z-]+ this source is not available yet$/u);
+    }
     await page.unmount();
   });
 
@@ -908,5 +925,60 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(page.find('[data-outcome="denied"]')).not.toBeNull();
     expect(page.find('[data-fleet-marker]')).toBeNull();
     await page.unmount();
+  });
+
+  it('MP-14-7a sections 001 and 002 each sit directly in a spaced column', async () => {
+    const { page } = await open();
+    for (const index of ['001', '002']) {
+      expect(
+        page.find(`[data-section="${index}"]`)?.parentElement?.classList.contains('secs'),
+      ).toBe(true);
+    }
+    await page.unmount();
+  });
+
+  it('MP-14-7a the fleet freshness keeps time while the fleet re-read is held', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(NOW);
+    // Synced a minute short of two days ago, on a daily cadence: on time now,
+    // behind two minutes later.
+    const stub = server({ alpha: [connection(0, 'active', 1, 48 - 1 / 60)] });
+    const refreshers: (() => void)[] = [];
+    const rollup: RollupFloor = {
+      follow: (onRefresh) => {
+        refreshers.push(onRefresh);
+        return () => null;
+      },
+    };
+    const page = await mount(
+      <ConnectionsScreen
+        client={clientFor(stub, 'alpha')}
+        grantKey="alpha:a@x:0"
+        rollup={rollup}
+      />,
+    );
+    const tone = (): string | undefined =>
+      (page.find('[data-connection="c-00"] [data-tone]') as HTMLElement | null)?.dataset['tone'];
+    try {
+      await tick();
+      expect(tone()).toBe('ok');
+      stub.holdFleet('alpha');
+      await act(() => {
+        for (const refresh of refreshers) refresh();
+      });
+      await act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      await tick();
+      // The re-read is still out: what shows is the kept fleet.
+      expect(
+        (page.find('[data-screen="connections"] > .readstate') as HTMLElement | null)?.dataset[
+          'outcome'
+        ],
+      ).toBe('loading');
+      expect(tone()).toBe('warn');
+    } finally {
+      await page.unmount();
+    }
   });
 });

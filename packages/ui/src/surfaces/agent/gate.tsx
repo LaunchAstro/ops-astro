@@ -4,6 +4,7 @@
 // and its two controls. The box decides nothing: each control hands the gate
 // and version the read showed to the caller.
 
+import { StyledSelect } from '../../kit/styled-select.tsx';
 import { useState, type ReactElement } from 'react';
 import { CHANGE_ROUNDS, type GateBox, type RunStory } from '../../state/agent-run.ts';
 import type { RunLineage } from '../../state/run-projection.ts';
@@ -194,7 +195,7 @@ function Escalate(props: {
   const [recipient, setRecipient] = useState('');
   return (
     <>
-      <select
+      <StyledSelect
         aria-label="Escalate to"
         data-gate-escalate="recipient"
         disabled={props.busy}
@@ -209,7 +210,7 @@ function Escalate(props: {
             {person.name}
           </option>
         ))}
-      </select>
+      </StyledSelect>
       <button
         className="btn btn--sm btn--secondary"
         type="button"

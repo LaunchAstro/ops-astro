@@ -6,13 +6,15 @@
 // parent and its children are one statement over the records table: the
 // parent by its id, the children by the slot, both filtered by the business
 // the session set. A record grant on the parent is not one on its children,
-// so a child comes back only when the reader's live `task:read` grants reach
-// it, asked inside the same statement: a child the reader may not read never
+// except on a map, whose grant reaches its tickets (W12), so a child comes
+// back only when the reader's live `task:read` grants reach it, asked inside
+// the same statement that reads it: a child the reader may not read never
 // leaves the database, not even its title (catalogue #412). The parent is
 // the caller's to have admitted.
 
 import { askedFor, EFFECTIVE, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { mapTicketCondition } from './wayfinder.ts';
 
 export interface FamilyRow {
   readonly id: string;
@@ -107,7 +109,9 @@ export async function readTaskFamily(
                       and exists (select 1 from unnest($4::text[], $5::uuid[]) as s (kind, id)
                                    where s.kind = e.subject_kind and s.id = e.subject_id)
                       and (e.scope_kind = 'business'
-                           or (e.scope_kind = 'record' and e.scope_id = r.id)))))
+                           or (e.scope_kind = 'record' and e.scope_id = r.id)
+                           or (e.scope_kind = 'record' and e.scope_id = r.uuid_4
+                               and ${mapTicketCondition('r')})))))
       order by r.num_2 nulls last, r.created_at, r.id`,
     [
       tx.businessId,

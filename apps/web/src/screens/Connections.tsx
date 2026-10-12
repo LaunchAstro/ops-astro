@@ -9,10 +9,10 @@
 // no "Run all syncs now" (removed from the mockup's AG-C3).
 //
 // Section 001 draws three of the mockup's five tiles (AG-C9), the three the
-// fleet read derives. Open alerts waits on MP-14-8's tripwires and Clients
-// fully wired has no derivation yet (the mockup types it, D-A7); the verdict
-// strip (AG-C8, quota burn and credential runway) and the footnote naming
-// "the five above" (AG-C10) come with them.
+// fleet read derives. Open alerts and Clients fully wired have no derivation
+// yet (the mockup types the second, D-A7); the verdict strip (AG-C8, quota
+// burn and credential runway) and the footnote naming "the five above"
+// (AG-C10) come with them.
 //
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
 // on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
@@ -26,7 +26,9 @@
 // `useRead` drops an answer that belongs to an earlier grant. No topic reaches
 // the fleet, so it re-reads on the rollup floor (LIVE-SYNC.md): every 30 s
 // while the tab is visible, at once when shown again or back online; `keep`
-// holds the drawn fleet and its view through each re-read.
+// holds the drawn fleet and its view through each re-read. The fleet reads
+// the clock on each draw and redraws every 30 s on its own, as the signal
+// sections do, so a source's freshness moves while a re-read waits.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { Banner, Empty, InDevelopment, Kpi, SectionHead } from '@launchastro/ui';
@@ -40,7 +42,7 @@ import { useRead } from '../data/use-read.ts';
 import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { FleetTable } from './connections/fleet-table.tsx';
-import { SignalSections } from './connections/signal.tsx';
+import { SignalSections, useRedraw } from './connections/signal.tsx';
 import { SkillCostingSection } from './connections/costing.tsx';
 import { GraduationRegion } from './connections/graduation.tsx';
 import type { RepairControl } from './connections/fleet-row.tsx';
@@ -187,8 +189,10 @@ function Shown(props: {
       ),
     );
   };
+  // RecordState wraps what it draws, so the column that spaces sections 001
+  // and 002 sits inside it, as Access does.
   return (
-    <>
+    <div className="secs">
       <section data-section="001">
         <SectionHead
           index="001"
@@ -213,7 +217,7 @@ function Shown(props: {
           repair={props.repair}
         />
       </section>
-    </>
+    </div>
   );
 }
 
@@ -225,7 +229,6 @@ export function ConnectionsScreen(props: {
 }): ReactElement {
   const { client, grantKey } = props;
   const clock = props.now ?? Date.now;
-  const now = clock();
   const rollup = props.rollup === undefined ? {} : { rollup: props.rollup };
   const { state, reload } = useRead<ConnectionFleetResult>({
     grantKey,
@@ -235,6 +238,7 @@ export function ConnectionsScreen(props: {
     deps: [],
   });
   const repair = useRepair(client, reload);
+  useRedraw();
   // A denied or unavailable read holds no fleet, so it draws no marker.
   const held = state.outcome === 'loading' ? state.previous : state.value;
   return (
@@ -256,7 +260,7 @@ export function ConnectionsScreen(props: {
           />
         }
       >
-        {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
+        {(fleet) => <Shown fleet={fleet} now={clock()} repair={repair} />}
       </RecordState>
       <NotConnected />
       <SignalSections client={client} grantKey={grantKey} clock={clock} {...rollup} />

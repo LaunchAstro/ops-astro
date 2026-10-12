@@ -131,3 +131,46 @@ describe('Envelope directives, raw end tags and Markdown destinations', () => {
     expect(verdict(ended, page)).toMatchObject({ ok: true, value: { line: 1 } });
   });
 });
+
+describe('Envelope bounds: nesting depth, long runs and Markdown reference labels', () => {
+  const page = 'src/pages/about.md';
+
+  it('refuses expressions and tags nested thousands deep rather than throwing', () => {
+    refusedEach([`<p>${'{<a b='.repeat(5000)}</p>\n<p>We are a friendly studio.</p>\n`]);
+    const nested = `<p>${'{a && <b c='.repeat(10)}{x}${'>y</b>}'.repeat(10)}</p>\n<p>A friendly studio.</p>\n`;
+    expect(verdict(nested)).toMatchObject({ ok: true, value: { line: 2 } });
+  });
+
+  it('reads a Markdown word after a long unbroken run in well under a second', () => {
+    const started = performance.now();
+    expect(verdict(`${'x'.repeat(100_000)} friendly.\n`, page)).toMatchObject({ ok: true });
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  it('refuses a word that is a Markdown reference label, in a link or its definition', () => {
+    refusedEach(
+      [
+        'See [our studio][friendly].\n\n[friendly]: https://studio.example/\n',
+        'See [our studio][the friendly one].\n',
+        '[friendly]: https://studio.example/\n',
+        '[the friendly one]: https://studio.example/\n',
+        '[a\\] friendly]: https://studio.example/\n',
+        'See [friendly][] here.\n\n[friendly]: https://studio.example/\n',
+        'See [friendly] here.\n\n[friendly]: https://studio.example/\n',
+      ],
+      page,
+    );
+    const text = 'See [our friendly studio][s].\n\n[s]: https://studio.example/\n';
+    expect(verdict(text, page)).toMatchObject({ ok: true, value: { line: 1 } });
+  });
+  it('reads markup inside a Markdown bracket as markup, never as a label to skip', () => {
+    refusedEach(
+      [
+        'See [<script>][] a friendly studio.\n',
+        'See [<script>] a friendly studio.\n',
+        'See [<style>][x] a friendly studio.\n',
+      ],
+      page,
+    );
+  });
+});

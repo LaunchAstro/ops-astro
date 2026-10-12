@@ -10,25 +10,19 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { act, useState, type ReactElement } from 'react';
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { StepView } from '../../packages/core-wire/src/index.ts';
-import { SubtaskList } from '../../apps/web/src/screens/task/Subtasks.tsx';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { commands, list } from './subtask-actions-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { found, TASK_ID, tick } from './task-page-stub.tsx';
-import { badge, json, mount, page, press, unmountAll } from './perspective-support.tsx';
+import { badge, page, press, unmountAll } from './perspective-support.tsx';
 import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
 const cssText = (): string =>
   readFileSync(join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'), 'utf8');
-
-interface Sent {
-  readonly command: string;
-  readonly body: Readonly<Record<string, unknown>>;
-}
 
 const step = (id: string, title: string, over: Partial<StepView> = {}): StepView => ({
   id,
@@ -50,46 +44,6 @@ const GATED = step('45', 'Send the draft', { awaitingApproval: true });
 const ARCHIVED = step('44', 'Old plan', {
   archived: { at: '2026-09-30T02:00:00.000Z', why: 'The parent task was completed' },
 });
-
-/** Records each command; answers every one as applied. */
-function commands() {
-  const sent: Sent[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
-    const at = String(url);
-    const command = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
-    sent.push({
-      command,
-      body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'],
-    });
-    return Promise.resolve(json({ ok: true, recordId: 'new', revision: 4 }));
-  }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
-  return { client, sent };
-}
-
-/** The list under a parent that rereads on change: it redraws the server's next steps. */
-async function list(client: OperationsClient, steps: readonly StepView[], next = steps) {
-  const counter = { rereads: 0 };
-  function Parent(): ReactElement {
-    const [shown, setShown] = useState(steps);
-    const [open, setOpen] = useState(false);
-    return (
-      <SubtaskList
-        client={client}
-        parentId={TASK_ID}
-        steps={shown}
-        showFinished={open}
-        onShowFinished={setOpen}
-        onChanged={() => {
-          counter.rereads += 1;
-          setShown(next);
-        }}
-      />
-    );
-  }
-  const view = await mount(<Parent />);
-  return { view, rereads: () => counter.rereads };
-}
 
 const typeInto = async (view: Mounted, value: string) => {
   const input = view.host.querySelector<HTMLInputElement>('input[data-step-add]');
@@ -254,4 +208,33 @@ describe('MP-4-4 harness captures', () => {
     );
     expect(unheld(team)).toEqual([]);
   });
+});
+
+it('removing a subtask reports the whole batch and Undo restores that exact batch after a reread', async () => {
+  const { client, sent } = commands();
+  const { view, rereads } = await list(client, [COPY], []);
+  await click(view, '[data-step-remove="41"]');
+  expect(sent[0]?.body).toMatchObject({ recordId: '41', expectedRevision: 3 });
+  expect(view.find('[data-step-trash]')?.textContent).toContain('3 tasks moved to the bin.');
+  expect(rows(view)).toEqual([]);
+  await click(view, '[data-step-undo]');
+  expect(sent[1]?.command).toBe('task.restore');
+  expect(sent[1]?.body).toMatchObject({ batchId: 'batch-one' });
+  expect(view.find('[data-step-trash]')).toBeNull();
+  expect(rereads()).toBe(2);
+});
+
+it('the Undo receipt survives a remount and belongs only to its signed-in owner and parent', async () => {
+  const first = commands();
+  const old = await list(first.client, [COPY], []);
+  await click(old.view, '[data-step-remove="41"]');
+  await old.view.unmount();
+  const reread = await list(first.client, []);
+  expect(reread.view.find('[data-step-undo]')).not.toBeNull();
+  const other = commands();
+  const outside = await list(other.client, []);
+  expect(outside.view.find('[data-step-undo]')).toBeNull();
+  await click(reread.view, '[data-step-undo]');
+  expect(first.sent[1]?.body).toMatchObject({ batchId: 'batch-one' });
+  expect(other.sent).toHaveLength(0);
 });

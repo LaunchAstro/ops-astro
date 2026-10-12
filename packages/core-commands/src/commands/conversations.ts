@@ -21,6 +21,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
+import { cutWithEllipsis } from './ellipsis.ts';
 import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -182,7 +183,8 @@ export async function startConversation(
   const { pageRefused } = admitted;
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;
-  const title = typeof fields.title === 'string' ? fields.title.trim() : (subject ?? DEFAULT_TITLE);
+  const named = typeof fields.title === 'string' ? fields.title.trim() : undefined;
+  const title = named ?? cutWithEllipsis(subject ?? DEFAULT_TITLE, TITLE_LIMIT);
   const conversationId = randomUUID();
   const messageId = randomUUID();
   await tx.query(

@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
+import { IMAGE as JOURNEY_IMAGE } from '../../scripts/local/journey-stack.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -112,7 +113,7 @@ function ciOnTheCases1() {
     expect(DIGEST).toHaveLength(64);
   });
 
-  it('S0-7 the four places name the same 17 digest', () => {
+  it('S0-7 every place that starts Postgres names the same 17 digest', () => {
     const want = `postgres@sha256:${DIGEST}`;
     const places = {
       'ci.yml database conformance': images(job(SHARD_JOB)),
@@ -120,14 +121,11 @@ function ciOnTheCases1() {
       'scripts/local/db-up.sh': assigned('scripts/local/db-up.sh', 'IMAGE'),
       'scripts/local/restart-proof.sh': assigned('scripts/local/restart-proof.sh', 'IMAGE'),
       'scripts/local/auth-up.sh': assigned('scripts/local/auth-up.sh', 'PG_IMAGE'),
+      'scripts/local/journey-stack.ts': [JOURNEY_IMAGE],
     };
-    expect(places).toStrictEqual({
-      'ci.yml database conformance': [want],
-      'ci.yml isolation tests': [want],
-      'scripts/local/db-up.sh': [want],
-      'scripts/local/restart-proof.sh': [want],
-      'scripts/local/auth-up.sh': [want],
-    });
+    expect(places).toStrictEqual(
+      Object.fromEntries(Object.keys(places).map((place) => [place, [want]])),
+    );
     // The pins record says which tag the digest was read from.
     expect(read('docs/supply-chain-pins.md')).toMatch(
       new RegExp(`\\| \`postgres\` +\\| \`17-alpine\` +\\| \`sha256:${DIGEST}\` \\|`, 'u'),

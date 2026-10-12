@@ -4,6 +4,7 @@
 // DS-TASK-9): `task.read`'s ledger and proposals, shaped as the read returns
 // them.
 
+import { stillHeldMinor } from './run-projection.ts';
 import type { RunLineage, RunVersion } from './run-projection.ts';
 
 /** One envelope on the task, as `task.read`'s ledger carries it. */
@@ -170,7 +171,7 @@ export function tokenStory(ledger: TaskLedger, lineages: readonly RunLineage[]):
               reservationId: reservation.id,
               runId: reservation.runId,
               state: reservation.state,
-              heldMinor: reservation.heldMinor,
+              heldMinor: stillHeldMinor(reservation),
               actualMinor: reservation.actualMinor,
               classifiedCause: reservation.classifiedCause,
               skills: skillsOf(versions.find((version) => version.runId === reservation.runId)),

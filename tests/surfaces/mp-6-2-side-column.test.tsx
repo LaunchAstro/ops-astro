@@ -33,13 +33,13 @@ describe('MP-6-2 side column', () => {
     expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('MP-6-2 side column: 21rem beside main at 1279 and above, stacked under it below', () => {
+  it('MP-6-2 side column: 21rem beside main in a wide Agent container, stacked in a drawer', () => {
     const css = readFileSync(STYLES, 'utf8');
     const base = /^\.tpg \{([^}]*)\}/mu.exec(css)?.[1] ?? '';
     expect(base).toContain('display: grid');
-    expect(base).not.toContain('grid-template-columns');
+    expect(base).toContain('grid-template-columns: minmax(0, 1fr)');
     expect(css).toMatch(
-      /@media \(width >= 1279px\) \{\s*\.tpg \{\s*grid-template-columns: minmax\(0, 1fr\) 21rem;/u,
+      /@container \(min-width: 1000px\) \{\s*\.tpg \{\s*grid-template-columns: minmax\(0, 1fr\) 21rem;/u,
     );
   });
 });

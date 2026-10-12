@@ -5,17 +5,16 @@
 // record as the fleet read returned it; custody is a reference, the
 // credential's state and never any part of it.
 //
-// Sync now, Re-authorise and Test are drawn disabled with their reason: no
-// connector can sync, re-authorise or test a source until the source's own
-// connector exists (the phase 6 sources, MP-14-7b; the broker, AW-01). The
-// one live control is Repair, on a broken connection, which records
-// `connector repair started` (CS-14.12).
+// Sync now, Re-authorise and Test are the kit's unavailable controls, whose
+// reason a keyboard reaches: no connector can sync, re-authorise or test a
+// source until the source's own connector exists (the phase 6 sources,
+// MP-14-7b; the broker, AW-01). The one live control is Repair, on a broken
+// connection, which records `connector repair started` (CS-14.12).
 
 import type { ReactElement } from 'react';
+import { Unavailable } from '@launchastro/ui';
 import type { ConnectionView } from '../../../../../packages/core-wire/src/index.ts';
 import { freshnessOf, isStuck } from './fleet-view.ts';
-
-const UNTIL = 'Unavailable until the connector for this source exists (MP-14-7b, AW-01).';
 
 export const STATUS_WORD: Readonly<Record<ConnectionView['status'], string>> = {
   active: 'Active',
@@ -25,20 +24,6 @@ export const STATUS_WORD: Readonly<Record<ConnectionView['status'], string>> = {
 
 function time(at: string | null): string {
   return at === null ? '—' : new Date(at).toLocaleString();
-}
-
-function Unavailable(props: { readonly action: string; readonly label: string }): ReactElement {
-  return (
-    <button
-      type="button"
-      className="btn btn--sm btn--ghost"
-      data-action={props.action}
-      disabled
-      title={UNTIL}
-    >
-      {props.label}
-    </button>
-  );
 }
 
 function Clients(props: { readonly row: ConnectionView }): ReactElement {
@@ -121,9 +106,13 @@ function Actions(props: {
         </p>
       )}
       {said === undefined ? null : <p role="alert">{said}</p>}
-      {broken ? <Unavailable action="reauthorise" label="Re-authorise" /> : null}
-      {isStuck(row, props.now) ? <Unavailable action="sync" label="Sync now" /> : null}
-      <Unavailable action="test" label="Test" />
+      {broken ? (
+        <Unavailable feature="Re-authorising this source" label="Re-authorise" variant="ghost" />
+      ) : null}
+      {isStuck(row, props.now) ? (
+        <Unavailable feature="Syncing this source" label="Sync now" variant="ghost" />
+      ) : null}
+      <Unavailable feature="Testing this source" label="Test" variant="ghost" />
     </div>
   );
 }
