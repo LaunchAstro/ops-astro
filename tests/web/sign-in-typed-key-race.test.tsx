@@ -129,6 +129,7 @@ describe.skipIf(serverUrl === undefined)('a typed key no business can hold', () 
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one held sign-out, sign-in and rewrite, read as one case
 it('a sign-out landing during the read cannot put the refused cookie back', async () => {
   const oldEnd = held();
   const rewrite = held();

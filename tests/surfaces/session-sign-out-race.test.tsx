@@ -32,6 +32,7 @@ function Page(props: {
   );
 }
 
+// eslint-disable-next-line max-lines-per-function -- one sign-out and the next sign-in, read as one case
 describe('S0-6 session cookie', () => {
   it('a delayed sign-out cannot clear the next person’s session', async () => {
     const sessions = new SessionStore(null);

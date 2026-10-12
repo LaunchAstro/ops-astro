@@ -198,9 +198,8 @@ async function expectSignedOutWithNoDraft(
   expect(view.text()).toContain('was not saved');
   expect(sessions.session).toBeNull();
   const stores = everyStore(store.held);
-  expect(stores).not.toContain(DRAFT_TITLE);
-  expect(stores).not.toContain(DRAFT_COMMENT);
-  expect(stores).not.toContain(SESSION.token);
+  const kept = [DRAFT_TITLE, DRAFT_COMMENT, SESSION.token].filter((one) => stores.includes(one));
+  expect(kept).toEqual([]);
 }
 
 /** Sign in again: the task comes back as the server holds it, not as typed. */

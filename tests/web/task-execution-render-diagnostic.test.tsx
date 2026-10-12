@@ -199,6 +199,7 @@ function ownerWorld() {
     }
     if (path === '/api/session')
       return Promise.resolve(answer({ ok: true, session: 'synthetic-new-owner-session' }));
+    if (path.endsWith('/session/person')) return Promise.resolve(answer({ ok: true }));
     if (path.endsWith('/task/execution')) {
       expect(body['recordId'] === 'Timer-A' || body['recordId'] === A).toBe(true);
       if (newOwner) return Promise.resolve(execution('stale', B, newTask.revision));
