@@ -62,8 +62,7 @@ import { expectedShape, shapeOf, type Shape } from './statement-capture-cases.ts
 type Wrapper = typeof shipped;
 
 const DATABASE_TS = 'packages/core-records/src/tenancy/database.ts';
-const LOCAL_LINE =
-  "await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);";
+const LOCAL_LINE = "await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);";
 const BEGIN_THEN_SETTING = [
   "    return (await sql.begin('isolation level read committed', async (tx) => {",
   '      // Inside the transaction, and nowhere else. `true` is the is_local',
