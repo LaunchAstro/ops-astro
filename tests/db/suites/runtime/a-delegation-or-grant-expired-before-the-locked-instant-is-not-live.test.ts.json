@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A lease's delegation and a grant whose expiry falls earlier in the locked instant's millisecond read not live: the instant is compared to the microsecond on a real migrated database, never rounded through the driver."
+}
