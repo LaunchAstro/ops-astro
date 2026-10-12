@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- each proof drives a real script end to end */
 import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -17,25 +18,39 @@ import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '../..');
 
+/** Whether nothing listens on `candidate` on the loopback interface. */
+const isFree = (candidate: number) =>
+  new Promise<boolean>((done) => {
+    const server = createServer();
+    server.once('error', () => done(false));
+    server.listen(candidate, '127.0.0.1', () => server.close(() => done(true)));
+  });
+
+/** An executable stand-in at `path` running `body` under sh. */
+function stub(path: string, body: string): string {
+  writeFileSync(path, `#!/bin/sh\n${body}`);
+  chmodSync(path, 0o755);
+  return path;
+}
+
 it('a recycled PID belonging to another API command is spared', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'proof-1365-pid-'));
   const other = join(dir, 'apps/api/server.ts');
   mkdirSync(join(dir, 'apps/api'), { recursive: true });
   writeFileSync(other, 'setInterval(() => {}, 1000);\n');
   const victim = spawn(process.execPath, ['apps/api/server.ts'], { cwd: dir, stdio: 'ignore' });
-  await new Promise<void>((done) => victim.once('spawn', done));
+  await new Promise<void>((done) => {
+    victim.once('spawn', done);
+  });
   const evidence = join(dir, 'evidence');
-  const docker = join(dir, 'docker');
   // The session sandbox denies native ps; enumerate the known real child instead.
-  writeFileSync(
+  stub(
     join(dir, 'ps'),
-    `#!/bin/sh\n[ "$4" = '${String(victim.pid)}' ] && printf '%s\\n' 'node apps/api/server.ts'\n`,
+    `[ "$4" = '${String(victim.pid)}' ] && printf '%s\\n' 'node apps/api/server.ts'\n`,
   );
-  chmodSync(join(dir, 'ps'), 0o755);
-  writeFileSync(
-    docker,
-    `#!/bin/sh
-case "$1" in
+  const docker = stub(
+    join(dir, 'docker'),
+    `case "$1" in
   image) exit 0 ;;
   inspect) exit 1 ;;
   run) printf '%s\\n' '${String(victim.pid)}' >> '${evidence}.pids'; exit 125 ;;
@@ -43,7 +58,6 @@ case "$1" in
 esac
 `,
   );
-  chmodSync(docker, 0o755);
   try {
     const run = spawnSync(
       'bash',
@@ -65,7 +79,9 @@ esac
       },
     );
     expect(run.status).toBe(125);
-    await new Promise((done) => setTimeout(done, 300));
+    await new Promise((done) => {
+      setTimeout(done, 300);
+    });
     expect(victim.signalCode, run.stdout).toBeNull();
   } finally {
     victim.kill('SIGKILL');
@@ -75,13 +91,11 @@ esac
 
 it('interruption during readiness removes the container already created', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'proof-1365-startup-'));
-  const docker = join(dir, 'docker');
   const log = join(dir, 'calls');
   const id = 'a'.repeat(64);
-  writeFileSync(
-    docker,
-    `#!/bin/sh
-printf '%s\\n' "$*" >> '${log}'
+  const docker = stub(
+    join(dir, 'docker'),
+    `printf '%s\\n' "$*" >> '${log}'
 case "$1" in
   image) exit 0 ;;
   inspect) exit 1 ;;
@@ -91,7 +105,6 @@ case "$1" in
 esac
 `,
   );
-  chmodSync(docker, 0o755);
   const child = spawn(
     process.execPath,
     [
@@ -109,7 +122,9 @@ esac
     ],
     { cwd: root, env: { ...process.env, DOCKER: docker }, stdio: 'ignore' },
   );
-  const exited = new Promise<number | null>((done) => child.once('exit', done));
+  const exited = new Promise<number | null>((done) => {
+    child.once('exit', done);
+  });
   try {
     let ready = false;
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -120,7 +135,9 @@ esac
       }
       if (ready) break;
       // eslint-disable-next-line no-await-in-loop -- one probe at a time
-      await new Promise((done) => setTimeout(done, 25));
+      await new Promise((done) => {
+        setTimeout(done, 25);
+      });
     }
     expect(ready, 'docker run succeeded and the readiness loop began').toBe(true);
     child.kill('SIGTERM');
@@ -138,15 +155,8 @@ it('numerically equal free ports are refused despite different spellings', async
   writeFileSync(docker, '#!/bin/sh\n[ "$1" = image ]\n');
   chmodSync(docker, 0o755);
   let port = 6000;
-  for (; port < 7000; port += 1) {
-    const server = createServer();
-    // eslint-disable-next-line no-await-in-loop -- one probe at a time
-    const free = await new Promise<boolean>((done) => {
-      server.once('error', () => done(false));
-      server.listen(port, '127.0.0.1', () => server.close(() => done(true)));
-    });
-    if (free) break;
-  }
+  // eslint-disable-next-line no-await-in-loop -- one probe at a time
+  for (; port < 7000 && !(await isFree(port)); port += 1);
   try {
     const script = join(dir, 'probe.mjs');
     writeFileSync(

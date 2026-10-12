@@ -120,24 +120,25 @@ describe('the journey stack', () => {
   });
 });
 
-describe('the restart proof', () => {
-  const restartProof = (docker: string, dir: string, ports: string[], env = {}) =>
-    spawnSync(
-      'bash',
-      [
-        'scripts/local/restart-proof.sh',
-        '--name',
-        `restart-proof-fixture-${String(process.pid)}`,
-        '--port',
-        String(ports[0]),
-        '--api-port',
-        String(ports[1]),
-        '--evidence',
-        join(dir, 'evidence.txt'),
-      ],
-      { cwd: ROOT, env: { ...process.env, DOCKER: docker, ...env }, encoding: 'utf8' },
-    );
+/** The real restart proof against the stand-in docker, on `ports`. */
+const restartProof = (docker: string, dir: string, ports: string[], env = {}) =>
+  spawnSync(
+    'bash',
+    [
+      'scripts/local/restart-proof.sh',
+      '--name',
+      `restart-proof-fixture-${String(process.pid)}`,
+      '--port',
+      String(ports[0]),
+      '--api-port',
+      String(ports[1]),
+      '--evidence',
+      join(dir, 'evidence.txt'),
+    ],
+    { cwd: ROOT, env: { ...process.env, DOCKER: docker, ...env }, encoding: 'utf8' },
+  );
 
+describe('the restart proof', () => {
   it('refuses before starting anything when its image is not on this machine', async () => {
     const { docker, log, dir } = fakeDocker();
     const result = restartProof(docker, dir, await freePorts(2), { IMAGE_PRESENT: '1' });
