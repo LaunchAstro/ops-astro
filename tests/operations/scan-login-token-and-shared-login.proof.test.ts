@@ -8,7 +8,9 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { expect, it } from 'vitest';
+import { grantAccess } from '../../packages/core-records/src/authority/access.ts';
 import { createFreshDatabase } from '../support/fresh-database.ts';
 
 type Run = { code: number | null; stdout: string; stderr: string };
@@ -23,6 +25,7 @@ async function fixture(
     cli: (step: string) => Promise<Run>;
     loseReply: () => void;
     synchroniseMakes: () => void;
+    hooks: { onDelete?: () => void };
   }) => Promise<void>,
 ): Promise<void> {
   const db = await createFreshDatabase({ part: 'ow069' });
@@ -32,6 +35,7 @@ async function fixture(
   let lose = false;
   let barrier = false;
   let pending: (() => void) | undefined;
+  const hooks: { onDelete?: () => void } = {};
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -69,6 +73,7 @@ async function fixture(
       const email = users.get(id);
       if (!email) answer(404, {});
       else if (req.method === 'DELETE') {
+        hooks.onDelete?.();
         users.delete(id);
         answer(200, {});
       } else answer(200, { id, email });
@@ -128,6 +133,7 @@ async function fixture(
       synchroniseMakes: () => {
         barrier = true;
       },
+      hooks,
     });
   } finally {
     await new Promise<void>((resolve, reject) => {
@@ -143,13 +149,9 @@ it('an existing token file is owner-only after make', async () => {
     writeFileSync(tokenFile, 'old-invented-token');
     chmodSync(tokenFile, 0o644);
     const made = await cli('make');
-    if (made.code === 0) {
-      expect(readFileSync(tokenFile, 'utf8')).toBe('sol-invented-access-token-123456789');
-      expect(statSync(tokenFile).mode & 0o777).toBe(0o600);
-    } else {
-      expect(made.code).toBe(1);
-      expect(readFileSync(tokenFile, 'utf8')).toBe('old-invented-token');
-    }
+    expect(made.code, made.stderr).toBe(0);
+    expect(readFileSync(tokenFile, 'utf8')).toBe('sol-invented-access-token-123456789');
+    expect(statSync(tokenFile).mode & 0o777).toBe(0o600);
   });
 });
 
@@ -198,5 +200,82 @@ it('business to business and person to person cleanup preserves a shared login i
     );
     expect(rows).toEqual([{ active: true }]);
     expect(users.has(record.userId)).toBe(true);
+  });
+});
+
+it('a make whose creation reply is lost leaves a record that remove deletes the sign-in by', async () => {
+  await fixture(async ({ cli, users, loseReply }) => {
+    loseReply();
+    const made = await cli('make');
+    expect(made.code).toBe(1);
+    expect(users.size).toBe(1);
+    const removed = await cli('remove');
+    expect(removed.code, removed.stderr).toBe(0);
+    expect(users.size).toBe(0);
+  });
+});
+
+it('two makes on the same files leave no sign-in that remove does not delete', async () => {
+  await fixture(async ({ cli, users, synchroniseMakes }) => {
+    synchroniseMakes();
+    const makes = await Promise.all([cli('make'), cli('make')]);
+    const removed = await cli('remove');
+    expect(removed.code, removed.stderr).toBe(0);
+    expect(users.size).toBe(0);
+    expect(makes.map((each) => each.code).toSorted()).toEqual([0, 1]);
+  });
+});
+
+it('a grant given to the scan person while remove runs is revoked with the rest', async () => {
+  await fixture(async ({ cli, db, alpha, hooks }) => {
+    const made = await cli('make');
+    expect(made.code, made.stderr).toBe(0);
+    const [scan] = await db.app.withBusiness(alpha, (tx) =>
+      tx.query<{ id: string; person_id: string }>(
+        "select id, person_id from public.actors where kind = 'person'",
+      ),
+    );
+    if (scan === undefined) throw new Error('make left no scan person');
+    // The grant is given and held uncommitted; it commits once the removal
+    // waits on a lock, or once the removal reaches the provider delete.
+    let deleting = false;
+    hooks.onDelete = () => {
+      deleting = true;
+    };
+    let given!: () => void;
+    const held = new Promise<void>((resolve) => {
+      given = resolve;
+    });
+    const grant = db.app.withBusiness(alpha, async (tx) => {
+      const issued = await grantAccess(
+        tx,
+        { personId: scan.person_id, collection: 'task', action: 'manage', clientId: null },
+        scan.id,
+      );
+      expect(issued.ok).toBe(true);
+      given();
+      for (;;) {
+        // eslint-disable-next-line no-await-in-loop -- polled until the removal waits or deletes
+        const waiting = await db.admin.execute<{ n: number }>(
+          `select count(*)::int as n from pg_stat_activity
+            where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`,
+        );
+        if (deleting || (waiting[0]?.n ?? 0) > 0) return;
+        // eslint-disable-next-line no-await-in-loop -- a short pause between polls
+        await sleep(25);
+      }
+    });
+    await held;
+    const removed = await cli('remove');
+    await grant;
+    expect(removed.code, removed.stderr).toBe(0);
+    const live = await db.app.withBusiness(alpha, (tx) =>
+      tx.query(
+        `select collection, action from public.grants
+          where subject_kind = 'person' and subject_id = $1 and revoked_at is null`,
+        [scan.person_id],
+      ),
+    );
+    expect(live).toEqual([]);
   });
 });
