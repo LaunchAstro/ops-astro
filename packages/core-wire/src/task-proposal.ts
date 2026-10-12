@@ -164,6 +164,27 @@ export function proposalCreate(
   };
 }
 
+/**
+ * The `task.assign` a create's click sends once the task is made, for the
+ * reply `messageId`: to `personId`, at the revision the create returned.
+ */
+export function proposalAssign(
+  messageId: string,
+  task: { readonly recordId: string; readonly revision: number },
+  personId: string,
+): ProposalWrite<{
+  readonly recordId: string;
+  readonly fields: { readonly assignee: string };
+}> & {
+  readonly expectedRevision: number;
+} {
+  return {
+    operationId: `task-proposal-assign:${messageId}`,
+    expectedRevision: task.revision,
+    body: { recordId: task.recordId, fields: { assignee: personId } },
+  };
+}
+
 /** The `task.update` a card's click sends for the reply `messageId`, at the revision its question saw. */
 export function proposalEdit(
   proposal: ProposedFields,
