@@ -67,6 +67,13 @@ export async function release({ dist, out }: { dist: string; out: string }): Pro
   }
   rmSync(out, { recursive: true, force: true });
   cpSync(dist, join(out, 'static'), { recursive: true });
+  // The copy is what ships: a build that lands in dist after the check is not the one checked.
+  const copied = readStamp(join(out, 'static'));
+  if (copied !== stamp) {
+    throw new Error(
+      `the copied web build is ${copied}, not this checkout (${here}); rebuild the web`,
+    );
+  }
   const func = join(out, 'functions', 'api.func');
   await build({
     configFile: false,
