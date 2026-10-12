@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An invitation email that reaches custody after its place under the ceiling has ended is never sent; the place is the real ask row and its window."
+}
