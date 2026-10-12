@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Sol's controls: a map grant reaches no map content after its last ticket leaves and expiry, and a retyped map grants nothing on its former tickets"
+}
