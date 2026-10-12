@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "named in tests/db/named-suites/ before each suite had its own file; its reason is in tests/db/suites-history.json"
+  "why": "a plan record binds only in its decision's transaction; one the product's role writes later with the decision's time copied in never becomes the task's plan (#436)"
 }
