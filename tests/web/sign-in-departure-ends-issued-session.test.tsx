@@ -34,6 +34,7 @@ async function departed() {
   );
   await view.type('#signin-email', 'mia@alpha.local');
   await view.type('#signin-password', 'test-password');
+  await view.choose('#signin-business', 'alpha');
   await view.click('[data-screen="sign-in"] button[type="submit"]');
   await settle();
   expect(sent).toContain('/api/b/alpha/session/person half');

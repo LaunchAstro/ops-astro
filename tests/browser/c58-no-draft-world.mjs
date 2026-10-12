@@ -141,7 +141,7 @@ export async function signInAs(page, email, password) {
   await page.waitForSelector('#signin-email');
   await page.fill('#signin-email', email);
   await page.fill('#signin-password', password);
-  await page.selectOption('#signin-business', 'alpha');
+  await page.fill('#signin-business', 'alpha');
   await page.click('button[type="submit"]');
   await page.waitForFunction(() => window.location.pathname !== '/sign-in', { timeout: 15_000 });
 }

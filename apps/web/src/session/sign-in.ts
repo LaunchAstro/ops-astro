@@ -13,9 +13,12 @@
 // It selects which `/api/b/:businessKey` prefix the client calls. The server
 // resolves the token's subject to a login in that business and refuses when
 // there is none, so choosing `bravo` with an alpha-only account does not get
-// anybody into bravo — it gets them `AUTH_NO_MEMBERSHIP`.
+// anybody into bravo — it gets them `AUTH_NO_MEMBERSHIP`. The page types the key
+// rather than listing businesses, so that answer fails the sign-in in the words
+// GoTrue gives a wrong password: a key held by a business the person is not in,
+// and one held by none, read the same as a mistyped password.
 
-import { isRefusal, OperationsClient } from '../operations/client.ts';
+import { isRefusal, isUnavailable, OperationsClient } from '../operations/client.ts';
 import { signIn, type SignInRequest } from './password-grant.ts';
 import {
   CSRF_HEADER,
@@ -35,6 +38,11 @@ export interface ApiRoute {
 /** Sign-outs still on their way to the API, and a count of sign-ins and outs. */
 const signingOut = new Set<Promise<unknown>>();
 let latest = 0;
+/**
+ * A session written again once a sign-out landed, sent and still unanswered, by the cookie id it
+ * sets: that session's own sign-out waits for it, and no other session's does.
+ */
+const rewriting = new Map<string, Promise<unknown>>();
 
 /**
  * The browser's sign-in: the password grant, then the token straight to the
@@ -55,15 +63,27 @@ export async function openSession(
   // A sign-out still in flight that names no session may clear this one when
   // it lands, so once it has the session is written again, unless a later
   // sign-in or sign-out has had its say.
+  const traded = tradeForCookie(request, result.token);
   if (signingOut.size > 0) {
     const landed = Promise.allSettled(signingOut);
     void (async () => {
       await landed;
-      if (latest === mine) await toApi(request, SESSION_PATH, { authorization: bearer });
+      // The rewrite sets the cookie the trade named (the id is the token's own).
+      const named = await traded;
+      if (latest !== mine) return;
+      const sent = toApi(request, SESSION_PATH, { authorization: bearer });
+      const id = named.ok ? named.sessionId : undefined;
+      if (id === undefined) return;
+      rewriting.set(id, sent);
+      await sent;
+      if (rewriting.get(id) === sent) rewriting.delete(id);
     })();
   }
-  return await tradeForCookie(request, result.token);
+  return await traded;
 }
+
+/** GoTrue's answer to a wrong password, given for a business the sign-in cannot open. */
+const NOT_SIGNED_IN = 'Invalid login credentials';
 
 /** A password sign-in the API serves only after its second factor: its client and cookie id. */
 export interface AskedForCode {
@@ -75,8 +95,10 @@ export interface AskedForCode {
  * The browser's sign-in, then one read on its new cookie in the chosen business: an extra
  * round trip. A login with a verified authenticator app is refused
  * `AUTH_SECOND_FACTOR_REQUIRED` below `aal2` (C59), and then the sign-in is not open yet:
- * `asked` carries what its code step needs. Any other answer opens it as before; the API,
- * not this read, refuses whatever it refuses.
+ * `asked` carries what its code step needs. A business the login is not a member of, or a key
+ * no business holds, ends the cookie and fails as a wrong password does. A read with no answer,
+ * or one the router never served (a typed `..`), ends it too and fails in the API's own words.
+ * Any other answer opens it as before; the API, not this read, refuses whatever it refuses.
  */
 export async function openSignIn(
   request: SignInRequest &
@@ -103,6 +125,11 @@ export async function openSignIn(
     ...named,
   });
   const answer = await client.read('session.person', {});
+  const refused = isRefusal(answer) && answer.code === 'AUTH_NO_MEMBERSHIP';
+  if (refused || isUnavailable(answer)) {
+    await signOut({ apiOrigin: request.apiOrigin, fetch: request.fetch, ...named });
+    return { ok: false, because: isUnavailable(answer) ? answer.because : NOT_SIGNED_IN };
+  }
   const asked = isRefusal(answer) && answer.code === 'AUTH_SECOND_FACTOR_REQUIRED';
   return asked ? { ok: true, ...named, asked: { client, ...named } } : result;
 }
@@ -136,6 +163,9 @@ export async function signOut(
   request: ApiRoute & { readonly sessionId?: string; readonly businessKey?: string },
 ): Promise<void> {
   latest += 1;
+  // This session's own write, already sent, would set its cookie again after the end clears it.
+  // The revocation does not wait for it: a revoked bearer back in a cookie admits nothing.
+  const written = request.sessionId === undefined ? undefined : rewriting.get(request.sessionId);
   const named = request.sessionId === undefined ? {} : { [SESSION_HEADER]: request.sessionId };
   const { businessKey } = request;
   const account = `${PREFIX.person}${encodeURIComponent(businessKey ?? '')}/account/sessions`;
@@ -143,6 +173,7 @@ export async function signOut(
     if (request.sessionId !== undefined && businessKey !== undefined) {
       await toApi(request, `${account}/sign-out`, named, '{}');
     }
+    await written;
     return await toApi(request, `${SESSION_PATH}/end`, named);
   })();
   signingOut.add(sent);

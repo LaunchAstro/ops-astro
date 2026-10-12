@@ -190,7 +190,7 @@ async function signBackIn(page, task, email, after) {
   if (after.path !== '/sign-in') return { ok: false, observed: 'not tried, the tab never left' };
   await page.fill('#signin-email', email);
   await page.fill('#signin-password', passwordOf(email));
-  await page.selectOption('#signin-business', 'alpha');
+  await page.fill('#signin-business', 'alpha');
   await page.click('form.signin__form button[type="submit"]');
   await page.waitForFunction(() => window.location.pathname !== '/sign-in', { timeout: 15_000 });
   await page.goto(`${WEB}/task/${task.recordId}`, { waitUntil: 'domcontentloaded' });

@@ -81,19 +81,15 @@ try {
   });
 
   const toBusiness = await tabTo(page, '#signin-business', 3);
-  // A native select takes arrows. Down then Up settles on a real option
-  // whichever way the list was ordered, and the value is read back.
-  await page.keyboard.press('ArrowDown');
+  // The business is typed, as the email is, and the value is read back.
+  await page.keyboard.type(mia.businessKey);
   const chosen = await page.inputValue('#signin-business');
   await record(page, {
-    step: 'choose the business',
-    key: `Tab x${String(toBusiness)}, ArrowDown`,
-    outcome: `the select reads "${chosen}"`,
-    ok: toBusiness !== undefined,
+    step: 'type the business',
+    key: `Tab x${String(toBusiness)}`,
+    outcome: `the field reads "${chosen}"`,
+    ok: toBusiness !== undefined && chosen === mia.businessKey,
   });
-  if (chosen !== mia.businessKey) {
-    await page.keyboard.press('ArrowUp');
-  }
 
   const kbSignIn = await shot('KB-1-signin-focus');
   await page.keyboard.press('Enter');

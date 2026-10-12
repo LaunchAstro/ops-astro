@@ -138,6 +138,9 @@ describe('C81 sign-in page', () => {
       view
         .all('a[href^="/legal/"]')
         .map((link) => [link.getAttribute('href') ?? '', link.textContent ?? ''] as const);
+    // The page names no business, so it links none until one is typed.
+    expect(links()).toEqual([]);
+    await view.choose('#signin-business', 'alpha');
     expect(links()).toEqual([
       ['/legal/alpha/privacy-policy/', 'Privacy policy'],
       ['/legal/alpha/client-terms/', 'Client terms'],

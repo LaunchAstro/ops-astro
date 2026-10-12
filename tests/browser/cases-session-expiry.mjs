@@ -106,7 +106,7 @@ async function sessionExpiry(page) {
   // And signing in again puts them back on it, drawing the record itself.
   await page.fill('#signin-email', 'ada@alpha.local');
   await page.fill('#signin-password', passwordOf('ada@alpha.local'));
-  await page.selectOption('#signin-business', 'alpha');
+  await page.fill('#signin-business', 'alpha');
   await page.click('form.signin__form button[type="submit"]');
   await page.waitForFunction(() => window.location.pathname !== '/sign-in', { timeout: 15_000 });
   await page.waitForSelector('[data-revision]', { timeout: 15_000 }).catch(() => undefined);
