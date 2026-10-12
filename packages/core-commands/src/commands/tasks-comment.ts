@@ -85,6 +85,17 @@ const TYPE_FIXES: readonly string[] = [
 
 const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
 
+/**
+ * The most people one comment names: a task's whole team, with room to spare.
+ * Each one named is checked and may be raised an inbox item under the task's
+ * lock, so the list is bounded here rather than by the request's size.
+ */
+const MENTION_LIMIT = 50;
+
+const MENTION_LIMIT_FIXES: readonly string[] = [
+  `Mention at most ${String(MENTION_LIMIT)} people in one comment.`,
+];
+
 export const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'This business has no comment record type installed, so it cannot hold a comment.',
   'It is not a permission problem and retrying will not change it.',
@@ -234,6 +245,9 @@ export async function writeTaskComment(
   }
   const named = mentionsOf(mentions);
   if (!Array.isArray(named)) return named as HandlerOutcome;
+  if (named.length > MENTION_LIMIT) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTION_LIMIT_FIXES));
+  }
   // INB-1: a mention of someone who cannot read the comment is refused before
   // it saves, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
