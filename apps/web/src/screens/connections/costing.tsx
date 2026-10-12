@@ -208,9 +208,14 @@ function Shown(props: { readonly costing: Costing }): ReactElement {
   );
 }
 
+/** A row per skill and currency, so a process is counted by its skill, once; it is thin when no currency averages it. */
 function lede(skills: readonly SkillCostView[]): string {
-  const thin = skills.filter((row) => row.figure.kind !== 'mean').length;
-  const ran = `${skills.length} ${skills.length === 1 ? 'process has' : 'processes have'} run at least once`;
+  const ids = new Set(skills.map((row) => row.skillId));
+  const averaged = new Set(
+    skills.filter((row) => row.figure.kind === 'mean').map((row) => row.skillId),
+  );
+  const thin = ids.size - averaged.size;
+  const ran = `${ids.size} ${ids.size === 1 ? 'process has' : 'processes have'} run at least once`;
   return thin === 0 ? `${ran}.` : `${ran}, and ${thin} of them not often enough to average.`;
 }
 

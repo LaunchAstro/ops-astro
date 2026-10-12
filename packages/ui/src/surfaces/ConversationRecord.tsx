@@ -41,7 +41,12 @@ export interface ConversationRecordProps {
   readonly wrapUp: ConversationRecordWrapUp | null;
 }
 
-const ROLE = { person: 'You', agent: 'Agent' } as const;
+/**
+ * The person is named as a person, not as "You": a colleague holding the
+ * read-any grant reads someone else's conversation here, and the read does
+ * not say whose it is.
+ */
+const ROLE = { person: 'Person', agent: 'Agent' } as const;
 /** The drawer's message look (AI-09): one transcript look, at either address. */
 const LOOK = { person: 'aip__msg aip__msg--user', agent: 'aip__msg aip__msg--ai' } as const;
 

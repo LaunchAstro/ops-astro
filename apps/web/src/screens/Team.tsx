@@ -19,6 +19,7 @@ import { isRefusal, isUnavailable, type OperationsClient } from '../operations/c
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
+import { availabilitySaver } from './team/availability-saves.ts';
 import { talkOf, useChat } from './team/chat.ts';
 
 /** A member as the panel draws them: the first name under the face. */
@@ -31,9 +32,26 @@ function teammate(member: TeamMemberView): Teammate {
   };
 }
 
-/** What the panel asks for, as the command's body: away carries the reason, available carries none. */
-const bodyOf = (change: AvailabilityChange): Readonly<Record<string, unknown>> =>
-  change.away ? { state: 'away', reason: change.reason } : { state: 'available' };
+/**
+ * The reader's own availability changes, through this screen's queue
+ * (`team/availability-saves.ts`): the person's last choice is the one stored.
+ */
+function useSetAvailability(
+  client: OperationsClient,
+  grantKey: string,
+  say: (because: string | null) => void,
+  reload: () => void,
+): (change: AvailabilityChange) => void {
+  const [save] = useState(availabilitySaver);
+  return (change) => {
+    say(null);
+    save(client, grantKey, change, (result) => {
+      if (isRefusal(result)) say(describeRefusal(result));
+      else if (isUnavailable(result)) say(result.because);
+      else reload();
+    });
+  };
+}
 
 export function TeamScreen(props: {
   readonly client: OperationsClient;
@@ -48,16 +66,7 @@ export function TeamScreen(props: {
   });
   const [because, setBecause] = useState<string | null>(null);
   const chat = useChat(client, props.grantKey, setBecause);
-
-  const onSetAvailability = (change: AvailabilityChange): void => {
-    setBecause(null);
-    void (async () => {
-      const result = await client.setAvailability(bodyOf(change));
-      if (isRefusal(result)) setBecause(describeRefusal(result));
-      else if (isUnavailable(result)) setBecause(result.because);
-      else reload();
-    })();
-  };
+  const onSetAvailability = useSetAvailability(client, props.grantKey, setBecause, reload);
 
   return (
     <div className="stack">

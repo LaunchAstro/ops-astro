@@ -154,6 +154,16 @@ describe('C55 the operations view page', () => {
     expect(api.urls).toEqual(['/api/b/alpha/operations/read']);
   });
 
+  it('the published breach runbook can be read in full from the operations view', async () => {
+    const body = 'Contain first: revoke the leaked key within the hour.\n\nThen tell the owner.';
+    const api = server(() => json({ ...READ, breachRunbook: { ...RUNBOOK, body } }));
+    const view = await open(api.fetch);
+    const runbook = view.find('[data-runbook-body]');
+    expect(runbook?.textContent).toContain('Contain first: revoke the leaked key within the hour.');
+    expect(runbook?.textContent).toContain('Then tell the owner.');
+    expect(runbook?.querySelector('summary')?.textContent).toBe('Read the breach runbook');
+  });
+
   it('C55 operations view contents: nothing unattended and no incident are said in words, and no runbook says so', async () => {
     const api = server(() =>
       json({ ...READ, unattended: [], privacyIncidents: [], breachRunbook: null }),

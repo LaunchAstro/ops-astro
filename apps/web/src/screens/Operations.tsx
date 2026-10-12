@@ -114,6 +114,15 @@ function Incidents(props: { readonly result: OperationsReadResult }): ReactEleme
             ? 'No breach runbook is published.'
             : `Breach runbook version ${breachRunbook.version}, published ${breachRunbook.publishedAt}.`}
         </p>
+        {breachRunbook === null ? null : (
+          <details data-runbook-body>
+            <summary>Read the breach runbook</summary>
+            {breachRunbook.body.split(/\n\s*\n/u).map((paragraph, at) => (
+              // The body is fixed for its version, so a paragraph's place is its identity.
+              <p key={at}>{paragraph}</p>
+            ))}
+          </details>
+        )}
         {privacyIncidents.length === 0 ? (
           <Empty title="No privacy incident is recorded." />
         ) : (
