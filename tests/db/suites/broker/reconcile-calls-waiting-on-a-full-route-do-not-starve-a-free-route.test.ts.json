@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Reconciliation must reach a newer call on a free route when fifty older calls wait on a full one; the selector and the slot are SQL and are judged on real rows."
+}
