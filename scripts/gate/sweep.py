@@ -717,8 +717,14 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
             )
     print(f"gate: {len(exemptions)} exempt path(s), all matching an approved digest")
 
-    absent = Path("/nonexistent/gate-terms-that-are-not-there.txt")
-    code = literal_sweep_status(absent)
+    # Run the literal sweep itself, as a hook would, with the list missing.
+    absent = "/nonexistent/gate-terms-that-are-not-there.txt"
+    code = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--literal"],
+        cwd=REPO,
+        env={**os.environ, LITERAL_LIST_ENV: absent},
+        capture_output=True,
+    ).returncode
     print(f"gate: a missing private list exits {code}")
     if code != 2:
         failures.append(f"a missing private list exited {code}, not 2")
@@ -735,10 +741,6 @@ def mode_self_test(hashes, shapes, exemptions) -> int:
         return 1
     print("gate: self-test passed")
     return 0
-
-
-def literal_sweep_status(listfile: Path) -> int:
-    return 2 if not listfile.is_file() else 0
 
 
 def mode_literal(revs, patterns: list[str], reveal: bool) -> int:
