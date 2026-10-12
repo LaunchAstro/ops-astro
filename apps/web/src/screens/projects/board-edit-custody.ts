@@ -227,7 +227,12 @@ export class BoardEditCustody {
     this.#settled(id, entry, result, uncertain);
   }
   #settled(id: string, entry: BoardEditEntry, result: Settlement, uncertain: boolean): void {
-    if (result.kind === 'unknown' || (uncertain && result.kind !== 'ok')) {
+    // A stored success replays before the revision check, so VERSION_STALE settles even a
+    // lost edit as not stored. Other refusals after a lost answer may hide a stored success.
+    if (
+      result.kind === 'unknown' ||
+      (uncertain && result.kind !== 'ok' && result.kind !== 'stale')
+    ) {
       this.#put(id, {
         entry,
         busy: false,
