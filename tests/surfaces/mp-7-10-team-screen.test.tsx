@@ -22,8 +22,13 @@ const json = (body: unknown, status = 200): Response =>
 
 type Availability = { state: 'available' | 'away'; reason: string | null } | null;
 
-/** Two teammates: me, available, and Bo, away at a shoot. */
-function server() {
+/**
+ * Two teammates: me, available, and Bo, away at a shoot. With `hold`, the
+ * first availability save reaches the server only when `release` is called,
+ * as a slow request does: it is stored then, after anything sent meanwhile.
+ */
+function server(hold = false) {
+  const held: (() => void)[] = [];
   const people: { personId: string; name: string; availability: Availability }[] = [
     { personId: 'p-me', name: 'Ana Bell', availability: null },
     { personId: 'p-bo', name: 'Bo Reyes', availability: { state: 'away', reason: 'On a shoot' } },
@@ -45,9 +50,21 @@ function server() {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
+    if (hold && String(url).endsWith('/account/availability') && held.length === 0) {
+      await new Promise<void>((resolve) => {
+        held.push(resolve);
+      });
+    }
     return route(String(url), String(init?.body));
   }) as unknown as typeof globalThis.fetch;
-  return { fetch, sent };
+  return {
+    fetch,
+    sent,
+    asked: () => held.length,
+    release: () => {
+      for (const one of held) one();
+    },
+  };
 }
 
 const settle = async (): Promise<void> => {
@@ -65,8 +82,8 @@ async function until(say: string, check: () => boolean, deadline = Date.now() + 
   await until(say, check, deadline);
 }
 
-const team = async () => {
-  const api = server();
+const team = async (hold = false) => {
+  const api = server(hold);
   const client = new OperationsClient({
     origin: '',
     businessKey: 'b',
@@ -127,5 +144,26 @@ it('MP-7-10 CS-7.27: the person sets their own availability with a reason', asyn
   await page.click('.tmc__me button.tmc__back');
   await until('my line is in again', () => mine(page).includes('You are in'));
   expect(api.sent.at(-1)).toEqual({ state: 'available' });
+  await page.unmount();
+});
+
+it('MP-7-10 two quick changes of availability are stored in the order the person made them', async () => {
+  const { api, page } = await team(true);
+  await page.click('.tmc__me button.tmc__set');
+  await page.type('.tmc__me input[name="reason"]', 'At the dentist');
+  await page.click('.tmc__me button[type="submit"]');
+  await until('the first save has left', () => api.asked() === 1);
+  // Its answer has not come, so the line still says in: the person says it again, differently.
+  await page.click('.tmc__me button.tmc__set');
+  await page.type('.tmc__me input[name="reason"]', 'Out until Friday');
+  await page.click('.tmc__me button[type="submit"]');
+  await settle();
+  api.release();
+  await until('both saves stored', () => api.sent.length === 2);
+  await until('my line settles', () => mine(page).includes('Out until Friday'));
+  expect(api.sent).toEqual([
+    { state: 'away', reason: 'At the dentist' },
+    { state: 'away', reason: 'Out until Friday' },
+  ]);
   await page.unmount();
 });

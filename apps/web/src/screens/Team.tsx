@@ -12,7 +12,7 @@
 // they first answer, so it opens on the first unread (R36). A teammate's name
 // as the door to their work waits on a view of a person's work: plain for now.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { TeamPanel, type AvailabilityChange, type Teammate } from '@launchastro/ui';
 import type { TeamListResult, TeamMemberView } from '../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
@@ -35,6 +35,32 @@ function teammate(member: TeamMemberView): Teammate {
 const bodyOf = (change: AvailabilityChange): Readonly<Record<string, unknown>> =>
   change.away ? { state: 'away', reason: change.reason } : { state: 'available' };
 
+const settled = (): void => {};
+
+/**
+ * The reader's own availability changes. Each leaves once the last one has
+ * answered, so the server stores them in the order the person made them and
+ * the last choice is the one kept.
+ */
+function useSetAvailability(
+  client: OperationsClient,
+  say: (because: string | null) => void,
+  reload: () => void,
+): (change: AvailabilityChange) => void {
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  return (change) => {
+    say(null);
+    const sent = saving.current.then(async () => await client.setAvailability(bodyOf(change)));
+    saving.current = sent.then(settled, settled);
+    void (async () => {
+      const result = await sent;
+      if (isRefusal(result)) say(describeRefusal(result));
+      else if (isUnavailable(result)) say(result.because);
+      else reload();
+    })();
+  };
+}
+
 export function TeamScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
@@ -48,16 +74,7 @@ export function TeamScreen(props: {
   });
   const [because, setBecause] = useState<string | null>(null);
   const chat = useChat(client, props.grantKey, setBecause);
-
-  const onSetAvailability = (change: AvailabilityChange): void => {
-    setBecause(null);
-    void (async () => {
-      const result = await client.setAvailability(bodyOf(change));
-      if (isRefusal(result)) setBecause(describeRefusal(result));
-      else if (isUnavailable(result)) setBecause(result.because);
-      else reload();
-    })();
-  };
+  const onSetAvailability = useSetAvailability(client, setBecause, reload);
 
   return (
     <div className="stack">
