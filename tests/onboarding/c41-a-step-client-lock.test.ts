@@ -15,6 +15,7 @@ import { agentPath } from '../api/controls-fixture.ts';
 import { issueBody } from '../api/api-2-agent-credential-world.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -96,7 +97,13 @@ describe.skipIf(serverUrl === undefined)('C41-A a step result under its task loc
     const { controls } = the;
     const purpose = `step_${key.replaceAll('-', '_')}`;
     const proposal = await controls.propose(taskId, await revisionOf(taskId), purpose);
-    return String((await controls.pickup(await controls.approve(proposal)))['credential']);
+    const { db, agentActorId } = controls.fixture;
+    const picked = await besideOtherWork(
+      db.admin,
+      agentActorId,
+      async () => await controls.pickup(await controls.approve(proposal)),
+    );
+    return String(picked['credential']);
   };
 
   const byAgent = async (taskId: string, credential: string): Promise<readonly unknown[]> => {

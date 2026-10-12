@@ -20,6 +20,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 
 /** C80's one-word request, less the party and the task each recipe names. */
 export const C80_REQUEST = {
@@ -180,6 +181,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */
 type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
+  readonly world: Pick<World, 'db' | 'agent'>;
   reserve(task: Task, purpose: string): Promise<Answer>;
   asAgent(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
 };
@@ -205,7 +207,13 @@ export async function c80AgentPickup(
   const decided = await harness.reserve(task, PROPOSAL.purpose);
   if (decided.code !== 'ok') throw new Error(`d06: the reservation refused ${decided.code}`);
   const { reservationId } = decided.body['detail'] as Record<string, unknown>;
-  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId };
+  const { db, agent } = harness.world;
+  const pickup = await besideOtherWork(
+    db.admin,
+    agent.actorId,
+    async () => await harness.asAgent('task.pickup', { reservationId }),
+  );
+  return { pickup, partyId };
 }
 
 /** D06's positive agent body for C80's request: the picked-up task, at its client. */

@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import type { AgentHold } from './d06-agent-fixture.ts';
 import type { Harness } from './role-case-harness.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
 
 const detailOf = (answer: { readonly body: Record<string, unknown> }): Record<string, unknown> =>
   (answer.body['detail'] as Record<string, unknown> | undefined) ?? {};
@@ -38,7 +39,12 @@ export async function stepResultBody(
   );
   expect(decided.code, 'the decision a step pickup needs').toBe('ok');
   const reservationId = String(detailOf(decided)['reservationId']);
-  const picked = await harness.asAgent('task.pickup', { reservationId });
+  const { db, agent } = harness.world;
+  const picked = await besideOtherWork(
+    db.admin,
+    agent.actorId,
+    async () => await harness.asAgent('task.pickup', { reservationId }),
+  );
   expect(picked.code, 'the agent picks the step up').toBe('ok');
   hold.track(picked);
   const credential = String(detailOf(picked)['credential']);

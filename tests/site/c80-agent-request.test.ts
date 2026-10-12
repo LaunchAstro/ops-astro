@@ -12,7 +12,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { codeOf, detailOf } from '../commands/agent-fixture.ts';
+import { besideOtherWork } from '../support/agent-other-work.ts';
+import { codeOf, detailOf, type Decider } from '../commands/agent-fixture.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { grantTo } from '../commands/fixture.ts';
@@ -35,6 +36,14 @@ const agentRows = async () =>
       [w.world.agentActorId],
     )
   )[0]?.n;
+
+/** `world.pickUp` of a task on no client, beside the agent's work for one. */
+const pickUp = async (by: Decider, title: string) =>
+  await besideOtherWork(
+    w.world.db.admin,
+    w.world.agentActorId,
+    async () => await w.world.pickUp(by, title),
+  );
 
 /** The collections and actions of every delegation minted for `personId`. */
 const delegationsFor = async (personId: string) =>
@@ -83,7 +92,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request under a pickup’s r
   it('gets no run reach where the approving person lacks run:write', async () => {
     const before = await agentRows();
     const gus = await w.world.decider('gus');
-    const picked = await w.world.pickUp(gus, 'task work only');
+    const picked = await pickUp(gus, 'task work only');
     expect((await delegationsFor(gus.personId)).map((row) => row.collections)).toStrictEqual([
       ['task'],
     ]);
@@ -96,7 +105,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request under a pickup’s r
 describe.skipIf(serverUrl === undefined)('C80 agent request, crossings under a run reach', () => {
   it('another task of the same person is outside the purpose', async () => {
     const before = await agentRows();
-    const picked = await w.world.pickUp(w.ava, 'one task');
+    const picked = await pickUp(w.ava, 'one task');
     const asked = await w.world.asAgent(body(w.partyA, w.taskA), picked.credential);
     expect(codeOf(asked)).toBe('DELEGATION_OUT_OF_PURPOSE');
     expect(await agentRows()).toBe(before);
@@ -106,7 +115,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, crossings under a r
     const before = await agentRows();
     const theirs = await w.asIn(w.beta, w.eve, { command: 'task.create', fields: { title: 'x' } });
     const betaTask = 'recordId' in theirs ? String(theirs.recordId) : '';
-    const picked = await w.world.pickUp(w.ava, 'one business');
+    const picked = await pickUp(w.ava, 'one business');
     const asked = await w.world.asAgent(body(w.partyA, betaTask), picked.credential);
     expect(codeOf(asked)).toBe('DELEGATION_OUT_OF_PURPOSE');
     expect(await agentRows()).toBe(before);
