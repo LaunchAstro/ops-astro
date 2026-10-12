@@ -193,8 +193,13 @@ export class ScoresCustody {
       !this.#current() ||
       epoch !== this.#epoch ||
       this.snapshot(id).pending?.operationId !== pending.operationId
-    )
+    ) {
+      // A change let go or left behind was still stored: the page reads it.
+      const now = this.snapshot(id);
+      if (answer.kind === 'ok' && this.#current())
+        this.#put(id, { ...now, changed: now.changed + 1 });
       return;
+    }
     // A refusal now may withhold a stored success, so it keeps an unknown held. A stale
     // answer cannot: a stored success replays before the revision check.
     const uncertain =
