@@ -126,6 +126,19 @@ async function tab(
 const landed = (view: Mounted): boolean =>
   view.text().includes('private client task') || view.text().includes('Your session has ended');
 
+/** A tab opened as one sign-in, once it has landed. */
+async function landedTab(...args: Parameters<typeof tab>): Promise<Mounted> {
+  const view = await tab(...args);
+  await until(view, () => landed(view), 'a board or the sign-in');
+  return view;
+}
+
+/** The tab shows its own person's private task and never the other's. */
+function expectOwnBoard(view: Mounted, own: string, other: string): void {
+  expect(view.text()).toContain(`${own} private client task`);
+  expect(view.text()).not.toContain(`${other} private client task`);
+}
+
 describe('S0-6 isolation', () => {
   it('each person’s tab reads its own client data from a jar holding both named cookies', async () => {
     const firstToken = await tokenFor('first-person');
@@ -134,10 +147,8 @@ describe('S0-6 isolation', () => {
     const cookies = jar(firstToken, otherToken);
 
     // Control: the fixture reaches the private read, for each person in turn.
-    const first = await tab(api, cookies, 'first@example.test', firstToken);
-    await until(first, () => landed(first), 'a board or the sign-in');
-    expect(first.text()).toContain('first-person private client task');
-    expect(first.text()).not.toContain('second-person private client task');
+    const first = await landedTab(api, cookies, 'first@example.test', firstToken);
+    expectOwnBoard(first, 'first-person', 'second-person');
     // The tab still says the first person is signed in: the person menu (C23)
     // names them by email while their name is refused.
     expect(first.find('.appbar .who__trigger')?.getAttribute('aria-label')).toBe(
@@ -145,10 +156,8 @@ describe('S0-6 isolation', () => {
     );
     await first.unmount();
 
-    const second = await tab(api, cookies, 'second@example.test', otherToken);
-    await until(second, () => landed(second), 'a board or the sign-in');
-    expect(second.text()).toContain('second-person private client task');
-    expect(second.text()).not.toContain('first-person private client task');
+    const second = await landedTab(api, cookies, 'second@example.test', otherToken);
+    expectOwnBoard(second, 'second-person', 'first-person');
     await second.unmount();
 
     expect(new Set(boards)).toEqual(new Set(['first-person', 'second-person']));
@@ -162,8 +171,7 @@ describe('S0-6 isolation', () => {
     const cookies = jar(otherToken);
 
     // Control: the same jar, in the second person's tab, reaches their private read.
-    const second = await tab(api, cookies, 'second@example.test', otherToken);
-    await until(second, () => landed(second), 'a board or the sign-in');
+    const second = await landedTab(api, cookies, 'second@example.test', otherToken);
     expect(second.text()).toContain('second-person private client task');
     await second.unmount();
     expect(boards).toEqual(['second-person']);
@@ -171,8 +179,7 @@ describe('S0-6 isolation', () => {
     // The first person's tab names its own sign-in, whose cookie is gone: the
     // second person's cookie does not stand in for it, and the tab asks the
     // first person to sign in again.
-    const page = await tab(api, cookies, 'first@example.test', firstToken);
-    await until(page, () => landed(page), 'a board or the sign-in');
+    const page = await landedTab(api, cookies, 'first@example.test', firstToken);
     expect(page.text()).not.toContain('second-person private client task');
     expect(page.text()).toContain('Your session has ended');
     expect(page.find('.appbar .who__trigger')).toBeNull();

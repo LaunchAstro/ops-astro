@@ -30,6 +30,28 @@ const rows: readonly Row[] = [
   { name: 'Delta', hours: 9.5 },
 ];
 
+// Under the package's sheets, the box is held to its parent's width and
+// scrolls what overflows it sideways, so a wide table scrolls inside it
+// rather than widening the page. jsdom cascades `overflow` and
+// `overflow-x` apart, not knowing one sets the other, so both must scroll.
+function expectBoxScrollsSideways(element: Element): void {
+  const sheets = document.createElement('style');
+  sheets.textContent = packageSheets();
+  document.head.append(sheets);
+  try {
+    const box = getComputedStyle(element);
+    const sideways = [
+      box.getPropertyValue('overflow').split(' ')[0] ?? '',
+      box.getPropertyValue('overflow-x'),
+    ].filter((value) => value !== '');
+    expect(sideways.length).toBeGreaterThan(0);
+    for (const value of sideways) expect(['auto', 'scroll']).toContain(value);
+    expect(box.getPropertyValue('max-width')).toBe('100%');
+  } finally {
+    sheets.remove();
+  }
+}
+
 describe('MP-9-1 table sort raw value: tables sort on the raw value, numbers first descending, flip on a second click and scroll inside their box', () => {
   it('sorts on the raw number, not its text, descending first, empties last', () => {
     const sorted = sortRows(rows, columns, { column: 'hours', direction: 'desc' });
@@ -59,25 +81,7 @@ describe('MP-9-1 table sort raw value: tables sort on the raw value, numbers fir
     );
     expect(mounted.find('.tbl-box')?.getAttribute('tabindex')).toBe('0');
     expect(mounted.find('.tbl-box table')).not.toBeNull();
-    // Under the package's sheets, the box is held to its parent's width and
-    // scrolls what overflows it sideways, so a wide table scrolls inside it
-    // rather than widening the page. jsdom cascades `overflow` and
-    // `overflow-x` apart, not knowing one sets the other, so both must scroll.
-    const sheets = document.createElement('style');
-    sheets.textContent = packageSheets();
-    document.head.append(sheets);
-    try {
-      const box = getComputedStyle(mounted.find('.tbl-box') as Element);
-      const sideways = [
-        box.getPropertyValue('overflow').split(' ')[0] ?? '',
-        box.getPropertyValue('overflow-x'),
-      ].filter((value) => value !== '');
-      expect(sideways.length).toBeGreaterThan(0);
-      for (const value of sideways) expect(['auto', 'scroll']).toContain(value);
-      expect(box.getPropertyValue('max-width')).toBe('100%');
-    } finally {
-      sheets.remove();
-    }
+    expectBoxScrollsSideways(mounted.find('.tbl-box') as Element);
     await mounted.click('th[data-col="hours"] button');
     const read = (): string[] =>
       mounted?.all('tbody tr td:first-child').map((cell) => cell.textContent ?? '') ?? [];

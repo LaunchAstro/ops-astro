@@ -105,23 +105,46 @@ const press = async (target: Element | null): Promise<void> => {
   });
 };
 
+// Enter on a focused link: unless its keydown is cancelled, a browser fires
+// the link's click, with no pointer (detail 0).
+const pressEnter = async (link: HTMLAnchorElement | null): Promise<void> => {
+  await act(async () => {
+    const enter = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    if (link?.dispatchEvent(enter) === true) {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }));
+    }
+    await vi.advanceTimersByTimeAsync(300);
+  });
+};
+
+/** A case run on fake timers, put back however it ends. */
+const onFakeTimers = async (run: () => Promise<void>): Promise<void> => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    await run();
+  } finally {
+    vi.useRealTimers();
+  }
+};
+
 describe('MP-5-8 open beside, from the Projects screen', () => {
   it('a plain click on a row’s name opens its task in the panel, and the page stays the board', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
+    await onFakeTimers(async () => {
       const { board, opened } = await screen();
       const before = window.location.href;
       await press(board.host.querySelector(NAME(A)));
       expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
       expect(window.location.href).toBe(before);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
   it('the name is a link, so the keyboard reaches it and Enter opens it', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
+    await onFakeTimers(async () => {
       const { board, opened } = await screen();
       const link = board.host.querySelector<HTMLAnchorElement>(NAME(A));
       expect([link?.tagName, link?.getAttribute('href')]).toStrictEqual(['A', '/task/TSK-1']);
@@ -131,43 +154,24 @@ describe('MP-5-8 open beside, from the Projects screen', () => {
         link?.focus();
       });
       expect(document.activeElement).toBe(link);
-      // Enter on a focused link: unless its keydown is cancelled, a browser
-      // fires the link's click, with no pointer (detail 0). After the opening
-      // delay the panel is asked to open the task, and the page stays the board.
+      // After the opening delay the panel is asked to open the task, and the
+      // page stays the board.
       const before = window.location.href;
-      await act(async () => {
-        const enter = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          bubbles: true,
-          cancelable: true,
-        });
-        if (link?.dispatchEvent(enter) === true) {
-          link.dispatchEvent(
-            new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }),
-          );
-        }
-        await vi.advanceTimersByTimeAsync(300);
-      });
+      await pressEnter(link);
       expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
       expect(window.location.href).toBe(before);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
   it('the opened row’s name, and only that one, is the door focus returns to', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
+    await onFakeTimers(async () => {
       const { board } = await screen();
       expect(board.all('[data-panel-door]')).toHaveLength(0);
       await press(board.host.querySelector(NAME(B)));
       expect(board.all('[data-panel-door="open"]')).toStrictEqual([
         board.host.querySelector(NAME(B)),
       ]);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
   it('a change made in the panel is the board’s next read', async () => {

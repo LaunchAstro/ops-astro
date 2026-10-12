@@ -9,6 +9,7 @@ import { join } from 'node:path';
 // @ts-expect-error -- jsdom ships no declarations; this check reads only its CSSOM
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+import { continued } from './css-continued.ts';
 
 // The component kit's classes the page kit places (MP-1-3): every class the
 // kit's two stylesheets define, and the ones its table, banner, meter, stat,
@@ -60,35 +61,6 @@ function kitClasses(): ReadonlySet<string> {
 // re-serialises one as a space where a browser reads nothing.
 const { window } = new JSDOM('') as { window: { CSSStyleSheet: typeof CSSStyleSheet } };
 
-// The source as CSS Syntax reads it: inside a quoted string a backslash and
-// a newline (\n, \r\n, \r or \f) are a line continuation, which adds nothing,
-// so `[class~="ter\<newline>m__tip"]` names `term__tip`. Comments, other
-// escapes and everything outside strings are kept as written.
-function continued(css: string): string {
-  let out = '';
-  let quote = '';
-  for (let index = 0; index < css.length; index += 1) {
-    const character = css[index] ?? '';
-    if (quote === '' && css.startsWith('/*', index)) {
-      const end = css.indexOf('*/', index + 2);
-      const stop = end === -1 ? css.length : end + 2;
-      out += css.slice(index, stop);
-      index = stop - 1;
-    } else if (character === '\\') {
-      const newline = /^(?:\r\n|[\n\r\f])/u.exec(css.slice(index + 1))?.[0];
-      if (quote !== '' && newline !== undefined) index += newline.length;
-      else {
-        out += css.slice(index, index + 2);
-        index += 1;
-      }
-    } else {
-      if (quote === '' && (character === '"' || character === "'")) quote = character;
-      else if (character === quote || /[\n\r\f]/u.test(character)) quote = '';
-      out += character;
-    }
-  }
-  return out;
-}
 interface Parsed {
   readonly selectorText?: string;
   readonly cssRules?: Iterable<Parsed>;
