@@ -89,6 +89,7 @@ import { createPortal } from 'react-dom';
 import { useAssignments } from './task/assignment-context.tsx';
 import { PageAssignment } from './task/PageAssignment.tsx';
 import { useRereadOn } from './task/reread-on.ts';
+import { useSharedNote } from '../views/decision-closures.tsx';
 import { useHeld } from './task/held-state.ts';
 import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
@@ -588,6 +589,9 @@ function Loaded(props: LoadedProps): ReactElement {
   };
   const dirty = props.draft !== null;
 
+  // A closure from the dock panel's view of this task closes the page's too.
+  const decided = useSharedNote(task.id, props.note, props.onDecided);
+
   // C2: who else is here, for this task and for the app strip.
   const presence = usePresence(client, `task:${task.id}`);
   useShowOnPage(presence.seen);
@@ -649,7 +653,7 @@ function Loaded(props: LoadedProps): ReactElement {
         agent={
           <AgentSide
             execution={execution}
-            props={props}
+            props={{ ...props, ...decided }}
             persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
             outages={<Outages state={outages.state} taskId={task.id} />}
           />
