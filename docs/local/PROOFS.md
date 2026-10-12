@@ -508,7 +508,8 @@ file the suites write is evidence only. The container is held by the id
 migrations wait until that container is the one publishing the port. A run
 ended while `docker run` is in flight waits for it and removes the container
 by the id it wrote to `--cidfile`. That file and the keeper's FIFO sit in a
-`mktemp -d` folder of the run's own, which the trap removes, so two runs
+`mktemp -d` folder of the run's own, which the trap removes (the keeper too,
+once the suites have started, so a SIGKILL leaves nothing), so two runs
 sharing an evidence path never touch each other's. The trap
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
