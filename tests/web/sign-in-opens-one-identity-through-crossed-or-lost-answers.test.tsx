@@ -117,85 +117,104 @@ async function page(fetcher: typeof fetch) {
   return { view, opened, submit, code };
 }
 
-describe('sign-in opens one identity through crossed or lost answers', () => {
-  it('a code check answered after its step was cancelled and Ada signed in opens only Ada', async () => {
-    const { fetcher, holding } = world({ held: 'code check' });
-    const { view, opened, submit, code } = await page(fetcher);
-    await submit(MIA);
-    expect(view.find(`${CODE}`), 'Mia is asked for her code').not.toBeNull();
-    await code();
-    await view.click(CANCEL);
+async function lateCodeCheckAfterCancel() {
+  const { fetcher, holding } = world({ held: 'code check' });
+  const { view, opened, submit, code } = await page(fetcher);
+  await submit(MIA);
+  expect(view.find(`${CODE}`), 'Mia is asked for her code').not.toBeNull();
+  await code();
+  await view.click(CANCEL);
+  await settle();
+  await submit(ADA);
+  expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
+  await act(async () => {
+    holding.answer(json({ accessToken: 'aal2-mia@example.test' }));
     await settle();
-    await submit(ADA);
-    expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
-    await act(async () => {
-      holding.answer(json({ accessToken: 'aal2-mia@example.test' }));
-      await settle();
-    });
-    expect(opened, 'the late check opens nothing').toEqual([{ ...ADA, sessionId: 'ada-half' }]);
-    await view.unmount();
   });
+  expect(opened, 'the late check opens nothing').toEqual([{ ...ADA, sessionId: 'ada-half' }]);
+  await view.unmount();
+}
 
-  it('a code trade answered after its step was cancelled and Ada signed in opens only Ada and ends its cookie', async () => {
-    const { fetcher, holding, ended } = world({ held: 'code trade' });
-    const { view, opened, submit, code } = await page(fetcher);
-    await submit(MIA);
-    await code();
-    await view.click(CANCEL);
+async function lateCodeTradeAfterCancel() {
+  const { fetcher, holding, ended } = world({ held: 'code trade' });
+  const { view, opened, submit, code } = await page(fetcher);
+  await submit(MIA);
+  await code();
+  await view.click(CANCEL);
+  await settle();
+  await submit(ADA);
+  await act(async () => {
+    holding.answer(json({ ok: true, session: 'mia-full' }));
     await settle();
-    await submit(ADA);
-    await act(async () => {
-      holding.answer(json({ ok: true, session: 'mia-full' }));
-      await settle();
-    });
-    expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
-    expect(ended, 'the sign-in the late trade made goes').toContain('mia-full');
-    await view.unmount();
   });
+  expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
+  expect(ended, 'the sign-in the late trade made goes').toContain('mia-full');
+  await view.unmount();
+}
+
+async function lostAnswerThenRetryAsAda(step: 'password grant' | 'cookie trade') {
+  const { fetcher } = world({ lost: step });
+  const { view, opened, submit } = await page(fetcher);
+  await submit(MIA);
+  expect(opened, 'the lost attempt opens nothing').toEqual([]);
+  expect(view.find('[role="alert"]'), 'the page says the sign-in failed').not.toBeNull();
+  await submit(ADA);
+  expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
+  await view.unmount();
+}
+
+async function lostProbeWhileFormChanged() {
+  const probe = deferred();
+  const { fetcher: base } = world();
+  const fetcher: typeof fetch = async (input, init) =>
+    String(input).endsWith('/session/person') ? await probe.promise : await base(input, init);
+  const { view, opened, submit } = await page(fetcher);
+  await submit(MIA);
+  await view.type('#signin-email', ADA.email);
+  await view.choose('#signin-business', ADA.businessKey);
+  await act(async () => {
+    probe.lose();
+    await settle();
+  });
+  expect(opened).toEqual([{ ...MIA, sessionId: 'mia-half' }]);
+  await view.unmount();
+}
+
+async function lostCodeAnswerThenCodeAgain(step: 'code check' | 'code trade') {
+  const { fetcher } = world({ lost: step });
+  const { view, opened, submit, code } = await page(fetcher);
+  await submit(MIA);
+  await code();
+  expect(opened, 'the lost answer opens nothing').toEqual([]);
+  expect(view.find(`${CODE}`), 'the code is asked again').not.toBeNull();
+  await code();
+  expect(opened).toEqual([{ ...MIA, sessionId: 'mia-full' }]);
+  await view.unmount();
+}
+
+describe('sign-in opens one identity through crossed or lost answers', () => {
+  it(
+    'a code check answered after its step was cancelled and Ada signed in opens only Ada',
+    lateCodeCheckAfterCancel,
+  );
+
+  it(
+    'a code trade answered after its step was cancelled and Ada signed in opens only Ada and ends its cookie',
+    lateCodeTradeAfterCancel,
+  );
 
   it.each(['password grant', 'cookie trade'] as const)(
     'a lost %s answer, then a retry as Ada, opens Ada and never Mia',
-    async (step) => {
-      const { fetcher } = world({ lost: step });
-      const { view, opened, submit } = await page(fetcher);
-      await submit(MIA);
-      expect(opened, 'the lost attempt opens nothing').toEqual([]);
-      expect(view.find('[role="alert"]'), 'the page says the sign-in failed').not.toBeNull();
-      await submit(ADA);
-      expect(opened).toEqual([{ ...ADA, sessionId: 'ada-half' }]);
-      await view.unmount();
-    },
+    lostAnswerThenRetryAsAda,
   );
 
-  it('a lost second-factor probe answer opens Mia, as submitted, though the form was changed to Ada meanwhile', async () => {
-    const probe = deferred();
-    const { fetcher: base } = world();
-    const fetcher: typeof fetch = async (input, init) =>
-      String(input).endsWith('/session/person') ? await probe.promise : await base(input, init);
-    const { view, opened, submit } = await page(fetcher);
-    await submit(MIA);
-    await view.type('#signin-email', ADA.email);
-    await view.choose('#signin-business', ADA.businessKey);
-    await act(async () => {
-      probe.lose();
-      await settle();
-    });
-    expect(opened).toEqual([{ ...MIA, sessionId: 'mia-half' }]);
-    await view.unmount();
-  });
+  it(
+    'a lost second-factor probe answer opens Mia, as submitted, though the form was changed to Ada meanwhile',
+    lostProbeWhileFormChanged,
+  );
 
   it.each(['code check', 'code trade'] as const)(
     'a lost %s answer, then the code again, opens Mia once on her full sign-in',
-    async (step) => {
-      const { fetcher } = world({ lost: step });
-      const { view, opened, submit, code } = await page(fetcher);
-      await submit(MIA);
-      await code();
-      expect(opened, 'the lost answer opens nothing').toEqual([]);
-      expect(view.find(`${CODE}`), 'the code is asked again').not.toBeNull();
-      await code();
-      expect(opened).toEqual([{ ...MIA, sessionId: 'mia-full' }]);
-      await view.unmount();
-    },
+    lostCodeAnswerThenCodeAgain,
   );
 });
