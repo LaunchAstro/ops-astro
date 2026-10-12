@@ -26,6 +26,7 @@ import { handoffFailures } from './command-handoffs.mjs';
 export { handoffFailures } from './command-handoffs.mjs';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
+const UI = resolve(import.meta.dirname, '..', 'packages', 'ui', 'src');
 // transport, addresses
 const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
 // The only requests the app sends itself, each call exactly once; any other request fails.
@@ -65,10 +66,14 @@ const REQUEST_GLOBALS = new Set(['fetch', 'XMLHttpRequest', 'EventSource', 'WebS
 const REQUEST_METHODS = new Set(['fetch', 'sendBeacon']);
 const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
 
-function sources(root) {
-  return readdirSync(root, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name))
-    .map((entry) => relative(root, join(entry.parentPath, entry.name)));
+// Every module the web app ships, by its path from apps/web/src: its own, script or TypeScript,
+// and the UI kit it imports.
+function sources() {
+  return [WEB, UI].flatMap((root) =>
+    readdirSync(root, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.[cm]?[jt]sx?$/u.test(entry.name))
+      .map((entry) => relative(WEB, join(entry.parentPath, entry.name))),
+  );
 }
 
 function importsOf(root, file, text) {
@@ -89,7 +94,7 @@ function nodesOf(text, file, values = false) {
     nodes.push(node);
     for (const key of Object.keys(node)) if (key !== 'span') walk(node[key]);
   };
-  walk(parseSync(text, { syntax: 'typescript', tsx: file.endsWith('.tsx') }));
+  walk(parseSync(text, { syntax: 'typescript', tsx: file.endsWith('x') }));
   return nodes;
 }
 
@@ -157,7 +162,8 @@ export function scanUses(files, namespaces, unparsed = []) {
       if (sendsDirectly(withoutNamed(text, file), file)) {
         unparsed.push(`${file} sends a request itself, with no command or CLI verb`);
       }
-      if (NOT_ACTIONS.has(file)) continue;
+      // The kit's command names are labels: the app's own files call the commands.
+      if (NOT_ACTIONS.has(file) || file.startsWith('..')) continue;
       commands = commandsIn(text, namespaces, file);
     } catch {
       // Fails closed: a file that cannot be read for commands fails the check.
@@ -294,7 +300,7 @@ export function realSurfaces(uses) {
 }
 
 export function run(
-  files = new Map(sources(WEB).map((file) => [file, readFileSync(join(WEB, file), 'utf8')])),
+  files = new Map(sources().map((file) => [file, readFileSync(join(WEB, file), 'utf8')])),
 ) {
   const namespaces = new Set(COMMAND_SURFACE.map((one) => one.name.split('.')[0]));
   const unparsed = [];
