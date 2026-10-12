@@ -168,6 +168,20 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
   });
 });
 
+describe('C71-G losing management while the rename form is open', () => {
+  it('an open rename form closes when a refresh says the reader may no longer manage, and sends nothing', async () => {
+    const p = props({ groups: [LAUNCH] });
+    mounted = await mount(<TeamPanel {...p} />);
+    await mounted.click('.tmc__g[data-group="g-launch"]');
+    await mounted.click('.tmc__ghead .tmc__rename');
+    await mounted.type('form.tmc__renaming input[name="name"]', 'Launch week');
+    await mounted.render(<TeamPanel {...next(p, { groups: [{ ...LAUNCH, canManage: false }] })} />);
+    expect(mounted.find('form.tmc__renaming')).toBeNull();
+    expect(mounted.find('.tmc__rename')).toBeNull();
+    expect(p.calls.groups.filter((a) => a.do === 'rename')).toEqual([]);
+  });
+});
+
 describe('C71-G CS-7.41 a manager adds only teammates who are not yet members', () => {
   it('Add takes the teammate shown first, or the one chosen', async () => {
     const pair: GroupThread = { ...LAUNCH, members: [ME, 'p-remy'] };
