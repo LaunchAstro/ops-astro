@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "One standing mandate per filing: drafts and identical payloads on two connections, revoked and expired bindings, another client's or business's filing, and the database backstop"
+}
