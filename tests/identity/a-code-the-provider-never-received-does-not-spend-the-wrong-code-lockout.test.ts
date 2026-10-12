@@ -101,6 +101,7 @@ it.skipIf(!live)(
     let limited = true;
     const provider = createGoTrueFactors({
       baseUrl: 'http://provider.invalid',
+      // oxlint-disable-next-line require-await
       fetch: async (input) => {
         const path = new URL(String(input)).pathname;
         if (path === '/user')
@@ -171,6 +172,7 @@ it.skipIf(!live)('a challenge the provider refuses is not answered as a wrong co
   await member(bravo, subject, `factor-${randomUUID()}`);
   const provider = createGoTrueFactors({
     baseUrl: 'http://provider.invalid',
+    // oxlint-disable-next-line require-await
     fetch: async (input) => {
       const path = new URL(String(input)).pathname;
       if (path.endsWith('/challenge')) return tooMany();
@@ -189,6 +191,7 @@ it.skipIf(!live)(
     await member(bravo, subject, `factor-${randomUUID()}`);
     const provider = createGoTrueFactors({
       baseUrl: 'http://provider.invalid',
+      // oxlint-disable-next-line require-await
       fetch: async (input) => {
         const path = new URL(String(input)).pathname;
         if (path.endsWith('/challenge')) return Response.json({ id: 'challenge-1' });

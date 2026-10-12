@@ -17,12 +17,13 @@ afterAll(async () => {
   await db?.drop();
 });
 
-it('Sol proof, criterion 1: provider challenge rate limits do not spend the wrong-code lockout', async () => {
+it('provider challenge rate limits do not spend the wrong-code lockout', async () => {
   const { caller } = await factorCaller(db, business, true);
   const challengePaths: string[] = [];
   let rateLimited = true;
   const provider = createGoTrueFactors({
     baseUrl: 'http://provider.invalid',
+    // oxlint-disable-next-line require-await
     fetch: async (input) => {
       const path = new URL(String(input)).pathname;
       if (path.endsWith('/challenge')) {

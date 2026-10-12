@@ -8,7 +8,7 @@
 // session and parks on the lock; the session is signed out on another
 // connection and commits; then the fixture lets go. The act must be refused
 // `AUTH_SESSION_EXPIRED`: no factor enrolled, verified or removed, and nothing
-// removed at the provider.
+// removed at the provider but an enrolment's own issued factor.
 
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import type { FactorProvider } from '../../packages/core-commands/src/commands/account-factor-provider.ts';
@@ -85,7 +85,8 @@ it.each(['enrol', 'verify', 'remove'] as const)(
       expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
         result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         status: act === 'enrol' ? 'none' : 'verified',
-        removed: [],
+        // A refused enrolment's issued factor goes at the provider; nothing else does.
+        removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       });
     } finally {
       await Promise.all([actor.close(), other.close()]);
