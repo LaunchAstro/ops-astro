@@ -109,14 +109,18 @@ export function commandsIn(text, namespaces, file = 'a.tsx') {
 
 /**
  * Whether `file` sends a request itself: a request global referenced (a bare identifier carries
- * `optional`; a property name or key does not) or read off `window`, `globalThis` or `self`,
- * `.fetch(` or `.sendBeacon(` called, or an API address.
+ * `optional`; a property name or key does not), read off `window`, `globalThis` or `self`, or
+ * taken out of an object under any name, `.fetch(` or `.sendBeacon(` called, or an API address.
  */
 export function sendsDirectly(text, file = 'a.tsx') {
   return nodesOf(text, file, true).some((node) => {
     const method = node.type === 'CallExpression' ? node.callee.property : undefined;
+    const taken = node.type === 'KeyValuePatternProperty' ? node.key : undefined;
     return (
       (node.type === 'Identifier' && 'optional' in node && REQUEST_GLOBALS.has(node.value)) ||
+      [REQUEST_GLOBALS, REQUEST_METHODS].some((names) =>
+        names.has(taken?.value ?? taken?.expression?.value),
+      ) ||
       (node.type === 'MemberExpression' &&
         GLOBAL_OBJECTS.has(node.object.value) &&
         REQUEST_GLOBALS.has(node.property.value ?? node.property.expression?.value)) ||
