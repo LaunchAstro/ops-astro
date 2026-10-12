@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the unpriced conversation seam refuses a priced operation before any row or send (#1508 option B)"
+}
