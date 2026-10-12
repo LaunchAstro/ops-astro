@@ -110,10 +110,7 @@ it('every security detection has a production signal source', () => {
   const production = ['apps', 'packages', 'scripts']
     .map((directory) => productionUnder(resolve(ROOT, directory)))
     .join('\n');
-  // Narrowed by the builder, disputed for Sol to rule (review 1 reply): no webhook
-  // receiver exists on this base, so a webhook signature failure has no source to
-  // wire; the ticket that adds the receiver calls observe with that signal.
-  const missing = ['secret-scan-failed', 'export'].filter(
+  const missing = ['secret-scan-failed', 'export', 'webhook-signature-failed'].filter(
     (kind) => !production.includes(`kind: '${kind}'`),
   );
   expect(missing).toEqual([]);
