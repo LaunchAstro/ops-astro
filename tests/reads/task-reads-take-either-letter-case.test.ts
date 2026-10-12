@@ -74,6 +74,12 @@ beforeAll(async () => {
       body: 'sent to the client',
       source: 'app',
     });
+    // Impact, confidence and ease, so the rank has a score and a number to compare.
+    await tx.query(
+      `update public.records set data = data || '{"impact":5,"confidence":5,"ease":5}'::jsonb
+        where id = $1`,
+      [parentId],
+    );
     return {
       db,
       business,
@@ -109,7 +115,8 @@ describe.skipIf(serverUrl === undefined)('a task read takes its id in either let
     const { lower, upper } = await bothSpellings((tx, id) =>
       readTaskRank(tx, seeded().taskTypeId, id, { kind: 'task' }),
     );
-    expect(lower.calc, 'the task’s own row is in its pool').not.toBe('');
+    expect(lower.score, 'the task’s own row is scored in its pool').not.toBeNull();
+    expect(lower.number).toBe(1);
     expect(upper).toStrictEqual(lower);
   });
 
