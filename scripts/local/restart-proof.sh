@@ -18,8 +18,9 @@
 # The container is held by the id `docker run` returned, never by its name;
 # a run ended while `docker run` is in flight waits for it and removes the
 # container by the id it wrote to its --cidfile. Each run keeps that file and
-# the keeper's FIFO in a `mktemp -d` folder of its own, which the trap removes,
-# so two runs sharing an evidence path never touch each other's.
+# the keeper's FIFO in a `mktemp -d` folder of its own, which the trap (or,
+# once the suites have started, the keeper) removes, so two runs sharing an
+# evidence path never touch each other's.
 # The suites run as one job with a process group of its own, whose first
 # member, the keeper, waits on a FIFO only this script writes to. When the
 # script exits, or dies, the FIFO reaches end of file and the keeper ends that
@@ -196,9 +197,10 @@ set -m
   exec 3<"$fifo" 4>&-
   # The keeper. At end of file it starts, in a group of its own, a loop that
   # kills this group until it is empty: a process forked while one kill
-  # lands can miss it.
+  # lands can miss it. It then removes the run's folder, which a SIGKILL of
+  # this script leaves the trap no chance to (the id is no longer read from it).
   group=$(sh -c 'ps -o pgid= -p "$PPID"' | tr -d ' ')
-  { read -r _ <&3 || true; set -m; { while kill -KILL -"$group" 2>/dev/null; do sleep 0.1; done; } & } &
+  { read -r _ <&3 || true; set -m; { while kill -KILL -"$group" 2>/dev/null; do sleep 0.1; done; rm -rf "$run_dir"; } & } &
   exec 3<&-
   DATABASE_URL=$admin_url DATABASE_ADMIN_URL=$admin_url \
     L5_RESTART_CONTAINER_NAME=$NAME L5_RESTART_API_PORT=$API_PORT L5_RESTART_EVIDENCE=$EVIDENCE \
