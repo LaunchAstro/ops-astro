@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "one recurring reconciliation tick keeps one silent-provider set across every business it passes"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a recovery query waiting on another session's lock never holds the hosted function's health answer past the request bound: the pass has its own connection"
+}

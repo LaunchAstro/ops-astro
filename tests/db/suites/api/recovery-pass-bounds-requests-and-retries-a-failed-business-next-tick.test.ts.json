@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the hosted function's recovery pass bounds a request's wait, logs a failing business once a tick, and a business that rolls back every tick stops no later business's sweep"
+}
