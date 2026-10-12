@@ -4,7 +4,8 @@
 // could still meet. `task.cancel` ends the lineage and leaves its gate row
 // pending, and `task.decide` then refuses that gate `LINEAGE_TERMINAL`, so a
 // cancelled proposal waits on nobody: the board draws no `needs_approval`
-// and no decision of the reader's, as `gate.pending` lists none.
+// and no decision of the reader's, as `gate.pending` lists none, and with no
+// lease either the task's move is the team's, not Review.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
@@ -15,7 +16,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 let c: Controls;
 
-/** The board row's wait and the reader's pending list, for one task and gate. */
+/** The board row's wait and move, and the reader's pending list, for one task and gate. */
 async function seen(taskId: string, gateId: string): Promise<Record<string, unknown>> {
   const reader = c.manager.presented;
   const board = await executeRead(c.fixture.db.app, c.fixture.business, reader, {
@@ -31,6 +32,7 @@ async function seen(taskId: string, gateId: string): Promise<Record<string, unkn
   return {
     waitReason: row?.['waitReason'],
     awaitingDecision: row?.['awaitingDecision'],
+    whoseMove: (row?.['todo'] as { readonly whoseMove?: unknown } | undefined)?.whoseMove,
     pending: JSON.stringify(pending).includes(gateId),
   };
 }
@@ -49,6 +51,7 @@ describe.skipIf(serverUrl === undefined)('the board after a proposal is cancelle
     expect(await seen(task.id, gateId)).toEqual({
       waitReason: 'needs_approval',
       awaitingDecision: true,
+      whoseMove: 'Review',
       pending: true,
     });
 
@@ -78,6 +81,7 @@ describe.skipIf(serverUrl === undefined)('the board after a proposal is cancelle
       decide: 'LINEAGE_TERMINAL',
       waitReason: null,
       awaitingDecision: false,
+      whoseMove: 'Team',
       pending: false,
     });
   }, 60_000);

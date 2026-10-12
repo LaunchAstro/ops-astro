@@ -9,6 +9,7 @@ import {
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { TodoView } from '../../../core-wire/src/index.ts';
 import type { TaskSpine } from '../commands/context.ts';
+import { awaitingApproval } from './awaiting.ts';
 
 export const OPEN_TODO_SQL = `coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled') and not (r.data ? 'archived_at')`;
 
@@ -19,26 +20,18 @@ export type TodoScope =
 
 /**
  * Whose move each served task is, by the task page's rule (DP-14): Review
- * while a gate on one of its versions is pending and not expired, Agent while
- * a reservation on one of its runs holds a live lease; a task with neither is
- * absent, so Team.
+ * while the board's approval wait offers one of its gates (`awaiting.ts`: a
+ * decision could still meet it), Agent while a reservation on one of its runs
+ * holds a live lease; a task with neither is absent, so Team.
  */
 export async function movesOf(
   tx: TenantQuery,
   taskIds: readonly string[],
 ): Promise<ReadonlyMap<string, TodoView['whoseMove']>> {
   if (taskIds.length === 0) return new Map();
-  const rows = await tx.query<{
-    readonly task_id: string;
-    readonly gated: boolean;
-    readonly leased: boolean;
-  }>(
+  const gated = await awaitingApproval(tx, taskIds);
+  const rows = await tx.query<{ readonly task_id: string; readonly leased: boolean }>(
     `select lin.task_id::text as task_id,
-            bool_or(exists (
-              select 1 from public.proposal_versions ver
-                join public.gates g on g.business_id = ver.business_id and g.version_id = ver.id
-               where ver.business_id = lin.business_id and ver.lineage_id = lin.id
-                 and g.state = 'pending' and g.expires_at > now())) as gated,
             bool_or(exists (
               select 1 from public.planned_runs run
                 join public.reservations res
@@ -53,10 +46,8 @@ export async function movesOf(
     [tx.businessId, taskIds],
   );
   const moves = new Map<string, TodoView['whoseMove']>();
-  for (const row of rows) {
-    if (row.gated) moves.set(row.task_id, 'Review');
-    else if (row.leased) moves.set(row.task_id, 'Agent');
-  }
+  for (const row of rows) if (row.leased) moves.set(row.task_id, 'Agent');
+  for (const id of gated) moves.set(id, 'Review');
   return moves;
 }
 
