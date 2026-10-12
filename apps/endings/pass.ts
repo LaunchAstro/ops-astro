@@ -76,6 +76,21 @@ function readAsWritten(raw: string): boolean {
   return scheme && host === url.host && !host.includes(',') && !authority.includes(',');
 }
 
+/**
+ * The business ids a backlog read finds, with row security off: a role that
+ * does not bypass it is refused (42501), never answered "nothing owed" from
+ * the rows its policies leave it.
+ */
+async function acrossBusinesses(
+  admin: AdminConnection,
+  text: string,
+): Promise<readonly { readonly business_id: string }[]> {
+  return await admin.transaction(async (execute) => {
+    await execute('set local row_security = off');
+    return await execute<{ readonly business_id: string }>(text);
+  });
+}
+
 /** A pass's backlog, everything still owed, and how many rows it left owed on a fault. */
 export interface PassCount {
   readonly owed: number;
@@ -105,7 +120,8 @@ async function accessEndingsPass(
   logins: LoginProvider,
   claimSeconds?: number,
 ): Promise<PassCount> {
-  const rows = await admin.execute<{ readonly business_id: string }>(
+  const rows = await acrossBusinesses(
+    admin,
     `select distinct business_id from public.access_endings
       where sessions_ended_at is null or login_deactivated_at is null`,
   );
@@ -139,7 +155,8 @@ export async function retryFactorResets(
   logins: LoginProvider,
   claimSeconds?: number,
 ): Promise<PassCount> {
-  const rows = await admin.execute<{ readonly business_id: string }>(
+  const rows = await acrossBusinesses(
+    admin,
     'select distinct business_id from public.factor_resets where done_at is null',
   );
   let owed = 0;

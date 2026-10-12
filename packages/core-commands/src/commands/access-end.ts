@@ -23,6 +23,7 @@ import {
   isUuid,
   lastManager,
   lockAgentCredential,
+  lockLoginFactors,
   otherManagers,
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
@@ -89,7 +90,16 @@ export async function endAccessOnSettings(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['holderId'], HOLDER_FIXES));
   }
   const personId = holderId.toLowerCase();
-  // The access lock first, as every change to who may do what takes it, with
+  // The subject lock of each login mapped to the person, first, before any row
+  // lock, as every taker of that installation-wide key takes it: the endings
+  // below name the mappings live under it, and a mapping written meanwhile
+  // waits on it (20261006213000).
+  const subjects = await mappedSubjects(tx, personId);
+  for (const subject of subjects) {
+    // eslint-disable-next-line no-await-in-loop -- one key at a time, in subject order
+    await lockLoginFactors(tx, subject);
+  }
+  // The access lock next, as every change to who may do what takes it, with
   // the caller's own right asked again under it; then the membership row, so
   // two endings of one person serialise here.
   const lost = await lockAccessAsManager(tx, context);
@@ -107,7 +117,7 @@ export async function endAccessOnSettings(
 
   const authority = await endPersonAuthority(tx, personId, context.session.actorId);
   const credentialsRevoked = await revokeIssued(tx, personId, context.session.actorId);
-  const endings = await endStanding(tx, personId, context.session.actorId);
+  const endings = await endStanding(tx, personId, context.session.actorId, subjects);
   const ended = applied(personId, null, {
     personId,
     grantsRevoked: authority.grantsRevoked,
@@ -141,14 +151,31 @@ async function revokeIssued(tx: TenantQuery, personId: string, endedBy: string):
   return issued.length;
 }
 
+/** The subjects of the person's live logins here, in the order their locks are taken. */
+async function mappedSubjects(tx: TenantQuery, personId: string): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly subject: string }>(
+    `select distinct l.subject
+       from public.person_logins pl
+       join public.logins l on l.business_id = pl.business_id and l.id = pl.login_id
+      where pl.business_id = $1 and pl.person_id = $2::uuid and pl.active
+      order by l.subject`,
+    [tx.businessId, personId],
+  );
+  return rows.map((row) => row.subject);
+}
+
 /**
  * The person's membership and acting identity end, and one access ending per
- * login mapped to them is written, owing the provider its two steps.
+ * login mapped to them is written, owing the provider its two steps. Each
+ * ending names the mappings it ended, read under the subject lock taken for
+ * `locked` (20261012155000); a login mapped after those locks were taken is
+ * ended unnamed, which reads as live elsewhere (doubt is a yes).
  */
 async function endStanding(
   tx: TenantQuery,
   personId: string,
   endedBy: string,
+  locked: readonly string[],
 ): Promise<readonly { readonly id: string }[]> {
   await tx.query(
     `update public.memberships set active = false, ended_at = now()
@@ -161,12 +188,19 @@ async function endStanding(
     [tx.businessId, personId],
   );
   return await tx.query<{ readonly id: string }>(
-    `insert into public.access_endings (business_id, person_id, login_id, ended_by_actor_id)
-     select pl.business_id, pl.person_id, pl.login_id, $3::uuid
+    `insert into public.access_endings
+       (business_id, person_id, login_id, ended_by_actor_id, person_mapping_id, actor_mapping_id)
+     select pl.business_id, pl.person_id, pl.login_id, $3::uuid,
+            case when l.subject = any($4::text[]) then pl.id end,
+            case when l.subject = any($4::text[]) then (
+              select al.id from public.actor_logins al
+               where al.business_id = pl.business_id and al.login_id = pl.login_id and al.active)
+            end
        from public.person_logins pl
+       join public.logins l on l.business_id = pl.business_id and l.id = pl.login_id
       where pl.business_id = $1 and pl.person_id = $2::uuid and pl.active
      returning id`,
-    [tx.businessId, personId, endedBy],
+    [tx.businessId, personId, endedBy, locked],
   );
 }
 
@@ -272,9 +306,10 @@ async function attempt(
   if (sessions && login) return { sessions, login, fault: null, skipped: null };
   // A failure to ask first is a fault, and the steps stay owed.
   if (first === null) return { sessions, login, fault: 'unreachable', skipped: null };
-  // Asked again under the subject lock, so a login mapped after the first
-  // answer is seen. An answer of doubt is a yes: nothing is sent.
-  const shared = first || (await factorLoginLiveElsewhere(tx, row.login_id));
+  // Judged again under the subject lock, every time: a login mapped after the
+  // first answer is seen, and a first yes is not kept once the other business
+  // has ended that login. An answer of doubt is a yes: nothing is sent.
+  const shared = await factorLoginLiveElsewhere(tx, row.login_id);
   if (shared) return { sessions: true, login: true, fault: null, skipped: 'shared' };
   if (!sessions) {
     const answer = await asked(async () => await provider.endSessions(row.subject));

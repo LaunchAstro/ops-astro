@@ -129,7 +129,10 @@ async function endingsPassSettles(): Promise<void> {
   });
   const since = harness.world.db.admin.log.entries.slice(from);
   const owner = since.filter((each) => each.source === 'migration').map((each) => each.text);
-  expect(owner.every((text) => text.trim().toLowerCase().startsWith('select'))).toBe(true);
+  // Reads alone: each a select, in a transaction that opens with row security off.
+  const wrapping = new Set(['begin', 'set local row_security = off', 'commit']);
+  const reads = owner.filter((text) => !wrapping.has(text));
+  expect(reads.every((text) => text.trim().toLowerCase().startsWith('select'))).toBe(true);
   expect((await resetState(owed.person)).resets).toEqual([
     expect.objectContaining({ done: true, fault: null }),
   ]);
