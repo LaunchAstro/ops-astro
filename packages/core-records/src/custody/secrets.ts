@@ -124,7 +124,8 @@ export async function setSecret(
     readonly expectedRevision?: number;
   },
 ): Promise<SecretWritten | SecretStale> {
-  const sealed = seal(write.value, write.key);
+  const at = { businessId: tx.businessId, name: write.name, scope: write.scope };
+  const sealed = seal(write.value, write.key, at);
   const rows = await tx.query<{ readonly id: string; readonly revision: string }>(
     `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id, sealed, ephemeral_public, nonce, key_id,
