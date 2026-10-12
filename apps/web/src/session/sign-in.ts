@@ -38,8 +38,11 @@ export interface ApiRoute {
 /** Sign-outs still on their way to the API, and a count of sign-ins and outs. */
 const signingOut = new Set<Promise<unknown>>();
 let latest = 0;
-/** Sessions written again once a sign-out landed and sent, still unanswered: a sign-out waits for them. */
-const rewriting = new Set<Promise<unknown>>();
+/**
+ * A session written again once a sign-out landed, sent and still unanswered, by the cookie id it
+ * sets: that session's own sign-out waits for it, and no other session's does.
+ */
+const rewriting = new Map<string, Promise<unknown>>();
 
 /**
  * The browser's sign-in: the password grant, then the token straight to the
@@ -60,18 +63,23 @@ export async function openSession(
   // A sign-out still in flight that names no session may clear this one when
   // it lands, so once it has the session is written again, unless a later
   // sign-in or sign-out has had its say.
+  const traded = tradeForCookie(request, result.token);
   if (signingOut.size > 0) {
     const landed = Promise.allSettled(signingOut);
     void (async () => {
       await landed;
+      // The rewrite sets the cookie the trade named (the id is the token's own).
+      const named = await traded;
       if (latest !== mine) return;
       const sent = toApi(request, SESSION_PATH, { authorization: bearer });
-      rewriting.add(sent);
+      const id = named.ok ? named.sessionId : undefined;
+      if (id === undefined) return;
+      rewriting.set(id, sent);
       await sent;
-      rewriting.delete(sent);
+      if (rewriting.get(id) === sent) rewriting.delete(id);
     })();
   }
-  return await tradeForCookie(request, result.token);
+  return await traded;
 }
 
 /** GoTrue's answer to a wrong password, given for a business the sign-in cannot open. */
@@ -155,8 +163,8 @@ export async function signOut(
   request: ApiRoute & { readonly sessionId?: string; readonly businessKey?: string },
 ): Promise<void> {
   latest += 1;
-  // A session write already sent would set its cookie again after this end clears it.
-  const written = Promise.allSettled(rewriting);
+  // This session's own write, already sent, would set its cookie again after this end clears it.
+  const written = request.sessionId === undefined ? undefined : rewriting.get(request.sessionId);
   const named = request.sessionId === undefined ? {} : { [SESSION_HEADER]: request.sessionId };
   const { businessKey } = request;
   const account = `${PREFIX.person}${encodeURIComponent(businessKey ?? '')}/account/sessions`;
