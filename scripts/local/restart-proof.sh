@@ -15,7 +15,11 @@
 # instead (`runtime-proofs.sh` names T3d2's). `--no-pull` (the journey's) never
 # pulls: an image not on this machine is refused, with the pull command.
 #
-# The container is held by the id `docker run` returned, never by its name.
+# The container is held by the id `docker run` returned, never by its name;
+# a run ended while `docker run` is in flight waits for it and removes the
+# container by the id it wrote to its --cidfile. Each run keeps that file and
+# the keeper's FIFO in a `mktemp -d` folder of its own, which the trap removes,
+# so two runs sharing an evidence path never touch each other's.
 # The suites run as one job with a process group of its own, whose first
 # member, the keeper, waits on a FIFO only this script writes to. When the
 # script exits, or dies, the FIFO reaches end of file and the keeper ends that
@@ -85,8 +89,10 @@ if [ "$NO_PULL" = yes ]; then
 fi
 
 cid=
+launch=
 job=
 PIDFILE=
+run_dir=
 cleanup() {
   status=$?
   # Closing fd 4 lets the keeper end the suites' group. A runner that died
@@ -104,7 +110,6 @@ cleanup() {
     else
       printf 'process group ended: %s\n' "$job" >>"$EVIDENCE"
     fi
-    rm -f "$fifo"
   fi
   if nc -z 127.0.0.1 "$API_PORT" 2>/dev/null; then
     printf 'api port still answering: %s\n' "$API_PORT" >>"$EVIDENCE"
@@ -112,15 +117,22 @@ cleanup() {
   else
     printf 'api port free: %s\n' "$API_PORT" >>"$EVIDENCE"
   fi
+  # Ended while `docker run` was in flight: let it finish, then take the id it wrote.
+  if [ -z "${cid:-}" ] && [ -n "${run_dir:-}" ]; then
+    [ -z "${launch:-}" ] || wait "$launch" 2>/dev/null || true
+    cid=$(cat "$run_dir/cid" 2>/dev/null || true)
+  fi
   if [ -n "${cid:-}" ]; then
     "$DOCKER" rm -f -v "$cid" >/dev/null 2>&1 || true
     say "removed $NAME ($cid)"
     printf 'container removed: %s %s\n' "$NAME" "$cid" >>"$EVIDENCE"
   fi
+  [ -z "${run_dir:-}" ] || rm -rf "$run_dir"
   printf 'exit: %s\n' "$status" >>"$EVIDENCE"
   exit "$status"
 }
 trap cleanup EXIT
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/restart-proof.XXXXXX")
 
 mkdir -p "$(dirname "$EVIDENCE")"
 PIDFILE=$EVIDENCE.pids
@@ -132,8 +144,13 @@ PIDFILE=$EVIDENCE.pids
 } >"$EVIDENCE"
 
 say "starting $NAME on 127.0.0.1:$PORT from the pinned digest"
-cid=$("$DOCKER" run -d --pull "$pull" --name "$NAME" -p "127.0.0.1:$PORT:5432" \
-  -e "POSTGRES_PASSWORD=$PASSWORD" -e "POSTGRES_DB=$DATABASE" "$IMAGE")
+# In the background, so that a trap reached mid-launch can wait for it.
+"$DOCKER" run -d --cidfile "$run_dir/cid" --pull "$pull" --name "$NAME" -p "127.0.0.1:$PORT:5432" \
+  -e "POSTGRES_PASSWORD=$PASSWORD" -e "POSTGRES_DB=$DATABASE" "$IMAGE" >"$run_dir/run.out" &
+launch=$!
+wait "$launch"
+launch=
+cid=$(cat "$run_dir/run.out")
 
 ready=no
 for _ in $(seq 1 60); do
@@ -163,8 +180,7 @@ if [ ${#SUITES[@]} -eq 0 ]; then
     tests/acceptance/restart-http.test.ts)
 fi
 say "running ${SUITES[*]}"
-fifo=$EVIDENCE.keeper
-rm -f "$fifo"
+fifo=$run_dir/keeper
 mkfifo "$fifo"
 # Read and write, so this open never blocks. The job's inherited copy is a
 # writer until the job has opened the read end, so a death of this script at
