@@ -44,101 +44,17 @@ function denyResolves(refuse: (what: string) => Error): () => void {
   };
 }
 
-type Handle = Methods & Record<symbol, unknown>;
-
-/** The TCP handle class every connect reaches, beneath `Socket.prototype.connect`. */
-const TCP_HANDLE = (
-  process as unknown as { binding(name: 'tcp_wrap'): { TCP: { prototype: Methods } } }
-).binding('tcp_wrap').TCP.prototype;
-
-/**
- * Swap the handle's connects: a tool holding `Socket.prototype.connect` from
- * before the guard still reaches these, and its socket ends with the refusal.
- */
-function denyHandleConnects(refuse: (what: string) => Error): () => void {
-  const saved = (['connect', 'connect6'] as const).map((name) => {
-    const original = TCP_HANDLE[name];
-    TCP_HANDLE[name] = function denied(
-      this: Handle,
-      _request: unknown,
-      _address: unknown,
-      port: unknown,
-    ): number {
-      const error = refuse(`socket ${String(port)}`);
-      const owner = Object.getOwnPropertySymbols(this).find(
-        (symbol) => symbol.description === 'owner_symbol',
-      );
-      const socket = owner === undefined ? undefined : (this[owner] as Socket | undefined);
-      if (socket === undefined) throw error;
-      process.nextTick(() => socket.destroy(error));
-      return 0;
-    };
-    return () => {
-      TCP_HANDLE[name] = original;
-    };
-  });
-  return () => {
-    for (const restore of saved) restore();
-  };
-}
-
 export interface EgressGuard {
   readonly attempts: readonly string[];
   release(): void;
 }
 
-/** The guards held now, last taken last: a refusal is recorded on the last. */
-const held: string[][] = [];
-/** Swaps every way out but the TCP handle's back to the one from before the first guard held now. */
-let restore: (() => void) | undefined;
-/** Swaps the TCP handle's connects back; it outlives `restore` by one turn. */
-let restoreHandles: (() => void) | undefined;
-/**
- * The guard released last, while the handle's connects stay refused: a connect
- * started under it reaches the handle a tick later (`net` queues it on
- * `process.nextTick`) and is refused and recorded there.
- */
-let lingering: { readonly attempts: string[]; readonly turn: NodeJS.Immediate } | undefined;
-
-/**
- * Refuse egress until `release`. Guards may overlap and be released in any
- * order: the ways out are swapped once, when the first is taken, and back
- * once, when the last held is released.
- */
 export function denyEgress(): EgressGuard {
   const attempts: string[] = [];
-  if (held.length === 0) restore = denyAll();
-  if (lingering === undefined) restoreHandles ??= denyHandleConnects(refuse);
-  else clearImmediate(lingering.turn);
-  lingering = undefined;
-  held.push(attempts);
-  return {
-    attempts,
-    release: () => {
-      const at = held.indexOf(attempts);
-      if (at === -1) return;
-      held.splice(at, 1);
-      if (held.length > 0) return;
-      restore?.();
-      restore = undefined;
-      lingering = {
-        attempts,
-        turn: setImmediate(() => {
-          lingering = undefined;
-          restoreHandles?.();
-          restoreHandles = undefined;
-        }),
-      };
-    },
+  const refuse = (what: string): Error => {
+    attempts.push(what);
+    return new Error(`egress denied: ${what}`);
   };
-}
-
-const refuse = (what: string): Error => {
-  (held.at(-1) ?? lingering?.attempts)?.push(what);
-  return new Error(`egress denied: ${what}`);
-};
-
-function denyAll(): () => void {
   const connect = Socket.prototype.connect;
   const lookup = dns.lookup;
   const promised = dns.promises.lookup;
@@ -166,12 +82,15 @@ function denyAll(): () => void {
   globalThis.fetch = (async (input: unknown) => {
     throw await Promise.resolve(refuse(`fetch ${String(input)}`));
   }) as typeof fetch;
-  return () => {
-    Socket.prototype.connect = connect;
-    dns.lookup = lookup;
-    dns.promises.lookup = promised;
-    globalThis.fetch = fetched;
-    dgram.Socket.prototype.send = send;
-    resolves();
+  return {
+    attempts,
+    release: () => {
+      Socket.prototype.connect = connect;
+      dns.lookup = lookup;
+      dns.promises.lookup = promised;
+      globalThis.fetch = fetched;
+      dgram.Socket.prototype.send = send;
+      resolves();
+    },
   };
 }

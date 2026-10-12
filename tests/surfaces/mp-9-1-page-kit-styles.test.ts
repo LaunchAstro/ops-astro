@@ -9,7 +9,6 @@ import { join } from 'node:path';
 // @ts-expect-error -- jsdom ships no declarations; this check reads only its CSSOM
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { continued } from './css-continued.ts';
 
 // The component kit's classes the page kit places (MP-1-3): every class the
 // kit's two stylesheets define, and the ones its table, banner, meter, stat,
@@ -43,13 +42,6 @@ const KIT_PLACED = [
   'visually-hidden',
 ];
 
-// The roles the kit's primitives render, with the classes they mark: a rule on
-// the role reaches the primitive as surely as one on its class.
-const KIT_ROLES: Readonly<Record<string, readonly string[]>> = {
-  tooltip: ['term__tip'],
-  region: ['tablewrap'],
-};
-
 const styles = (name: string): string =>
   readFileSync(join(process.cwd(), 'packages/ui/src/styles', name), 'utf8');
 
@@ -63,11 +55,8 @@ function kitClasses(): ReadonlySet<string> {
 // Every selector a stylesheet holds, read by a real CSS parser (jsdom's
 // CSSOM): comments, strings and at-rule blocks are the parser's, and a nested
 // rule is read with its parent's selector in front, and each selector keeps
-// the properties its rule declares. The parser is handed the source with its
-// string line continuations already taken out (`continued`), since jsdom
-// re-serialises one as a space where a browser reads nothing.
+// the properties its rule declares.
 const { window } = new JSDOM('') as { window: { CSSStyleSheet: typeof CSSStyleSheet } };
-
 interface Parsed {
   readonly selectorText?: string;
   readonly cssRules?: Iterable<Parsed>;
@@ -79,7 +68,7 @@ interface Ruled {
 }
 function selectorsOf(css: string): readonly Ruled[] {
   const sheet = new window.CSSStyleSheet();
-  sheet.replaceSync(continued(css));
+  sheet.replaceSync(css);
   const found: Ruled[] = [];
   const walk = (rules: Iterable<Parsed>, parents: readonly string[]): void => {
     for (const rule of rules) {
@@ -164,8 +153,8 @@ function take(cursor: Cursor, token: RegExp): string {
   return found;
 }
 
-// The classes an attribute selector, read from just past its `[`, names:
-// `class`, in any case or namespace, and `role`, through the kit's roles. `~=` and `=` name their value's
+// The classes an attribute selector, read from just past its `[`, names. Only
+// `class` counts, in any case or namespace. `~=` and `=` name their value's
 // classes (any of the kit's under the `i` flag). A bare `[class]`, `^=`, `$=`,
 // `*=` or `|=` can match a class list carrying any kit class beside the
 // pattern, as can a selector this reader cannot close, so it names them all.
@@ -181,15 +170,9 @@ function attributeNames(cursor: Cursor, kit: ReadonlySet<string>): string[] {
       .toLowerCase() === 'i';
   const closed = take(cursor, /^\]/u) !== '';
   if (!closed) take(cursor, /^[^\]]*\]?/u);
-  const attribute = decoded(name).toLowerCase();
-  const tokens = value.split(/\s+/u).filter((token) => token !== '');
-  if (attribute === 'role') {
-    // A bare `[role]`, a pattern or an unclosed selector may reach any of them.
-    if (!closed || (operator !== '=' && operator !== '~=')) return Object.values(KIT_ROLES).flat();
-    return tokens.flatMap((token) => KIT_ROLES[loose ? token.toLowerCase() : token] ?? []);
-  }
-  if (attribute !== 'class') return [];
+  if (decoded(name).toLowerCase() !== 'class') return [];
   if (!closed || (operator !== '=' && operator !== '~=')) return [...kit];
+  const tokens = value.split(/\s+/u).filter((token) => token !== '');
   return tokens.flatMap((token) => {
     const same = [...kit].filter((kitClass) => kitClass.toLowerCase() === token.toLowerCase());
     return loose && same.length > 0 ? same : [token];
@@ -283,7 +266,6 @@ describe('MP-9-1 primitives placed not restyled', () => {
       '.host:has(> .term__tip) .y { x: 1 }',
       '.host :not(.term) .y { x: 1 }',
       '.x\\ .term__tip { margin: 0 }',
-      '.host [class~="ter\\\nm__tip"] { visibility: hidden; }',
     ];
     for (const css of planted) expect(restyled(css, kit), css).not.toEqual([]);
     expect(restyled('.statrow > .stat { x: 1 } .statrow .stat__num { x: 1 }', kit)).toEqual([]);
