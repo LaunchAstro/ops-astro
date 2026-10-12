@@ -249,7 +249,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       await readConversationModels(tx, session, conversationId),
   },
   'task.read': {
-    identifiers: ['recordId'],
+    identifiers: ['recordId', 'historyEventId'],
     parse: (body) => {
       if (typeof body['recordId'] !== 'string') {
         return rejected('recordId', 'Send recordId as the task’s identifier or its key.');

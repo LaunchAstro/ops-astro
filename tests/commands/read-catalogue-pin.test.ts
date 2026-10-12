@@ -60,7 +60,7 @@ const PINNED_IDENTIFIERS = {
   'task.execution': ['recordId'],
   'task.ledger': [],
   'task.queue': [],
-  'task.read': ['recordId'],
+  'task.read': ['recordId', 'historyEventId'],
   'task.receipt': ['attemptId'],
   'task.search': [],
   // A teammate or a client (MP-7-2), one at a time.
