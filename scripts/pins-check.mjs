@@ -40,8 +40,15 @@
 // A workflow that does not parse is refused.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { parseAllDocuments } from 'yaml';
+
+// The yaml package from this checkout or, when this file is copied alone into
+// a bare tree (as its cases do), from the directory it is run in. Neither
+// found throws, and the check fails.
+const { parseAllDocuments } = await import('yaml').catch(() =>
+  createRequire(join(process.cwd(), 'package.json'))('yaml'),
+);
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const workflowDir = join(repoRoot, '.github', 'workflows');
