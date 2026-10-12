@@ -68,7 +68,7 @@ class LiteralHistoryCases(unittest.TestCase):
         digest = hashlib.sha256(self.receipt.read_bytes()).hexdigest()
         self.write("scripts/gate/literal-history-approvals.sha256", f"{digest} {self.anchor} SYNTHETIC_TEST_ONLY\n")
 
-    def scan(self, expected, receipt=True, terms=True, rev="HEAD", git_env=None):
+    def scan(self, expected, receipt=True, terms=True, rev="HEAD", git_env=None, timeout=20):
         env = dict(os.environ)
         env.pop("HUB_GATE_LITERAL_HISTORY_RECEIPT", None)
         env.pop("HUB_GATE_TERMS", None)
@@ -77,7 +77,7 @@ class LiteralHistoryCases(unittest.TestCase):
         if terms:
             env["HUB_GATE_TERMS"] = str(self.terms)
         env.update(git_env or {})
-        p = subprocess.run([sys.executable, "scripts/gate/sweep.py", "--literal", rev], cwd=self.repo, env=env, text=True, capture_output=True, timeout=20)
+        p = subprocess.run([sys.executable, "scripts/gate/sweep.py", "--literal", rev], cwd=self.repo, env=env, text=True, capture_output=True, timeout=timeout)
         self.assertEqual(p.returncode, expected, p.stdout + p.stderr)
         self.assertNotIn("qovu", p.stdout + p.stderr)
         self.assertNotIn("zefa", p.stdout + p.stderr)
@@ -113,6 +113,33 @@ class LiteralHistoryCases(unittest.TestCase):
         shutil.copyfile(self.receipt, copied)
         self.receipt = copied
         self.scan(3, git_env=hook_env)
+
+    def slow_git_env(self, seconds):
+        # A stand-in git on PATH whose first approval read is slow, as on a
+        # busy machine, then the real git for everything.
+        bin_dir = self.root / "slow-bin"
+        bin_dir.mkdir()
+        stand_in = bin_dir / "git"
+        stand_in.write_text(
+            "#!/bin/sh\n"
+            f'if [ "$1 $2" = "rev-parse --local-env-vars" ] && [ ! -e "{self.root}/slowed" ]; then\n'
+            f'  : > "{self.root}/slowed"; sleep {seconds}\n'
+            "fi\n"
+            f'exec "{shutil.which("git")}" "$@"\n'
+        )
+        stand_in.chmod(0o755)
+        return {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+
+    def test_slow_git_read_on_busy_machine_still_passes(self):
+        out = self.scan(0, git_env=self.slow_git_env(11), timeout=60)
+        self.assertIn("1 approved historical match(es)", out)
+
+    def test_git_read_past_its_bound_is_named_and_refused(self):
+        env = self.slow_git_env(3)
+        env["HUB_GATE_GIT_TIMEOUT"] = "1"
+        out = self.scan(3, git_env=env)
+        self.assertIn("took longer than 1 s", out)
+        self.assertNotIn("invalid or unreadable historical literal approval", out)
 
     def test_cli_does_not_write_bytecode(self):
         self.scan(0)
