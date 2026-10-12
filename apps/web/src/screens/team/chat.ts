@@ -56,7 +56,8 @@ export interface ChatModel {
   readonly held: Held;
   /** The first list and each of its conversations' messages have answered; unavailable is not. */
   readonly settled: boolean;
-  readonly run: (name: ChatCommand, body: Readonly<Record<string, unknown>>) => void;
+  /** Resolves whether the server took the command; a failure's words go to `say`. */
+  readonly run: (name: ChatCommand, body: Readonly<Record<string, unknown>>) => Promise<boolean>;
 }
 
 interface Reads {
@@ -207,17 +208,15 @@ export function useChat(
   }
 
   const run = useCallback(
-    (name: ChatCommand, body: Readonly<Record<string, unknown>>): void => {
+    async (name: ChatCommand, body: Readonly<Record<string, unknown>>): Promise<boolean> => {
       say(null);
-      void client.mutate(name, body).then((result) => {
-        const failed = describeFailure(result);
-        say(failed);
-        if (failed === null) {
-          reads?.list();
-          nudgeTeamUnread(client);
-        }
-        return result;
-      });
+      const failed = describeFailure(await client.mutate(name, body));
+      say(failed);
+      if (failed === null) {
+        reads?.list();
+        nudgeTeamUnread(client);
+      }
+      return failed === null;
     },
     [client, reads, say],
   );
@@ -287,13 +286,9 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
     groups,
     onMarkRead: (person, upTo) => {
       const conversationId = directWith(person);
-      if (conversationId !== undefined) chat.run('chat.mark_read', { conversationId, upTo });
+      if (conversationId !== undefined) void chat.run('chat.mark_read', { conversationId, upTo });
     },
-    onSend: (person, body) => {
-      chat.run('chat.send_direct', { teammateId: person, body });
-    },
-    onGroup: (action) => {
-      chat.run(...commandOf(action));
-    },
+    onSend: (person, body) => chat.run('chat.send_direct', { teammateId: person, body }),
+    onGroup: (action) => chat.run(...commandOf(action)),
   };
 }
