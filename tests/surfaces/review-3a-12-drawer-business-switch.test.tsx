@@ -92,7 +92,7 @@ describe('REVIEW-3A-12 drawer across a business switch', () => {
     await settle();
     expect(sessions.session?.businessKey).toBe('bravo');
     expect(
-      view.all('[data-message-role] .aip__body').map((each) => each.textContent),
+      view.all('[data-message-role]').map((each) => each.textContent),
       'the old business’s messages are still drawn after the switch',
     ).toStrictEqual([]);
     expect(
