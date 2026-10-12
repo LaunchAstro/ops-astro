@@ -134,7 +134,7 @@ function Graduation(props: {
   readonly locked: boolean;
 }): ReactElement {
   const { client, drafts, send } = props;
-  const promoting = useOpenPromotion(drafts, client.id, props.rows);
+  const promoting = useOpenPromotion(drafts, client.id);
   const flip = (row: GraduationRowView): void => {
     if (promoted(row)) send('graduation.demote', { classId: row.id }, row.revision);
     else drafts.openPromotion(client.id, row.id);

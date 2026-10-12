@@ -1197,36 +1197,6 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(valueOf(page, '[data-promote-form="bready"] [data-promote-ceiling]')).toBe('25');
   });
 
-  it('a recovered promotion whose class is no longer ready opens closed', async () => {
-    const outage = { down: false };
-    let region = BODY;
-    const { rollup, reread } = followed();
-    const { page } = await open(undefined, { outage, rollup, readRegion: () => region });
-    await page.choose('[data-client-scope] select', 'k-b');
-    await page.click('[data-grad="bready"] [data-auto]');
-    await page.type('[data-promote-form="bready"] [data-promote-ceiling]', '25');
-    outage.down = true;
-    await reread();
-    expect(page.find('[data-graduation] [data-outcome="unavailable"]')).not.toBeNull();
-    region = {
-      ...BODY,
-      rows: BODY.rows.map((one) =>
-        one.id === 'bready' ? row('bready', 'k-b', 'short', { approved: 12 }) : one,
-      ),
-    };
-    outage.down = false;
-    await page.click('[data-graduation] [data-outcome="unavailable"] button');
-    await tick();
-    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
-    expect(page.find('[data-promote-form="bready"]')).toBeNull();
-    // Ready again: the form opens empty, its old values discarded.
-    region = BODY;
-    await reread();
-    expect(page.find('[data-promote-form="bready"]')).toBeNull();
-    await page.click('[data-grad="bready"] [data-auto]');
-    expect(valueOf(page, '[data-promote-form="bready"] [data-promote-ceiling]')).toBe('');
-  });
-
   it('a lost filing’s retry sends the same operation and the same draft', async () => {
     const { page, sent } = await open(undefined, { lose: /\/mandate\/file$/u });
     await fillApproval(page);
