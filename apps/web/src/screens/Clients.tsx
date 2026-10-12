@@ -13,8 +13,10 @@
 // own check (`record:write`, never an agent's); a refusal is quoted in the
 // server's words and a landed one rereads the book. One typed name is one
 // attempt: a send whose answer was lost keeps its `operationId` until an
-// answer comes back, so pressing Add again is the same attempt and the server
-// replays the client it made.
+// answer comes back, so pressing Add again on that name, even after editing
+// it and back, is the same attempt and the server replays the client it made.
+// The book and the form are keyed on the grant, so an answer from before a
+// business or person switch touches nothing after it.
 //
 // A row's door is Projects filtered to that client (`/projects/?f=client:"<name>"`,
 // the board's Client facet), by the dock's gesture law when the Projects panel
@@ -137,7 +139,6 @@ export function Book(props: { readonly clients: readonly ClientView[] }): ReactE
 
 interface AddClientProps {
   readonly client: OperationsClient;
-  readonly grantKey: string;
   readonly onAdded: () => void;
 }
 
@@ -145,15 +146,13 @@ interface AddClientProps {
 function useAddClient(props: AddClientProps) {
   const [name, setName] = useState('');
   const { busy, because, run } = useCommand();
-  const held = useRef<{ readonly key: string; readonly operationId: string } | null>(null);
+  // Each typed name's attempt id, kept until that attempt is answered.
+  const held = useRef<Record<string, string | undefined>>({});
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const wanted = name.trim();
     if (wanted === '' || busy) return;
-    const key = `${props.grantKey}\u0000${wanted}`;
-    if (held.current?.key !== key)
-      held.current = { key, operationId: props.client.newOperationId() };
-    const { operationId } = held.current;
+    const operationId = (held.current[wanted] ??= props.client.newOperationId());
     run(
       async () => {
         const answer = await props.client.mutate(
@@ -161,8 +160,7 @@ function useAddClient(props: AddClientProps) {
           { name: wanted },
           { operationId },
         );
-        if (!isUnavailable(answer) && held.current?.operationId === operationId)
-          held.current = null;
+        if (!isUnavailable(answer)) held.current[wanted] = undefined;
         return answer;
       },
       (settlement) => {
@@ -236,7 +234,12 @@ interface ClientsProps {
   readonly at?: string | undefined;
 }
 
+/** One business's book and Add client: a grant change starts both afresh, so nothing carries across. */
 export function ClientsScreen(props: ClientsProps): ReactElement {
+  return <ClientsOf key={props.grantKey} {...props} />;
+}
+
+function ClientsOf(props: ClientsProps): ReactElement {
   const { client } = props;
   const { state, reload } = useRead<ClientListResult>({
     grantKey: props.grantKey,
@@ -245,7 +248,7 @@ export function ClientsScreen(props: ClientsProps): ReactElement {
   });
   return (
     <div className="clbook">
-      <AddClient client={client} grantKey={props.grantKey} onAdded={reload} />
+      <AddClient client={client} onAdded={reload} />
       <RecordState state={state} subject="clients" onRetry={reload} keep>
         {(listed) => (
           <>
