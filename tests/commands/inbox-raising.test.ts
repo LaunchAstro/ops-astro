@@ -35,7 +35,7 @@ import { replayRecordedTransitions } from '../../packages/core-runtime/src/index
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { clearingWorld, detailOf, ok, proposal, readable } from './inbox-clearing-world.ts';
-import type { Answer, ApiFixture } from '../api/fixture.ts';
+import { tokenFor, type Answer, type ApiFixture } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -387,6 +387,54 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     ]);
     expect(await open(writer.personId, 'incident')).toStrictEqual([]);
     expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
+  });
+
+  it('raises an incident for each task:manage holder when ending access quarantines a marked hold', async () => {
+    const task = await newTask('incident on access end');
+    const leaver = await enrol(fixture.db.app, fixture.business, 'Lea Leaving');
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await grantTo(tx, reviewer, 'manage', { kind: 'record', id: task.id });
+      await grantTo(tx, fixture.member, 'manage', WHOLE_BUSINESS, false, 'access');
+      for (const action of ['read', 'write'] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        await grantTo(tx, leaver, action);
+      }
+    });
+    const proposed = detailOf(ok(await call('task.propose', proposal(task))));
+    const decided = detailOf(
+      ok(
+        await call('task.decide', {
+          gateId: proposed['gateId'],
+          versionId: proposed['versionId'],
+          decision: 'approve',
+          note: 'go',
+        }),
+      ),
+    );
+    const picked = detailOf(
+      ok(
+        await call(
+          'task.pickup',
+          { reservationId: decided['reservationId'], leaseSeconds: 600 },
+          await tokenFor(leaver.presented.subject),
+        ),
+      ),
+    );
+    // An observation arrived for this attempt: what the work did is unknown.
+    await fixture.db.admin.execute(
+      `update public.attempts set observed = true, state = 'quarantined' where id = $1`,
+      [picked['attemptId']],
+    );
+    const ended = detailOf(ok(await call('access.end', { holderId: leaver.personId })));
+    expect(ended['classifiedHolds']).toHaveLength(1);
+    expect(await open(reviewer.personId, 'incident')).toContainEqual(
+      expect.objectContaining({
+        subjectRecordId: task.id,
+        factKind: 'planned_run',
+        factId: proposed['runId'],
+        owed: true,
+      }),
+    );
   });
 
   // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
