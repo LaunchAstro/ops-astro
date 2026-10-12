@@ -123,7 +123,8 @@ an aggregate that passes only when every shard succeeded, and
 exactly one shard.
 The isolation suites run in the `isolation tests` shards alone: the
 `database conformance` shards split the other run items
-(`scripts/db-shards.ts` `databaseItems`), and the `database conformance`
+(`--without-isolation`, `scripts/db-shards.ts` `databaseItems`; the nightly
+look-ahead, with no isolation shards beside it, runs every item), and the `database conformance`
 aggregate waits on both matrices, so on a merge group or a push it passes only
 when the isolation shards succeeded too. `tests/ci/db-census.test.ts` reads
 every shard's own `--list` and proves the two matrices together run each named

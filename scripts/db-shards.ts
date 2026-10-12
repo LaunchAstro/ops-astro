@@ -17,9 +17,11 @@
 // gives that part, so every case still runs once, in one part.
 //
 // The isolation suites are named suites too, and the `isolation tests` shards
-// run them (scripts/ci-shards.ts), so the `database conformance` shards split
-// the rest (`databaseItems`) and a merge group runs every item once. The
-// `database conformance` aggregate waits on both matrices.
+// run them (scripts/ci-shards.ts), so ci.yml's `database conformance` shards
+// split the rest (`databaseItems`, the runner's --without-isolation) and a
+// merge group runs every item once. The `database conformance` aggregate waits
+// on both matrices. A run with no isolation shards beside it (the nightly
+// look-ahead) splits every item.
 
 import { readFileSync } from 'node:fs';
 

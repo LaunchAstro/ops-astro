@@ -51,10 +51,13 @@
 //   (scripts/named-suites.ts readIsolationSuites).
 //   DATABASE_URL  the database to run against. Required.
 //   --shard       run only shard i of n (scripts/db-shards.ts decides which
-//                 suites; for --isolation, scripts/ci-shards.ts). Without
-//                 --isolation or --manifest the shards leave the isolation
-//                 suites to the isolation shards. Rules 2 and 3 still read
-//                 the whole manifest.
+//                 suites; for --isolation, scripts/ci-shards.ts). Rules 2 and
+//                 3 still read the whole manifest.
+//   --without-isolation
+//                 leave out the isolation suites (scripts/db-shards.ts
+//                 databaseItems): ci.yml's `database conformance` shards,
+//                 beside the `isolation tests` shards that run them. Any other
+//                 caller, the nightly look-ahead's included, runs them.
 //   --list        print the run items it would run, one a line, and stop
 //                 before reaching the database (tests/ci/ci-shards.test.ts).
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
@@ -83,6 +86,11 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
 const manifestFlag = argv.indexOf('--manifest');
 const isolationRun = argv.includes('--isolation');
+const withoutIsolation = argv.includes('--without-isolation');
+if (isolationRun && withoutIsolation) {
+  console.error('db-conformance: --isolation and --without-isolation do not go together.');
+  process.exit(2);
+}
 // Without --manifest the runner reads the repository's own manifest, the
 // per-area folder or the single file (scripts/named-suites.ts); with it, that
 // one file, as given.
@@ -135,23 +143,18 @@ const failures = [];
 // except 2 and 3, which read the whole manifest in every shard.
 const plan = readPlan(join(repoRoot, 'tests/db/shard-plan.json'));
 const items = planItems(named, plan.parts);
-/**
- * This shard's items: an isolation shard's from the split beside its steps,
- * which run outside this; a database shard's from the repository's items but
- * the isolation suites, which the isolation shards run. A given manifest is
- * split whole.
- */
+/** The items this run splits: all of them, or all but the isolation suites'. */
+const runItems = withoutIsolation
+  ? databaseItems(items, readIsolationSuites(repoRoot).invariant)
+  : items;
+/** This shard's items: an isolation shard's from the split beside its steps, which run outside this. */
 const shareOf = ({ index, count }) =>
   isolationRun
     ? (isolationShards(items, readShardPlan(repoRoot), count)[index - 1] ?? []).filter(
         (item) => !ISOLATION_STEPS.includes(item),
       )
-    : (assignShards(
-        manifestFlag === -1 ? databaseItems(items, readIsolationSuites(repoRoot).invariant) : items,
-        plan.seconds,
-        count,
-      )[index - 1] ?? []);
-const toRun = shard === undefined ? items : shareOf(shard);
+    : (assignShards(runItems, plan.seconds, count)[index - 1] ?? []);
+const toRun = shard === undefined ? runItems : shareOf(shard);
 // Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
 // it never exits 0: a stray --list in a CI command fails that shard. It exits
 // once the list has left: a write to a full pipe is queued, and an exit

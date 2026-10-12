@@ -74,7 +74,15 @@ it('the database and isolation shards run every named item exactly once a group'
     Array.from({ length: count }, (_, i) =>
       listed([...flags, '--shard', `${String(i + 1)}/${String(count)}`]),
     );
-  const group = [...shards(database, []), ...shards(ISOLATION_COUNT, ['--isolation'])];
+  // The database shards' own command leaves the isolation suites out.
+  const command = ci.jobs['database-shard']?.steps?.find((step) =>
+    step.run?.includes('db:conformance'),
+  )?.run;
+  expect(command).toContain('--without-isolation');
+  const group = [
+    ...shards(database, ['--without-isolation']),
+    ...shards(ISOLATION_COUNT, ['--isolation']),
+  ];
   expect(censusOf(items, group, counts)).toStrictEqual({
     items: items.length,
     placed: items.length,
@@ -84,3 +92,17 @@ it('the database and isolation shards run every named item exactly once a group'
     tests: total,
   });
 }, 180_000);
+
+it('the runner refuses to run the isolation suites and leave them out at once', () => {
+  const run = spawnSync(
+    process.execPath,
+    ['scripts/db-conformance.mjs', '--isolation', '--without-isolation', '--list'],
+    {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: 'postgres://unused@127.0.0.1:1/x' },
+    },
+  );
+  expect(run.status).toBe(2);
+  expect(run.stderr).toContain('--isolation and --without-isolation do not go together');
+});

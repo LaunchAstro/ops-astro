@@ -492,7 +492,8 @@ jobs:
       # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a merge
       # group or a push the wrapped command always runs, and the shards run on
       # nothing else. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      # --without-isolation: the `isolation tests` shards run the isolation suites.
+      - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }} --without-isolation
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # T4a's clone past a reader dumps and restores inside the server's
@@ -527,9 +528,9 @@ jobs:
     # always() would otherwise pass that skip as green. A failure or a cancel
     # fails everywhere. docs/agents/database-conformance.md holds what the
     # check means. The isolation suites are named suites the `isolation tests`
-    # shards run, not these shards, so a group runs each once
-    # (scripts/db-shards.ts databaseItems); outside a pull request this passes
-    # only when those shards succeeded too.
+    # shards run, not these shards (`--without-isolation`), so a group runs
+    # each once; outside a pull request this passes only when those shards
+    # succeeded too.
     name: database conformance
     needs: [gate, full, database-shard, isolation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
