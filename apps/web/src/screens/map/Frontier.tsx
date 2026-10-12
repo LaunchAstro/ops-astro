@@ -2,22 +2,18 @@
 //
 // The frontier and fog views (WF-4). The frontier is read from its read model
 // (`map.frontier`), in its own order, only while its tab is open, so it is
-// always as current as the map it sits in, and again on the live channel when
-// any task the reader reads changes; the filters narrow it without
+// always as current as the map it sits in; the filters narrow it without
 // reordering. The fog view lists the patches not yet specified and graduates
 // one into tickets through `map.graduate`, which retires the patch in the same
 // version. The open form and its lines are held above the read (`Drafts`), so
 // a graduate refused VERSION_STALE keeps them over the reread map; if the
-// reread map no longer has the form's patch, the lines it already holds as
-// tickets (a graduation whose answer was lost) are shown as graduated, and
-// only the others stay on screen to copy or dismiss, with no save offered
-// against a patch that is gone.
+// reread map no longer has the form's patch, the lines stay on screen to copy
+// or dismiss, with no save offered against a patch that is gone.
 
 import type { ReactElement } from 'react';
 import type { MapFrontierResult, MapView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
-import { dependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Section, ticketLink } from './ReadSections.tsx';
 import { TICKET_TYPES, passes, type Drafts, type Filters, type Line, type Send } from './model.ts';
@@ -29,15 +25,13 @@ export function FrontierView(props: {
   readonly filters: Filters;
 }): ReactElement {
   const { client, map } = props;
-  const { state, reload, refresh, live, own } = useRead<MapFrontierResult>({
+  const { state, reload } = useRead<MapFrontierResult>({
     grantKey: props.grantKey,
     run: () => client.read<MapFrontierResult>('map.frontier', { recordId: map.id }),
     deps: [map.id, map.revision],
   });
-  // A ticket started, done or unblocked moves the frontier without moving the map.
-  useTaskDependencies(client, props.grantKey, refresh, dependencyAdmission(state, own));
   return (
-    <RecordState state={state} subject="frontier" onRetry={reload} keep={live}>
+    <RecordState state={state} subject="frontier" onRetry={reload}>
       {(value) => {
         const shown = value.frontier.filter((ticket) => passes(props.filters, ticket));
         return (
@@ -58,40 +52,24 @@ export function FrontierView(props: {
   );
 }
 
-/** A form's typed lines, split by whether the reread map already holds them as tickets. */
-function reconciled(map: MapView, lines: readonly Line[]) {
-  const held = new Set(map.tickets.map((ticket) => `${ticket.type}\u0000${ticket.title ?? ''}`));
-  const typed = lines.filter((line) => line.title.trim() !== '');
-  const stored = (line: Line): boolean => held.has(`${line.type}\u0000${line.title.trim()}`);
-  return {
-    done: typed.filter((line) => stored(line)),
-    owed: typed.filter((line) => !stored(line)),
-  };
-}
-
 export function FogView(props: FogProps): ReactElement {
   const { map } = props;
   const { graduating, setGraduating } = props.drafts;
   const gone = graduating !== null && !map.fog.some((patch) => patch.id === graduating.patch);
-  // What the server committed is shown as graduated; only what it did not is kept to copy.
-  const { done, owed } = gone ? reconciled(map, graduating.lines) : { done: [], owed: [] };
-  // A form kept to copy, or over a stale save, is not replaced by another.
-  const held = owed.length > 0 || props.drafts.conflict === 'graduate';
-  const dismiss = (): void => {
-    setGraduating(null);
-  };
   return (
     <Section name="fog-view" label="Fog">
-      {done.length === 0 ? null : (
-        <p className="sbact__meta" data-graduate-done="">
-          Graduated into tickets: {done.map((line) => line.title.trim()).join(', ')}.
-        </p>
-      )}
-      {owed.length === 0 ? null : <GoneForm lines={owed} onDismiss={dismiss} />}
+      {gone ? (
+        <GoneForm
+          lines={graduating.lines}
+          onDismiss={() => {
+            setGraduating(null);
+          }}
+        />
+      ) : null}
       {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
       <ul>
         {map.fog.map((patch) => (
-          <PatchRow key={patch.id} {...props} patch={patch} held={held} />
+          <PatchRow key={patch.id} {...props} patch={patch} gone={gone} />
         ))}
       </ul>
     </Section>
@@ -107,7 +85,7 @@ interface FogProps {
 
 /** One patch: its text, and its graduate form when open, else the button that opens it. */
 function PatchRow(
-  props: FogProps & { readonly patch: MapView['fog'][number]; readonly held: boolean },
+  props: FogProps & { readonly patch: MapView['fog'][number]; readonly gone: boolean },
 ): ReactElement {
   const { map, patch } = props;
   const { graduating, setGraduating } = props.drafts;
@@ -134,8 +112,8 @@ function PatchRow(
           className="btn"
           type="button"
           data-graduate={patch.id}
-          // Opening another form would replace one held to copy or to save again.
-          disabled={props.busy || props.held}
+          // Opening another form would replace a kept one whose patch is gone.
+          disabled={props.busy || props.gone}
           onClick={() => {
             setGraduating({ patch: patch.id, lines: [{ title: '', type: 'task' }] });
           }}

@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { act } from 'react';
 import { expect, it } from 'vitest';
-import { TeamPanel } from '../../packages/ui/src/index.ts';
 import { TicketsView } from '../../apps/web/src/screens/map/Tickets.tsx';
 import { InboxScreen } from '../../apps/web/src/screens/Inbox.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type { InboxEntry } from '../../packages/core-wire/src/index.ts';
 import { WAYFINDER_READS } from '../visual/made-up-wayfinder.ts';
 import { mount } from './mount.tsx';
-import { props, THREADS } from './team-fixture.tsx';
 import { until } from '../web/screen-until.tsx';
 
 /* eslint-disable require-unicode-regexp, max-lines-per-function, require-await -- Sol's proofs, kept as written */
@@ -61,43 +59,6 @@ it('a ticket row shows the tickets it blocks', async () => {
     drawn.textContent,
     'outgoing blocking must be drawn, not just an available select option',
   ).toMatch(/T-902|Downstream/);
-});
-
-// Sol's proof on #1378 (round 1), retitled by what it proves; its body is Sol's.
-it('typing newer words does not discard a refused message', async () => {
-  let resolveSend: ((sent: boolean) => void) | undefined;
-  const p = props({ threads: THREADS });
-  if (p.conversations === null) throw new Error('conversations required');
-  const page = await mount(
-    <TeamPanel
-      {...p}
-      conversations={{
-        ...p.conversations,
-        onSend: () =>
-          new Promise<boolean>((resolve) => {
-            resolveSend = resolve;
-          }),
-      }}
-    />,
-  );
-  const field = '.tmc__conv .composer input';
-  await page.type(field, 'unsent message canary');
-  await page.click('.tmc__conv .composer button[type="submit"]');
-  await page.type(field, 'newer draft canary');
-  await act(async () => {
-    resolveSend?.(false);
-    await Promise.resolve();
-  });
-  const recoverable =
-    [...page.host.querySelectorAll('input, textarea')]
-      .map((element) => (element as HTMLInputElement).value)
-      .join('\n') +
-    '\n' +
-    page.text();
-  expect(recoverable).toContain('newer draft canary');
-  expect(recoverable, 'the refused original must remain available to retry').toContain(
-    'unsent message canary',
-  );
 });
 
 // Sol's proof on #1378 (round 1), retitled by what it proves; its body is Sol's.

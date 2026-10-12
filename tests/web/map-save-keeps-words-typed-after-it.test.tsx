@@ -251,39 +251,6 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     expect(page.find('input[name="ticket-title-0"]')).toBeNull();
   });
 
-  it('while a stale graduate form is held, another patch cannot open a form over it', async () => {
-    const m = await chart(
-      w,
-      lead,
-      'stale form held',
-      [{ ref: 'a', title: 'a', type: 'task' }],
-      ['patch with a stale form', 'patch left alone'],
-    );
-    const page = await openMap(w, open, lead, m.key);
-    await page.click('[role="tab"][id="map-tab-fog"]');
-    const [first, second] = page
-      .all('[data-patch]')
-      .map((one) => (one as HTMLElement).dataset['patch'] as string);
-    await page.click(`button[data-graduate="${first ?? ''}"]`);
-    await page.type('input[name="ticket-title-0"]', 'my kept ticket');
-    const at = { recordId: m.map, expectedRevision: await w.revisionOf(m.map) };
-    must(await w.as(other, { command: 'map.revise', ...at, notes: 'elsewhere' }), 'map.revise');
-    const latest = await w.revisionOf(m.map);
-    await page.click('button[data-graduate-save]');
-    await until(
-      page,
-      () => page.find('[data-map-conflict]') !== null && revisionShown(page) === String(latest),
-      'the conflict and the reread',
-    );
-
-    const button = page.find(`button[data-graduate="${second ?? ''}"]`) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    await page.click(`button[data-graduate="${second ?? ''}"]`);
-    expect(value(page, 'input[name="ticket-title-0"]')).toBe('my kept ticket');
-    expect(page.find(`[data-patch="${first ?? ''}"] form`)).not.toBeNull();
-    expect(page.find('[data-map-conflict]')).not.toBeNull();
-  });
-
   it('a stale notes save cancelled drops its conflict with its words', async () => {
     const m = await chart(w, lead, 'cancelled notes', [{ ref: 'a', title: 'a', type: 'task' }]);
     const page = await openMap(w, open, lead, m.key);

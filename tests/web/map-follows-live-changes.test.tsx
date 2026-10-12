@@ -3,8 +3,7 @@
 //
 // The map page follows the tab's live channel (C4) as the task page does: a
 // change to the map reads the map again, and a change to any task the reader
-// may read (a ticket's state or blocking) reads the map and, on the frontier
-// view, the frontier again. Fed the harness's made-up answers through a
+// may read (a ticket's state or blocking) reads the map again. Fed the harness's made-up answers through a
 // client whose live stream the test writes to.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -74,19 +73,14 @@ describe('the map page on the live channel', () => {
     await until(page, () => page.find('[data-map-section="destination"]') !== null, 'the map');
   });
 
-  it('reads the map and the open frontier again when a task the reader reads changed', async () => {
+  it('reads the map again when a task the reader reads changed', async () => {
     const live = liveClient();
     const page = await openMap(live.client);
-    await page.click('[role="tab"][id="map-tab-frontier"]');
-    await until(page, () => live.reads('map.frontier') === 1, 'the frontier');
     await until(page, live.joined, 'the live stream', 2000);
+    expect(live.reads('map.view')).toBe(1);
 
     live.say('board');
-    await until(
-      page,
-      () => live.reads('map.view') === 2 && live.reads('map.frontier') === 2,
-      'the live rereads',
-    );
-    await until(page, () => page.find('[data-map-section="frontier"]') !== null, 'the frontier');
+    await until(page, () => live.reads('map.view') === 2, 'the live reread');
+    await until(page, () => page.find('[data-map-section="destination"]') !== null, 'the map');
   });
 });

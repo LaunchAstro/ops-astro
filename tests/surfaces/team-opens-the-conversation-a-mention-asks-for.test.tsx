@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C71 team chat, the web half: a direct or group send the API refuses (422)
-// or cannot answer (503) leaves the person's words in the composer, to send
-// again, and draws nothing in the transcript. The server is a stand-in.
+// C71 team chat, the web half: Team drawn at an address that asks for a
+// conversation (a mention's door) opens it, and a new request in a Team screen
+// already open moves to the new conversation. The server is a stand-in.
 
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TeamScreen } from '../../apps/web/src/screens/Team.tsx';
 import { mount, type Mounted } from './mount.tsx';
@@ -84,41 +84,8 @@ const FIELD = '.tmc__conv .composer input';
 const typed = (m: Mounted): string | undefined =>
   (m.host.querySelector(FIELD) as HTMLInputElement | null)?.value;
 
-async function sendAndFail(m: Mounted, said: string): Promise<void> {
-  await m.type(FIELD, said);
-  await act(() => {
-    m.host
-      .querySelector('.tmc__conv form.composer')
-      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  });
-  await until('the failure said', () => m.find('[role="alert"]') !== null);
-}
-
 const refused = (): Response =>
   json({ refused: true, code: 'NOT_FOUND', names: [], fixes: ['Bo cannot be messaged.'] }, 422);
-const unanswered = (): Response => json({ error: 'busy' }, 503);
-
-describe('C71 web a send the API refuses or cannot answer keeps the words', () => {
-  it.each([
-    ['refuses', refused],
-    ['cannot answer', unanswered],
-  ] as const)(
-    'a send the API %s leaves the words in the composer, direct and group',
-    async (_, failure) => {
-      mounted = await mount(<TeamScreen client={sendsFail(failure)} grantKey="alpha:ana" />);
-      const m = mounted;
-      await until('the conversation with Bo open', () => typed(m) !== undefined);
-
-      await sendAndFail(m, 'unsent message canary');
-      expect(typed(m)).toBe('unsent message canary');
-      expect(m.all('.tmc__conv .msg__text').map((t) => t.textContent)).toEqual(['Ready?']);
-
-      await m.click(`.tmc__g[data-group="${GROUP}"]`);
-      await sendAndFail(m, 'unsent group canary');
-      expect(typed(m)).toBe('unsent group canary');
-    },
-  );
-});
 
 /* eslint-disable unicorn/no-array-callback-reference -- Sol's proof, kept as written */
 // Sol's proof on #1378 (round 2), retitled by what it proves; its body is Sol's.

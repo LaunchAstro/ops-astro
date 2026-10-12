@@ -102,15 +102,9 @@ export function props(over: Over = {}): TeamPanelProps & { readonly calls: Calls
   const conversations: TeamConversations = {
     threads: over.threads ?? [],
     onMarkRead: (withPerson, upTo) => calls.marks.push([withPerson, upTo]),
-    onSend: (to, body) => {
-      calls.sends.push([to, body]);
-      return Promise.resolve(true);
-    },
+    onSend: (to, body) => calls.sends.push([to, body]),
     groups: over.groups ?? [],
-    onGroup: (action) => {
-      calls.groups.push(action);
-      return Promise.resolve(true);
-    },
+    onGroup: (action) => calls.groups.push(action),
   };
   return {
     people: over.people ?? PEOPLE,

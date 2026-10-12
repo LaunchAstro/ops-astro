@@ -49,15 +49,11 @@ export interface TeamConversations {
   readonly threads: readonly DirectThread[];
   /** Move the reader's own read marker on the conversation with this teammate. */
   readonly onMarkRead: (withPerson: string, upTo: string) => void;
-  /**
-   * Send a direct message: a comment with a two-person audience, through MP-4-5's comment command.
-   * Resolves whether the server took it, so a refused or unanswered send keeps its words.
-   */
-  readonly onSend: (toPerson: string, body: string) => Promise<boolean>;
+  /** Send a direct message: a comment with a two-person audience, through MP-4-5's comment command. */
+  readonly onSend: (toPerson: string, body: string) => void;
   /** The group conversations the reader is a member of, as the comment read returned them (C71-G). */
   readonly groups: readonly GroupThread[];
-  /** A group action; resolves whether the server took it, as `onSend` does. */
-  readonly onGroup: (action: GroupAction) => Promise<boolean>;
+  readonly onGroup: (action: GroupAction) => void;
   /** The conversation the address asked for (a notification's door), opened first when present. */
   readonly asked?: Selected;
 }
@@ -97,12 +93,11 @@ function markRead(
 }
 
 /** A group's send, or null once the reader has left it: they read what they had, and send nothing. */
-function sendTo(
-  talk: TeamConversations,
-  group: GroupThread,
-): ((body: string) => Promise<boolean>) | null {
+function sendTo(talk: TeamConversations, group: GroupThread): ((body: string) => void) | null {
   if (group.left) return null;
-  return (body) => talk.onGroup({ do: 'send', id: group.id, body });
+  return (body) => {
+    talk.onGroup({ do: 'send', id: group.id, body });
+  };
 }
 
 function OpenConversation(props: {
@@ -131,7 +126,9 @@ function OpenConversation(props: {
         thread={props.threadWith(person.personId)}
         me={me}
         onRead={onRead}
-        onSend={(body) => talk.onSend(person.personId, body)}
+        onSend={(body) => {
+          talk.onSend(person.personId, body);
+        }}
       />
     );
   }
