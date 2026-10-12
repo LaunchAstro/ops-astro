@@ -58,13 +58,27 @@ describe('the protected set, one verdict per component from the same run', () =>
 
   it('fails a component for a failed suite, an unnamed one, and one that never reached the database', () => {
     const [first, second] = suites;
-    const failed = verdicts(`${moved(suites)}\n FAIL  ${String(first)} > a case`);
+    const failed = verdicts(
+      `${moved(suites)}\ndb-conformance: failed assertion in ${String(first)}`,
+    );
     expect(failed.find((verdict) => verdict.detail.includes(String(first)))?.status).toBe('fail');
     const unnamed = verdicts(moved(suites), { invariant: suites.slice(1), conformance: [] });
     expect(unnamed[0]).toMatchObject({ status: 'fail' });
     expect(unnamed[0]?.detail).toContain(`${String(first)} is not named`);
     const silent = verdicts(moved(suites.filter((file) => file !== second)));
     expect(silent.find((verdict) => verdict.detail.includes(String(second)))?.status).toBe('fail');
+  });
+});
+
+describe('a failed suite whose assertion detail ran out', () => {
+  it('fails its component from the runner closing list, and only that component', () => {
+    const [first] = suites;
+    const closing = `vitest reported the run as failed, whatever the test counts say:\n          ${String(first)}#2/2: vitest exited with status 1`;
+    const result = verdicts(`${moved(suites)}\n${closing}`);
+    expect(result.filter((verdict) => verdict.status === 'fail')).toHaveLength(1);
+    expect(result.find((verdict) => verdict.status === 'fail')?.detail).toContain(
+      `${String(first)} failed`,
+    );
   });
 });
 

@@ -36,6 +36,8 @@ run_case() {
   tree="$(mktemp -d "$SCRATCH/case.XXXXXX")"
   mkdir -p "$tree/scripts" "$tree/.github/workflows" "$tree/docs"
   cp "$CHECKER" "$tree/scripts/pins-check.mjs"
+  # The checker parses with the repository's yaml package.
+  ln -s "$REPO_ROOT/node_modules" "$tree/node_modules"
   printf '%s\n' "$workflow" > "$tree/.github/workflows/ci.yml"
   printf '%s\n' "$record" > "$tree/docs/supply-chain-pins.md"
   actual="$(node "$tree/scripts/pins-check.mjs" >/dev/null 2>&1; echo $?)"
@@ -208,7 +210,7 @@ run_case "R2 - ? uses / : actions/checkout@v4 fails" 1 "jobs:
     steps:
       - ? uses
         : actions/checkout@v4"
-run_case "a pinned uses in a flow sequence still fails" 1 "jobs:
+run_case "a pinned uses in a flow sequence passes" 0 "jobs:
   a:
     steps: [ uses: $ACTION ]"
 # Sol's recheck of d1a2cef: a key straight after the bracket, and a `#` inside
@@ -235,7 +237,7 @@ run_case "db: {name: 'can''t # x', image: node:20} fails" 1 "jobs:
     services:
       db: {name: 'can''t # x', image: node:20}
 $STEPS"
-run_case "a pinned image after a doubled quote in a flow scalar still fails as flow" 1 "jobs:
+run_case "a pinned image after a doubled quote in a flow scalar passes" 0 "jobs:
   a:
     services:
       db: {name: 'it''s', image: postgres@sha256:$DIGEST}
@@ -258,7 +260,7 @@ run_case "a commented-out flow step passes" 0 "jobs:
 run_case "a flow key inside a quoted run value passes" 0 "jobs:
   a:
     steps:
-      - run: echo '{ uses: x }' \"[image: y]\"
+      - run: \"echo '{ uses: x }' [image: y]\"
       - uses: $ACTION"
 run_case "a pinned workflow in block style still passes" 0 "jobs:
   a:
@@ -317,7 +319,7 @@ run_case "a tagged uses key fails" 1 'jobs:
   a:
     steps:
       - !!str uses: actions/checkout@v4'
-run_case "an escaped quoted key that is not one of the three still fails: it is not read" 1 "jobs:
+run_case "an escaped quoted key that is not one of the three is decoded and passes" 0 "jobs:
   a:
     \"n\\u0061me\": x
 $STEPS"
@@ -325,6 +327,29 @@ run_case "a plain double-quoted uses key is still read and passes" 0 "jobs:
   a:
     steps:
       - \"uses\": $ACTION"
+for key in '&action "us\u0065s"' '&action !!str uses' '&action uses'; do
+  run_case "an anchored key $key on a tag fails" 1 "jobs:
+  a:
+    steps:
+      - $key: actions/checkout@v4"
+  run_case "an anchored key $key, pinned and recorded, passes" 0 "jobs:
+  a:
+    steps:
+      - $key: $ACTION"
+done
+run_case "an alias to a tagged action fails" 1 "x: &ref actions/checkout@v4
+jobs:
+  a:
+    steps:
+      - uses: *ref"
+run_case "a uses key brought in by a merge key fails" 1 "x: &step { uses: actions/checkout@v4 }
+jobs:
+  a:
+    steps:
+      - <<: *step"
+run_case "a workflow that does not parse fails" 1 "jobs:
+  a:
+    steps: [ uses: $ACTION"
 
 echo
 echo "pins-check cases: $PASSED passed, $FAILED failed"

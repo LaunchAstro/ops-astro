@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:net';
@@ -183,6 +184,9 @@ it('escaped and tagged keys inside flow mappings cannot bypass pinning', () => {
     for (const path of ['scripts', '.github/workflows', 'docs'])
       mkdirSync(join(dir, path), { recursive: true });
     copyFileSync(join(root, 'scripts/pins-check.mjs'), join(dir, 'scripts/pins-check.mjs'));
+    // Without the repository's packages the checker cannot load its YAML parser
+    // and exits 1 for that alone, so the refusal is read from its own text.
+    symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
     writeFileSync(join(dir, 'docs/supply-chain-pins.md'), 'no pins\n');
     for (const key of ['"us\\u0065s"', '!!str uses']) {
       const workflow = `on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - {${key}: actions/checkout@v4}\n`;
@@ -194,6 +198,39 @@ it('escaped and tagged keys inside flow mappings cannot bypass pinning', () => {
         encoding: 'utf8',
       });
       expect.soft(run.status, `${key}: ${run.stdout}${run.stderr}`).toBe(1);
+      expect.soft(run.stderr).toContain('actions/checkout@v4 is not pinned to a 40 character');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it('an anchored key is read as the key it names: a tag is refused, a recorded pin passes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'proof-1365-anchor-'));
+  const sha = '1'.repeat(40);
+  try {
+    for (const path of ['scripts', '.github/workflows', 'docs'])
+      mkdirSync(join(dir, path), { recursive: true });
+    copyFileSync(join(root, 'scripts/pins-check.mjs'), join(dir, 'scripts/pins-check.mjs'));
+    symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
+    writeFileSync(join(dir, 'docs/supply-chain-pins.md'), `actions/checkout ${sha}\n`);
+    const check = (key: string, ref: string) => {
+      const workflow = `on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - ${key}: ${ref}\n`;
+      expect(parse(workflow).jobs.a.steps[0].uses).toBe(ref);
+      writeFileSync(join(dir, '.github/workflows/ci.yml'), workflow);
+      return spawnSync(process.execPath, [join(dir, 'scripts/pins-check.mjs')], {
+        encoding: 'utf8',
+      });
+    };
+    for (const key of ['&action "us\\u0065s"', '&action !!str uses', '&action uses']) {
+      const tagged = check(key, 'actions/checkout@v4');
+      expect.soft(tagged.status, key).toBe(1);
+      expect
+        .soft(tagged.stderr, key)
+        .toContain('ci.yml.jobs.a.steps[0].uses: actions/checkout@v4 is not pinned');
+      const pinned = check(key, `actions/checkout@${sha}`);
+      expect.soft(pinned.status, `${key}: ${pinned.stdout}${pinned.stderr}`).toBe(0);
+      expect.soft(pinned.stdout, key).toContain('pins: 1 pinned action reference(s)');
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
