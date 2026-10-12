@@ -124,10 +124,10 @@ it('an upgrade over a stored hidden name stops, naming the row, and rewrites not
     await db.closeSessions();
     // The runner names the migration; the database's own refusal is its cause.
     const stopped = await migrate(db.admin, 'migrations').then(
-      () => undefined,
-      (error: unknown) => (error as Error).cause as Error | undefined,
+      () => new Error('the upgrade went through'),
+      (error: unknown) => (error as Error).cause as Error,
     );
-    expect(stopped?.message).toBe(
+    expect(stopped.message).toBe(
       `drawn names: rename these rows first; clients ${named}, connections ${labelled}`,
     );
     const [kept] = await db.admin.execute<{ readonly name: string }>(
