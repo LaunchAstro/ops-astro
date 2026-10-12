@@ -97,7 +97,7 @@ test('C81 data class change and approval at once: the approval waits for the cha
     );
     await waitsBehind(holder?.pid ?? -1);
   });
-  await first.catch(() => undefined);
+  await Promise.allSettled([first]);
   if (second === undefined) throw new Error('the approval never started');
   const outcomes = await Promise.allSettled([first, second as Promise<unknown>]).finally(
     async () => await wide.close(),
