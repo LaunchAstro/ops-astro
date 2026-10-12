@@ -522,7 +522,11 @@ export async function purgeTrashedRecords(
              -- An onboarding's step (C41-A) keys to its task and keeps it: the
              -- onboarding counts its steps, so the task stays with its step.
              or exists (select 1 from public.onboarding_steps o
-                         where o.business_id = r.business_id and o.task_id = r.id)) as held
+                         where o.business_id = r.business_id and o.task_id = r.id)
+             -- A launch (task_launches) keys to its task from the click, before
+             -- any proposal names it.
+             or exists (select 1 from public.task_launches t
+                         where t.business_id = r.business_id and t.task_id = r.id)) as held
        from records r
       where r.business_id = $1 and r.id = any ($2::uuid[])
       order by r.id`,
