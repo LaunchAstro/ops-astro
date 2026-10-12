@@ -21,7 +21,7 @@ const GOTRUE = 'http://identity.invalid';
 const SUBMIT = '[data-screen="sign-in"] button[type="submit"]';
 const CANCEL = '[data-screen="sign-in"] button.btn--ghost';
 const CODE = 'input[autocomplete="one-time-code"]';
-const MIA = { businessKey: 'alpha', email: 'mia@alpha.local' };
+const MIA = { businessKey: 'alpha', email: 'mia@example.test' };
 const ADA = { businessKey: 'bravo', email: 'ada.bravo@example.test' };
 
 /** The cookie id the API names for each token the page trades. */
