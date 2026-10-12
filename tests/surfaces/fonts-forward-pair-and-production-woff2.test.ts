@@ -123,11 +123,18 @@ it('MP-1-2 a forward red then green pair and a production woff2 request', async 
       normalise(shown(commit, cssPath)) === normalise(shown(`${removed}^`, cssPath))
     );
   };
+  // A commit changes the face when its face differs from every parent's: a
+  // merge that only brings a side branch's change in is that change, counted
+  // at its own commit, and a merge that writes a face of its own is counted.
+  const changesFace = (commit: string): boolean =>
+    git('rev-list', '--parents', '-n', '1', commit)
+      .split(' ')
+      .slice(1)
+      .every((parent) => faceAt(parent) !== faceAt(commit));
   const changes = git(
     'rev-list',
     '--reverse',
     '--full-history',
-    '--no-merges',
     `${anchor}..${head}`,
     '--',
     cssPath,
@@ -135,7 +142,7 @@ it('MP-1-2 a forward red then green pair and a production woff2 request', async 
   )
     .split('\n')
     .filter(Boolean)
-    .filter((commit) => faceAt(`${commit}^`) !== faceAt(commit));
+    .filter((commit) => changesFace(commit));
   const unpaired: string[] = [];
   let open: string | undefined;
   for (const commit of changes) {
