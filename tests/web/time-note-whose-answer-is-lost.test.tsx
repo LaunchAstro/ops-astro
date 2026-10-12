@@ -8,6 +8,7 @@
 // must reuse the operation id while the outcome is unknown and mint a new one
 // after a refusal.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TimeLog } from '../../apps/web/src/screens/task/Time.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -149,5 +150,72 @@ describe('a note saved again', () => {
     await tick();
     expect(idOf(api.sent, 1)).toBe(idOf(api.sent, 0));
     expect(boxValue(view)).toBeUndefined();
+  });
+});
+
+describe('a note pressed twice at once', () => {
+  it('sends the same words under one operation and closes the box', async () => {
+    const api = world();
+    const { view } = await timeLog(api);
+    await view.click('[data-time-note="a"]');
+    await typeInto(view, BOX, 'New note');
+    const box = view.host.querySelector(BOX);
+    await act(() => {
+      for (let enter = 0; enter < 2; enter += 1) {
+        box?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }
+    });
+    await tick();
+    await tick();
+    expect(new Set(api.sent.map((each) => each.body['operationId'])).size).toBe(1);
+    expect(api.record.note).toBe('New note');
+    expect(boxValue(view)).toBeUndefined();
+  });
+});
+
+describe('a note typed back after two lost answers', () => {
+  it('is a new save of those words, not a replay of the first one', async () => {
+    const api = world();
+    const { view } = await timeLog(api);
+    api.fates.push('lose', 'lose');
+    await saveNote(view, 'First note');
+    await typeInto(view, BOX, 'Second note');
+    await press(view, BOX, 'Enter');
+    await tick();
+    expect(api.record.note).toBe('Second note');
+    await typeInto(view, BOX, 'First note');
+    await press(view, BOX, 'Enter');
+    await tick();
+    expect(idOf(api.sent, 2)).not.toBe(idOf(api.sent, 0));
+    expect(api.record.note).toBe('First note');
+  });
+
+  it('sent again as the last words lost is the same operation as those', async () => {
+    const api = world();
+    const { view } = await timeLog(api);
+    api.fates.push('lose', 'lose');
+    await saveNote(view, 'First note');
+    await typeInto(view, BOX, 'Second note');
+    await press(view, BOX, 'Enter');
+    await tick();
+    await press(view, BOX, 'Enter');
+    await tick();
+    expect(idOf(api.sent, 2)).toBe(idOf(api.sent, 1));
+    expect(api.record.note).toBe('Second note');
+  });
+});
+
+describe('a note saved after a known answer', () => {
+  it('holds no id: the earlier words saved again are a new operation', async () => {
+    const api = world();
+    const { view } = await timeLog(api);
+    api.fates.push('lose');
+    await saveNote(view, 'First note');
+    await press(view, BOX, 'Enter');
+    await tick();
+    expect(boxValue(view)).toBeUndefined();
+    await saveNote(view, 'First note');
+    expect(api.sent).toHaveLength(3);
+    expect(idOf(api.sent, 2)).not.toBe(idOf(api.sent, 0));
   });
 });
