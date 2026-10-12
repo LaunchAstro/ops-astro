@@ -158,11 +158,23 @@ export function headReservation(lineage: RunLineage, head: RunVersion): RunReser
 }
 
 /**
+ * What a reservation still holds. Settling a hold (`actual`) or releasing it
+ * (`abandoned`) takes it off the envelope but leaves the reservation's own
+ * held amount as it was reserved, so only a hold still `held` or
+ * `quarantined` holds anything.
+ */
+export function stillHeldMinor(reservation: RunReservation | undefined): number {
+  return reservation?.state === 'held' || reservation?.state === 'quarantined'
+    ? reservation.heldMinor
+    : 0;
+}
+
+/**
  * What the story holds: the reservation that matters, and beside an unknown
  * hold on an older run, the head run's own as well.
  */
 export function heldMinorOf(lineage: RunLineage, head: RunVersion): number {
   const decides = headReservation(lineage, head);
   const own = ownReservation(lineage, head);
-  return (decides?.heldMinor ?? 0) + (own === undefined || own === decides ? 0 : own.heldMinor);
+  return stillHeldMinor(decides) + (own === undefined || own === decides ? 0 : stillHeldMinor(own));
 }
