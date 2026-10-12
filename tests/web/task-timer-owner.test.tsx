@@ -122,7 +122,7 @@ it('same-owner rotation keeps the known task pointer and routes Stop through the
   expect(next.sent).toHaveLength(1);
   expect(next.sent[0]?.['taskId']).toBe(A);
   expect(next.sent[0]?.['operationId']).not.toBe(old.sent[0]?.['operationId']);
-  expect(view.find('[data-task-timer-strip]')?.textContent).toBe('Select task to time');
+  expect(view.find('[data-task-timer-strip]')?.textContent).toBe('Start timer');
 });
 
 const authorised = () =>
@@ -171,6 +171,6 @@ for (const deniedKey of ['Timer-A', A]) {
     expect(view.find('[data-task-timer-strip]')?.textContent).toContain('Alpha work');
     await view.click('[data-task-timer-strip] [data-timer]');
     expect(wire.sent.at(-1)?.['taskId']).toBe(A);
-    expect(view.find('[data-task-timer-strip]')?.textContent).toBe('Select task to time');
+    expect(view.find('[data-task-timer-strip]')?.textContent).toBe('Start timer');
   });
 }

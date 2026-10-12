@@ -120,7 +120,7 @@ describe('MP-4-3 panel doors placed on the page', () => {
       expect(view.find(`#perspective-panel-team [data-panel-door="${door}"]`)).not.toBeNull();
     }
     expect(view.find('#perspective-panel-team [data-steps] ')?.textContent).toContain(
-      'No subtasks on this one yet.',
+      '0 of 0 done · 0%',
     );
     await view.click('#perspective-panel-team [data-panel-door="log"]');
     expect(opened).toStrictEqual(['log']);

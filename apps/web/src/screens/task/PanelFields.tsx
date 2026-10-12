@@ -17,18 +17,17 @@
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
 
+import { StyledSelect } from '@launchastro/ui';
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import {
   TASK_STAGES,
   type InternalTaskDetail as Task,
-  type PersonListResult,
   type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
-import { RecordState } from '../../views/record-state.tsx';
+import { AssigneeField } from './AssigneeField.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
@@ -40,7 +39,7 @@ import { StatusField } from './StatusField.tsx';
 import { ClientField } from './ClientField.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { CategoryField } from './CategoryField.tsx';
-import { ScoreFields } from './ScoreFields.tsx';
+import { PageLink } from './PageLink.tsx';
 
 export interface PanelFieldsProps extends ClientSeams {
   readonly client: OperationsClient;
@@ -143,7 +142,26 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
   );
   return (
     <div className="dtp__fields">
-      <AssigneeField {...props} {...field} assignment={assignment} />
+      <div className="tf__row">
+        <AssigneeField {...props} {...field} assignment={assignment} />
+      </div>
+      <div className="tf__row">
+        <ClientField {...props} />
+      </div>
+      <div className="tf__row">
+        <DueField {...props} {...field} />
+      </div>
+      <div className="tf__row">
+        <EstimateField {...props} {...field} />
+      </div>
+      <FilingFields
+        {...props}
+        stage={
+          <div className="tf__row">
+            <StageField {...props} {...field} />
+          </div>
+        }
+      />
       <AssignToAI
         client={props.client}
         task={props.task}
@@ -157,73 +175,12 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
         hold={assignment.hold}
         recordId={props.task.id}
       />
-      <DueField {...props} {...field} />
-      <EstimateField {...props} {...field} />
-      <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
-      <StageField {...props} {...field} />
-      <ScoreFields {...props} scope="panel" disabled={field.busy} />
-      <StatusField
-        client={props.client}
-        task={props.task}
-        states={props.states ?? []}
-        id="panel-field-status"
-        onChanged={props.onChanged}
-      />
-      <ProjectField
-        client={props.client}
-        grantKey={props.grantKey}
-        task={props.task}
-        onChanged={props.onChanged}
-      />
-      <ClientField {...props} />
-      <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
       <Refusal because={field.because} />
     </div>
   );
 }
 
 type FieldProps = PanelFieldsProps & ReturnType<typeof useFieldWrite>;
-
-/** A person or nobody, from the people this business can be assigned work. */
-function AssigneeField(
-  props: FieldProps & { readonly assignment: ReturnType<typeof useTaskAssignment> },
-): ReactElement {
-  const { client, task } = props;
-  const people = useRead<PersonListResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<PersonListResult>('person.list', {}),
-    deps: [],
-  });
-  return (
-    <>
-      <label className="tf__k" htmlFor="panel-field-assignee">
-        Assignee
-      </label>
-      <RecordState state={people.state} subject="people" onRetry={people.reload}>
-        {(value) => (
-          <select
-            id="panel-field-assignee"
-            className="input"
-            disabled={props.busy || props.assignment.locked}
-            value={task.assignee?.personId ?? ''}
-            onChange={(event) =>
-              void props.assignment.custody.choose(task.id, task.revision, {
-                assignee: event.target.value === '' ? null : event.target.value,
-              })
-            }
-          >
-            <option value="">Unassigned</option>
-            {value.persons.map((person) => (
-              <option key={person.personId} value={person.personId}>
-                {person.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </RecordState>
-    </>
-  );
-}
 
 /** The estimate, from the vocabulary; one stored off it stays among the choices as itself. */
 function EstimateField(props: FieldProps): ReactElement {
@@ -237,7 +194,7 @@ function EstimateField(props: FieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-estimate">
         Estimate
       </label>
-      <select
+      <StyledSelect
         id="panel-field-estimate"
         className="input"
         disabled={props.busy}
@@ -254,7 +211,7 @@ function EstimateField(props: FieldProps): ReactElement {
             {estimateWords(choice)}
           </option>
         ))}
-      </select>
+      </StyledSelect>
     </>
   );
 }
@@ -269,7 +226,7 @@ function StageField(props: FieldProps): ReactElement {
       <label className="tf__k" htmlFor="panel-field-stage">
         Stage
       </label>
-      <select
+      <StyledSelect
         id="panel-field-stage"
         className="input"
         disabled={props.busy}
@@ -287,7 +244,40 @@ function StageField(props: FieldProps): ReactElement {
           </option>
         ))}
         {off ? <option value={stage}>{stage}</option> : null}
-      </select>
+      </StyledSelect>
+    </>
+  );
+}
+
+function FilingFields(props: PanelFieldsProps & { readonly stage: ReactElement }): ReactElement {
+  return (
+    <>
+      <div className="tf__row">
+        <ProjectField
+          client={props.client}
+          grantKey={props.grantKey}
+          task={props.task}
+          onChanged={props.onChanged}
+        />
+      </div>
+      <div className="tf__row">
+        <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
+      </div>
+      {props.stage}
+      <div className="tf__row">
+        <StatusField
+          client={props.client}
+          task={props.task}
+          states={props.states ?? []}
+          id="panel-field-status"
+          onChanged={props.onChanged}
+        />
+      </div>
+      <TagField client={props.client} task={props.task} onChanged={props.onChanged}>
+        <div className="tf__row">
+          <PageLink client={props.client} task={props.task} onChanged={props.onChanged} />
+        </div>
+      </TagField>
     </>
   );
 }

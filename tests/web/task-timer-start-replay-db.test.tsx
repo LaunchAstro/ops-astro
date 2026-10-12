@@ -82,7 +82,7 @@ it.skipIf(serverUrl === undefined)(
     expect(await outcomes(w, String(stopped.body['operationId']))).toEqual(['applied', 'replayed']);
     expect(await w.entries(model.taskId)).toHaveLength(1);
     expect(second.storage.getItem(TIMER)).toBeNull();
-    expect(second.view.find(STRIP)?.textContent).toContain('Select task to time');
+    expect(second.view.find(STRIP)?.textContent).toContain('Start timer');
     expect(second.view.find(STRIP)?.textContent).toContain('Task time could not be refreshed.');
     expect(second.view.find(`${STRIP} [data-timer][data-running=false]`)).not.toBeNull();
     expect(second.view.find(`${STRIP} [data-timer][data-running=true]`)).toBeNull();
