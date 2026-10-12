@@ -10,7 +10,7 @@
 // admitted and parks on it; a manager ends the person's access here and it
 // commits; then the fixture lets go. The act must be refused `AUTH_ACCESS_ENDED`:
 // no factor enrolled, verified or removed, no applied event, and nothing removed
-// at the provider. Endings elsewhere (the same login in the other business,
+// at the provider, a losing enrolment included. Endings elsewhere (the same login in the other business,
 // another person here) are not this caller's standing here, and change nothing.
 
 import { randomUUID } from 'node:crypto';
@@ -22,11 +22,14 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import {
   liveFactor,
   loginHasVerifiedFactor,
+  recordFactorEnrolled,
+  recordFactorVerified,
 } from '../../packages/core-records/src/identity/second-factor.ts';
 import {
   advisoryLock,
   connect,
   type BusinessId,
+  type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
@@ -34,7 +37,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { hold, waitingOn } from '../support/lock-waits.ts';
+import { hold, waitingOn, type Held } from '../support/lock-waits.ts';
 import { insertBusiness } from './fixture.ts';
 import {
   ACTS,
@@ -166,4 +169,63 @@ it('a factor removal is kept when, during its factor lock wait, the same login l
     status: 'none',
     heldByLogin: false,
   });
+});
+
+/** An unverified enrolment of `person` in the transaction's business. */
+const enrolled = async (tx: TenantQuery, person: string) =>
+  await recordFactorEnrolled(tx, {
+    personId: person,
+    provider: 'supabase',
+    providerFactorId: `factor-${randomUUID()}`,
+  });
+
+it('a factor verify whose losing enrolment was undone by its access ending removes nothing at the provider', async () => {
+  const { caller: asked, person } = await factorCaller(db, business, false);
+  const { subject } = asked.presented;
+  const elsewhere = await standingElsewhere(db, subject);
+  await db.app.withBusiness(business, async (tx) => await enrolled(tx, person));
+  const removed: string[] = [];
+  let factorLock: Held | undefined;
+  const to: FactorProvider = {
+    ...provider(removed),
+    // Between the act's two transactions the login verifies a factor through
+    // the other business, so the record step finds this enrolment lost; then
+    // the factor lock is held, so that step parks on it.
+    verify: async (token, factorId, code) => {
+      await db.app.withBusiness(elsewhere.business, async (tx) => {
+        const factor = await enrolled(tx, elsewhere.person);
+        await recordFactorVerified(tx, {
+          personId: elsewhere.person,
+          factorId: factor.id,
+          subject,
+        });
+      });
+      factorLock = await hold(db.appUrl, business, async (tx) => {
+        await advisoryLock(tx, factorLockKey(subject));
+      });
+      return await provider(removed).verify(token, factorId, code);
+    },
+  };
+  const actor = connect(db.appUrl);
+  try {
+    let verifying: Promise<unknown> | undefined;
+    try {
+      verifying = ACTS.verify({ ...asked, database: actor }, to);
+      await waitingOn(db.admin, 'advisory', 'pg_advisory_xact_lock');
+      expect(await endAccess(ada, business, person)).toBe('applied');
+    } finally {
+      await factorLock?.letGo();
+    }
+    expect({
+      result: await verifying,
+      removed,
+      status: (await db.app.withBusiness(business, (tx) => liveFactor(tx, person)))?.status,
+    }).toMatchObject({
+      result: { refused: true, code: 'AUTH_ACCESS_ENDED' },
+      removed: [],
+      status: 'unverified',
+    });
+  } finally {
+    await actor.close();
+  }
 });
