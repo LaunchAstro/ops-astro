@@ -89,8 +89,16 @@ export interface EgressGuard {
 
 /** The guards held now, last taken last: a refusal is recorded on the last. */
 const held: string[][] = [];
-/** Swaps every way out back to the one from before the first guard held now. */
+/** Swaps every way out but the TCP handle's back to the one from before the first guard held now. */
 let restore: (() => void) | undefined;
+/** Swaps the TCP handle's connects back; it outlives `restore` by one turn. */
+let restoreHandles: (() => void) | undefined;
+/**
+ * The guard released last, while the handle's connects stay refused: a connect
+ * started under it reaches the handle a tick later (`net` queues it on
+ * `process.nextTick`) and is refused and recorded there.
+ */
+let lingering: { readonly attempts: string[]; readonly turn: NodeJS.Immediate } | undefined;
 
 /**
  * Refuse egress until `release`. Guards may overlap and be released in any
@@ -100,6 +108,9 @@ let restore: (() => void) | undefined;
 export function denyEgress(): EgressGuard {
   const attempts: string[] = [];
   if (held.length === 0) restore = denyAll();
+  if (lingering === undefined) restoreHandles ??= denyHandleConnects(refuse);
+  else clearImmediate(lingering.turn);
+  lingering = undefined;
   held.push(attempts);
   return {
     attempts,
@@ -110,15 +121,24 @@ export function denyEgress(): EgressGuard {
       if (held.length > 0) return;
       restore?.();
       restore = undefined;
+      lingering = {
+        attempts,
+        turn: setImmediate(() => {
+          lingering = undefined;
+          restoreHandles?.();
+          restoreHandles = undefined;
+        }),
+      };
     },
   };
 }
 
+const refuse = (what: string): Error => {
+  (held.at(-1) ?? lingering?.attempts)?.push(what);
+  return new Error(`egress denied: ${what}`);
+};
+
 function denyAll(): () => void {
-  const refuse = (what: string): Error => {
-    held.at(-1)?.push(what);
-    return new Error(`egress denied: ${what}`);
-  };
   const connect = Socket.prototype.connect;
   const lookup = dns.lookup;
   const promised = dns.promises.lookup;
@@ -129,7 +149,6 @@ function denyAll(): () => void {
     throw refuse(`udp ${String(typeof args[2] === 'number' ? args[3] : args[1])}`);
   } as typeof dgram.Socket.prototype.send;
   const resolves = denyResolves(refuse);
-  const handles = denyHandleConnects(refuse);
   Socket.prototype.connect = function denied(this: Socket, ...args: unknown[]): Socket {
     // `net.connect` hands the socket its arguments already normalised, as one array.
     const target: unknown = Array.isArray(args[0]) ? (args[0] as unknown[])[0] : args[0];
@@ -154,6 +173,5 @@ function denyAll(): () => void {
     globalThis.fetch = fetched;
     dgram.Socket.prototype.send = send;
     resolves();
-    handles();
   };
 }

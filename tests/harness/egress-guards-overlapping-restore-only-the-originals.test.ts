@@ -3,7 +3,7 @@
 // Two egress guards held at once, released in either order: while either is
 // held every way out is refused and recorded once, by the guard taken last,
 // and once both are released every swapped method is the one from before the
-// first. A connect started under a guard on the socket method from before it
+// first, the TCP handle's one turn later. A connect started under a guard on the socket method from before it
 // is refused even when the guard is released before the connect reaches the
 // handle. No database.
 
@@ -33,6 +33,13 @@ const swapped = (): Record<string, unknown> => ({
 });
 
 const before = swapped();
+/** Every swapped method once the release's turn is over: the handle's restore waits a turn. */
+const afterTurn = async (): Promise<Record<string, unknown>> => {
+  await new Promise<void>((turned) => {
+    setImmediate(turned);
+  });
+  return swapped();
+};
 const retained = Socket.prototype.connect as (
   this: Socket,
   options: { host: string; port: number },
@@ -96,7 +103,7 @@ it('two guards released last-taken first restore every method from before the fi
     expect(await throughNet()).toMatch(/egress denied/u);
     second.release();
     first.release();
-    expect(swapped()).toEqual(before);
+    expect(await afterTurn()).toEqual(before);
   });
 });
 
@@ -106,7 +113,7 @@ it('two guards released first-taken first restore every method from before the f
   await releasing([first, second], async () => {
     first.release();
     second.release();
-    expect(swapped()).toEqual(before);
+    expect(await afterTurn()).toEqual(before);
     expect(await throughNet()).toBe('connected');
   });
 });
@@ -142,7 +149,7 @@ it('a guard released twice leaves a guard taken after it in place', async () => 
     expect(await throughNet()).toMatch(/egress denied/u);
     expect(second.attempts).toEqual([`socket ${port}`]);
   });
-  expect(swapped()).toEqual(before);
+  expect(await afterTurn()).toEqual(before);
 });
 
 it('a guard released after its test threw restores every method', async () => {
@@ -153,7 +160,7 @@ it('a guard released after its test threw restores every method', async () => {
       throw new Error('the test body threw');
     }),
   ).rejects.toThrow('the test body threw');
-  expect(swapped()).toEqual(before);
+  expect(await afterTurn()).toEqual(before);
   expect(await throughNet()).toBe('connected');
 });
 
