@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "After a write-off, a person can still record the work's outcome: the charge stays as written off and the outcome is recorded; judged on a real migrated database."
-}

@@ -10,10 +10,8 @@
 // recorded outcome takes (`outcome.ts`), so the two race to one winner. It
 // writes no row of its own among the money tables: no new attempt, hold or
 // envelope (split 2.2, "no ledger row"). It moves no work: a step proved
-// absent has already resumed on its own hold. Its charge is final; a person
-// may still record the work's outcome afterwards (`outcome.ts`), which moves no
-// money and decides the work. Until then a step not proved absent keeps its
-// stop, and a top-up at that stop is refused (`budget-stop.ts`).
+// absent has already resumed on its own hold, and a step not proved absent
+// keeps its stop until a person records an outcome for the work.
 //
 // Above the four-eyes band, T2e's stored setting read here, a second person
 // names the same figure, exactly as a top-up pairs (`budget.ts`). The band is
