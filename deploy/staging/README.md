@@ -193,6 +193,16 @@ learns nothing. An export and a drill from the store also ask the gate again
 before each step with the store, so an operator whose sign-in ended or whose
 `operations:manage` was revoked part way reads and records nothing more.
 
+Those gate checks run in the operator's own command, and the store cannot see
+a sign-in. A sign-in that ends after the last check can still receive the part
+already asked for; the check after the read then refuses it and the command
+keeps nothing. No hold in the command closes that gap, because a revoked
+operator could reach the store with their store login without this command at
+all. The store's own authority is `backups.appointed`, checked inside
+`backups.read_part` as each part is read. So to end an operator's backup
+access, the store's admin deletes that operator's `backups.appointed` row and
+drops their store login; the next part they ask for is refused.
+
 The carried drill takes three commands:
 
 1. On the machine, `restore-drill.mjs --export <file>` writes the newest
