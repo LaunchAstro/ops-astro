@@ -169,6 +169,16 @@ function startRefusal(
   ]);
 }
 
+/** A subject as a title: whole characters, cut to the title's limit with an ellipsis. */
+function titleOf(subject: string): string {
+  const characters = Array.from(subject);
+  if (characters.length <= TITLE_LIMIT) return subject;
+  return `${characters
+    .slice(0, TITLE_LIMIT - 1)
+    .join('')
+    .trimEnd()}…`;
+}
+
 export async function startConversation(
   tx: TenantQuery,
   context: CommandContext,
@@ -182,7 +192,8 @@ export async function startConversation(
   const { pageRefused } = admitted;
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;
-  const title = typeof fields.title === 'string' ? fields.title.trim() : (subject ?? DEFAULT_TITLE);
+  const title =
+    typeof fields.title === 'string' ? fields.title.trim() : titleOf(subject ?? DEFAULT_TITLE);
   const conversationId = randomUUID();
   const messageId = randomUUID();
   await tx.query(
