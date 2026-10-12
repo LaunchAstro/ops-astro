@@ -5,7 +5,7 @@
 // revoked while it waited refuses it. And only a read's identifier fields are
 // lowercased: a preset name that happens to look like a uuid keeps its case.
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { agentWorld, type AgentWorld, type Decider } from '../commands/agent-fixture.ts';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
@@ -29,8 +29,9 @@ afterAll(async () => {
   await world?.drop();
 });
 
-describe.skipIf(serverUrl === undefined)('a repeat propose and a read’s identifier fields', () => {
-  it('preset names retain their case when they happen to look like UUIDs', async () => {
+it.skipIf(serverUrl === undefined)(
+  'preset names retain their case when they happen to look like UUIDs',
+  async () => {
     await world.db.app.withBusiness(world.business, async (tx) => {
       await grantTo(tx, decider, 'manage');
     });
@@ -42,44 +43,62 @@ describe.skipIf(serverUrl === undefined)('a repeat propose and a read’s identi
       fields: [],
     });
     expect(answer).toHaveProperty('plan.presetKey', presetKey);
-  });
+  },
+);
 
-  it('reusing a pending proposal rechecks authority after waiting for the task lock', async () => {
-    const made = await world.asPerson(decider, {
-      command: 'task.create',
-      operationId: randomUUID(),
-      fields: { title: 'revoked while waiting' },
+/** A task of the decider's, the agent's delegation on it, and a proposal body. */
+async function delegatedProposal() {
+  const made = await world.asPerson(decider, {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title: 'revoked while waiting' },
+  });
+  if (isCommandRefusal(made) || made.recordId === null) throw new Error('task creation failed');
+  const taskId = made.recordId;
+  const credential = await world.db.app.withBusiness(world.business, async (tx) => {
+    const minted = await mintDelegation(tx, {
+      agentActorId: world.agentActorId,
+      delegatePersonId: decider.personId,
+      mintedByActorId: decider.actorId,
+      purpose: 'revocation_proof',
+      collections: ['task'],
+      actions: ['read', 'write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
     });
-    if (isCommandRefusal(made) || made.recordId === null) throw new Error('task creation failed');
-    const taskId = made.recordId;
-    const credential = await world.db.app.withBusiness(world.business, async (tx) => {
-      const minted = await mintDelegation(tx, {
-        agentActorId: world.agentActorId,
-        delegatePersonId: decider.personId,
-        mintedByActorId: decider.actorId,
-        purpose: 'revocation_proof',
-        collections: ['task'],
-        actions: ['read', 'write'],
-        purposeScope: { kind: 'record', id: taskId },
-        expiresAt: new Date(Date.now() + 3_600_000),
-      });
-      if (!minted.ok) throw new Error(`mint failed ${minted.refusal.code}`);
-      return minted.value.credential;
-    });
-    const [task] = await world.db.admin.execute<{ revision: string }>(
-      'select revision::text as revision from public.records where id = $1',
-      [taskId],
-    );
-    const proposal = {
-      command: 'task.propose',
-      recordId: taskId,
-      expectedRevision: Number(task?.revision),
-      purpose: 'draft',
-      maximumMinor: 100,
-      currency: 'AUD',
-      payload: {},
-      step: { kind: 'compose', payload: {} },
-    };
+    if (!minted.ok) throw new Error(`mint failed ${minted.refusal.code}`);
+    return minted.value.credential;
+  });
+  const [task] = await world.db.admin.execute<{ revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [taskId],
+  );
+  const proposal = {
+    command: 'task.propose',
+    recordId: taskId,
+    expectedRevision: Number(task?.revision),
+    purpose: 'draft',
+    maximumMinor: 100,
+    currency: 'AUD',
+    payload: {},
+    step: { kind: 'compose', payload: {} },
+  };
+  return { proposal, credential, taskId };
+}
+
+/** How many backends wait on `holderPid`'s locks. */
+async function blockedBy(holderPid: number): Promise<number | undefined> {
+  const [blocked] = await world.db.admin.execute<{ n: number }>(
+    'select count(*)::int as n from pg_stat_activity where datname = current_database() and $1 = any(pg_blocking_pids(pid))',
+    [holderPid],
+  );
+  return blocked?.n;
+}
+
+it.skipIf(serverUrl === undefined)(
+  'reusing a pending proposal rechecks authority after waiting for the task lock',
+  async () => {
+    const { proposal, credential, taskId } = await delegatedProposal();
     const first = await world.asAgent({ ...proposal, operationId: randomUUID() }, credential);
     expect(isCommandRefusal(first)).toBe(false);
     let holderPid = 0;
@@ -90,18 +109,7 @@ describe.skipIf(serverUrl === undefined)('a repeat propose and a read’s identi
     });
     const pending = world.asAgent({ ...proposal, operationId: randomUUID() }, credential);
     try {
-      await expect
-        .poll(
-          async () => {
-            const [blocked] = await world.db.admin.execute<{ n: number }>(
-              'select count(*)::int as n from pg_stat_activity where datname = current_database() and $1 = any(pg_blocking_pids(pid))',
-              [holderPid],
-            );
-            return blocked?.n;
-          },
-          { timeout: 10_000 },
-        )
-        .toBe(1);
+      await expect.poll(async () => await blockedBy(holderPid), { timeout: 10_000 }).toBe(1);
       await world.db.admin.execute(
         'update public.grants set revoked_at = clock_timestamp() where id = $1',
         [decider.grants.write],
@@ -111,7 +119,8 @@ describe.skipIf(serverUrl === undefined)('a repeat propose and a read’s identi
       expect(isCommandRefusal(answer) ? answer.code : 'applied').toBe('SCOPE_NOT_GRANTED');
     } finally {
       await held.letGo();
-      await pending.catch(() => undefined);
+      await pending.catch(() => null);
     }
-  }, 30_000);
-});
+  },
+  30_000,
+);
