@@ -72,8 +72,9 @@ const subjectsOfSharer = (sharer: Sharer): readonly Subject[] => [
  *
  * Idempotent: a live share of the same record with the same person is
  * returned rather than issued twice, so a repeated share, or two at once,
- * leaves one row to revoke. The share's lock is taken first and authority
- * judged after it, so a `share` that ends while this waits shares nothing.
+ * leaves one row to revoke. The share's locks are taken first (`holdShares`)
+ * and authority judged after them, so a `share` that ends while this waits
+ * shares nothing.
  * Authority is checked before existence, so a sharer with no `share` learns
  * nothing about whether the record or the person is there.
  */
@@ -82,7 +83,7 @@ export async function shareRecord(
   sharer: Sharer,
   request: ShareRequest,
 ): Promise<ShareDecision<string>> {
-  await lockShare(tx, request);
+  await holdShares(tx, request.recordId, [request.personId]);
   const refused = await refuseShare(tx, sharer, request, 'live');
   if (refused !== undefined) return refused;
   return { ok: true, value: await issueShare(tx, sharer.actorId, request) };
@@ -124,7 +125,7 @@ export async function revokeShare(
   // A trashed record's shares can still be withdrawn: the share outlives the
   // trash until a purge revokes it, so refusing here would leave its holder
   // standing with nobody able to take it back.
-  await lockShare(tx, request);
+  await holdShares(tx, request.recordId, [request.personId]);
   const refused = await refuseShare(tx, sharer, request, 'live or trashed');
   if (refused !== undefined) return refused;
   return { ok: true, value: await withdrawShares(tx, request) };
@@ -194,14 +195,34 @@ async function refuseShare(
 }
 
 /**
- * The share's own lock, per business, record and person, held to commit. A
- * share or withdrawal takes it before it judges the sharer's authority, so
- * the judgement reads the clock and the grants after any wait on it; taking
- * it again in the same transaction waits for nothing.
+ * Every share path's locks, in one order, before any authority is judged:
+ * the record's row, then the share key of each person in id order. Client
+ * access holds the row already (the envelope locks its target for update)
+ * and takes the keys of its client's people here; a single share or
+ * withdrawal takes its row for share and its one key. One order, so the
+ * paths never wait on each other in a cycle, and every grant judged after
+ * this reads the clock and the grants after the waits.
  */
-async function lockShare(tx: TenantQuery, request: ShareRequest): Promise<void> {
-  const key = `record-share:${tx.businessId}:${request.recordId}:${request.personId}`;
-  await advisoryLock(tx, key.toLowerCase());
+export async function holdShares(
+  tx: TenantQuery,
+  recordId: string,
+  personIds: readonly string[],
+): Promise<void> {
+  if (!isUuid(recordId)) return;
+  await tx.query(
+    `select 1 from public.records r where r.business_id = $1 and r.id = $2 for share of r`,
+    [tx.businessId, recordId],
+  );
+  for (const personId of [...personIds].toSorted()) {
+    // Sequential: one connection, and the keys are taken in this order.
+    // oxlint-disable-next-line no-await-in-loop
+    await lockShare(tx, recordId, personId);
+  }
+}
+
+/** One share key, per business, record and person, held to commit; again in one transaction waits for nothing. */
+async function lockShare(tx: TenantQuery, recordId: string, personId: string): Promise<void> {
+  await advisoryLock(tx, `record-share:${tx.businessId}:${recordId}:${personId}`.toLowerCase());
 }
 
 /**
@@ -217,7 +238,7 @@ async function liveShares(
   request: ShareRequest,
   standing = false,
 ): Promise<readonly string[]> {
-  await lockShare(tx, request);
+  await lockShare(tx, request.recordId, request.personId);
   const rows = await tx.query<{ readonly id: string }>(
     `${standing ? EFFECTIVE : ''}
      select id from ${standing ? 'effective' : 'public.grants'}

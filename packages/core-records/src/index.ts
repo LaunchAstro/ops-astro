@@ -86,7 +86,7 @@ export {
   readableScope,
   type ReadableScope,
 } from './authority/readable-scope.ts';
-export { issueShare, withdrawShares } from './authority/shares.ts';
+export { holdShares, issueShare, withdrawShares } from './authority/shares.ts';
 export * from './identity/index.ts';
 export {
   asksMoneyStepUp,
