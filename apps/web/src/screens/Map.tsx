@@ -149,17 +149,31 @@ function useWrites(client: OperationsClient, reload: () => void, rereading: bool
   const command = useCommand();
   const [sent, setSent] = useState<MapCommand>('map.revise');
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
-  const attempts = useRef(new Map<string, string>());
+  // An unanswered write's operation and the revision it was sent against, by intent.
+  const attempts = useRef(
+    new Map<string, { readonly operationId: string; readonly revision: number }>(),
+  );
   const { drafts, open, sending, setConflict } = useDrafts();
   const send: Send = (name, recordId, revision, body, slot) => {
     const steps = slot === undefined ? undefined : sending(slot);
-    const intent = JSON.stringify([name, recordId, revision, body]);
-    const operationId = attempts.current.get(intent) ?? client.newOperationId();
-    attempts.current.set(intent, operationId);
+    // The revision is not part of the intent: a live reread after a lost answer
+    // moves it on, and the retry must replay the first operation, sent as it was.
+    const intent = JSON.stringify([name, recordId, body]);
+    const first = attempts.current.get(intent) ?? {
+      operationId: client.newOperationId(),
+      revision,
+    };
+    attempts.current.set(intent, first);
+    const { operationId } = first;
     setSent(name);
     setConflict(null);
     command.run(
-      () => client.mutate(name, { recordId, ...body }, { operationId, expectedRevision: revision }),
+      () =>
+        client.mutate(
+          name,
+          { recordId, ...body },
+          { operationId, expectedRevision: first.revision },
+        ),
       (settlement) => {
         if (settlement.kind !== 'unknown') attempts.current.delete(intent);
         if (settlement.kind === 'ok') steps?.applied();
