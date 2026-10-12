@@ -115,6 +115,34 @@ describe('a create whose replay is refused', () => {
   });
 });
 
+describe('a created task whose draft could not be removed', () => {
+  it('keeps its operation id with the draft, so Create on the reopened draft replays it', async () => {
+    const storage = store();
+    const api = server(storage);
+    const first = await openDraft(api, storage);
+    await first.view.type('#panel-draft-name', 'Renew the domain');
+    const removeItem = storage.removeItem.bind(storage);
+    storage.removeItem = () => {
+      throw new DOMException('denied', 'SecurityError');
+    };
+    await first.view.click('[data-draft="create"]');
+    await settle();
+    expect(first.opened.created).toBe('TSK-1');
+    await first.view.unmount();
+
+    storage.removeItem = removeItem;
+    const again = await openDraft(api, storage);
+    await again.view.click('[data-draft="create"]');
+    await settle();
+    await settle();
+    expect(new Set(api.creates).size).toBe(1);
+    expect(api.tasks).toHaveLength(1);
+    expect(again.opened.created).toBe('TSK-1');
+    expect(storage.getItem(DRAFT_KEY)).toBeNull();
+    await again.view.unmount();
+  });
+});
+
 describe('a create whose operation id cannot reach storage', () => {
   it('is not sent, and the panel says why', async () => {
     const storage = store();
