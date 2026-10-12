@@ -74,8 +74,8 @@ export interface PresetSyncRequest {
   readonly recordTypeKey: string;
   readonly presetKey: string;
   readonly fields: readonly PresetField[];
+  readonly operations: ReadonlySet<string>; // the catalogue's writes, for owning operations
 }
-
 export type PlannedAction =
   | { readonly action: 'create_field'; readonly key: string; readonly slot: string }
   | { readonly action: 'create_unslotted_field'; readonly key: string }
@@ -239,10 +239,10 @@ export async function planPresetSync(
     ]);
   }
 
-  const malformed = invalidFields(request.fields);
+  const malformed = invalidFields(request.fields, request.operations);
   if (malformed.length > 0) {
     return refuse('PRESET_FIELD_INVALID', malformed, [
-      'Give each field a lowercase key and a label, search only text, and name each owning operation as collection.action.',
+      'Give each field a lowercase key and a label, search only text, and name each owning operation as a write the command catalogue has.',
       'Nothing of this plan was applied.',
     ]);
   }
