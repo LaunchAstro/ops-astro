@@ -99,23 +99,35 @@ maintenance page on production's address.
 
 ## The M5 unit
 
-`compose.json` here is production's unit on the M5: the worker and its
-forwarder, the backup store, and the two egress hops. It is staging's
-definition with only the names changed (`tests/ci/production-unit.test.ts`
-proves it). Everything production owns is named `ops-astro-*`, and every
-credential is a `${PRODUCTION_*}` placeholder. So staging's containment,
-limits, image pins and egress allow-list hold for production too: see
+`compose.json` here is production's unit on the M5: the forwarder, the
+backup store, and the two egress hops. The worker is in a file of its own,
+`worker.json`, with the forwarder's wait for it. The two files together are
+staging's definition with only the names changed
+(`tests/ci/production-unit.test.ts` proves it). Everything production owns is
+named `ops-astro-*`, and every credential is a `${PRODUCTION_*}` placeholder.
+So staging's containment, limits, image pins and egress allow-list hold for
+production too: see
 [Containment and limits](../staging/README.md#containment-and-limits). The
 worker and forwarder containers are `ops-astro-worker` and
 `ops-astro-forwarder`, the pair `scripts/ops/stop-production.mjs` stops.
 
 ```sh
 node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production
+node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production --worker
 ```
+
+Without `--worker` the worker is parked: Compose reads `compose.json` alone,
+so no `PRODUCTION_WORKER_*` setting is needed and no worker sign-in is made
+in the business. A profile cannot park it, because Compose requires every
+`${...:?}` setting in a file, profile or not. `--worker` adds `worker.json`
+and its settings, and then the worker must run too. A deploy without it
+leaves a worker that is already running alone. `--worker` is production's
+only: staging's worker is in its own unit.
 
 The deploy reads this definition, checks every image against its pin row and
 runs production's preflight, as the web deploy does. Then it starts the unit
-with `docker compose --file deploy/production/compose.json up`. It takes the
+with `docker compose --file deploy/production/compose.json up`, adding
+`--file deploy/production/worker.json` with `--worker`. It takes the
 service report's snapshot before and after. Production's own containers are
 left out of the compare, and staging's count as live services, so a
 production deploy that restarts staging fails. A staging deploy likewise
