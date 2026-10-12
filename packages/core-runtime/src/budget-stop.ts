@@ -29,7 +29,6 @@ import {
   raiseBudgetWait,
   stopWords,
 } from '../../core-custody/src/index.ts';
-import { raiseAlert } from './alerts.ts';
 import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -281,20 +280,6 @@ export async function stopAtSpentHold(
     ceilingMinor: heldMinor,
     spentMinor,
   });
-  if (wait.raised) return stopWords(wait);
-  const [run] = await tx.query<{ readonly task_id: string }>(
-    `update public.planned_runs set state = 'cancelled'
-      where business_id = $1 and id = $2 returning task_id`,
-    [tx.businessId, stop.runId],
-  );
-  if (run === undefined) throw new Error('budget stop: the stopped run is gone');
-  await raiseAlert(tx, {
-    taskId: run.task_id,
-    causeId: stop.reservationId,
-    raised: { kind: 'awaiting_person', waitingReason: 'needs_approval' },
-  });
-  return LAST_ASK_SPENT;
+  // Past the last ask, custody's wait ends the run and tells a person (`broker-wait.ts`).
+  return stopWords(wait);
 }
-
-const LAST_ASK_SPENT =
-  "The consolidated decision was this run's last ask, so the run ends here and a person is told on the task.";
