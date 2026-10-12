@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A model reply kept after a purge committed, to a question asked before it, is not sent in a later question's earlier messages: a reply is judged by its question's time against the conversation's context start. Judged on a real migrated database through the API, with the exchange paused at the reply's lock."
+}
