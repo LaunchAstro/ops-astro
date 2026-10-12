@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function, require-await -- the reviewer's proof, kept as written */
 import { afterEach, expect, it } from 'vitest';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
