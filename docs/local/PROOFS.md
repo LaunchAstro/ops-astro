@@ -493,12 +493,24 @@ database at the checked-out head and runs `restart-and-expiry.test.ts`,
 `restart-http.test.ts` and `restart-declared.test.ts` with
 `--fileParallelism=false` and both restarts asked. The evidence file carries the head sha, the migration output, `StartedAt`
 before and after, every compared identity with its state, the API process ids
-before and after, each HTTP answer, and the verbose test output. On success and
-on failure the exit trap kills, with SIGKILL, every API and worker process the
-run wrote to its pid file,
+before and after, each HTTP answer, and the verbose test output. The suites
+run as one job with a process group of its own (`process group: <id>` in the
+evidence). Its first member, a keeper, waits on a FIFO that only the script
+writes to, opened before the fork so that the script's death at any later
+point still reaches it. When the script exits, on success, on failure or
+killed with SIGKILL, the keeper reads end of file and kills its own group with
+SIGKILL, so every API and worker process the suites started ends with it. The
+trap then checks that no member of the group is left (`process group ended:
+<id>`, or exit 1). Nothing is signalled by a pid read from a file: the pid
+file the suites write is evidence only. The container is held by the id
+`docker run` returned: readiness, `psql` and removal use that id, and the
+migrations wait until that container is the one publishing the port. The trap
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
-removed`, and `Tests 30 passed (30)`, with no expected failure.
+removed`, and `Tests 30 passed (30)`, with no expected failure. `--no-pull`
+refuses an image that is not on this machine, naming the pull command, and
+launches with `--pull never`; the journey's restart leg passes it through
+`runtime-proofs.sh`.
 The 30 is the count at `3c3ceab` and again at `6e06d3b` (RESTART-LEGS: 25 at
 `610983f` plus the five restart legs below); it was 24 before `610983f`. A lane
 with its own stack passes `--name`, `--port` and `--api-port` rather than
@@ -643,6 +655,19 @@ a database address (RN-04).
 
 Pass is exit 0 and `Tests 2 passed (2)`. The process states have been checked
 on macOS only; Linux is owed once (T3.md).
+
+**In the journey.** `pnpm verify:journey` runs these legs with `--no-pull`,
+then the named suites through `scripts/db-conformance.mjs`, which prints one
+line per run item: `db-conformance: verdict ok|failed <suite>[#part]:
+<reasons>`. `verdictLine` in `scripts/local/journey-proofs.ts` makes it from
+that item's own report and counter reads: a report of that file alone with at
+least one executed test, exit status 0, no report error, no failed or skipped
+test, movement above the counter's read cost and a new client session. The
+protected set's verdicts read only those lines. A component passes when each
+item the manifest and `tests/db/shard-plan.json` expect of its suites has
+exactly one `ok` line. Queue and delivery (`tests/db/inbox-conformance.test.ts`
+and `tests/commands/inbox-restart.test.ts`) also needs the same run's legs to
+have passed.
 
 ## Defects found in other lanes' files
 
