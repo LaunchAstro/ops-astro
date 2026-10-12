@@ -2464,7 +2464,10 @@ agent route serves it (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held
 amount settles the hold at that figure, with the attempt's outcome left
 `unknown`; nothing abandons it under the cause `written_off`. The envelope
 gives the whole hold back either way; no attempt, hold or envelope row is
-added and no work moves. When the hold is above the business's four-eyes
+added and no work moves. It is final for the attempt: no outcome is recorded
+after it, and a top-up at the run's budget stop is `TRANSITION_NOT_PERMITTED`,
+since a fresh hold would run a step whose effect is unknown; a person ends the
+work and starts it again. When the hold is above the business's four-eyes
 band, the first holder's call answers `awaiting_second_approver` and moves
 nothing; a different live holder naming the same attempt and amount applies
 it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
