@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The exchange's context read and a purge of the conversation's task at once, on two connections: the read is refused and asks no model, or, after the purge, sends nothing from before it; never the old epoch's messages with the task dropped. Judged on a real migrated database with the local model."
+}
