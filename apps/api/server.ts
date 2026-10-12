@@ -298,7 +298,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
       notificationQueue = row?.usage ?? null;
       reachable = true;
     } catch (cause) {
-      detail = cause instanceof Error ? cause.message : 'unknown';
+      // Anyone may ask, so a bounded code only: a connection error's text names the database's address.
+      detail = faultCode(cause);
     }
     return context.json(
       {
