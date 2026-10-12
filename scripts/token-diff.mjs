@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // `pnpm tokens:diff`: the token file against the expected light and dark sets.
 //
-// It reads the two blocks of `packages/ui/src/styles/1-tokens.css` that carry
-// values, `:root` and `[data-theme='dark']`, and resolves every `var()` the way
-// the browser does when both blocks sit on the same element: dark declarations
-// win where they exist, unless the `:root` one is `!important` and the dark one
-// is not, and every reference is substituted after that, so an alias declared
-// only in `:root` still follows a primitive the dark block flips. Each expected
-// token is then compared, as text with its whitespace collapsed and one
-// spelling per number and hex, to what that resolution gives. A token that is
-// missing or differs is named with both values, as is a token declared in dark
-// alone, and the run exits 1.
+// It reads every top-level block of `packages/ui/src/styles/1-tokens.css` that
+// carries values, `:root` and `[data-theme='dark']`, and cascades them in source
+// order the way the browser does on the element both match: the selectors tie,
+// so a later declaration wins, unless an earlier one is `!important` and it is
+// not. The light set is the `:root` blocks alone. Every reference is substituted
+// after that, so an alias declared only in `:root` still follows a primitive
+// the dark block flips. Each expected token is then compared, as text with its
+// whitespace collapsed and one spelling per number and hex, to what that
+// resolution gives. A token that is missing or differs is named with both
+// values, as is a token declared in dark alone, and the run exits 1.
 //
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
@@ -23,11 +23,12 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_CSS = `${root}packages/ui/src/styles/1-tokens.css`;
 const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
 
-/** The custom properties of the first top-level block whose selector is exactly `selector`. */
-function block(css, selector) {
-  const rule = parseSheet(css).find((one) => one.selector === selector && one.context === '');
-  const tokens = (rule?.decls ?? []).filter(({ prop }) => prop.startsWith('--'));
-  return tokens.reduce((map, decl) => cascade(map, decl), new Map());
+/** The custom properties of every top-level block of one of `selectors`, in source order. */
+function cascaded(css, selectors) {
+  return parseSheet(css)
+    .filter((one) => selectors.includes(one.selector) && one.context === '')
+    .flatMap((one) => one.decls.filter(({ prop }) => prop.startsWith('--')))
+    .reduce((map, decl) => cascade(map, decl), new Map());
 }
 
 /** `map` with `decl` declared after what it holds; it loses only to an important held one. */
@@ -53,11 +54,8 @@ function resolve(declared) {
 
 /** The resolved light and dark sets of a token file's text. */
 export function resolveTokens(css) {
-  const light = block(css, ':root');
-  const dark = [...block(css, "[data-theme='dark']").values()].reduce(
-    (map, decl) => cascade(map, decl),
-    new Map(light),
-  );
+  const light = cascaded(css, [':root']);
+  const dark = cascaded(css, [':root', "[data-theme='dark']"]);
   return { light: resolve(values(light)), dark: resolve(values(dark)) };
 }
 
