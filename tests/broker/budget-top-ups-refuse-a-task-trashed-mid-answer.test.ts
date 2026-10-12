@@ -122,6 +122,8 @@ it('an ordinary top-up paused before its locks refuses a task trashed meanwhile'
         personId: people.approver.personId,
         subjects: as(people.approver, runId).subjects,
         collection: 'billing',
+        // Refused on the trash, before the step-up is judged again.
+        standing: { roleKey: null, assurance: { level: 'aal1', signedInAt: null, factorAt: null } },
       }),
   );
   expect(outcome).toMatchObject({ ok: false, refusal: { code: 'NOT_FOUND' } });

@@ -12,9 +12,13 @@
 // the wrong one raises the wrong ceiling.
 
 import {
+  isMoneyKey,
+  judgeStepUp,
+  MONEY_STEP_UP_SETTING,
   refuseCommand,
   type CommandRefusal,
   type RefusalCode,
+  type Session,
   type Subject,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
@@ -315,6 +319,8 @@ export interface TopUpRequest {
   readonly personId: string;
   readonly subjects: readonly Subject[];
   readonly collection: string;
+  /** The caller's sign-in, judged for the money step-up again once the locks are held. */
+  readonly standing: Pick<Session, 'roleKey' | 'assurance'>;
 }
 
 type TopUpResult =
@@ -371,6 +377,8 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   if (!(await holds(request.subjects))) {
     return refused('SCOPE_NOT_GRANTED', 'no live grant covers it', noGrant);
   }
+  const stale = await staleAfterWait(tx, request);
+  if (stale !== undefined) return { ok: false, refusal: stale };
   const committed = BigInt(envelope.heldMinor) + BigInt(envelope.actualMinor);
   const wanted = BigInt(envelope.maximumMinor) - committed + request.amountMinor;
   const cap = await capCommitted(tx, envelope.capId);
@@ -407,6 +415,37 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   );
   const maximumMinor = figure.fromMaximumMinor + figure.amountMinor;
   return { ok: true, value: { ...figure, state: 'applied', maximumMinor, approvers: by } };
+}
+
+const STEP_UP_FIXES: readonly string[] = [
+  'Sign in again with the code from your authenticator app, then retry.',
+  'A top-up needs a sign-in with the second factor in the last 60 minutes.',
+];
+
+/**
+ * The money step-up (C59), judged again after the waits. The door judged it
+ * before them, so protection switched on, or a factor that aged out, while
+ * this waited would not count. One statement reads the setting and the
+ * clock, so the sign-in is judged on the instant the setting was read at. A
+ * plain read, no lock: it sees what committed during the wait.
+ */
+async function staleAfterWait(
+  tx: TenantQuery,
+  request: TopUpRequest,
+): Promise<CommandRefusal | undefined> {
+  if (!isMoneyKey(request.collection, 'decide')) return undefined;
+  const [read] = await tx.query<{ readonly protected: boolean; readonly now: number }>(
+    `select coalesce((select value <> 'false'::jsonb from public.business_settings
+                       where business_id = $1 and key = $2), true) as protected,
+            floor(extract(epoch from clock_timestamp()))::float8 as now`,
+    [tx.businessId, MONEY_STEP_UP_SETTING],
+  );
+  if (read?.protected === false) return undefined;
+  if (judgeStepUp(request.standing, read?.now ?? Number.POSITIVE_INFINITY) === 'fresh') {
+    return undefined;
+  }
+  // A team member's: a client is refused a top-up at the door (R4).
+  return refuseCommand('STEP_UP_REQUIRED', [], STEP_UP_FIXES);
 }
 
 /** The task out of the trash, read under its lock: a trash that committed since discovery is seen. */

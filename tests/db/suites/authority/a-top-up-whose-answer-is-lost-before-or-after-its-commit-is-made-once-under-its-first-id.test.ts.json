@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a top-up whose answer is lost before or after its commit, sent again under its first operation id as stored, is made once"
+}

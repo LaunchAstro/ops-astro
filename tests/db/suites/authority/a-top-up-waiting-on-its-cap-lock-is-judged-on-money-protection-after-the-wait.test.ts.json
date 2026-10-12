@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a top-up waiting on its cap lock is refused when money protection is switched on, or its second factor ages out, during the wait, and raises nothing"
+}

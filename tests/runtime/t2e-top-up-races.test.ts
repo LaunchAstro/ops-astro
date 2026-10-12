@@ -10,11 +10,18 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/index.ts';
 import { topUp as applyTopUp } from '../../packages/core-runtime/src/budget.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
+import { NO_ASSURANCE } from '../../packages/core-records/src/identity/verified-subject.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { appliedDetail, racer, type Schedules } from './schedules-harness.ts';
 import { LARGE, MAXIMUM, openTopUpWorld, topUpBody, type TopUpWorld } from './t2e-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
+
+/** A member's sign-in as the world made it, inside the money step-up window. */
+const steppedUp = (who: Member) => ({
+  roleKey: 'member',
+  assurance: who.presented.assurance ?? NO_ASSURANCE,
+});
 
 if (serverUrl === undefined) {
   console.warn('runtime/t2e-top-up-races: DATABASE_URL is unset, so nothing below ran.');
@@ -87,6 +94,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, races', () => {
             { kind: 'actor', id: second.actorId },
           ],
           collection: 'billing',
+          standing: steppedUp(second),
         });
       })
       .then((result) => {
@@ -178,6 +186,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, races', () => {
           { kind: 'actor', id: second.actorId },
         ],
         collection: 'billing',
+        standing: steppedUp(second),
       });
     });
     await firstsRead;
@@ -241,6 +250,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, races', () => {
           { kind: 'actor', id: second.actorId },
         ],
         collection: 'billing',
+        standing: steppedUp(second),
       });
     });
     await atDiscovery;

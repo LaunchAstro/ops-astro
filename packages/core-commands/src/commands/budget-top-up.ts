@@ -45,6 +45,7 @@ export async function topUpOnTask(
     personId: context.session.personId,
     subjects: subjectsOf(context.session),
     collection: context.declaration.collection,
+    standing: context.session,
   });
   return result.ok ? applied(taskId, null, { ...result.value }) : refused(result.refusal);
 }
