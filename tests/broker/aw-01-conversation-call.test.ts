@@ -60,7 +60,7 @@ beforeAll(async () => {
   work = await liveWork(s, `aw01conv-${randomUUID()}`, 2_000);
 }, 180_000);
 
-/** The owner in their own session, no delegation. */
+/** The owner in their own session, no delegation. Each case asks an unpriced operation (#1508). */
 const person = (): ModelCaller => ({
   actorId: s.decider.actorId,
   delegationId: null,
@@ -80,12 +80,10 @@ const local = (): Broker => ({
   providers: new Map([['replay', { build: replayAdapter, price: () => 0 }]]),
 });
 
-/** The seam sends only an unpriced operation (#1508, option B), so the cases ask one declared at zero. */
 const unpriced = (with_: Broker): Broker => ({
   ...with_,
   operations: catalogue([{ ...REPLAY_COMPOSE, maximumMinor: 0 }]),
 });
-
 const inConversation = async (
   caller: ModelCaller,
   request: ConversationCallRequest,
