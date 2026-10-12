@@ -85,12 +85,24 @@ const htmlOf = (token) => {
   return found;
 };
 
-/** The prose shown, and the same without a pasted checkpoint fence: its paths and subjects claim nothing. */
+// A line a pasted checkpoint lists: a commit (its sha, then a conventional
+// subject) or a file path. Its words are Git's, not a claim.
+const LISTED =
+  /^ {4}(?:[0-9a-f]{7,40} (?:build|chore|ci|docs|feat|fix|perf|refactor|revert|test)\b.*|(?=\S*(?:\/|\.\w+$))[\w.@+-][\w./@+-]*)$/u;
+
+/** The prose shown, and the same with a pasted checkpoint's listed lines left out. */
 const textsOf = (tokens, prose) => {
   const pasted = tokens.filter(
     (t) => t.type === 'fence' && t.content.startsWith('Review checkpoint\n'),
   );
-  const claims = prose.filter((text) => !pasted.some((t) => t.content === text));
+  const claims = prose.map((text) =>
+    pasted.some((t) => t.content === text)
+      ? text
+          .split('\n')
+          .filter((line) => !LISTED.test(line))
+          .join('\n')
+      : text,
+  );
   return { prose: prose.join('\n'), claims: claims.join('\n') };
 };
 
@@ -103,7 +115,7 @@ const textsOf = (tokens, prose) => {
  *  - buried: every other line that is written or shown as a review field;
  *  - html: every HTML node that is not only a comment, its first 40 characters;
  *  - prose: the text shown, code included, comments left out;
- *  - claims: that prose without a fenced review checkpoint, where outcomes could be claimed.
+ *  - claims: that prose without the commits and paths a pasted review checkpoint lists.
  * A field counts only as a plain line of a top-level paragraph, at the
  * margin, where the paragraph's shown lines are its source lines one for one.
  */
