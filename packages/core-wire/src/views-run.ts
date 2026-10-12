@@ -155,11 +155,14 @@ export interface ExecutionStep {
 
 export interface ExecutionNode {
   readonly nodeId: string;
-  readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
+  /** The observed condition, or `unplanned`: a run outside the bound plan. */
+  readonly condition:
+    'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised' | 'unplanned';
   /** The bound plan's step this run was proposed under, or null. */
   readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: {
-    readonly condition: ExecutionNode['condition'];
+    /** Read from the run's own rows: never `unplanned`, which is the plan's reading. */
+    readonly condition: Exclude<ExecutionNode['condition'], 'unplanned'>;
     readonly runState: string;
     readonly attemptId: string | null;
     readonly whoseMove: {
