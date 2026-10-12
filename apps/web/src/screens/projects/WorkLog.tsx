@@ -9,7 +9,9 @@
 //
 // The search (`ledger-search.ts`) reads people and kinds over the days in view
 // and sends its free words as the ledger's `query`, which C1's search answers;
-// the box stays put while a new first page is read.
+// the box stays put while a new first page is read. No topic reaches the
+// ledger, so it re-reads on the tab's floor (LIVE-SYNC.md): a grant revoked
+// elsewhere shows on the next re-read, not after a reload.
 //
 // `Load earlier days` asks for the page before the last day drawn and adds it
 // below. The earlier pages belong to the first page they continue: a reload or
@@ -28,6 +30,7 @@ import {
   type CallResult,
   type OperationsClient,
 } from '../../operations/client.ts';
+import { tabRollupFloor } from '../../data/rollup-floor.ts';
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
@@ -132,13 +135,12 @@ export function WorkLog(props: WorkLogProps): ReactElement {
     grantKey,
     run: () => readNewest(client, ownZone(), query),
     deps: [query],
+    rollup: tabRollupFloor(),
   });
   const accepted = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
   if (accepted !== null && accepted !== answer) setAnswer(accepted);
   const pages = useEarlierDays(client, answer);
-  const clear = (): void => {
-    setTyped('');
-  };
+  const clear = (): void => setTyped('');
   return (
     <div className="act__page">
       <PageTip client={client} grantKey={grantKey} tip={WORK_LOG_TIP} />
