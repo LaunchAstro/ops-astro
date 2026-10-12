@@ -491,7 +491,28 @@ async function revokeHeldAndGiven(
     if (dependent.delegation_id === null) lostLeases.push(dependent.lease_id);
     else lost.add(dependent.delegation_id);
   }
-  return { applied: true, value: grantIds.length, lost: [...lost], lostLeases };
+  return {
+    applied: true,
+    value: grantIds.length,
+    lost: await stillLive(tx, [...lost]),
+    lostLeases,
+  };
+}
+
+/**
+ * The delegations of `ids` still live once the classification's locks are
+ * held, judged on the statement's clock: one that expired during the wait
+ * ended by its own column, so it is neither revoked again nor counted.
+ */
+async function stillLive(tx: TenantQuery, ids: readonly string[]): Promise<readonly string[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx.query<{ readonly id: string }>(
+    `select id from public.delegations
+      where business_id = $1 and id = any($2::uuid[])
+        and revoked_at is null and settled_at is null and expires_at > clock_timestamp()`,
+    [tx.businessId, ids],
+  );
+  return rows.map((row) => row.id);
 }
 
 /** What ending a person's authority revoked, by count, and the holds it classified. */
