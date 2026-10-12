@@ -1110,6 +1110,20 @@ holds to `write` alone; the agent is the recorded actor. The seed gives
 `run:write` to the owner and administrators, beside `conversation:write`
 (ORCH38).
 
+### A read in flight
+
+A read is judged when it starts. Board, search, rank, conversation, inbox,
+unattended, trace and the other declared reads take the caller's grants at the
+door or in an early statement and read the content in later ones, so a
+revocation or demotion that commits between the two does not stop that one
+answer: the owner's ruling (OWNER-3 A, 4 October 2026) is that a read started
+before a revocation may finish. The next read is judged afresh and serves
+nothing the revoked grant covered. Writes are not like this: every command
+judges its authority again under its locks, after any wait, and a revocation
+committed first refuses it ([Revocation](#revocation) above). Some reads ask
+the content grant in the reading statement as well (`readableNow`, the chat
+reads), which narrows the window further but is not the rule.
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege
