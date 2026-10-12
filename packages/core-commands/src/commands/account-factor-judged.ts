@@ -10,6 +10,7 @@ import {
   ENDED_FIXES,
   endProviderSession,
   sessionEndedSince,
+  standingOf,
   withSession,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -81,11 +82,18 @@ export async function judged(
       // meanwhile undoes the act, whatever it decided (a refusal can change
       // records too: a verify's losing enrolment is removed), and the refusal
       // is recorded in its place (#443); one ending now, in any business,
-      // waits for the act to commit.
+      // waits for the act to commit. Then the caller's standing here, as the
+      // door would judge it now: an access ended meanwhile (C58) writes no
+      // session ending, and undoes the act the same way (#1450). One not yet
+      // committed here waits on the audit chain this act holds.
       if (stage === 'before') return refusal;
       const { sessionId } = caller.presented;
-      if (sessionId === undefined || !(await sessionEndedSince(tx, session))) return refusal;
-      return await undo(tx, sessionId, settle);
+      if (sessionId !== undefined && (await sessionEndedSince(tx, session)))
+        return await undo(tx, sessionId, settle);
+      const standing = await standingOf(tx, caller.presented, 'enrolling');
+      if (!('refused' in standing)) return refusal;
+      await tx.query('rollback to savepoint factor_act');
+      return await settle(standing);
     },
     'enrolling',
   );
