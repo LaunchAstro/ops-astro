@@ -28,6 +28,7 @@ import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './catalogue.ts';
 import { DecisionIntegrityError } from './verified-decisions.ts';
 import { ReadIntegrityFault } from './integrity-fault.ts';
+import { canonicalIds } from './canonical-ids.ts';
 
 export { ReadIntegrityFault } from './integrity-fault.ts';
 
@@ -189,7 +190,8 @@ async function admit<K extends ReadName>(
   // HTTP boundary, it is audited like every other refused read (I13).
   const parsed = row.parse(body);
   if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
-  const readied = await ready(tx, session, row, parsed.operands);
+  const operands = canonicalIds(parsed.operands, row.identifiers);
+  const readied = await ready(tx, session, row, operands);
   const refused = (outcome: CommandRefusal): Refused => ({
     outcome,
     subjectRecordId: readied.recordId ?? null,
@@ -205,7 +207,7 @@ async function admit<K extends ReadName>(
     const asked: ScopeRequest = {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
-      collection: declared ? declaration.collection : row.authority(parsed.operands),
+      collection: declared ? declaration.collection : row.authority(operands),
       action: declaration.action,
       // A record-scoped grant is checked against the record named, exactly as
       // a targeted command's is. A business-scoped grant covers both, which is

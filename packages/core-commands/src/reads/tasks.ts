@@ -406,7 +406,7 @@ export async function readSharedTask(
     fields[field.key] = field.slot === null ? (data[field.key] ?? null) : (row[field.slot] ?? null);
   }
   return {
-    id: recordId,
+    id: recordId.toLowerCase(),
     // `revision` is `bigint`, which this driver hands back as a string.
     revision: Number(row['revision']),
     fields,
