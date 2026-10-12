@@ -19,10 +19,8 @@ import { openCustodyWorld, type CustodyWorld } from './custody-world.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
-/**
- * Every place product code may touch the network, and why. A new one is a
- * reviewed line here, never a quiet import.
- */
+/** Every place product code may touch the network, and why. A new one is a reviewed line
+ * here, never a quiet import. */
 const NETWORK_SITES: Readonly<Record<string, string>> = {
   'packages/core-custody/src/egress.ts': 'the one outbound path of a model call',
   'packages/core-custody/src/custody.ts': "starts custody's own process",
@@ -50,6 +48,7 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/session/password-grant.ts': 'the password grant, to the sign-in provider only',
   'apps/web/src/session/sign-in-again.ts':
     'signs out, at the sign-in provider, a new session the tab never adopted (C59)',
+  'apps/web/src/session/password-change.ts': "hands the app's fetch to the sign-in provider",
   // Batch 1's, taken at 5d3e129 (reviewed there):
   'apps/api/auth/jwks.ts':
     "reads the sign-in provider's published key set at its pinned address (S0-6b)",

@@ -26,6 +26,7 @@ import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
 import { stepUpSession, type StepUpResult } from './session/step-up.ts';
 import { signInAgainSession } from './session/sign-in-again.ts';
 import { StepUpProviders } from './records/step-up-providers.tsx';
+import { passwordChanger } from './session/password-change.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -164,6 +165,8 @@ export function App(props: AppProps): ReactElement {
           route,
           businessKey: session.businessKey,
         });
+  const changer = passwordChanger({ gotrue: props.gotrueUrl, session, client, route, heldFrom });
+  const steps = { stepUp, signInAgain, changePassword: changer };
 
   const personName = usePersonName(client, session, props.storage);
   const onSwitch = (businessKey: string, address: string): void => {
@@ -234,7 +237,7 @@ export function App(props: AppProps): ReactElement {
       />
     );
   const framed = (
-    <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
+    <StepUpProviders on={session !== null} {...steps}>
       <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
         <SignedInName value={personName}>
           <PageFreshnessProvider>

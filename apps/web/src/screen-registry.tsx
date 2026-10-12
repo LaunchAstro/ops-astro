@@ -17,6 +17,7 @@ import {
   type OpenRouteId,
   type ParamsOf,
   type RouteMatch,
+  pathTo,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
 import { tabRollupFloor } from './data/rollup-floor.ts';
@@ -34,6 +35,7 @@ import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { AuthenticatorSetup } from './screens/settings/authenticator.tsx';
+import { PasswordChangeScreen } from './screens/settings/password.tsx';
 import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
@@ -137,8 +139,13 @@ export const SCREENS: {
         grantKey={context.grantKey}
         client={context.client}
       />
+      <p>
+        <a href={pathTo('agency:password')}>Change your password</a>
+      </p>
     </>
   ),
+  // Keyed on the grant, so a change of business or person drops what the form holds.
+  'agency:password': (context) => <PasswordChangeScreen key={context.grantKey} />,
   'agency:inbox': (context) => (
     <InboxScreen
       client={context.client}

@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { App } from './App.tsx';
 import type { AppProps } from './app-props.ts';
+import { dropSignInLink } from './session/sign-in-link.ts';
 import { TabHistory } from './tab-history.ts';
 
 export interface RootProps extends Omit<AppProps, 'path' | 'navigate' | 'steps'> {
@@ -20,30 +21,53 @@ export interface RootProps extends Omit<AppProps, 'path' | 'navigate' | 'steps'>
 /** The whole address: a legacy one carries its client and tab in the query and hash. */
 const addressOf = (at: Location): string => `${at.pathname}${at.search}${at.hash}`;
 
+/**
+ * The tab's own moves within the loaded page: Back, Forward and a followed fragment link. Each
+ * clears a sign-in service's link first (`sign-in-link.ts`), then the address is read again.
+ * A fragment-only move may come as `hashchange` alone, so both are heard.
+ */
+function useTabMoves(tab: Window, history: TabHistory, moved: () => void): void {
+  useEffect(() => {
+    const onPop = (event: PopStateEvent): void => {
+      dropSignInLink(tab);
+      history.moved(event.state);
+      moved();
+    };
+    const onHash = (): void => {
+      dropSignInLink(tab);
+      moved();
+    };
+    tab.addEventListener('popstate', onPop);
+    tab.addEventListener('hashchange', onHash);
+    return () => {
+      tab.removeEventListener('popstate', onPop);
+      tab.removeEventListener('hashchange', onHash);
+    };
+    // `moved` reads the same two, which is all it reads.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, history]);
+}
+
 export function Root(props: RootProps): ReactElement {
   const { window: tab, ...app } = props;
-  const history = useMemo(() => new TabHistory(tab), [tab]);
+  // A sign-in service's link is cleared before the address is first read (`sign-in-link.ts`),
+  // and again whenever the address moves within the page, the application's own moves too.
+  const history = useMemo(() => {
+    dropSignInLink(tab);
+    return new TabHistory(tab);
+  }, [tab]);
   const read = () => ({
     path: addressOf(tab.location),
     canBack: history.canBack,
     canForward: history.canForward,
   });
   const [at, setAt] = useState(read);
-  useEffect(() => {
-    const onPop = (event: PopStateEvent): void => {
-      history.moved(event.state);
-      setAt(read());
-    };
-    tab.addEventListener('popstate', onPop);
-    return () => {
-      tab.removeEventListener('popstate', onPop);
-    };
-    // `read` closes over the same two, which is all it reads.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, history]);
+  useTabMoves(tab, history, () => setAt(read()));
   const navigate = (next: string, options?: { readonly replace?: boolean }): void => {
     if (options?.replace === true) history.replace(next);
     else history.push(next);
+    // A pushed or replaced address fires neither `popstate` nor `hashchange`: cleared here.
+    dropSignInLink(tab);
     setAt(read());
   };
   return (
