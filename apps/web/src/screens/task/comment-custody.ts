@@ -26,7 +26,8 @@ export interface CommentHold {
   readonly uncertain: boolean;
   readonly failure: Failure | null;
   readonly settlement: number;
-  readonly answered: Settlement['kind'] | null;
+  /** `abandoned`: the person let the held attempt go; `settled` names it. */
+  readonly answered: Settlement['kind'] | 'abandoned' | null;
   readonly settled: PendingComment | null;
   readonly kept: boolean;
 }
@@ -171,6 +172,25 @@ export class CommentCustody {
     const previous = this.snapshot(id);
     if (!this.#current() || previous.busy || previous.pending !== null) return;
     this.#put(id, { ...previous, kept: this.#save() });
+  }
+
+  /**
+   * Stop waiting: drops only this held attempt, rewrites the stored copy
+   * without it, and announces it by operation id so each composer holding it
+   * unlocks with its words. A copy that cannot be rewritten leaves cleanup only.
+   */
+  letGo(id: string, operationId: string): void {
+    const previous = this.snapshot(id);
+    const pending = previous.pending;
+    if (!this.#current() || previous.busy || pending?.operationId !== operationId) return;
+    const next: CommentHold = {
+      ...EMPTY,
+      settlement: previous.settlement + 1,
+      answered: 'abandoned',
+      settled: pending,
+    };
+    this.#holds.set(id, next);
+    this.#put(id, { ...next, kept: this.#save() });
   }
 
   async post(id: string, proposed: PendingComment, alreadyUncertain = false): Promise<void> {
