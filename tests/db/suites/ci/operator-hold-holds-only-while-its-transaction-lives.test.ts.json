@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the operator gate's hold holds only while its transaction lives: a hold ended under it or stalled past its bound refuses the release, a revocation waits no longer than the budget, and a person's removal is not lost to a deadlock with it"
+}
