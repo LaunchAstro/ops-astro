@@ -238,10 +238,10 @@ async function deliver(
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
   const built = routed.adapter.build({ to: asked.to, from: mail.from, address: link });
   const stale = lapsed(asked.reserved) || outlived(asked);
+  // Custody refuses it past the token's expiry too, however long it waits on its way out.
   const read = stale
     ? ({ state: 'failed', evidence: 'expired' } as const)
-    : // Custody refuses it past the token's expiry too, however long it waits on its way out.
-      await sendOnce(broker, routed, built, asked.reserved, asked.reserved.wall + asked.lifeMs);
+    : await sendOnce(broker, routed, built, asked.reserved, asked.reserved.wall + asked.lifeMs);
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
   const seen = {
