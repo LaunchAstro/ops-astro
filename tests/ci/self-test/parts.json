@@ -374,7 +374,7 @@
             "  const sweeper = startSweeper(",
             "    async () =>",
             "      await withRuntimeKeys(keys, async () => {",
-            "        return await passDeployment(",
+            "        return await passEachBusiness(",
             "          database,",
             "          resolveBusiness,",
             "          scope.keys,",
@@ -388,7 +388,7 @@
         },
         {
           "file": "apps/api/server.ts",
-          "remove": ["    sweeper.stop();"]
+          "remove": ["      sweeper: sweeper.stop,"]
         },
         {
           "file": "apps/api/recovery-entry.ts",
