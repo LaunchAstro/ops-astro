@@ -2,32 +2,29 @@
 //
 // Runs the board streams of one credential share (#620). One task event wakes
 // every open board at once, and each would check the bearer and read the same
-// admission and digests. A board shares a run another board began only when
-// that run began after the signal this board is answering, so the answer is
-// never older than its signal; otherwise it begins its own. A run is joinable
-// for `KEEP_MS` after it settles and kept no longer.
+// admission and digests. A run waits `GATHER_MS` before it begins, and a board
+// shares it only while it has not begun: the shared answers are then asked
+// after every sharer's own run started, exactly as each would have asked them
+// itself (ORCH46). A board that asks once the run has begun asks its own, and
+// nothing is kept after it.
 
-import { performance } from 'node:perf_hooks';
+import { setTimeout as delay } from 'node:timers/promises';
 
-/** How long a settled run stays joinable: a board a moment behind, still finishing its previous run. */
-export const KEEP_MS = 1_000;
+/** How long a run waits for the other boards before it begins: one still finishing its previous run. */
+export const GATHER_MS = 50;
 
-/** `ask`, or the run under `key` that began after `since` (a `performance.now()` stamp). */
-export type Gather = <T>(key: string, since: number, ask: () => Promise<T>) => Promise<T>;
+export type Gather = <T>(key: string, ask: () => Promise<T>) => Promise<T>;
 
 export function createGather(): Gather {
-  const runs = new Map<string, { readonly begunAt: number; readonly answer: Promise<unknown> }>();
-  return async function gather<T>(key: string, since: number, ask: () => Promise<T>): Promise<T> {
-    const held = runs.get(key);
-    if (held !== undefined && held.begunAt > since) return (await held.answer) as T;
-    const run = { begunAt: performance.now(), answer: ask() };
-    runs.set(key, run);
-    const forget = (): void => {
-      setTimeout(() => {
-        if (runs.get(key) === run) runs.delete(key);
-      }, KEEP_MS).unref();
-    };
-    run.answer.then(forget, forget);
-    return await run.answer;
+  const waiting = new Map<string, Promise<unknown>>();
+  return async function gather<T>(key: string, ask: () => Promise<T>): Promise<T> {
+    const joined = waiting.get(key) as Promise<T> | undefined;
+    if (joined !== undefined) return await joined;
+    const run = delay(GATHER_MS).then(async () => {
+      waiting.delete(key);
+      return await ask();
+    });
+    waiting.set(key, run);
+    return await run;
   };
 }
