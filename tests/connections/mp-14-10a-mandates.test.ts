@@ -199,6 +199,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
         'mandate.file',
         {
           clientId: w.clientB,
+          draftId: randomUUID(),
           classes: ['social.post'],
           ceiling: AUD(1),
           expiresAt: inDays(1),
@@ -247,7 +248,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
   it('MP-14-10a a stale sign-in is refused STEP_UP_REQUIRED (mandate:manage is in the money set) and changes nothing', async () => {
     const before = await w.snapshot();
     const bodies: readonly [string, Record<string, unknown>][] = [
-      ['mandate.file', { clientId: w.clientA, classes: ['social.post'], ceiling: AUD(1) }],
+      [
+        'mandate.file',
+        { clientId: w.clientA, draftId: randomUUID(), classes: ['social.post'], ceiling: AUD(1) },
+      ],
       ['mandate.revoke', { mandateId: w.seeded.alphaB }],
       ['graduation.promote', { classId: w.cls['aShare'], ceiling: AUD(1), expiresAt: inDays(1) }],
       ['graduation.demote', { classId: w.cls['aShare'] }],
@@ -272,7 +276,12 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
     const first = await w.as(w.admin, 'mandate.revoke', refused, 'alpha', 'stale-factor');
     const again = await w.as(w.admin, 'mandate.revoke', refused, 'alpha', 'fresh');
     expect(await mandateRow(mandateId)).toMatchObject({ revoked_by_actor_id: w.admin.actorId });
-    const filing = { operationId: randomUUID(), clientId: w.clientA, classes: ['social.post'] };
+    const filing = {
+      operationId: randomUUID(),
+      clientId: w.clientA,
+      draftId: randomUUID(),
+      classes: ['social.post'],
+    };
     const body = { ...filing, ceiling: AUD(50_000), expiresAt: inDays(30), label: 'Lost once' };
     const once = await w.as(w.admin, 'mandate.file', body);
     const count = await w.mandateRows();

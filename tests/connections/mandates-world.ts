@@ -237,6 +237,7 @@ export async function buildMandatesWorld(part: string): Promise<MandatesWorld> {
         'mandate.file',
         {
           clientId: clientA,
+          draftId: randomUUID(),
           classes: ['social.post'],
           ceiling: AUD(50_000),
           expiresAt: inDays(30),
