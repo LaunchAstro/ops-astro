@@ -36,9 +36,11 @@ interface SlotRow {
 
 /**
  * The slot table as the server has it. The index test asks whether any index
- * on `records` mentions the slot column at all, rather than looking for an
- * index of an expected name, so a later migration is free to index a slot
- * differently without this quietly reporting it as unindexed.
+ * on `records` has the slot column among its key columns, rather than looking
+ * for an index of an expected name, so a later migration is free to index a
+ * slot differently without this quietly reporting it as unindexed. An INCLUDE
+ * column does not count: the index stores it but cannot search on it. The
+ * first `indnkeyatts` entries of `indkey` are the key columns.
  */
 export async function readSlotTable(read: Read): Promise<readonly Slot[]> {
   const rows = await read<SlotRow>(
@@ -51,7 +53,8 @@ export async function readSlotTable(read: Read): Promise<readonly Slot[]> {
                 join pg_class t on t.oid = x.indrelid
                 join pg_namespace n on n.oid = t.relnamespace
                 join pg_attribute a
-                  on a.attrelid = t.oid and a.attnum = any (x.indkey)
+                  on a.attrelid = t.oid
+                 and a.attnum = any ((x.indkey::int2[])[0:x.indnkeyatts - 1])
                where n.nspname = 'public'
                  and t.relname = 'records'
                  and a.attname = s.slot
