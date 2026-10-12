@@ -9,6 +9,7 @@ export function AssignmentRecovery(props: {
   readonly label?: string;
 }): ReactElement | null {
   const { hold } = props;
+  const held = hold.pending;
   if (hold.pending === null && hold.failure === null && hold.kept) return null;
   return (
     <div className="field" data-assignment-recovery>
@@ -21,9 +22,11 @@ export function AssignmentRecovery(props: {
       )}
       {hold.kept ? null : (
         <p role="status" className="card__sub">
-          {hold.pending === null
-            ? 'The recovery copy could not be cleared. Retry clears that copy before another assignment.'
-            : 'The recovery copy could not be kept. The original assignment stays held.'}
+          {hold.abandoned
+            ? 'This change was let go, but this browser could not clear its saved copy yet.'
+            : hold.pending === null
+              ? 'The recovery copy could not be cleared. Retry clears that copy before another assignment.'
+              : 'The recovery copy could not be kept. The original assignment stays held.'}
         </p>
       )}
       {hold.pending === null && hold.kept ? null : (
@@ -35,10 +38,24 @@ export function AssignmentRecovery(props: {
             void props.custody.retry(props.recordId);
           }}
         >
-          {hold.busy ? 'Assigning…' : 'Retry assignment'}
+          {hold.busy ? 'Assigning…' : hold.abandoned ? 'Clear saved copy' : 'Retry assignment'}
         </button>
       )}
+      {held === null ||
+      !hold.uncertain ||
+      (hold.failure?.kind ?? 'unknown') === 'unknown' ? null : (
+        <LetGo onClick={() => props.custody.letGo(props.recordId, held.operationId)} />
+      )}
     </div>
+  );
+}
+
+/** Stop waiting: offered once a held assignment's retry was refused. */
+function LetGo(props: { readonly onClick: () => void }): ReactElement {
+  return (
+    <button className="btn btn--secondary" type="button" onClick={props.onClick}>
+      Stop waiting for this change
+    </button>
   );
 }
 
