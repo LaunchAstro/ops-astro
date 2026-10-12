@@ -24,9 +24,8 @@ A sealed value is bound to its place: the AES-GCM additional data names the
 key id, the business, the secret's name and its scope, so a value copied to
 another row, name, scope or business does not open there. A bound value's
 stored nonce starts with a version byte. A value sealed before the binding
-keeps a bare 12-byte nonce and authenticates the key id only; it opens until
-it is set again, and `octet_length(nonce) = 12` finds the rows still holding
-one.
+keeps a bare 12-byte nonce and names no place, so it opens nowhere and is set
+again; `octet_length(nonce) = 12` finds the rows still holding one.
 
 `secret.set` stores only what custody's own load check would take
 (`parseCredentials` in `packages/core-custody/src/credentials.ts`, AW-01 and
