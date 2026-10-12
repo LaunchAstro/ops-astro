@@ -7,7 +7,9 @@
 // one left out refused. Separation, business to business, client to client
 // and person to person, is proved by the cases below.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { listPeople } from '../../packages/core-commands/src/reads/people.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { checkAuthority, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
@@ -16,7 +18,7 @@ import {
   mintDelegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
 import { insertAgentActor } from '../identity/fixture.ts';
-import { enrol, grantTo } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 
 import {
   serverUrl,
@@ -35,6 +37,7 @@ import {
   ben,
   carla,
   dev,
+  owner,
   agent,
   betaPerson,
   betaAgent,
@@ -42,6 +45,7 @@ import {
   access,
   everyone,
   previewOf,
+  root,
 } from './effective-permissions-world.ts';
 
 beforeAll(async () => {
@@ -233,5 +237,42 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     for (const secret of [credential, ...hashes.map((row) => row.credential_hash)]) {
       expect(body).not.toContain(secret);
     }
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
+  it('lists a grant naming an inactive acting identity under its person, so it can be revoked', async () => {
+    const idle = await enrol(db.app, alpha, 'Ida');
+    const grantId = await db.app.withBusiness(alpha, async (tx) => {
+      const issued = await root(
+        tx,
+        { kind: 'actor', id: idle.actorId },
+        'read',
+        WHOLE,
+        owner.actorId,
+      );
+      await tx.query('update actors set active = false, deactivated_at = now() where id = $1', [
+        idle.actorId,
+      ]);
+      return issued;
+    });
+    const grantsOf = (answer: Awaited<ReturnType<typeof access>>) =>
+      answer.team.find((person) => person.personId === idle.personId)?.grants ?? [];
+
+    const listed = await access();
+    expect(grantsOf(listed)).toStrictEqual([
+      { grantId, collection: 'task', action: 'read', scope: WHOLE },
+    ]);
+    expect(previewOf(listed, idle.personId)).toStrictEqual([]);
+
+    // The command entry serves a business with its task spine installed.
+    await installSpine(db.app, alpha);
+    const revoked = await executeCommand(db.app, alpha, owner.presented, 'api', {
+      command: 'access.revoke',
+      operationId: randomUUID(),
+      grantId,
+    } as never);
+    expect(revoked).not.toHaveProperty('refused');
+    expect(grantsOf(await access())).toStrictEqual([]);
   });
 });

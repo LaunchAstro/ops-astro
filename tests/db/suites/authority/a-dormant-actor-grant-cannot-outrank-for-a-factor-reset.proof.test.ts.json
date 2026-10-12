@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a grant left on an inactive acting identity is no authority in the factor reset rank check: a lower-ranked manager cannot reset a higher-ranked member"
+}
