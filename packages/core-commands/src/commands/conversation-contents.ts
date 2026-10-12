@@ -199,5 +199,7 @@ export async function requestQuotation(tx: TenantQuery, conversationId: string):
     [tx.businessId, conversationId],
   );
   const body = rows[0]?.body ?? '';
-  return body.length <= QUOTATION_LIMIT ? body : `${body.slice(0, QUOTATION_LIMIT - 1)}…`;
+  if (body.length <= QUOTATION_LIMIT) return body;
+  // The cut falls between whole characters: a pair the limit would halve is left out.
+  return `${body.slice(0, QUOTATION_LIMIT - 1).replace(/[\uD800-\uDBFF]$/u, '')}…`;
 }
