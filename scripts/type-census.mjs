@@ -40,10 +40,7 @@ const TEXT = new Set([
   'letter-spacing',
   'text-transform',
 ]);
-/**
- * At-rules whose blocks hold rules that apply, and keyframes, whose frames set
- * text as a rule does; every other block (font faces) is skipped.
- */
+/** At-rules whose blocks hold rules that apply; every other block (font faces, keyframes) is skipped. */
 const CONDITIONAL = new Set(['media', 'supports', 'container', 'layer', 'scope', 'starting-style']);
 const NUMBER = /^--type-num-/u;
 const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
@@ -74,7 +71,7 @@ function blockOf(prelude, parent) {
   if (!prelude.startsWith('@'))
     return { kind: 'rule', selector: prelude, context, decls: [], comments: [] };
   const name = prelude.slice(1).split(/[\s(]/u)[0].toLowerCase();
-  return CONDITIONAL.has(name) || name.endsWith('keyframes')
+  return CONDITIONAL.has(name)
     ? { kind: 'at', context: `${context}${prelude} ` }
     : { kind: 'skip' };
 }
