@@ -75,6 +75,21 @@ export function Lifecycle(props: LifecycleProps): ReactElement {
   );
 }
 
+/**
+ * `task.read` keeps an assignee whose business access ended, and `person.list`
+ * names active members only. Their own option keeps the select from falling
+ * back to Unassigned, so choosing Unassigned is a real change.
+ */
+export function FormerAssignee(props: {
+  readonly assignee: Task['assignee'];
+  readonly persons: PersonListResult['persons'];
+}): ReactElement | null {
+  const { assignee } = props;
+  if (assignee === null) return null;
+  if (props.persons.some((person) => person.personId === assignee.personId)) return null;
+  return <option value={assignee.personId}>{`${assignee.name} (former member)`}</option>;
+}
+
 export interface AssigneeProps {
   readonly people: ReadState<PersonListResult>;
   readonly onRetry: () => void;
@@ -106,6 +121,7 @@ export function Assignee(props: AssigneeProps): ReactElement {
             }}
           >
             <option value="">Unassigned</option>
+            <FormerAssignee assignee={props.assignee} persons={value.persons} />
             {value.persons.map((person) => (
               <option key={person.personId} value={person.personId}>
                 {person.name}
