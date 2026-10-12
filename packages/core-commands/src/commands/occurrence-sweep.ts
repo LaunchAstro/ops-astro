@@ -80,17 +80,20 @@ async function fireScheduled(
   );
   for (const activation of due) {
     try {
+      // What the transaction wrote is tallied once it commits, never from inside it.
       // oxlint-disable-next-line no-await-in-loop -- one activation, one transaction, in turn
-      await database.withBusiness(businessId, async (tx) => {
+      const fired = await database.withBusiness(businessId, async (tx) => {
         const claim = await claimOccurrence(tx, activation.id, {
           dueAt: latestDue(activation.every_minutes, now),
         });
         if (claim.kind !== 'claimed' && claim.kind !== 'replayed') return;
-        if (claim.kind === 'claimed') tally.claimed.push(claim.occurrence.id);
-        if (claim.occurrence.outcome !== 'approved') return;
+        const { occurrence } = claim;
+        if (occurrence.outcome !== 'approved') return { claim, sent: undefined };
         const start = occurrenceRunStarter(workerActorId);
-        count(tally, await dispatchOccurrence(tx, claim.occurrence.id, start));
+        return { claim, sent: await dispatchOccurrence(tx, occurrence.id, start) };
       });
+      if (fired?.claim.kind === 'claimed') tally.claimed.push(fired.claim.occurrence.id);
+      if (fired?.sent !== undefined) count(tally, fired.sent);
     } catch {
       tally.failed.push(activation.id);
     }
