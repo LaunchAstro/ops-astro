@@ -74,11 +74,18 @@ function balance(
   return { heaviest: Math.max(...loads), bound: Math.max(longest, (total / count) * 1.1) };
 }
 
-// CI-SPEED, the owner's 4 October 2026 decision (NATHAN-CF-RECORD item 1): 16 shards.
-it('the run is split 16 ways, each shard near its share', () => {
-  expect(shardCount).toBe(16);
+// CIITEM3, the owner's 12 October 2026 decision: 30 shards, each job in about 10 minutes
+// (#1478): at most 9.5 minutes of measured items a shard, beside about a minute of checkout,
+// install and the migrated template. A plan past it needs more shards or a finer split.
+const SHARD_ITEM_SECONDS = 9.5 * 60;
+
+it('the run is split 30 ways, each shard near its share', () => {
+  expect(shardCount).toBe(30);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
+  expect(heaviest, 'the heaviest shard, in seconds of measured items').toBeLessThanOrEqual(
+    SHARD_ITEM_SECONDS,
+  );
 });
 
 it('the balance check weighs a suite with no timing as the split does', () => {
@@ -153,8 +160,16 @@ it('a split suite runs each case in exactly one part, and the whole suite when u
   const d06 = read('tests/acceptance/d06-generated.test.ts');
   expect(Object.keys(plan.parts)).toEqual([
     'tests/acceptance/d06-generated.test.ts',
+    'tests/acceptance/d06-agent.test.ts',
     'tests/tenancy/restricted-calls-prefixes.test.ts',
   ]);
+  // So does the agent prefix's, on both of its lists, through its fixture.
+  const agent = read('tests/acceptance/d06-agent.test.ts');
+  expect(agent).toContain('it.each(ofThisPart(cells))(');
+  expect(agent).toContain('it.each(ofThisPart(excluded))(');
+  const fixture = read('tests/acceptance/d06-agent-fixture.ts');
+  expect(fixture).toContain("const part = suitePart(process.env['SUITE_PART']);");
+  expect(fixture).toContain('return list.filter((_, i) => inPart(i, part));');
   expect(d06).toContain("const PART = suitePart(process.env['SUITE_PART']);");
   expect(d06).toContain('TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART))');
   expect(d06).toContain('PAYLOAD_CELLS.filter((_, i) => inPart(i, PART))');

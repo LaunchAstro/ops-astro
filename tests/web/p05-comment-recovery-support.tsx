@@ -5,7 +5,7 @@ import { comment } from './conversation-support.tsx';
 import { PEOPLE, key, response, refusal } from './internal-task-mentions-support.tsx';
 
 export const PARENT = '11111111-1111-4111-8111-111111111112';
-export const BODY = 'Held mentioned reply after withheld success';
+export const BODY = '@Ada Synthetic Held mentioned reply after withheld success';
 function boardReply(item: ReturnType<typeof task>): Response {
   return response({
     ok: true,
@@ -65,9 +65,8 @@ export function world() {
 }
 export async function compose(view: Awaited<ReturnType<typeof draftApp>>['view']) {
   await view.click('[data-comment-id="' + PARENT + '"] [data-comment-act="reply"]');
-  const chooser = '[data-internal-task-mentions] button[aria-haspopup="listbox"]';
-  await key(view, chooser, 'ArrowDown');
-  await key(view, chooser, 'ArrowDown');
+  const chooser = '[data-internal-task-mentions] textarea';
+  await view.type(chooser, '@Ada');
   await key(view, chooser, 'Enter');
   await view.type('#comment-body', BODY);
   await view.click('main [data-comment="post"]');

@@ -65,6 +65,29 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 
 export class Refusal extends Error {}
 
+/** The provider's list, read this many sign-ins a page. */
+const PAGE = 200;
+
+type ProviderCall = (path: string, method: string) => Promise<{ body?: unknown }>;
+
+/**
+ * A sign-in's id from the provider's list, read page by page to the end: a
+ * short page is the last. A page that repeats the one before means the list
+ * is not moving, so the search ends there rather than reading it again.
+ */
+export async function listedId(call: ProviderCall, email: string): Promise<unknown> {
+  let previous: unknown;
+  for (let page = 1; ; page += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- one page after another, until it is found
+    const listed = await call(`/admin/users?page=${page}&per_page=${PAGE}`, 'GET');
+    const { users } = (listed.body ?? {}) as { users?: unknown };
+    const list = Array.isArray(users) ? (users as { email?: unknown; id?: unknown }[]) : [];
+    const found = list.find((user) => user.email === email);
+    if (found !== undefined || list.length < PAGE || list[0]?.id === previous) return found?.id;
+    previous = list[0]?.id;
+  }
+}
+
 const REF = /^[a-z]{20}$/u;
 /** Supabase's shared pooler in Sydney, staging's region (NATHAN-SUPABASE-FREE). */
 export const POOLER: RegExp = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
@@ -97,6 +120,26 @@ export function projectRefs(
     throw new Refusal(`${otherSetting} is not a project reference`);
   if (otherRef === ref) throw new Refusal(`${ownSetting} is ${other}'s`);
   return { own, other, ref, otherRef };
+}
+
+/**
+ * Why the database address in `name` is not production's: on staging's
+ * project, or on any but production's (PRODUCTION_PROJECT_REF,
+ * STAGING_PROJECT_REF). Named by setting, never by value.
+ */
+export function productionAddressRefusal(
+  environment: Environment,
+  name = 'DATABASE_ADMIN_URL',
+): string | undefined {
+  try {
+    const { other, ref, otherRef } = projectRefs(environment, true);
+    const project = databaseProject(name, environment[name] ?? '');
+    if (project === otherRef) return `${name} reaches ${other}'s project`;
+    return project === ref ? undefined : `${name} is not production's project`;
+  } catch (error) {
+    if (error instanceof Refusal) return error.message;
+    throw error;
+  }
 }
 
 /** The project a database address reaches, read from its login or its direct host. */
@@ -228,10 +271,17 @@ export const CARRY_ENDED_SESSIONS: readonly string[] = [
    end $$`,
   'select ops_astro_reset.carry_ended_sessions()',
 ];
+/**
+ * Put back in one transaction. Each subject's ending keeps its time: the
+ * trigger that sets a new ending's time at commit is off for this one insert,
+ * and on again before the commit, so it never sees the rows put back.
+ */
 export const RESTORE_ENDED_SESSIONS: readonly string[] = [
   `insert into ops.ended_provider_sessions (session_id, ended_at)
      select session_id, ended_at from ops_astro_reset.ended_provider_sessions`,
+  'alter table ops.ended_subject_sessions disable trigger ended_subject_sessions_at_commit',
   `insert into ops.ended_subject_sessions (subject_digest, kept_session, ended_before)
      select subject_digest, kept_session, ended_before from ops_astro_reset.ended_subject_sessions`,
+  'alter table ops.ended_subject_sessions enable trigger ended_subject_sessions_at_commit',
   'drop schema ops_astro_reset cascade',
 ];

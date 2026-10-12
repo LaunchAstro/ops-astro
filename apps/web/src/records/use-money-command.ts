@@ -19,6 +19,9 @@
 // password was checked (`sessionGeneration`) sends nothing. Nor does one
 // cancelled while it was checked, whatever the check answers after, nor one a
 // new write replaced before the new sign-in's client landed.
+//
+// A write withdrawn while it is still in flight stays withdrawn: its answer,
+// when it comes, opens no prompt and leaves no refusal drawn.
 
 import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
@@ -53,7 +56,10 @@ export type MoneyCommand = Omit<Command, 'run'> & {
   ) => void;
   /** The step-up prompt, or null when nothing waits on a code. */
   readonly stepUp: StepUpAsk | null;
-  /** Drops the held write: the prompt closes, and a code that passed sends nothing. */
+  /**
+   * Drops the held write: the prompt closes, a code that passed sends nothing,
+   * and a write still in flight opens no prompt and leaves no refusal.
+   */
   readonly withdraw: () => void;
 };
 
@@ -169,20 +175,41 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
   const prompt = usePrompt(client);
   const latest = useRef({ client, command });
   latest.current = { client, command };
+  // Each withdraw moves this on: a write sent before it is answered into nothing.
+  const withdrawn = useRef(0);
   const run: MoneyCommand['run'] = (work, then) => {
     prompt.withdraw();
+    const mine = withdrawn.current;
+    // The first answer and a step-up's resend alike: once withdrawn, it draws nothing.
+    const kept = (): boolean => {
+      if (withdrawn.current === mine) return true;
+      latest.current.command.reset();
+      return false;
+    };
     const send: Send = (to) => {
-      latest.current.command.run(() => work(to), then);
+      latest.current.command.run(
+        () => work(to),
+        (settlement) => {
+          kept();
+          then?.(settlement);
+        },
+      );
     };
     command.run(
       () => work(latest.current.client),
       (settlement) => {
         const refusal = settlement.kind === 'failed' ? settlement.refusal : null;
-        if (refusal?.code === 'STEP_UP_REQUIRED') prompt.hold?.(send, refusal.names);
+        if (kept() && refusal?.code === 'STEP_UP_REQUIRED') {
+          prompt.hold?.(send, refusal.names);
+        }
         then?.(settlement);
       },
     );
   };
+  const withdraw = (): void => {
+    withdrawn.current += 1;
+    prompt.withdraw();
+  };
   const { run: _plain, ...rest } = command;
-  return { ...rest, run, stepUp: prompt.ask, withdraw: prompt.withdraw };
+  return { ...rest, run, stepUp: prompt.ask, withdraw };
 }

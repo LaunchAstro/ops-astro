@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a staging reset finds an existing cast sign-in after fifty complete pages of provider accounts, paging to the end instead of stopping at a fixed count"
+}

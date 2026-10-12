@@ -243,7 +243,9 @@ export const DECLARED: Readonly<
   'mandate.revoke': { carry: 'not carried', plant: 'a client mandate, not task content' },
   'graduation.promote': { carry: 'not carried', plant: 'a client mandate, not task content' },
   'graduation.demote': { carry: 'not carried', plant: 'a client mandate, not task content' },
-  // C80: a live correction is the site's, decided by its approver; a duplicate carries none.
+  // C80: a live correction hangs off its task, but its party is the old task's client, read
+  // from the task at the insert; carried onto a duplicate for another client it would cross
+  // clients, so a duplicate carries none (task-duplicate.test.ts plants one to prove it).
   'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
   'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },

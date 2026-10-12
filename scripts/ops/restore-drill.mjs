@@ -12,6 +12,10 @@
 //     RESTORE_KEY_FILE   the operator's private key, held apart from the store
 //     DRILL_BUSINESS_ID, DRILL_CLIENT_ID, DRILL_PERSON_ID  the one scope it reads
 //
+// `--production` after any mode reaches production's store on production's
+// network instead, and names its drill container as production's own; the
+// drill still takes no target (deploy/production/README.md).
+//
 // It takes the newest backup from the store (the store logs the read), through
 // psql on staging's network (backup-store-reach.mjs), since the store publishes
 // no port, part by part into a sealed file of its own (a folder of its own,
@@ -63,7 +67,7 @@
 // messages can carry record data, so they are never kept.
 
 import { readFileSync, realpathSync } from 'node:fs';
-import { stagingReach } from './backup-store-reach.mjs';
+import { reachFor, routeOf, stagingReach } from './backup-store-reach.mjs';
 import {
   drillAsOperator as actAsOperator,
   exportArchive as exportAct,
@@ -82,8 +86,12 @@ export { restoreDrill } from './drill-restore.mjs';
  * drill, then its receipt; this drill unless a test passes its own. Its every
  * read of and write to the store asks the gate again first.
  */
-export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
-  actAsOperator({ drill: restoreDrill, ...options, reach: askingAgain(reach, options.gate) });
+export const drillAsOperator = ({ reach = stagingReach, prefix, ...options }) =>
+  actAsOperator({
+    drill: (drill) => restoreDrill({ ...drill, prefix }),
+    ...options,
+    reach: askingAgain(reach, options.gate),
+  });
 
 /**
  * `reach` asking the gate again (operator.ts, `stillOperator`) before each
@@ -126,10 +134,15 @@ export const exportArchive = ({ reach = stagingReach, ...options }) =>
   exportAct({ ...options, reach: askingAgain(reach, options.gate) });
 
 const USAGE =
-  'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file> --archive <file>';
+  'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file> --archive <file>, then --production for production';
 
-/** The one mode the command line names, or the usage. */
-function modeOf(args) {
+/** The one mode the command line names, and the unit it acts on (`--production` last), or the usage. */
+export function modeOf(given) {
+  const environment = given.at(-1) === '--production' ? 'production' : 'staging';
+  return { ...oneMode(environment === 'production' ? given.slice(0, -1) : given), environment };
+}
+
+function oneMode(args) {
   const [flag, ...rest] = args;
   const file = rest.at(-1) ?? '';
   if (flag === '--drill' && rest.length === 0) return { mode: 'drill' };
@@ -156,7 +169,7 @@ function need(environment, name) {
 }
 
 /** `--drill`, from the store or from a carried archive: the drill's receipt. */
-async function drillFromHere(gate, archiveFile, environment, reach) {
+async function drillFromHere(gate, archiveFile, environment, reach, prefix) {
   const storeUrl = archiveFile === undefined ? need(environment, 'RESTORE_STORE_URL') : undefined;
   let privateKey;
   try {
@@ -169,20 +182,21 @@ async function drillFromHere(gate, archiveFile, environment, reach) {
     client: environment.DRILL_CLIENT_ID,
     person: environment.DRILL_PERSON_ID,
   };
-  return await drillAsOperator({ gate, storeUrl, archiveFile, privateKey, scope, reach });
+  return await drillAsOperator({ gate, storeUrl, archiveFile, privateKey, scope, reach, prefix });
 }
 
 /**
  * One run of the command line `args` in `environment`: the installation's
  * operator gate first (operator.ts, requireOperatingOperator), then the one
  * mode. Answers `{ refused }` with the gate's reason, or `{ mode, receipt }`.
- * `reach` is the store route, staging's unless a test passes its own.
+ * `reach` is the store route, the unit's own unless a test passes its own.
  */
 export async function runDrillCommand(args, { environment = process.env, reach } = {}) {
   const run = modeOf(args);
   const gate = await requireOperatingOperator(environment);
   if (!gate.ok) return { refused: gate.reason };
-  const route = reach === undefined ? {} : { reach };
+  const route = { reach: reach ?? reachFor(run.environment) };
+  const { prefix } = routeOf(run.environment);
   let receipt;
   if (run.mode === 'export') {
     const storeUrl = need(environment, 'RESTORE_STORE_URL');
@@ -192,7 +206,7 @@ export async function runDrillCommand(args, { environment = process.env, reach }
     const [receiptFile, archiveFile] = [run.file, run.archiveFile];
     receipt = await recordCarried({ gate, storeUrl, receiptFile, archiveFile, ...route });
   } else {
-    receipt = await drillFromHere(gate, run.archiveFile, environment, reach);
+    receipt = await drillFromHere(gate, run.archiveFile, environment, route.reach, prefix);
   }
   return { mode: run.mode, receipt };
 }

@@ -254,14 +254,16 @@ function runSettings(port: number): string {
   return ENV_FILE;
 }
 
+// A shell value of a name the model reads beats the settings file and the default
+// the pin check read (a raw event prefix outside the 14-day rule, say): none goes.
 function compose(...args: string[]): void {
+  const model = readFileSync(join(HERE, 'profile.resolved.json'), 'utf8');
+  const read = new Set([...model.matchAll(/\$\{([A-Z0-9_]+)/gu)].map(([, name]) => name));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !read.has(name)));
   execFileSync(
     'docker',
     ['compose', '-p', PROJECT, '-f', 'profile.resolved.json', '--env-file', ENV_FILE, ...args],
-    {
-      cwd: HERE,
-      stdio: 'inherit',
-    },
+    { cwd: HERE, env, stdio: 'inherit' },
   );
 }
 

@@ -2,7 +2,8 @@
 //
 // The M5 deploy (ticket S0-6, `deploy recorded`): staging's unit, or
 // production's with `deploy.mjs --production` (deploy/production/compose.json,
-// staging's definition renamed). Each judges its own definition, preflight and
+// staging's definition renamed, its worker parked in worker.json, which no
+// deploy starts). Each judges its own definition, preflight and
 // containers, and counts the other's containers among the live services.
 //
 // A person's act under `operations:manage`: `deploy.mjs` asks the operator gate
@@ -35,10 +36,11 @@ import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { madeUpSeedSigns, productionSigns, type OwnerQuery } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
-import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
+import { productionAddressRefusal } from './staging-reset.ts';
+
+export { productionAddressRefusal } from './staging-reset.ts';
 
 export type DeployEnvironment = 'staging' | 'production';
-type Environment = Readonly<Record<string, string | undefined>>;
 
 /** The staging definition, as the deploy reads it. */
 export interface StagingDefinition {
@@ -52,11 +54,11 @@ export interface DeployEffects {
   snapshot(): string;
   /** The service report's compare of two snapshots, leaving out the unit's own containers. */
   compare(before: string, after: string, unit: Unit): { unchanged: boolean; report: string };
-  /** Compose up, waiting for health. */
-  up(): void;
+  /** Compose up on the unit's files, in order, waiting for health. */
+  up(files: string[]): void;
   /** The local image id a pinned reference resolves to, or undefined when it is not there. */
   imageId(ref: string): string | undefined;
-  /** Each staging container's name and the image id it runs. */
+  /** Each running container's name and the image id it runs; a stopped one runs nothing. */
   runningImages(): Record<string, string>;
 }
 
@@ -81,25 +83,55 @@ export function definitionPath(environment: DeployEnvironment): string {
   return new URL(`../../deploy/${environment}/compose.json`, import.meta.url).pathname;
 }
 
-const readDefinition = (environment: DeployEnvironment): StagingDefinition =>
-  JSON.parse(readFileSync(definitionPath(environment), 'utf8')) as StagingDefinition;
+/** Production's worker, apart from its unit so a parked unit needs no worker setting. */
+const WORKER_PATH = new URL('../../deploy/production/worker.json', import.meta.url).pathname;
+
+/** `base` with each service of the worker file merged in, as Compose merges a second file. */
+export function withWorker(
+  base: StagingDefinition,
+  worker: Pick<StagingDefinition, 'services'>,
+): StagingDefinition {
+  const services = { ...base.services };
+  for (const [name, service] of Object.entries(worker.services))
+    services[name] = { ...services[name], ...service };
+  return { ...base, services };
+}
+
+const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
+/** The unit's definition; `worker` merges production's parked worker in, as the unit's own. */
+export const readDefinition = (
+  environment: DeployEnvironment,
+  worker = false,
+): StagingDefinition => {
+  const base = readJson<StagingDefinition>(definitionPath(environment));
+  if (environment === 'staging' || !worker) return base;
+  return withWorker(base, readJson<Pick<StagingDefinition, 'services'>>(WORKER_PATH));
+};
 const STAGING_PREFIX = readDefinition('staging')['x-ops-astro'].ownPrefix;
+
+/** A backup or drill run's name after its unit's prefix (container-run.mjs, drill-restore.mjs). */
+const RUN_NAME = /^(?:(?:store|backup)-[0-9a-f]{16}|drill-[0-9a-f]{8})$/u;
 
 /**
  * The unit's own services, which its deploy may restart: staging's by its
  * prefix, as the service report has always judged; production's only the
- * Docker containers its Compose definition names, so a launchd job or any
- * other `ops-astro-*` service stays a live one.
+ * Docker containers its Compose files name, the parked worker's included, and the throwaway runs its
+ * backups and drill start (container-run.mjs, drill-restore.mjs), so a
+ * launchd job or any other `ops-astro-*` service stays a live one.
  */
 export function unitOf(environment: DeployEnvironment): Unit {
   if (environment === 'staging')
     return { name: environment, owns: (name) => name.startsWith(STAGING_PREFIX) };
+  const definition = readDefinition(environment, true);
   const containers = new Set(
-    Object.entries(readDefinition(environment).services).map(([key, s]) => s.container_name ?? key),
+    Object.entries(definition.services).map(([key, s]) => s.container_name ?? key),
   );
+  const prefix = `${definition['x-ops-astro'].ownPrefix}-`;
+  const run = (name: string): boolean =>
+    name.startsWith(prefix) && RUN_NAME.test(name.slice(prefix.length));
   return {
     name: environment,
-    owns: (name, manager) => manager === 'docker' && containers.has(name),
+    owns: (name, manager) => manager === 'docker' && (containers.has(name) || run(name)),
   };
 }
 const pinRecord = readFileSync(new URL('../../docs/supply-chain-pins.md', import.meta.url), 'utf8');
@@ -157,22 +189,6 @@ export function stagingSigns(): Promise<string[]> {
   return preflightOn(productionSigns);
 }
 
-/**
- * Why `DATABASE_ADMIN_URL` is not production's database: on staging's project,
- * or on any but production's (PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF).
- */
-export function productionAddressRefusal(env: Environment): string | undefined {
-  try {
-    const { other, ref, otherRef } = projectRefs(env, true);
-    const project = databaseProject('DATABASE_ADMIN_URL', env['DATABASE_ADMIN_URL'] ?? '');
-    if (project === otherRef) return `DATABASE_ADMIN_URL reaches ${other}'s project`;
-    return project === ref ? undefined : "DATABASE_ADMIN_URL is not production's project";
-  } catch (error) {
-    if (error instanceof Refusal) return error.message;
-    throw error;
-  }
-}
-
 /** Production's preflight: its own database, and no sign that the made-up seed ever ran there. */
 export function productionPreflight(): Promise<string[]> {
   const refusal = productionAddressRefusal(process.env);
@@ -226,7 +242,7 @@ export async function deploy(
   }
 
   const before = effects.snapshot();
-  effects.up();
+  effects.up([definitionPath(environment)]);
 
   const problems = imageProblems(effects, definition);
   const compared = effects.compare(before, effects.snapshot(), unitOf(environment));

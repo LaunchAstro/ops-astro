@@ -200,7 +200,7 @@ describe('MP-4-8 viewer is the signed-in person', () => {
   it('the panel’s own time entries name the signed-in person, never a fixed name', async () => {
     const view = await signedInAsMia();
     const entry = view.find('[data-task-panel] [data-time-entry="e-1"]');
-    expect(entry?.textContent).toContain('Mia Hart');
+    expect(entry?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Mia Hart');
     expect(view.find('[data-task-panel]')?.textContent).not.toContain('Nathan');
     await view.unmount();
   });

@@ -13,8 +13,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const sort = (entries) =>
@@ -39,10 +38,7 @@ function safePath(path) {
 
 export function externalOutput(path, roots) {
   const absolute = resolve(path);
-  const canonical = join(
-    realpathSync(dirname(absolute)),
-    absolute.slice(dirname(absolute).length + 1),
-  );
+  const canonical = join(realpathSync(dirname(absolute)), basename(absolute));
   if (roots.some((root) => inside(root, canonical)) || existsSync(canonical)) {
     throw new Error('output must be a new file outside the subject directories');
   }
@@ -198,7 +194,8 @@ export function options(args, names) {
   return result;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   try {
     const [command, ...args] = process.argv.slice(2);
     const opts = options(args, ['repo', 'candidate', 'manifest']);

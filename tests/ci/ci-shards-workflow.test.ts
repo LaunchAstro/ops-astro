@@ -117,10 +117,10 @@ function passes(name: string, shardKey: string, values: [string, string, string]
 }
 
 describe('the workflow', () => {
-  it('local checks runs as three shards and isolation tests as two, each with its aggregate', () => {
+  it('local checks and isolation tests each run as six shards, each with its aggregate', () => {
     expect([matrix('check'), matrix('isolation')]).toStrictEqual([
-      [1, 2, 3],
-      [1, 2],
+      [1, 2, 3, 4, 5, 6],
+      [1, 2, 3, 4, 5, 6],
     ]);
     expect(jobProblems('check', 'local checks')).toStrictEqual([]);
     expect(jobProblems('isolation', 'isolation tests')).toStrictEqual([]);

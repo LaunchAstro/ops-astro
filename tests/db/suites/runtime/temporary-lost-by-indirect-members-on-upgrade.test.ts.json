@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a login holding the application group through a middle role holds TEMPORARY before this upgrade and not after"
+}

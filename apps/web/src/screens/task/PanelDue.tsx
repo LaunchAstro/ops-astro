@@ -6,6 +6,7 @@
 // than being overwritten.
 
 import { useState, type ReactElement } from 'react';
+import { Icon } from '@launchastro/ui';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { DatePicker } from './DatePicker.tsx';
 import { todayOn } from './due-dates.ts';
@@ -34,7 +35,7 @@ export function DueField(props: DueFieldProps): ReactElement {
   };
   return (
     <>
-      <span className="tf__k">Due</span>
+      <span className="tf__k">Due date</span>
       <button
         className="btn"
         type="button"
@@ -43,7 +44,15 @@ export function DueField(props: DueFieldProps): ReactElement {
         disabled={props.busy}
         onClick={() => setPicking(picking === null ? props.task.revision : null)}
       >
-        {due ?? 'Not set'}
+        <Icon name="calendar" size="xs" />
+        {due === null
+          ? 'Not set'
+          : new Date(`${due}T00:00:00Z`).toLocaleDateString('en-AU', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'long',
+              timeZone: 'UTC',
+            })}
       </button>
       {picking === null ? null : (
         <DatePicker

@@ -21,7 +21,7 @@
 //
 //   node scripts/type-census.mjs [--json] [--tokens <file>] [--css <file>]... [--tsx <file>]...
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -157,12 +157,9 @@ function fontOf(value, declared, accounted, violations, where) {
       if (value(prop) === 'inherit' || value(prop) === undefined) accounted.add(prop);
     return;
   }
-  if (font === undefined) return;
-  const name = /^var\(\s*(--type-[a-z0-9-]+)\s*\)$/u.exec(font)?.[1];
-  if (name === undefined || !declared.includes(name)) {
-    violations.push(`${where}: font is not a declared type style (font: ${font})`);
-    return;
-  }
+  const name = /^var\(\s*(--type-[a-z0-9-]+)\s*\)$/u.exec(font ?? '')?.[1];
+  // Any other font is a stray: refused, or listed under the ruling that keeps it.
+  if (name === undefined || !declared.includes(name)) return;
   accounted.add('font');
   for (const [prop, part] of [
     ['letter-spacing', 'tracking'],
@@ -187,7 +184,11 @@ function censusSheet(file, css, declared) {
     const ruling = markers.map((marker) => RULING.exec(marker)?.[1]).find(Boolean);
     for (const marker of markers)
       if (!RULING.test(marker)) violations.push(`${where}: exception marker names no ruling`);
-    const value = (prop) => text.findLast((decl) => decl.prop === prop)?.value;
+    // The declaration the cascade applies: the last important one, else the last.
+    const value = (prop) => {
+      const set = text.filter((decl) => decl.prop === prop);
+      return (set.findLast((decl) => decl.important) ?? set.at(-1))?.value;
+    };
     const accounted = new Set();
     const name = fontOf(value, declared, accounted, violations, where);
     if (name !== undefined) used.push(name);
@@ -211,10 +212,16 @@ function censusSheet(file, css, declared) {
 
 /** Text styled from a component file: inline style keys and SVG font attributes. */
 const INLINE =
-  /(?<![\w-])(fontSize|fontWeight|fontFamily|lineHeight|letterSpacing|textTransform|font-size|font-weight|font-family|line-height|letter-spacing|text-transform)\s*[:=]|['"](font|font-size|font-weight|font-family|line-height|letter-spacing|text-transform)['"]\s*:|(?<=[{,]\s*)font\s*:/gu;
+  /(?<![\w-])(fontSize|fontWeight|fontFamily|lineHeight|letterSpacing|textTransform|font-size|font-weight|font-family|line-height|letter-spacing|text-transform)\s*[:=]|['"](font|font-size|font-weight|font-family|line-height|letter-spacing|text-transform|fontSize|fontWeight|fontFamily|lineHeight|letterSpacing|textTransform)['"]\s*:|(?<=[{,]\s*)font\s*:/gu;
+
+/** A string, kept whole so `//` inside one is no comment, or a comment, dropped. */
+const STRING_OR_COMMENT =
+  /(['"])(?:\\.|(?!\1)[^\\\n])*\1|`(?:\\.|[^\\`])*`|\/\*[\s\S]*?\*\/|(?<!:)\/\/.*$/gmu;
 
 function censusComponent(file, source) {
-  const code = source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/(^|[^:'"])\/\/.*$/gmu, '$1');
+  const code = source.replaceAll(STRING_OR_COMMENT, (match) =>
+    match.startsWith('/') ? '' : match,
+  );
   return [...code.matchAll(INLINE)].map(
     (match) => `${file}: text styled inline (${match[0].replace(/\s*[:=]$/u, '')})`,
   );
@@ -257,15 +264,18 @@ const files = (dir, endings) =>
     .map((entry) => join(entry.parentPath, entry.name))
     .toSorted();
 
-if (process.argv[1] === import.meta.filename) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   const args = process.argv.slice(2);
   const all = (flag) => args.flatMap((arg, at) => (arg === flag ? [args[at + 1]] : []));
   const css = all('--css');
   const tsx = all('--tsx');
+  // Named files alone when any is named, sheet or component; else the product's.
+  const named = css.length > 0 || tsx.length > 0;
   const result = census({
     tokens: all('--tokens')[0] ?? DEFAULT_TOKENS,
-    css: css.length > 0 ? css : DEFAULT_CSS.flatMap((dir) => files(dir, ['.css'])),
-    tsx: css.length > 0 ? tsx : DEFAULT_TSX.flatMap((dir) => files(dir, ['.ts', '.tsx'])),
+    css: named ? css : DEFAULT_CSS.flatMap((dir) => files(dir, ['.css'])),
+    tsx: named ? tsx : DEFAULT_TSX.flatMap((dir) => files(dir, ['.ts', '.tsx'])),
   });
   for (const line of result.violations) console.error(`type census: ${line}`);
   if (args.includes('--json')) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

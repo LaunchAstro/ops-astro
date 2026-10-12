@@ -122,7 +122,7 @@ const panelTitle = (view: View): string | null =>
 async function workInProgress(view: View): Promise<void> {
   await view.click('[data-panel-door="open"]');
   await settle();
-  await view.click('[data-task-panel] [data-panel-head="new"]');
+  await view.click('[data-panel-head="new"]');
   await view.type('#panel-draft-name', CANARY);
   await view.click(`.dpanel[data-panel-id="task"] [data-act="close"]`);
   await view.click('[data-panel-door="open"]');
@@ -156,7 +156,7 @@ async function expectFreshStart(view: View): Promise<void> {
   expect(view.find('[data-draft-panel]')).toBeNull();
   await view.click('[data-panel-door="open"]');
   await settle();
-  await view.click('[data-task-panel] [data-panel-head="new"]');
+  await view.click('[data-panel-head="new"]');
   expect(view.host.querySelector<HTMLInputElement>('#panel-draft-name')?.value).toBe('');
   expect(view.text()).not.toContain(CANARY);
 }
@@ -234,7 +234,7 @@ describe('a draft key from another person or business is removed, never read', (
     expect(draftKeys()).toStrictEqual([`${DRAFT_PREFIX}alpha:mia@alpha.local`]);
     await view.click('[data-panel-door="open"]');
     await settle();
-    await view.click('[data-task-panel] [data-panel-head="new"]');
+    await view.click('[data-panel-head="new"]');
     expect(view.host.querySelector<HTMLInputElement>('#panel-draft-name')?.value).toBe(
       'Mia’s own draft',
     );

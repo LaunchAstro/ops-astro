@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a map frontier drops a ticket an agent holds and a ticket its map completion archived, in the writing transaction"
+}

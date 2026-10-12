@@ -65,6 +65,15 @@ const record = (value: unknown): Readonly<Record<string, unknown>> | null =>
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 const count = (value: unknown): number => (typeof value === 'number' ? value : 0);
 
+/**
+ * What the version's evidence says the run made. The evidence renderer keeps
+ * the proposal's content under `payload`; a body without one is read as it is.
+ */
+function givenOf(version: RunVersion): Readonly<Record<string, unknown>> | null {
+  const body = record(version.evidence?.body);
+  return record(body?.['payload']) ?? body;
+}
+
 /** The ad groups an ad change names, each read as it is; a row that is not one is left out. */
 function adGroups(value: unknown): Extract<Staged, { readonly kind: 'ad' }>['groups'] {
   return (Array.isArray(value) ? value : []).flatMap((group: unknown) => {
@@ -80,7 +89,7 @@ function adGroups(value: unknown): Extract<Staged, { readonly kind: 'ad' }>['gro
  * Anything else is not guessed at: the pane says nothing was staged.
  */
 export function stagedOf(version: RunVersion): Staged | null {
-  const staged = record(record(version.evidence?.body)?.['staged']);
+  const staged = record(givenOf(version)?.['staged']);
   if (staged === null) return null;
   switch (staged['kind']) {
     case 'diff':
@@ -123,7 +132,7 @@ export function stagedOf(version: RunVersion): Staged | null {
 
 /** The shipped record and its snapshot, if the evidence carries one (DA-06). */
 export function shippedOf(version: RunVersion): Shipped | null {
-  const shipped = record(record(version.evidence?.body)?.['shipped']);
+  const shipped = record(givenOf(version)?.['shipped']);
   if (shipped === null) return null;
   return {
     at: text(shipped['at']),

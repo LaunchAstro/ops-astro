@@ -10,6 +10,7 @@
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, exactly as it was first written red */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { runStories, tokenStory } from '../../packages/ui/src/index.ts';
 import type { RunLineage, TaskLedger } from '../../packages/ui/src/index.ts';
 import { lineage, pane, unmountAll, version } from './mp-6-1-agent-fixtures.tsx';
 
@@ -39,8 +40,10 @@ function reservation(overrides: Partial<Reservation> = {}): Reservation {
     id: 'res-1',
     envelopeId: 'env-1',
     runId: 'run-1',
-    state: 'settled',
-    heldMinor: 0,
+    // A settled hold, as the runtime leaves it: `actual`, still carrying the
+    // amount it reserved.
+    state: 'actual',
+    heldMinor: 2_500,
     actualMinor: 1_200,
     classifiedCause: null,
     lease: null,
@@ -150,15 +153,58 @@ describe('MP-6-5 token panel', () => {
       'run-1',
       'run-2',
     ]);
-    expect(rows.map((row) => row.getAttribute('data-run-state'))).toStrictEqual([
-      'settled',
-      'held',
-    ]);
+    expect(rows.map((row) => row.getAttribute('data-run-state'))).toStrictEqual(['actual', 'held']);
+    expect(text(rows[0]?.querySelector('[data-run="held"]'))).toBe('AUD 0.00');
     expect(text(rows[0]?.querySelector('[data-run="spent"]'))).toBe('AUD 12.00');
     expect(text(rows[1]?.querySelector('[data-run="held"]'))).toBe('AUD 25.00');
     expect(text(rows[1]?.querySelector('[data-run="spent"]'))).toBe('not settled');
     expect(text(page.find('[data-tokens="held"]'))).toContain('AUD 25.00');
     expect(text(page.find('[data-tokens="runs"]'))).toBe('2 runs');
+  });
+
+  it('MP-6-5 per-run rows match the ledger: a settled or released reservation holds nothing, whatever amount it kept', async () => {
+    // The runtime settles a hold by moving the reservation to `actual` (or
+    // `abandoned`) and taking its amount off the envelope, but leaves the
+    // reservation's own held amount as it was reserved.
+    for (const state of ['actual', 'abandoned']) {
+      const settled = reservation({
+        runId: 'run-2',
+        state,
+        heldMinor: 2_500,
+        actualMinor: 900,
+        lease: { state: 'released' },
+        attempt: { state: 'settled', outcome: 'completed' },
+      });
+      const shown = world({ envelope: { heldMinor: 0, actualMinor: 900 }, runs: [settled] });
+      expect(tokenStory(shown.ledger, shown.lineages)).toMatchObject({
+        runs: [{ heldMinor: 0 }],
+      });
+      expect(runStories(shown.lineages)[0]?.heldMinor).toBe(0);
+      // eslint-disable-next-line no-await-in-loop -- one pane at a time
+      const page = await pane(shown);
+      expect(text(page.find('[data-token-run="res-1"] [data-run="held"]'))).toBe('AUD 0.00');
+      expect(text(page.find('[data-tokens="held"]'))).toContain('AUD 0.00');
+      // eslint-disable-next-line no-await-in-loop -- one act() scope at a time
+      await unmountAll();
+    }
+  });
+
+  it('MP-6-5 per-run rows match the ledger: a hold still held or quarantined shows its amount', () => {
+    for (const state of ['held', 'quarantined']) {
+      const holding = reservation({
+        runId: 'run-2',
+        state,
+        heldMinor: 2_500,
+        actualMinor: null,
+        lease: { state: 'live' },
+        attempt: { state: 'dispatched', outcome: null },
+      });
+      const shown = world({ envelope: { heldMinor: 2_500, actualMinor: 0 }, runs: [holding] });
+      expect(tokenStory(shown.ledger, shown.lineages)).toMatchObject({
+        runs: [{ heldMinor: 2_500 }],
+      });
+      expect(runStories(shown.lineages)[0]?.heldMinor).toBe(2_500);
+    }
   });
 
   it('MP-6-5 per-run rows match the ledger: a reservation on another envelope is not a row of this one', async () => {

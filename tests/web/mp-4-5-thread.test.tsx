@@ -30,7 +30,7 @@ describe('MP-4-5 reply one level', () => {
     expect(repliesUnder(seen, 'i1')).toStrictEqual(['r1']);
     expect(repliesUnder(seen, 'i2')).toStrictEqual(['r2']);
     expect(
-      seen.find('[data-comment-id="i1"] > .msg__acts [data-comment-act="reply"]'),
+      seen.find('[data-comment-id="i1"] > .msg__body > .msg__acts [data-comment-act="reply"]'),
     ).not.toBeNull();
     expect(seen.find('[data-comment-id="r1"] [data-comment-act="reply"]')).toBeNull();
   });
@@ -126,7 +126,7 @@ describe('MP-4-5 signals', () => {
     ]).view();
     await seen.click('#conversation-tab-all');
     const chip = (id: string): Element | null =>
-      seen.find(`[data-comment-id="${id}"] > .sbact__meta [data-signal]`);
+      seen.find(`[data-comment-id="${id}"] > .msg__body > .msg__meta [data-signal]`);
     expect(chip('c1')?.textContent).toBe('Reply owed');
     expect(chip('c2')?.textContent).toBe('Not acknowledged');
     expect(chip('c3')?.textContent).toBe('Answered');
@@ -158,9 +158,9 @@ describe('MP-4-5 reply clears owed', () => {
     await seen.click('[data-comment="post"]');
     await tick();
     expect(sent[0]?.body).toMatchObject({ parentId: 'c1', audience: 'client' });
-    expect(seen.find('[data-comment-id="c1"] > .sbact__meta [data-signal]')?.textContent).toBe(
-      'Answered',
-    );
+    expect(
+      seen.find('[data-comment-id="c1"] > .msg__body > .msg__meta [data-signal]')?.textContent,
+    ).toBe('Answered');
     expect(repliesUnder(seen, 'c1')).toStrictEqual(['r1']);
     expect(seen.find('[data-comment="replying"]')).toBeNull();
   });

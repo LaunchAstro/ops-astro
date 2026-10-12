@@ -27,7 +27,8 @@
 // A door with no panel to open is drawn and cannot be pressed.
 
 import type { ReactElement, ReactNode } from 'react';
-import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
+import { CountBadge, Icon, TabPanel, TabStrip, usePageToolbar } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import type { Perspective, PerspectiveCounts, StepMark } from './perspective-counts.ts';
 
 export {
@@ -38,7 +39,7 @@ export {
   type StepMark,
 } from './perspective-counts.ts';
 
-export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply';
+export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply' | 'agent';
 
 /** The conversation's three tabs (MP-4-5); the reply door hands the one showing to the panel. */
 export type ConversationTab = 'internal' | 'client' | 'all';
@@ -47,6 +48,7 @@ export type ConversationTab = 'internal' | 'client' | 'all';
 export type PanelOpener = (door: PanelDoor, tab?: ConversationTab) => void;
 
 const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
+  agent: 'Review the plan in the task panel',
   open: 'Open this task in the panel',
   tick: 'Tick these off in the task panel',
   'add-first': 'Add the first one in the task panel',
@@ -62,19 +64,24 @@ export function PanelDoorButton(props: {
   readonly onOpenPanel: PanelOpener | undefined;
 }): ReactElement {
   const open = props.onOpenPanel;
-  return (
+  const toolbar = usePageToolbar();
+  const compact = props.door === 'open' && toolbar !== null;
+  const button = (
     <button
-      className="tt__more"
+      className={compact ? 'dpanel__btn' : 'tt__more'}
       type="button"
+      aria-label={DOOR_WORDS[props.door]}
+      title={DOOR_WORDS[props.door]}
       data-panel-door={props.door}
       disabled={open === undefined}
       onClick={() => {
         open?.(props.door, props.tab);
       }}
     >
-      {DOOR_WORDS[props.door]}
+      {compact ? <Icon name="list-check" size="sm" /> : DOOR_WORDS[props.door]}
     </button>
   );
+  return compact ? createPortal(button, toolbar) : button;
 }
 
 export function Perspectives(props: {
@@ -83,6 +90,7 @@ export function Perspectives(props: {
   readonly counts: PerspectiveCounts;
   readonly selected: Perspective;
   readonly onSelect: (next: Perspective) => void;
+  readonly before?: ReactNode;
   readonly team: ReactNode;
   readonly agent: ReactNode;
 }): ReactElement {
@@ -113,6 +121,7 @@ export function Perspectives(props: {
           ]}
         />
       </div>
+      {props.before}
       <TabPanel name={name} tab="team" selected={props.selected}>
         <div className="stack" data-tp-pane="team">
           {props.team}
@@ -149,9 +158,6 @@ export function TeamWork(props: {
           {props.progress}
         </div>
         {props.list}
-        {props.steps.length === 0 ? (
-          <p className="card__sub">No subtasks on this one yet.</p>
-        ) : null}
         {doors ? (
           <PanelDoorButton
             door={props.steps.length === 0 ? 'add-first' : 'tick'}
@@ -161,7 +167,7 @@ export function TeamWork(props: {
       </section>
       <section className="sb__sect" data-time>
         <div className="sb__sh">
-          <span className="sb__k">Time</span>
+          <span className="sb__k">Time tracked</span>
         </div>
         {props.time ?? <p className="card__sub">No time logged yet.</p>}
         {doors ? <PanelDoorButton door="log" onOpenPanel={props.onOpenPanel} /> : null}

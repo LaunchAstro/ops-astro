@@ -51,7 +51,10 @@ export function setNotificationChannel(
     readonly category?: string;
   },
 ): Promise<HandlerOutcome> {
-  const modes = CHANNEL_MODES[request.channel];
+  // The channel is the caller's text, so a name the table inherits (`__proto__`) is unknown.
+  const modes = Object.hasOwn(CHANNEL_MODES, request.channel)
+    ? CHANNEL_MODES[request.channel]
+    : undefined;
   const { category } = request;
   let outcome: HandlerOutcome;
   if (modes === undefined) {

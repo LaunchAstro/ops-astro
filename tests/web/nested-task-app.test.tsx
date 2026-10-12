@@ -170,7 +170,7 @@ it('a truly empty task page opens the real first-step action and focuses its pan
         : undefined,
   });
   await tick();
-  expect(app.view.find('main [data-steps]')?.textContent).toContain('No subtasks on this one yet.');
+  expect(app.view.find('main [data-steps]')?.textContent).toContain('0 of 0 done · 0%');
   await app.view.click('main [data-panel-door="add-first"]');
   await tick();
   expect(panelTask(app.view)).toBe(PARENT);

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A conversation window set through its command past what the calendar reaches back keeps a wrapped body with closed work as not due, from the purge and the sweep, without a date-arithmetic fault."
+}

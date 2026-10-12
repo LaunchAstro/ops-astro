@@ -67,6 +67,7 @@ export function AgentSide({
         <div className="tpg__main">
           <BriefSection brief={task.agentBrief} />
           <RunProgressRead
+            showMap={false}
             state={execution}
             client={client}
             grantKey={props.grantKey}

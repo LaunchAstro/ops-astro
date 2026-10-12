@@ -23,7 +23,7 @@ it('an unknown reply retries its held parent and audience after that message dis
   await view.click('[role="tab"][id$="all"]');
   await view.click('[data-comment-id="parent-note"] [data-comment-act="reply"]');
   await mentionAda(view);
-  await view.type('#comment-body', 'Held reply');
+  await view.type('#comment-body', '@Ada Synthetic Held reply');
   await view.click('[data-comment="post"]');
   expect(server.posts()[0]?.body).toMatchObject({
     parentId: 'parent-note',
@@ -32,7 +32,7 @@ it('an unknown reply retries its held parent and audience after that message dis
     expectedRevision: 4,
   });
   await view.render(<Harness client={server.client} revision={9} comments={[]} />);
-  expect(view.find('#comment-body')).toHaveProperty('value', 'Held reply');
+  expect(view.find('#comment-body')).toHaveProperty('value', '@Ada Synthetic Held reply');
   expect(view.find('#comment-body')).toHaveProperty('disabled', true);
   expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', false);
   await view.click('[data-comment="post"]');

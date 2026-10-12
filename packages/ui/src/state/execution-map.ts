@@ -133,20 +133,39 @@ function satisfiedBy(run: MapNode | undefined, gate: MapGate | null): boolean {
   return gate?.state === 'approved';
 }
 
-/** Each step's depth: one past the deepest step it comes after. */
+/**
+ * Each step's depth: one past the deepest step it comes after. A step met
+ * again on its own path (a cycle) counts as depth 0. The walk keeps its own
+ * path, not the call stack, so a chain as long as the server's plan fits.
+ */
 function depths(steps: NonNullable<MapGraph['steps']>): Map<string, number> {
   const out = new Map<string, number>();
   const afterOf = new Map(steps.map((step) => [step.key, step.after]));
-  const visit = (key: string, seen: ReadonlySet<string>): number => {
-    const known = out.get(key);
-    if (known !== undefined) return known;
-    if (seen.has(key)) return 0;
-    const next = new Set(seen).add(key);
-    const depth = Math.max(-1, ...(afterOf.get(key) ?? []).map((name) => visit(name, next))) + 1;
-    out.set(key, depth);
-    return depth;
+  const onPath = new Set<string>();
+  const path: { key: string; after: readonly string[]; next: number; deepest: number }[] = [];
+  const enter = (key: string): void => {
+    onPath.add(key);
+    path.push({ key, after: afterOf.get(key) ?? [], next: 0, deepest: -1 });
   };
-  for (const step of steps) visit(step.key, new Set());
+  for (const step of steps) {
+    if (!out.has(step.key)) enter(step.key);
+    for (let top = path.at(-1); top !== undefined; top = path.at(-1)) {
+      const name = top.after[top.next];
+      if (name === undefined) {
+        path.pop();
+        onPath.delete(top.key);
+        out.set(top.key, top.deepest + 1);
+        continue;
+      }
+      const known = out.get(name);
+      if (known === undefined && !onPath.has(name)) {
+        enter(name);
+        continue;
+      }
+      top.deepest = Math.max(top.deepest, known ?? 0);
+      top.next += 1;
+    }
+  }
   return out;
 }
 
@@ -174,6 +193,7 @@ type Steps = NonNullable<MapGraph['steps']>;
 /** Each step in its column and row, with its runs, gate, state and whether it is satisfied. */
 function readSteps(graph: MapGraph, steps: Steps, gates: readonly MapGate[]) {
   const depth = depths(steps);
+  const sources = new Set(steps.flatMap((step) => step.after));
   const rows = new Map<number, number>();
   return steps.map((step) => {
     const col = depth.get(step.key) ?? 0;
@@ -191,7 +211,7 @@ function readSteps(graph: MapGraph, steps: Steps, gates: readonly MapGate[]) {
       runs,
       gate,
       after: step.after,
-      terminal: !steps.some((other) => other.after.includes(step.key)),
+      terminal: !sources.has(step.key),
       state,
       armed: gate?.state === 'pending' && state.tone === 'gate',
       satisfied: satisfiedBy(newest, gate),
@@ -223,8 +243,9 @@ export function executionMap(graph: MapGraph, gates: readonly MapGate[]): Execut
       : { kind: 'unbound', runs: graph.nodes.length };
   }
   const placed = placeSteps(graph, steps, gates);
-  const cols = Math.max(1, ...placed.map((step) => step.col + 1));
-  const most = Math.max(1, ...placed.map((step) => step.row + 1));
+  // Folded, not spread: a plan can hold more steps than a call takes arguments.
+  const cols = placed.reduce((widest, step) => Math.max(widest, step.col + 1), 1);
+  const most = placed.reduce((deepest, step) => Math.max(deepest, step.row + 1), 1);
   const { paths, joins } = routeRail(placed);
   const pick = (tone: Tone): string | undefined =>
     placed.find((step) => step.state.tone === tone)?.key;

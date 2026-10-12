@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's revert on the effect register: a revert the provider read back as landed is registered with its first take's time, so a lease lost before its receipt leaves the next run observing it, not asking a person."
+}

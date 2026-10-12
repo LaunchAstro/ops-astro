@@ -132,12 +132,14 @@ describe('MP-4-8 same facts as the task page', () => {
       <TaskDetailScreen client={client} grantKey="alpha:member" taskKey={KEY} />,
     );
     await tick();
-    const pageFacts = page.find('.tpr__facts')?.textContent;
+    const pageFacts = facts(page.find('.mstrip'));
+    const pageRank = page.find('[data-mstrip-fact=rank]')?.getAttribute('title');
     const pageAgent = page.find('#perspective-tab-agent .cbadge')?.textContent;
     await page.unmount();
     const view = await panel(client);
-    expect(pageFacts).toContain('impact 7 × confidence 9 × ease 8 = 504');
-    expect(view.find('[data-task-panel] .tpr__facts')?.textContent).toBe(pageFacts);
+    expect(pageRank).toContain('impact 7 × confidence 9 × ease 8 = 504');
+    expect(facts(view.find('[data-task-panel] .mstrip'))).toStrictEqual(pageFacts);
+    expect(view.find('[data-tick=adhoc]')?.getAttribute('aria-checked')).toBe('true');
     expect(view.find('#panel-perspective-tab-agent .cbadge')?.textContent).toBe(pageAgent);
     await view.unmount();
   });
@@ -280,3 +282,6 @@ describe('MP-4-8 visual match', () => {
     expect(unheld(fields)).toEqual([]);
   });
 });
+
+const facts = (root: Element | null | undefined) =>
+  [...(root?.querySelectorAll('[data-mstrip-fact]') ?? [])].map((cell) => cell.textContent);

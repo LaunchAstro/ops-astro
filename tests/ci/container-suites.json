@@ -4,6 +4,8 @@
     "tests/ci/backup-store-route-processes.test.ts",
     "tests/ci/fixture-clone-refuses-another-container.test.ts",
     "tests/ci/fixture-database-url-container-proof.test.ts",
+    "tests/ci/production-unit-liveness-and-parked-stop.proof.test.ts",
+    "tests/ci/production-unit-parks-and-runs-the-worker.proof.test.ts",
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
     "tests/ci/restore-drill.test.ts",
     "tests/ci/restore-includes-sign-in-tables.test.ts",

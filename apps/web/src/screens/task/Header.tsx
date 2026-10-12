@@ -18,7 +18,8 @@
 // carried proposal evidence. Unknown or incomplete evidence never says none.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Spill } from '@launchastro/ui';
+import { Icon, Spill, usePageTitle } from '@launchastro/ui';
+import { createPortal } from 'react-dom';
 import {
   TASK_CATEGORIES,
   type BoardCrumb,
@@ -40,10 +41,12 @@ export function TaskHeader(props: {
   readonly execution: TaskExecutionRead;
 }): ReactElement {
   const { task } = props;
+  const title = usePageTitle();
   const run = runLineOf(task.proposals, props.execution, task.id);
   const boardAddress = owningBoardAddress(task);
   return (
     <header className="tpr">
+      {title === null ? null : createPortal(titleOf(task.title), title)}
       <nav className="tpr__crumb" aria-label="Where this task sits">
         {boardAddress === null ? (
           <span className="sb__addr" data-crumb="projects">
@@ -54,7 +57,13 @@ export function TaskHeader(props: {
             Projects →
           </a>
         )}
-        <span data-crumb="board">{boardWords(task.board)}</span>
+        {boardAddress !== null && task.board?.readable ? (
+          <a className="tpr__board" data-crumb="board" href={boardAddress}>
+            {boardWords(task.board)}
+          </a>
+        ) : (
+          <span data-crumb="board">{boardWords(task.board)}</span>
+        )}
         <CategoryCrumb category={task.category ?? null} />
         <span aria-hidden="true">·</span>
         <span className="sbact__meta" data-crumb="key">
@@ -66,15 +75,7 @@ export function TaskHeader(props: {
         <CopyAddress path={pathTo('agency:task-detail', { key: task.key })} />
       </nav>
       <h2 className="tpr__title">{titleOf(task.title)}</h2>
-      {run === null ? null : (
-        <p className="card__sub" data-run={run.shape}>
-          {run.words}
-        </p>
-      )}
-      <div className="card__sub">
-        Revision {task.revision} ·{' '}
-        {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-      </div>
+      <RunStatus task={task} run={run} />
     </header>
   );
 }
@@ -159,17 +160,47 @@ function CopyAddress(props: { readonly path: string }): ReactElement {
         className="btn"
         type="button"
         data-copy="address"
+        aria-label={copied ? 'Copied' : 'Copy link'}
+        title={copied ? 'Copied' : 'Copy link'}
         data-copied={copied ? 'yes' : 'no'}
         onClick={() => {
           void copy();
         }}
       >
-        {copied ? 'Copied ✓' : 'Copy link'}
+        <Icon name={copied ? 'check' : 'link'} size="xs" />
       </button>
       {failed ? (
         <span className="field__error" role="alert" data-copy="failed">
           The link could not be copied. Copy it by hand: {address}
         </span>
+      ) : null}
+    </>
+  );
+}
+
+function RunStatus(props: {
+  readonly task: InternalTaskDetail;
+  readonly run: ReturnType<typeof runLineOf>;
+}): ReactElement {
+  const { task, run } = props;
+  return (
+    <>
+      {run === null ? null : (
+        <p className="card__sub" data-run={run.shape}>
+          {run.words}{' '}
+          <span
+            className="tpr__revision"
+            title={task.completedAt === null ? 'Not completed' : `Completed ${task.completedAt}`}
+          >
+            · Revision {task.revision}
+          </span>
+        </p>
+      )}
+      {run === null ? (
+        <div className="card__sub tpr__revision">
+          Revision {task.revision} ·{' '}
+          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
+        </div>
       ) : null}
     </>
   );

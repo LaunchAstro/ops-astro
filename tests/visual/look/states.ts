@@ -167,8 +167,8 @@ export const STATES_SCREEN: LookScreen = {
       props: ['font-family', 'font-size', 'color', 'text-decoration-line'],
       ruled: (['light', 'dark'] as const).map((theme) => ({
         at: `font-size@${theme}`,
-        want: '12px',
-        why: 'DS-TOK-124 (the 13 snaps to the data style)',
+        want: '13px',
+        why: 'R20261012: the canonical address dialect is 13px mono',
       })),
       widths: WIDTHS,
     },

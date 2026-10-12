@@ -3,10 +3,22 @@
 // The Agent pane's top: the proposal header with its Reject and Cancel, the
 // summary grid, and the job list (DA-01, DA-02, TA-03).
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { usePanelToolbar } from '../PageToolbar.tsx';
 import type { Job, RunStory } from '../../state/agent-run.ts';
+import type { DrawnState } from '../../state/project.ts';
 import { words } from './format.ts';
 import type { GateRef } from './gate.tsx';
+
+const JOB_TONE: Readonly<Record<Job['state'], DrawnState['tone']>> = {
+  done: 'done',
+  approved: 'done',
+  running: 'run',
+  waiting: 'wait',
+  pending: 'gate',
+  failed: 'bad',
+  refused: 'bad',
+};
 
 export function ProposalHeader(props: {
   readonly story: RunStory;
@@ -73,32 +85,66 @@ function jobRow(job: Job): ReactElement {
         <span className="wf__t">{job.title}</span>
         <span className="sbact__meta u-mono">{job.meta}</span>
       </div>
-      <span className="spill wf__state" data-tone={job.state}>
+      <span className="spill wf__state" data-tone={JOB_TONE[job.state]}>
         {job.state}
       </span>
     </div>
   );
 }
 
-export function Summary(props: { readonly story: RunStory }): ReactElement {
+export function Summary(props: {
+  readonly story: RunStory;
+  readonly actions?: ReactNode;
+}): ReactElement {
   const { story } = props;
+  const compact = usePanelToolbar() !== null;
   return (
-    <div className="trs" data-tone={story.tone} data-agent="summary" data-run-state={story.state}>
-      <div className="trs__top">
-        <span className="sbact__meta u-mono">Attempt {story.attempt} · agent</span>
-        <span className="spill" data-tone={story.tone} data-agent="state-word">
-          {story.word}
-        </span>
+    <div
+      className="trs"
+      data-tone={story.tone}
+      data-agent="summary"
+      data-run-state={story.state}
+      data-summary-layout={compact ? 'compact' : 'full'}
+    >
+      <div className="trs__lead">
+        <div className="trs__top">
+          <span className="sbact__meta u-mono">
+            {compact ? null : (
+              <>
+                <span data-agent="run-id">{story.head.runId ?? 'not planned'}</span> ·{' '}
+              </>
+            )}
+            Attempt {story.attempt} · agent
+          </span>
+          <span className="spill" data-tone={story.tone} data-agent="state-word">
+            {story.word}
+          </span>
+        </div>
+        <p className="trs__say">{story.sentence}</p>
+        {props.actions}
+        <details className="trs__details" open={compact ? true : undefined}>
+          <summary>Run details</summary>
+          <div className="trs__grid">
+            {summaryCell('Progress', story.progress, 'progress')}
+            {summaryCell('Current job', story.currentJob, 'current-job')}
+            {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
+            {summaryCell('Next action', story.nextAction, 'next-action')}
+          </div>
+        </details>
       </div>
-      <p className="trs__say">{story.sentence}</p>
-      <HeroStats story={story} />
-      <div className="trs__grid">
-        {summaryCell('Progress', story.progress, 'progress')}
-        {summaryCell('Current job', story.currentJob, 'current-job')}
-        {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
-        {summaryCell('Next action', story.nextAction, 'next-action')}
-      </div>
+      <RunStatistics story={story} compact={compact} />
     </div>
+  );
+}
+
+function RunStatistics(props: { readonly story: RunStory; readonly compact: boolean }) {
+  return props.compact ? (
+    <details className="trs__details">
+      <summary>Run statistics</summary>
+      <HeroStats story={props.story} />
+    </details>
+  ) : (
+    <HeroStats story={props.story} />
   );
 }
 

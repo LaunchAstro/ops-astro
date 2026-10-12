@@ -5,6 +5,7 @@
 // that file under its 500-line limit; the reasoning for what the controls send
 // and how a refusal is quoted is in `proposals.tsx`'s header.
 
+import { StyledSelect } from '@launchastro/ui';
 import { useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -127,7 +128,7 @@ export function Decide(props: DecideProps): ReactElement {
               New behaviour with no drawing behind it (specification 13.2). */}
           {gate.round >= 3 ? (
             <div data-escalate="form" data-ui-reference="none">
-              <select
+              <StyledSelect
                 aria-label="Escalate to"
                 data-escalate="recipient"
                 disabled={busy}
@@ -142,7 +143,7 @@ export function Decide(props: DecideProps): ReactElement {
                     {person.name}
                   </option>
                 ))}
-              </select>
+              </StyledSelect>
               <button
                 className="btn"
                 data-decide="escalate"

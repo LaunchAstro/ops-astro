@@ -12,16 +12,8 @@
 // keeps the fold open across a reread. Archived steps stay visible outside the
 // fold and count, saying when and why, with no tick (DT-05).
 
-import {
-  createContext,
-  use,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactElement,
-} from 'react';
-import { StepRow, StepCount } from './SubtaskRows.tsx';
+import { createContext, use, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { SubtaskRows, StepCount } from './SubtaskRows.tsx';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useShowFinished } from './show-finished.ts';
@@ -29,9 +21,9 @@ import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
+import { useSubtaskActions, useSubtaskOwner } from './subtask-actions.tsx';
 import { holding, useHeldOperations } from './held-operations.ts';
 
-const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 /** The add box's words where the page holds them above its read; the panel's box keeps its own. */
 export const StepTitleHeld = createContext<readonly [string, (next: string) => void] | null>(null);
 
@@ -87,7 +79,7 @@ function AddStep(props: {
         data-step-add
         disabled={closed}
         aria-label="Add a subtask"
-        placeholder="Add a subtask and press Enter"
+        placeholder="+ Add subtask…"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={onKeyDown}
@@ -118,6 +110,7 @@ function FinishedFold(props: {
 
 interface SubtaskListProps {
   readonly client: OperationsClient;
+  readonly grantKey?: string;
   readonly parentId: string;
   /** The composed Team heading carries this summary; standalone lists keep their own. */
   readonly showProgress?: boolean;
@@ -130,20 +123,7 @@ interface SubtaskListProps {
 
 export function SubtaskList(props: SubtaskListProps): ReactElement {
   const { client, steps, onOpenTask } = props;
-  const { locked: busy, because, run } = useCommand();
-  const current = useSubtaskOwner(props.client, props.parentId);
-  const tick = (step: StepView): void => {
-    const at = { expectedRevision: step.revision };
-    run(
-      () =>
-        step.done
-          ? client.mutate('task.reopen', { recordId: step.id, reason: REOPEN_REASON }, at)
-          : client.mutate('task.complete', { recordId: step.id }, at),
-      (settlement) => {
-        if (current() && settlement.kind === 'ok') props.onChanged();
-      },
-    );
-  };
+  const { busy, because, tick, remove, undo } = useSubtaskActions(props);
   const live = unfinished(steps);
   const archived = steps.filter((step) => step.archived !== null);
   const completed = steps.filter((step) => step.archived === null && step.done);
@@ -156,11 +136,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
         </span>
       )}
       <AddStep client={client} parentId={props.parentId} onChanged={props.onChanged} />
-      <ul className="sb__steps">
-        {shown.map((step) => (
-          <StepRow key={step.id} step={step} busy={busy} onTick={tick} onOpenTask={onOpenTask} />
-        ))}
-      </ul>
+      <SubtaskRows steps={shown} busy={busy} tick={tick} remove={remove} onOpenTask={onOpenTask} />
       {live.length === 0 && completed.length > 0 ? (
         <p className="card__sub" data-steps-empty>
           Nothing left on this one.
@@ -171,6 +147,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
         open={props.showFinished}
         onOpen={props.onShowFinished}
       />
+      {undo}
       <StepError because={because} />
     </div>
   );
@@ -178,6 +155,7 @@ export function SubtaskList(props: SubtaskListProps): ReactElement {
 
 interface TeamSubtasksProps {
   readonly client: OperationsClient;
+  readonly grantKey?: string;
   readonly task: {
     readonly id: string;
     readonly key?: string;
@@ -212,10 +190,11 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
-      progress={<StepCount value={task.steps.length === 0 ? null : stepProgress(task.steps)} />}
+      progress={<StepCount value={stepProgress(task.steps)} />}
       list={
         <SubtaskList
           client={props.client}
+          {...(props.grantKey === undefined ? {} : { grantKey: props.grantKey })}
           parentId={task.id}
           showProgress={false}
           steps={task.steps}
@@ -245,22 +224,6 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
       doors={props.doors ?? true}
     />
   );
-}
-
-function useSubtaskOwner(client: OperationsClient, parentId: string): () => boolean {
-  const held = useRef({ client, parentId, active: true });
-  if (held.current.client !== client || held.current.parentId !== parentId) {
-    held.current.active = false;
-    held.current = { client, parentId, active: true };
-  }
-  const owner = held.current;
-  useEffect(() => {
-    owner.active = true;
-    return () => {
-      owner.active = false;
-    };
-  }, [owner]);
-  return () => owner.active && held.current === owner;
 }
 
 function StepError(props: { readonly because: string | null }): ReactElement | null {

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "A member whose role is not internal (a client) is refused task.todos and shown no internal field, even with business-wide task:read and a task assigned to them; the same member in an internal role is served it. Data separation across roles, judged on a real database."
+}

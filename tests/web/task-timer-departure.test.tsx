@@ -32,7 +32,7 @@ for (const allWritesFail of [false, true]) {
     });
     await first.renderPath('/projects');
     await first.tick();
-    expect(first.view.find(strip)?.textContent).toContain('Select task to time');
+    expect(first.view.find(strip)?.textContent).toContain('Start timer');
     expect(first.view.text()).toContain('only in this tab');
     expect(first.storage.getItem(TIMER)).toBe(kept);
     expect(world.writes()).toHaveLength(1);
@@ -40,7 +40,7 @@ for (const allWritesFail of [false, true]) {
       const storage = copied(first.storage);
       await first.view.unmount();
       const second = await realm(world.fetch, storage, '/projects');
-      expect(second.view.find(strip)?.textContent).toBe('Select task to time');
+      expect(second.view.find(strip)?.textContent).toBe('Start timer');
       expect(world.writes()).toHaveLength(1);
     }
   });

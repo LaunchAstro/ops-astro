@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a unique value is canonicalised as the store keeps it: tab and newline padding stay, so the duplicate check and the stored value agree"
+}

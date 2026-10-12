@@ -36,9 +36,10 @@ interface Claim {
   readonly holder: string;
   readonly authorisedBy?: string;
   readonly expires?: Date;
+  readonly collection?: string;
 }
 
-// eslint-disable-next-line max-lines-per-function -- four cases over one world
+// eslint-disable-next-line max-lines-per-function -- six cases over one world
 describe.skipIf(serverUrl === undefined)('a lease is taken only through the pickup path', () => {
   let s: Schedules;
   let other: Schedules;
@@ -63,7 +64,7 @@ describe.skipIf(serverUrl === undefined)('a lease is taken only through the pick
       claim.holder,
       claim.authorisedBy ?? s.decider.personId,
       claim.expires ?? inTenMinutes(),
-      'task',
+      claim.collection ?? 'task',
     ]);
 
   /** A delegation for the agent on `taskId`, from the approving person, ending at `expires`. */
@@ -154,6 +155,20 @@ describe.skipIf(serverUrl === undefined)('a lease is taken only through the pick
       accepted: true,
     });
     expect(await take(s.business, notTheApprover)).toMatchObject({ accepted: true });
+  });
+
+  it('the pickup path refuses a claim under a collection that is not the task collection', async () => {
+    const presetWriter = await enrol(s.db.app, s.business, 'preset-writer');
+    await s.db.app.withBusiness(
+      s.business,
+      async (tx) =>
+        await grantTo(tx, presetWriter, 'write', { kind: 'business', id: null }, false, 'preset'),
+    );
+    const reservation = (await approvedWork(s))['reservationId'];
+    const claim = { reservation, holder: presetWriter.actorId };
+    // Business-wide write on presets is no write on the task, whichever collection is named.
+    expect(await take(s.business, { ...claim, collection: 'preset' })).toMatchObject(NOT_COVERED);
+    expect(await take(s.business, claim)).toMatchObject(NOT_COVERED);
   });
 
   it('a person with live write takes work another person approved, naming that approver', async () => {

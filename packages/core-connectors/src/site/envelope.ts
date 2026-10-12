@@ -129,19 +129,24 @@ const END_TAG_FOLLOWS = /[\t\n\f\r />]/u;
 const BLANK_LINE = /\n[\t ]*(?:\n|$)/gu;
 // A Markdown word's run holds `.`, `:`, `/` or `@` only as closing punctuation: no autolink.
 const MARKDOWN_RUN = /^[\p{L}\p{M}\p{N}'’‘"“”()[\]*_~-]*[.,;:!?)\]"'’”*_~]*$/u;
+// A link label (`][l]`, `[l][]`, `[l]:`, `[l]`) is one construct, unless it holds `<`, `{` or `}`.
+const LABEL = /\]?\[(?:[^\\[\]<{}]|\\.){0,999}(?=\](?!\(|\[(?!\])))/uy;
 
 /** Lower case by ASCII only, as HTML matches an end tag's name. */
 const asciiLower = (text: string): string =>
   text.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
 
-function skipSpace(source: string, at: number): number {
-  SPACES.lastIndex = at;
-  SPACES.test(source);
-  return SPACES.lastIndex;
+/** The match of the sticky `grammar` at `at`, or undefined. */
+function matchAt(grammar: RegExp, source: string, at: number): string | undefined {
+  grammar.lastIndex = at;
+  return grammar.exec(source)?.[0];
 }
 
+const skipSpace = (source: string, at: number): number =>
+  at + (matchAt(SPACES, source, at)?.length ?? 0);
+
 /** The end of the expression opening at `at` (`{`), or undefined where it holds anything else. */
-function expressionEnd(source: string, at: number): number | undefined {
+function expressionEnd(source: string, at: number, level: number): number | undefined {
   let depth = 0;
   for (let next = at; next < source.length; next += 1) {
     const character = source.charAt(next);
@@ -150,7 +155,7 @@ function expressionEnd(source: string, at: number): number | undefined {
       depth -= 1;
       if (depth === 0) return next + 1;
     } else if (character === '<') {
-      const tag = tagEnd(source, next);
+      const tag = tagEnd(source, next, false, level);
       const name = tag === undefined ? '' : asciiLower(tag.name);
       if (tag === undefined || RAW.has(name) || FOREIGN.has(name)) return undefined;
       next = tag.end - 1;
@@ -160,17 +165,15 @@ function expressionEnd(source: string, at: number): number | undefined {
 }
 
 /** One attribute at `at`: an expression, or a name with a quoted or expression value or none. */
-function attributeEnd(source: string, at: number, markdown: boolean): number | undefined {
-  if (source.charAt(at) === '{') return markdown ? undefined : expressionEnd(source, at);
-  const grammar = markdown ? MD_ATTRIBUTE : ATTRIBUTE;
-  grammar.lastIndex = at;
-  const name = grammar.exec(source)?.[0];
+function attributeEnd(source: string, at: number, markdown = false, level = 0): number | undefined {
+  if (source.charAt(at) === '{') return markdown ? undefined : expressionEnd(source, at, level + 1);
+  const name = matchAt(markdown ? MD_ATTRIBUTE : ATTRIBUTE, source, at);
   if (name === undefined || (name.includes(':') && !DIRECTIVE.test(name))) return undefined;
   const equals = skipSpace(source, at + name.length);
   if (source.charAt(equals) !== '=') return equals;
   const value = skipSpace(source, equals + 1);
   const quote = source.charAt(value);
-  if (quote === '{') return markdown ? undefined : expressionEnd(source, value);
+  if (quote === '{') return markdown ? undefined : expressionEnd(source, value, level + 1);
   if (quote !== '"' && quote !== "'") return undefined;
   const close = source.indexOf(quote, value + 1);
   return close < 0 ? undefined : close + 1;
@@ -178,17 +181,15 @@ function attributeEnd(source: string, at: number, markdown: boolean): number | u
 
 type Tag = { readonly end: number; readonly name: string };
 
-/** A tag opening at `at` (`<`): `<`, `/`?, a name, attributes, `/`?, `>`. Undefined otherwise. */
-function tagEnd(source: string, at: number, markdown = false): Tag | undefined {
+/** A tag at `at` (`<`): `<`, `/`?, a name, attributes, `/`?, `>`; undefined otherwise or 64 deep. */
+function tagEnd(source: string, at: number, markdown = false, level = 0): Tag | undefined {
   let next = source.charAt(at + 1) === '/' ? at + 2 : at + 1;
-  const grammar = markdown ? MD_TAG_NAME : TAG_NAME;
-  grammar.lastIndex = next;
-  const name = grammar.exec(source)?.[0];
-  if (name === undefined) return undefined;
+  const name = matchAt(markdown ? MD_TAG_NAME : TAG_NAME, source, next);
+  if (name === undefined || level > 64) return undefined;
   for (next = skipSpace(source, next + name.length); ; next = skipSpace(source, next)) {
     if (source.charAt(next) === '>') return { end: next + 1, name };
     if (source.startsWith('/>', next)) return { end: next + 2, name };
-    const end = attributeEnd(source, next, markdown);
+    const end = attributeEnd(source, next, markdown, level);
     if (end === undefined) return undefined;
     next = end;
   }
@@ -244,17 +245,17 @@ function constructEnd(source: string, at: number, markdown: boolean): number | u
     const raw = source.charAt(at + 1) !== '/' && RAW.has(name);
     return raw ? rawEnd(source, tag.end, name) : tag.end;
   }
-  if (character === '{') return expressionEnd(source, at);
+  if (character === '{') return expressionEnd(source, at, 0);
   if (character === '}') return undefined;
   if (!markdown) return at + 1;
   if (source.startsWith('](', at)) return destinationEnd(source, at + 1);
   if (source.startsWith(']:', at) || source.startsWith('![', at)) return paragraphEnd(source, at);
-  return at + 1;
+  return at + (matchAt(LABEL, source, at)?.length ?? 1);
 }
 
 /** The run of non-space characters around `offset`. */
 const runAround = (source: string, offset: number): string =>
-  (/\S*$/u.exec(source.slice(0, offset))?.[0] ?? '') +
+  (/(?<!\S)\S*$/u.exec(source.slice(0, offset))?.[0] ?? '') +
   (/^\S*/u.exec(source.slice(offset))?.[0] ?? '');
 
 /** Whether `offset` is in body copy, read construct by construct from the body's start. */

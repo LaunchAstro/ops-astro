@@ -22,7 +22,9 @@ export function startsAWord(text: string, term: string): boolean {
   const needle = term.toLowerCase();
   if (needle === '') return false;
   for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) {
-    if (at === 0 || !WORD.test(hay.charAt(at - 1))) return true;
+    // The whole character before, never the trailing half of a surrogate pair.
+    const before = Array.from(hay.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
+    if (!WORD.test(before)) return true;
   }
   return false;
 }

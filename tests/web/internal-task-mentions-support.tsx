@@ -51,6 +51,7 @@ export function transport(businessKey = 'alpha') {
 }
 
 export interface HarnessProps {
+  readonly initialDraft?: CommentDraft;
   readonly client: OperationsClient;
   readonly recordId?: string;
   readonly grantKey?: string;
@@ -60,7 +61,7 @@ export interface HarnessProps {
   readonly refused?: (because: string) => void;
 }
 export function Harness(props: HarnessProps) {
-  const [draft, onDraft] = useState<CommentDraft | null>(null);
+  const [draft, onDraft] = useState<CommentDraft | null>(props.initialDraft ?? null);
   const [closed, onRefused] = useState<string | null>(null);
   return (
     <Comments
@@ -104,9 +105,8 @@ export async function key(
   });
 }
 export async function mentionAda(view: Mounted) {
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'ArrowDown');
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'ArrowDown');
-  await key(view, '[data-internal-task-mentions] button[aria-haspopup="listbox"]', 'Enter');
+  await view.type('[data-internal-task-mentions] textarea', '@Ada');
+  await key(view, '[data-internal-task-mentions] textarea', 'Enter');
 }
 
 export function deferredResponse() {

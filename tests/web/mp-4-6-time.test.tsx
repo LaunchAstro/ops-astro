@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskTimeView, TimeEntryView } from '../../packages/core-wire/src/index.ts';
-import { burnOf, minutesText } from '../../apps/web/src/screens/task/Time.tsx';
+import { burnOf, minutesText } from '../../apps/web/src/screens/task/time-format.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { TASK_ID, found as foundTask, page, tick } from './task-page-stub.tsx';
 import { press, unmountAll } from './perspective-support.tsx';

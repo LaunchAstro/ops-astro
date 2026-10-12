@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ops-astro-backup</string>
+  <key>WorkingDirectory</key>
+  <string>@PRODUCTION_REPO_DIR@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>--env-file=@PRODUCTION_BACKUP_ENV_FILE@</string>
+    <string>scripts/ops/backup.mjs</string>
+    <string>run</string>
+    <string>--production</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PRODUCTION_PATH@</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>@PRODUCTION_BACKUP_LOG@</string>
+</dict>
+</plist>

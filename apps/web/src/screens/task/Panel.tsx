@@ -30,6 +30,7 @@
 // **Escape closes the panel, never a control's Escape.** A key that started in
 // a field, a select or a text box is that control's (TR-A3-3).
 
+import { Icon } from '@launchastro/ui';
 import { TaskTimerBoundary, useTimerRead, useTimerState } from './task-timer-context.tsx';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -41,9 +42,9 @@ import type {
 import { hubOf } from '../../data/live.ts';
 import { taskDependencyAdmission, useTaskDependencies } from '../../data/board-live.ts';
 import { useRead } from '../../data/use-read.ts';
-import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { TaskFacts } from './Facts.tsx';
+import { TaskFactStrip } from './Facts.tsx';
+import { ScoreFields } from './ScoreFields.tsx';
 import { History, useShowTrail } from './History.tsx';
 import {
   Perspectives,
@@ -53,21 +54,19 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PageLink, GoTo } from './PageLink.tsx';
-import { AskDoor, PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
+import { PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
-import { taskContext, type PageContext } from './task-prefill.ts';
+import { type PageContext } from './task-prefill.ts';
 import type { ClientSeams } from './client-seam.ts';
-import { PanelFields, PanelName } from './PanelFields.tsx';
+import { PanelFields } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useAssignments } from './assignment-context.tsx';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
-import { TaskPin, TaskPinsNotice } from './task-pins-context.tsx';
 import { DescriptionField } from './Writing.tsx';
-import { PanelBoardDoor } from './board-door.tsx';
+import { PanelHead } from './PanelHead.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -163,7 +162,7 @@ function PanelBody(
   props: Body & AgentSideProps & { readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
-  const [perspective, setPerspective] = useState<Perspective>('team');
+  const [perspective, setPerspective] = usePanelPerspective(props.opening);
   const body = useSubtaskDoor(props.opening, task.id, perspective, setPerspective);
   const counts = perspectiveCounts({
     steps: stepMarks(task.steps),
@@ -173,12 +172,14 @@ function PanelBody(
   return (
     <div ref={body} className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead {...props} />
-      <PanelFields {...props} />
-      <PageLink client={client} task={task} onChanged={props.onChanged} />
-      <TaskFacts task={task} />
-      <HandlingTicks client={client} task={task} onChanged={props.onChanged} />
       <Perspectives
         name="panel-perspective"
+        before={
+          <>
+            <PanelFacts {...props} />
+            <PanelFields {...props} />
+          </>
+        }
         counts={counts}
         selected={perspective}
         onSelect={setPerspective}
@@ -244,6 +245,7 @@ function PanelWork(props: SideProps): ReactElement {
   return (
     <TeamSubtasks
       client={props.client}
+      grantKey={props.grantKey}
       task={props.task}
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
@@ -255,46 +257,35 @@ function PanelWork(props: SideProps): ReactElement {
   );
 }
 
-/**
- * The head: the task's name, New task (a draft filed from here), Ask about
- * it (DP-09), its own page, and close, which the dock draws instead where it
- * hosts the panel.
- */
-function PanelHead(props: SideProps): ReactElement {
-  const { task, onNewTask } = props;
+/** Derived ownership and priority marks above the task's editable fields. */
+function PanelFacts(props: SideProps): ReactElement {
+  const { client, task } = props;
   return (
-    <div className="dtp__head">
-      <h2 className="t-title" data-panel-title>
-        <PanelName client={props.client} task={task} onChanged={props.onChanged} />
-      </h2>
-      <TaskPin taskId={task.id} />
-      <button
-        className="btn"
-        type="button"
-        data-panel-head="new"
-        disabled={onNewTask === undefined}
-        onClick={() => {
-          onNewTask?.(taskContext(task));
-        }}
-      >
-        New task
-      </button>
-      <AskDoor grantKey={props.grantKey} task={task} />
-      <a
-        className="btn"
-        data-panel-head="page"
-        href={pathTo('agency:task-detail', { key: task.key })}
-      >
-        Open its page
-      </a>
-      <PanelBoardDoor task={task} />
-      <GoTo task={task} />
-      <TaskPinsNotice />
-      {props.docked === true ? null : (
-        <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
-          Close
-        </button>
-      )}
+    <div className="dtp__facts">
+      <TaskFactStrip
+        task={task}
+        handling={<HandlingTicks client={client} task={task} onChanged={props.onChanged} />}
+      />
+      <details className="field-callout dtp__scores">
+        <summary aria-label="Priority marks" title="Priority marks">
+          <Icon name="settings-sliders" size="xs" />
+        </summary>
+        <div className="field-callout__body">
+          <ScoreFields {...props} scope="panel" />
+          {task.rank.calc === '' ? null : <p className="tpr__calc">{task.rank.calc}</p>}
+        </div>
+      </details>
     </div>
   );
+}
+
+/** The Agent and reply doors pick the perspective; a re-read of the same opening keeps the chosen one. */
+function usePanelPerspective(opening: PanelOpening) {
+  const { taskKey, door, tab } = opening;
+  const [perspective, setPerspective] = useState<Perspective>(door === 'agent' ? 'agent' : 'team');
+  useEffect(() => {
+    if (door === 'agent') setPerspective('agent');
+    if (door === 'reply') setPerspective('team');
+  }, [taskKey, door, tab]);
+  return [perspective, setPerspective] as const;
 }

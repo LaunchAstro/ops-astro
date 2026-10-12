@@ -263,6 +263,86 @@ else
 fi
 rm -rf "$dir"
 
+echo "O. a clean local replacement for a contaminated blob"
+# A private list for the literal sweep, outside any repository.
+TERMS="$SCRATCH/gate-terms-list"
+printf '%s\n' "$CANARY" > "$TERMS"
+# `git replace` changes what this clone reads for an object, not what a push
+# sends: the original blob is published. The gate must judge that one.
+dir="$(new_repo)"
+printf 'harmless first commit\n' > "$dir/seed.txt"
+git -C "$dir" add seed.txt >/dev/null && git -C "$dir" commit -qm "seed"
+printf 'a note about %s\n' "$CANARY" > "$dir/leak.txt"
+git -C "$dir" add leak.txt >/dev/null
+clean="$(printf 'nothing to see\n' | git -C "$dir" hash-object -w --stdin)"
+git -C "$dir" replace "$(git -C "$dir" rev-parse :leak.txt)" "$clean"
+status="$(gate_status "$dir" --staged)"
+if [ "$status" = "1" ]; then
+  pass "a staged blob is judged by its original bytes (exit 1)"
+else
+  fail "a staged blob is judged by its original bytes" "expected exit 1, got $status; the gate read the local replacement"
+fi
+git -C "$dir" commit -qm "add"
+status="$(gate_status "$dir" --range HEAD)"
+if [ "$status" = "1" ]; then
+  pass "a committed blob is judged by its original bytes (exit 1)"
+else
+  fail "a committed blob is judged by its original bytes" "expected exit 1, got $status; the gate read the local replacement"
+fi
+status="$( cd "$dir" && HUB_GATE_TERMS="$TERMS" python3 scripts/gate/sweep.py --literal HEAD >/dev/null 2>&1; echo $? )"
+if [ "$status" = "1" ]; then
+  pass "the literal sweep judges a blob by its original bytes (exit 1)"
+else
+  fail "the literal sweep judges a blob by its original bytes" "expected exit 1, got $status; the gate read the local replacement"
+fi
+rm -rf "$dir"
+
+echo "P. a directory the path sweep cannot read"
+if [ "$(id -u)" = "0" ]; then
+  # Root reads a mode 000 directory, so the case cannot be made here.
+  pass "an unreadable directory is not clean (not provable as root, skipped)"
+else
+  dir="$(new_repo)"
+  mkdir -p "$dir/target/locked"
+  printf 'harmless\n' > "$dir/target/ok.txt"
+  printf 'a note about %s\n' "$CANARY" > "$dir/target/locked/notes.txt"
+  chmod 000 "$dir/target/locked"
+  status="$(gate_status "$dir" --path target)"
+  chmod 755 "$dir/target/locked"
+  if [ "$status" = "1" ]; then
+    pass "an unreadable directory is not clean (exit 1)"
+  else
+    fail "an unreadable directory is not clean" "expected exit 1, got $status; a directory never read was reported clean"
+  fi
+  rm -rf "$dir"
+fi
+
+echo "R. the self-test proves literal mode's own answer to a missing list"
+# A mutation control: the literal sweep is changed to pass when the private
+# list is missing, and nothing else. The self-test must catch it.
+dir="$(new_repo)"
+if python3 - "$dir/scripts/gate/sweep.py" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text()
+mode = text.index("def mode_literal")
+at = text.index("\n        return 2\n", mode)
+path.write_text(text[:at] + "\n        return 0\n" + text[at + len("\n        return 2\n"):])
+PY
+then
+  literal="$( cd "$dir" && HUB_GATE_TERMS=/nowhere/at/all.txt python3 scripts/gate/sweep.py --literal >/dev/null 2>&1; echo $? )"
+  status="$(gate_status "$dir" --self-test)"
+  if [ "$literal" = "0" ] && [ "$status" = "1" ]; then
+    pass "a literal sweep that passes a missing list fails the self-test"
+  else
+    fail "a literal sweep that passes a missing list fails the self-test" "the mutated literal sweep exited $literal; the self-test exited $status, expected 1"
+  fi
+else
+  fail "a literal sweep that passes a missing list fails the self-test" "the mutation found no missing-list exit 2 in mode_literal"
+fi
+rm -rf "$dir"
+
 echo "K. gitleaks exclusions are anchored"
 # The allowlist entries are regexes matched against the whole path. An
 # unanchored LICENSE also matches src/LICENSE-private-config.json, which is a

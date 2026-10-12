@@ -65,6 +65,7 @@ export interface ProjectsBoardProps {
   /** The person's stored column widths (MP-5-6); null or absent is the defaults. */
   readonly widths?: BoardMachineProps<ProjectRow>['widths'];
   readonly onWidths?: BoardMachineProps<ProjectRow>['onWidths'];
+  readonly review?: (rows: readonly ProjectRow[]) => ReactNode;
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
@@ -91,7 +92,7 @@ function useChips(
   rows: readonly ProjectRow[],
   viewer: string | null,
   now: Date,
-  board: Pick<ProjectsBoardProps, 'owed' | 'clients'>,
+  board: Pick<ProjectsBoardProps, 'owed' | 'clients' | 'review'>,
 ) {
   const { owed, clients } = board;
   const facets = useMemo(
@@ -100,8 +101,15 @@ function useChips(
   );
   const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
   const modes = useMemo(
-    () => [{ ...REVIEW_MODE, badge: reviewBadge(rows, owed), empty: REVIEW_EMPTY }],
-    [rows, owed],
+    () => [
+      {
+        ...REVIEW_MODE,
+        badge: reviewBadge(rows, owed),
+        empty: REVIEW_EMPTY,
+        ...(board.review === undefined ? {} : { render: board.review }),
+      },
+    ],
+    [rows, owed, board.review],
   );
   return { facets, presets, modes };
 }

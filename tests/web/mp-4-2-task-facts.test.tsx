@@ -87,13 +87,17 @@ describe('MP-4-2 facts content', () => {
   it('the rank is #N with its calc line, or "not ranked" naming the missing marks', async () => {
     const ranked = await withFacts();
     expect(text(ranked, '[data-fact="rank"] output')).toBe('#4');
-    expect(text(ranked, '[data-calc]')).toBe('impact 7 × confidence 9 × ease 8 = 504 · derived');
+    expect(ranked.find('[data-fact="rank"]')?.getAttribute('title')).toBe(
+      'impact 7 × confidence 9 × ease 8 = 504 · derived',
+    );
     await ranked.unmount();
     const unranked = await withFacts({
       rank: { number: null, score: null, calc: 'not ranked: missing ease' },
     });
     expect(text(unranked, '[data-fact="rank"] output')).toBe('not ranked');
-    expect(text(unranked, '[data-calc]')).toBe('not ranked: missing ease');
+    expect(unranked.find('[data-fact="rank"]')?.getAttribute('title')).toBe(
+      'not ranked: missing ease',
+    );
     await unranked.unmount();
   });
 

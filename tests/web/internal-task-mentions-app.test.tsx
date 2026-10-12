@@ -51,23 +51,19 @@ it.each(['page', 'panel'] as const)(
     const app = await composed(where);
     if (where === 'panel') await key(app.view, 'main tr[data-row]', 'Enter');
     const scope = where === 'panel' ? 'panel-' : '';
-    const chooser =
-      '[data-internal-task-mentions="' +
-      scope +
-      'comment-mentions"] button[aria-haspopup="listbox"]';
-    await key(app.view, chooser, 'ArrowDown');
-    await key(app.view, chooser, 'ArrowDown');
+    const chooser = '[data-internal-task-mentions="' + scope + 'comment-mentions"] textarea';
+    await app.view.type(chooser, '@Ada');
     await key(app.view, chooser, 'Enter');
-    expect(app.view.text()).toContain('Ada Synthetic');
+    expect(app.view.find(chooser)).toHaveProperty('value', '@Ada Synthetic ');
     const body = '#' + scope + 'comment-body';
-    await app.view.type(body, 'Composed permitted internal mention');
+    await app.view.type(body, '@Ada Synthetic Composed permitted internal mention');
     const container = where === 'panel' ? '[data-task-panel]' : 'main';
     await app.view.click(container + ' [data-comment="post"]');
     const posts = app.sent.filter((sent) => sent.path === '/task/comment');
     expect(posts).toHaveLength(1);
     expect(posts[0]?.body).toMatchObject({
       recordId: ID,
-      body: 'Composed permitted internal mention',
+      body: '@Ada Synthetic Composed permitted internal mention',
       audience: 'internal',
       commentType: 'note',
       mentions: [ADA],
@@ -75,7 +71,7 @@ it.each(['page', 'panel'] as const)(
     });
     expect(
       app.view.find(container + ' [data-comment-id="stored-mention"] .card__body')?.textContent,
-    ).toBe('Composed permitted internal mention');
+    ).toBe('@Ada Synthetic Composed permitted internal mention');
     expect(app.view.find(container + ' [data-mention-person]')).toBeNull();
     expect(app.sent.some((sent) => /grant|share/u.test(sent.path))).toBe(false);
   },

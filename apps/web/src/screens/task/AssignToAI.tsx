@@ -8,6 +8,7 @@
 // select is drawn. The page locks it as it locks the assignee: while a write
 // is in flight or an edit unsaved.
 
+import { StyledSelect } from '@launchastro/ui';
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
@@ -82,7 +83,7 @@ function AgentSelect(props: {
       <label className="tf__k" htmlFor={props.id}>
         Assign to AI
       </label>
-      <select
+      <StyledSelect
         id={props.id}
         className="input"
         disabled={props.busy}
@@ -97,7 +98,7 @@ function AgentSelect(props: {
             {agent.name}
           </option>
         ))}
-      </select>
+      </StyledSelect>
     </>
   );
 }

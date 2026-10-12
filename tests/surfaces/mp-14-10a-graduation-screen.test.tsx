@@ -120,6 +120,7 @@ interface Opening {
   readonly after?: number;
   /** Commands wait on this before they are answered. */
   readonly hold?: Promise<void>;
+  readonly resendHold?: Promise<void>;
   /** A step-up the page may call, where the case needs one. */
   readonly stepUp?: (code: string) => Promise<{ ok: true; sessionId: string }>;
   /** The first matching command is stored, then its answer is lost on the way back. */
@@ -252,6 +253,7 @@ function refuser(refuse: RegExp | undefined, opening: Opening): (at: string) => 
 }
 
 /** Open the page; a command whose path matches `refuse` is refused, as stale by default. */
+// eslint-disable-next-line max-lines-per-function -- the stub's every opening, in one place
 async function open(
   refuse?: RegExp,
   opening: Opening = {},
@@ -264,13 +266,17 @@ async function open(
   const sent: string[] = [];
   const refusing = refuser(refuse, opening);
   let lost = 0;
+  let commandCount = 0;
   const stored = stubStore();
   const register = registerStub(opening, stored.region);
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const call = `${at} ${String(init?.body ?? '')}`;
     sent.push(call);
-    if (COMMAND.test(at)) await opening.hold;
+    if (COMMAND.test(at)) {
+      await opening.hold;
+      if (++commandCount === 2) await opening.resendHold;
+    }
     const reply =
       (await register.answer(at, call)) ??
       answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
@@ -340,6 +346,15 @@ async function stepUpWith(page: Mounted, code = '123456'): Promise<void> {
   await page.type('[data-step-up="code"]', code);
   await page.click('[data-step-up="confirm"]');
   await tick();
+}
+
+/** A gate a held answer waits on, released by the case. */
+function gated(): { readonly hold: Promise<void>; readonly release: () => void } {
+  const gate: { release?: () => void } = {};
+  const hold = new Promise<void>((resolve) => {
+    gate.release = resolve;
+  });
+  return { hold, release: () => gate.release?.() };
 }
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
@@ -909,5 +924,66 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(new Set(operations).size).toBe(1);
     expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
     expect((page.find('[data-mandate-label]') as HTMLInputElement | null)?.value).toBe('');
+  });
+
+  // Sol's proof on #1381 (round 1), retitled by what it proves; its body is Sol's.
+  it('a withdrawn step-up resend cannot draw its late refusal under another client', async () => {
+    const gate = gated();
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      stepUp: steppedUp,
+      resendHold: gate.hold,
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    expect(operationsTo(sent, '/graduation/demote')).toHaveLength(2);
+    await page.choose('[data-client-scope] select', 'k-b');
+    expect(page.find('[data-region-said]')).toBeNull();
+    gate.release();
+    await tick();
+    expect(page.find('[data-section="010"] [data-scope-client]')?.textContent).toBe('Client B');
+    expect(page.find('[data-region-said]'), 'The withdrawn resend belongs to Client A').toBeNull();
+  });
+  it('a demote refused for a fresh sign-in after the scope bar moved opens no prompt, and nothing resends it', async () => {
+    const gate = gated();
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      hold: gate.hold,
+      stepUp: steppedUp,
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    await page.choose('[data-client-scope] select', 'k-b');
+    gate.release();
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    expect(page.find('[data-region-said]')).toBeNull();
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
+  });
+  it('a promotion refused for a fresh sign-in after its form was cancelled opens no prompt, and nothing resends it', async () => {
+    const gate = gated();
+    const { page, sent, signInAgain } = await open(/\/graduation\/promote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      hold: gate.hold,
+      stepUp: steppedUp,
+    });
+    await page.click('[data-grad="ready"] [data-auto]');
+    await page.type('[data-promote-form="ready"] [data-promote-ceiling]', '25');
+    await page.type('[data-promote-form="ready"] [data-promote-expiry]', '2026-10-15');
+    await page.click('[data-promote-form="ready"] [data-promote-confirm]');
+    await tick();
+    await page.click('[data-promote-form="ready"] [data-promote-cancel]');
+    gate.release();
+    await tick();
+    expect(page.find('[data-promote-form="ready"]')).toBeNull();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/graduation/promote'))).toHaveLength(1);
   });
 });

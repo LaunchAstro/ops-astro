@@ -685,6 +685,7 @@ const DEFINERS: readonly string[] = [
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
   'password_reset_token_find(text)',
+  'planned_runs_origin_is_approved()',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
 
@@ -940,7 +941,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Twelve, each for a named reason. The map read models' four (WF-1) and the
+  // Thirteen, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -956,13 +957,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
   // 20261004040200) is the one way a lease is written, in the caller's own business
   // (tests/db/take-lease-path.test.ts). The live-elsewhere check (C59) answers one boolean
-  // for a login of the caller's own business, never a subject.
+  // for a login of the caller's own business, never a subject. The occurrence run's origin
+  // check (20261012052116) reads an occurrence and its activation, which the occurrence role
+  // may not, and writes nothing.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly twelve, each with its search path pinned', () => {
+    it('are exactly thirteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -1054,6 +1057,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
       expect(fn?.firedBy).toStrictEqual([]);
     });
+  });
+
+  it("the occurrence run's origin check is a trigger fired only by an insert of a run, pinned", () => {
+    const fn = functions.find(
+      (each) => each.definer && each.signature === 'planned_runs_origin_is_approved()',
+    );
+    expect(fn?.trigger).toBe(true);
+    expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
+    expect(fn?.firedBy).toStrictEqual([{ table: 'public.planned_runs', events: 'insert' }]);
   });
 
   describe('the live-elsewhere definer (20261005235557, C59)', () => {
