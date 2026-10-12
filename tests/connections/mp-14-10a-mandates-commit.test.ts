@@ -164,17 +164,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
     expect(promoted.status).toBe(200);
     const before = await w.snapshot();
     const cases: readonly [string, Record<string, unknown>][] = [
-      [
-        'mandate.file',
-        {
-          clientId: w.clientA,
-          draftId: randomUUID(),
-          classes: ['social.post'],
-          ceiling: AUD(100),
-          expiresAt: inDays(1),
-          label: 'Posts approved',
-        },
-      ],
+      ['mandate.file', filing('Posts approved')],
       ['mandate.revoke', { mandateId: toRevoke }],
       ['graduation.promote', { classId: w.cls['aReply'], ceiling: AUD(100), expiresAt: inDays(5) }],
       ['graduation.demote', { classId: w.cls['aShare'] }],
@@ -205,25 +195,19 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
     return { stopped, release: () => release() };
   };
 
-  // One expiry for the file, so each case files under a label of its own: an
-  // identical live filing is answered as a repeat of the first (#1427).
-  const FILING = {
-    clientId: '',
+  const filing = (label: string) => ({
+    clientId: w.clientA,
+    draftId: randomUUID(),
     classes: ['social.post'],
     ceiling: AUD(100),
     expiresAt: inDays(1),
-    label: 'Posts approved',
-  };
+    label,
+  });
 
   it('MP-14-10a a grant revoked while a mandate command holds the audit chain: neither waits on the other', async () => {
     const { bearer } = await signedIn(holder);
     const { stopped, release } = armed('chain');
-    const answer = send(bearer, 'mandate.file', {
-      ...FILING,
-      clientId: w.clientA,
-      draftId: randomUUID(),
-      label: 'Posts approved while a grant is revoked',
-    });
+    const answer = send(bearer, 'mandate.file', filing('Posts, a grant revoked'));
     await stopped;
     // A covering grant committed after the command held its grants, then
     // revoked: the revocation waits at its door on C32's access lock, which the
@@ -246,13 +230,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
   it('MP-14-10a signed out through bravo while waiting on the audit chain: nothing files, and the attempt is kept as a scope refusal', async () => {
     const { presented, bearer } = await signedIn(signer);
     const before = await w.mandateRows();
-    const body = {
-      ...FILING,
-      clientId: w.clientA,
-      draftId: randomUUID(),
-      label: 'Posts approved while signed out waiting',
-      operationId: randomUUID(),
-    };
+    const body = { ...filing('Posts, signed out waiting'), operationId: randomUUID() };
     const chained = await hold(w.controls.fixture.db.appUrl, w.alpha, async (tx) => {
       await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
         w.alpha.toLowerCase(),
@@ -284,12 +262,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands up to commi
     const { presented, bearer } = await signedIn(signer);
     const { stopped, release } = armed('session');
     const before = await w.mandateRows();
-    const answer = send(bearer, 'mandate.file', {
-      ...FILING,
-      clientId: w.clientA,
-      draftId: randomUUID(),
-      label: 'Posts approved before the sign-out',
-    });
+    const answer = send(bearer, 'mandate.file', filing('Posts, before the sign-out'));
     await stopped;
     let finished = false;
     const caller = {
