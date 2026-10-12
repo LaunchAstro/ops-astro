@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a frontier write aborted after its raise keeps no decision item"
+}

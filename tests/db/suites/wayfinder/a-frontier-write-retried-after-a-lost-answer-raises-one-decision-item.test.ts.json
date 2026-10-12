@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a frontier write retried after a lost answer raises one decision item"
+}
