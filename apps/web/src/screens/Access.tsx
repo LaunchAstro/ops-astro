@@ -20,40 +20,51 @@
 // an agent's, by its delegation. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
+// One write is out at a time, and one whose answer was lost goes again under
+// the same operation id (`holding`), so the server replays what it stored.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { describeFailure, type SubmitResult } from '../records/submit.ts';
+import { describeFailure } from '../records/submit.ts';
+import { settle } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
+import { holding, type Held } from './task/held-operations.ts';
 
 export interface AccessScreenProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
 }
 
-/** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => void;
+/**
+ * One write, then the list read again; a refusal changes nothing but the
+ * outcome line. A write whose answer was lost is sent again under its own id.
+ */
+type Act = (command: AccessCommand, body: Readonly<Record<string, unknown>>, done: string) => void;
+
+type AccessCommand =
+  'delegation.revoke' | 'access.grant' | 'access.end' | 'access.revoke' | 'client.set_privacy';
 
 const revokeWith =
-  (client: OperationsClient, act: Act) =>
+  (act: Act) =>
   (agent: AccessReadResult['agents'][number]): void => {
     act(
-      () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
+      'delegation.revoke',
+      { delegationId: agent.delegationId },
       `Revoked the delegation for ${agent.purpose}.`,
     );
   };
 
 const giveWith =
-  (client: OperationsClient, act: Act) =>
+  (act: Act) =>
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    act('access.grant', body, `Gave ${holder.name} ${key}.`);
   };
 
 /** A refusal is drawn as Settings draws one; a success stays a quiet line. */
@@ -72,20 +83,22 @@ const Outcome = (props: { readonly text: string; readonly refused: boolean }): R
  * The two acts that wait on a confirmation before anything is sent: ending a
  * person's access (`access.end`) and revoking one grant (`access.revoke`).
  */
-function usePending(client: OperationsClient, act: Act) {
+function usePending(act: Act) {
   const [ending, setEnding] = useState<PersonView | null>(null);
   const [revoking, setRevoking] = useState<Revoking | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
     act(
-      () => client.mutate('access.end', { holderId: person.personId }),
+      'access.end',
+      { holderId: person.personId },
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
   const revokeGrant = ({ person, grant }: Revoking): void => {
     setRevoking(null);
     act(
-      () => client.mutate('access.revoke', { grantId: grant.grantId }),
+      'access.revoke',
+      { grantId: grant.grantId },
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
   };
@@ -121,7 +134,7 @@ function AccessLists(props: {
   readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
-  const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
+  const { confirmations, onEnd, onRevokeGrant } = usePending(act);
   const clients = result.clientRecords;
   const lists = { clients, onEnd, onRevokeGrant };
   return (
@@ -134,21 +147,18 @@ function AccessLists(props: {
           {confirmations(result)}
           <People id="team" title="Team" people={result.team} {...lists} />
           <People id="clients" title="Clients" people={result.clients} {...lists} />
-          <Agents result={result} onRevoke={revokeWith(client, act)} />
+          <Agents result={result} onRevoke={revokeWith(act)} />
         </div>
       </section>
       <section className="sec">
-        <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+        <GiveAccess result={result} busy={props.busy} onGive={giveWith(act)} />
       </section>
       <section className="sec">
         <ClientPrivacy
           result={result}
           busy={props.busy}
           onSet={(body, name) =>
-            act(
-              () => client.mutate('client.set_privacy', body),
-              `Saved ${name}'s privacy settings.`,
-            )
+            act('client.set_privacy', body, `Saved ${name}'s privacy settings.`)
           }
         />
       </section>
@@ -167,12 +177,16 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
   // One write at a time: a second press before the answer sends nothing.
   const sending = useRef(false);
   const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = (send, done) => {
+  const held = useRef<Held>({});
+  const act: Act = (command, body, done) => {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
+    const hold = holding(held.current, command, body, () => client.newOperationId());
     void (async () => {
-      const failure = describeFailure(await send());
+      const answer = await client.mutate(command, body, { operationId: hold.id });
+      hold.settle(settle(answer).kind);
+      const failure = describeFailure(answer);
       sending.current = false;
       setBusy(false);
       setOutcome({ text: failure ?? done, refused: failure !== null });
