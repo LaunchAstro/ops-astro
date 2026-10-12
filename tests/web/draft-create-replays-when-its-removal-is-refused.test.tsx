@@ -260,7 +260,7 @@ describe('a refused Create', () => {
     await view.unmount();
   });
 
-  it('settled while storage would not write leaves no held id for a reload', async () => {
+  it('settled while storage would not write keeps the words, and one Retry settles it under its id', async () => {
     const storage = store();
     const api = server();
     const { view } = await openDraft(api, storage);
@@ -278,8 +278,19 @@ describe('a refused Create', () => {
     await view.unmount();
     // A reload: the tab's memory is gone, its storage is not.
     dropOtherDrafts(null, null);
+    api.next.hold = false;
     const reloaded = await openDraft(api, storage);
-    expect(createLabel(reloaded.view)).toBe('Create task');
+    expect((reloaded.view.find('#panel-draft-name') as HTMLInputElement).value).toBe(
+      'Renew the domain',
+    );
+    // The answered id could not be cleared, so the reload offers it once more.
+    expect(createLabel(reloaded.view)).toBe('Retry Create');
+    const first = api.creates[0];
+    await reloaded.view.click('[data-draft="create"]');
+    await settle();
+    await settle();
+    expect(api.creates).toEqual([first, first]);
+    expect(api.tasks).toHaveLength(1);
     expect(heldId(storage)).toBeNull();
     await reloaded.view.unmount();
   });
