@@ -320,8 +320,14 @@ function heldGroup(): {
   return { holds, stopGroup, release };
 }
 
-/** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
-export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000): Promise<boolean> {
+/**
+ * On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line.
+ * `not_found` when there is no Codex to run at all.
+ */
+export async function codexLogin(
+  settings: RunnerSettings,
+  deadlineMs = 10_000,
+): Promise<boolean | 'not_found'> {
   // Codex refuses a CODEX_HOME that is not there, so a missing one holds no login; nothing is made.
   if (!existsSync(settings.codexHome)) return false;
   return await new Promise((resolve) => {
@@ -344,8 +350,9 @@ export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000):
       stopGroup();
     }, deadlineMs);
     child.on('error', () => {
+      clearTimeout(timer);
       release();
-      resolve(false);
+      resolve('not_found');
     });
     child.on('close', (code) => {
       clearTimeout(timer);

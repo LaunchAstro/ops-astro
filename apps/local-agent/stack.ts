@@ -115,6 +115,26 @@ async function claimHome(
   }
 }
 
+/** The runner's Codex, signed in to ChatGPT; a refusal naming what to do when not. */
+async function loginRefusal(settings: RunnerSettings): Promise<Refusal | null> {
+  const login = await codexLogin(settings);
+  if (login === 'not_found') {
+    return {
+      ok: false,
+      code: 'CODEX_NOT_FOUND',
+      message: `no Codex runs at ${settings.codexBin}: install it, or set OPS_LOCAL_AGENT_CODEX_BIN`,
+    };
+  }
+  if (login === false) {
+    return {
+      ok: false,
+      code: 'CODEX_NOT_SIGNED_IN',
+      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
+    };
+  }
+  return null;
+}
+
 /** Everything checked before the home is claimed: the settings, the home and the login. */
 async function ready(
   env: Readonly<Record<string, string | undefined>>,
@@ -153,13 +173,8 @@ async function ready(
   // Nothing is made before the login is checked; a home not there yet holds no login.
   const before = homeRefusal(settings.home, false);
   if (before !== null) return before;
-  if (!(await codexLogin(settings))) {
-    return {
-      ok: false,
-      code: 'CODEX_NOT_SIGNED_IN',
-      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
-    };
-  }
+  const login = await loginRefusal(settings);
+  if (login !== null) return login;
   // Checked again once signed in: the key is filed in this home next, as it stands now.
   const after = homeRefusal(settings.home, true);
   if (after !== null) return after;

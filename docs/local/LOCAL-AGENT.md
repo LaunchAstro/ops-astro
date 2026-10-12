@@ -47,6 +47,8 @@ for. Staging has no real model yet.
   `runner.lock.takeover` file to remove).
 - A runner home whose Codex login is not the ChatGPT plan: an API-key login
   would bill per call, so `pnpm local-agent` stops with `CODEX_NOT_SIGNED_IN`.
+- No Codex to run at the configured path: `pnpm local-agent` stops with
+  `CODEX_NOT_FOUND`, naming the path, rather than calling it a missing login.
 - **Chat about a client.** GPT is a cloud model, so the owner's rule on client
   material stands: a conversation opened on a client's task asks no model.
   Only your own typed message reaches GPT; task text and anything from outside
