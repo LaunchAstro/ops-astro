@@ -33,18 +33,19 @@ export HUB_GATE_REPO
 # exported scanners are the pushed commit's own.
 GIT_NO_REPLACE_OBJECTS=1
 export GIT_NO_REPLACE_OBJECTS
-scanner_dirs=""
-# shellcheck disable=SC2086
-trap 'rm -rf $scanner_dirs' EXIT
+# Every commit's exported scanners sit in one scratch folder, removed whole
+# and quoted, so a TMPDIR holding a space names nothing else.
+scratch=""
+trap '[ -z "$scratch" ] || rm -rf "$scratch"' EXIT
 
-# Points $GATE and $PUBLIC_CONTENT at one commit's scanners, or at the
-# checkout's with no commit. A commit whose scanners cannot be read is
+# Points the gate and public-content runs at one commit's scanners, or at
+# the checkout's with no commit. A commit whose scanners cannot be read is
 # refused: nothing is published unscanned.
 use_scanners_of() {
   root=.
   if [ -n "$1" ] && { [ -z "${HUB_GATE_CMD:-}" ] || [ -z "${HUB_PUBLIC_CONTENT_CMD:-}" ]; }; then
-    root=$(mktemp -d "${TMPDIR:-/tmp}/pre-push-scanners.XXXXXX")
-    scanner_dirs="$scanner_dirs $root"
+    [ -n "$scratch" ] || scratch=$(mktemp -d "${TMPDIR:-/tmp}/pre-push-scanners.XXXXXX")
+    root=$(mktemp -d "$scratch/commit.XXXXXX")
     if git archive -o "$root/scanners.tar" "$1" scripts tests/gate \
       && tar -xf "$root/scanners.tar" -C "$root"; then
       :
@@ -53,8 +54,18 @@ use_scanners_of() {
       exit 1
     fi
   fi
-  GATE=${HUB_GATE_CMD:-"python3 $root/scripts/gate/sweep.py"}
-  PUBLIC_CONTENT=${HUB_PUBLIC_CONTENT_CMD:-"node $root/scripts/public-content-check.mjs"}
+}
+
+# The scanners at $root, their paths quoted; a stand-in command when set.
+gate() {
+  if [ -n "${HUB_GATE_CMD:-}" ]; then $HUB_GATE_CMD "$@"; else python3 "$root/scripts/gate/sweep.py" "$@"; fi
+}
+public_content() {
+  if [ -n "${HUB_PUBLIC_CONTENT_CMD:-}" ]; then
+    $HUB_PUBLIC_CONTENT_CMD "$@"
+  else
+    node "$root/scripts/public-content-check.mjs" "$@"
+  fi
 }
 
 # Runs the gate and puts its exit code in $status. The `if` is what keeps
@@ -62,7 +73,7 @@ use_scanners_of() {
 # own output on the terminal where a person can read it.
 status=0
 run_gate() {
-  if $GATE "$@"; then
+  if gate "$@"; then
     status=0
   else
     status=$?
@@ -110,7 +121,7 @@ scan() {
   else
     set -- --outgoing
   fi
-  if $PUBLIC_CONTENT --repo "$PWD" "$@"; then
+  if public_content --repo "$PWD" "$@"; then
     :
   else
     echo "pre-push: public-content history check failed. Refusing the push."
