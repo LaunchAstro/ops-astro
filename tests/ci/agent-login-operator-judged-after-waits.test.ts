@@ -15,14 +15,8 @@ import { requireOperator } from '../../scripts/ops/operator.ts';
 import { SESSION_ABSOLUTE_SECONDS } from '../../packages/core-records/src/identity/verified-subject.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { signBearer } from '../support/sign-in.ts';
-import {
-  agentOf,
-  holdingTheAgent,
-  makeArgs,
-  makeWorld,
-  runAct,
-  type World,
-} from './agent-login.fixture.ts';
+import { agentOf, makeArgs, makeWorld, runAct, type World } from './agent-login.fixture.ts';
+import { holdingTheAgent } from './agent-login-provider.fixture.ts';
 
 await import(new URL('../support/pooler-at-loopback.mjs', import.meta.url).href);
 Reflect.set(globalThis, Symbol.for('ops-astro.test.plaintext-at-loopback'), true);

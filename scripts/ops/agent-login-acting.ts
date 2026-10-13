@@ -43,7 +43,9 @@ export interface Act {
   readonly generation: number;
   readonly email: string;
   readonly provider_subject: string | null;
+  readonly custody_item: string;
   readonly login_id: string | null;
+  readonly phase: 'reserved' | 'user_made' | 'bound' | 'probed';
   readonly closed_at: Date | null;
 }
 
@@ -60,7 +62,7 @@ export interface Run {
 const NO_LONGER =
   'no longer the operator: the grant of operations:manage over the whole business, ' +
   'the sign-in or its session is gone, so this step was not taken';
-const NOT_OURS = 'the agent already has a live login this tool did not make';
+export const NOT_OURS = 'the agent already has a live login this tool did not make';
 const OWNER_LEFT =
   "the agent's owner has no active membership and person actor: " +
   "an agent whose owner's access ended is stopped, never made";
@@ -246,12 +248,15 @@ export async function subjectFree(
   if (rows.length > 0) throw new Refusal("the provider's user is already a login of a business");
 }
 
-/** What admission decides: resume the open act, or reserve a new generation with these values. */
+/** What admission decides: already made, resume the open act, or reserve a new generation. */
 export type Admission =
-  { readonly open: Act } | { readonly fresh: { readonly email: string; readonly item: string } };
+  | { readonly already: Act }
+  | { readonly open: Act }
+  | { readonly fresh: { readonly email: string; readonly item: string } };
 
 /**
- * A make's admission: an active agent whose owner is active, with
+ * A make's admission: already made when its make act's login is the one
+ * live mapping; otherwise an active agent whose owner is active, with
  * no live mapping but its open act's own, an address no other act holds, and
  * a stamped subject that no business's login holds but this act's.
  */
@@ -264,6 +269,9 @@ export async function admission(execute: Execute, run: Run): Promise<Admission> 
     [run.businessId, run.make.agentId],
   );
   const open = acts.find((act) => act.closed_at === null);
+  const made = acts.find((act) => act.act === 'make');
+  if (open === undefined && made !== undefined && live.length === 1 && live[0] === made.login_id)
+    return { already: made };
   const { local, domain, production } = run.make;
   const email = `${local}+g${open?.generation ?? 1}@${domain}`;
   if (live.some((login) => login !== open?.login_id)) throw new Refusal(NOT_OURS);
@@ -278,7 +286,7 @@ export async function admission(execute: Execute, run: Run): Promise<Admission> 
       await subjectFree(execute, open.provider_subject, open.login_id);
     return { open };
   }
-  if (acts.some((act) => act.act === 'make')) throw new Refusal('the agent was made already');
+  if (made !== undefined) throw new Refusal('the agent was made already');
   const item = `Ops Astro ${production ? 'Production' : 'Staging'} - ${name} Agent Sign-in g1`;
   return { fresh: { email, item } };
 }

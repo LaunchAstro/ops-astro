@@ -44,20 +44,27 @@ export interface Provider {
   close(): Promise<void>;
 }
 
-type Answer = readonly [number, unknown];
+export type Answer = readonly [number, unknown];
+/** What the provider answers a call past its key set: by default, nothing there. */
+export type Handler = (call: { method: string; route: string; text: string }) => Promise<Answer>;
 const reply = (response: ServerResponse, [status, body]: Answer): void => {
   response.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
 };
 
-async function serveProvider(): Promise<Provider> {
+async function serveProvider(handle: Handler): Promise<Provider> {
   const calls: string[] = [];
-  const answer = (request: IncomingMessage): Answer => {
-    const route = (request.url ?? '').replace(/^\/auth\/v1/u, '').split('?')[0];
+  const answer = async (request: IncomingMessage, text: string): Promise<Answer> => {
+    const route = (request.url ?? '').replace(/^\/auth\/v1/u, '');
     if (route === '/.well-known/jwks.json') return [200, TEST_KEY_SET];
-    calls.push(`${request.method ?? ''} ${route ?? ''}`);
-    return [404, {}];
+    const method = request.method ?? '';
+    calls.push(`${method} ${route.split('?')[0] ?? ''}`);
+    return await handle({ method, route, text });
   };
-  const server = createServer((request, response) => reply(response, answer(request)));
+  const server = createServer((request, response) => {
+    let text = '';
+    request.on('data', (chunk: Buffer) => (text += chunk.toString('utf8')));
+    request.on('end', () => void answer(request, text).then((said) => reply(response, said)));
+  });
   for (let port = 54730; port < 54740; port += 1) {
     // oxlint-disable-next-line no-await-in-loop -- the first of this suite's ten ports that is free
     const bound = await new Promise<boolean>((resolve) => {
@@ -130,11 +137,14 @@ async function people(tx: TenantQuery, operatorSubject: string) {
   return { operator, owner, ownerActor: await insertActor(tx, owner) };
 }
 
-export async function makeWorld(serverUrl: string): Promise<World> {
+export async function makeWorld(
+  serverUrl: string,
+  handle: Handler = async () => await Promise.resolve([404, {}]),
+): Promise<World> {
   const db = await createFreshDatabase({ part: 'agentlogin' });
   const server = connectAsAdmin(serverUrl, { source: 'harness' });
   const reach = await poolerLogins(server, serverUrl, db.name);
-  const provider = await serveProvider();
+  const provider = await serveProvider(handle);
   const records = mkdtempSync(join(tmpdir(), 'agent-login-'));
   const [alpha, beta] = [
     await insertBusiness(db.app, 'alpha'),
@@ -211,6 +221,9 @@ export function toolPresent(): void {
 export interface Run {
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
+  readonly password?: string;
+  /** Called at each named point of the act; a throw there is a crash at that point. */
+  readonly at?: (point: string) => Promise<void>;
 }
 
 /** One run of the tool, in this process: its exit status and everything it printed. */
@@ -219,7 +232,13 @@ export async function runAct(world: World, run: Run): Promise<{ status: number; 
   const tool = (await import(TOOL)) as {
     runAgentLogin: (...parts: unknown[]) => Promise<{ status: number; lines: string[] }>;
   };
-  const done = await tool.runAgentLogin({ ...world.env, ...run.env }, run.args);
+  const env = { ...world.env, ...run.env };
+  const done = await tool.runAgentLogin(
+    env,
+    run.args,
+    async () => await Promise.resolve(run.password ?? secret()),
+    { at: run.at },
+  );
   return { status: done.status, printed: done.lines.join('\n') };
 }
 
@@ -262,29 +281,4 @@ export async function waitingOnTheLock(world: World): Promise<void> {
     await sleep(50);
   }
   throw new Error('no run waited on the agent lock');
-}
-
-/** Holds `agent`'s lock, starts a run, and once it waits there runs `during`, then lets it go. */
-export async function holdingTheAgent<T>(
-  world: World,
-  agent: string,
-  during: () => Promise<void>,
-  start: () => Promise<T>,
-): Promise<T> {
-  const plain = (world.env['DATABASE_ADMIN_URL'] ?? '').replace(/[?].*$/u, '?sslmode=disable');
-  const holder = connectAsAdmin(plain, { source: 'harness' });
-  try {
-    const { started } = await holder.transaction(async (execute) => {
-      const key = `agent-login:${world.alpha}:${agent}`;
-      await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
-      const run = start();
-      // A run that ends without waiting answers for itself.
-      await Promise.race([waitingOnTheLock(world), run]);
-      await during();
-      return { started: run };
-    });
-    return await started;
-  } finally {
-    await holder.close();
-  }
 }

@@ -2,18 +2,19 @@
 //
 // An agent's sign-in, made by a person under operations:manage. `make` binds
 // a new provider user to one agent actor of the operator's business
-// (OPS_ASTRO_BUSINESS) and proves it. Before anything connects, every address
+// (OPS_ASTRO_BUSINESS) and proves it by signing in as the agent. Before anything connects, every address
 // must be on the one project the run is for, each database address asking for
 // TLS, and production only with `--production`, both ways; then the operator
-// gate; then each act's admission, under the lock order agent-login-acting.ts
-// keeps. Nothing printed carries a password, a key, a bearer or an address.
+// gate; then each phase (agent-login-phases.ts), under the lock order
+// agent-login-acting.ts keeps. Nothing printed carries a password, a key, a bearer or an address.
 
 import { parseArgs } from 'node:util';
 import type { Context } from 'hono';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import { acting, admission, type Make, type Run } from './agent-login-acting.ts';
-import { requireOperator } from './operator.ts';
+import type { Make, Run } from './agent-login-acting.ts';
+import { makeAct, type At } from './agent-login-phases.ts';
+import { recordDeployment, requireOperator } from './operator.ts';
 import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -118,21 +119,38 @@ function stopped(error: unknown): string {
     : 'the act stopped';
 }
 
-/** The act, on the gate's connections; a cross-business read needs an owner login reading every row. */
-async function act(run: Run): Promise<never> {
+/** The make on the gate's connections; a cross-business read needs an owner login reading every row. */
+async function act(run: Run, password: string, at: At): Promise<{ status: 0; lines: string[] }> {
   const [owner] = await run.admin.execute<{ reads: boolean }>(
     'select rolsuper or rolbypassrls as reads from pg_roles where rolname = current_user',
   );
   if (owner?.reads !== true)
     throw new Refusal("DATABASE_ADMIN_URL's login cannot read every business's logins");
-  await acting(run, null, async (execute) => await admission(execute, run));
-  throw new Refusal('make is not built yet past its admission: nothing was written');
+  const { act: done, already } = await makeAct(run, password, at);
+  await recordDeployment(run.gate, {
+    act: 'agent-login make',
+    id: done.id,
+    phase: done.phase,
+    businessId: run.businessId,
+    agent: run.make.agentId,
+    login: done.login_id,
+    providerSubject: done.provider_subject,
+    item: done.custody_item,
+    ban: null,
+  });
+  const said =
+    `${already ? 'already made' : 'made'}: agent ${run.make.agentId} signs in as login ` +
+    `${done.login_id ?? ''}, its password in custody item "${done.custody_item}"; ` +
+    'the probe answered as the agent.';
+  return { status: 0, lines: [`agent-login: ${said}`] };
 }
 
-/** The whole run: its exit status and what it prints. */
+/** The whole run: its exit status and what it prints. The password comes from custody. */
 export async function runAgentLogin(
   environment: Environment,
   args: readonly string[],
+  readPassword: () => Promise<string>,
+  options: { readonly at?: At | undefined } = {},
 ): Promise<{ status: 0 | 1; lines: string[] }> {
   let make: Make;
   try {
@@ -144,12 +162,18 @@ export async function runAgentLogin(
   const env = reached(environment as Readonly<Record<string, string>>);
   const gate = await requireOperator(env);
   if (!gate.ok) return { status: 1, lines: [`agent-login: refused: ${gate.reason}`] };
+  const password = await readPassword();
+  if (password.length < 16)
+    return {
+      status: 1,
+      lines: ['agent-login: refused: no password from custody on standard input.'],
+    };
   const admin = connectAsAdmin(env['DATABASE_ADMIN_URL'] ?? '', { source: 'admin' });
   const runtime = connect(env['DATABASE_URL'] ?? '', { source: 'runtime' });
   const { businessId } = gate.operator;
   const run: Run = { env, make, gate, businessId, admin, runtime, verify: verifierFor(env) };
   try {
-    return await act(run);
+    return await act(run, password, options.at ?? (async () => {}));
   } catch (error) {
     return {
       status: 1,

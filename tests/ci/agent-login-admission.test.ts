@@ -15,7 +15,6 @@ import { signBearer } from '../support/sign-in.ts';
 import {
   actsOf,
   agentOf,
-  holdingTheAgent,
   makeArgs,
   makeWorld,
   mappingsOf,
@@ -24,6 +23,7 @@ import {
   toolPresent,
   type World,
 } from './agent-login.fixture.ts';
+import { holdingTheAgent } from './agent-login-provider.fixture.ts';
 import { POOLER, projectRef } from './production-bootstrap.fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
