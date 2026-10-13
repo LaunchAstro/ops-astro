@@ -62,7 +62,9 @@ describe('the sidebar door on a task’s page', () => {
       },
     ]);
   });
+});
 
+describe('the sidebar door on a task’s page, its address', () => {
   it('names the task by its key alone when the address carries a query or a fragment', async () => {
     const { client, calls } = business(true);
     const view = await mount(
