@@ -134,8 +134,9 @@ export type PartyRefused = {
  * lock on the task: a party the task does not carry, a record that is no task, or a trashed task
  * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. The page and file are joined in the same
  * statement as one pair of that client's site, key-share locked so an unbind waits for the
- * request; any other spelling, another client's page or none is `PAGE_OUTSIDE_PARTY_SITE`. The
- * version id is minted here.
+ * request, and the site row share-locked so a move of its providers waits too (and the request
+ * for a move in flight); any other spelling, another client's page or none is
+ * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
@@ -154,8 +155,9 @@ export async function insertLiveCorrection(
        join public.party_site_pages p
          on p.business_id = r.business_id and p.party_id = r.uuid_7
         and p.page_url = $11::text and p.path = $8::text
+       join public.party_sites s on s.business_id = p.business_id and s.party_id = p.party_id
       where r.business_id = $1 and r.id = $4::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-        and r.deleted_at is null for share of r for key share of p
+        and r.deleted_at is null for share of r for key share of p for share of s
      returning ${COLUMNS}`,
     [
       tx.businessId,
