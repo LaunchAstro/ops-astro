@@ -6,7 +6,7 @@
 // app-calls.jsonl, after one line naming its argv, environment and folder. It
 // never reaches a model or an account.
 
-import { appendFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The Codex home and fake.json's knobs, set when the app-server starts. */
@@ -162,6 +162,29 @@ const RESULTS = {
   'turn/start': () => ({ turn: { id: ids().turnId, items: [], status: 'inProgress' } }),
 };
 
+/**
+ * `replay`: a captured startup stream (tests/local-agent/fixtures), each line
+ * tagged with the request it followed. For each request the runner makes, its
+ * captured lines are sent in order: the reply with the runner's own id (or
+ * `override[method]` as the result), notifications as they were, with the
+ * fixture's placeholders filled in. `turn/start` is not captured: it is played
+ * as any turn is. True when the request was answered from the capture.
+ */
+function replayed({ id, method }) {
+  if (!knobs.replay || method === 'turn/start') return false;
+  const fill = (line) =>
+    JSON.parse(
+      JSON.stringify(line).replaceAll('@CODEX_HOME@', home).replaceAll('@CWD@', process.cwd()),
+    );
+  const captured = JSON.parse(readFileSync(knobs.replay, 'utf8')).entries;
+  for (const { line } of captured.filter((entry) => entry.after === method)) {
+    if (line.id === undefined) notify(line.method, fill(line.params));
+    else if (knobs.override?.[method] === undefined) sendLine({ ...fill(line), id });
+    else sendLine({ id, result: knobs.override[method] });
+  }
+  return true;
+}
+
 /** One message from the runner: a reply to the server's own request, or a request answered. */
 async function answer({ id, method, params }) {
   if (id !== undefined && method === undefined) {
@@ -169,6 +192,7 @@ async function answer({ id, method, params }) {
     return;
   }
   if (id === undefined) return;
+  if (replayed({ id, method })) return;
   const result = RESULTS[method];
   if (result === undefined) {
     sendLine({ id, error: { code: -32601, message: 'unknown method' } });
@@ -177,6 +201,16 @@ async function answer({ id, method, params }) {
   // `prepMs`: a slow preparation, the thread's answer held this long.
   if (method === 'thread/start' && knobs.prepMs) await pause(knobs.prepMs);
   sendLine({ id, result: result(params) });
+  // `afterInit`: notifications sent straight after `initialize`'s answer, as 0.162.1 sends its
+  // remote-control status (`remoteControl`: that status; `disabled` unless it says otherwise).
+  if (method === 'initialize') {
+    notify('remoteControl/status/changed', {
+      installationId: 'inst-1',
+      serverName: 'stand-in',
+      status: knobs.remoteControl ?? 'disabled',
+    });
+    for (const [name, extra] of knobs.afterInit ?? []) notify(name, extra);
+  }
   if (method !== 'turn/start') return;
   if (knobs.waitMs) await pause(knobs.waitMs);
   await playTurn();

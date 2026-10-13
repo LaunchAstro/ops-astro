@@ -135,6 +135,11 @@ export function readNotification(
   onDelta: (text: string) => void,
 ): Reading {
   if (QUIET.has(method)) return 'continue';
+  // Sent straight after `initialize`: quiet while remote control is off; on in any form,
+  // someone else could drive the session, so the call goes no further.
+  if (method === 'remoteControl/status/changed') {
+    return params['status'] === 'disabled' ? 'continue' : 'refused';
+  }
   if (method === 'item/started' || method === 'item/completed') {
     return readItem(method, params, turn) ? 'continue' : 'refused';
   }
