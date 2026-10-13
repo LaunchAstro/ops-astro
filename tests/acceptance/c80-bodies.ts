@@ -191,7 +191,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
 }
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */
-type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
+type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask' | 'bindClientSite'> & {
   reserve(task: Task, purpose: string): Promise<Answer>;
   asAgent(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
 };
@@ -203,7 +203,7 @@ type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
  */
 export async function c80AgentPickup(
   harness: AgentCase,
-): Promise<{ readonly pickup: Answer; readonly partyId: string }> {
+): Promise<{ readonly pickup: Answer; readonly partyId: string; readonly pageUrl: string }> {
   const task = await harness.freshTask('a task an agent asks a live correction under');
   const made = await harness.asPerson('client.create', { name: `A client ${randomUUID()}` });
   if (made.code !== 'ok') throw new Error(`d06: client.create refused ${made.code}`);
@@ -214,18 +214,21 @@ export async function c80AgentPickup(
     fields: { client: partyId },
   });
   if (set.code !== 'ok') throw new Error(`d06: task.set_party refused ${set.code}`);
+  if (harness.bindClientSite === undefined)
+    throw new Error('d06: the harness binds no client site');
+  const pageUrl = await harness.bindClientSite(partyId);
   const decided = await harness.reserve(task, PROPOSAL.purpose);
   if (decided.code !== 'ok') throw new Error(`d06: the reservation refused ${decided.code}`);
   const { reservationId } = decided.body['detail'] as Record<string, unknown>;
-  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId };
+  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId, pageUrl };
 }
 
 /** D06's positive agent body for C80's request: the picked-up task, at its client. */
 export const c80AgentBody = (
   operationId: string,
   held: { readonly taskId: string; readonly credential: string },
-  partyId: string,
+  at: { readonly partyId: string; readonly pageUrl: string },
 ): { body: Record<string, unknown>; credential: string } => ({
-  body: { operationId, ...C80_REQUEST, partyId, taskId: held.taskId },
+  body: { operationId, ...C80_REQUEST, ...at, taskId: held.taskId },
   credential: held.credential,
 });
