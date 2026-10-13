@@ -66,6 +66,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // The reader's own to-dos (MP-7-1).
   ['task.todos', {}],
   ['task.search', { query: 'brochure' }],
+  // The maps the reader may read (WF-3): the list names no map.
+  ['map.list', {}],
   // The person menu's two (C23): the caller's own account, naming nobody.
   ['session.person', {}],
   ['session.end', {}],
