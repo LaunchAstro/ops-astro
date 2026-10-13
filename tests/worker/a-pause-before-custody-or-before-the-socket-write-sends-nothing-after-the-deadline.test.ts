@@ -160,15 +160,27 @@ describe('egress', () => {
     expect(outcome).toStrictEqual({ ok: false, fault: 'lapsed', status: null });
     expect(written).toStrictEqual([]);
   });
+});
 
-  it('control: at the deadline itself the request is written once', async () => {
+describe('egress at and before the deadline', () => {
+  it('at the deadline itself nothing is written', async () => {
     ollama = await ollamaOnLoopback();
-    ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
     const deadlineAt = Date.now() + 3_000;
-    const written: string[] = [];
     const outcome = await send(listed(ollama.origin), chatRequest(), null, undefined, undefined, {
       deadlineAt,
       now: () => deadlineAt,
+    });
+    await sleep(100);
+    expect(ollama.seen.length).toBe(0);
+    expect(outcome).toStrictEqual({ ok: false, fault: 'lapsed', status: null });
+  });
+
+  it('control: before the deadline the request is written once', async () => {
+    ollama = await ollamaOnLoopback();
+    ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
+    const written: string[] = [];
+    const outcome = await send(listed(ollama.origin), chatRequest(), null, undefined, undefined, {
+      deadlineAt: Date.now() + 3_000,
       onWritten: () => written.push('written'),
     });
     expect(ollama.seen.length).toBe(1);

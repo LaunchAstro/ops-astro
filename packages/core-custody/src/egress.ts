@@ -15,9 +15,10 @@
 // lookup answering differently (DNS rebinding) is never asked.
 //
 // A gated send (`SendGate`) has a deadline: it opens a socket of its own,
-// writes nothing until that socket is connected, and writes the whole
-// request then only if its clock is not past the deadline. Past it, the
-// socket goes and the answer is `lapsed`: the provider was sent nothing.
+// writes nothing until that socket is connected, and writes the request then
+// only if its clock is before the deadline; at or past it, the socket goes and
+// the answer is `lapsed`. A write not on the socket by the deadline is cut the
+// same way, so the provider never holds the whole request after it.
 
 import { lookup as systemLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
@@ -196,8 +197,8 @@ const pinnedTo =
     else if (first !== undefined) callback(null, first.address, first.family);
   };
 
-/** Past the gate's deadline on its own clock: nothing may be written any more. */
-const lapsed = (gate: SendGate): boolean => (gate.now ?? Date.now)() > gate.deadlineAt;
+/** Time left before the gate's deadline on its own clock; none at the deadline itself. */
+const left = (gate: SendGate): number => gate.deadlineAt - (gate.now ?? Date.now)();
 
 const LAPSED: Outbound = { ok: false, fault: 'lapsed', status: null };
 
@@ -232,12 +233,16 @@ async function exchange(
     }
     outgoing.once('socket', (socket) => {
       socket.once(url.protocol === 'https:' ? 'secureConnect' : 'connect', () => {
-        if (lapsed(gate)) {
+        const cut = (): void => {
           settle(LAPSED);
           outgoing.destroy();
-          return;
-        }
-        outgoing.end(body, () => gate.onWritten?.());
+        };
+        if (left(gate) <= 0) return cut();
+        const timer = setTimeout(cut, left(gate));
+        outgoing.end(body, () => {
+          clearTimeout(timer);
+          gate.onWritten?.();
+        });
       });
     });
   });
@@ -268,7 +273,7 @@ export async function send(
   const addresses = await checkedAddresses(url, resolve, signal);
   if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
-  if (gate !== undefined && lapsed(gate)) return LAPSED;
+  if (gate !== undefined && left(gate) <= 0) return LAPSED;
   // The destination's fixed headers first; their names never overlap these.
   const headers: Record<string, string> = {
     ...destination.headers,

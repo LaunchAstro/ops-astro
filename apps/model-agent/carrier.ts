@@ -11,10 +11,11 @@
 // that opens (the broker's seal, this call and runner, unexpired), passes the
 // request check, and comes by the deadline on a machine not too busy. A
 // repeat finds it running and is ignored, or done and gets the last word
-// again. Done: answered, refused, or not asked by the deadline. A call is
-// kept 10 minutes.
+// again. Done: answered or refused; a request after the deadline is refused
+// `SEND_LAPSED`, so the function knows nothing was written. A call is kept
+// 10 minutes, and a stopped agent accepts nothing more.
 //
-// Custody writes only by the deadline and says `written`. The answer is
+// Custody writes only before the deadline and says `written`. The answer is
 // custody's own outcome, sent again until `settled`. Custody lost mid-answer
 // sends nothing, so the call is held. The log names kinds only.
 
@@ -93,6 +94,7 @@ interface Agent {
   readonly now: () => number;
   readonly log: (kind: string) => void;
   readonly calls: Map<string, Call>;
+  stopped: boolean;
 }
 
 /** A message for call `k` under this runner, sealed as the agent's and sent on its line. */
@@ -226,7 +228,7 @@ function heard(agent: Agent, k: string, call: Call, event: string, message: unkn
 /** An offer rung on the doorbell: join the call's line and accept, once per call. */
 async function onOffer(agent: Agent, message: unknown): Promise<void> {
   const k = (message as { k?: unknown } | null)?.k;
-  if (typeof k !== 'string' || agent.calls.has(k)) return;
+  if (typeof k !== 'string' || agent.calls.has(k) || agent.stopped) return;
   if (topicOf(`carry:${agent.options.business}:call:${k}`) === undefined) return;
   const call: Call = { state: 'offered', timers: new Set() };
   agent.calls.set(k, call);
@@ -240,8 +242,10 @@ async function onOffer(agent: Agent, message: unknown): Promise<void> {
     callTopic(agent.options.business, k),
     await agent.options.token(),
   );
-  if (!joined.ok) {
+  if (!joined.ok || agent.stopped) {
     call.state = 'done';
+    // Stopped while joining: the line is left, and nothing is accepted.
+    if (joined.ok) await joined.line.leave();
     agent.log('call line refused');
     return;
   }
@@ -251,10 +255,6 @@ async function onOffer(agent: Agent, message: unknown): Promise<void> {
   call.state = 'accepted';
   say(agent, k, call, 'accept', { acceptedAt: call.acceptedAt });
   agent.log('accept');
-  // Accepted and never asked by the deadline: nothing will run.
-  later(call, deadlineOf(call.acceptedAt) - agent.now() + 1, () => {
-    if (call.state === 'accepted') call.state = 'done';
-  });
 }
 
 export async function startModelAgent(
@@ -266,6 +266,7 @@ export async function startModelAgent(
     now: options.now ?? Date.now,
     log: options.log ?? (() => {}),
     calls: new Map(),
+    stopped: false,
   };
   const bell = await options.carriage.join(
     agentTopic(options.business, options.agent),
@@ -279,6 +280,7 @@ export async function startModelAgent(
   return {
     runner: agent.runner,
     stop: async () => {
+      agent.stopped = true;
       await bell.line.leave();
       for (const call of agent.calls.values()) {
         for (const timer of call.timers) clearTimeout(timer);
