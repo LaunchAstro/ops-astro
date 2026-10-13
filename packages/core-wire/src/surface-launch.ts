@@ -9,9 +9,6 @@
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { declare } from './surface-builders.ts';
 
-/** Launch from the task: a person opens a run, and its agent takes it. Part of `CommandName`. */
-export type LaunchCommandName = 'task.launch' | 'task.take_launch';
-
 export const LAUNCH_SURFACE: readonly CommandDeclaration[] = [
   declare('task.launch', 'assign'),
   declare('task.take_launch', 'write', {

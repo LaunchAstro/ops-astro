@@ -3,7 +3,7 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
-import type { LaunchCommandName } from './surface-launch.ts';
+import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 
 export type CommandName =

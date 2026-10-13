@@ -19,7 +19,6 @@
 
 import { takeLaunch } from '../../../core-records/src/index.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
-import type { AgentOperation, TypedOperation } from './agent-operations.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
@@ -97,18 +96,21 @@ export async function serveTakeLaunch(
   }
 }
 
-const TAKE_LAUNCH_ROW: TypedOperation<TakeOperands> = {
+/**
+ * The take's row, which `AGENT_OPERATIONS` closes with `row`. Typed by its own
+ * fields rather than the table's row type, so this file does not import the
+ * table that imports it.
+ */
+export const TAKE_LAUNCH_ROW: {
+  readonly authority: 'beforePickup';
+  readonly replay: 'serveAgain';
+  readonly operands: typeof takeLaunchOperands;
+  readonly serve: typeof serveTakeLaunch;
+} = {
   authority: 'beforePickup',
   // Served again on replay: a take is judged as the launch stands now, and the
   // stored answer keeps no credential to release.
   replay: 'serveAgain',
   operands: takeLaunchOperands,
   serve: serveTakeLaunch,
-};
-
-/** The take's row in `AGENT_OPERATIONS`, closed over its operands as `row` closes every row. */
-export const TAKE_LAUNCH_OPERATION: AgentOperation = {
-  authority: TAKE_LAUNCH_ROW.authority,
-  replay: TAKE_LAUNCH_ROW.replay,
-  open: (use) => use(TAKE_LAUNCH_ROW),
 };

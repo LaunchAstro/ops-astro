@@ -31,7 +31,7 @@ import { handbackLease } from './tasks-handback.ts';
 import { pickupReservation } from './tasks-pickup.ts';
 import { heartbeatLease } from './tasks-lease.ts';
 import { handbackOperands, leaseSecondsOperand, pickupOperands } from './agent-operands.ts';
-import { TAKE_LAUNCH_OPERATION } from './tasks-take-launch.ts';
+import { TAKE_LAUNCH_ROW } from './tasks-take-launch.ts';
 import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
 import { checkLease } from './tasks-check.ts';
@@ -574,7 +574,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         await pickupReservation(tx, declaration.collection, session.actorId, operands),
     }),
   ],
-  ['task.take_launch', TAKE_LAUNCH_OPERATION],
+  ['task.take_launch', row(TAKE_LAUNCH_ROW)],
   [
     'task.handback',
     row({
