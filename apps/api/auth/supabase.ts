@@ -107,11 +107,12 @@ export function keySetUrlFor(named: string, issuer: string): string | undefined 
  * provider's published keys: its claims, `'expired'`, `'unavailable'` when
  * the key set could not be reached to check it, or nothing.
  */
-type TokenCheck = (
+export type TokenCheck = (
   token: string,
 ) => Promise<Readonly<Record<string, unknown>> | 'expired' | 'unavailable' | undefined>;
 
-function createTokenCheck(options: SupabaseVerifierOptions): TokenCheck {
+/** The check both verifiers share: this one, and the password reset's `recoveryBearer`. */
+export function createTokenCheck(options: SupabaseVerifierOptions): TokenCheck {
   // Whether the latest key set fetch failed to reach the provider, rather than
   // bringing back a set this refused for what it held.
   let unreached = false;
@@ -170,57 +171,6 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
   };
 }
 
-/** The provider's one-time recovery session, as the reset's routes take it. */
-export interface RecoveryBearer {
-  readonly token: string;
-  readonly subject: string;
-  readonly sessionId: string;
-  /** The session's one sign-in, its `otp` stamp, in whole seconds. */
-  readonly signedInAt: number;
-}
-
-export type RecoveryVerifier = (
-  request: Context['req'],
-) => Promise<RecoveryBearer | 'unavailable' | undefined>;
-
-/** How old a recovery session's sign-in may be: it sets a password, then signs out. */
-export const RECOVERY_SESSION_SECONDS = 600;
-
-/**
- * The reset's own verifier, `recoveryBearer`: the bearer alone, its signature
- * and issuer checked as the ordinary verifier checks them, then only a
- * session a mailed link opened. That is `aal1`, an `amr` of exactly one `otp`
- * entry stamped within the last 10 minutes (and no more than the clock's
- * minute ahead), and a `session_id`. A password sign-in, a session with a
- * second factor, or anything malformed is nothing. Product routes never take
- * one: the ordinary verifier serves a `password` first factor only.
- */
-export function createRecoveryVerifier(options: SupabaseVerifierOptions): RecoveryVerifier {
-  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
-  const check = createTokenCheck(options);
-  return async function recoveryBearer(request) {
-    const token = bearerOf(request);
-    if (token === undefined) return undefined;
-    const claims = await check(token);
-    if (claims === 'unavailable') return 'unavailable';
-    if (typeof claims !== 'object') return undefined;
-    const subject = claims['sub'];
-    const sessionId = sessionIdOf(claims);
-    const methods = claims['amr'];
-    if (typeof subject !== 'string' || subject === '' || sessionId === undefined) return undefined;
-    if (claims['aal'] !== 'aal1' || !Array.isArray(methods) || methods.length !== 1) {
-      return undefined;
-    }
-    const [only] = methods as readonly unknown[];
-    if (typeof only !== 'object' || only === null) return undefined;
-    const { method, timestamp } = only as Record<string, unknown>;
-    if (method !== 'otp' || !Number.isSafeInteger(timestamp)) return undefined;
-    const age = now() - (timestamp as number);
-    if (age > RECOVERY_SESSION_SECONDS || age < -SIGN_IN_CLOCK_SKEW_SECONDS) return undefined;
-    return { token, subject, sessionId, signedInAt: timestamp as number };
-  };
-}
-
 /**
  * The provider's session, `session_id`, which a refresh carries unchanged
  * (C58): how a person's sessions are told apart, listed and ended. Anything
@@ -228,7 +178,7 @@ export function createRecoveryVerifier(options: SupabaseVerifierOptions): Recove
  * crafted value; a token with none is served as before and simply has no
  * session to list or end here.
  */
-function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
+export function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
   const value = claims['session_id'];
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : undefined;
 }
