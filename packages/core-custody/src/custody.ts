@@ -19,6 +19,8 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { StorableKind } from './credentials.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { Handoff } from './carriage.ts';
 import type { Destination, Outbound, OutboundRequest } from './egress.ts';
 
 export type CustodyOutcome =
@@ -50,7 +52,14 @@ export interface Custody {
     credentialRef: string,
     request: OutboundRequest,
     onPiece?: (text: string) => void,
+    /** A carried call's handoff from the command layer (`carried-custody.ts`); process custody takes none. */
+    handoff?: Handoff,
   ): Promise<CustodyOutcome>;
+  /**
+   * A carried custody's settlement fence, in the settling transaction: whether
+   * the call may still settle on the answer heard. Process custody has none.
+   */
+  fenceIn?(tx: TenantQuery, callId: string): Promise<boolean>;
   /**
    * The kind and account of the credential custody would present to
    * `destination` under `credentialRef`, or null when it holds none there:
