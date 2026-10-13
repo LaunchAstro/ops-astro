@@ -33,32 +33,71 @@ export HUB_GATE_REPO
 # exported scanners are the pushed commit's own.
 GIT_NO_REPLACE_OBJECTS=1
 export GIT_NO_REPLACE_OBJECTS
+# Nor a local graft, which would hide a commit's real parents from the scan.
+GIT_GRAFT_FILE=/dev/null
+export GIT_GRAFT_FILE
 scanner_dirs=""
 # shellcheck disable=SC2086
 trap 'rm -rf $scanner_dirs' EXIT
 
-# The commits this machine's gate has passed for publication, one full sha a
-# line, in the repository's common Git directory: shared by every worktree,
-# and never fetched, pushed or cloned, so no remote can add to it. A commit is
-# added only after its push's scans all pass, and every commit it reaches was
-# scanned with it or passed before it.
+# The commits this machine's gate has passed for publication, in the
+# repository's common Git directory: shared by every worktree, and never
+# fetched, pushed or cloned, so no remote can add to it. A line is a commit and
+# the fingerprint of what judged it, both full hashes. A commit is added only
+# after its push's scans all pass, and every commit it reaches was scanned with
+# it or passed before it under the same fingerprint.
 passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-passed
+hash_hex=40
+if [ "$(git rev-parse --show-object-format 2>/dev/null || true)" = sha256 ]; then
+  hash_hex=64
+fi
 
-# The listed commits this repository still holds, or a failure when the list
-# is missing or unreadable. One line that is not a full sha voids the whole
-# list: a damaged record is not half trusted. A pruned commit is dropped.
+file_digest() {
+  if [ -n "$1" ]; then
+    git hash-object --no-filters "$1" 2>/dev/null || echo unreadable
+  else
+    echo none
+  fi
+}
+
+# What judges a push of commit $1: that commit's scanners and canaries, this
+# hook, the checkout's gitleaks rules and build, any scanner override, and the
+# private list and receipt. A passed commit vouches only under the same
+# fingerprint, so weaker scanners, an override, or rules changed since never
+# stand in for the scan the push would get now.
+scan_fingerprint() {
+  {
+    for path in scripts/gate scripts/public-content-check.mjs \
+      scripts/candidate-snapshot.mjs scripts/public-addresses.mjs \
+      scripts/history-objects.mjs tests/gate/canary.txt tests/gate/shape-canary.txt; do
+      echo "$path $(git rev-parse -q --verify "$1:$path" || echo none)"
+    done
+    echo "hook $(file_digest "$0")"
+    echo "gitleaks-config $(file_digest .gitleaks.toml)"
+    echo "gitleaks $(gitleaks version 2>/dev/null || echo none)"
+    echo "gate-cmd ${HUB_GATE_CMD-unset}"
+    echo "public-content-cmd ${HUB_PUBLIC_CONTENT_CMD-unset}"
+    echo "terms $(file_digest "${HUB_GATE_TERMS:-}")"
+    echo "receipt $(file_digest "${HUB_GATE_LITERAL_HISTORY_RECEIPT:-}")"
+  } | git hash-object --stdin
+}
+
+# The commits passed under fingerprint $1 that this repository still holds, or
+# a failure when the record is missing, unreadable or a symlink. One line not
+# of the record's form voids the whole record: a damaged record is not half
+# trusted. A pruned commit is dropped.
 passed_commits() {
-  [ -f "$passed_list" ] && [ -r "$passed_list" ] || return 1
-  if grep -qvE '^[0-9a-f]{40}([0-9a-f]{24})?$' "$passed_list"; then
+  [ -f "$passed_list" ] && [ ! -L "$passed_list" ] && [ -r "$passed_list" ] || return 1
+  if grep -qvE "^[0-9a-f]{$hash_hex} [0-9a-f]{$hash_hex}\$" "$passed_list"; then
     return 1
   fi
-  sort -u "$passed_list" |
+  sed -n "s/ $1\$//p" "$passed_list" | sort -u |
     git cat-file --batch-check='%(objectname) %(objecttype)' |
     sed -n 's/ commit$//p'
 }
 
-# The range a branch's first push scans: BASE..LOCAL, with BASE a passed
-# commit. Only a passed commit that LOCAL reaches counts. Everything a passed
+# The range a branch's first push scans: BASE..LOCAL, with BASE a commit
+# passed under fingerprint $2. Only a passed commit that LOCAL reaches counts. Everything a passed
 # commit reaches is passed, so no commit the gate has not passed falls outside
 # the range; of the passed commits at the edge of the new ones, BASE is the one
 # that leaves the fewest to scan. With nothing passed, a LOCAL that is not a
@@ -68,7 +107,7 @@ passed_commits() {
 first_push_range() {
   base=""
   if [ "$(git cat-file -t "$1" 2>/dev/null || true)" = commit ] &&
-    passed=$(passed_commits) && [ -n "$passed" ] &&
+    passed=$(passed_commits "$2") && [ -n "$passed" ] &&
     reached=$({ printf '%s\n' "$passed"; git rev-list "$1"; } | sort | uniq -d) &&
     [ -n "$reached" ] &&
     listed=$({ echo "$1"; printf '%s\n' "$reached" | sed 's/^/^/'; } |
@@ -249,14 +288,18 @@ if [ -n "$pushed" ]; then
   for item in $pushed; do
     sha=${item%%:*}
     range=${item#*:}
-    [ "$range" = first ] && range=$(first_push_range "$sha")
+    fingerprint=""
+    if [ "$range" = first ]; then
+      fingerprint=$(scan_fingerprint "$sha") || fingerprint=""
+      range=$(first_push_range "$sha" "$fingerprint")
+    fi
     use_scanners_of "$sha"
     echo "pre-push: scanning what this push would publish: $range"
     scan "$range"
     # Passed only now, every scan clean, and only on a first push: a later
     # push's range starts at whatever the remote said it held.
-    if [ "${item#*:}" = first ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
-      git rev-parse "$sha" >> "$passed_list"
+    if [ -n "$fingerprint" ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
+      echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
     fi
   done
 elif [ "$had_input" -eq 1 ]; then

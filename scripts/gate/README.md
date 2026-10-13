@@ -28,12 +28,17 @@ branch's first push scans every commit this machine's gate has not already
 passed. Nothing local proves what a receiver holds (a remote-tracking ref can
 be stale, and a rewritten URL or SSH command can reach another receiver), so
 the record is of scans, not of remotes: `gate-passed` in the repository's
-common Git directory, one full sha a line, shared by every worktree and never
-fetched or pushed. The hook adds a first push's commit only after every scan
-of it passes. Only a listed commit the pushed commit reaches counts; a missing,
-unreadable or malformed record means the full scan, as does a fresh clone. The
-range stays one `BASE..HEAD`, so scanners in a commit from before this rule
-still read it.
+common Git directory, shared by every worktree and never fetched or pushed.
+Each line is a commit and the fingerprint of what judged it: the pushed
+commit's scanners and canaries, the hook, the checkout's gitleaks rules and
+build, any scanner override, and the private list and receipt. The hook adds a
+first push's commit only after every scan of it passes. A listed commit counts
+only under the fingerprint the new push would be judged by, and only if the
+pushed commit reaches it, so weaker scanners, an override or a changed rule
+never vouch for history; a change of rules costs one full scan. A missing,
+unreadable, symlinked or malformed record means the full scan, as does a fresh
+clone. The hook reads no local grafts or replacements. The range stays one
+`BASE..HEAD`, so scanners in a commit from before this rule still read it.
 
 These rules apply to all four:
 
