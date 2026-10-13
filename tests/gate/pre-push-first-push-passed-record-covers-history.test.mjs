@@ -5,10 +5,11 @@
 // history was not scanned, then first-pushes a branch built on it to another
 // remote, and expects the key in that unscanned history to be refused.
 import assert from 'node:assert/strict';
-import { rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstPushFixture, scanned, tokenShaped } from './first-push-fixture.mjs';
+import { firstPushFixture, installHook, scanned, tokenShaped } from './first-push-fixture.mjs';
 
 const refused = (f, result, ref) => {
   assert.equal(
@@ -67,4 +68,41 @@ test('a commit passed while a graft hid its parents does not cover them once the
 
   f.commit('notes.txt', 'grafted\nlater\n', 'later');
   refused(f, f.push('origin', 'grafted'), 'grafted');
+});
+
+test('a failed baseline Git read falls back to full public history and refuses the old finding', (t) => {
+  const f = firstPushFixture(t, { hooked: false });
+  f.commit('inherited.txt', `https://${'pitch'}.example.invalid/fixture\n`, 'inherited note');
+  f.git('push', '-q', 'origin', 'main');
+  f.git('fetch', '-q', 'origin');
+  installHook(f.repo);
+  f.git('checkout', '-q', '-b', 'fresh');
+  f.commit('fresh.txt', 'clean\n', 'fresh');
+  const shim = join(f.scratch, 'shim');
+  mkdirSync(shim);
+  const actualGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const main = f.git('rev-parse', 'origin/main');
+  const marker = join(f.scratch, 'failed-once');
+  const script = [
+    '#!/bin/sh',
+    `case "$*" in *"ls-tree -rz --full-tree ${main}"*)`,
+    `  if [ ! -e '${marker}' ]; then touch '${marker}'; exit 1; fi ;;`,
+    'esac',
+    `exec '${actualGit}' "$@"`,
+    '',
+  ].join('\n');
+  writeFileSync(join(shim, 'git'), script);
+  chmodSync(join(shim, 'git'), 0o755);
+  const actualNode = execFileSync('which', ['node'], { encoding: 'utf8' }).trim();
+  // Git prepends its helper directory to the hook's PATH. Restore the shim
+  // for Node's Git reads so the failure occurs in the public checker.
+  writeFileSync(
+    join(shim, 'node'),
+    `#!/bin/sh\nPATH='${shim}':"$PATH"\nexport PATH\nexec '${actualNode}' "$@"\n`,
+  );
+  chmodSync(join(shim, 'node'), 0o755);
+  const result = f.push('origin', 'fresh', { env: { PATH: `${shim}:${process.env.PATH}` } });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /branch state could not be read; scanning full history/u);
+  assert.match(result.output, /inherited.txt \[private-pitch-url\]/u);
 });
