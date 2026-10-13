@@ -20,6 +20,21 @@ export interface CallRequest {
   readonly fields: Readonly<Record<string, string>>;
   /** The caller takes the answer as NDJSON pieces, then the answer (codex-app.ts). */
   readonly stream: boolean;
+  /**
+   * The send deadline custody passes on (`x-ops-send-by`, Unix ms): the turn
+   * never starts after it, and the call is never queued. None on the laptop.
+   */
+  readonly sendBy: number | null;
+}
+
+/** A send deadline as custody writes it: whole milliseconds, nothing else. */
+const SEND_BY = /^\d{1,15}$/u;
+
+/** The request's send deadline: null when it carries none, undefined when it is malformed. */
+function sendByOf(request: DoorRequest): number | null | undefined {
+  const value = request.headers['x-ops-send-by'];
+  if (value === undefined) return null;
+  return typeof value === 'string' && SEND_BY.test(value) ? Number(value) : undefined;
 }
 
 /**
@@ -50,6 +65,8 @@ export function authorised(request: DoorRequest, key: string): boolean {
 
 /** The request body, or why not: too large, or not the one shape the route takes. */
 export async function readCall(request: DoorRequest): Promise<CallRequest | 400 | 413> {
+  const sendBy = sendByOf(request);
+  if (sendBy === undefined) return 400;
   const parts: Buffer[] = [];
   let bytes = 0;
   for await (const part of request) {
@@ -75,7 +92,7 @@ export async function readCall(request: DoorRequest): Promise<CallRequest | 400 
   if (entries.length === 0 || !entries.every(([, value]) => typeof value === 'string')) {
     return 400;
   }
-  return { model, fields: fields as Record<string, string>, stream };
+  return { model, fields: fields as Record<string, string>, stream, sendBy };
 }
 
 export function send(response: DoorResponse, status: number, body?: unknown): void {
@@ -86,10 +103,12 @@ export function send(response: DoorResponse, status: number, body?: unknown): vo
 const line = (value: unknown): string => `${JSON.stringify(value)}\n`;
 
 /**
- * A streamed call's reply: each piece a line as it comes, then the answer's
- * line, the body a whole answer has. Pieces are provisional; the answer is what counts.
+ * A streamed call's reply: `sent` once its turn is started, each piece a line
+ * as it comes, then the answer's line, the body a whole answer has. Pieces are
+ * provisional; the answer is what counts.
  */
 export function streamed(response: DoorResponse): {
+  readonly sent: () => void;
   readonly piece: (text: string) => void;
   readonly answer: (body: unknown) => void;
 } {
@@ -97,6 +116,10 @@ export function streamed(response: DoorResponse): {
     if (!response.headersSent) response.writeHead(200, { 'content-type': 'application/x-ndjson' });
   };
   return {
+    sent: () => {
+      open();
+      response.write(line({ sent: true }));
+    },
     piece: (text) => {
       open();
       response.write(line({ piece: text }));

@@ -65,12 +65,14 @@ describe('an answer streamed through codex app-server', () => {
     w.knobs({ gate });
     const pieces: string[] = [];
     let settled = false;
-    const running = runCodexApp(settings, MODEL, 'Say hello.', (text) => pieces.push(text)).then(
-      (result) => {
-        settled = true;
-        return result;
-      },
-    );
+    const running = runCodexApp(
+      settings,
+      { model: MODEL, prompt: 'Say hello.', sendBy: null },
+      { onDelta: (text: string) => pieces.push(text), onSent: () => null },
+    ).then((result) => {
+      settled = true;
+      return result;
+    });
     await until(() => pieces.length > 0);
     expect(pieces).toEqual(['Two tasks']);
     expect(settled).toBe(false);

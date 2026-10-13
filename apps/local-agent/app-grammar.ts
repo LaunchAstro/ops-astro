@@ -9,6 +9,7 @@
 // other item, and any notification this file does not know, refuses the turn.
 
 import { UNKNOWN, USAGE_LIMIT, type CodexResult } from './codex.ts';
+import type { Refused } from './gate.ts';
 
 /** Notifications that carry no model output and change nothing: read and let pass. */
 const QUIET: ReadonlySet<string> = new Set([
@@ -48,6 +49,8 @@ export interface Turn {
   usage: { readonly input: number; readonly output: number } | undefined;
   failed: boolean;
   limited: boolean;
+  /** The plan refused the turn's sign-in. */
+  unauthorized: boolean;
   /** The model gave something back (any item but the user's own message). */
   started: boolean;
 }
@@ -55,6 +58,7 @@ export interface Turn {
 /** A failure's own words and code: a plan at its limit is the owner's stop, not a fault. */
 function failure(turn: Turn, error: Record<string, unknown> | undefined): void {
   turn.failed = true;
+  if (error?.['codexErrorInfo'] === 'unauthorized') turn.unauthorized = true;
   const message = error?.['message'];
   if (
     error?.['codexErrorInfo'] === 'usageLimitExceeded' ||
@@ -64,8 +68,15 @@ function failure(turn: Turn, error: Record<string, unknown> | undefined): void {
   }
 }
 
-/** The turn's result once it completed, or unknown when its tokens were never reported. */
-export function resultOf(turn: Turn, model: string): CodexResult | typeof UNKNOWN {
+/**
+ * The turn's result once it completed, or unknown when its tokens were never
+ * reported. A turn refused its sign-in before the model gave anything asked
+ * nothing of it: signed out, never charged.
+ */
+export function resultOf(turn: Turn, model: string): CodexResult | typeof UNKNOWN | Refused {
+  if (turn.unauthorized && !turn.started && turn.usage === undefined) {
+    return { refused: 'GPT_SIGNED_OUT' };
+  }
   if (turn.usage === undefined) {
     // A plan at its limit before the model gave anything used nothing; otherwise what it used is unknown.
     return turn.limited && !turn.started

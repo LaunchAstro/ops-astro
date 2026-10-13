@@ -20,10 +20,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { runCodexApp } from './codex-app.ts';
+import { runCodexApp, type Listener } from './codex-app.ts';
+import type { AppResult } from './app-steps.ts';
 import { promptOf, runCodex, UNKNOWN, type CodexResult } from './codex.ts';
 import { authorised, readCall, send, streamed, type CallRequest } from './door.ts';
-import { callNeed, decide, REFUSAL_MESSAGES, type CallRefusal } from './gate.ts';
+import { callNeed, decide, REFUSAL_MESSAGES, type CallRefusal, type Refused } from './gate.ts';
 import { holdHome } from './home-lock.ts';
 import { appendLedger, type LedgerRow } from './ledger.ts';
 import type { RunnerSettings } from './settings.ts';
@@ -62,16 +63,23 @@ interface RunnerState {
   readonly inFlight: Set<AbortController>;
   /** Calls run one at a time, in arrival order. */
   queue: Promise<unknown>;
+  /** Calls queued or in flight: a call with a send deadline finding any is refused, never queued. */
+  waiting: number;
 }
+
+/** Refused before the model was asked anything: nothing ran. */
+const isRefused = (result: AppResult): result is Refused =>
+  result !== null && typeof result === 'object' && 'refused' in result;
 
 /** The row a call leaves: its reported tokens, nothing when nothing ran, or its need when unknown. */
 function rowOf(
   id: string,
   call: CallRequest & { readonly need: number },
-  result: Awaited<ReturnType<typeof runCodex>>,
+  result: AppResult,
 ): LedgerRow {
   const at = new Date().toISOString();
-  if (result === null) return { id, at, model: call.model, inputTokens: 0, outputTokens: 0 };
+  if (result === null || isRefused(result))
+    return { id, at, model: call.model, inputTokens: 0, outputTokens: 0 };
   if (result === UNKNOWN) {
     return { id, at, model: call.model, inputTokens: call.need, outputTokens: 0 };
   }
@@ -99,11 +107,11 @@ async function complete(
   {
     deadline,
     signal,
-    onPiece,
+    listener,
   }: {
     readonly deadline: number;
     readonly signal: AbortSignal;
-    readonly onPiece: (text: string) => void;
+    readonly listener: Listener;
   },
 ): Promise<LocalAnswer> {
   // Custody gives up on the call 120 s after it sent it, however long it queued here.
@@ -129,7 +137,7 @@ async function complete(
   }
   const run = { ...settings, timeoutMs: Math.min(settings.timeoutMs, left) };
   const result = call.stream
-    ? await runCodexApp(run, call.model, prompt, onPiece, signal)
+    ? await runCodexApp(run, { model: call.model, prompt, sendBy: call.sendBy }, listener, signal)
     : await runCodex(run, call.model, prompt, signal);
   if (
     !recorded(settings, state, rowOf(id, charged, result)) ||
@@ -142,15 +150,24 @@ async function complete(
 }
 
 /**
- * A finished call's answer. Codex reports usage only at the end, so a call
- * that used more than the tokens left when it was let in is recorded, never answered.
+ * A finished call's answer, or its refusal before the model was asked (the
+ * week's reset time goes to the runner's log only). Codex reports usage only
+ * at the end, so a call that used more than the tokens left when it was let
+ * in is recorded, never answered.
  */
 function answerOf(
   call: CallRequest,
-  result: CodexResult,
+  result: CodexResult | Refused,
   tokensLeft: number,
   log: (line: string) => void,
 ): LocalAnswer {
+  if (isRefused(result)) {
+    const { refused, resetsAt } = result;
+    const resets =
+      resetsAt === undefined ? '' : ` It resets ${new Date(resetsAt * 1000).toISOString()}.`;
+    log(`${refused}: ${REFUSAL_MESSAGES[refused]}${resets}`);
+    return refusal(call.model, refused);
+  }
   if (result.inputTokens + result.outputTokens > tokensLeft) {
     log(`LOCAL_CAP_REACHED: ${REFUSAL_MESSAGES.LOCAL_CAP_REACHED}`);
     return refusal(call.model, 'LOCAL_CAP_REACHED');
@@ -192,22 +209,29 @@ function handler(
     const call = await readCall(request);
     if (typeof call === 'number') return send(response, call);
     const reply = call.stream ? streamed(response) : undefined;
+    const answer = (body: LocalAnswer): void =>
+      reply === undefined ? send(response, 200, body) : reply.answer(body);
+    // Admission holds only until the send deadline: such a call never waits behind another.
+    if (call.sendBy !== null && state.waiting > 0) {
+      log(`MODEL_MACHINE_BUSY: ${REFUSAL_MESSAGES.MODEL_MACHINE_BUSY}`);
+      return answer(refusal(call.model, 'MODEL_MACHINE_BUSY'));
+    }
+    state.waiting += 1;
     const turn = state.queue.then(async () => {
       state.inFlight.add(gone);
       try {
         return await complete(settings, call, log, state, {
           deadline,
           signal: gone.signal,
-          onPiece: reply?.piece ?? (() => null),
+          listener: { onDelta: reply?.piece ?? (() => null), onSent: reply?.sent ?? (() => null) },
         });
       } finally {
         state.inFlight.delete(gone);
+        state.waiting -= 1;
       }
     });
     state.queue = turn.catch(() => null);
-    const answer = await turn.catch(() => refusal(call.model, 'LOCAL_GPT_FAILED'));
-    if (reply === undefined) send(response, 200, answer);
-    else reply.answer(answer);
+    return answer(await turn.catch(() => refusal(call.model, 'LOCAL_GPT_FAILED')));
   };
 }
 
@@ -223,6 +247,7 @@ export async function createRunner(
     closing: false,
     inFlight: new Set(),
     queue: Promise.resolve(),
+    waiting: 0,
   };
   const handle = handler(settings, log, state);
   const server = createServer((request, response) => {

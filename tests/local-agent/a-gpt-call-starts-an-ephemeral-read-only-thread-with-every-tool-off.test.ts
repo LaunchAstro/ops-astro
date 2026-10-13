@@ -42,10 +42,15 @@ function sent(w: World, method: string): Record<string, unknown> | undefined {
     .find((message) => message?.['method'] === method);
 }
 
+// eslint-disable-next-line max-lines-per-function -- one case per isolation the child keeps
 describe('the app-server child', () => {
   it('runs on stdio in the empty folder, its own home and environment, every tool off', async () => {
     const { w, settings } = setUp();
-    await runCodexApp(settings, MODEL, PROMPT, () => null);
+    await runCodexApp(
+      settings,
+      { model: MODEL, prompt: PROMPT, sendBy: null },
+      { onDelta: () => null, onSent: () => null },
+    );
     const [started] = w.appCalls();
     const argv = started?.['argv'] as string[];
     expect(argv.slice(0, 3)).toEqual(['app-server', '--listen', 'stdio://']);
@@ -63,7 +68,11 @@ describe('the app-server child', () => {
 
   it('starts an ephemeral, read-only thread that never asks for approval', async () => {
     const { w, settings } = setUp();
-    await runCodexApp(settings, MODEL, PROMPT, () => null);
+    await runCodexApp(
+      settings,
+      { model: MODEL, prompt: PROMPT, sendBy: null },
+      { onDelta: () => null, onSent: () => null },
+    );
     expect(sent(w, 'thread/start')?.['params']).toMatchObject({
       model: MODEL,
       cwd: join(w.agentHome, 'cwd'),
@@ -83,7 +92,13 @@ describe('the app-server child', () => {
     async (name) => {
       const { w, settings } = setUp();
       writeFileSync(join(w.codexHome, name), 'planted');
-      expect(await runCodexApp(settings, MODEL, PROMPT, () => null)).toBeNull();
+      expect(
+        await runCodexApp(
+          settings,
+          { model: MODEL, prompt: PROMPT, sendBy: null },
+          { onDelta: () => null, onSent: () => null },
+        ),
+      ).toBeNull();
       expect(w.appCalls()).toEqual([]);
     },
   );

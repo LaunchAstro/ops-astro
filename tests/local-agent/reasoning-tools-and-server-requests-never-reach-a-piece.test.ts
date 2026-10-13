@@ -33,7 +33,11 @@ async function run(knobs: Record<string, unknown>): Promise<{
   if (!read.ok) throw new Error(read.message);
   const settings: RunnerSettings = read.settings;
   const pieces: string[] = [];
-  const result = await runCodexApp(settings, MODEL, 'Say hello.', (text) => pieces.push(text));
+  const result = await runCodexApp(
+    settings,
+    { model: MODEL, prompt: 'Say hello.', sendBy: null },
+    { onDelta: (text: string) => pieces.push(text), onSent: () => null },
+  );
   return { w, pieces, result };
 }
 

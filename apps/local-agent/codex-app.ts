@@ -26,9 +26,9 @@ import {
   MODEL,
   spawnCodex,
   UNKNOWN,
-  type CodexResult,
 } from './codex.ts';
 import { readNotification, record, resultOf, type Turn } from './app-grammar.ts';
+import { broken, nextStep, type AppResult, type Ending, type Plan } from './app-steps.ts';
 import type { RunnerSettings } from './settings.ts';
 
 /** Files in the Codex home the app-server would read on every call; the runner's holds none. */
@@ -51,57 +51,20 @@ export function codexAppArgs(): string[] {
   ];
 }
 
-/** A call's outcome, and whether its child is killed at once or let go. */
-interface Ending {
-  readonly result: CodexResult | typeof UNKNOWN | null;
-  readonly kill: boolean;
-}
-
-/** A call the turn may or may not have reached: unknown once the turn was asked for, else nothing. */
-const broken = (turnStarted: boolean): Ending => ({
-  result: turnStarted ? UNKNOWN : null,
-  kill: true,
-});
-
-/** The next request once the one before it is answered: initialize, then the thread, then the turn. */
-function nextRequest(
-  id: unknown,
-  result: Record<string, unknown> | undefined,
-  call: { readonly model: string; readonly prompt: string; readonly cwd: string },
-): Record<string, unknown> | 'started' | undefined {
-  if (id === 1) {
-    return {
-      id: 2,
-      method: 'thread/start',
-      params: {
-        model: call.model,
-        cwd: call.cwd,
-        ephemeral: true,
-        sandbox: 'read-only',
-        approvalPolicy: 'never',
-      },
-    };
-  }
-  if (id === 2) {
-    const threadId = record(result?.['thread'])?.['id'];
-    if (typeof threadId !== 'string') return undefined;
-    return {
-      id: 3,
-      method: 'turn/start',
-      params: { threadId, input: [{ type: 'text', text: call.prompt }], effort: 'low' },
-    };
-  }
-  return id === 3 ? 'started' : undefined;
+/** What a streamed call tells its caller as it goes: each piece, and that its turn was sent. */
+export interface Listener {
+  readonly onDelta: (text: string) => void;
+  readonly onSent: () => void;
 }
 
 /**
- * The call's conversation, one line at a time: an ending, or nothing while
- * it goes on. It answers the server through `send`, and passes pieces to `onDelta`.
+ * The call's conversation, one line at a time: an ending, or nothing while it
+ * goes on. It answers the server through `send`, and tells `listener` as it goes.
  */
 function conversation(
-  call: { readonly model: string; readonly prompt: string; readonly cwd: string },
+  plan: Plan,
   send: (message: Record<string, unknown>) => void,
-  onDelta: (text: string) => void,
+  listener: Listener,
 ): (line: string) => Ending | null {
   const turn: Turn = {
     streaming: undefined,
@@ -110,6 +73,7 @@ function conversation(
     usage: undefined,
     failed: false,
     limited: false,
+    unauthorized: false,
     started: false,
   };
   let turnStarted = false;
@@ -129,17 +93,21 @@ function conversation(
       return { result: UNKNOWN, kill: false };
     }
     if (typeof method === 'string') {
-      const reading = readNotification(method, record(message['params']) ?? {}, turn, onDelta);
+      const params = record(message['params']) ?? {};
+      const reading = readNotification(method, params, turn, listener.onDelta);
       if (reading === 'refused') return { result: UNKNOWN, kill: true };
-      return reading === 'completed' ? { result: resultOf(turn, call.model), kill: false } : null;
+      return reading === 'completed' ? { result: resultOf(turn, plan.model), kill: false } : null;
     }
-    const next =
-      message['error'] === undefined ? nextRequest(id, record(message['result']), call) : undefined;
-    if (next === undefined) return broken(turnStarted);
+    if (message['error'] !== undefined) return broken(turnStarted);
+    const next = nextStep(id, record(message['result']), plan);
     if (next === 'started') return null;
-    if (next['method'] === 'turn/start') turnStarted = true;
+    if (!('method' in next)) return next as Ending;
     if (id === 1) send({ method: 'initialized' });
     send(next);
+    if (next['method'] === 'turn/start') {
+      turnStarted = true;
+      listener.onSent();
+    }
     return null;
   };
 }
@@ -184,9 +152,18 @@ function spawnAppServer(
   return { child, send };
 }
 
+/** The Codex a call must find: the runner's own home, and the version pinned, if any. */
+const pinned = (settings: RunnerSettings): Pick<Plan, 'codexHome' | 'codexVersion'> => ({
+  codexHome: settings.codexHome,
+  codexVersion: settings.codexVersion,
+});
+
 /**
- * Run one streamed call. Each piece of the agent's first message goes to
- * `onDelta` as it arrives. Resolves as `runCodex` does: Codex's result;
+ * Run one streamed call. Before any thread it checks the Codex it runs, the
+ * account it is signed in to and the plan's usage; it starts the turn only
+ * inside the send deadline, and tells `listener` when it has. Each piece of
+ * the agent's first message goes to `listener` as it arrives. Resolves as
+ * `runCodex` does, or as a refusal before the model was asked: Codex's result;
  * `unknown` when the call ran and its answer cannot be read (killed at the
  * timeout or the output cap, stopped by `signal`, out of grammar, or a request
  * the server made); null when nothing was started (a malformed model, a file in
@@ -195,16 +172,15 @@ function spawnAppServer(
  */
 export async function runCodexApp(
   settings: RunnerSettings,
-  model: string,
-  prompt: string,
-  onDelta: (text: string) => void,
+  call: { readonly model: string; readonly prompt: string; readonly sendBy: number | null },
+  listener: Listener,
   signal?: AbortSignal,
-): Promise<CodexResult | typeof UNKNOWN | null> {
-  if (!MODEL.test(model) || signal?.aborted === true) return null;
+): Promise<AppResult> {
+  if (!MODEL.test(call.model) || signal?.aborted === true) return null;
   if (HOME_FILES.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   const { child, send } = spawnAppServer(settings, cwd);
-  const read = conversation({ model, prompt, cwd }, send, onDelta);
+  const read = conversation({ ...call, cwd, ...pinned(settings) }, send, listener);
   let ending: Ending | undefined;
   // The outcome is settled once; the call resolves when the child has gone.
   const end = (settled: Ending): void => {
