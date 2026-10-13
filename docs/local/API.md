@@ -291,6 +291,11 @@ minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
 served.
 
+The only first factor is `password`. A session the provider opened from a
+mailed link (`amr` `otp`, or `magiclink`, `recovery`, `invite`,
+`email/signup`) has no first-sign-in time, so every route answers it
+`AUTH_SESSION_EXPIRED`: a link sets a password and signs nobody into content.
+
 A session is GoTrue's `session_id` claim, read by the verifier only when it is
 a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
@@ -413,6 +418,13 @@ Two more settings stop the server at start: a `local` route any of whose
 operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
 eligible route itself, never another found by its key.
+
+A carried deployment (#1531) sets `MODEL_BROKER_CARRIER`,
+`{"agent":<agent actor id>,"people":[<person id>, ...]}` (`model-carrier.ts`),
+with `OPS_AGENT_PROVIDER=ollama`, an Ollama `local` route and
+`MODEL_BROKER_INSTALLATION`, and never beside a credentials file or destination
+list. Both entries hand it to `composeApi`; a listed person's internal
+conversation then gains its agent as a member (`conversation-agents.ts`).
 
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
@@ -1315,7 +1327,13 @@ person message in a conversation of this business whose body is kept, and
 sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
-nothing held). The answer is kept as an `agent` message whose
+nothing held). A conversation on a paid model (#1508) asks its provider's own
+operation (`model.conversation_answer_openrouter`) on the held path instead:
+offered only to a person on `OPS_OUTSIDE_MODEL_PEOPLE` in a conversation with
+no client page, it holds its most against the AI chat budget, is judged again
+at the handoff to custody, and settles with its reply kept in that one
+transaction (`BUDGET_UNAVAILABLE` with what is left, `PROMPT_TOO_LARGE`,
+`CUSTODY_NOT_ADMITTED`, or a held cost). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
 lock, which then holds the caller's conversation grants for share without
@@ -2514,6 +2532,18 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 `{ invitationId, state }`. The business's worker expires lapsed invitations
 (`expireInvitations`, audited `invitation.expire`).
 
+The read `invitation.list` (`POST /api/b/<key>/invitation/list`, body `{}`)
+asks the same `access:share` for the whole business and no agent route serves
+it. It answers `{ ok: true, invitations }`, newest first, each
+`{ invitationId, name, address, role, state, createdAt, sentAt, expiresAt }`:
+`state` is `expired` once a pending invitation's lifetime has passed, before
+the worker ends it, and `sentAt` is the last attempt the provider accepted or
+delivered (`null` when none was). Only this business's invitations are listed,
+and no enrolment token or hash is part of the answer. Without the key it is
+`SCOPE_NOT_GRANTED` 403; a client-scoped grant does not count. Settings ▸
+Access draws the form and the list for a holder of `access:share`
+(`apps/web/src/screens/access/`).
+
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
@@ -2619,7 +2649,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,
-`trace.read`, `harness.read`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
+`trace.read`, `harness.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -3733,7 +3763,13 @@ statement? }`: one of the eight items, three closing lines or the procedure
   where the runbook fits on one page (1,000 words). A link with a user name,
   password, port other than 443 or fragment is refused; the host is not
   checked, since commands are not told the served host. Any other link, or none
-  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
+  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`.
+  `tested-backups` takes only the operations page, `https://<host>/settings/operations/`,
+  with no query and the same link rules, while `ops.last_tested_restore` holds a
+  passed drill inside the restore window, else `evidence` is refused;
+  `second-factor` is refused naming `item` unless the person recording it has a
+  verified factor: on their row here, or on their own signed-in login through
+  any business, not since removed. Both are read after the installation's row lock. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

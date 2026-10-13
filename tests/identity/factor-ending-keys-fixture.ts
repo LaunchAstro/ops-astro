@@ -132,7 +132,7 @@ export function stopAt(
 
 /** The act's last read of its session's endings, answering live. */
 export const lastSessionRead = (text: string, rows: readonly unknown[]): boolean =>
-  text.includes('ended_provider_sessions') &&
+  (text.includes('ended_provider_sessions') || text.includes('ops.session_')) &&
   (rows[0] as { readonly ended?: unknown } | undefined)?.ended === false;
 
 /** The act undone: the statement that takes back what it did. */

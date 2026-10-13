@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a conversation carrying another actor's person turn, or an extra field, never reaches OpenRouter, and the free model still answers it"
+}
