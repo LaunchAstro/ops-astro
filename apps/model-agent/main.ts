@@ -11,10 +11,11 @@ import {
   parseCarryKeys,
   realtimeCarriage,
   startCustody,
+  type Destination,
   type ProcessCustody,
 } from '../../packages/core-custody/src/agent.ts';
 import { agentSignIn } from '../worker/sign-in.ts';
-import { startModelAgent } from './carrier.ts';
+import { startModelAgent, type AgentCustody } from './carrier.ts';
 import { renewing } from './renewing.ts';
 import { parseAgentSettings, type AgentSettings } from './settings.ts';
 
@@ -54,6 +55,20 @@ async function untilStopped(custody: ProcessCustody, ref: string): Promise<numbe
   });
 }
 
+/** Custody's destinations: Ollama on loopback. */
+export const destinationsOf = (settings: AgentSettings): readonly Destination[] => [
+  { key: 'ollama', origin: settings.ollamaOrigin },
+];
+
+/** Custody as the agent hands it a call, under the destination's own credential. */
+export const agentCustody = (
+  settings: Pick<AgentSettings, 'credentialRef'>,
+  custody: Pick<ProcessCustody, 'dispatchBefore'>,
+): AgentCustody => ({
+  dispatch: async (request, gate, onPiece) =>
+    await custody.dispatchBefore(settings.credentialRef, request, gate, onPiece),
+});
+
 export async function main(env: NodeJS.ProcessEnv): Promise<number> {
   const settings = settingsFrom(env[SETTINGS]);
   if (typeof settings === 'string') {
@@ -69,7 +84,7 @@ export async function main(env: NodeJS.ProcessEnv): Promise<number> {
   }
   const custody = await startCustody({
     credentialsFile: settings.credentialsFile,
-    destinations: [{ key: 'ollama', origin: settings.ollamaOrigin }],
+    destinations: destinationsOf(settings),
   });
   const carriage = realtimeCarriage({ url: settings.realtimeUrl, apiKey: settings.providerKey });
   const agent = await startModelAgent({
@@ -79,10 +94,7 @@ export async function main(env: NodeJS.ProcessEnv): Promise<number> {
     business: settings.business,
     agent: settings.agent,
     token: bearer.current,
-    custody: {
-      dispatch: async (request, gate, onPiece) =>
-        await custody.dispatchBefore(settings.credentialRef, request, gate, onPiece),
-    },
+    custody: agentCustody(settings, custody),
     load: () => loadavg()[0] ?? 0,
     log: say,
   });

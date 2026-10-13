@@ -17,11 +17,13 @@ import {
 import {
   conversationExchange,
   type ConversationExchange,
+  type ModelBroker,
 } from '../../packages/core-commands/src/index.ts';
 import {
   carriedCustody,
   parseCarryKeys,
   realtimeCarriage,
+  type Custody,
 } from '../../packages/core-custody/src/index.ts';
 import type { Carrier } from '../../packages/core-custody/src/index.ts';
 import { carrierSettings, type CarriedSettings } from './model-carrier.ts';
@@ -31,6 +33,16 @@ type Settings = Readonly<Record<string, string | undefined>>;
 export const CARRY_KEY_SETTING = 'MODEL_BROKER_CARRY_KEY';
 export const CARRY_KEY_NEXT_SETTING = 'MODEL_BROKER_CARRY_KEY_NEXT';
 export const REALTIME_URL_SETTING = 'SUPABASE_REALTIME_URL';
+
+/** The carried broker over `custody`: the deployment's operations, holding no credential. */
+export const carriedBroker = (carried: CarriedSettings, custody: Custody): ModelBroker => ({
+  custody,
+  operations: catalogue([OLLAMA_CONVERSATION]),
+  providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
+  routes: carried.routes,
+  installation: carried.installation,
+  carrier: carried.carrier,
+});
 
 /** The carried exchange, or a throw naming the setting that is missing or malformed. */
 export function carriedAnswers(
@@ -55,15 +67,7 @@ export function carriedAnswers(
     keys: keys.keys,
     key,
   });
-  const answerConversation = conversationExchange({
-    custody,
-    operations: catalogue([OLLAMA_CONVERSATION]),
-    providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
-    routes: carried.routes,
-    installation: carried.installation,
-    carrier: carried.carrier,
-  });
-  return { answerConversation };
+  return { answerConversation: conversationExchange(carriedBroker(carried, custody)) };
 }
 
 /**
