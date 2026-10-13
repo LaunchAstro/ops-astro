@@ -521,8 +521,9 @@ deadline undecided stays stored as `pending`.
 - **Both use the database clock.** `decide` reads `clock_timestamp()` once,
   after it acquires its locks (`lockedInstant`, `core-runtime/src/clock.ts`),
   so a decide that waited on a lock past the deadline is refused. The read
-  takes no lock, so it uses `now()` inside its own statement. Neither uses the
-  application's clock.
+  uses `statement_timestamp()`, the instant its own statement starts, so a
+  read that waited on a lock first judges the gate after that wait. Neither
+  uses the application's clock.
 - **The boundary is inclusive.** `expires_at` at or before the clock is
   expired on both sides, so at the deadline instant the read says expired and
   the decide refuses.

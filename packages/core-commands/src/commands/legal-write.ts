@@ -48,6 +48,10 @@ const STATE_FIXES: Readonly<Record<Exclude<VersionRefusal, 'not-found'>, readonl
   'already-approved': ['Publish it, or draft a new version for a change.'],
   'not-approved': ['Approve this exact version first.'],
   'already-published': ['Draft a new version for a change.'],
+  superseded: [
+    'A later version of this document is published.',
+    'Draft a new version for a change.',
+  ],
   'register-changed': ['Draft the privacy policy again from the register as it stands.'],
   'data-classes-changed': ['Draft the privacy policy again from the data classes as they stand.'],
   'register-unconfirmed': ['Confirm or remove each service marked to confirm, then draft again.'],
@@ -58,6 +62,7 @@ const CODES = {
   'already-approved': 'LEGAL_ALREADY_APPROVED',
   'not-approved': 'LEGAL_NOT_APPROVED',
   'already-published': 'LEGAL_ALREADY_PUBLISHED',
+  superseded: 'LEGAL_VERSION_SUPERSEDED',
   'register-changed': 'LEGAL_REGISTER_CHANGED',
   'data-classes-changed': 'LEGAL_DATA_CLASSES_CHANGED',
   'register-unconfirmed': 'LEGAL_REGISTER_UNCONFIRMED',

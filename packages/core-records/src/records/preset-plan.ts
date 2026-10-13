@@ -27,6 +27,7 @@ import { readFieldDefinitions } from './field-store.ts';
 import { planSlotAssignment, type FieldOrigin, type FieldValueType } from './fields.ts';
 import { isRecordsRefusal } from './refusals.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
+import { invalidFields } from './preset-fields.ts';
 import { readSlotTable, type Slot } from './slots.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -46,6 +47,8 @@ export type PresetPlanRefusalCode =
   | 'PRESET_FIELD_UNPLACEABLE'
   /** Two entries of one request claim the same field key. */
   | 'PRESET_FIELD_DUPLICATE'
+  /** A field definition `field_defs` would refuse: its key, label, search or operation names. */
+  | 'PRESET_FIELD_INVALID'
   /** The caller holds no live `manage` grant on the record family being planned. */
   | 'SCOPE_NOT_GRANTED';
 
@@ -232,6 +235,14 @@ export async function planPresetSync(
     return refuse('PRESET_FIELD_UNCLASSIFIED', unclear, [
       'Every field a preset ships carries a write mode: generic, operation or system.',
       'An operation-owned field names its operations, and no other field names any.',
+      'Nothing of this plan was applied.',
+    ]);
+  }
+
+  const malformed = invalidFields(request.fields);
+  if (malformed.length > 0) {
+    return refuse('PRESET_FIELD_INVALID', malformed, [
+      'Give each field a lowercase key and a label, search only text, and name each owning operation as collection.action.',
       'Nothing of this plan was applied.',
     ]);
   }
