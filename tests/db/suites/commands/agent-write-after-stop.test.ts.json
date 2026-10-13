@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent write is judged again after its last wait: a stop, a revoked delegation or an ended session committed while it waited refuses it and keeps nothing, and a stop waits for a write already holding its locks"
+}
