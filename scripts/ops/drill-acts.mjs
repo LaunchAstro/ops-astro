@@ -136,9 +136,11 @@ function holding(gate) {
  * with their `operations:manage` grant held (operator.ts, `holdingGrant`) and
  * the gate asked again under that hold first. That answer is the instant the
  * operator attests. A revocation committed before it refuses here, with
- * nothing written; one begun after it waits until `work` is done. A sign-out
- * or the token's own expiry after it is ordered after the act, as on the read
- * path: the grant held does not cover them.
+ * nothing written. What is held is the person's own `operations:manage` grant
+ * rows (`holdingGrant`), so revoking that grant after it waits until `work` is
+ * done. A change the hold does not lock (a grant held through their acting
+ * identity or a parent grant, the membership, a sign-out, the token's own
+ * expiry) is ordered after the act, as on the read path.
  */
 async function attested(gate, work) {
   return await holding(gate).holdingGrant(async (release) => {
