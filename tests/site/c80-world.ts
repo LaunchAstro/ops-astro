@@ -29,6 +29,9 @@ import { bindPartySite } from '../../packages/core-records/src/site/party-sites.
 
 export const ABOUT = 'src/pages/about.md';
 export const PAGE = 'https://agency.example/about/';
+/** Party A's page built from an Astro file. */
+export const ASTRO_PAGE = 'https://agency.example/about-astro/';
+export const ASTRO_FILE = 'src/pages/about.astro';
 /** Party B's page and its source file: on B's site, never A's. */
 export const B_PAGE = 'https://client-b.example/team/';
 export const B_FILE = 'src/pages/team.md';
@@ -237,19 +240,25 @@ async function bindSites(
   parties: { readonly partyA: string; readonly partyB: string },
 ): Promise<void> {
   const own = randomUUID().slice(0, 8);
-  const site = (partyId: string, name: string, pageUrl: string, path: string) => ({
+  const site = (partyId: string, name: string, ...pages: { pageUrl: string; path: string }[]) => ({
     partyId,
     repository: `${name}/site-${own}`,
     defaultBranch: 'main',
     project: `prj_${name}_${own}`,
-    pages: [{ pageUrl, path }],
+    pages,
   });
   await world.db.app.withBusiness(world.business, async (tx) => {
-    await bindPartySite(tx, site(parties.partyA, 'agency', PAGE, ABOUT), admin.actorId);
-    await bindPartySite(tx, site(parties.partyB, 'client-b', B_PAGE, B_FILE), admin.actorId);
+    const pages = [
+      { pageUrl: PAGE, path: ABOUT },
+      { pageUrl: ASTRO_PAGE, path: ASTRO_FILE },
+    ];
+    await bindPartySite(tx, site(parties.partyA, 'agency', ...pages), admin.actorId);
+    const pageB = { pageUrl: B_PAGE, path: B_FILE };
+    await bindPartySite(tx, site(parties.partyB, 'client-b', pageB), admin.actorId);
   });
   await world.db.app.withBusiness(beta.beta, async (tx) => {
-    await bindPartySite(tx, site(beta.betaParty, 'beta', PAGE, ABOUT), beta.eve.actorId);
+    const about = { pageUrl: PAGE, path: ABOUT };
+    await bindPartySite(tx, site(beta.betaParty, 'beta', about), beta.eve.actorId);
   });
 }
 
