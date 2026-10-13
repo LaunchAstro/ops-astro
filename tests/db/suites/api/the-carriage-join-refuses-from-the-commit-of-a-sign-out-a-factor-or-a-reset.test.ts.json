@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the carriage join and the door admit a session while a sign-out, factor change or reset is in flight and answer alike from its commit, in either order, ordered by lock waits; one subject's change never refuses another, and a login's change holds in every business"
+}
