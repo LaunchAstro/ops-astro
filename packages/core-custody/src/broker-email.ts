@@ -35,7 +35,7 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { SenderReport } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute } from './broker-email-route.ts';
+import { observed, reserveFresh, sendRoute } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 import { holdItem } from './email-item-lock.ts';
 import {
@@ -212,8 +212,10 @@ export async function deliver<R extends string>(
   const found = sendRoute(broker, mail);
   if (typeof found === 'string') return { ok: false, code: found };
   const { operation, route, adapter } = found;
-  const asked = await database.withBusiness(
+  const asked = await reserveFresh(
+    database,
     businessId,
+    mail.sender,
     async (tx) => await ask(tx, roomFor(tx, operation)),
   );
   if (typeof asked === 'string') return { ok: false, code: asked };

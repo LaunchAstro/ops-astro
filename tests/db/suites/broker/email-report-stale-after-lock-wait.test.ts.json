@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "AW-07b: a send's sender report is judged after its last lock wait; one that aged past its freshness while the send waited writes no token and no asked row, and the provider hears nothing"
+}
