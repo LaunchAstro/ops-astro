@@ -13,7 +13,7 @@ import { carriage } from './s0-2-alerts.fixture.ts';
 describe('the sink key goes only to a checked public address', () => {
   it('refuses a public sink name that resolves to a private address, before the key or an event leaves', async () => {
     const local = ['10.0.0.8', '169.254.169.254', '::1', '::ffff:127.0.0.1'];
-    const notGlobal = ['3fff::1', '5f00::1', '100:0:0:1::1'];
+    const notGlobal = ['3fff::1', '5f00::1', '100:0:0:1::1', '4000::1'];
     for (const answers of [...[...local, ...notGlobal].map((one) => [one]), []]) {
       const sink = carriage(answers);
       const send = dsnTransport('https://canary@example.test/7', sink);
