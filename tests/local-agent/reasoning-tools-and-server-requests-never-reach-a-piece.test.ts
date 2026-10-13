@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runCodexApp } from '../../apps/local-agent/codex-app.ts';
 import { UNKNOWN } from '../../apps/local-agent/codex.ts';
 import { readSettings, type RunnerSettings } from '../../apps/local-agent/settings.ts';
+import { answerOf, ndjson, runnerWorld } from './runner-world.ts';
 import { makeWorld, type World } from './world.ts';
 
 const MODEL = 'gpt-6.1-sol';
@@ -139,5 +140,23 @@ describe('a turn that ends without its answer', () => {
       before: [['error', { willRetry: false, error: { message: 'gone' } }]],
     });
     expect(final.result).toMatchObject({ text: '', failed: true });
+  });
+});
+
+const { start, call } = runnerWorld();
+
+describe("the runner's streamed reply", () => {
+  it("carries the answer's pieces only: no reasoning, and not the user's own message", async () => {
+    const { w, r } = await start();
+    w.knobs({ before: reasoning });
+    const reply = await call(r, { fields: { message: 'Say hello.' }, stream: true });
+    const pieces = ndjson(reply.raw).flatMap((line) =>
+      typeof (line as { piece?: unknown }).piece === 'string'
+        ? [(line as { piece: string }).piece]
+        : [],
+    );
+    expect(pieces).toEqual(['Two tasks', ' are due.']);
+    expect(reply.raw).not.toContain('PRIVATE');
+    expect(answerOf(reply.raw)).toMatchObject({ text: 'Two tasks are due.', code: null });
   });
 });
