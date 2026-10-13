@@ -285,7 +285,9 @@ describe('a hostile OpenRouter stream through custody', () => {
         }
       }
     }
-  });
+    // Every cut point of the whole stream, each folded and redacted again: about 1 s on a
+    // quiet machine, past the 5 s default on a loaded merge-group runner (#1572's group).
+  }, 30_000);
 
   it('a huge event under the byte limit with the key at its end never leaves; past the limit, nothing answers and no piece leaks', async () => {
     const filler = 'o'.repeat(500_000);
