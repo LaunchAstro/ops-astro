@@ -179,7 +179,9 @@ describe('the queue-head check, on a listing no git prints', () => {
       expect(run.status, JSON.stringify(listing)).toBe(1);
       expect(run.out).toMatch(/could not list the merge-queue branches \(unreadable listing\)/u);
     }
-  });
+    // Three node runs of the check: 7.2 s on a loaded machine, past the 5 s
+    // default (#1536).
+  }, 30_000);
 });
 
 const tip = 'a'.repeat(39) + 'b';

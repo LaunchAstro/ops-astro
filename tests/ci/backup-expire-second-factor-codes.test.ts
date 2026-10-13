@@ -165,7 +165,9 @@ it('the Vercel function refuses to start holding the upkeep login', async () => 
   } finally {
     for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
   }
-});
+  // The first import of the API entry transforms its whole module graph: past
+  // the 5 s default on a loaded machine (#1536).
+}, 30_000);
 
 it('a psql that never answers is stopped at the reach deadline; only a bounded reach names a connect bound', async () => {
   // psql is the container's PID 1 and deaf to SIGTERM, unless docker runs an init (`--init`)

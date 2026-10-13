@@ -93,7 +93,9 @@ it('S0-1 a snapshot over more than 1 MB of docker inspect lists every container 
   const { services } = JSON.parse(taken.stdout) as Snapshot;
   const docker = services.filter((s) => s.manager === 'docker').map((s) => s.name);
   expect(docker).toStrictEqual(MANY.map((c) => String(c['Name']).slice(1)));
-});
+  // One report run, starting the fake docker as node over 1 MB: past the 5 s
+  // default on a loaded machine (#1536).
+}, 30_000);
 
 it("S0-1 a known container's fields are the ones the report has always kept", () => {
   const known: Container = {
@@ -118,7 +120,9 @@ it("S0-1 a known container's fields are the ones the report has always kept", ()
     config: '93e5c1fcb62484bf',
   });
   expect(taken.stdout).not.toContain('canary-snapbuf');
-});
+  // One report run, starting the fake docker as node twice: 10 s on a loaded
+  // machine, past the 5 s default (#1536).
+}, 30_000);
 
 it('S0-1 a docker call that fails stops the snapshot with its error and prints no snapshot', () => {
   for (const step of ['ps', 'inspect']) {
@@ -139,7 +143,9 @@ it('S0-1 a docker call that fails stops the snapshot with its error and prints n
   });
   expect(compared.status).toBe(2);
   expect(compared.stdout).not.toMatch(/GREEN/u);
-});
+  // Four report runs, three starting the fake docker as node: 11 s on a
+  // loaded machine, past the 5 s default (#1536).
+}, 30_000);
 
 it('S0-1 a container id that is not 64 hex digits is never passed to docker inspect', () => {
   for (const listed of ['--format={{json .}}\n', 'live-runner\n', `${id(0xab).toUpperCase()}\n`]) {
@@ -150,7 +156,9 @@ it('S0-1 a container id that is not 64 hex digits is never passed to docker insp
       'service-report: no snapshot: docker ps printed something other than container ids\n',
     );
   }
-});
+  // Three report runs, each starting the fake docker as node: 9 s on a
+  // loaded machine, past the 5 s default (#1536).
+}, 30_000);
 
 it('S0-1 inspect output that is not JSON stops the snapshot without quoting it', () => {
   const trailing = '\n{"Env":["SERVICE_PASSWORD=canary-snapbuf"]} garbage';
@@ -174,7 +182,9 @@ describe('S0-6 services unchanged over a busy Docker', () => {
     const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
     expect(outcome.kind, JSON.stringify(outcome)).toBe('deployed');
     expect(watched.calls.filter((c) => c === 'snapshot')).toHaveLength(2);
-  });
+    // Two snapshots, each starting the fake docker as node over 1 MB: 6.4 s on a
+    // loaded machine, past the 5 s default (#1536).
+  }, 30_000);
 
   it('a docker call that fails stops the deploy before anything is started', async () => {
     process.env['PATH'] = withPath(fakeTools(MANY, { fail: 'inspect' })).PATH;
