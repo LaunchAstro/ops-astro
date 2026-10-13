@@ -203,11 +203,10 @@ async function answerOnce(
   businessId: BusinessId,
   presented: VerifiedSubject,
   asked: Asked,
-  found: { readonly session: Session; readonly question: Question },
+  { session, question }: { readonly session: Session; readonly question: Question },
   broker: ModelBroker,
   by: { readonly onPiece?: (text: string) => void; readonly accessToken?: string },
 ): Promise<ConversationReply | null> {
-  const { session, question } = found;
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
   const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
@@ -220,6 +219,7 @@ async function answerOnce(
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question, keep })
       : undefined;
+  const handoff = { ...by, operation, model: question.model };
   const result = await callModelInConversation(
     database,
     businessId,
@@ -227,11 +227,7 @@ async function answerOnce(
     {
       ...requestFor(question, asked, operation, {
         ...(pieces === undefined ? {} : { onPiece: pieces.push }),
-        ...carriedBy(database, businessId, presented, broker, {
-          ...by,
-          operation,
-          model: question.model,
-        }),
+        ...carriedBy(database, businessId, presented, broker, handoff),
       }),
       ...(paid && { paid: paid.seams }),
     },
