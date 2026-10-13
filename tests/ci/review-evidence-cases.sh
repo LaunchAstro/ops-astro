@@ -1054,10 +1054,12 @@ run_case "domain first: absent trusted epoch refuses Sol deferral" 1 "$DEFER_BOD
 DEFER_EPOCH=DOMAINFIRST20261007
 run_case "domain first: mismatched trusted epoch refuses" 1 "$DEFER_BODY" "README.md"
 DEFER_EPOCH=DOMAINFIRST20261008
-for labels in unreviewed needs-second-model $'needs-sol\nunreviewed' ''; do
+for labels in unreviewed needs-second-model ''; do
   LABELS="$labels"
   run_case "domain first: missing or incorrect labels '$labels' refuse" 1 "$DEFER_BODY" "README.md"
 done
+LABELS=$'needs-sol\nunreviewed'
+run_case "domain first: shared review debt label passes for an OpenAI build" 0 "$DEFER_BODY" "README.md"
 LABELS=$'needs-second-model\nunreviewed'
 for marker in \
   "${DEFERRAL/DOMAINFIRST20261008/DOMAINFIRST20261007}" \
@@ -1167,6 +1169,35 @@ try {
   const eventPath = join(dir, 'event.json');
   const pullPath = join(dir, 'pr-1', 'pull.json');
   const body = `Review checkpoint\n  head: ${head}\n\nReview deferral: DOMAINFIRST20261008 internal-stage1 ${base}..${head} stage1/SOL-OWED.md`;
+  const rangeHead = git('commit-tree', tree, '-p', base, '-m', 'Fixture build\n\nAgent-model: claude-opus-5-5');
+  const rangeGroup = git('commit-tree', tree, '-p', base, '-p', rangeHead, '-m', 'Merge pull request #1 from fixture/work');
+  const rangeFailures = [];
+  const rangeCase = (name, payload, judgedHead, from, labels = ['needs-sol'], value = 'Ticket: none', epoch = 'DOMAINFIRST20261008', expected = 0, now) => {
+    writeFileSync(eventPath, JSON.stringify(payload));
+    writeFileSync(pullPath, JSON.stringify({ number: 1, state: 'open', head: { sha: judgedHead },
+      base: { ref: 'main' }, body: value, labels: labels.map((name) => ({ name })) }));
+    const clock = now === undefined ? [] : ['--import', `data:text/javascript,${encodeURIComponent(
+      `const RealDate = Date; globalThis.Date = class extends RealDate {
+        constructor(...args) { super(...(args.length ? args : ['${now}'])); }
+        static now() { return RealDate.parse('${now}'); }
+      };`)}`];
+    const run = spawnSync(process.execPath, [join(process.env.REPO_ROOT, 'scripts/merge-group.mjs'),
+      'each', '--pulls', dir, process.execPath, ...clock, process.env.CHECKER_PATH], {
+      cwd: dir, encoding: 'utf8', env: { ...env, GITHUB_EVENT_NAME: name, GITHUB_EVENT_PATH: eventPath,
+        GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'remote.origin.url', GIT_CONFIG_VALUE_0: dir,
+        OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL: epoch },
+    });
+    const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+    if (run.status !== expected || (expected === 0 && !output.includes(
+      now === undefined ? `review-evidence: range ${from}..${judgedHead}` : 'REVIEW DEFERRED INTERNAL STAGE1'))) {
+      rangeFailures.push(`range without pasted evidence/${name}/${judgedHead}: expected ${expected}, got ${run.status}\n${output}`);
+      return;
+    }
+    console.log(`  PASS  range without pasted evidence: ${name}/${judgedHead}/${expected}`);
+  };
+  rangeCase('pull_request', { pull_request: { number: 1, head: { sha: rangeHead }, base: { sha: base, ref: 'main' } } }, rangeHead, base);
+  rangeCase('merge_group', { merge_group: { head_sha: rangeGroup, base_ref: 'refs/heads/main',
+    head_ref: `refs/heads/gh-readonly-queue/main/pr-1-${rangeHead}` } }, rangeHead, base);
   const events = {
     pull_request: { pull_request: { number: 1, head: { sha: head }, base: { sha: base, ref: 'main' } } },
     merge_group: { merge_group: { head_sha: group, base_ref: 'refs/heads/main',
@@ -1208,6 +1239,30 @@ try {
   const stray = git('commit-tree', tree, '-p', base, '-m', 'Not on main');
   const movedGroup = git('commit-tree', tree, '-p', moved, '-p', head, '-m', 'Merge pull request #1 from fixture/work');
   git('update-ref', 'refs/heads/main', moved);
+  const movedRangeGroup = git('commit-tree', tree, '-p', moved, '-p', rangeHead, '-m', 'Merge pull request #1 from fixture/work');
+  const movedRangeEvents = {
+    pull_request: { pull_request: { number: 1, head: { sha: rangeHead }, base: { sha: moved, ref: 'main' } } },
+    merge_group: { merge_group: { head_sha: movedRangeGroup, base_ref: 'refs/heads/main',
+      head_ref: `refs/heads/gh-readonly-queue/main/pr-1-${rangeHead}` } },
+  };
+  for (const [name, payload] of Object.entries(movedRangeEvents)) {
+    rangeCase(name, payload, rangeHead, base);
+    rangeCase(name, payload, rangeHead, base, [], 'Ticket: none', 'DOMAINFIRST20261008', 1);
+    rangeCase(name, payload, rangeHead, base, ['needs-sol'], 'Ticket: none', '', 1);
+    rangeCase(name, payload, rangeHead, base, ['needs-sol'], 'Ticket: none', 'wrong', 1);
+    rangeCase(name, payload, rangeHead, base, ['needs-second-model'], 'Ticket: none', 'DOMAINFIRST20261008', 1);
+    rangeCase(name, payload, rangeHead, base, ['needs-sol'], 'Ticket: none\n\nCode review: no findings', 'DOMAINFIRST20261008', 1);
+    const legacy = `Review checkpoint\n  head: ${rangeHead}\n\nReview deferral: DOMAINFIRST20261008 internal-stage1 ${base}..${rangeHead} stage1/SOL-OWED.md`;
+    rangeCase(name, payload, rangeHead, base, ['needs-sol', 'unreviewed'], legacy, 'DOMAINFIRST20261008', 0, '2099-12-31T23:59:59Z');
+  }
+  const rebased = git('commit-tree', tree, '-p', moved, '-m', 'Fixture rebased build\n\nAgent-model: gpt-6.1-sol');
+  const rebasedGroup = git('commit-tree', tree, '-p', moved, '-p', rebased, '-m', 'Merge pull request #1 from fixture/work');
+  const unchangedBody = `Ticket: none\n\nReview checkpoint\n  head: ${rangeHead}`;
+  rangeCase('pull_request', { pull_request: { number: 1, head: { sha: rebased }, base: { sha: moved, ref: 'main' } } }, rebased, moved, ['needs-sol'], unchangedBody);
+  rangeCase('merge_group', { merge_group: { head_sha: rebasedGroup, base_ref: 'refs/heads/main',
+    head_ref: `refs/heads/gh-readonly-queue/main/pr-1-${rebased}` } }, rebased, moved, ['needs-sol'], unchangedBody);
+  const unrelated = git('commit-tree', tree, '-m', 'Unrelated base');
+  rangeCase('pull_request', { pull_request: { number: 1, head: { sha: rangeHead }, base: { sha: unrelated, ref: 'main' } } }, rangeHead, unrelated, ['needs-sol'], 'Ticket: none', 'DOMAINFIRST20261008', 1);
   const ok = ['needs-second-model', 'unreviewed'];
   const range = (from) => body.replace(`${base}..${head}`, `${from}..${head}`);
   route('main moved/', {
@@ -1221,6 +1276,7 @@ try {
     ['head itself', range(head), ok, 'DOMAINFIRST20261008', 1],
     ['merge base, absent epoch', body, ok, '', 1],
   ]);
+  if (rangeFailures.length > 0) throw new Error(rangeFailures.join('\n'));
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

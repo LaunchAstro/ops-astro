@@ -124,6 +124,9 @@ jobs:
           done < "${RUNNER_TEMP}/prs.txt"
           gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
             --jq '.[] | select(.pull_request == null) | .number' > "${RUNNER_TEMP}/open-issues.txt"
+      # needs-sol plus the trusted epoch lets the checker derive its range
+      # from BASE_SHA and HEAD_SHA, supplied by the adapter on both events.
+      # Pasted markers remain valid during the live round and have no expiry.
       # Each pull request's body and labels come from its record above
       # (`.body // ""`, one label name per line), and the record must be that
       # pull request at the head being judged; on a group, open and on the
