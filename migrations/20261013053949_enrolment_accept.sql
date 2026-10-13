@@ -18,6 +18,12 @@
 
 grant update (spent_at) on public.enrolment_tokens to ops_astro_app;
 
+-- Only an invitation's newest token is live, newest by `created_at`. A token
+-- is minted under its invitation's row lock, so stamping it with the clock at
+-- the insert, not at its transaction's start, orders tokens as the sends took
+-- that lock: a send that began first but waited minted the newer link.
+alter table public.enrolment_tokens alter column created_at set default clock_timestamp();
+
 create function public.enrolment_token_find(
   hash text,
   out business_id uuid,
