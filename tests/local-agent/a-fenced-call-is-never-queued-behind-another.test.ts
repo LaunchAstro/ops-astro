@@ -51,12 +51,12 @@ describe('a call that carries a send deadline, while another is in flight', () =
     const { w, r } = await start();
     const gate = join(w.agentHome, 'gate');
     w.knobs({ gate });
-    const running = call(r, first);
+    const running = call(r, { fields: first.fields });
     expect(await askedWithin(w)).toBe(true);
-    const queued = call(r, second);
+    const queued = call(r, { fields: second.fields });
     writeFileSync(gate, '');
     await running;
-    expect(answerOf((await queued).raw)).toMatchObject({ code: null });
+    expect((await queued).body).toMatchObject({ code: null });
     expect(w.asked()).toEqual(['First question.', 'Second question.']);
   });
 });

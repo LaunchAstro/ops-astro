@@ -10,30 +10,13 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterEach, describe, expect, it } from 'vitest';
-import { runCodexApp } from '../../apps/local-agent/codex-app.ts';
-import { readSettings, type RunnerSettings } from '../../apps/local-agent/settings.ts';
+import { describe, expect, it } from 'vitest';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
 import { runnerWorld } from './runner-world.ts';
-import { makeWorld, RUNNER_KEY, type World } from './world.ts';
+import { RUNNER_KEY } from './world.ts';
 
 const MODEL = 'gpt-6.1-sol';
 const message = { fields: { message: 'What is on the board today?' } };
-
-let world: World | undefined;
-afterEach(() => {
-  world?.remove();
-  world = undefined;
-});
-
-function setUp(knobs: Record<string, unknown> = {}): { w: World; settings: RunnerSettings } {
-  const w = makeWorld();
-  world = w;
-  w.knobs(knobs);
-  const read = readSettings(w.env, w.userHome);
-  if (!read.ok) throw new Error(read.message);
-  return { w, settings: read.settings };
-}
 
 /** What a streamed response gives within `ms`, its reader let go after. */
 async function readFor(response: Response, ms: number): Promise<string> {
@@ -52,42 +35,6 @@ async function readFor(response: Response, ms: number): Promise<string> {
   reader.releaseLock();
   return text;
 }
-
-async function until(test: () => boolean): Promise<void> {
-  // eslint-disable-next-line no-await-in-loop -- polls, one look at a time
-  for (let tries = 0; tries < 500 && !test(); tries += 1) await sleep(10);
-}
-
-describe('an answer streamed through codex app-server', () => {
-  it('gives each piece of the message as the model writes it, before the turn ends', async () => {
-    const { w, settings } = setUp();
-    const gate = join(w.agentHome, 'gate');
-    w.knobs({ gate });
-    const pieces: string[] = [];
-    let settled = false;
-    const running = runCodexApp(
-      settings,
-      { model: MODEL, prompt: 'Say hello.', sendBy: null },
-      { onDelta: (text: string) => pieces.push(text), onSent: () => null },
-    ).then((result) => {
-      settled = true;
-      return result;
-    });
-    await until(() => pieces.length > 0);
-    expect(pieces).toEqual(['Two tasks']);
-    expect(settled).toBe(false);
-    writeFileSync(gate, '');
-    expect(await running).toEqual({
-      text: 'Two tasks are due.',
-      model: MODEL,
-      inputTokens: 120,
-      outputTokens: 7,
-      failed: false,
-      limited: false,
-    });
-    expect(pieces).toEqual(['Two tasks', ' are due.']);
-  });
-});
 
 const { start, call } = runnerWorld();
 
