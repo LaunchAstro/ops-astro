@@ -17,6 +17,13 @@
 // or `withheld` whole: `malformed` when it is not JSON or does not fill them,
 // `echoed` when the caller could rebuild the credential from them.
 // A `deadlineAt` gates the write itself (`egress.ts`).
+// The owner's plan sign-in (`oauth_refresh`) is presented as its token file's
+// current access token, refreshed first when due at the token endpoint of its
+// refresh destination (`plan-token.ts`); a call it cannot present for is
+// refused before `started`, so nothing is sent. Its answer, from a destination
+// that declares `responses_sse`, is read whole, folded to the completed
+// response and redacted with the access and refresh tokens both
+// (`responses-fold.ts`), or `withheld` as `malformed`.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -33,6 +40,8 @@ import {
 import { keptOf } from './egress-answer.ts';
 import { METHODS, pathAllowed, templateFilled, type Extras } from './egress-routes.ts';
 import { redact, withholds } from './redaction.ts';
+import { planPresenter } from './plan-present.ts';
+import { foldedReply } from './responses-fold.ts';
 import { openaiSse } from './stream-decode.ts';
 
 interface Loaded {
@@ -161,6 +170,12 @@ function streamingOf(
   };
 }
 
+/** The credential as custody presents it now, and the secrets its answer is redacted of. */
+const presentable = planPresenter(
+  (key) => loaded.destinations.get(key)?.origin,
+  (kind) => void process.stderr.write(`custody: ${kind}\n`),
+);
+
 /** Dispatches held after `started` until their admission says `go` or `stop` (#1508). */
 const gates = new Map<string, (go: boolean) => void>();
 
@@ -185,6 +200,7 @@ async function answer(
   id: string,
   request: OutboundRequest,
   credential: StoredCredential,
+  secrets: readonly string[],
   gated: boolean,
   reply: (body: Message) => void,
   sendGate?: ReturnType<typeof sendGateOf>,
@@ -215,6 +231,10 @@ async function answer(
       return;
     }
     outcome = { ...outcome, body: kept.body };
+  }
+  if (destination.stream === 'responses_sse' && outcome.ok) {
+    reply(foldedReply(outcome, secrets, credential));
+    return;
   }
   reply({
     type: 'answer',
@@ -255,8 +275,23 @@ process.on('message', (message: unknown) => {
     reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
     return;
   }
-  reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
+  void (async () => {
+    const presented = await presentable(credential);
+    if (typeof presented === 'string') {
+      reply({ type: 'refused', code: presented });
+      return;
+    }
+    reply({ type: 'started' });
+    await answer(
+      id,
+      request,
+      presented.credential,
+      presented.secrets,
+      shape['gated'] === true,
+      reply,
+      sendGate,
+    );
+  })();
 });
 
 process.send?.({ type: 'ready' });

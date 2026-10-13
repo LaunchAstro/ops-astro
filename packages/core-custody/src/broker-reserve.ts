@@ -15,7 +15,7 @@ import {
   LOCAL_MODEL_REQUIRED_WORDS,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import { carriesLocally, mayCarry } from './credentials.ts';
+import { carriesLocally, mayCarry, planCarry } from './credentials.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { resolveFields } from './broker-sources.ts';
@@ -208,9 +208,9 @@ function routeFor(
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
+    plan: planCarry(broker, route, facts.workForPersonId),
   });
-  if (!carry.ok) return { ok: false, code: carry.code };
-  return { ok: true, route };
+  return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
 /**

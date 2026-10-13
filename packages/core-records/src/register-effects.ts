@@ -108,6 +108,12 @@ export const EFFECT_ROWS = [
     source: 'AW-01, LF-5',
   },
   {
+    code: 'SUBSCRIPTION_NOT_OWNER_STARTED',
+    status: 403,
+    meaning: "The owner's ChatGPT plan carries only runs the owner started",
+    source: '#1620',
+  },
+  {
     code: 'RATE_LIMITED',
     status: 409,
     meaning: "The operation's ceiling on calls in flight is reached; wait and ask again",

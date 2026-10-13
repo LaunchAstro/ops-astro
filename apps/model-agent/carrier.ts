@@ -169,8 +169,12 @@ async function run(
     return;
   }
   const { outbound, credentialKind, account } = outcome;
-  // Ollama's `none` credential is filed as an API key or a cloud credential, never `replay`.
-  const kind = credentialKind === 'cloud_credential' ? 'cloud_credential' : 'api_key';
+  // Ollama's `none` credential is filed as an API key or a cloud credential, never `replay`;
+  // the owner's plan sign-in is the one subscription custody files.
+  const kind =
+    credentialKind === 'cloud_credential' || credentialKind === 'subscription'
+      ? credentialKind
+      : 'api_key';
   const answer: CarriedOutcome = { kind: 'answered', outbound, credentialKind: kind, account };
   finish(agent, k, call, 'answer', answer);
 }

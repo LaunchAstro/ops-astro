@@ -2,7 +2,8 @@
 //
 // The model agent's process on the owner's machine (`docs/local/model-agent.md`):
 // its settings, its agent login, custody with Ollama on loopback (and
-// OpenRouter, where its settings name it), then calls carried over Realtime
+// OpenRouter and the owner's ChatGPT plan, where its settings name them),
+// then calls carried over Realtime
 // until stopped. A custody that stops answering its heartbeat ends the
 // process, and launchd starts it again.
 
@@ -15,6 +16,11 @@ import {
   type Destination,
   type ProcessCustody,
 } from '../../packages/core-custody/src/agent.ts';
+import {
+  CHATGPT_PLAN_DESTINATION,
+  chatgptPlanRefusal,
+} from '../../packages/core-connectors/src/index.ts';
+import type { CustodyOutcome } from '../../packages/core-custody/src/custody.ts';
 import { agentSignIn } from '../worker/sign-in.ts';
 import { startModelAgent, type AgentCustody } from './carrier.ts';
 import { renewing } from './renewing.ts';
@@ -56,13 +62,39 @@ async function untilStopped(custody: ProcessCustody, ref: string): Promise<numbe
   });
 }
 
-/** Custody's destinations: Ollama on loopback, and OpenRouter's stream where it is set. */
+/**
+ * Custody's destinations: Ollama on loopback, OpenRouter's stream where it is
+ * set, and the plan's Responses address with the sign-in address that takes
+ * only custody's own refresh (no POST from a caller) where those are set.
+ */
 export const destinationsOf = (settings: AgentSettings): readonly Destination[] => [
   { key: 'ollama', origin: settings.ollamaOrigin },
   ...(settings.openrouterOrigin === undefined
     ? []
     : [{ key: 'openrouter', origin: settings.openrouterOrigin, stream: 'openai_sse' as const }]),
+  ...(settings.chatgptOrigin === undefined || settings.chatgptSignInOrigin === undefined
+    ? []
+    : [
+        {
+          key: CHATGPT_PLAN_DESTINATION,
+          origin: settings.chatgptOrigin,
+          stream: 'responses_sse' as const,
+        },
+        { key: 'chatgpt_sign_in', origin: settings.chatgptSignInOrigin, post: false as const },
+      ]),
 ];
+
+/**
+ * The plan's answer as it crosses back: a 429 or 403 refused by name, sent
+ * once and never again; anything else as custody gave it (a completed
+ * response, folded and redacted there).
+ */
+function planOutcome(outcome: CustodyOutcome): CustodyOutcome {
+  if (outcome.kind !== 'answered' || outcome.outbound.ok) return outcome;
+  const { status } = outcome.outbound;
+  const code = status === null ? undefined : chatgptPlanRefusal(status);
+  return code === undefined ? outcome : { kind: 'refused', started: false, code };
+}
 
 /**
  * Custody as the agent hands it a call, under the request's own
@@ -70,16 +102,23 @@ export const destinationsOf = (settings: AgentSettings): readonly Destination[] 
  * and custody is asked nothing.
  */
 export const agentCustody = (
-  settings: Pick<AgentSettings, 'credentialRef' | 'openrouterCredentialRef'>,
+  settings: Pick<
+    AgentSettings,
+    'credentialRef' | 'openrouterCredentialRef' | 'chatgptCredentialRef'
+  >,
   custody: Pick<ProcessCustody, 'dispatchBefore'>,
 ): AgentCustody => ({
   dispatch: async (request, gate, onPiece) => {
+    const plan = request.destination === CHATGPT_PLAN_DESTINATION;
     const ref =
       request.destination === 'openrouter'
         ? settings.openrouterCredentialRef
-        : settings.credentialRef;
+        : plan
+          ? settings.chatgptCredentialRef
+          : settings.credentialRef;
     if (ref === undefined) return { kind: 'refused', started: false, code: 'REQUEST_REFUSED' };
-    return await custody.dispatchBefore(ref, request, gate, onPiece);
+    const outcome = await custody.dispatchBefore(ref, request, gate, onPiece);
+    return plan ? planOutcome(outcome) : outcome;
   },
 });
 

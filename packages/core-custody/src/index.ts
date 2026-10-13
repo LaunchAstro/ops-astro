@@ -7,9 +7,12 @@
 
 export {
   carriesLocally,
+  CHATGPT_PLAN_PROVIDER,
+  described,
   LOCAL_SESSION_PROVIDER,
   mayCarry,
   parseCredentials,
+  planCarry,
   type CarryContext,
   type CarryRefusal,
   type CredentialKind,
