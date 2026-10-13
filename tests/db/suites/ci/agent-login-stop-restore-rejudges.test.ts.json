@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's restore judges its admission again at every step, so a resumed restore refuses a credential revoked since its reservation, and an actor grant of the operator's stays held until the step commits"
+}

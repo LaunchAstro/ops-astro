@@ -82,7 +82,9 @@ async function reserve(
 }
 
 /** The act row locked after the agent, its owner and its mappings; `live` the mappings' logins. */
-async function locked(execute: Execute, run: Run, id: string) {
+async function locked(execute: Execute, run: Run, id: string, admit: Admit) {
+  // The act's admission judged again first, under the same locks in the same order.
+  await admit(execute, run);
   const { ownerActor } = await admitted(execute, run, run.make.act === 'make');
   const live = await liveLogins(execute, run);
   const act = await actRow(execute, id);
@@ -113,8 +115,8 @@ async function provide(
   return await advance(execute, id, "provider_subject = $2, phase = 'user_made'", [subject]);
 }
 
-async function bind(execute: Execute, run: Run, id: string): Promise<Act> {
-  const { ownerActor, live, act } = await locked(execute, run, id);
+async function bind(execute: Execute, run: Run, id: string, admit: Admit): Promise<Act> {
+  const { ownerActor, live, act } = await locked(execute, run, id, admit);
   if (act.phase !== 'user_made' || act.provider_subject === null) return act;
   if (live.length > 0) throw new Refusal(NOT_OURS);
   await subjectFree(execute, act.provider_subject, null);
@@ -166,8 +168,8 @@ async function probe(run: Run, act: Act, password: string): Promise<void> {
   if (resolved.length === 0) throw new Refusal(PROBE_FAILED);
 }
 
-async function closeAct(execute: Execute, run: Run, id: string): Promise<Act> {
-  const { act } = await locked(execute, run, id);
+async function closeAct(execute: Execute, run: Run, id: string, admit: Admit): Promise<Act> {
+  const { act } = await locked(execute, run, id, admit);
   if (act.phase !== 'bound') return act;
   return await advance(
     execute,
@@ -203,13 +205,17 @@ export async function makeAct(
   }
   if (act.phase === 'user_made') {
     const { id } = act;
-    act = await acting(run, act.provider_subject, async (execute) => await bind(execute, run, id));
+    act = await acting(
+      run,
+      act.provider_subject,
+      async (execute) => await bind(execute, run, id, admit),
+    );
     await at('bound');
   }
   if (act.phase === 'bound') {
     await probe(run, act, password);
     const { id } = act;
-    act = await acting(run, null, async (execute) => await closeAct(execute, run, id));
+    act = await acting(run, null, async (execute) => await closeAct(execute, run, id, admit));
   }
   return { act, already: false };
 }
