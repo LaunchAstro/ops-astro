@@ -34,6 +34,8 @@ export interface AgentStandIn {
   release(): void;
   /** Runs before each accept is sent: a case's chance to change the world after the offer. */
   beforeAccept: (k: string) => Promise<void>;
+  /** Runs before a request past its deadline is refused: how late the refusal comes. */
+  beforeLapse: () => Promise<void>;
   /** Added to the stand-in's own clock, as a machine whose clock disagrees with the function's. */
   clockOffset: number;
   /** Each sealed request it opened: its deadline, and its own clock when it heard it. */
@@ -89,6 +91,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
     sent: [],
     accepted: [],
     beforeAccept: async () => {},
+    beforeLapse: async () => {},
     clockOffset: 0,
     requests: [],
     dispatched: async (n) => {
@@ -125,6 +128,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
     const clock = ownClock();
     standIn.requests.push({ deadlineAt: Number(request['deadlineAt']), heardAt: clock });
     if (!sendable(Number(request['deadlineAt']), clock)) {
+      await standIn.beforeLapse();
       await say('refused', { code: 'SEND_LAPSED' });
       return;
     }
