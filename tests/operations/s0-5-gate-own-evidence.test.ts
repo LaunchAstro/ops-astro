@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the two self-evidenced gate items share one world and its lock helpers */
 //
 // S0-5: the two gate items the installation can evidence itself, through the
 // real API on a throwaway database. `tested-backups` is recorded only while a
 // passed restore drill is stamped inside the restore window
 // (`ops.last_tested_restore`, 0070) and its link is the operations page, where
 // that date is shown; `second-factor` only while the person recording it has a
-// verified factor of their own. Both are read after the installation's row
+// verified factor of their own, on their row here or on their own login
+// through any business (0064). Both are read after the installation's row
 // lock, in the command's own transaction, so a stamp that is not committed when
 // the lock is taken does not count, and one committed while the command waits
 // on the lock does. Ada is alpha's owner, and alpha operates the installation.
@@ -14,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   recordFactorEnrolled,
+  recordFactorRemoved,
   recordFactorVerified,
 } from '../../packages/core-records/src/index.ts';
 import {
@@ -26,6 +29,7 @@ import {
   type Caller,
   type World,
 } from '../acceptance/world.ts';
+import { insertLogin, insertMapping } from '../identity/fixture.ts';
 import { hold, waitingOn } from '../support/lock-waits.ts';
 import { RESTORE_DAYS } from './c55-last-tested-restore-world.ts';
 
@@ -181,6 +185,49 @@ async function recorded(): Promise<void> {
   await reopen('tested-backups');
 }
 
+/**
+ * Ada's own login, reaching bravo as Bea, with a factor verified there: her
+ * row in alpha still says no factor, as the login's factors are kept apart
+ * from any one business's people (0064).
+ */
+async function verifiedThroughBravo(): Promise<() => Promise<void>> {
+  return await world.db.app.withBusiness(world.bravo, async (tx) => {
+    const login = await insertLogin(tx, world.ada.subject);
+    const personId = world.bea.personId as string;
+    await insertMapping(tx, login, personId, world.bea.actorId as string);
+    const enrolled = await recordFactorEnrolled(tx, {
+      personId,
+      provider: 'supabase',
+      providerFactorId: randomUUID(),
+    });
+    const factor = { personId, factorId: enrolled.id, subject: world.ada.subject };
+    await recordFactorVerified(tx, factor);
+    return async () => {
+      await world.db.app.withBusiness(world.bravo, async (removing) => {
+        await recordFactorRemoved(removing, factor);
+      });
+    };
+  });
+}
+
+async function secondFactorElsewhere(): Promise<void> {
+  const link = 'https://ops.example/settings';
+  const remove = await verifiedThroughBravo();
+  const [ada] = await admin<{ verified: boolean }>(
+    'select second_factor_verified as verified from public.people where business_id = $1 and id = $2',
+    [world.alpha, world.ada.personId],
+  );
+  expect(ada?.verified).toBe(false);
+  await reopen('second-factor');
+  const answer = await send('second-factor', link);
+  expect({ status: answer.status, code: answer.code }).toStrictEqual({ status: 200, code: 'ok' });
+  expect(await gateRows()).toStrictEqual([{ item: 'second-factor', evidence: link }]);
+  await remove();
+  const tries = [['ada, factor removed', async () => await send('second-factor', link)]] as const;
+  expect(await refusedNaming('second-factor', tries, 'item')).toStrictEqual([]);
+  await reopen('second-factor');
+}
+
 async function secondFactor(): Promise<void> {
   const link = 'https://ops.example/settings';
   const tries = [['ada, no factor', async () => await send('second-factor', link)]] as const;
@@ -280,6 +327,11 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate items on their own evidence'
   it(
     'S0-5 tested backups, recorded: the operations page link records the item on a restore stamped a day inside the window, and not on one just past it',
     recorded,
+  );
+
+  it(
+    "S0-5 second factor, own login elsewhere: recorded while the recording person's own login has a factor verified through another business, though their row here has none; refused once that factor is removed",
+    secondFactorElsewhere,
   );
 
   it(
