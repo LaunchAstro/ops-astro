@@ -163,11 +163,15 @@ export function readOpenRouterAnswer(body: unknown): ModelAnswer | undefined {
   };
 }
 
-/** A float's whole millionths: the nearest where it is one within the float's error, else rounded up. */
-function microdollars(amount: number): bigint {
+/**
+ * A float's whole millionths: the nearest where it is one within the float's
+ * error, else rounded up; undefined past what counts exactly.
+ */
+function microdollars(amount: number): bigint | undefined {
   const scaled = amount * 1_000_000;
   const nearest = Math.round(scaled);
-  return BigInt(Math.abs(scaled - nearest) < 1e-6 ? nearest : Math.ceil(scaled));
+  const counted = Math.abs(scaled - nearest) < 1e-9 ? nearest : Math.ceil(scaled);
+  return Number.isSafeInteger(counted) ? BigInt(counted) : undefined;
 }
 
 /** OpenRouter's reported cost in whole AUD cents at the fixed rate, never rounded down; NaN (held) without one. */
@@ -175,7 +179,9 @@ export function openrouterCostMinor(answer: ModelAnswer): number {
   const cost = answer.reportedCost;
   if (cost?.currency !== 'USD' || !Number.isFinite(cost.amount) || cost.amount < 0)
     return Number.NaN;
-  const cents = microdollars(cost.amount) * millionths(OPENROUTER_AUD_PER_USD) * 100n;
+  const micro = microdollars(cost.amount);
+  if (micro === undefined) return Number.NaN;
+  const cents = micro * millionths(OPENROUTER_AUD_PER_USD) * 100n;
   return Number(ceilDiv(cents, 1_000_000n * 1_000_000n));
 }
 

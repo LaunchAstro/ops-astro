@@ -18,7 +18,9 @@
 //    redacted events, `content` the whole redacted text, redacted as JSON once more.
 //
 // A payload that is not JSON, or a stream cut mid-event or before `[DONE]`,
-// folds to `{ error: 'stream_malformed' }`, which the adapter reads as held.
+// folds to `{ error: 'stream_malformed' }`; a stream that reports a second
+// model or a second, different usage folds to `stream_contradicted`; an error
+// or error finish once reported stays. The adapter reads each as held.
 // It imports no connector code, as custody's process loads it.
 
 import { StringDecoder } from 'node:string_decoder';
@@ -37,6 +39,8 @@ interface Folded {
   finishReason: unknown;
   usage: unknown;
   error: unknown;
+  /** A later event said otherwise of the model or the usage. */
+  contradicted: boolean;
 }
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -57,13 +61,46 @@ function dataOf(event: string): string | undefined {
   return lines.length === 0 ? undefined : lines.join('\n');
 }
 
+/** A value already folded that a later event says otherwise of. */
+const contradicts = (was: unknown, now: unknown): boolean =>
+  was !== null && JSON.stringify(was) !== JSON.stringify(now);
+
+/**
+ * One event folded in. What the stream reported stays reported: an error, an
+ * error finish, a second model or a second, different usage is never undone
+ * by a later event, and folds to an error, so the call is held.
+ */
+function fold(folded: Folded, seen: Record<string, unknown>): void {
+  if (seen['model'] !== undefined) {
+    if (contradicts(folded.model, seen['model'])) folded.contradicted = true;
+    folded.model = seen['model'];
+  }
+  if (seen['usage'] !== undefined && seen['usage'] !== null) {
+    if (contradicts(folded.usage, seen['usage'])) folded.contradicted = true;
+    folded.usage = seen['usage'];
+  }
+  if (seen['error'] !== undefined && seen['error'] !== null && folded.error === null) {
+    folded.error = seen['error'];
+  }
+  const finish = choiceOf(seen)['finish_reason'];
+  if (finish !== undefined && finish !== null && folded.finishReason !== 'error') {
+    folded.finishReason = finish;
+  }
+}
+
 // oxlint-disable-next-line max-lines-per-function -- one decoder's state and its two steps
 export function openaiSse(credential: StoredCredential): StreamDecode {
   const secrets = secretsOf(credential);
   const redactText = redacterOf(secrets);
   const hold = longestSpelling(secrets);
   const decoder = new StringDecoder('utf8');
-  const folded: Folded = { model: null, finishReason: null, usage: null, error: null };
+  const folded: Folded = {
+    model: null,
+    finishReason: null,
+    usage: null,
+    error: null,
+    contradicted: false,
+  };
   let buffer = '';
   let tail = '';
   let content = '';
@@ -73,7 +110,9 @@ export function openaiSse(credential: StoredCredential): StreamDecode {
   /** The redacted text so far less what is held back; `all` lets the tail go too. */
   const release = (added: string, all: boolean): readonly string[] => {
     const text = redactText(tail + added);
-    const cut = all ? text.length : Math.max(0, text.length - hold);
+    let cut = all ? text.length : Math.max(0, text.length - hold);
+    // Never between the halves of a surrogate pair: a piece is whole text.
+    if (cut > 0 && cut < text.length && /[\uD800-\uDBFF]/u.test(text.charAt(cut - 1))) cut -= 1;
     tail = text.slice(cut);
     const out = text.slice(0, cut);
     content += out;
@@ -96,11 +135,7 @@ export function openaiSse(credential: StoredCredential): StreamDecode {
     }
     const raw = record(parsed);
     const seen = record(redactedValue(parsed, redactText));
-    if (seen['model'] !== undefined) folded.model = seen['model'];
-    if (seen['usage'] !== undefined) folded.usage = seen['usage'];
-    if (seen['error'] !== undefined) folded.error = seen['error'];
-    const finish = choiceOf(seen)['finish_reason'];
-    if (finish !== undefined && finish !== null) folded.finishReason = finish;
+    fold(folded, seen);
     // The decoded text is read unredacted here: the holding redactor sees it joined.
     const delta = record(choiceOf(raw)['delta'])['content'];
     return typeof delta === 'string' ? delta : '';
@@ -129,7 +164,11 @@ export function openaiSse(credential: StoredCredential): StreamDecode {
           completion_tokens: usage['completion_tokens'] ?? null,
           cost: usage['cost'] ?? null,
         },
-        error: malformed ? 'stream_malformed' : folded.error,
+        error: malformed
+          ? 'stream_malformed'
+          : folded.contradicted
+            ? 'stream_contradicted'
+            : folded.error,
       };
       return { pieces, body: redact(JSON.stringify(body), credential) };
     },

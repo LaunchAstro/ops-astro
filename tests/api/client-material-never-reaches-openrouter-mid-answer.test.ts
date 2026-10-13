@@ -16,6 +16,7 @@ import { HAIKU, pricedWorld, type PricedWorld } from '../broker/priced-chat-worl
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- one world, one schedule and its checks
 describe.skipIf(serverUrl === undefined)('client material and a paid answer in flight', () => {
   let p: PricedWorld;
 
