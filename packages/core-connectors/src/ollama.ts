@@ -109,6 +109,14 @@ export function readOllamaAnswer(body: unknown): ModelAnswer | undefined {
   return { text, model, usage: { inputUnits: input, outputUnits: output }, providerCode: null };
 }
 
+export function foldOllamaStream(_body: string): string | undefined {
+  return undefined;
+}
+
+export function ollamaPieces(): { push(chunk: Uint8Array | string): string[] } {
+  return { push: () => [] };
+}
+
 /** The price of an answer on this machine: nothing. */
 export function ollamaCostMinor(_answer: ModelAnswer): number {
   return 0;

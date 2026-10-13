@@ -217,8 +217,10 @@ export {
   OLLAMA_MODELS,
   OLLAMA_PATH,
   OLLAMA_PROVIDER,
+  foldOllamaStream,
   ollamaAdapter,
   ollamaCostMinor,
+  ollamaPieces,
   readOllamaAnswer,
 } from './ollama.ts';
 export { conversationInstructions, TASK_BLOCK_FENCE } from './conversation-prompt.ts';

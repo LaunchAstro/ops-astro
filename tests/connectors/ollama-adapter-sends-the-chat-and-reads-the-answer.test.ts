@@ -39,11 +39,11 @@ const ANSWER = {
 };
 
 describe('the Ollama adapter', () => {
-  it('posts one non-streamed chat to /api/chat for the model it is handed', () => {
+  it('posts one streamed chat to /api/chat for the model it is handed', () => {
     const built = ollamaAdapter({ message: 'What is due?' }, 'call-1', 'gemma4:31b-mlx');
     expect(built).toMatchObject({ path: '/api/chat', method: 'POST' });
     const body = bodyOf({ message: 'What is due?' }, 'gemma4:31b-mlx');
-    expect(body).toMatchObject({ model: 'gemma4:31b-mlx', stream: false, think: false });
+    expect(body).toMatchObject({ model: 'gemma4:31b-mlx', stream: true, think: false });
     expect(bodyOf({ message: 'What is due?' }).model).toBe(OLLAMA_DEFAULT_MODEL);
   });
 

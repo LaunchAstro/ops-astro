@@ -44,7 +44,11 @@ export interface CustodyConfig {
 
 export interface Custody {
   readonly pid: number;
-  dispatch(credentialRef: string, request: OutboundRequest): Promise<CustodyOutcome>;
+  dispatch(
+    credentialRef: string,
+    request: OutboundRequest,
+    onPiece?: (text: string) => void,
+  ): Promise<CustodyOutcome>;
   /**
    * The kind and account of the credential custody would present to
    * `destination` under `credentialRef`, or null when it holds none there:

@@ -109,6 +109,7 @@ export interface MutationOptions {
   readonly operationId?: string;
   /** Required by the server on a write against an existing record. */
   readonly expectedRevision?: number;
+  readonly onPiece?: (piece: { readonly seq: number; readonly text: string }) => void;
 }
 
 export class OperationsClient {

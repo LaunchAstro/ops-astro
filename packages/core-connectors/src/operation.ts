@@ -73,9 +73,15 @@ export interface ModelOperationDeclaration {
   readonly nothingHappened: readonly string[] | 'not_reconcilable';
   readonly billed: boolean;
   readonly concurrency: number;
+  readonly fold?: (body: string) => string | undefined;
+  readonly pieces?: () => PieceReader;
 }
 
-export type Declaration = keyof ModelOperationDeclaration;
+export interface PieceReader {
+  push(chunk: Uint8Array | string): readonly string[];
+}
+
+export type Declaration = Exclude<keyof ModelOperationDeclaration, 'fold' | 'pieces'>;
 
 /** In the order a reviewer reads them, and the order a refusal names them. */
 export const DECLARATIONS: readonly Declaration[] = [
