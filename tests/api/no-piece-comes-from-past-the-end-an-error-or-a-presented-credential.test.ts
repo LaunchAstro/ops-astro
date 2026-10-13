@@ -114,18 +114,52 @@ describe.skipIf(serverUrl === undefined)(
       expect(replies).toBe(0);
     });
 
-    it('a presented credential gives no piece, and the reply still comes', async () => {
-      ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
+    it('a presented credential asks for the answer whole: no piece, and the reply still comes', async () => {
+      // As Ollama answers: whole when asked whole.
+      ollama.reply = (model) =>
+        (JSON.parse(ollama.seen.at(-1)?.raw ?? '{}') as { stream?: boolean }).stream === true
+          ? { status: 200, chunks: streamedLines(model, WORDS) }
+          : {
+              status: 200,
+              chunks: [
+                JSON.stringify({
+                  model,
+                  message: { role: 'assistant', content: WORDS.join('') },
+                  done: true,
+                  prompt_eval_count: 1,
+                  eval_count: 1,
+                }),
+              ],
+            };
       const events = await (
         await sendStreaming(presenting.api, presenting.owner, 'conversation.start', {
           body: 'What is due?',
         })
       ).rest();
       expect(ollama.seen.at(-1)?.authorization).toMatch(/^Bearer /u);
+      expect(JSON.parse(ollama.seen.at(-1)?.raw ?? '{}')).toMatchObject({ stream: false });
       expect(piecesOf(events)).toBe('');
       expect(outcomeOf(events)).toMatchObject({
         reply: { answered: true, body: 'Two tasks are due today.' },
       });
+    });
+
+    it('a presented credential answered with a stream anyway keeps nothing and shows nothing', async () => {
+      ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
+      const events = await (
+        await sendStreaming(presenting.api, presenting.owner, 'conversation.start', {
+          body: 'Streamed anyway?',
+        })
+      ).rest();
+      expect(piecesOf(events)).toBe('');
+      expect(outcomeOf(events)).toMatchObject({ reply: { answered: false } });
+      const replies = await w.count(
+        `select count(*)::text as n from public.conversation_messages m
+         join public.conversation_messages q on q.id = m.answers_message_id
+        where q.body = 'Streamed anyway?'`,
+        [],
+      );
+      expect(replies).toBe(0);
     });
   },
 );
