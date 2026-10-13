@@ -41,7 +41,7 @@ ops-astro help
 
 Run the `ln` from the checkout the command should use. Keep that checkout on
 `main`; `git pull` there updates the command. `ops-astro` behaves exactly like
-`pnpm cli` from that checkout, and its help names the command as you typed it.
+`pnpm cli` from that checkout; its help names both.
 It keeps its credential files in that checkout's `.local/`, as below.
 
 ## Hosted presets

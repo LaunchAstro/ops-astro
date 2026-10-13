@@ -104,3 +104,40 @@ export {
 } from './broker.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
 export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
+export {
+  ACCEPT_WINDOW_MS,
+  AGENT_EVENTS,
+  ANSWER_RESEND_MS,
+  ANSWER_RESENDS,
+  BROKER_EVENTS,
+  CALL_KEPT_MS,
+  PIECE_EVERY_MS,
+  SEAL_LIFE_MS,
+  SEND_WINDOW_MS,
+  SILENCE_MS,
+  STARTED_GRACE_MS,
+  WORKING_EVERY_MS,
+  agentTopic,
+  callTopic,
+  deadlineOf,
+  sendable,
+  topicOf,
+  type AgentEvent,
+  type BrokerEvent,
+  type CarriedOutcome,
+  type Carriage,
+  type CarryBodies,
+  type CarryEvent,
+  type Line,
+  type OfferBody,
+  type Topic,
+} from './carriage.ts';
+export {
+  opened,
+  parseCarryKeys,
+  sealed,
+  type CarryKeys,
+  type Direction,
+  type SealRefusal,
+  type Sealed,
+} from './carry-seal.ts';
