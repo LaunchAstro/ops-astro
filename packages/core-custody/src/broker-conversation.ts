@@ -129,24 +129,26 @@ export function localRoute(
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
-/** The message's call, if one was made: a retry is answered from it, never a second call (#1531). */
+/**
+ * The message's call, if one was made: a retry is answered from it, never a
+ * second call (#1531). A kept reply is found before the broker is asked. A
+ * call still with the model, or settled in the last 30 s (its reply is still
+ * being kept), is on its way; any other ending kept nothing.
+ */
 async function messageCall(
   tx: TenantQuery,
   messageId: string | undefined,
 ): Promise<ModelCallResult | undefined> {
   if (messageId === undefined) return undefined;
-  const [call] = await tx.query<{ readonly id: string; readonly state: string }>(
-    `select id, state from public.model_calls
+  const [call] = await tx.query<{ readonly id: string; readonly answering: boolean }>(
+    `select id, (state = 'dispatched' or state = 'settled'
+                 and ended_at > clock_timestamp() - interval '30 seconds') as answering
+       from public.model_calls
       where business_id = $1 and conversation_message_id = $2`,
     [tx.businessId, messageId],
   );
   if (call === undefined) return undefined;
-  // A kept reply is found before the broker is asked; any other ending kept nothing.
-  return {
-    ok: false,
-    code: call.state === 'dispatched' ? 'STILL_ANSWERING' : 'ANSWER_ENDED',
-    callId: call.id,
-  };
+  return { ok: false, code: call.answering ? 'STILL_ANSWERING' : 'ANSWER_ENDED', callId: call.id };
 }
 
 /**

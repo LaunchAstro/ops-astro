@@ -35,7 +35,9 @@ create table public.model_call_carriers (
   constraint model_call_carriers_answer_after_send check (answer_by is null or answer_by > request_at)
 );
 
--- Written unset, for a dispatched conversation call; afterwards each time is set once.
+-- Written unset, for a dispatched conversation call; afterwards each time is set
+-- once, the send only while the call is still dispatched. The call is read for
+-- share, so a release or a hold running now orders against the write.
 create function public.model_call_carriers_guard() returns trigger
   language plpgsql
   as $$
@@ -43,9 +45,14 @@ begin
   if tg_op = 'INSERT' and (new.offered_at is not null or new.runner is not null or not exists (
        select 1 from public.model_calls c
         where c.business_id = new.business_id and c.id = new.call_id
-          and c.conversation_id is not null and c.state = 'dispatched'))
+          and c.conversation_id is not null and c.state = 'dispatched'
+          for share))
      or tg_op = 'UPDATE' and (
-       (new.business_id, new.call_id, new.agent_actor_id)
+       old.runner is null and new.runner is not null and not exists (
+         select 1 from public.model_calls c
+          where c.business_id = new.business_id and c.id = new.call_id and c.state = 'dispatched'
+            for share)
+       or (new.business_id, new.call_id, new.agent_actor_id)
          is distinct from (old.business_id, old.call_id, old.agent_actor_id)
        or old.offered_at is not null and new.offered_at is distinct from old.offered_at
        or old.runner is not null and (new.runner, new.request_at, new.send_by, new.answer_by)

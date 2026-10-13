@@ -8,12 +8,21 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { Carrier } from './broker-types.ts';
 
-/** The carrier's agent is an open member of the conversation, held for share until the call is written. */
+/**
+ * The carrier's agent is an open member of the conversation, held for share
+ * until the call is written. The conversation's row is taken first, as a
+ * model pick and a purge take it before the membership, so neither waits on
+ * the other in a cycle.
+ */
 export async function carriedIn(
   tx: TenantQuery,
   conversationId: string,
   carrier: Carrier,
 ): Promise<boolean> {
+  await tx.query(
+    `select 1 from public.conversations where business_id = $1 and id = $2 for key share`,
+    [tx.businessId, conversationId],
+  );
   const member = await tx.query(
     `select 1 from public.conversation_agent_members
       where business_id = $1 and conversation_id = $2 and agent_actor_id = $3 and left_at is null

@@ -10,7 +10,8 @@
 -- Storage holds, whoever writes: an open row is an active agent's, on a
 -- conversation not purged, both read for share so a deactivation or purge
 -- running now orders against it; one open row per conversation and agent; a
--- row only closes, once; and a deactivation or a purge closes the open rows.
+-- row only closes, once; and a deactivation, a purge, or a client linked to
+-- the conversation's task closes the open rows, stamped after their locks.
 -- Team conversations take no agent: `team_conversation_members` names people.
 
 create table public.conversation_agent_members (
@@ -76,18 +77,32 @@ create trigger conversation_agent_members_guard
   for each row execute function public.conversation_agent_members_guard();
 
 -- Definer and row security off, so the close reaches the rows whichever role
--- made the change; it touches only the changed agent's or conversation's own.
+-- made the change; it touches only the changed agent's, conversation's or
+-- task's own. The rows are locked first, so `left_at` is read after any wait.
 create function public.conversation_agent_members_close() returns trigger
   language plpgsql
   security definer
   set search_path = pg_catalog, public
   set row_security = off
   as $$
+declare
+  closing uuid[];
 begin
-  update public.conversation_agent_members m
-     set left_at = greatest(clock_timestamp(), m.joined_at)
-   where m.business_id = new.business_id and m.left_at is null
-     and new.id = case tg_table_name when 'actors' then m.agent_actor_id else m.conversation_id end;
+  select array_agg(m.id) into closing
+    from (select m.id from public.conversation_agent_members m
+           where m.business_id = new.business_id and m.left_at is null
+             and case tg_table_name
+                   when 'actors' then m.agent_actor_id = new.id
+                   when 'conversations' then m.conversation_id = new.id
+                   else m.conversation_id in (
+                     select c.id from public.conversations c
+                      where c.business_id = new.business_id and c.scope_record_id = new.id)
+                 end
+           order by m.id
+           for update) m;
+  update public.conversation_agent_members
+     set left_at = greatest(clock_timestamp(), joined_at)
+   where id = any(closing) and left_at is null;
   return null;
 end;
 $$;
@@ -102,6 +117,12 @@ create trigger conversation_agent_members_close_on_deactivation
 create trigger conversation_agent_members_close_on_purge
   after update of body_purged_at on public.conversations
   for each row when (old.body_purged_at is null and new.body_purged_at is not null)
+  execute function public.conversation_agent_members_close();
+
+-- A task's client link is `records.uuid_7` (0055); a conversation on it is a client's.
+create trigger conversation_agent_members_close_on_client_link
+  after update of uuid_7 on public.records
+  for each row when (new.uuid_7 is not null and old.uuid_7 is distinct from new.uuid_7)
   execute function public.conversation_agent_members_close();
 
 alter table public.conversation_agent_members enable row level security;
