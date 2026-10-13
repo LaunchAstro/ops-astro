@@ -139,6 +139,13 @@ export {
   type ResetDependencies,
 } from './commands/account-password.ts';
 export {
+  ACCEPT_OPERATION,
+  acceptInvitation,
+  LOGIN_CREATE_OPERATION,
+  type AcceptCode,
+  type AcceptResult,
+} from './commands/invitation-accept.ts';
+export {
   endOtherSessions,
   listOwnSessions,
   signOutSession,

@@ -19,8 +19,9 @@ const COLUMN_UPDATES: readonly {
   readonly columns: readonly string[];
 }[] = [
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
-  // C40B: a reset token is spent by `spent_at` alone.
+  // C40B and C39-T: a reset or an enrolment token is spent by `spent_at` alone.
   { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
+  { table: 'public.enrolment_tokens', from: '20261013053949', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
   {
     table: 'public.activations',
@@ -113,8 +114,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
   // S0-5 (0059): the gate's installation mode, alone (no business column).
   { from: '0059', line: 'ops_astro_app UPDATE ops.installation.mode' },
-  // Batch 2a's provider-step queues (C58, C59): the application inserts and
-  // reads them column by column.
+  // Batch 2a's provider-step queues (C58, C59): the application inserts and reads by column.
   ...['INSERT', 'SELECT'].map((act) => ({
     from: '0061',
     line: `ops_astro_app ${act} ops.ended_provider_sessions.session_id`,

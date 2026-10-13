@@ -20,7 +20,9 @@ export type OutboundFault =
   | 'timeout'
   | 'too_large'
   | 'status'
-  | 'network';
+  | 'network'
+  /** A gated send's deadline passed before the write: nothing was written. */
+  | 'lapsed';
 
 export type Outbound =
   | { readonly ok: true; readonly status: number; readonly body: string }

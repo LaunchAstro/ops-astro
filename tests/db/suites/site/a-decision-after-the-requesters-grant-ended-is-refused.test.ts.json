@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's decision side: an approval reads the requester's run:write at the correction's client again after its locks and holds the page the correction names, so a correction whose requester lost their grant, or whose page is no longer bound, is never approved."
+}

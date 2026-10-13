@@ -36,6 +36,7 @@ export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
 export { insertRevertAsk, type RevertAsk, type RevertAskWrite } from './correction-revert-asks.ts';
 export {
   bindPartySite,
+  isBoundPage,
   readPartySite,
   unbindPartySitePage,
   type PartySiteRecord,

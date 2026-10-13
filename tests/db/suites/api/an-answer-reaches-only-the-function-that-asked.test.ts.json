@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two carried answers at once each reach only their own function; no cross-call or cross-business join"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "another person is refused A's paid spend, cannot record A's held outcome or have A's message answered, and hears only their own pieces"
+}

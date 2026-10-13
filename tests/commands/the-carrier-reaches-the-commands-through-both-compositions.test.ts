@@ -36,6 +36,7 @@ const KEYRING = {
   DELEGATION_CREDENTIAL_KEY_ID: KEY_ID,
   DELEGATION_CREDENTIAL_KEYS: `${KEY_ID}:${randomBytes(32).toString('base64url')}`,
 };
+const CARRY_KEY = randomBytes(32).toString('base64url');
 const OLLAMA_ROUTE = JSON.stringify([
   {
     key: 'm5_ollama',
@@ -58,6 +59,10 @@ const carried = (carrier: string | undefined): Record<string, string | undefined
   MODEL_BROKER_ROUTES: OLLAMA_ROUTE,
   MODEL_BROKER_INSTALLATION: 'here',
   MODEL_BROKER_CARRIER: carrier,
+  // What a carried deployment answers with: the carry key and the project's Realtime.
+  MODEL_BROKER_CARRY_KEY: CARRY_KEY,
+  SUPABASE_REALTIME_URL: 'wss://project.supabase.co/realtime/v1',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
 });
 
 describe('the function refuses a carrier setting it cannot carry', () => {

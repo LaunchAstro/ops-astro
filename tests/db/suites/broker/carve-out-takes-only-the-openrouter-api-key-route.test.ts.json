@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the carve-out takes only OpenRouter's cloud API key route of this installation; any other route is refused before any row or request"
+}

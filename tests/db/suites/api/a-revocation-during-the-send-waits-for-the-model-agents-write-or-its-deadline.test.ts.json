@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a revocation during the send waits for the agent's write or its deadline, never sends after"
+}
