@@ -60,21 +60,13 @@ export interface CommandContext {
   readonly spine: TaskSpine;
   /** Present exactly when the declaration targets an existing record. */
   readonly target: TaskRow | undefined;
-  /**
-   * The deployment's model agent and the people it carries calls for (#1531),
-   * where the composition root was handed one: the conversation commands add
-   * it to a conversation as a member. Never from a body.
-   */
+  /** The deployment's model agent and its people (#1531), from the composition root, never a body. */
   readonly carrier: Carrier | undefined;
 }
 
 const deployment = new AsyncLocalStorage<Carrier | undefined>();
 
-/**
- * Runs `run` with the deployment's carrier, as `withRuntimeKeys` runs it with
- * the keys: a composed app runs each request so, and two apps in one process
- * keep their own. Outside one there is no carrier.
- */
+/** Runs `run` with the deployment's carrier, as `withRuntimeKeys` runs it with the keys. */
 export function withCarrier<T>(carrier: Carrier | undefined, run: () => T): T {
   return deployment.run(carrier, run);
 }

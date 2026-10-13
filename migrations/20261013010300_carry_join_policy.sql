@@ -1,31 +1,18 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
 -- Who may join a carriage topic on Supabase Realtime (#1531, live chat route B).
---
--- Two topic shapes, both private channels, both naming their business:
---   carry:<business>:agent:<agent>  an agent's doorbell; only that agent hears it
---   carry:<business>:call:<call>    one carried call; its conversation's owner
---                                   (through the function serving their message)
---                                   and the agent on the call's carriers row
---
--- `ops_carry_may_join(topic)` is the one judgement. It reads the JWT's `sub`
--- from the claims Realtime sets, and resolves it through this product's own
--- logins in the topic's business only: one provider user with logins in two
--- businesses is admitted only where the topic says, and a login whose access
--- here was ended is no one. A person is their active login, membership and
--- acting identity, as `standingOf` resolves them; an agent is its active
--- login and active agent actor, as `resolveAgentLogin` does.
---   doorbell  true only for that agent itself;
---   call      true for the owner of the call's conversation, or for the
---             agent on its carriers row while that agent is an open member
---             of the conversation; only while the call is still dispatched.
--- Anything else, an id written in capitals included, is no topic and false.
---
--- The policies on `realtime.messages` are written only where Realtime is
--- installed (`to_regnamespace('realtime')`): select (receive) asks the
--- judgement on either shape; insert (send) only on a call topic. Nobody sends
--- on a doorbell: the database rings it (`ops_carry_ring`). Elsewhere this
--- migration writes the function alone.
+--   carry:<business>:agent:<agent>  an agent's doorbell: that agent alone
+--   carry:<business>:call:<call>    one carried call, while dispatched: the owner
+--                                   of its conversation, and the agent on its
+--                                   carriers row while an open member there
+-- `ops_carry_may_join(topic)` is the one judgement. It resolves the JWT's
+-- `sub` through this product's logins in the topic's business only, as
+-- `standingOf` (a person: active login, membership and actor) and
+-- `resolveAgentLogin` (an agent: active login and agent actor) do; a login
+-- whose access here was ended is no one, and a topic not in this exact shape,
+-- capitals included, is refused. Where Realtime is installed, policies on
+-- `realtime.messages` ask it: receive on either shape, send on a call topic
+-- only (nobody sends on a doorbell; the database rings it).
 
 create function public.ops_carry_may_join(topic text)
   returns boolean

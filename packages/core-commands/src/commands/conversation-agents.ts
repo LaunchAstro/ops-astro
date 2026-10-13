@@ -1,24 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The model agent as a member of a person's conversation (#1531, live chat
-// route B), the way a person is a member of a team conversation.
-//
-// The agent is the deployment's carrier (`CommandContext.carrier`): the
-// process on the owner's machine that runs Ollama's answers, which hears a
-// call only from a conversation it is an open member of. The owner adds it by
-// choosing, in their own session, a model it carries: `conversation.start`,
-// the chosen model or the default, and `conversation.set_model`. Another model
-// closes the membership; a purge and the agent's deactivation close it in
-// storage (20261013010100).
-//
-// It joins nothing, and nothing is refused, when:
-// - the deployment has no carrier;
-// - the person is not on the carrier's people list;
-// - the conversation is on a client's task, or one this session cannot see,
-//   until Nathan's product call on agents in client conversations;
-// - the carrier's agent is not an active agent of this business.
-// The task's and the agent's rows are read for share, so a client link or a
-// deactivation running now either commits first and is seen, or waits.
+// The deployment's model agent (`CommandContext.carrier`, #1531) as a member of
+// a person's conversation: it hears a call only from a conversation it is an
+// open member of. The owner adds it by choosing a model it carries, at
+// `conversation.start` or `conversation.set_model`; another model closes the
+// membership, as a purge and a deactivation do in storage. Nothing joins, and
+// nothing is refused, with no carrier, for a person it does not list, on a
+// client's or an unseen task (until Nathan's product call), or when its agent
+// is not active. The task's and agent's rows are read for share, so a client
+// link or a deactivation running now commits first and is seen, or waits.
 
 import { conversationModelsOf, OLLAMA_PROVIDER } from '../../../core-connectors/src/index.ts';
 import { slotOf, TASK_SPINE, type TenantQuery } from '../../../core-records/src/index.ts';
