@@ -7,10 +7,25 @@
     "with the queue's results to show it holds. `visualDrift` is what the visual drift job builds and reads.",
     "`queueOnly` (CI-SPEED, light pull requests): checks whose heavy steps a pull request defers to the merge",
     "queue, the only way into main; a group, a push and any other event run them in full. Never a check that",
-    "runs in full on a pull request (tests/ci/light-pull-requests-workflow.test.ts)."
+    "runs in full on a pull request (tests/ci/light-pull-requests-workflow.test.ts).",
+    "`alwaysRunTests` lists database-free pin and count contracts. The pin and count tests job runs them on every PR, without an import or label filter."
   ],
   "scopable": ["tests/", "apps/web/", "packages/ui/", "docs/"],
   "runsEverything": ["tests/support/", "tests/ci/", "tests/db/suites", "tests/db/shard-plan.json"],
   "visualDrift": ["apps/web/", "packages/ui/", "tests/visual/"],
-  "queueOnly": ["local checks", "isolation tests"]
+  "queueOnly": ["local checks", "isolation tests"],
+  "alwaysRunTests": [
+    "tests/reads/task-rank-core-contract.test.ts",
+    "tests/tenancy/migration-ids.test.ts",
+    "tests/commands/runtime-codes.test.ts",
+    "tests/connectors/aw-01-operations.test.ts",
+    "tests/surfaces/read-names.test.ts",
+    "tests/site/c80-catalogue.test.ts",
+    "tests/site/c80-receipts.test.ts",
+    "tests/sandbox/run-outcome-names-one-reason.test.ts",
+    "tests/docs/c82-design-system-copy.test.ts",
+    "tests/reads/repository-catalogue-and-migration-counts.test.ts",
+    "tests/ci/structural-checks.test.ts",
+    "tests/ci/pin-and-count-tests-run-on-every-pull-request.test.ts"
+  ]
 }

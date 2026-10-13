@@ -9,7 +9,13 @@ it('deleting a named fixture directory keeps its database and isolation checks i
   const root = mkdtempSync(join(tmpdir(), 'sol-1386-deleted-dir-'));
   const suite = 'tests/db/reads-fixtures.test.ts';
   const fixture = 'tests/db/fixtures/rows.json';
-  const map = { scopable: ['tests/'], runsEverything: [], visualDrift: [], queueOnly: [] };
+  const map = {
+    scopable: ['tests/'],
+    runsEverything: [],
+    visualDrift: [],
+    queueOnly: [],
+    alwaysRunTests: [],
+  };
   try {
     mkdirSync(join(root, 'tests/db/fixtures'), { recursive: true });
     writeFileSync(join(root, fixture), '[]');
