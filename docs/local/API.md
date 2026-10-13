@@ -419,6 +419,13 @@ operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
 eligible route itself, never another found by its key.
 
+A carried deployment (#1531) sets `MODEL_BROKER_CARRIER`,
+`{"agent":<agent actor id>,"people":[<person id>, ...]}` (`model-carrier.ts`),
+with `OPS_AGENT_PROVIDER=ollama`, an Ollama `local` route and
+`MODEL_BROKER_INSTALLATION`, and never beside a credentials file or destination
+list. Both entries hand it to `composeApi`; a listed person's internal
+conversation then gains its agent as a member (`conversation-agents.ts`).
+
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
 `TRACE_EXPORT_ORIGIN` (the target's bare origin, https unless it is

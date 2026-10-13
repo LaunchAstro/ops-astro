@@ -181,7 +181,7 @@ function offMachineProblem(
 }
 
 /** The routes setting's entries, each a route or undefined; undefined when it is not a list. */
-function routesOf(
+export function routesOf(
   text: string,
   provider: AgentProvider,
 ): readonly (BrokerRoute | undefined)[] | undefined {
@@ -195,7 +195,7 @@ const withoutBroker = (named: AgentProvider): string =>
   `${AGENT_PROVIDER_SETTING} ${named} needs the credential broker's four settings`;
 
 /** The install's provider, or why the setting is refused (never echoing its value). */
-function agentProvider(
+export function agentProvider(
   environment: Readonly<Record<string, string | undefined>>,
 ): AgentProvider | { readonly problem: string } {
   const named = environment[AGENT_PROVIDER_SETTING] ?? '';

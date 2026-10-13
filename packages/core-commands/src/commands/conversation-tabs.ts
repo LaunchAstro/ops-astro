@@ -30,6 +30,7 @@ import {
   PURGED,
   TITLE_LIMIT,
 } from './conversations.ts';
+import { followModel } from './conversation-agents.ts';
 import { keepModel, MODEL_NOT_OFFERED } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -181,5 +182,7 @@ export async function setModel(
   // Asked under the row lock, after the owner check.
   const notKept = await keepModel(tx, context.session, conversationId, fields.model);
   if (notKept !== undefined) return refused(notKept);
+  // The deployment's model agent joins on a model it carries, and leaves on one it does not (#1531).
+  await followModel(tx, context, conversationId, fields.model);
   return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
 }
