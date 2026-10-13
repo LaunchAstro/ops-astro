@@ -25,6 +25,12 @@ import {
   type Sealed,
 } from '../../packages/core-custody/src/agent.ts';
 import { OLLAMA_DEFAULT_MODEL } from '../../packages/core-connectors/src/index.ts';
+import { agentCustody } from '../../apps/model-agent/main.ts';
+import {
+  sse,
+  standInOpenRouter,
+  type OpenRouterStandIn,
+} from '../api/openrouter-stand-in-fixture.ts';
 import {
   startModelAgent,
   type AgentCustody,
@@ -94,8 +100,13 @@ export interface Call {
   until(event: string, n?: number, ms?: number): Promise<readonly Heard[]>;
 }
 
+/** The made-up key custody presents to the stand-in OpenRouter. */
+export const BEARER: string = `or-test-${randomUUID()}`;
+
 export interface AgentWorld {
   readonly ollama: LoopbackOllama;
+  /** The stand-in OpenRouter, where the world carries paid calls. */
+  readonly openrouter: OpenRouterStandIn | undefined;
   readonly carriage: MemoryCarriage;
   readonly custody: ProcessCustody;
   readonly agent: ModelAgent;
@@ -118,6 +129,8 @@ export interface WorldOptions {
   readonly load?: () => number;
   /** Wraps custody as the agent sees it, to pause or count a hand-over. */
   readonly wrap?: (custody: AgentCustody) => AgentCustody;
+  /** Custody holds a bearer key for a stand-in OpenRouter, and the agent its reference. */
+  readonly paid?: boolean;
 }
 
 function heardOn(line: Line, keys: ReturnType<typeof keysOf>, k: string): Heard[] {
@@ -146,7 +159,7 @@ async function untilHeard(heard: readonly Heard[], event: string, n: number, ms:
   return heard.filter((each) => each.event === event);
 }
 
-function writeNoneCredential(folder: string): string {
+function writeNoneCredential(folder: string, paid: boolean): string {
   const file = join(folder, 'credentials.json');
   const entry = {
     ref: 'ollama_key',
@@ -155,7 +168,16 @@ function writeNoneCredential(folder: string): string {
     destination: 'ollama',
     scheme: 'none',
   };
-  writeFileSync(file, JSON.stringify([entry]), { mode: 0o600 });
+  const bearer = {
+    ref: 'openrouter',
+    kind: 'api_key',
+    account: 'agency-astro-openrouter',
+    destination: 'openrouter',
+    header: 'authorization',
+    scheme: 'bearer',
+    value: BEARER,
+  };
+  writeFileSync(file, JSON.stringify(paid ? [entry, bearer] : [entry]), { mode: 0o600 });
   return file;
 }
 
@@ -164,15 +186,33 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
   const folder = mkdtempSync(join(tmpdir(), 'model-agent-'));
   const ollama = await ollamaOnLoopback();
   ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
+  const paid = options.paid === true;
+  const openrouter = paid ? await standInOpenRouter() : undefined;
   const custody = await startCustody({
-    credentialsFile: writeNoneCredential(folder),
-    destinations: [{ key: 'ollama', origin: ollama.origin }],
+    credentialsFile: writeNoneCredential(folder, paid),
+    destinations: [
+      { key: 'ollama', origin: ollama.origin },
+      ...(openrouter === undefined
+        ? []
+        : [{ key: 'openrouter', origin: openrouter.origin, stream: 'openai_sse' as const }]),
+    ],
   });
+  if (openrouter !== undefined) {
+    openrouter.answer = (request) => ({
+      status: 200,
+      chunks: sse(String(request.body['model']), WORDS),
+    });
+  }
   const handed: OutboundRequest[] = [];
+  // Each request under its own destination's credential, as the agent's process maps them.
+  const mapped = agentCustody(
+    { credentialRef: 'ollama_key', ...(paid ? { openrouterCredentialRef: 'openrouter' } : {}) },
+    custody,
+  );
   const counted: AgentCustody = {
     dispatch: async (request, gate, onPiece) => {
       handed.push(request);
-      return await custody.dispatchBefore('ollama_key', request, gate, onPiece);
+      return await mapped.dispatch(request, gate, onPiece);
     },
   };
   const keyValues = options.keys ?? [carryKey()];
@@ -233,6 +273,7 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
   };
   return {
     ollama,
+    openrouter,
     carriage,
     custody,
     agent: started,
@@ -247,6 +288,7 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
       for (const line of lines) await line.leave(); // oxlint-disable-line no-await-in-loop
       await custody.stop();
       await ollama.close();
+      await openrouter?.close();
       rmSync(folder, { recursive: true, force: true });
     },
   };
