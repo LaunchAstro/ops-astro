@@ -34,6 +34,8 @@ const HARNESS = 'tests/support/fresh-database.ts';
 const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/api/server-onerror.test.ts': 'skips without SURFACE_API_PORT',
   'tests/cli/mounted-cli.test.ts': 'skips without SURFACE_API_PORT',
+  'tests/api/reset-audit-target.test.ts':
+    'skips without RESET_AUTH_URL and RESET_AUTH_KEYS (a pinned GoTrue)',
   'tests/api/reset-begin-changed.test.ts':
     'skips without RESET_AUTH_URL and RESET_AUTH_KEYS (a pinned GoTrue)',
   'tests/api/reset-ends-sessions.test.ts':

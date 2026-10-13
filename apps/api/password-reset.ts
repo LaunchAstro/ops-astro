@@ -22,8 +22,9 @@
 //   nowhere, or a window already settled; 403 `RESET_NEEDS_SUPPORT` for a
 //   login with a verified authenticator.
 // - `POST /api/password/changed` `{ password }`, with the same bearer. The
-//   session's open window, with room before its bound for the write, or 401
-//   `RESET_LINK_INVALID`. Then the password is written: the provider's
+//   session's open window, with room before its bound for the write, and the
+//   person the login maps, whom the write is audited as, or 401
+//   `RESET_LINK_INVALID` and nothing written. Then the password is written: the provider's
 //   `PUT /user` on the same bearer, from its own origin, following no
 //   redirect. Its 200 naming the login is the one confirmation, so a write of
 //   anything else (the login's metadata) confirms nothing. 422
@@ -40,8 +41,8 @@ import { bodyLimit } from 'hono/body-limit';
 import {
   beginPasswordReset,
   requestPasswordReset,
+  resetWriteTargetOf,
   settlePasswordReset,
-  writableWindowOf,
   type BeginCode,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -209,9 +210,8 @@ async function changed(
   const bearer = await sessionOf(context, verify);
   if (bearer instanceof Response) return bearer;
   const password = await passwordOf(context.req.raw);
-  if (!(await writableWindowOf(database, bearer))) {
-    return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-  }
+  const target = await resetWriteTargetOf(database, bearer);
+  if (target === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
   if (password === undefined) return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
   const written = await askUser(providerOf(options), bearer.token, { password });
   if (written !== 'unreachable' && written.status === 422) {
@@ -224,7 +224,7 @@ async function changed(
   ) {
     return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
   }
-  await settlePasswordReset(database, bearer);
+  await settlePasswordReset(database, bearer, target);
   return context.json({}, 200);
 }
 

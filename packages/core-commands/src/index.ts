@@ -130,13 +130,14 @@ export {
 } from './commands/account-factor-provider.ts';
 export {
   beginPasswordReset,
-  writableWindowOf,
   requestPasswordReset,
   RESET_AUDIT_COMMAND,
+  resetWriteTargetOf,
   settlePasswordReset,
   type BeginCode,
   type BeginResult,
   type RecoverySession,
+  type ResetAuditTarget,
 } from './commands/password-reset.ts';
 export {
   ACCEPT_OPERATION,

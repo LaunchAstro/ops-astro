@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Password reset on the login provider's one-time recovery session. The
-// person's browser writes the password to the provider; nothing here sees
+// Password reset on the login provider's one-time recovery session. The API's
+// `changed` route takes the new password and writes it at the provider on
+// that same session (`askUser`), never with an admin key; nothing here sees
 // one. These steps record the request, open the reset's window before the
-// browser's write, and settle it after.
+// route's write, name whom the write is audited as, and settle it after.
 //
 // 1. Request. Every address takes the same statement
 //    (`ops.password_reset_request`, 20261013060059), which counts and inserts
@@ -27,13 +28,16 @@
 //    bound is asked about at the provider (`ops.reset_write_open`), since the
 //    recovery session, refreshed, can write for as long as the provider
 //    keeps it.
-// 3. Settle, once the route's own password write is acknowledged, made only
-//    while the window has `WRITE_ROOM_SECONDS` before its bound: in
-//    the database clock's next whole second, under the login's ending keys,
-//    the session's window settles, its reset with it, and the first business
-//    the login is mapped in audits `account.password_reset` once, as the
-//    person it maps there, with a digest alone. A window already settled
-//    settles nothing and audits nothing.
+// 3. Before the write: the session's window, with `WRITE_ROOM_SECONDS`
+//    before its bound, and the first business the login is mapped in live,
+//    with the person it maps there (`resetWriteTargetOf`). With either
+//    missing, nothing is written. A mapping that ends while the write is out
+//    leaves that person the reset's audit target.
+// 4. Settle, once the route's own password write is acknowledged: in the
+//    database clock's next whole second, under the login's ending keys, the
+//    session's window settles, its reset with it, and the target's business
+//    audits `account.password_reset` once, as that person, with a digest
+//    alone. A window already settled settles nothing and audits nothing.
 
 import { createHash } from 'node:crypto';
 import {
@@ -148,13 +152,11 @@ export async function beginPasswordReset(
   });
 }
 
-/** Whether the session's window is open with room before its bound for the password write. */
-export async function writableWindowOf(
-  database: Database,
-  session: RecoverySession,
-): Promise<boolean> {
-  const held = await database.withBusiness(NO_BUSINESS, async (tx) => await windowOf(tx, session));
-  return held?.writable === true;
+/** Whom a password write is audited as: the person the login mapped when it was made. */
+export interface ResetAuditTarget {
+  readonly business: string;
+  readonly actorId: string;
+  readonly personId: string;
 }
 
 /** The person the login maps in the transaction's business, and their acting identity. */
@@ -177,16 +179,34 @@ async function mappedPerson(
   return found;
 }
 
-/** Step 3: settle the session's window once, auditing once; a settled one is left alone. */
+/**
+ * Step 3: the audit target of the password write, read before it is made, or
+ * none: no window open with room before its bound, or a login mapped nowhere.
+ */
+export async function resetWriteTargetOf(
+  database: Database,
+  session: RecoverySession,
+): Promise<ResetAuditTarget | undefined> {
+  const business = await database.withBusiness(NO_BUSINESS, async (tx) =>
+    (await windowOf(tx, session))?.writable === true
+      ? await mappedIn(tx, session.subject)
+      : undefined,
+  );
+  if (business === undefined) return undefined;
+  const person = await database.withBusiness(
+    business,
+    async (tx) => await mappedPerson(tx, session.subject),
+  );
+  return person && { business, actorId: person.actor_id, personId: person.person_id };
+}
+
+/** Step 4: settle the session's window once, auditing once as `target`; a settled one is left alone. */
 export async function settlePasswordReset(
   database: Database,
   session: RecoverySession,
+  target: ResetAuditTarget,
 ): Promise<void> {
-  const business = await database.withBusiness(
-    NO_BUSINESS,
-    async (tx) => await mappedIn(tx, session.subject),
-  );
-  await waitForNextSecond(database, business ?? NO_BUSINESS, async (tx) => {
+  await waitForNextSecond(database, target.business, async (tx) => {
     // A settle ends sessions signed in after the window's bound too, so a
     // write that read one of the login's sessions live commits first (C52-A).
     await holdSubjectEnding(tx, session.subject);
@@ -198,14 +218,12 @@ export async function settlePasswordReset(
     );
     if (settled === undefined) return;
     await settleResetWindow(tx, settled.reset_id);
-    const person = business === undefined ? undefined : await mappedPerson(tx, session.subject);
-    if (person === undefined) return;
     await writeAuditEvent(tx, {
-      actorId: person.actor_id,
+      actorId: target.actorId,
       command: RESET_AUDIT_COMMAND,
       outcome: 'applied',
       refusalCode: null,
-      payloadDigest: payloadDigest({ command: RESET_AUDIT_COMMAND, person: person.person_id }),
+      payloadDigest: payloadDigest({ command: RESET_AUDIT_COMMAND, person: target.personId }),
     });
   });
 }
