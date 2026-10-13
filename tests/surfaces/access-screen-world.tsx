@@ -113,7 +113,6 @@ export function server(
   invitations: readonly unknown[] = [],
 ) {
   const calls: Call[] = [];
-  /** Each `invitation.list` asked (C39-T), kept apart from the commands. */
   const lists: string[] = [];
   let read = 0;
   const answers = manages(grants) ? reads : [refusal('SCOPE_NOT_GRANTED', 403)];

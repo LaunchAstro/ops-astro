@@ -880,10 +880,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['conversationId'],
   }),
 
-  // C39-T: `access:share` on the whole business, a person's key no agent holds
-  // (the permission key catalogue). Another business's invitation is
-  // NOT_FOUND from the handler, as an id nobody issued. An administrator's
-  // invitation, created or resent, also asks `access:manage` in the handler.
+  // C39-T: `access:share` on the whole business, a person's key no agent holds, and the list
+  // reads under it too. Another business's invitation is NOT_FOUND from the handler, as an id
+  // nobody issued; an administrator's, created or resent, also asks `access:manage` there.
   ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
     declare(name, 'share', {
       collection: 'access',
@@ -891,8 +890,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
     }),
   ),
-  // C39-T: the business's invitations for Settings ▸ Access, under the key
-  // their acts take, `access:share`; never an agent's.
   read('invitation.list', 'access', { action: 'share' }),
   // Settings ▸ Workflow triggers (C33). The registry is a business fact read
   // like `settings.read`; an activation is changed under `settings:manage` and

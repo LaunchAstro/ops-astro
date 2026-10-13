@@ -275,12 +275,10 @@ export type CommandName =
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
   | 'harness.read'
-  // C39-T: a team invitation made, sent again and withdrawn under
-  // `access:share`; its expiry is the business's worker's, never a command.
+  // C39-T: team invitations under `access:share`; expiry is the worker's, never a command.
   | 'invitation.create'
   | 'invitation.resend'
   | 'invitation.revoke'
-  // C39-T: the business's invitations for Settings ▸ Access, under the same key.
   | 'invitation.list'
   // Settings ▸ Workflow triggers (C33): the registry is one read by
   // `settings:read`; changing an activation is `settings:manage` and releasing
