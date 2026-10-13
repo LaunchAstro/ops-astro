@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "with Realtime installed the carriage policies ask the one join function, send on call topics only; without it, none are written"
+}
