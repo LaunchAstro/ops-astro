@@ -52,8 +52,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // column, which stays refused; s0-5-gate-commands proves the column.
   ['s', 'ops.installation'],
   ['si', 'ops.gate_items'],
-  // 0061 (C58): an ended provider session, installation-wide; the application
-  // inserts and reads its id column alone, and changes or removes nothing.
+  // 0061 (C58): an ended provider session, installation-wide; the app inserts and reads its id.
   ['si', 'ops.ended_provider_sessions'],
   // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
@@ -107,8 +106,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
-  // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
-  ['si', 'enrolment_tokens invitation_delivery_attempts'],
+  // C39-T (20261005154858, 20261013053949): attempt, token and owed login, written once.
+  ['si', 'enrolment_tokens invitation_delivery_attempts login_provisions'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
@@ -124,8 +123,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0051 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0052 (C81): a row of the overseas-services register is set by insert or
-  // update; never deleted.
+  // 0052 (C81): an overseas-services register row is set by insert or update; never deleted.
   ['siu', 'overseas_services'],
   // 0053 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
@@ -244,6 +242,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // C39-T (20261013053949): the accept's token lookup, three ids for one hash.
+  'public.enrolment_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.

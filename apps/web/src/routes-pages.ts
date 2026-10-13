@@ -24,6 +24,15 @@ export const PAGE_ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // A team invitation's one-time link (C39-T): the token is in the fragment,
+  // so the address the registry matches is the page alone, with no sign-in.
+  'agency:enrol': {
+    namespace: 'agency',
+    path: '/enrol/',
+    title: 'Join your team',
+    surface: 'none',
+    authenticated: false,
+  },
   // A forgotten password, signed out: ask for a link, then set one from it. The
   // provider's one-time hash is in the fragment, so the address matched is the page alone.
   'agency:reset': {

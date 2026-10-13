@@ -546,6 +546,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     token_id: randomUUID(),
     state: 'asked',
   },
+  'public.login_provisions': { invitation_id: randomUUID(), login_id: randomUUID() },
   // C40B: nothing on the journey asks for a password reset.
   'public.password_reset_tokens': {
     login_id: randomUUID(),

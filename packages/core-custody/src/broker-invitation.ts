@@ -53,7 +53,7 @@ import { isLoopbackMock } from './email-mock-custody.ts';
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
 
-/** Where the link lands: the enrolment page, with the token as its last segment. */
+/** Where the link lands: the enrolment page, with the token in its fragment, never sent to a server. */
 export const ENROL_PATH = '/enrol/';
 
 /**
@@ -211,7 +211,7 @@ async function deliver(
   sent: { readonly mail: MailSettings; readonly asked: Asked },
 ): Promise<InvitationSendResult> {
   const { mail, asked } = sent;
-  const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
+  const link = new URL(`${ENROL_PATH}#${asked.token}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address: link });
   const read = lapsed(asked.reserved)
     ? ({ state: 'failed', evidence: 'expired' } as const)
