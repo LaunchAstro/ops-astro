@@ -258,9 +258,7 @@ async function settleAndKeep(
   );
   if (call === undefined || !ANSWERABLE.has(call.state)) return await settleLost(tx, asked);
   if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
-  if (settlement.kind === 'nothing') {
-    return await release(tx, reserved, settlement.reason, broker);
-  }
+  if (settlement.kind === 'nothing') return await release(tx, reserved, settlement.reason, broker);
   const { costMinor, answer } = settlement;
   const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
   if (observed === null || observed < 0 || observed > reserved.reservedMinor) {
@@ -270,6 +268,8 @@ async function settleAndKeep(
   // A carried call settles only through its fence: the runner sent to, before its `answer_by`.
   const { custody } = broker;
   if (custody.fenceIn !== undefined && !(await custody.fenceIn(tx, reserved.callId))) {
+    // Already held by the sweep: the most stays held, and the cost it reported is still recorded.
+    if (call.state === 'liability_unknown') return await settleLost(tx, asked);
     return await hold(tx, reserved, observed, { kind: 'unknown', ...WORKER_LOST }, broker);
   }
   if (keep === undefined || !(await keep(answer.text))) {

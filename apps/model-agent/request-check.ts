@@ -12,6 +12,7 @@ import {
   OLLAMA_MODELS,
   OLLAMA_PATH,
   OPENROUTER_CONVERSATION,
+  OPENROUTER_BODY_LIMIT,
   OPENROUTER_MAX_TOKENS,
   OPENROUTER_PATH,
   openrouterModel,
@@ -38,8 +39,16 @@ export const same = (keys: string, wanted: string): boolean =>
 
 export const keysOf = (value: object): string => Object.keys(value).toSorted().join();
 
-/** OpenRouter's pinned chat, key order aside: an offered model at its own prices, the instructions first. */
-function paidChat(chat: Record<string, unknown>): boolean {
+/**
+ * OpenRouter's pinned chat: an offered model at its own prices, the instructions
+ * first. The body sent is the one checked: exactly its own serialisation, so no
+ * key named twice or other spelling can carry a value unread here, and within
+ * the bytes every hold is worked from.
+ */
+function paidChat(chat: Record<string, unknown>, body: string): boolean {
+  if (JSON.stringify(chat) !== body || Buffer.byteLength(body) > OPENROUTER_BODY_LIMIT) {
+    return false;
+  }
   const model = openrouterModel(String(chat['model']));
   const turns = chat['messages'];
   const valid =
@@ -97,7 +106,7 @@ export function chatOf(request: unknown): OutboundRequest | undefined {
   }
   if (typeof chat !== 'object' || chat === null || Array.isArray(chat)) return undefined;
   if (asked.destination !== 'ollama')
-    return paidChat(chat as Record<string, unknown>) ? asked : undefined;
+    return paidChat(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   const { model, messages, stream, think } = chat as Record<string, unknown>;
   const offered = (OLLAMA_MODELS as readonly unknown[]).includes(model);
   const ok =
