@@ -25,6 +25,8 @@ let runbookPath: string;
 let termsPath: string;
 const RUNBOOK_WORDS = 'The containment instruction: disconnect the affected machine.';
 const TERMS_WORDS = 'The first terms publication: a fixed client promise.';
+/** Every request the app sent, answered or not. */
+const sent: Promise<Response>[] = [];
 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
@@ -48,6 +50,11 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  // A test ends once its screen shows, while the app's other reads (the
+  // person, preferences, inbox count) are still on their way. Closing the
+  // database under them threw a closed-connection rejection outside every
+  // test, a red run with every test green, so they are answered first.
+  await Promise.allSettled(sent);
   if (serverUrl !== undefined) await closeLegal();
 });
 
@@ -79,7 +86,9 @@ async function open(path: string, signedIn: boolean) {
     if (signedIn && !String(url).startsWith('/api/public/')) {
       headers.set('authorization', `Bearer ${harness.world.noah.token}`);
     }
-    return harness.world.api.request(String(url), { ...init, headers });
+    const response = Promise.resolve(harness.world.api.request(String(url), { ...init, headers }));
+    sent.push(response);
+    return response;
   }) as typeof globalThis.fetch;
   const view = await mount(
     <App
