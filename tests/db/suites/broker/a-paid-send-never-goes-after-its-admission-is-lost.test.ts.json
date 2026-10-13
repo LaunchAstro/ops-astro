@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid send whose admission connection is lost before custody starts it: a revocation committed after that loss must leave OpenRouter with no request"
+}
