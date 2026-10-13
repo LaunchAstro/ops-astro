@@ -244,6 +244,7 @@ export async function createHarness(part: string): Promise<Harness> {
     inviter: () => inviter,
     asAgent,
     freshTask,
+    bindClientSite: taskBodyContext(world, alphaTask.id).bindClientSite,
     probeBody,
     positiveBody: createPositiveBody({
       ...taskBodyContext(world, alphaTask.id),

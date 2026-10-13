@@ -133,7 +133,9 @@ const C80_REQUEST_ROW = {
 export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
   taskId: string,
-): Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'> => ({
+): Required<
+  Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
+> => ({
   alphaTaskId: taskId,
   adminPersonId: world.ada.personId as string,
   seedCorrection: async () =>
