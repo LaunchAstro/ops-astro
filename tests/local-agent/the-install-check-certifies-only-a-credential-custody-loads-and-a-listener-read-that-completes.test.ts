@@ -72,6 +72,10 @@ it('the install check refuses a credential file custody cannot load', () => {
     result.status,
     'custody refuses this file, so install preflight must refuse it too',
   ).not.toBe(0);
+  // The check ran and refused for custody's reason, not because it is missing.
+  expect(result.stderr).toContain(
+    'gpt runner install check: custody refuses the credential file (CREDENTIAL_NOT_STORABLE)',
+  );
 });
 
 it('a failed listener inspection cannot certify a public listener as loopback', async () => {
@@ -104,6 +108,9 @@ it('a failed listener inspection cannot certify a public listener as loopback', 
     const result = checked(files, bin);
     expect(result.error).toBeUndefined();
     expect(result.status, 'the check could not inspect a real public listener').not.toBe(0);
+    expect(result.stderr).toContain(
+      'gpt runner install check: the listeners on the runner’s port could not be read',
+    );
   } finally {
     await new Promise<void>((done) => {
       server.close(() => done());

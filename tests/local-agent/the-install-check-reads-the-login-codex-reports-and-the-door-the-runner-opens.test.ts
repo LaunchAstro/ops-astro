@@ -104,4 +104,7 @@ it('the install check refuses a credential that cannot authenticate at the runne
     checked.status,
     'an installation that always receives HTTP 401 must fail preflight',
   ).not.toBe(0);
+  expect(checked.stderr).toContain(
+    'gpt runner install check: custody holds no credential, or another, for the runner’s door',
+  );
 });

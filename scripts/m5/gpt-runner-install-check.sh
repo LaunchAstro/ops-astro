@@ -24,7 +24,7 @@ set -eu
 root=$(cd "${0%/*}/../.." && pwd)
 node --input-type=module - "$root" "${1:?settings file}" "${2:?credential file}" <<'JS'
 import { spawnSync } from 'node:child_process';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -80,8 +80,11 @@ for (const path of [settingsFile, credentialFile, home, codexHome]) {
   const opened = darwin ? entries.some((entry) => / allow /u.test(entry)) : first.split(/\s/u)[0].endsWith('+');
   if (opened) fault('an access list lets others into a runner file or home');
 }
-for (let dir = home; dir !== dirname(dir); dir = dirname(dir)) {
-  if (present(join(dir, '.git'))) fault('the runner home is inside a git checkout');
+// Both the path as named and the real one: a linked ancestor can hide the checkout git finds.
+for (const named of [home, realpathSync(home)]) {
+  for (let dir = named; dir !== dirname(dir); dir = dirname(dir)) {
+    if (present(join(dir, '.git'))) fault('the runner home is inside a git checkout');
+  }
 }
 // Codex reads instructions from its home and its working folder; a dangling link counts.
 const planted = () => {
