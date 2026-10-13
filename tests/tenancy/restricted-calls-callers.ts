@@ -25,6 +25,7 @@ import {
   asRole,
 } from './restricted-calls-cases.ts';
 import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import { CARRIAGE_BARE_FROM, CARRIAGE_BEFORE_ROW } from './restricted-calls-carriage.ts';
 import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
 
 /**
@@ -210,6 +211,7 @@ export function expectedOutcome(
  */
 export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
   'public.delegations': 'constraint',
+  ...CARRIAGE_BEFORE_ROW,
 };
 
 /**
@@ -223,6 +225,7 @@ const BARE_INSERT_REFUSALS_FROM: Readonly<
   Record<string, { readonly from: string; readonly outcome: string }>
 > = {
   'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
+  ...CARRIAGE_BARE_FROM,
 };
 
 function beforeRowRefusal(qualified: string, at: string | undefined, copy: boolean) {

@@ -12,9 +12,9 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
+import { PART_EXECUTES, PART_GROUPS } from './restricted-calls-mandates.ts';
 import { RESET_EXECUTES, RESET_GROUPS } from './restricted-calls-reset.ts';
-export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
+export { MANDATE_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -190,7 +190,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  ...MANDATE_GROUPS,
+  ...PART_GROUPS,
   ...RESET_GROUPS,
 ];
 
@@ -248,7 +248,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.take_lease',
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
-  ...MANDATE_EXECUTES,
+  ...PART_EXECUTES,
   ...RESET_EXECUTES,
   'public.priority_stage_ids_valid',
 ];

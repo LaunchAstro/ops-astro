@@ -2,27 +2,24 @@
 //
 // What a caller sends to read, and what comes back.
 //
-// A read is not a small write. It carries no `operation_id`, because there is
-// nothing to replay, and no `expected_revision`, because there is nothing to be
-// stale against. Giving it either would have made the envelope's two strongest
-// rules -- every mutation is identified, every write names the revision it is
-// writing against -- into things some operations have and some do not, which is
-// how a rule becomes a convention.
+// A read is not a small write. It carries no `operation_id`, because there is nothing to
+// replay, and no `expected_revision`, because there is nothing to be stale against. Giving it
+// either would have made the envelope's two strongest rules -- every mutation is identified,
+// every write names the revision it is writing against -- into things some operations have
+// and some do not, which is how a rule becomes a convention.
 //
-// What a read does share with a write is everything about who is asking: the
-// business comes from the path and is verified server-side, the actor from the
-// resolved login, and the grant check is the same `checkAuthority` the commands
-// use. A denied read says `SCOPE_NOT_GRANTED`; it never comes back as an empty
-// list, because empty and denied are different answers.
+// What a read does share with a write is everything about who is asking: the business comes
+// from the path and is verified server-side, the actor from the resolved login, and the grant
+// check is the same `checkAuthority` the commands use. A denied read says `SCOPE_NOT_GRANTED`;
+// it never comes back as an empty list, because empty and denied are different answers.
 //
 // A read does write an audit event. See `dispatch.ts`.
 //
-// What a read *has* gained is the commands' D06 refusal. A payload naming a
-// fact the server owns -- `actor_id`, `business_id`, `updated_at` and the rest
-// of `prepare.ts`'s `SYSTEM_OWNED_FIELDS` -- is `FIELD_NOT_WRITABLE`, naming
-// the keys. Ignoring it is the answer the accepted ledger rules out: a client
-// that believed it had set `actor_id` would get a `200` and no correction, so
-// the bug would live in the client.
+// What a read *has* gained is the commands' D06 refusal. A payload naming a fact the server
+// owns -- `actor_id`, `business_id`, `updated_at` and the rest of `prepare.ts`'s
+// `SYSTEM_OWNED_FIELDS` -- is `FIELD_NOT_WRITABLE`, naming the keys. Ignoring it is the answer
+// the accepted ledger rules out: a client that believed it had set `actor_id` would get a
+// `200` and no correction, so the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
@@ -40,6 +37,7 @@ import type {
   InboxCountResult,
   InboxReadResult,
   LiveCorrectionReadResult,
+  InvitationListResult,
   PersonListResult,
   TagListResult,
   AgentMineResult,
@@ -225,6 +223,7 @@ export interface ReadOperands {
   readonly 'harness.read': { readonly runId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
+  readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
 }
@@ -283,6 +282,7 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | LiveCorrectionReadResult
+  | InvitationListResult
   | MapViewResult
   | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }

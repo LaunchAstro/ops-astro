@@ -45,6 +45,7 @@
     "licences": "node scripts/licences/check.mjs",
     "licences:cases": "bash tests/licences/licence-cases.sh",
     "check": "node scripts/check.mjs",
+    "check:records": "node scripts/check-records.ts",
     "prepare": "husky && sh scripts/hook-dispatch.sh",
     "provenance:cases": "node --test tests/ci/provenance-cases.mjs",
     "candidate:cases": "node --test tests/ci/candidate-cases.mjs",

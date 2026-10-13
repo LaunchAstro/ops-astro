@@ -37,11 +37,8 @@ export {
   type InvitationSendResult,
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
-export {
-  callModelInConversation,
-  type ConversationCallRequest,
-  type ConversationScope,
-} from './broker-conversation.ts';
+export { callModelInConversation } from './broker-conversation.ts';
+export type { ConversationCallRequest, ConversationScope } from './broker-conversation-types.ts';
 export {
   callModelForPlanning,
   PLANNING_CAP_DEFAULT,
@@ -88,6 +85,7 @@ export {
   type Broker,
   type BrokerRefusal,
   type BrokerRoute,
+  type Carrier,
   type ClaimedField,
   type ModelCaller,
   type ModelCallField,

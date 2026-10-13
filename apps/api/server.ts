@@ -67,8 +67,10 @@ import {
   type ConversationExchange,
   type ModelCallExecutor,
   admitReads,
+  withCarrier,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
+import type { Carrier } from '../../packages/core-custody/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
   crashSeamProblem,
@@ -95,6 +97,7 @@ import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { mountPasswordReset } from './password-reset.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { carrierSettings } from './model-carrier.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
@@ -230,6 +233,8 @@ export interface ApiConfig {
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
   readonly answerConversation?: ConversationExchange;
+  /** The model agent that carries this deployment's conversations (#1531); absent, none joins. */
+  readonly carrier?: Carrier;
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
@@ -270,6 +275,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // And its carrier (#1531), which the conversation commands read from their context.
+  server.use(async (_context, next) => await withCarrier(config.carrier, next));
   // Each request charged once to its quotas, after login resolution admits it.
   const quota = createQuotaGate(config.quota);
   server.use(async (_context, next) => await withQuotaScope(quota, next));
@@ -546,7 +553,14 @@ async function main(): Promise<void> {
   const topics = await startLiveTopics(connectListener(listenUrl));
   // The credential broker (AW-01): custody's own process, started only from a
   // complete configuration. None configured, `model.call` answers 501.
-  const brokerConfig = brokerSettings(environment);
+  // A carried deployment (#1531) starts no custody process: its broker is the carriage's.
+  const carried = carrierSettings(environment);
+  if (carried.kind === 'invalid') {
+    console.error(`api: ${carried.problem}`);
+    process.exit(1);
+  }
+  const brokerConfig =
+    carried.kind === 'carried' ? ({ kind: 'absent' } as const) : brokerSettings(environment);
   if (brokerConfig.kind === 'invalid') {
     console.error(`api: ${brokerConfig.problem}`);
     process.exit(1);
@@ -602,6 +616,7 @@ async function main(): Promise<void> {
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
+    ...(carried.kind === 'carried' ? { carrier: carried.carrier } : {}),
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,

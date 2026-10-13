@@ -181,6 +181,10 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['RATE_LIMITED', 409, 'caller'],
   ['COPY_NOT_REGISTERED', 409, 'caller'],
   ['LIABILITY_UNKNOWN', 409, 'caller'],
+  // #1531: one call per message, and carried calls.
+  ['STILL_ANSWERING', 409, 'caller'],
+  ['ANSWER_ENDED', 409, 'caller'],
+  ['CARRIAGE_UNAVAILABLE', 409, 'caller'],
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],

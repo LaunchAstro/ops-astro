@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T isolation and token canary on invitation.list: a holder of access:share lists its own business's invitations with expired derived from the lifetime, another business's are never listed or counted, no token or hash is in the answer, and no key, a client-scoped key or an agent is refused"
+}
