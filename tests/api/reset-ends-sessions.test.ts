@@ -55,8 +55,7 @@ withProvider(
     await linkMinted(person);
     const recovery = await linkSession(person);
     expect((await begin(recovery)).status).toBe(200);
-    expect((await writePassword(recovery, NEW_PASSWORD)).status).toBe(200);
-    expect((await changed(recovery)).status).toBe(200);
+    expect((await changed(recovery, NEW_PASSWORD)).status).toBe(200);
     // The provider stamps a sign-in in whole seconds; the next one is past the settle.
     await delay(1100);
     const fresh = await signIn(person, NEW_PASSWORD);

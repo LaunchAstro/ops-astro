@@ -48,7 +48,6 @@ function fakeNetwork(asked: Asked[]): typeof globalThis.fetch {
     if (url === `${PROVIDER}/verify`) {
       return reply(200, { access_token: ACCESS, user: { id: SUBJECT } });
     }
-    if (url === `${PROVIDER}/user`) return reply(200, { id: SUBJECT });
     if (url.startsWith(`${PROVIDER}/logout`)) return reply(204);
     if (url.endsWith('/api/password/reset')) return reply(202, {});
     return reply(200, {});
@@ -91,14 +90,17 @@ it('clears the link from the address before its first request, and signs nobody 
   expect(asked.map((one) => `${one.method} ${one.url}`)).toStrictEqual([
     `POST ${PROVIDER}/verify`,
     'POST /api/password/begin',
-    `PUT ${PROVIDER}/user`,
     'POST /api/password/changed',
     `POST ${PROVIDER}/logout?scope=global`,
   ]);
   expect(asked.every((one) => one.hashThen === '')).toBe(true);
   expect(asked[0]?.body).toContain(HASH);
-  // The password went to the provider alone.
-  expect(asked.filter((one) => one.body.includes('a-new-password-for-reset'))).toHaveLength(1);
+  // The password went once, to the API's changed, which writes it on the session.
+  expect(
+    asked
+      .filter((one) => one.body.includes('a-new-password-for-reset'))
+      .map((one) => `${one.method} ${one.url}`),
+  ).toStrictEqual(['POST /api/password/changed']);
   expect(page.find('[data-outcome="changed"]')).not.toBeNull();
   expect(page.find('a[href="/sign-in"]')).not.toBeNull();
   // Nobody is signed in: nothing kept in the tab, no cookie set.

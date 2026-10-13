@@ -32,8 +32,10 @@ export {
   NO_ASSURANCE,
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
+  attachSessionProbe,
   type Assurance,
   type AssuranceLevel,
+  type SessionProbe,
 } from './verified-subject.ts';
 export {
   factorDigest,

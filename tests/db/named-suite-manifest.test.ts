@@ -38,6 +38,8 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'skips without RESET_AUTH_URL and RESET_AUTH_KEYS (a pinned GoTrue)',
   'tests/api/reset-ends-sessions.test.ts':
     'skips without RESET_AUTH_URL and RESET_AUTH_KEYS (a pinned GoTrue)',
+  'tests/api/reset-late-write.test.ts':
+    'skips without RESET_AUTH_URL and RESET_AUTH_KEYS (a pinned GoTrue)',
   'tests/runtime/aw-13-local-target.test.ts':
     'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',

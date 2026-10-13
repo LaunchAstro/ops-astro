@@ -27,14 +27,16 @@ export const DROPPED_TABLES: Readonly<Record<string, string>> = {
 
 /**
  * Executed: C40B's token lookup, two ids for one hash, until 20261013060059 drops it; then a
- * reset request counted and recorded under its limits, a minted recovery link consumed, and
- * the first business a login is mapped in.
+ * reset request counted and recorded under its limits, a minted recovery link consumed, the
+ * first business a login is mapped in, and whether an unsettled window's password write could
+ * outlive a session (security invoker, so it reads no more than its caller may).
  */
 export const RESET_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   'ops.password_reset_request',
   'ops.recovery_link_consume',
   'ops.recovery_subject_business',
+  'ops.reset_write_open',
 ];
 
 /** Update by column: C40B's token is spent by `spent_at` alone, until the table is dropped. */
@@ -67,10 +69,12 @@ export const RESET_GRANTS: readonly { readonly from: string; readonly line: stri
   ...windowGrants('ops.recovery_resets', '20261013060059', [
     ['INSERT', 'reset_id'],
     ['INSERT', 'session_digest'],
+    ['INSERT', 'write_until'],
     ['SELECT', 'opened_at'],
     ['SELECT', 'reset_id'],
     ['SELECT', 'session_digest'],
     ['SELECT', 'settled_at'],
+    ['SELECT', 'write_until'],
     ['UPDATE', 'settled_at'],
   ]),
 ];

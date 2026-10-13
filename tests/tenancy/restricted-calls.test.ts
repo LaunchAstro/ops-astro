@@ -709,7 +709,7 @@ const DEFINERS: readonly string[] = [
   'ops.expire_second_factor_codes()',
   'ops.password_reset_request(text,text)',
   'ops.record_tested_restore()',
-  'ops.recovery_link_consume(text,timestamp with time zone)',
+  'ops.recovery_link_consume(text,timestamp with time zone,timestamp with time zone)',
   'ops.recovery_subject_business(text)',
   'ops_carry_may_join(text)',
   'ops_carry_ring(uuid,uuid,uuid,uuid)',
@@ -1072,7 +1072,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // 20261013060059: the password reset's three definers, each fired by nothing.
   it.each([
     ['ops.password_reset_request(text,text)', ['search_path=pg_catalog']],
-    ['ops.recovery_link_consume(text,timestamp with time zone)', ['search_path=pg_catalog']],
+    [
+      'ops.recovery_link_consume(text,timestamp with time zone,timestamp with time zone)',
+      ['search_path=pg_catalog'],
+    ],
     ['ops.recovery_subject_business(text)', ['search_path=pg_catalog, public', 'row_security=off']],
   ])("the password reset's definer %s pins its search path", (signature, config) => {
     const fn = functions.find((each) => each.definer && each.signature === signature);
