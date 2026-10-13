@@ -3182,8 +3182,10 @@ id (`apps/web/src/screens/settings/sessions.tsx`).
 
 A forgotten password is reset on the login provider's one-time recovery
 session (`apps/api/password-reset.ts`, mounted by `composeApi` always, outside
-the business prefix). The person's browser writes the new password straight
-to the provider; no product code, process or table sees one. Answers carry a
+the business prefix). The page sends the new password to the API's `changed`,
+which writes it at the provider on the person's own recovery session, never
+with an admin key. The password passes through that one route on its way to
+the provider; no table, log, answer or audit row holds it. Answers carry a
 code alone, and nothing is logged.
 
 `POST /api/password/reset` with `{ email }` asks for a link and needs no
@@ -3237,7 +3239,9 @@ session), the door asks the provider
 no provider to ask, refuses such a session.
 
 `changed` takes the new password and finds the session's open window with at
-least 30 seconds before its bound (otherwise 401). It writes the password
+least 30 seconds before its bound, and the first business the login is mapped
+in live, with the person mapped there. Without either it is 401 and writes
+nothing. It writes the password
 itself on the same bearer, the provider's `PUT /user`, from its own origin,
 following no redirect; no admin key, and the password is kept, logged and
 answered nowhere. That write's own 200 naming the login is the one
@@ -3245,13 +3249,17 @@ confirmation: with no password, or any other answer, it is 409
 `RESET_NOT_CONFIRMED` and the window is left to its bound, and a password the
 provider refuses is 422 `RESET_PASSWORD_REFUSED`, the window kept for another
 try. Otherwise, in the database clock's next whole second, the window
-settles once and `account.password_reset` is audited once, in the first
-business the login is mapped in, as the person mapped there, with a digest
-alone. A retry settles nothing and audits nothing. A sign-in after the settle
+settles once and `account.password_reset` is audited once, as the person
+found before the write, in that business, with a digest alone, even when the
+mapping ended while the write was out. A retry settles nothing and audits
+nothing. A sign-in after the settle
 is served.
 
 The page then signs out everywhere at the provider (`POST /logout?scope=global`,
-204 only, tried again three times) and sends the person to sign in. Every
+204 only, tried again three times) and sends the person to sign in. A session
+of the same login that the tab still held, which the window ended, is
+forgotten first, so sign-in asks for the new password; another login's
+session in the tab is left alone. Every
 browser call uses `redirect: 'error'`, and a provider answer counts only from
 the provider's origin (`apps/web/src/session/recovery.ts`). 503
 `RESET_UNAVAILABLE` is the provider's keys or its user out of reach;

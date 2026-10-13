@@ -3,11 +3,11 @@
 -- Password reset on the login provider's one-time recovery session.
 --
 -- The admin-key password set (20261005144947's token, ORCH77-C40B) is gone:
--- the person's browser writes the password straight to the provider on the
--- recovery session a mailed link opens, and no product code writes one. Its
--- token table and lookup are dropped here. The reset window
--- (`ops.subject_resets`) stays: `begin` opens one before the browser's write,
--- and it ends every session of the login, in every business, until it
+-- the API's `changed` writes the password at the provider on the recovery
+-- session a mailed link opens, the person's own, with no admin key; no table
+-- here holds a password. Its token table and lookup are dropped here. The
+-- reset window (`ops.subject_resets`) stays: `begin` opens one before that
+-- write, and it ends every session of the login, in every business, until it
 -- settles and up to its bound while open.
 --
 -- Every row here is installation-wide and names no business, person or
@@ -47,7 +47,8 @@
 -- 4. `ops.recovery_subject_business(subject)`: the first business, by id,
 --    where the subject is a provider login mapped live to an active member
 --    with an active acting identity, its access not ended; null for none.
---    `begin` refuses a login mapped nowhere; `changed` audits there.
+--    `begin` refuses a login mapped nowhere; `changed` reads it before its
+--    write, writes nothing without one, and audits there.
 -- 5. `ops.reset_write_open(subject, signed_in)`: whether a session of the
 --    login first signed in after an unsettled window's bound could still be
 --    outlived by that window's password write. Its recovery session can write
