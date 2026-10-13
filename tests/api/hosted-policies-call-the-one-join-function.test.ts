@@ -16,6 +16,7 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 import { createRealtimeDatabase, type RealtimeDatabase } from '../support/realtime-database.ts';
+import { asIssued } from '../support/realtime-hub.ts';
 import {
   callTopic,
   carriageBusiness,
@@ -39,12 +40,17 @@ const policiesOn = async (admin: AdminConnection) =>
       where schemaname = 'realtime' and tablename = 'messages' order by policyname`,
   );
 
-/** A WebSocket send's authorisation, as Realtime asks it: an insert as the sender, the topic set. */
+/**
+ * A WebSocket send's authorisation, as Realtime asks it: an insert as the sender, the topic set,
+ * the claims as the provider issues them.
+ */
 async function send(admin: AdminConnection, topic: string, sub: string): Promise<'sent' | string> {
   try {
     await admin.transaction(async (execute) => {
       await execute('set local role authenticated');
-      await execute(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub })]);
+      await execute(`select set_config('request.jwt.claims', $1, true)`, [
+        JSON.stringify(asIssued({ sub })),
+      ]);
       await execute(`select set_config('realtime.topic', $1, true)`, [topic]);
       await execute(
         `insert into realtime.messages (topic, extension, event, payload, private)
