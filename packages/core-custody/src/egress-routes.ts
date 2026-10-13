@@ -9,7 +9,8 @@
 // provider's, whose service key could otherwise mint sign-in links or users
 // (C40 security review M1). A destination with `posts` takes a POST to those
 // exact paths only: the mail provider's, whose key could otherwise create keys
-// or read contacts.
+// or read contacts. A destination may declare the stream format custody
+// decodes for it (`stream: 'openai_sse'`, #1508).
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -56,6 +57,8 @@ export interface Extras {
   readonly post?: false;
   /** The only paths a POST may name; absent, any plain path. */
   readonly posts?: readonly string[];
+  /** A stream format custody decodes itself, so a presented key may stream (#1508). */
+  readonly stream?: 'openai_sse';
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -92,7 +95,12 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
     routes?: Route[];
     post?: false;
     posts?: string[];
+    stream?: 'openai_sse';
   } = {};
+  if (entry['stream'] !== undefined) {
+    if (entry['stream'] !== 'openai_sse') return undefined;
+    extras.stream = 'openai_sse';
+  }
   if (entry['post'] !== undefined) {
     if (entry['post'] !== false) return undefined;
     extras.post = false;

@@ -229,6 +229,25 @@ export { conversationInstructions, TASK_BLOCK_FENCE } from './conversation-promp
 export {
   CONVERSATION_MODELS,
   conversationModelsOf,
+  conversationOperationOf,
   conversationProviderOf,
+  outsidePeopleOf,
   type ConversationModel,
 } from './conversation-models.ts';
+export {
+  OPENROUTER_AUD_PER_USD,
+  OPENROUTER_BODY_LIMIT,
+  OPENROUTER_CONVERSATION,
+  OPENROUTER_CONVERSATION_KEY,
+  OPENROUTER_MAX_TOKENS,
+  OPENROUTER_MODELS,
+  OPENROUTER_PATH,
+  OPENROUTER_PROVIDER,
+  openrouterCostMinor,
+  openrouterHoldMinor,
+  openrouterModel,
+  openrouterPieces,
+  openrouterRequest,
+  readOpenRouterAnswer,
+  type OpenRouterModel,
+} from './openrouter.ts';

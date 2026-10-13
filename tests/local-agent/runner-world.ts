@@ -19,9 +19,15 @@ export interface Reply {
 export async function call(
   r: Runner,
   body: unknown,
-  init: { key?: string | null; path?: string; method?: string; signal?: AbortSignal } = {},
+  init: {
+    key?: string | null;
+    path?: string;
+    method?: string;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<Reply> {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const headers: Record<string, string> = { 'content-type': 'application/json', ...init.headers };
   const key = init.key === undefined ? RUNNER_KEY : init.key;
   if (key !== null) headers['authorization'] = `Bearer ${key}`;
   const method = init.method ?? 'POST';
@@ -49,14 +55,21 @@ export interface RunnerWorld {
     overrides?: Readonly<Record<string, string | undefined>>,
     w?: World,
   ): Promise<{ w: World; r: Runner }>;
-  call(
-    r: Runner,
-    body: unknown,
-    init?: { key?: string | null; path?: string; method?: string; signal?: AbortSignal },
-  ): Promise<Reply>;
+  call(r: Runner, body: unknown, init?: Parameters<typeof call>[2]): Promise<Reply>;
   /** A laptop the test made itself, removed after it like the others. */
   own(w: World): void;
 }
+
+/** A streamed reply's NDJSON lines, one parsed object each. */
+export const ndjson = (raw: string): unknown[] =>
+  raw
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => JSON.parse(line) as unknown);
+
+/** A streamed reply's last line's answer. */
+export const answerOf = (raw: string): Record<string, unknown> | undefined =>
+  (ndjson(raw).at(-1) as { answer?: Record<string, unknown> } | undefined)?.answer;
 
 /** Runners started on throwaway laptops, closed and removed after each test. */
 export function runnerWorld(): RunnerWorld {

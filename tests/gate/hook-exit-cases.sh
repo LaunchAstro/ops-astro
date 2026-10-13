@@ -197,6 +197,14 @@ proof_case pre-push-exports-published-scanners-not-replacements \
   "a pushed commit is judged by its published scanners, not a local replacement's"
 proof_case pre-push-ignores-uncommitted-canary-bytes \
   "uncommitted canary bytes in the checkout cannot refuse a clean pushed commit"
+proof_case pre-push-first-push-scans-unpassed-commits \
+  "a first push scans the commits this machine's gate has not passed, and refuses a key in them"
+proof_case pre-push-first-push-passed-record-covers-history \
+  "a passed commit vouches for its history only under the scanners and rules that judged it"
+proof_case pre-push-first-push-fingerprint-covers-scan-inputs \
+  "a passed commit vouches for a later push only under the same scan inputs"
+proof_case hooks-refuse-when-not-installed \
+  "a checkout without installed hooks refuses to push, whatever commit it is on"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \

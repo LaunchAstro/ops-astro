@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T accepts beside each other and beside other acts: two accepts of one link seat one person once, an accept beside a revoke or a resend ends in one consistent state with no deadlock, and a lifetime that ends while the accept waits on the access lock refuses it"
+}

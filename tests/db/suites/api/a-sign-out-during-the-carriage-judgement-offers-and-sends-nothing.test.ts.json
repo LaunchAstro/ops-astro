@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a sign-out during a carriage judgement offers and sends nothing"
+}

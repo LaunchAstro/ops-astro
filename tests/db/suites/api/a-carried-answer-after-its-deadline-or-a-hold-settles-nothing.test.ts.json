@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried answer after its answer_by or a hold settles nothing"
+}

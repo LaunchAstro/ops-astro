@@ -179,11 +179,11 @@ export async function countFor(
   return Number(row?.n);
 }
 
-/** The one link an accepted message carries, and the token at its end. */
+/** The one link an accepted message carries, and the token in its fragment. */
 export function linkIn(body: string | undefined): { link: string; token: string } {
   const text = String((JSON.parse(body ?? '{}') as Record<string, unknown>)['text']);
   const link = /https:\/\/\S+/u.exec(text)?.[0] ?? '';
-  return { link, token: link.slice(`${MAIL.appOrigin}/enrol/`.length) };
+  return { link, token: link.slice(`${MAIL.appOrigin}/enrol/#`.length) };
 }
 
 /** Every row that could carry a value, as text, from the tables an invitation touches. */

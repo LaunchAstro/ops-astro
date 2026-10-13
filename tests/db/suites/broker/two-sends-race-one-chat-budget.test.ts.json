@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two paid sends on two connections race a budget with room for one: one hold, one refusal, committed within the limit; a lowered budget refuses only the later hold"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid call carries the message alone, with its page, or with its history, and nothing else; no message is refused"
+}

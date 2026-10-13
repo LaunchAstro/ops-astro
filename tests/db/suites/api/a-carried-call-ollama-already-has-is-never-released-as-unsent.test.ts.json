@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried call custody handed to Ollama with no send on its carriers row is not released by the sweep as unsent"
+}

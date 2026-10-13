@@ -244,6 +244,7 @@ export async function createHarness(part: string): Promise<Harness> {
     inviter: () => inviter,
     asAgent,
     freshTask,
+    bindClientSite: taskBodyContext(world, alphaTask.id).bindClientSite,
     probeBody,
     positiveBody: createPositiveBody({
       ...taskBodyContext(world, alphaTask.id),
@@ -258,7 +259,7 @@ export async function createHarness(part: string): Promise<Harness> {
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
       freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
-      ...gateContext(world.db.admin, world.alpha),
+      ...gateContext(world.db.admin, world.alpha, world.ada.personId as string),
       brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
       readyClass: async () =>
         await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),

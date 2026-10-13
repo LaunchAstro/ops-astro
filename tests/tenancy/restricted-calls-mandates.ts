@@ -3,7 +3,14 @@
 // MP-14-10a's part of the restricted-calls contract (20261006080000): its table grants, column
 // grants and the one function the application executes, spread into `restricted-calls-cases.ts`
 // and `restricted-calls-catalogue.ts` beside the rest. Apart from them to keep both under the
-// line limit.
+// line limit. `PART_GROUPS` and `PART_UPDATES` gather it with #1531's part.
+
+import {
+  CARRIAGE_EXECUTES,
+  CARRIAGE_GROUPS,
+  CARRIAGE_UPDATES,
+} from './restricted-calls-carriage.ts';
+import { SITE_EXECUTES, SITE_GROUPS, SITE_UPDATES } from './restricted-calls-sites.ts';
 
 /**
  * Table grants: a class's record is read and its revision bumped by column grant; a mandate is
@@ -48,3 +55,23 @@ export const MANDATE_GRANTS: readonly { readonly from: string; readonly line: st
   from: '20261006080000',
   line: `ops_astro_app INSERT public.standing_mandates.${column}`,
 }));
+
+/**
+ * This part, #1531's (`restricted-calls-carriage.ts`) and C80's party sites
+ * (`restricted-calls-sites.ts`), as the main lists spread them.
+ */
+export const PART_GROUPS: readonly (readonly [string, string])[] = [
+  ...MANDATE_GROUPS,
+  ...CARRIAGE_GROUPS,
+  ...SITE_GROUPS,
+];
+export const PART_EXECUTES: readonly string[] = [
+  ...MANDATE_EXECUTES,
+  ...CARRIAGE_EXECUTES,
+  ...SITE_EXECUTES,
+];
+export const PART_UPDATES: readonly {
+  readonly table: string;
+  readonly from: string;
+  readonly columns: readonly string[];
+}[] = [...MANDATE_UPDATES, ...CARRIAGE_UPDATES, ...SITE_UPDATES];

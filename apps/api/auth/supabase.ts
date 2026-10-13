@@ -222,17 +222,15 @@ function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
  */
 const UNREACHED: ReadonlySet<KeySetRefusal['reason']> = new Set(['network', 'timeout', 'status']);
 
-/** GoTrue's `amr` methods that begin a session: the first factor. */
-const FIRST_FACTOR_METHODS: ReadonlySet<string> = new Set([
-  'password',
-  'otp',
-  'magiclink',
-  'email/signup',
-  'recovery',
-  'invite',
-  'oauth',
-  'sso/saml',
-]);
+/**
+ * GoTrue's `amr` method that begins a product session: a password sign-in.
+ * A mailed link (`otp`, and the older `magiclink`, `recovery`, `invite`,
+ * `email/signup`) also opens a provider session, but a link only sets a
+ * password (C39-T, C40) and never signs its holder into content; a token
+ * with no password entry has no first sign-in, so it is past the limit.
+ * OAuth and SSO are not offered, so their methods begin nothing either.
+ */
+const FIRST_FACTOR_METHODS: ReadonlySet<string> = new Set(['password']);
 
 /** The one second factor C59 enrols: the authenticator app. */
 const SECOND_FACTOR_METHODS: ReadonlySet<string> = new Set(['totp']);

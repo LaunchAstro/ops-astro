@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried call whose function is lost is released only if unsent, else held after answer_by plus 60 s"
+}

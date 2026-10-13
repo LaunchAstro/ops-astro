@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "authority ending before the offer offers nothing and sends nothing"
+}

@@ -61,6 +61,7 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { listInvitations } from './invitations.ts';
 import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
@@ -777,6 +778,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (clients === null) return NO_GRANT_AT_ALL;
       return { ok: true, clients };
     },
+  },
+  // C39-T. The business's invitations, under `access:share` on the business,
+  // which no agent holds. No subject record, as for `access.read`.
+  'invitation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await listInvitations(tx),
   },
   // C55. The business's own operations, so no subject record; it asks
   // `read` on `operations`, which no agent holds. Its unattended items are

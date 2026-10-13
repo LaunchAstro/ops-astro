@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a token whose session the product has ended joins no carriage topic, as the owner or as the agent"
+}

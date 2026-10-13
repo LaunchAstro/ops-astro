@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent whose clock is an hour off still has its carried call answered"
+}

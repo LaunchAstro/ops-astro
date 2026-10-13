@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Two agency pages kept apart from `routes.ts` so it stays under its line cap;
+// Agency pages kept apart from `routes.ts` so it stays under its line cap;
 // `ROUTES` spreads them in place and checks them as it checks its own.
 
 export const PAGE_ROUTES = {
@@ -23,5 +23,14 @@ export const PAGE_ROUTES = {
     title: 'Onboarding',
     surface: 'none',
     authenticated: true,
+  },
+  // A team invitation's one-time link (C39-T): the token is in the fragment,
+  // so the address the registry matches is the page alone, with no sign-in.
+  'agency:enrol': {
+    namespace: 'agency',
+    path: '/enrol/',
+    title: 'Join your team',
+    surface: 'none',
+    authenticated: false,
   },
 } as const;

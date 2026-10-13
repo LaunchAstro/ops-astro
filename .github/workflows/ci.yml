@@ -234,17 +234,19 @@ jobs:
     name: local checks shard ${{ matrix.shard }}
     needs: [gate, full]
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
-    # The whole job's slowest green run in the 10 merge groups of 5 October
-    # 2026 was 36.4 min; a third of it is about 12 min.
-    timeout-minutes: 30
+    # 3 shards took up to 18.9 min in the 10 merge groups to 12 October.
+    timeout-minutes: 35
     strategy:
       # Every shard runs to the end, so one red names all of its failures.
       fail-fast: false
-      # 6 since CIITEM3 (owner, 12 October 2026: every job in about 10
-      # minutes): 3 shards took up to 18.9 min in the 10 merge groups to
-      # 12 October, about 2 of it the setup and build every shard repeats.
+      # 3 since RELAYSHARD1830 (director, 13 October 2026): the account runs
+      # 60 jobs at once and one merge group took 53 of them (run 38366609090),
+      # so groups queued behind one another. Fewer, longer shards keep a group
+      # to about 20 jobs at once, so two groups and pull request CI fit. 6
+      # shards took about 10 min each, about 2 of it the setup and build every
+      # shard repeats; 3 take about 17.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -451,17 +453,18 @@ jobs:
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
-      # 30 since CIITEM3 (owner, 12 October 2026: every job in about 10 minutes).
-      # The run items took 264 min in the green merge groups of 12 October, so
-      # 16 shards took up to 34.5 min; 30 hold about 8.8 min each, plus about a
-      # minute of setup. One merge group then holds about 61 jobs across its
-      # workflows, about the 60 the account runs at once on hosted runners (our
-      # own runners have fewer slots, CI-LOCAL). scripts/db-census.ts proves the
-      # 16- and 30-way splits hold the same items and tests.
-      # One line, which tests/ci/db-shards.test.ts reads.
+      # 12 since RELAYSHARD1830 (director, 13 October 2026), down from 30
+      # (CIITEM3): the account runs 60 jobs at once and one merge group took 53
+      # of them (run 38366609090), so a second group waited for the first.
+      # With the isolation suites out of these shards (#1533), the 30 shards
+      # took 223 to 234 runner-min in the last three green groups of 13
+      # October, setup included; 12 hold about 16 min of items each, plus
+      # about a minute of setup, and a group runs about 20 jobs at once.
+      # scripts/db-census.ts proves the 12- and 30-way splits hold the same
+      # items and tests. One line, which tests/ci/db-shards.test.ts reads.
       matrix:
         # prettier-ignore
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
@@ -696,16 +699,17 @@ jobs:
     name: isolation tests shard ${{ matrix.shard }}
     needs: [gate, full]
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
-    # The whole job's slowest green run in the 10 merge groups of 5 October
-    # 2026 was 30.9 min; half of it is about 15 min.
-    timeout-minutes: 30
+    # 2 shards took up to 27.7 min for 48 min of suites (5 October 2026).
+    timeout-minutes: 35
     strategy:
       fail-fast: false
-      # 6 since CIITEM3 (owner, 12 October 2026: every job in about 10
-      # minutes): 2 shards took up to 27.7 min for 48 min of suites; the
-      # migration-prefix suite runs in four parts of under 5 min each.
+      # 3 since RELAYSHARD1830 (director, 13 October 2026), down from 6, so a
+      # merge group runs about 20 jobs at once: 6 shards took 56 to 59
+      # runner-min in the last three green groups of 13 October, so 3 take
+      # about 19 min each. The migration-prefix suite runs in four parts of
+      # under 5 min each.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3]
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
@@ -812,8 +816,15 @@ jobs:
     # live renderer, kernel release included, opens the step's log; the packet's
     # `ciRenderer` pins the rest. The page, control, token and theme are the
     # catalogue's `appDrift` (tests/visual/states.json).
+    #
+    # Not required, so not in the merge queue (RELAYROI1515 cut 6, 13 October
+    # 2026): no group waited on it, and it took 4 minutes of runners from each.
+    # It runs on a pull request and a push here, and each night on main in
+    # visual-drift-nightly.yml, whose steps are these
+    # (tests/ci/non-required-jobs-stay-out-of-merge-groups.test.ts).
     name: visual drift
     needs: [gate, full]
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 13.4 min.
     timeout-minutes: 25
@@ -830,8 +841,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
       # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
+      # proves, and the step says why when it does not; on any
+      # other event it always runs. No step here carries a condition.
       - name: Use the official HTTPS Ubuntu archive for browser dependencies
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}

@@ -40,14 +40,12 @@ export {
   type InvitationSendResult,
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
-export {
-  callModelInConversation,
-  type ConversationCallRequest,
-  type ConversationScope,
-} from './broker-conversation.ts';
+export { callModelInConversation } from './broker-priced.ts';
+export type { ConversationCallRequest, ConversationScope } from './broker-conversation-types.ts';
+export type { PaidCaller, PaidSeams } from './broker-types.ts';
+export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
 export {
   callModelForPlanning,
-  PLANNING_CAP_DEFAULT,
   readPlanningAllowance,
   readPlanningCap,
   type PlanningAllowance,
@@ -91,6 +89,7 @@ export {
   type Broker,
   type BrokerRefusal,
   type BrokerRoute,
+  type Carrier,
   type ClaimedField,
   type ModelCaller,
   type ModelCallField,
@@ -106,3 +105,44 @@ export {
 } from './broker.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
 export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
+export {
+  ACCEPT_WINDOW_MS,
+  AGENT_EVENTS,
+  ANSWER_RESEND_MS,
+  ANSWER_RESENDS,
+  BROKER_EVENTS,
+  CALL_KEPT_MS,
+  PIECE_EVERY_MS,
+  SEAL_LIFE_MS,
+  SEND_WINDOW_MS,
+  SILENCE_MS,
+  STARTED_GRACE_MS,
+  WORKING_EVERY_MS,
+  agentTopic,
+  callTopic,
+  deadlineOf,
+  sendable,
+  topicOf,
+  type AgentEvent,
+  type BrokerEvent,
+  type CarriedOutcome,
+  type Carriage,
+  type CarryBodies,
+  type CarryEvent,
+  type Handoff,
+  type Judged,
+  type Line,
+  type OfferBody,
+  type Topic,
+} from './carriage.ts';
+export {
+  opened,
+  parseCarryKeys,
+  sealed,
+  type CarryKeys,
+  type Direction,
+  type SealRefusal,
+  type Sealed,
+} from './carry-seal.ts';
+export { carriedCustody, type CarriedCustodyOptions } from './carried-custody.ts';
+export { realtimeCarriage, type RealtimeCarriageOptions } from './realtime-carriage.ts';
