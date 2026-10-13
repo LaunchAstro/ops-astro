@@ -139,10 +139,11 @@ it('takes a 204 to the sign-out as signed out, asked once', async () => {
 });
 
 it('takes a verify only as 200 with a token and the login, and follows no redirect', async () => {
-  answer = json(200, { access_token: 'a-token', user: { id: SUBJECT } });
+  answer = json(200, { access_token: 'a-token', user: { id: SUBJECT, email: 'a@example.test' } });
   expect(await verifyRecovery(route(), 'a-hash')).toStrictEqual({
     accessToken: 'a-token',
     subject: SUBJECT,
+    email: 'a@example.test',
   });
   answer = json(200, { access_token: 'a-token' });
   expect(await verifyRecovery(route(), 'a-hash')).toBeUndefined();

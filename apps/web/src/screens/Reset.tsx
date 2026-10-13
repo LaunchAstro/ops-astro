@@ -10,11 +10,14 @@
 // alone. "Change password" makes the calls in their fixed order
 // (`changePassword`, `session/recovery.ts`). The recovery session's token
 // stays in this page's memory and nowhere else, so nobody is signed in, and
-// the person goes to sign in with the new password.
+// the person goes to sign in with the new password. A session of the same
+// login that the tab still holds, which the reset ended, is forgotten too, so
+// sign-in asks for the new password; another login's session is left alone.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { pathTo } from '../routes.ts';
+import type { SessionStore } from '../session/token.ts';
 import {
   changePassword,
   requestReset,
@@ -31,6 +34,8 @@ export interface ResetScreenProps {
   readonly fetch: typeof globalThis.fetch;
   /** The tab whose address bar and history entry the link is cleared from. */
   readonly tab: Pick<Window, 'location' | 'history'>;
+  /** The tab's session, forgotten after a reset when it is the same login's. */
+  readonly sessions: Pick<SessionStore, 'session' | 'clear'>;
 }
 
 type Stage =
@@ -73,7 +78,7 @@ type Refusal = 'mismatch' | 'refused' | 'failed' | null;
 const REFUSALS: Readonly<Record<Exclude<Refusal, null>, string>> = {
   mismatch: 'The two passwords are not the same.',
   refused: 'Choose another password. That one was not accepted.',
-  failed: 'Your password was not changed. Try again.',
+  failed: 'We could not confirm your new password. Try again.',
 };
 
 /** The page's state, and its one submit: ask for a link, or change the password. */
@@ -109,6 +114,10 @@ function useReset(props: ResetScreenProps, link: string) {
         setPassword('');
         setConfirm('');
         setSignedOut(outcome.signedOut);
+        const reset = outcome.email.toLowerCase();
+        if (reset !== '' && props.sessions.session?.email.toLowerCase() === reset) {
+          props.sessions.clear();
+        }
       }
       setStage('refusal' in outcome ? 'choose' : outcome.stage);
     })();
