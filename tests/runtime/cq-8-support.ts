@@ -60,14 +60,24 @@ const ACQUIRED_ROW =
  * an operation's authority rests on (`holdCoveringGrants`, `grant.revoke`). A
  * target row read `for update` after `acquire` already holds it (task.propose's
  * revision check, F1) is a lock the transaction has, not a new one: null.
+ * `tail` is the audit chain key (the bare business id, which every audit write
+ * takes in `audit_events_chain`) and the ending keys a transaction takes after
+ * it, in `holdEnding`'s order: the agent write's last judgement takes them
+ * after `acquire` (`agent-standing.ts`). An ending key before the chain key
+ * is still `command`.
  */
 export function classifyAll(
   statements: readonly Statement[],
-): readonly ('command' | 'ordered' | null)[] {
+): readonly ('command' | 'ordered' | 'tail' | null)[] {
   const heldTasks = new Set<string>();
+  let chained = false;
   return statements.map((statement) => {
     const key = String(statement.parameters[0]);
     if (statement.text.includes('pg_advisory_xact_lock')) {
+      if (/^[0-9a-f-]{36}$/u.test(key)) chained = true;
+      if (chained && (/^[0-9a-f-]{36}$/u.test(key) || key.startsWith('session-ending:'))) {
+        return 'tail';
+      }
       return /^[0-9a-f-]{36}:/u.test(key) ? 'ordered' : 'command';
     }
     const acquired = ACQUIRED_ROW.exec(statement.text);
