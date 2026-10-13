@@ -105,7 +105,7 @@ PY
 
 # What judges a pinned push of commit $1: that commit's scanners and canaries,
 # this hook, the checkout's gitleaks rules and ignore file, the tools that run
-# the scans, and the private list and receipt. A passed commit vouches only
+# the scans and the PATH that finds them, and the private list and receipt. A passed commit vouches only
 # under the same fingerprint, so weaker scanners or rules changed since never
 # stand in for the scan the push would get now.
 scan_fingerprint() {
@@ -123,6 +123,9 @@ scan_fingerprint() {
         "$("$tool" --version 2>/dev/null || "$tool" version 2>/dev/null || echo none)"
     done
     printf 'git-exec-path %s\n' "${GIT_EXEC_PATH:-}"
+    # Every helper the hook and the scanners call (tar unpacks the scanners
+    # that run) is found on PATH, so a different PATH is a different regime.
+    printf 'path %s\n' "$PATH"
     printf 'terms %s\n' "$(file_digest "${HUB_GATE_TERMS:-}")"
     printf 'receipt %s\n' "$(file_digest "${HUB_GATE_LITERAL_HISTORY_RECEIPT:-}")"
   } | git hash-object --stdin

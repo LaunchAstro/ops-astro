@@ -31,8 +31,8 @@ the record is of scans, not of remotes: `gate-passed` in the repository's
 common Git directory, shared by every worktree and never fetched or pushed.
 Each line is a commit and the fingerprint of what judged it: the pushed
 commit's scanners and canaries, the hook, the checkout's gitleaks rules and
-ignore file, the paths and versions of the tools that run the scans, and the
-private list and receipt. Only a pinned push narrows its range or adds to the
+ignore file, the paths and versions of the tools that run the scans, the
+`PATH` that finds every helper they call, and the private list and receipt. Only a pinned push narrows its range or adds to the
 record: no scanner override, no interpreter or Git start-up setting in the
 environment (`PYTHONPATH`, `NODE_OPTIONS`, `GIT_CONFIG_*` and the like), and a
 `.gitleaks.toml` that extends no other file, read by a TOML parser with keys
