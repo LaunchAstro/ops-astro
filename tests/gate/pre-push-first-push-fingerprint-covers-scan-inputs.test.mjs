@@ -57,6 +57,54 @@ test('a gitleaks config the checkout extends does not vouch once it changes', (t
   refused(f, f.push('origin', 'locked'), 'locked');
 });
 
+test('a quoted TOML extend path cannot cache a scan that skips a credential', (t) => {
+  const f = firstPushFixture(t, {
+    gitleaksConfig: '[extend]\n"path" = "gitleaks-local.toml"\n',
+  });
+  const extended = join(f.repo, 'gitleaks-local.toml');
+  writeFileSync(extended, '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["."]\n');
+  f.git('checkout', '-q', '-b', 'locked');
+  f.commit('pnpm-lock.yaml', `lockfileVersion: '9.0'\n  token: ${githubShaped()}\n`, 'lock');
+  const loose = f.push('elsewhere', 'locked');
+  assert.equal(loose.status, 0, loose.output);
+
+  // Same top-level config, now a strict external rule set. The remote is fresh.
+  writeFileSync(extended, '[extend]\nuseDefault = true\n');
+  const tip = f.commit('notes.txt', 'later\n', 'later');
+  const result = f.push('origin', 'locked');
+  assert.equal(result.status, 1,
+    `credential-bearing history was published; scanned ${scanned(result.output)}\n${result.output}`);
+  assert.equal(f.published('origin', 'locked'), '');
+  assert.deepEqual(scanned(result.output), [tip]);
+});
+
+// Every spelling gitleaks reads as an extend path: TOML's key forms, and the
+// loader's case-insensitive, dot-splitting key match.
+for (const config of [
+  "[extend]\n'path' = 'gitleaks-local.toml'\n",
+  'extend.path = "gitleaks-local.toml"\n',
+  '"extend"."path" = "gitleaks-local.toml"\n',
+  '"extend.path" = "gitleaks-local.toml"\n',
+  '[ extend ]\n  path="gitleaks-local.toml"\n',
+  '[EXTEND]\nPATH = "gitleaks-local.toml"\n',
+  '[extend]\n"\\u0070ath" = "gitleaks-local.toml"\n',
+  'extend = { path = "gitleaks-local.toml" }\n',
+]) {
+  test(`an extend path written ${JSON.stringify(config)} does not vouch once its file changes`, (t) => {
+    const f = firstPushFixture(t, { gitleaksConfig: config });
+    const extended = join(f.repo, 'gitleaks-local.toml');
+    writeFileSync(extended, '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["."]\n');
+    f.git('checkout', '-q', '-b', 'locked');
+    addLockfileKey(f);
+    const loose = f.push('elsewhere', 'locked');
+    assert.equal(loose.status, 0, loose.output);
+
+    writeFileSync(extended, '[extend]\nuseDefault = true\n');
+    f.commit('notes.txt', 'later\n', 'later');
+    refused(f, f.push('origin', 'locked'), 'locked');
+  });
+}
+
 test('a scanner command whose file changes does not vouch under its unchanged command line', (t) => {
   const f = firstPushFixture(t);
   const gateFile = join(f.scratch, 'gate.sh');
