@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { ABOUT, AFTER, B_FILE, B_PAGE, BEFORE, PAGE } from './c80-world.ts';
+import { ABOUT, AFTER, BEFORE, PAGE } from './c80-world.ts';
+import { B_FILE, B_PAGE } from './c80-sites.ts';
 import { doubles } from './c80-runner-doubles.ts';
 import { HEAD, PROJECT, REPOSITORY, provider, type Provider } from './c80-site-provider.ts';
 import { siteRunnerPorts, type RunnerPorts } from '../../packages/core-commands/src/index.ts';

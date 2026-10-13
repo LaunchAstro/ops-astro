@@ -13,7 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { B_FILE, B_PAGE, c80World, requestBody, type C80World } from './c80-world.ts';
+import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { B_FILE, B_PAGE } from './c80-sites.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { grantTo } from '../commands/fixture.ts';
 

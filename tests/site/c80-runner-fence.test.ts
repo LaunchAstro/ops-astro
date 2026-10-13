@@ -48,6 +48,7 @@ beforeAll(async () => {
   const row = rows[0];
   if (row === undefined) throw new Error('no live lease after pickup');
   lease = { leaseId: row.id, fence: Number(row.fence), taskId: picked.taskId, holder: row.holder };
+  await bindOnSiteA(ELSEWHERE);
 }, 120_000);
 afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
@@ -146,7 +147,6 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
 
 describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => {
   it('answers an unapproved correction with its approval first, raising nothing', async () => {
-    await bindOnSiteA(ELSEWHERE);
     const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl: ELSEWHERE }));
     const ports = doubles();
     expect(await publish(String(detail['correctionId']), ports)).toEqual({

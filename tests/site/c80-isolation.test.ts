@@ -11,15 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import {
-  AFTER,
-  B_FILE,
-  B_PAGE,
-  BEFORE,
-  c80World,
-  requestBody,
-  type C80World,
-} from './c80-world.ts';
+import { AFTER, BEFORE, c80World, requestBody, type C80World } from './c80-world.ts';
+import { B_FILE, B_PAGE } from './c80-sites.ts';
 import { listCoveredCorrections } from '../../packages/core-records/src/site/live-corrections.ts';
 import { subjectsOf } from '../../packages/core-records/src/authority/grants.ts';
 import { NO_ASSURANCE } from '../../packages/core-records/src/identity/verified-subject.ts';

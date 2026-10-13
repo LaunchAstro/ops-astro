@@ -80,11 +80,14 @@ const TASK_ABSENT = refuseCommand(
   ['Name a task in this business for the correction to be worked under.'],
 );
 const PARTY = refuseCommand('CORRECTION_PARTY_MISMATCH', ['partyId'], ['Name the task’s client.']);
-const OUTSIDE_SITE = refuseCommand(
-  'PAGE_OUTSIDE_PARTY_SITE',
-  ['pageUrl', 'path'],
-  ['Name a page of this client’s own site, and its file, as the site holds them.'],
-);
+const STORE_REFUSALS = {
+  CORRECTION_PARTY_MISMATCH: PARTY,
+  PAGE_OUTSIDE_PARTY_SITE: refuseCommand(
+    'PAGE_OUTSIDE_PARTY_SITE',
+    ['pageUrl', 'path'],
+    ['Name a page of this client’s own site, and its file, as the site holds them.'],
+  ),
+} as const;
 
 async function taskExists(tx: TenantQuery, taskTypeId: string, taskId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
@@ -150,11 +153,8 @@ export async function storeRequest(
       seam,
     }),
   });
-  // The party is the task's client (P26 low 4), and the page one of that client's site:
-  // either refused, nothing is stored.
-  if ('code' in stored) {
-    return refused(stored.code === 'PAGE_OUTSIDE_PARTY_SITE' ? OUTSIDE_SITE : PARTY);
-  }
+  // The party is the task's client (P26 low 4), the page its site's: else nothing is stored.
+  if ('code' in stored) return refused(STORE_REFUSALS[stored.code]);
   const ended = await endedSince(tx, requester, stored.partyId);
   if (ended !== undefined) return ended;
   return applied(stored.id, stored.revision, {

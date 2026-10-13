@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isPartysTask } from './party-sites.ts';
 import {
   COVERED,
   EFFECTIVE_AT,
@@ -180,21 +181,6 @@ export async function insertLiveCorrection(
     ok: false,
     code: (await isPartysTask(tx, input)) ? 'PAGE_OUTSIDE_PARTY_SITE' : 'CORRECTION_PARTY_MISMATCH',
   };
-}
-
-/** Whether the task is a live task of the named party: asked only of the operand party. */
-async function isPartysTask(
-  tx: TenantQuery,
-  input: Pick<NewLiveCorrection, 'partyId' | 'taskId'>,
-): Promise<boolean> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select r.id from public.records r
-       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-        and r.deleted_at is null`,
-    [tx.businessId, input.taskId, input.partyId],
-  );
-  return rows.length > 0;
 }
 
 /**

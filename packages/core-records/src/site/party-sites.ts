@@ -156,3 +156,18 @@ export async function readPartySite(
     pages: pages.map((page) => ({ pageUrl: page.page_url, path: page.path })),
   };
 }
+
+/** Whether the task is a live task of the named party: asked only of the operand party. */
+export async function isPartysTask(
+  tx: TenantQuery,
+  input: { readonly partyId: string; readonly taskId: string },
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select r.id from public.records r
+       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
+        and r.deleted_at is null`,
+    [tx.businessId, input.taskId, input.partyId],
+  );
+  return rows.length > 0;
+}

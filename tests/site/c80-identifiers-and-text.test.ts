@@ -14,7 +14,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import { ASTRO_FILE, ASTRO_PAGE, c80World, requestBody, type C80World } from './c80-world.ts';
+import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { ASTRO_FILE, ASTRO_PAGE } from './c80-sites.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
