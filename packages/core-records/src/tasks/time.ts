@@ -61,8 +61,13 @@ interface Person {
 /** A day is the most one entry can hold (0078's check). */
 const MAX_MINUTES = 1440;
 
-/** A stopped timer's minutes: elapsed, rounded up, at least one, at most a day ($1). */
-const ELAPSED_MINUTES = `least($1::int, greatest(1, ceil(extract(epoch from now() - started_at) / 60)::int))`;
+/**
+ * A stopped timer's minutes to `at`: elapsed, rounded up, at least one, at most
+ * a day ($1). `at` is the clock, never the transaction's start, which can fall
+ * before a timer a newer transaction started, or short of a wait on the row.
+ */
+const elapsedMinutes = (at: string): string =>
+  `least($1::int, greatest(1, ceil(extract(epoch from ${at} - started_at) / 60)::int))`;
 
 /** "23h 59m" with room to spare: a longer duration is not one anybody typed. */
 const DURATION_LIMIT = 32;
@@ -130,7 +135,7 @@ export async function startTimer(
   return { kind: 'started', entryId: row.id, startedAt: row.started_at.toISOString() };
 }
 
-/** Stop this person's running timer on this task, logging its minutes. */
+/** Stop this person's running timer on this task, held first so its end follows any wait. */
 export async function stopTimer(
   tx: TenantQuery,
   input: Person & { readonly taskId: string; readonly expectedEntryId?: string },
@@ -138,21 +143,28 @@ export async function stopTimer(
   | { readonly kind: 'stopped'; readonly entryId: string; readonly minutes: number }
   | { readonly kind: 'none' }
 > {
-  if (!isUuid(input.taskId)) return { kind: 'none' };
-  if (input.expectedEntryId !== undefined && !isUuid(input.expectedEntryId))
+  const expected = input.expectedEntryId;
+  if (!isUuid(input.taskId) || (expected !== undefined && !isUuid(expected)))
     return { kind: 'none' };
-  const rows = await tx.query<{ readonly id: string; readonly minutes: number }>(
-    `update public.time_entries set ended_at = now(), minutes = ${ELAPSED_MINUTES}
-      where business_id = $2 and task_id = $3::uuid and person_id = $4
+  const held = await tx.query<{ readonly id: string }>(
+    `select id from public.time_entries
+      where business_id = $1 and task_id = $2::uuid and person_id = $3
         and ended_at is null and deleted_at is null
-        and ($5::uuid is null or id = $5::uuid)
-      returning id, minutes`,
-    [MAX_MINUTES, tx.businessId, input.taskId, input.personId, input.expectedEntryId ?? null],
+        and ($4::uuid is null or id = $4::uuid) for update`,
+    [tx.businessId, input.taskId, input.personId, expected ?? null],
   );
-  const row = rows[0];
-  return row === undefined
-    ? { kind: 'none' }
-    : { kind: 'stopped', entryId: row.id, minutes: row.minutes };
+  const entry = held[0];
+  if (entry === undefined) return { kind: 'none' };
+  const rows = await tx.query<{ readonly minutes: number }>(
+    `update public.time_entries set ended_at = c.at, minutes = ${elapsedMinutes('c.at')}
+       from (select clock_timestamp() as at) c
+      where business_id = $2 and id = $3
+      returning minutes`,
+    [MAX_MINUTES, tx.businessId, entry.id],
+  );
+  const minutes = rows[0]?.minutes;
+  if (minutes === undefined) throw new Error('stopTimer: the entry it held was not stopped');
+  return { kind: 'stopped', entryId: entry.id, minutes };
 }
 
 /**
@@ -163,8 +175,9 @@ export async function detachTaskTime(tx: TenantQuery, taskIds: readonly string[]
   await tx.query(
     `update public.time_entries
         set task_id = null,
-            minutes = coalesce(minutes, ${ELAPSED_MINUTES}),
-            ended_at = coalesce(ended_at, now())
+            minutes = coalesce(minutes, ${elapsedMinutes('c.at')}),
+            ended_at = coalesce(ended_at, c.at)
+       from (select clock_timestamp() as at) c
       where business_id = $2 and task_id = any ($3::uuid[])`,
     [MAX_MINUTES, tx.businessId, taskIds],
   );

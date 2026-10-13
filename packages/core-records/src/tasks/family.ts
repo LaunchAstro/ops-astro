@@ -82,9 +82,11 @@ function familyRow(row: Row): FamilyRow {
 export async function readTaskFamily(
   tx: TenantQuery,
   taskTypeId: string,
-  parentId: string,
+  named: string,
   readers: readonly Subject[],
 ): Promise<TaskFamily> {
+  // Stored ids are lowercase, and the parent is told from its children by text.
+  const parentId = named.toLowerCase();
   const asked = askedFor(readers, { collection: 'task', action: 'read' });
   const rows = await tx.query<Row>(
     `${EFFECTIVE}

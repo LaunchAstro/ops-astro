@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A receipt by attempt id and a record-scoped board read answer the same for either letter case of the id, because a read's identifier fields are lowercased where it is parsed. It must be judged on a real migrated database through the API and the worker."
+}
