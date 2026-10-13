@@ -271,7 +271,7 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
   await closed;
   let settled = false;
   let failed: unknown;
-  void (async () => {
+  const drained = (async () => {
     for await (const _piece of dump) {
       /* drain printed bytes */
     }
@@ -285,7 +285,11 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
     },
   );
   try {
-    await delay(250);
+    // The dump fails once docker has removed the killed client's container,
+    // which took up to 0.45 s on a loaded machine (#1536), so a fixed 250 ms
+    // check failed a dump that does fail. Waiting for the drain, up to a bound
+    // no removal comes near, still fails a dump that would wait forever.
+    await Promise.race([drained, delay(5000)]);
     expect(settled, 'close(null, SIGKILL) was mistaken for a dump that is still running').toBe(
       true,
     );
