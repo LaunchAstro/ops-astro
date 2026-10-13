@@ -15,6 +15,7 @@
 // `task.execution` is, and never an agent's (`agent: 'never'`, `surface.ts`).
 
 import {
+  checkAuthority,
   coveredAt,
   holdsAnywhere,
   isUuid,
@@ -30,7 +31,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
-import { isInternalReader } from './tasks.ts';
+import { isInternalReader, resolveTaskId } from './tasks.ts';
 import type { Found } from './read-row.ts';
 
 type Operands = { readonly correctionId: string };
@@ -86,23 +87,33 @@ export function parseCorrectionLocate(
 /**
  * `live_correction.locate` (C80, the sidebar door): the file behind a page of
  * the task's own client's site, as the correction job's snapshot holds it, so
- * the API never holds a site credential. The task is the declaration's
- * (`task:read` on it); the caller's `run:write` is asked at the task's client,
- * as a request asks it. Another client's page, no client's, another spelling,
- * a page with no snapshot yet and a grant on another client are one
- * `NOT_FOUND`, the answer to a page that names nothing.
+ * the API never holds a site credential. It asks what a request asks: a caller
+ * holding `run:write` nowhere is refused before any id is looked at; then
+ * `task:read` on the task, and `run:write` at the task's client at the
+ * statement's instant. Another client's page, no client's, another spelling, a
+ * page with no snapshot yet, a task out of reach and a grant on another client
+ * are one `NOT_FOUND`, the answer to a page that names nothing.
  */
 export async function serveCorrectionLocate(
   tx: TenantQuery,
   session: Session,
-  { pageUrl }: LocateOperands,
-  { spine, recordId }: Found,
+  operands: LocateOperands,
+  { spine }: Found,
 ): Promise<LiveCorrectionLocateResult | CommandRefusal> {
+  const subjects = subjectsOf(session);
+  const covering = { subjects, collection: RUN_COLLECTION, action: 'write' };
+  if (!(await holdsAnywhere(tx, covering))) return NO_RUN_WRITE;
+  if (!isInternalReader(session.roleKey)) return refuseNotFound();
+  const recordId = await resolveTaskId(tx, spine.taskTypeId, operands.recordId);
   if (recordId === undefined) return refuseNotFound();
-  const page = await readPageSnapshot(tx, spine.taskTypeId, recordId, pageUrl);
-  if (page === undefined) return refuseNotFound();
-  const covering = { subjects: subjectsOf(session), collection: RUN_COLLECTION, action: 'write' };
-  if (!(await coveredAt(tx, covering, page.partyId))) return refuseNotFound();
+  const task = {
+    collection: 'task',
+    action: 'read',
+    scope: { kind: 'record', id: recordId },
+  } as const;
+  if (!(await checkAuthority(tx, subjects, task)).ok) return refuseNotFound();
+  const page = await readPageSnapshot(tx, spine.taskTypeId, recordId, operands.pageUrl);
+  if (page === undefined || !(await coveredAt(tx, covering, page.partyId))) return refuseNotFound();
   return {
     ok: true,
     target: {

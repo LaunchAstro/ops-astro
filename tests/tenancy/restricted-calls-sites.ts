@@ -8,6 +8,7 @@
 export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'party_sites'],
   ['sid', 'party_site_pages'],
+  ['s', 'party_site_page_snapshots'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */

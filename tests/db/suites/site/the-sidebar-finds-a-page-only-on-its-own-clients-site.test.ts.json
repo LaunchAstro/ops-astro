@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's sidebar door answers the file behind a page only for a page of the task's own client's site, from its snapshot, to a caller holding run:write there, and answers another client's page, another business's, a page with no snapshot, another spelling and a grant on another client exactly as a page that names nothing; snapshots are read-only to the application, capped at 256 KB and go with their page."
+}

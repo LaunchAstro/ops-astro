@@ -96,6 +96,9 @@ export function probeOperands(name: CommandName): Body {
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'harness.read') return { runId: randomUUID() };
   if (name === 'live_correction.read') return { correctionId: randomUUID() };
+  if (name === 'live_correction.locate') {
+    return { recordId: randomUUID(), pageUrl: 'https://agency.example/about/' };
+  }
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read

@@ -957,19 +957,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
     serve: serveCorrectionRead,
   },
-  // C80: the sidebar door's site read, `task:read` on the task by the declaration
-  // and `run:write` at its client inside the read, as a request asks both.
+  // C80: the sidebar door's site read; what a request asks, asked inside the read.
   'live_correction.locate': {
     identifiers: ['recordId'],
     parse: parseCorrectionLocate,
     spine: true,
-    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
-    authority: 'declared',
-    outsiderNotFound: true,
-    admits: async (tx, session, { spine, recordId }) =>
-      recordId !== undefined &&
-      isInternalReader(session.roleKey) &&
-      (await liveTask(tx, spine.taskTypeId, recordId)),
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
     serve: serveCorrectionLocate,
   },
   // The business's definitions, versions and activations (C33): asked like

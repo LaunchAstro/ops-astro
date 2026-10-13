@@ -76,7 +76,6 @@ const PINNED_IDENTIFIERS = {
 const PINNED_OUTSIDER_NOT_FOUND = [
   'chat.conversations',
   'chat.messages',
-  'live_correction.locate',
   'map.frontier',
   'map.view',
   'task.board',
@@ -271,7 +270,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same twelve', () => {
+  it('tells an outsider NOT_FOUND on the same eleven', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

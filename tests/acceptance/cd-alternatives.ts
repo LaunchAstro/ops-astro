@@ -29,7 +29,7 @@ export const CASE = {
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
-/** The sixty-five identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-six identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -62,6 +62,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.request': ['taskId', 'liveCorrection'],
   'live_correction.decide': ['correctionId', 'liveCorrection'],
   'live_correction.read': ['correctionId', 'liveCorrection'],
+  'live_correction.locate': ['recordId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

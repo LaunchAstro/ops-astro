@@ -27,10 +27,9 @@ describe("a read's declared authority scope", () => {
     expect(declared).toStrictEqual(checked);
   });
 
-  it('is record scope for task.read, task.execution, task.receipt, trace.read, the sidebar’s site read and the two map reads alone', () => {
+  it('is record scope for task.read, task.execution, task.receipt, trace.read and the two map reads alone', () => {
     const record = reads.filter((row) => row.authorisedOn === 'record').map((row) => row.name);
     expect(record.toSorted()).toStrictEqual([
-      'live_correction.locate',
       'map.frontier',
       'map.view',
       'task.execution',
