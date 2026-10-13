@@ -18,6 +18,7 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
+import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
@@ -101,9 +102,11 @@ export async function seedLiveCorrection(
 ): Promise<{ readonly correctionId: string; readonly versionId: string }> {
   const at = await underClient(database, business, taskId, maker);
   return await database.withBusiness(business, async (tx) => {
+    const pageUrl = await bindAboutPage(tx, at.partyId, requester.actorId as string);
     const stored = await insertLiveCorrection(tx, {
       ...C80_REQUEST_ROW,
       ...at,
+      pageUrl,
       requestedByActorId: requester.actorId as string,
       requestedByPersonId: requester.personId as string,
       seam: `seam-${randomUUID()}`,
@@ -118,7 +121,6 @@ const C80_REQUEST_ROW = {
   targetPath: C80_REQUEST.path,
   word: C80_REQUEST.word,
   replacement: C80_REQUEST.replacement,
-  pageUrl: C80_REQUEST.pageUrl,
   preImageDigest: 'sha256:matrix',
   baseRevision: C80_REQUEST.baseRevision,
   versionDigest: 'sha256:matrix',

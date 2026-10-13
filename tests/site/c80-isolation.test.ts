@@ -11,7 +11,15 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { AFTER, BEFORE, c80World, requestBody, type C80World } from './c80-world.ts';
+import {
+  AFTER,
+  B_FILE,
+  B_PAGE,
+  BEFORE,
+  c80World,
+  requestBody,
+  type C80World,
+} from './c80-world.ts';
 import { listCoveredCorrections } from '../../packages/core-records/src/site/live-corrections.ts';
 import { subjectsOf } from '../../packages/core-records/src/authority/grants.ts';
 import { NO_ASSURANCE } from '../../packages/core-records/src/identity/verified-subject.ts';
@@ -50,6 +58,8 @@ beforeAll(async () => {
   const result = await w.request(w.ava, {
     partyId: w.partyB,
     taskId: w.taskB,
+    pageUrl: B_PAGE,
+    path: B_FILE,
     before: `${BEFORE}${CANARY}\n`,
     after: `${AFTER}${CANARY}\n`,
   });
@@ -89,7 +99,14 @@ describe.skipIf(serverUrl === undefined)(
   'C80 isolation, another client in the same business',
   () => {
     it('a grant on party B reaches party B and nothing on party A', async () => {
-      const own = detailOf(await w.request(w.dee, { partyId: w.partyB, taskId: w.taskB }));
+      const own = detailOf(
+        await w.request(w.dee, {
+          partyId: w.partyB,
+          taskId: w.taskB,
+          pageUrl: B_PAGE,
+          path: B_FILE,
+        }),
+      );
       const onA = await w.request(w.dee, { partyId: w.partyA });
       expect(codeOf(onA)).toBe('SCOPE_NOT_GRANTED');
       const onlyA = detailOf(await w.request(w.ava));

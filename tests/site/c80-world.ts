@@ -25,9 +25,13 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { Scope } from '../../packages/core-records/src/authority/grants.ts';
+import { bindPartySite } from '../../packages/core-records/src/site/party-sites.ts';
 
 export const ABOUT = 'src/pages/about.md';
 export const PAGE = 'https://agency.example/about/';
+/** Party B's page and its source file: on B's site, never A's. */
+export const B_PAGE = 'https://client-b.example/team/';
+export const B_FILE = 'src/pages/team.md';
 export const BEFORE =
   '---\ntitle: About\n---\n\nWe are a friendly studio.\n\nA friendly decoy line.\n';
 export const AFTER =
@@ -196,6 +200,7 @@ export async function c80World(part: string): Promise<C80World> {
   const alpha = { business: world.business, by: people.ava, sharer: people.admin };
   const taskA = (await taskUnder(asIn, alpha, partyA, 'About')).taskId;
   const taskB = (await taskUnder(asIn, alpha, partyB, 'About a client')).taskId;
+  await bindSites(world, people.admin, theirs, { partyA, partyB });
   return {
     world,
     partyA,
@@ -218,6 +223,34 @@ export async function c80World(part: string): Promise<C80World> {
         },
       ),
   };
+}
+
+/**
+ * Each client's site: party A holds the about page, party B its team page, and
+ * beta's client the about page in its own business. A site is bound once in
+ * the installation, so each world's repositories and projects are its own.
+ */
+async function bindSites(
+  world: AgentWorld,
+  admin: Member,
+  beta: { readonly beta: string; readonly eve: Member; readonly betaParty: string },
+  parties: { readonly partyA: string; readonly partyB: string },
+): Promise<void> {
+  const own = randomUUID().slice(0, 8);
+  const site = (partyId: string, name: string, pageUrl: string, path: string) => ({
+    partyId,
+    repository: `${name}/site-${own}`,
+    defaultBranch: 'main',
+    project: `prj_${name}_${own}`,
+    pages: [{ pageUrl, path }],
+  });
+  await world.db.app.withBusiness(world.business, async (tx) => {
+    await bindPartySite(tx, site(parties.partyA, 'agency', PAGE, ABOUT), admin.actorId);
+    await bindPartySite(tx, site(parties.partyB, 'client-b', B_PAGE, B_FILE), admin.actorId);
+  });
+  await world.db.app.withBusiness(beta.beta, async (tx) => {
+    await bindPartySite(tx, site(beta.betaParty, 'beta', PAGE, ABOUT), beta.eve.actorId);
+  });
 }
 
 /** `world.pickUp`'s steps, with the client set between the create and the proposal. */
