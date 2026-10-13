@@ -3207,12 +3207,14 @@ nothing else, so a sign-in link minted since, and its session, is 401. A login
 mapped live in no business is 401; one with a verified authenticator in any
 business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
 (`ops.subject_resets`) and records it against the session's digest
-(`ops.recovery_resets`) with the bearer's expiry. From that commit every
-session of the login, in every business, is refused up to the window's bound
-(five minutes), the reset's own session included, so a page that fails after
-the password write leaves no old session usable. Until that expiry, while the
-window is unsettled, the bearer can still write a password at the provider,
-which deletes the login's other sessions there: so the door asks the provider
+(`ops.recovery_resets`). From that commit every session of the login, in
+every business, is refused up to the window's bound (five minutes), the
+reset's own session included, so a page that fails after the password write
+leaves no old session usable. While the window is unsettled, its recovery
+session, refreshed or not, can still write a password at the provider for as
+long as the provider keeps it, which deletes the login's other sessions there.
+Until a later reset of the login settles (whose own write deleted that
+session), the door asks the provider
 `GET /user` on the bearer of any session first signed in after the bound
 (`ops.reset_write_open`). Deleted is ended for good (GoTrue's 403
 `session_not_found`); no answer is refused that once. The carriage join, with
