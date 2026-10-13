@@ -10,14 +10,22 @@
 //     request was decided while the page had no client;
 //   - the task row held by a writer at the handoff: nothing is admitted, at
 //     once.
+//
+// On a carried deployment the same holds through the send judgement: linked
+// after the offer and before the send, nothing is sent and the whole hold is
+// freed; linked once the send is judged, the link waits until the agent
+// reports the write, so the one request went while the page had no client.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Admit, Custody } from '../../packages/core-custody/src/custody.ts';
 import { slotOf, TASK_SPINE } from '../../packages/core-records/src/index.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
+import { carriedWorld, PAID_HOLD, type CarriedWorld } from '../api/carried-world.ts';
+import { ask, callFor, heldFor, linkableTask, repliesTo } from '../api/carried-schedules.ts';
+import { HAIKU } from '../api/openrouter-stand-in-fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { holdRow } from '../support/lock-wait-race.ts';
 import { pricedWorld, type Asked, type PricedWorld } from './priced-chat-world.ts';
@@ -177,4 +185,46 @@ describe.skipIf(serverUrl === undefined)('a client link racing the paid send', (
     expect(pendingAtAdmission).toStrictEqual([true]);
     expect(p.openrouter.received.length).toBe(sent + 1);
   });
+});
+
+describe.skipIf(serverUrl === undefined)('a client link racing a carried paid send', () => {
+  let world: CarriedWorld;
+
+  beforeEach(async () => {
+    vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');
+    world = await carriedWorld('carried_paid_client_race', undefined, {}, true);
+  }, 180_000);
+
+  afterEach(async () => {
+    await world?.close();
+    vi.unstubAllEnvs();
+  });
+
+  it('linked after the offer, before the send: nothing sent, the whole hold freed', async () => {
+    const body = 'What is left, paid? (linked after the offer)';
+    const { task, link } = await linkableTask(world);
+    world.agent.beforeAccept = async () => await link();
+    const events = await (await ask(world, body, undefined, task, HAIKU)).rest();
+    expect(world.agent.sent).toHaveLength(0);
+    expect(world.openrouter?.received).toHaveLength(0);
+    expect(await callFor(world, body)).toEqual([
+      { state: 'released', offered: true, requested: true, actual: null },
+    ]);
+    expect(await heldFor(world, body)).toEqual([{ reserved: PAID_HOLD, committed: 0 }]);
+    expect(await repliesTo(world, body)).toBe(0);
+    expect(JSON.parse(events.at(-1)?.data ?? '{}')).toMatchObject({ reply: { answered: false } });
+  }, 60_000);
+
+  it('linked once the send is judged: the link waits until the write is reported; one request', async () => {
+    const body = 'What is left, paid? (linked once judged)';
+    const { task, link } = await linkableTask(world);
+    const asking = ask(world, body, undefined, task, HAIKU);
+    await world.agent.dispatched(1);
+    const sentAt = Date.now();
+    await link();
+    expect(world.openrouter?.received).toHaveLength(1);
+    expect(Date.now() - sentAt).toBeLessThan(1_500);
+    await (await asking).rest();
+    expect(await callFor(world, body)).toMatchObject([{ requested: true }]);
+  }, 60_000);
 });

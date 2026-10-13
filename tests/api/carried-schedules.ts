@@ -6,7 +6,10 @@
 // a carriage judgement at its lock (a judgement reads the actor `for share`;
 // the call's own writes only take its key, so they pass the hold).
 
+import { randomUUID } from 'node:crypto';
+import { expect } from 'vitest';
 import { revokeGrant, type TenantQuery } from '../../packages/core-records/src/index.ts';
+import { addClient, grantTo } from '../commands/fixture.ts';
 import type { CarriedWorld } from './carried-world.ts';
 import { holdApp, waitersOf, type HeldApp } from './carried-exchange-fixture.ts';
 import { sendStreaming, type Streaming } from './streamed-reply-fixture.ts';
@@ -24,14 +27,39 @@ export const ask = (
   body: string,
   token?: string,
   task?: string,
+  model?: string,
 ): Promise<Streaming> =>
   sendStreaming(
     world.api,
     world.w.owner,
     'conversation.start',
-    { body, ...(task === undefined ? {} : { scope: { kind: 'task', id: task } }) },
+    {
+      body,
+      ...(task === undefined ? {} : { scope: { kind: 'task', id: task } }),
+      ...(model === undefined ? {} : { model }),
+    },
     token,
   );
+
+/** The paid call asked with `body`: its hold and what it committed under the chat budget. */
+export async function heldFor(
+  world: CarriedWorld,
+  body: string,
+): Promise<readonly { readonly reserved: number; readonly committed: number }[]> {
+  return await world.w.fixture.db.admin.execute(
+    `select c.reserved_minor::int as reserved,
+            (case when c.state = 'settled' then c.actual_minor
+                  when c.state in ('reserved', 'dispatched', 'liability_unknown')
+                    then c.reserved_minor else 0 end)::int as committed
+       from public.model_calls c
+       join public.planning_envelopes e
+         on e.business_id = c.business_id and e.id = c.planning_envelope_id
+       join public.conversation_messages m
+         on m.business_id = c.business_id and m.id = c.conversation_message_id
+      where m.body = $1`,
+    [body],
+  );
+}
 
 /** The agent's membership of call `k`'s conversation closed, as a model change closes it. */
 export async function leaveMembership(tx: TenantQuery, k: string): Promise<void> {
@@ -112,3 +140,27 @@ export async function holdAgent(world: CarriedWorld): Promise<HeldApp<void>> {
 export const judgementWaits = async (world: CarriedWorld, holder: HeldApp<void>): Promise<void> => {
   await waitersOf(world.w.fixture.db.admin, holder.pid);
 };
+
+/** A task for the owner to ask on, and how to link a client to it as the person does. */
+export async function linkableTask(
+  world: CarriedWorld,
+): Promise<{ readonly task: string; readonly link: () => Promise<void> }> {
+  const { w } = world;
+  const made = await w.as(w.owner, 'task.create', { fields: { title: `Plan ${randomUUID()}` } });
+  const task = String(made.body['recordId']);
+  const client = randomUUID();
+  await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, w.owner, 'share');
+  });
+  const link = async (): Promise<void> => {
+    const linked = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: task,
+      expectedRevision: made.body['revision'],
+      fields: { client },
+    });
+    expect(linked.status).toBe(200);
+  };
+  return { task, link };
+}

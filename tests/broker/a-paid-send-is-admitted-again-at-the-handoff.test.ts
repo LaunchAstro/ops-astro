@@ -10,14 +10,34 @@
 //     request goes out, and the revocation lands only after the handoff;
 //   - a grant row someone else holds at that moment admits nothing, at once,
 //     with no deadlock.
+//
+// On a carried deployment the paid call goes through the offer and send
+// judgements, which judge its outside standing too: the grant revoked before
+// the offer, or the grant, the agent's membership, the agent, or the person's
+// place on the outside list (a settings reload) gone after the offer and
+// before the send: nothing is sent, the call is released, and the whole hold
+// is freed. A revocation once the send is judged waits until the agent
+// reports the write, and the one request goes.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationExchange } from '../../packages/core-commands/src/index.ts';
 import type { Admit, Custody } from '../../packages/core-custody/src/custody.ts';
 import { endOwnSession } from '../../packages/core-records/src/identity/sessions.ts';
+import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { CONVERSATION } from '../api/aw-03-fixture.ts';
+import { carriedWorld, PAID_HOLD, type CarriedWorld } from '../api/carried-world.ts';
+import {
+  ask,
+  callFor,
+  deactivateAgent,
+  heldFor,
+  leaveMembership,
+  repliesTo,
+  revokeOwn,
+} from '../api/carried-schedules.ts';
+import { HAIKU } from '../api/openrouter-stand-in-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { holdRow } from '../support/lock-wait-race.ts';
@@ -200,4 +220,78 @@ describe.skipIf(serverUrl === undefined)('a paid send is admitted again at the h
     };
     await notAdmitted(asked, await p.twin(wrapping(end)), presented);
   });
+});
+
+// oxlint-disable-next-line max-lines-per-function -- one carried world per case
+describe.skipIf(serverUrl === undefined)('a carried paid send is judged again', () => {
+  let world: CarriedWorld;
+
+  beforeEach(async () => {
+    vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');
+    world = await carriedWorld('carried_paid_handoff', undefined, {}, true);
+  }, 180_000);
+
+  afterEach(async () => {
+    await world?.close();
+    vi.unstubAllEnvs();
+  });
+
+  const inBusiness = async (change: (tx: TenantQuery) => Promise<void>): Promise<void> => {
+    await world.database.withBusiness(world.w.fixture.business, change);
+  };
+  const changes: Record<string, (k: string) => Promise<void>> = {
+    'the grant revoked': async () => await inBusiness(async (tx) => await revokeOwn(world, tx)),
+    'the membership left': async (k) =>
+      await inBusiness(async (tx) => await leaveMembership(tx, k)),
+    'the agent deactivated': async () =>
+      await inBusiness(async (tx) => await deactivateAgent(world, tx)),
+    // The broker's settings reloaded without the person: the list it judges by is the live one.
+    'the person dropped from the outside list': async () => {
+      await Promise.resolve(world.outsidePeople.splice(0));
+    },
+  };
+
+  async function nothingSent(body: string, events: readonly { readonly data: string }[]) {
+    expect(world.agent.sent).toHaveLength(0);
+    expect(world.openrouter?.received).toHaveLength(0);
+    expect(await heldFor(world, body)).toEqual([{ reserved: PAID_HOLD, committed: 0 }]);
+    expect(await repliesTo(world, body)).toBe(0);
+    expect(JSON.parse(events.at(-1)?.data ?? '{}')).toMatchObject({ reply: { answered: false } });
+  }
+
+  it('the grant revoked before the offer: nothing offered or sent, the whole hold freed', async () => {
+    const body = 'Due, paid? (revoked before the offer)';
+    world.beforeJoin.run = async () => await inBusiness(async (tx) => await revokeOwn(world, tx));
+    const events = await (await ask(world, body, undefined, undefined, HAIKU)).rest();
+    expect(await callFor(world, body)).toEqual([
+      { state: 'released', offered: false, requested: false, actual: null },
+    ]);
+    await nothingSent(body, events);
+  }, 60_000);
+
+  it.each(Object.keys(changes))(
+    '%s after the offer, before the send: nothing sent, the whole hold freed',
+    async (change) => {
+      const body = `Due, paid? (${change})`;
+      world.agent.beforeAccept = async (k) => await changes[change]?.(k);
+      const events = await (await ask(world, body, undefined, undefined, HAIKU)).rest();
+      expect(await callFor(world, body)).toEqual([
+        { state: 'released', offered: true, requested: true, actual: null },
+      ]);
+      await nothingSent(body, events);
+    },
+    60_000,
+  );
+
+  it('a revocation once the paid send is judged waits until the write is reported; one request', async () => {
+    const body = 'Due, paid? (revoked once judged)';
+    const asking = ask(world, body, undefined, undefined, HAIKU);
+    await world.agent.dispatched(1);
+    const sentAt = Date.now();
+    await inBusiness(async (tx) => await revokeOwn(world, tx));
+    expect(world.openrouter?.received).toHaveLength(1);
+    expect(Date.now() - sentAt).toBeLessThan(1_500);
+    await (await asking).rest();
+    expect(await callFor(world, body)).toMatchObject([{ requested: true }]);
+  }, 60_000);
 });

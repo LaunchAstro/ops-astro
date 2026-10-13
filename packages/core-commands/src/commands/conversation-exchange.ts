@@ -59,7 +59,7 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { carriedBy } from './carriage-origin.ts';
+import { carriedBy } from './carriage-handoff.ts';
 import { contextOf, type Context } from './conversation-context.ts';
 import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
@@ -227,7 +227,11 @@ async function answerOnce(
     {
       ...requestFor(question, asked, operation, {
         ...(pieces === undefined ? {} : { onPiece: pieces.push }),
-        ...carriedBy(database, businessId, presented, by.accessToken, broker),
+        ...carriedBy(database, businessId, presented, broker, {
+          ...by,
+          operation,
+          model: question.model,
+        }),
       }),
       ...(paid && { paid: paid.seams }),
     },

@@ -10,6 +10,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { Hono } from 'hono';
+import { vi } from 'vitest';
 import { composeApi } from '../../apps/api/server.ts';
 import {
   catalogue,
@@ -17,6 +18,11 @@ import {
   OLLAMA_PROVIDER,
   ollamaAdapter,
   ollamaCostMinor,
+  OPENROUTER_BODY_LIMIT,
+  OPENROUTER_CONVERSATION,
+  OPENROUTER_PROVIDER,
+  openrouterCostMinor,
+  openrouterRequest,
 } from '../../packages/core-connectors/src/index.ts';
 import {
   carriedCustody,
@@ -36,6 +42,7 @@ import { testSignIn } from '../support/sign-in.ts';
 import { conversationWorld, type ConversationWorld } from './aw-03-fixture.ts';
 import { createApiFixture, ISSUER, tokenFor } from './fixture.ts';
 import { standInOllama, type StandIn } from './ollama-stand-in-fixture.ts';
+import { standInOpenRouter, type OpenRouterStandIn } from './openrouter-stand-in-fixture.ts';
 
 const SHIM = readFileSync(new URL('../support/realtime-shim.sql', import.meta.url), 'utf8');
 const POLICY = readFileSync(
@@ -43,12 +50,19 @@ const POLICY = readFileSync(
   'utf8',
 );
 
+/** A paid reply's most in a carried world, in AUD cents. */
+export const PAID_HOLD = 25;
+
 export interface CarriedWorld {
   readonly w: ConversationWorld;
   readonly api: Hono;
   readonly database: Database;
   readonly hub: RealtimeHub;
   readonly ollama: StandIn;
+  /** The stand-in OpenRouter, in a world with the outside provider on. */
+  readonly openrouter: OpenRouterStandIn | undefined;
+  /** The broker's outside people list, as its settings hold it: a case may reload it. */
+  readonly outsidePeople: string[];
   readonly agent: AgentStandIn;
   readonly carrier: Carrier;
   readonly keys: CarryKeys;
@@ -82,18 +96,23 @@ async function withRealtime(admin: ConversationWorld['fixture']['db']['admin']):
 /**
  * `timeoutMs`, where given, shortens Ollama's wait, and so each call's
  * `answer_by`; `operation`, where given, prices the conversation operation or
- * lets more than one of the business's answers run at once.
+ * lets more than one of the business's answers run at once. `outside` turns on
+ * OpenRouter's paid chat, held at PAID_HOLD, for the owner, on one cloud API
+ * key route the model agent carries.
  */
 // oxlint-disable-next-line max-lines-per-function -- the world's parts, each made once
 export async function carriedWorld(
   part: string,
   timeoutMs?: number,
   operation: { readonly maximumMinor?: number; readonly concurrency?: number } = {},
+  outside = false,
 ): Promise<CarriedWorld> {
   const fixture = await createApiFixture(part);
   await withRealtime(fixture.db.admin);
   const hub = await realtimeHub(adminUrlOf(fixture.db.name));
   const ollama = await standInOllama();
+  const openrouter = outside ? await standInOpenRouter() : undefined;
+  const outsidePeople: string[] = [];
   const key = randomBytes(32).toString('base64url');
   const parsed = parseCarryKeys(key);
   if (!parsed.ok) throw new Error('carry key refused');
@@ -117,8 +136,15 @@ export async function carriedWorld(
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
         ...operation,
       },
+      ...(outside ? [{ ...OPENROUTER_CONVERSATION, maximumMinor: PAID_HOLD }] : []),
     ]),
-    providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
+    providers: new Map([
+      [OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }],
+      [
+        OPENROUTER_PROVIDER,
+        { build: openrouterRequest, price: openrouterCostMinor, bodyLimit: OPENROUTER_BODY_LIMIT },
+      ],
+    ]),
     routes: [
       {
         key: 'm5_ollama',
@@ -129,9 +155,23 @@ export async function carriedWorld(
         installation: 'here',
         ceiling: 4,
       },
+      ...(outside
+        ? [
+            {
+              key: 'openrouter',
+              reach: 'cloud' as const,
+              provider: OPENROUTER_PROVIDER,
+              credentialRef: 'openrouter',
+              credentialKind: 'api_key' as const,
+              installation: 'here',
+              ceiling: 1,
+            },
+          ]
+        : []),
     ],
     installation: 'here',
     carrier,
+    outsidePeople,
   });
   const api: Hono = composeApi({
     keys: runtimeKeys({ ...fixture.environment }),
@@ -144,6 +184,12 @@ export async function carriedWorld(
   }).app;
   const w = await conversationWorld({ fixture, api });
   people.push(w.owner.personId);
+  if (outside) {
+    outsidePeople.push(`${fixture.business}:${w.owner.personId}`);
+    // The panel offers the paid model to the people the install lists, as the API's settings say.
+    vi.stubEnv('OPS_OUTSIDE_PROVIDER', 'openrouter');
+    vi.stubEnv('OPS_OUTSIDE_MODEL_PEOPLE', outsidePeople.join(','));
+  }
   const agent = await carriageAgent({
     carriage: hubCarriage(hub),
     business: fixture.business,
@@ -152,6 +198,7 @@ export async function carriedWorld(
     key,
     keys: parsed.keys,
     ollama: ollama.origin,
+    ...(openrouter === undefined ? {} : { openrouter: openrouter.origin }),
   });
   return {
     w,
@@ -159,6 +206,8 @@ export async function carriedWorld(
     database,
     hub,
     ollama,
+    openrouter,
+    outsidePeople,
     agent,
     carrier,
     keys: parsed.keys,
@@ -171,6 +220,7 @@ export async function carriedWorld(
       await custody.stop();
       await hub.close();
       await ollama.close();
+      await openrouter?.close();
       await database.close();
       await w.drop();
     },
