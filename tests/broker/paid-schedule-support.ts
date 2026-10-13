@@ -54,10 +54,10 @@ export const steppedCustody =
     const wrapAdmit = (admit: Admit | undefined): Admit | undefined =>
       admit === undefined
         ? undefined
-        : async (sent) => {
-            const ok = await admit(sent);
-            if (ok) await admitted();
-            return ok;
+        : async () => {
+            const admission = await admit();
+            if (admission !== undefined) await admitted();
+            return admission;
           };
     return {
       ...broker,

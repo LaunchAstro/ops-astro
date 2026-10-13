@@ -142,14 +142,15 @@ const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [] };
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
 
-/** Whether this message was ever refused for its page. */
+/** Whether this message was ever refused for its page, its ids in any case. */
 async function markedRefused(tx: TenantQuery, asked: Asked): Promise<boolean> {
   const [row] = await tx.query<{ readonly marked: boolean }>(
     `select exists (
        select 1 from audit_events
         where business_id = $1 and command = $2 and refusal_code = any($3::text[])
           and attempted ->> 'operation' = $4
-          and attempted ->> 'conversationId' = $5 and attempted ->> 'messageId' = $6) as marked`,
+          and lower(attempted ->> 'conversationId') = lower($5)
+          and lower(attempted ->> 'messageId') = lower($6)) as marked`,
     [
       tx.businessId,
       REFUSED_CALL,

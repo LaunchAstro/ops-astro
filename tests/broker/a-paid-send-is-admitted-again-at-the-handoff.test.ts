@@ -2,8 +2,8 @@
 //
 // A paid send is judged again at the handoff to custody, after its hold:
 //
-//   - a grant revoked, the session ended, or the conversation given to
-//     another person between the hold and the send: nothing is sent, the call
+//   - a grant revoked, the session ended, the conversation given to another
+//     person or moved back to the free model between the hold and the send: nothing is sent, the call
 //     is released, and the whole hold is freed;
 //   - a revocation started once the send is admitted waits on the admission
 //     (it is seen waiting) until custody has started the send, so exactly one
@@ -36,10 +36,10 @@ const wrapping =
     const wrapAdmit = (admit: Admit | undefined): Admit | undefined =>
       admit === undefined
         ? undefined
-        : async (sent) => {
-            const ok = await admit(sent);
-            if (ok) await admitted();
-            return ok;
+        : async () => {
+            const admission = await admit();
+            if (admission !== undefined) await admitted();
+            return admission;
           };
     return {
       ...broker,
@@ -120,6 +120,17 @@ describe.skipIf(serverUrl === undefined)('a paid send is admitted again at the h
       );
     };
     await notAdmitted(asked, await p.twin(wrapping(move)));
+  });
+
+  it('the conversation moved back to the free model before the send: nothing sent', async () => {
+    const asked = await p.question('What is due today?');
+    const free = async (): Promise<void> => {
+      await p.w.fixture.db.admin.execute(
+        'update public.conversations set model_id = null where id = $1',
+        [asked.conversationId],
+      );
+    };
+    await notAdmitted(asked, await p.twin(wrapping(free)));
   });
 
   it('a grant row held elsewhere at the send admits nothing, at once', async () => {
