@@ -111,9 +111,11 @@ export async function serveCorrectionLocate(
     action: 'read',
     scope: { kind: 'record', id: recordId },
   } as const;
-  if (!(await checkAuthority(tx, subjects, task)).ok) return refuseNotFound();
+  // The file is read first and the grants after it, so one revoked before or while the file
+  // was read is seen by the checks that decide the answer.
   const page = await readPageSnapshot(tx, spine.taskTypeId, recordId, operands.pageUrl);
-  if (page === undefined || !(await coveredAt(tx, covering, page.partyId))) return refuseNotFound();
+  if (page === undefined || !(await checkAuthority(tx, subjects, task)).ok) return refuseNotFound();
+  if (!(await coveredAt(tx, covering, page.partyId))) return refuseNotFound();
   return {
     ok: true,
     target: {
