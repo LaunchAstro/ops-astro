@@ -34,7 +34,7 @@
 // relabels them.
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, hkdfSync, randomBytes } from 'node:crypto';
 import { existsSync, linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +54,13 @@ export const CREDENTIAL_DOMAIN = 'ops-astro/delegation-credential/v1';
  * out and its encoding is unchanged.
  */
 export const AGENT_CREDENTIAL_DOMAIN = 'ops-astro/agent-credential/v1';
+
+/**
+ * The domain a sealed body's value is digested in (`secret.set`, C31), under a
+ * subkey of its own: the stored digest of a short secret is then worth
+ * nothing to a reader of the rows without a key the database does not hold.
+ */
+export const SECRET_DIGEST_DOMAIN = 'ops-astro/secret-payload-digest/v1';
 
 /** The environment names a deployment configures its keyring with. */
 export const ACTIVE_KEY_VARIABLE = 'DELEGATION_CREDENTIAL_KEY_ID';
@@ -82,6 +89,18 @@ export interface CredentialIdentity {
 export interface DelegationCredentialKeys {
   readonly activeKeyId: string;
   derive(keyId: string, identity: CredentialIdentity): string | undefined;
+  /** A sealed body's canonical value, keyed under the active key for this business and actor. */
+  valueMac(businessId: string, actorId: string, canonicalValue: string): string;
+  /**
+   * Whether `matches` holds for the value's MAC under any key this process
+   * holds: how a retry digested under an older, still-held key is recognised.
+   */
+  valueMacMatches(
+    businessId: string,
+    actorId: string,
+    canonicalValue: string,
+    matches: (mac: string) => boolean,
+  ): boolean;
 }
 
 /** The keyring, or why this process has none it may use. Never thrown. */
@@ -100,6 +119,19 @@ export function credentialEncoding(keyId: string, identity: CredentialIdentity):
   ]);
 }
 
+// The credential key itself never touches a caller's value: each value MAC
+// is taken under a subkey derived for that one use.
+const valueKeyed = (keyId: string, key: Buffer, encoded: readonly string[]): string => {
+  const subkey = Buffer.from(hkdfSync('sha256', key, Buffer.alloc(0), SECRET_DIGEST_DOMAIN, 32));
+  const text = JSON.stringify([SECRET_DIGEST_DOMAIN, keyId, ...encoded]);
+  return createHmac('sha256', subkey).update(text, 'utf8').digest('base64url');
+};
+const parts = (businessId: string, actorId: string, value: string): readonly string[] => [
+  businessId.toLowerCase(),
+  actorId.toLowerCase(),
+  value,
+];
+
 /** A keyring over bytes already validated. The map is copied and never exposed. */
 export function credentialKeyring(
   activeKeyId: string,
@@ -114,6 +146,18 @@ export function credentialKeyring(
       return createHmac('sha256', key)
         .update(credentialEncoding(keyId, identity), 'utf8')
         .digest('base64url');
+    },
+    valueMac(businessId, actorId, canonicalValue) {
+      const key = held.get(activeKeyId);
+      if (key === undefined) throw new Error('credential keyring: the active key is not held');
+      return valueKeyed(activeKeyId, key, parts(businessId, actorId, canonicalValue));
+    },
+    valueMacMatches(businessId, actorId, canonicalValue, matches) {
+      const encoded = parts(businessId, actorId, canonicalValue);
+      for (const [keyId, key] of held) {
+        if (matches(valueKeyed(keyId, key, encoded))) return true;
+      }
+      return false;
     },
   };
 }
