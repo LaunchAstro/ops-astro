@@ -46,6 +46,16 @@ export interface TraceSpan {
   readonly errorCode: TraceError | null;
 }
 
+export const TRACE_OUTCOMES = ['completed', 'failed', 'partial', 'dropped', 'unknown'] as const;
+export type TraceMeasurements =
+  | { readonly outcome: null; readonly modelCalls: null; readonly settledCalls: null }
+  | {
+      readonly outcome: (typeof TRACE_OUTCOMES)[number];
+      readonly modelCalls: number;
+      readonly settledCalls: number;
+    };
+export type MeasuredTraceSpan = TraceSpan & { readonly measurements: TraceMeasurements };
+
 const HEX32 = /^[0-9a-f]{32}$/u;
 const HEX16 = /^[0-9a-f]{16}$/u;
 
@@ -111,7 +121,7 @@ export function derivedId(key: Buffer, parts: readonly string[], hex: 32 | 16): 
 const nanos = (ms: number): string => `${String(ms)}000000`;
 
 /** OTLP/HTTP JSON: one resource, one scope, a span per event, attributes from the allowlist only. */
-export function otlp(spans: readonly TraceSpan[]): string {
+export function otlp(spans: readonly (TraceSpan | MeasuredTraceSpan)[]): string {
   return JSON.stringify({
     resourceSpans: [
       {
@@ -132,6 +142,23 @@ export function otlp(spans: readonly TraceSpan[]): string {
                 ...(span.errorCode === null
                   ? []
                   : [{ key: 'error.code', value: { stringValue: span.errorCode } }]),
+                ...('measurements' in span && span.measurements.outcome !== null
+                  ? [
+                      { key: 'ops-astro.measurements.version', value: { intValue: '1' } },
+                      {
+                        key: 'ops-astro.outcome',
+                        value: { stringValue: span.measurements.outcome },
+                      },
+                      {
+                        key: 'ops-astro.usage.model_calls',
+                        value: { intValue: String(span.measurements.modelCalls) },
+                      },
+                      {
+                        key: 'ops-astro.usage.settled_calls',
+                        value: { intValue: String(span.measurements.settledCalls) },
+                      },
+                    ]
+                  : []),
               ],
             })),
           },
