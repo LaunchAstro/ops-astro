@@ -129,6 +129,8 @@ export async function factorVerified(person: Person, business: BusinessId): Prom
 
 /** Each login's minted link, its hash as the mail carries it, until a session opens it. */
 const mailed = new Map<string, string>();
+/** Each link session's refresh token, by its access token, as the provider gave it. */
+const refreshes = new Map<string, string>();
 
 /**
  * A recovery link the service minted at the provider and mailed for the
@@ -163,7 +165,17 @@ export async function linkSession(
       'hashed_token',
     );
   const verified = await provider('POST', '/verify', { type, token_hash: hash });
-  return field(verified.body, 'access_token');
+  const token = field(verified.body, 'access_token');
+  refreshes.set(token, field(verified.body, 'refresh_token'));
+  return token;
+}
+
+/** A link session's token refreshed at the provider: the same session, a new token. */
+export async function refreshed(token: string): Promise<string> {
+  const answer = await provider('POST', '/token?grant_type=refresh_token', {
+    refresh_token: refreshes.get(token) ?? '',
+  });
+  return field(answer.body, 'access_token');
 }
 
 /** An ordinary sign-in with the person's password. */

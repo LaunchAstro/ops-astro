@@ -39,8 +39,9 @@
 --    its user say nothing else that tells the two apart.
 -- 3. `ops.recovery_resets`: one reset window per recovery session, by the
 --    session's digest. `begin` inserts it with its window and `write_until`,
---    the recovery token's own expiry, past which it can write nothing;
---    `changed` settles it once (the trigger), so a second `begin` on the
+--    the recovery token's expiry as `begin` saw it, a record only: a refresh
+--    of the session outlives it, so it bounds nothing; `changed` settles it
+--    once (the trigger), so a second `begin` on the
 --    session is the same window and a second `changed` settles nothing and
 --    audits nothing.
 -- 4. `ops.recovery_subject_business(subject)`: the first business, by id,
@@ -49,9 +50,12 @@
 --    `begin` refuses a login mapped nowhere; `changed` audits there.
 -- 5. `ops.reset_write_open(subject, signed_in)`: whether a session of the
 --    login first signed in after an unsettled window's bound could still be
---    outlived by that window's password write: its recovery token can write
---    until `write_until`, and a write deletes every other session of the
---    login at the provider and nothing here. The door asks the provider about
+--    outlived by that window's password write. Its recovery session can write
+--    for as long as the provider keeps it, refreshed or not, and that life is
+--    not visible here; a write deletes every other session of the login at
+--    the provider and nothing here. So it holds until a later reset of the
+--    login settles: that reset's own write, after its window opened, deleted
+--    the earlier recovery session at the provider. The door asks the provider about
 --    such a session (`sessionRefusal`); `ops.session_refusal` refuses it for
 --    the carriage join, which has no provider to ask (`judge_limit`).
 
@@ -223,7 +227,10 @@ as $$
      where r.subject_digest = encode(sha256(convert_to(subject, 'UTF8')), 'hex')
        and r.settled_at is null
        and to_timestamp(signed_in) > r.open_until
-       and clock_timestamp() <= w.write_until)
+       and not exists (
+         select 1 from ops.subject_resets later
+          where later.subject_digest = r.subject_digest
+            and later.settled_at is not null and later.open_until > r.open_until))
 $$;
 revoke all on function ops.reset_write_open(text, bigint) from public;
 grant execute on function ops.reset_write_open(text, bigint) to ops_astro_app;

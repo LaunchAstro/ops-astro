@@ -13,6 +13,7 @@ import {
   begin,
   bravo,
   changed,
+  db,
   door,
   linkMinted,
   linkSession,
@@ -65,3 +66,37 @@ withProvider(
   },
   60_000,
 );
+
+withProvider(
+  'a later settled reset stops asking the provider about an earlier unsettled window',
+  async () => {
+    const person = await personIn(alpha);
+    await linkMinted(person);
+    expect((await begin(await linkSession(person))).status).toBe(200);
+    // The first window past its bound, its settle-once trigger set aside.
+    await db.admin.execute(
+      `update ops.subject_resets s set open_until = clock_timestamp() - interval '1 minute'
+         from (select set_config('session_replication_role', 'replica', true)) r
+        where s.subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
+      [person.subject],
+    );
+    expect(await writeOpen(person.subject)).toBe(true);
+    await linkMinted(person);
+    const second = await linkSession(person);
+    expect((await begin(second)).status).toBe(200);
+    expect((await changed(second, NEW_PASSWORD)).status).toBe(200);
+    expect(await writeOpen(person.subject)).toBe(false);
+    await delay(1100);
+    expect(await door(await signIn(person, NEW_PASSWORD), 'alpha')).toBe('served');
+  },
+  60_000,
+);
+
+/** `ops.reset_write_open` for a session of the login signed in now. */
+async function writeOpen(subject: string): Promise<boolean> {
+  const [row] = await db.admin.execute<{ readonly open: boolean }>(
+    'select ops.reset_write_open($1, extract(epoch from clock_timestamp())::bigint) as open',
+    [subject],
+  );
+  return row?.open === true;
+}

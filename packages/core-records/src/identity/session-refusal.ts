@@ -23,8 +23,9 @@ export type SessionRefusal = 'AUTH_SESSION_EXPIRED' | 'AUTH_SECOND_FACTOR_REQUIR
  * good, as `sessionEnded` records it.
  *
  * One more, outside the transaction's rows: a session first signed in after an
- * unsettled reset window's bound, while that window's recovery token can still
- * write a password (`ops.reset_write_open`). Such a write deletes the login's
+ * unsettled reset window's bound, while that window's recovery session, which
+ * a refresh keeps alive, could still write a password and no later reset of
+ * the login has settled (`ops.reset_write_open`). Such a write deletes the login's
  * other sessions at the provider and leaves nothing here, so the provider is
  * asked: gone is ended for good, and no answer is refused this once.
  */
