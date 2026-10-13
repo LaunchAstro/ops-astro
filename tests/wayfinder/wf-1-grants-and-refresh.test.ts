@@ -700,6 +700,7 @@ describe.skipIf(serverUrl === undefined)(
           dmarc: 'reject',
           mock: false,
           checkedAt: performance.now(),
+          checkedWallAt: Date.now(),
         },
       });
       const outcomes = Promise.allSettled([assigning, mailing]);

@@ -56,6 +56,9 @@ export const VERIFIED_SENDER: MailSettings['sender'] = {
   get checkedAt() {
     return performance.now();
   },
+  get checkedWallAt() {
+    return Date.now();
+  },
 };
 
 export const MAIL: MailSettings = {
