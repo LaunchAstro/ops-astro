@@ -168,6 +168,7 @@ SOL('a factor verified after standing was read prevents the paused password rese
       );
       const factor = await recordFactorEnrolled(tx, {
         personId: member.personId,
+        subject,
         provider: 'supabase',
         providerFactorId: randomUUID(),
       });

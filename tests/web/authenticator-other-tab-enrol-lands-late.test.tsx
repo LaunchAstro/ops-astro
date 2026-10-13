@@ -92,7 +92,7 @@ it('a cancelled enrolment from another tab cannot replace the displayed factor',
     await vi.waitFor(() =>
       expect(view.find('[data-factor="secret"]')?.textContent).toBe('DISPLAYED-HERE'),
     );
-    expect((await factorOf(clientD.personId))?.providerFactorId).toBe('factor-two');
+    expect((await factorOf(clientD))?.providerFactorId).toBe('factor-two');
     const release = releaseFirst;
     releaseFirst = undefined;
     release?.();
@@ -106,7 +106,7 @@ it('a cancelled enrolment from another tab cannot replace the displayed factor',
     );
     expect(
       view.find('[data-factor="done"]'),
-      `live target=${(await factorOf(clientD.personId))?.providerFactorId}; panel=${view.text()}`,
+      `live target=${(await factorOf(clientD))?.providerFactorId}; panel=${view.text()}`,
     ).not.toBeNull();
   } finally {
     const release = releaseFirst;

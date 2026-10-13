@@ -77,6 +77,7 @@ export async function enrolHere(
   await db.app.withBusiness(business, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });
@@ -102,8 +103,9 @@ export async function events(business: string, command: string): Promise<readonl
 }
 
 /** A provider's calls these cases never decide on: no factor listed, every sign-out done. */
-const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'signOut'> = {
+const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'heldFactors' | 'signOut'> = {
   verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+  heldFactors: () => Promise.resolve({ ok: true, value: [] }),
   signOut: () => Promise.resolve({ ok: true, value: undefined }),
 };
 
@@ -118,17 +120,21 @@ function racingProvider(
   endOthers: boolean,
 ) {
   const asked: string[] = [];
+  // A factor the provider would not remove is one it still holds.
+  const kept: string[] = [];
   const session = { accessToken: 'aal2-access-token', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
     ...QUIET,
+    heldFactors: () => Promise.resolve({ ok: true, value: kept }),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
       await enrolHere(alpha, alphaPerson, subject, true, endOthers);
       return { ok: true, value: session };
     },
-    remove: () => {
+    remove: (_token, factorId) => {
       asked.push('remove');
+      if (!removal.ok) kept.push(factorId);
       return Promise.resolve(removal);
     },
   };
@@ -235,6 +241,7 @@ export async function factorIn(
   const id = await db.app.withBusiness(bravo, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId: person,
+      subject,
       provider: 'supabase',
       providerFactorId,
     });

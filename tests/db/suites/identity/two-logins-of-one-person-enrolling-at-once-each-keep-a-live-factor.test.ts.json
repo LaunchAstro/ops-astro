@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two logins of one person setting up an authenticator at once each end with a live factor recorded under their own subject, neither replacing the other"
+}

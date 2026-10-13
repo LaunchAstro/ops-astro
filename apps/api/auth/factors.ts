@@ -24,7 +24,7 @@ export interface GoTrueFactorOptions {
   readonly baseUrl: string;
   /** Milliseconds before a call is abandoned as slow. */
   readonly timeoutMs?: number;
-  /** Bytes of answer read before it is abandoned as oversized. */
+  /** Bytes of any answer but `GET /user`'s (`USER_MAX_BYTES`) read before it is abandoned as oversized. */
   readonly maxBytes?: number;
   /** Injected for tests; the platform's `fetch` otherwise. */
   readonly fetch?: typeof fetch;
@@ -72,7 +72,8 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   const call = callGoTrue(request, limits);
   const readUser = callGoTrue(request, { ...limits, maxBytes: USER_MAX_BYTES });
   return {
-    verifiedFactors: (accessToken) => verifiedFactors(readUser, accessToken),
+    verifiedFactors: (accessToken) => listedFactors(readUser, accessToken, true),
+    heldFactors: (accessToken) => listedFactors(readUser, accessToken, false),
     enrol: (accessToken) => enrol(call, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
@@ -134,11 +135,12 @@ function callGoTrue(request: Request, limits: Limits): Call {
 }
 
 // GoTrue lists a login's factors on its user (`GET /user`, `factors`, left
-// out when there are none). Only the ids of verified ones are kept; any entry
-// not shaped as a factor refuses the whole answer.
-async function verifiedFactors(
+// out when there are none). The ids of every factor, or of the verified ones
+// alone; any entry not shaped as a factor refuses the whole answer.
+async function listedFactors(
   call: Call,
   accessToken: string,
+  verifiedOnly: boolean,
 ): Promise<ProviderAnswer<readonly string[]>> {
   const answer = await call('GET', '/user', accessToken);
   if (!answer.ok) return answer;
@@ -149,7 +151,7 @@ async function verifiedFactors(
     if (typeof factor !== 'object' || factor === null) return { ok: false, fault: 'malformed' };
     const { id, status } = factor as Json;
     if (!isFactorId(id) || typeof status !== 'string') return { ok: false, fault: 'malformed' };
-    if (status === 'verified') verified.push(id);
+    if (!verifiedOnly || status === 'verified') verified.push(id);
   }
   return { ok: true, value: verified };
 }
@@ -175,11 +177,11 @@ async function verify(
   factorId: string,
   code: string,
 ): Promise<ProviderAnswer<FactorSession>> {
-  if (!isFactorId(factorId)) return { ok: false, fault: 'refused' };
+  // Until the verify call, the code has not left this server: any failure is `unsent`.
+  if (!isFactorId(factorId)) return { ok: false, fault: 'unsent' };
   const challenge = await call('POST', `/factors/${factorId}/challenge`, accessToken, {});
-  if (!challenge.ok) return challenge;
-  const challengeId = challenge.value['id'];
-  if (!isFactorId(challengeId)) return { ok: false, fault: 'malformed' };
+  const challengeId = challenge.ok ? challenge.value['id'] : undefined;
+  if (!isFactorId(challengeId)) return { ok: false, fault: 'unsent' };
   const verified = await call('POST', `/factors/${factorId}/verify`, accessToken, {
     challenge_id: challengeId,
     code,

@@ -40,10 +40,12 @@ export {
   liveFactor,
   lockLoginFactors,
   loginHasVerifiedFactor,
+  loginRemovedFactors,
   loginVerifiedFactors,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
+  recordStrayRemoved,
   type FactorStatus,
   type SecondFactor,
 } from './second-factor.ts';

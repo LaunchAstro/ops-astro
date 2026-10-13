@@ -135,6 +135,7 @@ async function scene() {
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     await recordFactorEnrolled(tx, {
       personId: member.personId,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });
@@ -219,7 +220,9 @@ SOL(
       const [actResult, resetResult] = (await Promise.allSettled([acting, resetting])).map(
         (settled) => answer(settled),
       );
-      const live = await world.db.app.withBusiness(world.alpha, (tx) => liveFactor(tx, person));
+      const live = await world.db.app.withBusiness(world.alpha, (tx) =>
+        liveFactor(tx, person, caller.presented.subject),
+      );
       expect({ actResult, resetResult, status: live?.status }).toMatchObject({
         actResult: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         resetResult: { ok: true },
