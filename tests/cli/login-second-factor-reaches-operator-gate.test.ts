@@ -35,6 +35,7 @@ import {
   serverUrl,
   type World,
 } from '../acceptance/world.ts';
+import { gotrueQrSvg } from '../api/gotrue-qr-svg.ts';
 import {
   serveTestKeySetApart,
   signBearer,
@@ -88,7 +89,7 @@ async function answer(route: string, body: string): Promise<{ status: number; bo
       body: {
         id: 'factor-one',
         type: 'totp',
-        totp: { qr_code: 'data:,x', secret: 'S', uri: 'otpauth://totp/x' },
+        totp: { qr_code: gotrueQrSvg(2000), secret: 'S', uri: 'otpauth://totp/x' },
       },
     };
   }
