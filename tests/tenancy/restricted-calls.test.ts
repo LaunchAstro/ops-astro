@@ -93,6 +93,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
          select id, person_id from public.actors
           where business_id = $1 and person_id is not null order by id limit 1) a on true
      returning 1`,
+  // #1531: no journey step carries a call, so a member and a carriers row naming made-up ids.
+  'public.conversation_agent_members': `insert into public.conversation_agent_members
+       (business_id, conversation_id, agent_actor_id, added_by_actor_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.model_call_carriers': `insert into public.model_call_carriers
+       (business_id, call_id, agent_actor_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
   'public.conversation_messages': `insert into public.conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
      select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',
@@ -674,16 +681,20 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'conversation_agent_members_close()',
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
   'map_summary_on_record()',
   'map_summary_refresh(uuid)',
+  'model_call_carriers_ring()',
   'model_route_room(text,integer)',
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'ops_carry_may_join(text)',
+  'ops_carry_ring(uuid,uuid,uuid,uuid)',
   'password_reset_token_find(text)',
   'planned_runs_origin_is_approved()',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
@@ -965,7 +976,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly thirteen, each with its search path pinned', () => {
+    it('are exactly seventeen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 

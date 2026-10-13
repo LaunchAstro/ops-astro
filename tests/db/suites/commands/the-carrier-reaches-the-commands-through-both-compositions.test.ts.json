@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "MODEL_BROKER_CARRIER reaches conversation.start through the server and the function, and a bad setting stops the function"
+}

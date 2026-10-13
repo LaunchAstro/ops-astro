@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "with Realtime installed, an offer stores only an ids-only doorbell on the agent topic; a call topic sent from the database is detected (control)"
+}

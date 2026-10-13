@@ -13,12 +13,13 @@
 --   deliver it to joined subscribers.
 -- * The `authenticated` role the policies name. It is the cluster's, so it is
 --   made only where absent, and a twin made by another database at the same
---   moment is taken as made.
+--   moment is taken as made. It may log in, as an outsider holding nothing
+--   outside a shimmed database, so the cluster's role census classes it.
 
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then
-    create role authenticated nologin;
+    create role authenticated login;
   end if;
 exception
   when duplicate_object or unique_violation then null;

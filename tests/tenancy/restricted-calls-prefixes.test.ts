@@ -208,6 +208,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     owner_person_id: randomUUID(),
     title: 'restricted calls seed',
   },
+  // #1531: no journey step carries a call.
+  'public.conversation_agent_members': {
+    conversation_id: randomUUID(),
+    agent_actor_id: randomUUID(),
+    added_by_actor_id: randomUUID(),
+  },
+  'public.model_call_carriers': { call_id: randomUUID(), agent_actor_id: randomUUID() },
   'public.conversation_messages': {
     conversation_id: randomUUID(),
     role: 'person',

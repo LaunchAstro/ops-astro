@@ -55,6 +55,13 @@ const COLUMN_UPDATES: readonly {
     columns: ['closed_at', 'failures', 'state'],
   },
   ...MANDATE_UPDATES,
+  // #1531: an agent membership closes; a carried call's times are each set once.
+  { table: 'public.conversation_agent_members', from: '20261013010100', columns: ['left_at'] },
+  {
+    table: 'public.model_call_carriers',
+    from: '20261013010200',
+    columns: ['answer_by', 'offered_at', 'request_at', 'runner', 'send_by'],
+  },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   {
     table: 'public.clients',

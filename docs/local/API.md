@@ -412,6 +412,20 @@ operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
 eligible route itself, never another found by its key.
 
+A carried deployment (#1531, live chat route B) sets `MODEL_BROKER_CARRIER`,
+`{"agent":<agent actor id>,"people":[<person id>, ...]}`: the model agent on
+the owner's machine and the people it carries conversation calls for
+(`apps/api/model-carrier.ts`). It needs `OPS_AGENT_PROVIDER=ollama`,
+`MODEL_BROKER_ROUTES` with an Ollama `local` route and
+`MODEL_BROKER_INSTALLATION`, and refuses to start beside
+`MODEL_BROKER_CREDENTIALS_FILE` or `MODEL_BROKER_DESTINATIONS`: it holds no
+provider credential and starts no custody process. `main()` and the Vercel
+function hand the carrier to `composeApi`, and `conversation.start` and
+`conversation.set_model` add its agent to a listed person's internal
+conversation as a member on a model it carries (`conversation-agents.ts`).
+Each conversation call then names its message, one call per message on any
+instance, and a carried call is written with its carriers row.
+
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
 `TRACE_EXPORT_ORIGIN` (the target's bare origin, https unless it is

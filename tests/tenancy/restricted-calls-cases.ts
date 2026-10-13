@@ -163,6 +163,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'task_tags'],
   // 20261006074341: a conversation member's row; a member leaves by a mark, never a delete.
   ['siu', 'team_conversation_members'],
+  // 20261013010100 and 20261013010200 (#1531): an agent member closes, and a carried call's
+  // times are set, by the column grants in COLUMN_UPDATES; nothing deletes either.
+  ['si', 'conversation_agent_members model_call_carriers'],
   // C80: a live correction takes updates (a decision is one); its receipts
   // are append only.
   ['siu', 'live_corrections'],
