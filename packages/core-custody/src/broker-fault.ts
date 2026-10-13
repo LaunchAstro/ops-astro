@@ -104,6 +104,8 @@ export function proofOf(
 ): Proof {
   if (outcome.kind === 'worker_lost') return silent('custody was lost before the answer');
   if (outcome.kind === 'refused') return nothing(`custody refused the lookup (${outcome.code})`);
+  // A withheld outcome comes only from a site template route.
+  if (outcome.kind === 'withheld') return silent('custody withheld it');
   if (!outcome.outbound.ok) {
     return silent(`the lookup failed (${outcome.outbound.fault})`);
   }

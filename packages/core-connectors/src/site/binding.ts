@@ -32,6 +32,8 @@ import type { Published, PublishPorts } from './publish.ts';
 import { checkEnvelope } from './envelope.ts';
 import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
+export { readServed } from './serving.ts';
+
 /** One party's site: its providers, and each catalogued page with its source file. */
 export interface PartySite {
   readonly partyId: string;
@@ -257,19 +259,6 @@ export async function mergeAndFind(
   const deployed = await deploymentOf(binding, String(written.value['commit.sha']), deps);
   if (deployed.kind !== 'ok') return deployed;
   return ok({ ...deployed.value, liveUrl: binding.pageUrl });
-}
-
-/** `site.deployment.read`: served is ready on production; the revision is its commit. */
-export async function readServed(
-  deploymentId: string,
-  deps: CallDependencies,
-): Promise<ProviderResult<{ revision: string; served: boolean }>> {
-  const read = await call('site.deployment.read', { deployment: deploymentId }, deps);
-  if (read.kind !== 'ok') return read;
-  return ok({
-    revision: String(read.value['meta.githubCommitSha']),
-    served: read.value['readyState'] === 'READY' && read.value['target'] === 'production',
-  });
 }
 
 /** `site.source.revert`: the pre-image back over the published change, then its deployment. */

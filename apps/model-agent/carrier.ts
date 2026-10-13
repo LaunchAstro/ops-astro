@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The model agent (live chat route B): it carries the people's calls to
-// Ollama on the owner's machine. It connects out only, to Realtime, and hears
+// Ollama on the owner's machine, and a listed person's paid chat to OpenRouter
+// under custody's own key there (#1508). It connects out only, to Realtime, and hears
 // offers on its own doorbell, which the database rings with ids.
 //
 // Per call, under this process's `runner` (a restart is a new one):
@@ -144,7 +145,9 @@ async function run(
   request: OutboundRequest,
   deadlineAt: number,
 ) {
-  const pieces = piecesFor(agent.now, (event, body, seq) => say(agent, k, call, event, body, seq));
+  const pieces = piecesFor(request.destination, agent.now, (event, body, seq) =>
+    say(agent, k, call, event, body, seq),
+  );
   const onWritten = (): void => {
     say(agent, k, call, 'written', {});
     agent.log('written');
@@ -155,9 +158,10 @@ async function run(
     pieces.push,
   );
   pieces.end();
-  if (outcome.kind === 'worker_lost') {
+  // A withheld outcome comes only from a site template route, never a model call's.
+  if (outcome.kind === 'worker_lost' || outcome.kind === 'withheld') {
     call.state = 'done';
-    agent.log('custody lost');
+    agent.log(outcome.kind === 'withheld' ? 'custody withheld' : 'custody lost');
     return;
   }
   if (outcome.kind === 'refused') {
