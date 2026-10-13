@@ -170,3 +170,60 @@ export function redact(text: string, credential: StoredCredential): string {
     return writtenDeep(redacted);
   }
 }
+
+/** A JSON value's strings in document order, and everything else it spells (keys, numbers, literals). */
+function leavesOf(decoded: unknown): { readonly strings: string[]; readonly others: string[] } {
+  const strings: string[] = [];
+  const others: string[] = [];
+  const pending: unknown[] = [decoded];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === 'string') strings.push(value);
+    else if (typeof value === 'object' && value !== null) {
+      const items = Array.isArray(value) ? (value as unknown[]) : Object.values(value);
+      if (!Array.isArray(value)) others.push(...Object.keys(value));
+      for (let at = items.length - 1; at >= 0; at -= 1) pending.push(items[at]);
+    } else others.push(JSON.stringify(value));
+  }
+  return { strings, others };
+}
+
+/** A text as sent, base64 or base64url decoded (line breaks ignored), and percent-decoded. */
+function readingsOf(text: string): readonly string[] {
+  let decoded = '';
+  try {
+    decoded = atob(text.replaceAll('-', '+').replaceAll('_', '/'));
+  } catch {
+    // Not base64: nothing to read that way.
+  }
+  const unescaped = text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_, hex: string) =>
+    String.fromCodePoint(Number.parseInt(hex, 16)),
+  );
+  return [text, decoded, unescaped];
+}
+
+/**
+ * Whether an answer carries the credential: any spelling `redact` removes, or
+ * the secret inside a string, or inside all of a JSON answer's strings joined
+ * in order (a secret split across fields), each read as sent, base64 decoded
+ * (line breaks ignored) or percent-decoded. A destination that refuses echoes
+ * withholds such an answer whole. An arbitrary transform stays out of reach;
+ * the credential's own scope bounds that.
+ */
+export function echoes(text: string, credential: StoredCredential): boolean {
+  const secrets = secretsOf(credential);
+  const redactText = redacterOf(secrets);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return redactText(text) !== text;
+  }
+  const { strings, others } = leavesOf(decoded);
+  if (others.some((one) => redactText(one) !== one)) return true;
+  return [...strings, strings.join('')].some(
+    (one) =>
+      redactText(one) !== one ||
+      readingsOf(one).some((reading) => secrets.some((secret) => reading.includes(secret))),
+  );
+}

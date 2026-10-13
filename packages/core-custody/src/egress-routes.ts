@@ -9,15 +9,29 @@
 // provider's, whose service key could otherwise mint sign-in links or users
 // (C40 security review M1). A destination may declare the stream format
 // custody decodes for it (`stream: 'openai_sse'`, #1508).
+//
+// A route may instead be a catalogued call's fixed template, query included
+// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
+// is one segment or query value, a `{name*}` slot one segment or more. A
+// request matches it whole or not at all, so no query is free. A destination
+// marked `echo: 'refuse'` has an answer carrying its credential withheld.
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
  * A PUT is only ever one `/*` segment under a prefix, never an exact path.
  */
-export interface Route {
+export interface PathRoute {
   readonly method: 'DELETE' | 'GET' | 'PUT';
   readonly path: string;
 }
+
+/** A catalogued call's whole shape, path and query. */
+export interface TemplateRoute {
+  readonly method: 'GET' | 'POST' | 'PUT';
+  readonly template: string;
+}
+
+export type Route = PathRoute | TemplateRoute;
 
 export type Method = 'POST' | Route['method'];
 
@@ -55,6 +69,34 @@ export interface Extras {
   readonly post?: false;
   /** A stream format custody decodes itself, so a presented key may stream (#1508). */
   readonly stream?: 'openai_sse';
+  /** `refuse`: an answer carrying the credential is withheld whole, not redacted. */
+  readonly echo?: 'refuse';
+}
+
+/** A template's path: literal segments (never `.` or `..`) and slots. */
+const TEMPLATE_PATH = /^(?:\/(?:\{[a-z]+\*?\}|(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]+))+$/u;
+/** A template's query: each parameter a literal value or one slot. */
+const TEMPLATE_QUERY =
+  /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
+/** What a slot stands for: one segment, never `.` or `..`, and no escape. */
+const SLOT_VALUE = String.raw`(?!\.\.?(?:/|\?|&|$))[A-Za-z0-9._~-]{1,256}`;
+
+function templateOf(template: string): boolean {
+  const [path = '', query, ...more] = template.split('?');
+  return (
+    more.length === 0 &&
+    TEMPLATE_PATH.test(path) &&
+    (query === undefined || TEMPLATE_QUERY.test(query))
+  );
+}
+
+/** Whether a request's path and query fill the template exactly. */
+function fills(template: string, path: string): boolean {
+  const pattern = template.replaceAll(/\{[a-z]+(\*?)\}|[.?]/gu, (slot, many?: string) => {
+    if (slot === '.' || slot === '?') return `\\${slot}`;
+    return many === '*' ? `${SLOT_VALUE}(?:/${SLOT_VALUE})*` : SLOT_VALUE;
+  });
+  return new RegExp(`^${pattern}$`, 'u').test(path);
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -74,6 +116,13 @@ function headersOf(value: unknown): Record<string, string> | undefined {
 }
 
 function routeOf(value: unknown): Route | undefined {
+  if (isObject(value) && Object.keys(value).toSorted().join() === 'method,template') {
+    const { method, template } = value;
+    const known = method === 'GET' || method === 'POST' || method === 'PUT';
+    return known && typeof template === 'string' && templateOf(template)
+      ? { method, template }
+      : undefined;
+  }
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
   const { method, path } = value;
   if (typeof path !== 'string') return undefined;
@@ -91,7 +140,12 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
     routes?: Route[];
     post?: false;
     stream?: 'openai_sse';
+    echo?: 'refuse';
   } = {};
+  if (entry['echo'] !== undefined) {
+    if (entry['echo'] !== 'refuse') return undefined;
+    extras.echo = 'refuse';
+  }
   if (entry['stream'] !== undefined) {
     if (entry['stream'] !== 'openai_sse') return undefined;
     extras.stream = 'openai_sse';
@@ -123,10 +177,15 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
  * route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
+  const routes = extras.routes ?? [];
+  const templated = routes.some(
+    (route) => 'template' in route && route.method === method && fills(route.template, path),
+  );
+  if (templated) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
   if (method === 'POST') return extras.post !== false;
-  return (extras.routes ?? []).some((route) => {
-    if (route.method !== method) return false;
+  return routes.some((route) => {
+    if (!('path' in route) || route.method !== method) return false;
     if (!route.path.endsWith('/*')) return route.path === path;
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));

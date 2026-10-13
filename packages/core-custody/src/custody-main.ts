@@ -13,6 +13,8 @@
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path. A dispatch marked `gated` waits after
 // `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
+// A destination that refuses echoes has an answer carrying the credential
+// withheld whole and marked `echoed`, never redacted and passed on.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -27,7 +29,7 @@ import {
   type OutboundRequest,
 } from './egress.ts';
 import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
-import { redact } from './redaction.ts';
+import { echoes, redact } from './redaction.ts';
 import { openaiSse } from './stream-decode.ts';
 
 interface Loaded {
@@ -99,7 +101,11 @@ const loaded = load();
 const unrouted = (asked: OutboundRequest): boolean => {
   const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
-  return asked.method === 'POST' && destination.post === false;
+  return (
+    asked.method === 'POST' &&
+    destination.post === false &&
+    !pathAllowed(destination, 'POST', asked.path)
+  );
 };
 
 /**
@@ -117,6 +123,7 @@ function streamingOf(
 ): {
   readonly onChunk: ((chunk: Buffer) => void) | undefined;
   readonly answer: (outcome: Outbound) => Outbound;
+  readonly echoed?: () => boolean;
 } {
   if (credential.scheme === 'none') {
     const decoder = new StringDecoder('utf8');
@@ -128,9 +135,19 @@ function streamingOf(
       answer: (outcome) => outcome,
     };
   }
+  const listed = loaded.destinations.get(destination);
+  if (listed?.echo === 'refuse') {
+    let echoed = false;
+    const withheld = (outcome: Outbound): Outbound => {
+      if (!outcome.ok) return outcome;
+      echoed = echoes(outcome.body, credential);
+      return { ...outcome, body: echoed ? '' : redact(outcome.body, credential) };
+    };
+    return { onChunk: undefined, answer: withheld, echoed: () => echoed };
+  }
   const redacted = (outcome: Outbound): Outbound =>
     outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
-  if (loaded.destinations.get(destination)?.stream !== 'openai_sse') {
+  if (listed?.stream !== 'openai_sse') {
     return { onChunk: undefined, answer: redacted };
   }
   const decoding = openaiSse(credential);
@@ -188,11 +205,13 @@ async function answer(
     undefined,
     streaming.onChunk,
   );
+  const answered = streaming.answer(outcome);
   reply({
     type: 'answer',
-    outcome: streaming.answer(outcome),
+    outcome: answered,
     kind: credential.kind,
     account: credential.account,
+    ...(streaming.echoed?.() === true ? { echoed: true } : {}),
   });
 }
 
