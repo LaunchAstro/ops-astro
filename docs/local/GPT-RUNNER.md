@@ -65,10 +65,13 @@ and in the environment. A refusal names a setting, never a value.
      after; and no git checkout holds the runner home;
    - that binary says it is the pinned version and is signed in to the
      ChatGPT plan;
-   - the credential file is a regular 0600 file of this user;
+   - the credential file is a regular 0600 file of this user, and no access
+     list lets others into either file or either home;
    - custody itself would load the credential file (its own parser), and it
      holds the runner's key, and only it, for the door;
-   - a runner already listening listens on loopback alone. When `lsof` is
+   - the settings fix the runner's port, the one custody's `local_gpt`
+     destination names, and a runner already listening there listens on
+     loopback alone. When `lsof` is
      missing or fails, the check fails: it never reads that as no listener.
      When it sees none, the check binds the port on loopback as the runner
      will, since `lsof` cannot see another user's listener.
