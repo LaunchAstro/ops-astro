@@ -76,7 +76,7 @@ check() {
 #     self range lit  exit  must say          label
 check 0 0 0        0  ""                 "all clean: the push proceeds"
 check 0 0 1        1  "contamination"    "literal 1, a hit: refused, and says why"
-check 0 0 2        0  "did not run"      "literal 2, no private list: proceeds, and says the sweep did not run"
+check 0 0 2        1  "HUB_GATE_TERMS"   "literal 2, no private list: refused, and names the setting"
 check 0 0 3        1  "broken"           "literal 3, gate broken: refused, and says the gate is broken"
 check 0 1 0        1  "contamination"    "range 1, a hit in the outgoing commits: refused"
 check 0 3 0        1  "broken"           "range 3, gate broken: refused"
@@ -197,6 +197,8 @@ proof_case pre-push-exports-published-scanners-not-replacements \
   "a pushed commit is judged by its published scanners, not a local replacement's"
 proof_case pre-push-ignores-uncommitted-canary-bytes \
   "uncommitted canary bytes in the checkout cannot refuse a clean pushed commit"
+proof_case pre-push-refuses-without-private-list \
+  "a push without the private list is refused, and one with it runs the literal sweep"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
