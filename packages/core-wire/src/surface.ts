@@ -620,6 +620,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `read` on tasks, asked per map inside the query, so a reader holding one
+  // map's grant lists that map (`reads/maps.ts`); a caller holding no grant
+  // at all is refused.
+  read('map.list', TASK_COLLECTION),
   // WF-2. A chart is a business write: it files the map and its tickets.
   declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
   declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),

@@ -20,6 +20,7 @@ import {
   isUuid,
   listTags,
   ownAgents,
+  heldScopes,
   readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -34,7 +35,7 @@ import {
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
-import { readMapFrontier, readMapView } from './maps.ts';
+import { readMapFrontier, readMapList, readMapView } from './maps.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -193,6 +194,23 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
       const answer = await readMapFrontier(tx, spine.taskTypeId, recordId);
       return answer ?? (await notAMap(tx, recordId));
+    },
+  },
+  // No collection is asked at the door, as for `task.search`: a reader holding
+  // one map's grant lists that map. So the read refuses a caller holding no
+  // grant itself, and a map never reaches a client surface (WF-1).
+  'map.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine }) {
+      if (!isInternalReader(session.roleKey)) return refuseNotFound();
+      const subjects = subjectsOf(session);
+      const held = await heldScopes(tx, subjects, { collection: 'task', action: 'read' });
+      if (held.length === 0) return NO_GRANT_AT_ALL;
+      return await readMapList(tx, spine.taskTypeId, subjects);
     },
   },
   // AW-03. No collection is asked at the door: the owner reads their own

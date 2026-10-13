@@ -168,7 +168,13 @@ export type {
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
 export type * from './views-chat.ts';
-export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
+export type {
+  MapComponentView,
+  MapView,
+  MapViewResult,
+  MapFrontierResult,
+  MapListResult,
+} from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,

@@ -180,6 +180,8 @@ export type CommandName =
   | 'task.close_out_of_scope'
   // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
+  // The maps a person may read, for the Projects section's Maps page.
+  | 'map.list'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
   | 'budget.set_planning_cap'

@@ -185,6 +185,7 @@ const OPERANDS = {
   'trace.read': { recordId: 'r' },
   'map.view': { recordId: 'r' },
   'map.frontier': { recordId: 'r' },
+  'map.list': {},
   'harness.read': { runId: 'r' },
   'live_correction.read': { correctionId: 'c' },
   'privacy.draft_breach_notices': {

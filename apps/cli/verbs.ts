@@ -137,6 +137,12 @@ export const VERB_TABLE: readonly VerbRow[] = [
     usage: '<id> [--fields a,b] [--json]',
     body: (id) => ({ recordId: target(id) }),
   },
+  {
+    verb: 'map list',
+    command: 'map.list',
+    usage: '[--fields a,b] [--json]',
+    body: () => ({}),
+  },
 ];
 
 /** The whole help, as an agent loads it: one line per verb. */

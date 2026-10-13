@@ -67,6 +67,16 @@ export interface MapViewResult {
   readonly map: MapView;
 }
 
+/** The live maps the reader's grants reach, by title. */
+export interface MapListResult {
+  readonly ok: true;
+  readonly maps: readonly {
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+  }[];
+}
+
 /** A map's frontier and fog (WF-2): each from its read model, in order. */
 export interface MapFrontierResult {
   readonly ok: true;

@@ -45,6 +45,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.unattended': [],
   'live_correction.read': ['correctionId'],
   'map.frontier': ['recordId'],
+  'map.list': [],
   'map.view': ['recordId'],
   'operations.read': [],
   'person.list': [],
@@ -75,6 +76,7 @@ const PINNED_OUTSIDER_NOT_FOUND = [
   'chat.conversations',
   'chat.messages',
   'map.frontier',
+  'map.list',
   'map.view',
   'task.board',
   'task.execution',
@@ -150,6 +152,7 @@ const unsent = (name: string, fix: string) =>
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.list': BODIES.map(() => null),
   'task.read': [
     RECORD_ID,
     null,
@@ -249,7 +252,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-three reads', () => {
+  it('names the same forty-four reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -257,7 +260,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same eleven', () => {
+  it('tells an outsider NOT_FOUND on the same twelve', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

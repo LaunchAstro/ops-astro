@@ -613,6 +613,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'mandate.revoke',
   'map.chart',
   'map.frontier',
+  'map.list',
   'map.view',
   'model.call',
   'notifications.set_channel',
@@ -1255,7 +1256,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-six from an expected revision', () => {
+  it('exempts the same one hundred and thirty-seven from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

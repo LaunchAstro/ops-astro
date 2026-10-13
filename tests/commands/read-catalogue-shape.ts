@@ -7,6 +7,7 @@
 export const PINNED_SHAPE = {
   'map.frontier': { spine: true, subject: true, authority: 'declared' },
   'map.view': { spine: true, subject: true, authority: 'declared' },
+  'map.list': { spine: true, subject: false, authority: 'holds-any-grant' },
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'chat.conversations': { spine: false, subject: false, authority: 'declared' },
   'chat.messages': { spine: false, subject: false, authority: 'declared' },
