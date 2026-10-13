@@ -4,12 +4,49 @@
 // held by custody from the read before a refresh to the write after it, and
 // by the owner's sign-in while it writes. Waiting is bounded; a lock older
 // than LOCK_STALE_MS was abandoned (its holder died) and is taken over.
+//
+// Each holder writes its own random id into the lock, and removes a lock only
+// while it still holds the id expected: its own on release, the abandoned
+// one's on takeover. A holder that resumes after its lock was taken over
+// therefore leaves its successor's lock in place, and no third holder enters
+// while the successor still refreshes or writes.
 
-import { closeSync, openSync, statSync, unlinkSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 
 /** How long a lock is waited for, and how old a lock is before it is taken as abandoned. */
 const LOCK_WAIT_MS = 10_000;
 const LOCK_STALE_MS = 60_000;
+
+/** The id a lock holds, or undefined when there is no lock to read. */
+function holderOf(lock: string): string | undefined {
+  try {
+    return readFileSync(lock, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** Remove the lock only while it still holds `id`. */
+function removeIfHeldBy(lock: string, id: string): void {
+  if (holderOf(lock) !== id) return;
+  try {
+    unlinkSync(lock);
+  } catch {
+    // Gone meanwhile: nothing to remove.
+  }
+}
+
+/** The abandoned lock removed, if it is still the one judged abandoned. */
+function takeOverIfStale(lock: string): void {
+  try {
+    if (Date.now() - statSync(lock).mtimeMs <= LOCK_STALE_MS) return;
+  } catch {
+    return;
+  }
+  const abandoned = holderOf(lock);
+  if (abandoned !== undefined) removeIfHeldBy(lock, abandoned);
+}
 
 /**
  * `work` under the token file's lock (`<file>.lock`, made exclusively), or
@@ -21,17 +58,14 @@ export async function withTokenLock<T>(
   work: () => Promise<T> | T,
 ): Promise<T | undefined> {
   const lock = `${file}.lock`;
+  const id = randomBytes(16).toString('hex');
   const until = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     try {
-      closeSync(openSync(lock, 'wx', 0o600));
+      writeFileSync(lock, id, { mode: 0o600, flag: 'wx' });
       break;
     } catch {
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock);
-      } catch {
-        // Gone meanwhile: try again.
-      }
+      takeOverIfStale(lock);
       if (Date.now() > until) return undefined;
       // oxlint-disable-next-line no-await-in-loop -- one try at a time until the lock is had or the wait ends
       await new Promise((resolve) => {
@@ -42,10 +76,6 @@ export async function withTokenLock<T>(
   try {
     return await work();
   } finally {
-    try {
-      unlinkSync(lock);
-    } catch {
-      // Taken over as stale: nothing of ours to remove.
-    }
+    removeIfHeldBy(lock, id);
   }
 }

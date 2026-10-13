@@ -16,8 +16,11 @@
 //     redirect, never `localhost`.
 //   - The code is exchanged, form-encoded, at the token endpoint with the
 //     issued id, the verifier, the same redirect and the same resource, and
-//     the grant must include plan use. The tokens are written under custody's
-//     lock, owner-only (`plan-token.ts`).
+//     the grant must include plan use. The ID token must validate
+//     (`id-token.ts`): signed with the issuer's published key, for this
+//     issuer and client, unexpired, with the nonce sent; a later sign-in must
+//     name the same account. Only then are the tokens written under custody's
+//     lock, owner-only (`plan-token.ts`), with the account they are for.
 //
 // It reads no other sign-in on the machine, and says nothing secret: no
 // token, code or verifier. The owner runs it as `chatgpt-sign-in-command.ts`.
@@ -31,6 +34,7 @@ import {
   withTokenLock,
   writeTokenFile,
 } from '../../packages/core-custody/src/plan-token.ts';
+import { validatedSubject } from './id-token.ts';
 
 /** The plan's scopes: identity, then plan use, as the open-source flow asks for them. */
 export const CHATGPT_PLAN_SCOPES =
@@ -66,6 +70,8 @@ export type SignInRefusal =
   | 'SIGN_IN_REGISTRATION_INCOMPLETE'
   | 'SIGN_IN_EXCHANGE_FAILED'
   | 'SIGN_IN_PLAN_USE_NOT_GRANTED'
+  | 'SIGN_IN_IDENTITY_INVALID'
+  | 'SIGN_IN_ACCOUNT_CHANGED'
   | 'SIGN_IN_TIMED_OUT'
   | 'SIGN_IN_STORE_FAILED';
 
@@ -105,9 +111,12 @@ function hostId(tokenFile: string): string {
 interface Asking {
   readonly verifier: string;
   readonly state: string;
+  readonly nonce: string;
   readonly redirectUri: string;
   /** The saved client id of a later sign-in; none on the first, which registers. */
   readonly saved: string | undefined;
+  /** The account a later sign-in must name again. */
+  readonly savedSubject: string | undefined;
 }
 
 /** The authorize address the owner opens, with every parameter the flow publishes. */
@@ -122,7 +131,7 @@ function authorizeAddress(options: SignInOptions, asking: Asking): string {
     resource: CHATGPT_PLAN_RESOURCE,
     redirect_uri: asking.redirectUri,
     state: asking.state,
-    nonce: base64url(randomBytes(32)),
+    nonce: asking.nonce,
     code_challenge: base64url(createHash('sha256').update(asking.verifier).digest()),
     code_challenge_method: 'S256',
   };
@@ -170,6 +179,7 @@ interface Granted {
   readonly refresh: string;
   readonly expiresIn: number;
   readonly scopes: readonly string[];
+  readonly idToken: unknown;
 }
 
 /** The tokens the exchange answered, or undefined. */
@@ -196,12 +206,13 @@ async function exchanged(
     if (!answer.ok) return undefined;
     const body = (await answer.json()) as Record<string, unknown>;
     const { access_token: access, refresh_token: refresh, expires_in: expiresIn, scope } = body;
+    const idToken = body['id_token'];
     if (typeof access !== 'string' || typeof refresh !== 'string') return undefined;
     if (typeof expiresIn !== 'number' || !Number.isSafeInteger(expiresIn) || expiresIn <= 0) {
       return undefined;
     }
     const scopes = typeof scope === 'string' ? scope.split(' ') : [];
-    return { access, refresh, expiresIn, scopes };
+    return { access, refresh, expiresIn, scopes, idToken };
   } catch {
     return undefined;
   }
@@ -220,12 +231,20 @@ async function finished(
   if (!granted.scopes.includes(PLAN_USE)) {
     return { ok: false, code: 'SIGN_IN_PLAN_USE_NOT_GRANTED' };
   }
+  const now = (options.now ?? Date.now)();
+  const expected = { issuer: options.issuer, clientId: got.clientId, nonce: asking.nonce, now };
+  const subject = await validatedSubject(granted.idToken, expected);
+  if (subject === undefined) return { ok: false, code: 'SIGN_IN_IDENTITY_INVALID' };
+  if (asking.savedSubject !== undefined && subject !== asking.savedSubject) {
+    return { ok: false, code: 'SIGN_IN_ACCOUNT_CHANGED' };
+  }
   const written = await withTokenLock(options.tokenFile, () => {
     writeTokenFile(options.tokenFile, {
       clientId: got.clientId,
       accessToken: granted.access,
       refreshToken: granted.refresh,
-      expiresAt: (options.now ?? Date.now)() + granted.expiresIn * 1000,
+      expiresAt: now + granted.expiresIn * 1000,
+      subject,
     });
     return true;
   });
@@ -244,8 +263,10 @@ export async function signIn(options: SignInOptions): Promise<{ readonly ok: tru
     const asking: Asking = {
       verifier: base64url(randomBytes(64)),
       state: base64url(randomBytes(32)),
+      nonce: base64url(randomBytes(32)),
       redirectUri: `http://127.0.0.1:${String(port)}${CALLBACK}`,
       saved: typeof held === 'string' ? undefined : held.clientId,
+      savedSubject: typeof held === 'string' ? undefined : held.subject,
     };
     const opening = authorizeAddress(options, asking);
     const waiting = answered(server, options.timeoutMs ?? SIGN_IN_WAIT_MS);

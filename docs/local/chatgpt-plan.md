@@ -66,6 +66,12 @@ tokens and uses it for any later sign-in.
    - `SIGN_IN_REGISTRATION_INCOMPLETE`: no client id came back. Run step 2
      again.
    - `SIGN_IN_PLAN_USE_NOT_GRANTED`: the grant did not include plan use.
+   - `SIGN_IN_IDENTITY_INVALID`: the ID token did not validate (its
+     signature, issuer, client, expiry or nonce). Nothing was stored. Tell
+     the orchestrator; do not retry repeatedly.
+   - `SIGN_IN_ACCOUNT_CHANGED`: a later sign-in named another ChatGPT
+     account than the saved one. To switch accounts, move the token file
+     aside first.
    - `SIGN_IN_STATE_MISMATCH`, `SIGN_IN_EXCHANGE_FAILED`,
      `SIGN_IN_TIMED_OUT`, `SIGN_IN_STORE_FAILED`: run step 2 again.
 5. Check the file is yours only: `ls -l ~/.ops-astro/chatgpt-plan.json` shows

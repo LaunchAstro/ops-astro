@@ -61,6 +61,8 @@ export interface PlanTokens {
   readonly refreshToken: string;
   /** Milliseconds since the epoch, on the machine's clock. */
   readonly expiresAt: number;
+  /** The account the sign-in's validated ID token named, kept across refreshes. */
+  readonly subject?: string;
 }
 
 export type PlanRefusal =
@@ -95,7 +97,14 @@ export function readTokenFile(file: string): PlanTokens | PlanRefusal {
     ) {
       return 'SUBSCRIPTION_SIGN_IN_NEEDED';
     }
-    return { clientId, accessToken, refreshToken, expiresAt };
+    const { subject } = shape as Record<string, unknown>;
+    return {
+      clientId,
+      accessToken,
+      refreshToken,
+      expiresAt,
+      ...(typeof subject === 'string' ? { subject } : {}),
+    };
   } catch {
     return 'SUBSCRIPTION_SIGN_IN_NEEDED';
   }
@@ -131,6 +140,7 @@ function tokensFrom(body: unknown, held: PlanTokens, now: number): PlanTokens | 
     accessToken: access,
     refreshToken: rotated,
     expiresAt: now + expiresIn * 1000,
+    ...(held.subject === undefined ? {} : { subject: held.subject }),
   };
 }
 

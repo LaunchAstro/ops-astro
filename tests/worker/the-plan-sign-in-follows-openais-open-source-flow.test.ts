@@ -28,7 +28,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { signIn } from '../../apps/model-agent/chatgpt-sign-in.ts';
 import { planPresenter } from '../../packages/core-custody/src/plan-present.ts';
 import type { StoredCredential } from '../../packages/core-custody/src/index.ts';
-import { fake, type Fake } from './plan-fakes.ts';
+import { fake, identity, type Fake, type Heard, type Identity } from './plan-fakes.ts';
 
 const SCOPES = 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
 const RESOURCE = 'https://api.openai.com/v1';
@@ -37,23 +37,42 @@ const ISSUED = 'oaiapp_issued_for_this_owner';
 let folder: string;
 let tokenFile: string;
 let issuer: Fake;
+let signer: Identity;
+/** The nonce the last opened address sent. */
+let nonce = '';
 
-const granted = (scope: string) => () => ({
-  status: 200,
-  type: 'application/json',
-  body: JSON.stringify({
-    access_token: 'access-signed-in-xxxxxxxx',
-    refresh_token: 'refresh-signed-in-xxxxxxxx',
-    expires_in: 3600,
-    scope,
-  }),
-});
+/** The issuer's answers: its configuration and keys, and tokens with an ID token for `scope`. */
+const granted =
+  (scope: string) =>
+  (heard: Heard): { status: number; type: string; body: string } =>
+    signer.serve(heard) ?? {
+      status: 200,
+      type: 'application/json',
+      body: JSON.stringify({
+        access_token: 'access-signed-in-xxxxxxxx',
+        refresh_token: 'refresh-signed-in-xxxxxxxx',
+        expires_in: 3600,
+        scope,
+        id_token: signer.idToken({
+          iss: issuer.origin,
+          aud: ISSUED,
+          sub: 'owner-account',
+          nonce,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      }),
+    };
+
+/** The token endpoint's requests only, in order. */
+const exchanges = (): Heard[] =>
+  issuer.heard.filter((heard) => heard.path === '/api/accounts/oauth/token');
 
 beforeEach(async () => {
   folder = mkdtempSync(join(tmpdir(), 'plan-flow-'));
   chmodSync(folder, 0o700);
   tokenFile = join(folder, 'chatgpt-plan.json');
   issuer = await fake();
+  signer = identity(issuer.origin);
   issuer.answer = granted(SCOPES);
 });
 
@@ -73,6 +92,7 @@ async function signedIn(back: (asked: URL) => string) {
     say: () => {},
     open: (address) => {
       asked = new URL(address);
+      nonce = asked.searchParams.get('nonce') ?? '';
       const to = new URL(asked.searchParams.get('redirect_uri') ?? '');
       void fetch(`${to.origin}${to.pathname}?${back(asked)}`).catch(() => {});
     },
@@ -109,8 +129,8 @@ it('the first sign-in registers at the authorize endpoint with every published p
 it('the code is exchanged form-encoded at the token endpoint with the issued id and the resource', async () => {
   const { result, asked } = await signedIn(registered);
   expect(result).toEqual({ ok: true });
-  expect(issuer.heard).toHaveLength(1);
-  const exchange = issuer.heard[0];
+  expect(exchanges()).toHaveLength(1);
+  const exchange = exchanges()[0];
   expect(exchange?.path).toBe('/api/accounts/oauth/token');
   expect(exchange?.headers['content-type']).toBe('application/x-www-form-urlencoded');
   const form = new URLSearchParams(exchange?.body);
@@ -137,7 +157,7 @@ it('a registration whose callback carries no issued client id is incomplete, and
     (url) => `code=c1&state=${url.searchParams.get('state') ?? ''}`,
   );
   expect(result).toEqual({ ok: false, code: 'SIGN_IN_REGISTRATION_INCOMPLETE' });
-  expect(issuer.heard).toHaveLength(0);
+  expect(exchanges()).toHaveLength(0);
 });
 
 it('a grant without plan use is refused and nothing is written', async () => {
@@ -156,7 +176,7 @@ it('a later sign-in sends the saved client id, no name hint, and the same host i
   expect(again.asked?.searchParams.get('ext_agent_host_id')).toBe(
     first.asked?.searchParams.get('ext_agent_host_id'),
   );
-  expect(new URLSearchParams(issuer.heard[1]?.body).get('client_id')).toBe(ISSUED);
+  expect(new URLSearchParams(exchanges()[1]?.body).get('client_id')).toBe(ISSUED);
 });
 
 it("custody's refresh goes to the token endpoint, form-encoded, with the issued id and the resource", async () => {

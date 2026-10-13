@@ -38,11 +38,48 @@ export function foldResponses(stream: string): string | undefined {
   return undefined;
 }
 
-/** The completed response with every spelling of each secret redacted, or undefined. */
+/** Every string in a parsed value, in document order. */
+function stringsOf(value: unknown, into: string[] = []): string[] {
+  if (typeof value === 'string') {
+    into.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) stringsOf(item, into);
+  } else if (typeof value === 'object' && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      into.push(key);
+      stringsOf(item, into);
+    }
+  }
+  return into;
+}
+
+/** The output text a reader joins: every `output_text` part's text, in order. */
+function outputText(response: unknown): string {
+  const output = (response as { output?: unknown } | null)?.output;
+  if (!Array.isArray(output)) return '';
+  return output
+    .flatMap((item) => (item as { content?: unknown } | null)?.content ?? [])
+    .map((part) => part as { type?: unknown; text?: unknown } | null)
+    .filter((part) => part?.type === 'output_text' && typeof part.text === 'string')
+    .map((part) => String(part?.text))
+    .join('');
+}
+
+/**
+ * The completed response with every spelling of each secret redacted, or
+ * undefined. Each string is redacted alone, and then what a reader can join
+ * is judged whole: the output text parts together, and every string in
+ * order. A secret split between two strings shows only there, so the answer
+ * is withheld rather than passed on.
+ */
 export function foldedAndRedacted(stream: string, secrets: readonly string[]): string | undefined {
   const folded = foldResponses(stream);
   if (folded === undefined) return undefined;
-  return JSON.stringify(redactedValue(JSON.parse(folded), redacterOf(secrets)));
+  const redactText = redacterOf(secrets);
+  const redacted = redactedValue(JSON.parse(folded), redactText);
+  const joined = [outputText(redacted), stringsOf(redacted).join('')];
+  if (joined.some((text) => redactText(text) !== text)) return undefined;
+  return JSON.stringify(redacted);
 }
 
 /** Custody's reply for a `responses_sse` answer: folded and redacted, or withheld as malformed. */

@@ -10,51 +10,54 @@
 
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { signIn } from '../../apps/model-agent/chatgpt-sign-in.ts';
+import { fake, identity } from './plan-fakes.ts';
 
 interface Issuer {
   readonly origin: string;
+  /** The token endpoint's requests, as forms. */
   readonly exchanges: URLSearchParams[];
   close(): Promise<void>;
 }
 
 const ACCESS = 'access-signed-in-xxxxxxxx';
 const REFRESH = 'refresh-signed-in-xxxxxxxx';
+/** The nonce the last opened address sent. */
+let nonce = '';
 
+/** A fake issuer answering with its key set and tokens holding a signed ID token. */
 async function fakeIssuer(): Promise<Issuer> {
-  const exchanges: URLSearchParams[] = [];
-  const server: Server = createServer((request, response) => {
-    let text = '';
-    request.on('data', (chunk: Buffer) => (text += chunk.toString('utf8')));
-    request.on('end', () => {
-      exchanges.push(new URLSearchParams(text));
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(
-        JSON.stringify({
-          access_token: ACCESS,
-          refresh_token: REFRESH,
-          expires_in: 3600,
-          scope: 'openid offline_access resource.invoke chatgpt.tokens.use.direct',
+  const endpoint = await fake();
+  const signer = identity(endpoint.origin);
+  endpoint.answer = (heard) =>
+    signer.serve(heard) ?? {
+      status: 200,
+      type: 'application/json',
+      body: JSON.stringify({
+        access_token: ACCESS,
+        refresh_token: REFRESH,
+        expires_in: 3600,
+        scope: 'openid offline_access resource.invoke chatgpt.tokens.use.direct',
+        id_token: signer.idToken({
+          iss: endpoint.origin,
+          aud: 'oaiapp_fake_client',
+          sub: 'owner-account',
+          nonce,
+          exp: Math.floor(Date.now() / 1000) + 3600,
         }),
-      );
-    });
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : 0;
-  return {
-    origin: `http://127.0.0.1:${String(port)}`,
-    exchanges,
-    close: async () =>
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve());
       }),
+    };
+  return {
+    origin: endpoint.origin,
+    get exchanges() {
+      return endpoint.heard
+        .filter((heard) => heard.path === '/api/accounts/oauth/token')
+        .map((heard) => new URLSearchParams(heard.body));
+    },
+    close: endpoint.close,
   };
 }
 
@@ -84,6 +87,7 @@ async function signedIn(answer: (asked: URL) => string) {
     say: (line) => said.push(line),
     open: (address) => {
       asked = new URL(address);
+      nonce = asked.searchParams.get('nonce') ?? '';
       const back = new URL(asked.searchParams.get('redirect_uri') ?? '');
       void fetch(`${back.origin}${back.pathname}?${answer(asked)}`).catch(() => {});
     },
