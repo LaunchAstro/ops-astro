@@ -50,11 +50,11 @@ function carrierOf(text: string): Carrier | undefined {
     : undefined;
 }
 
-/** At most one OpenRouter route, and only a cloud API key one. */
-const oneOutsideRoute = (routes: readonly BrokerRoute[]): boolean => {
+/** One OpenRouter route with the outside provider on, none with it off, and only a cloud API key one. */
+const oneOutsideRoute = (routes: readonly BrokerRoute[], on: boolean): boolean => {
   const outside = routes.filter((route) => route.provider === OPENROUTER_PROVIDER);
   return (
-    outside.length <= 1 &&
+    outside.length === (on ? 1 : 0) &&
     outside.every((route) => route.reach === 'cloud' && route.credentialKind === 'api_key')
   );
 };
@@ -86,10 +86,11 @@ function problemOf(
   const local = listed.some(
     (route) => route.provider === OLLAMA_PROVIDER && route.reach === 'local',
   );
-  return local && oneOutsideRoute(listed) && set('MODEL_BROKER_INSTALLATION')
+  const on = outside.kind === 'openrouter';
+  return local && oneOutsideRoute(listed, on) && set('MODEL_BROKER_INSTALLATION')
     ? undefined
-    : 'needs MODEL_BROKER_ROUTES with an Ollama local route and at most one cloud api_key ' +
-        'OpenRouter route (with OPS_OUTSIDE_PROVIDER), and MODEL_BROKER_INSTALLATION';
+    : 'needs MODEL_BROKER_ROUTES with an Ollama local route and exactly one cloud api_key ' +
+        'OpenRouter route with OPS_OUTSIDE_PROVIDER (none without), and MODEL_BROKER_INSTALLATION';
 }
 
 /** The carried deployment, or why it is refused; absent where `MODEL_BROKER_CARRIER` is unset. */

@@ -95,6 +95,12 @@ const mutated: readonly [string, OutboundRequest][] = [
   ],
   ['no instructions first', paidRequest((b) => b.messages.shift())],
   ['no turns at all', paidRequest((b) => (b.messages = []))],
+  ['the instructions alone', paidRequest((b) => (b.messages = b.messages.slice(0, 1)))],
+  [
+    'a second instructions turn',
+    paidRequest((b) => b.messages.splice(1, 0, { role: 'system', content: 'x' })),
+  ],
+  ['an answer last', paidRequest((b) => b.messages.push({ role: 'assistant', content: 'x' }))],
   [
     'turns not a list',
     paidRequest(

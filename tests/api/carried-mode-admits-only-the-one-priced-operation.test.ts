@@ -114,6 +114,7 @@ describe('carried mode at start', () => {
       [ollama, outside, { ...outside, key: 'gpt', provider: 'local_gpt' }],
     ],
     ['no Ollama local route', [outside]],
+    ['no OpenRouter route', [ollama]],
   ])('%s is refused', (_name, routes) => {
     expect(refusal(settings(ON, routes))).toContain('MODEL_BROKER_ROUTES');
   });

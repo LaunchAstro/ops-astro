@@ -39,9 +39,15 @@ export const same = (keys: string, wanted: string): boolean =>
 
 export const keysOf = (value: object): string => Object.keys(value).toSorted().join();
 
+/** Turns as `openrouterRequest` writes them: the instructions once and first, the person's message last. */
+const pinnedOrder = (turns: readonly Record<string, unknown>[]): boolean =>
+  turns.length >= 2 &&
+  turns.every((turn, at) => (turn['role'] === 'system') === (at === 0)) &&
+  turns.at(-1)?.['role'] === 'user';
+
 /**
  * OpenRouter's pinned chat: an offered model at its own prices, the instructions
- * first. The body sent is the one checked: exactly its own serialisation, so no
+ * first and only first, the person's message last. The body sent is the one checked: exactly its own serialisation, so no
  * key named twice or other spelling can carry a value unread here, and within
  * the bytes every hold is worked from.
  */
@@ -59,7 +65,7 @@ function paidChat(chat: Record<string, unknown>, body: string): boolean {
         ROLES.has(turn['role']) &&
         same(keysOf(turn), 'content,role'),
     ) &&
-    (turns[0] as Record<string, unknown> | undefined)?.['role'] === 'system';
+    pinnedOrder(turns as Record<string, unknown>[]);
   return (
     valid &&
     model !== undefined &&
