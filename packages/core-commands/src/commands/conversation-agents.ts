@@ -10,18 +10,26 @@
 // is not active. The task's and agent's rows are read for share, so a client
 // link or a deactivation running now commits first and is seen, or waits.
 
-import { conversationModelsOf, OLLAMA_PROVIDER } from '../../../core-connectors/src/index.ts';
+import {
+  conversationModelsOf,
+  OLLAMA_PROVIDER,
+  OPENROUTER_PROVIDER,
+} from '../../../core-connectors/src/index.ts';
 import { slotOf, TASK_SPINE, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { installProvider } from './conversation-model.ts';
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
 
-/** The carrier carries Ollama, and only on an install whose conversations run on it. */
+/**
+ * The carrier carries Ollama, and only on an install whose conversations run
+ * on it; there, OpenRouter's paid models too (#1508), which only a person the
+ * outside list names was offered.
+ */
 function carries(model: unknown): boolean {
   const provider = installProvider();
   if (provider !== OLLAMA_PROVIDER) return false;
-  const models = conversationModelsOf(provider);
+  const models = [...conversationModelsOf(provider), ...conversationModelsOf(OPENROUTER_PROVIDER)];
   return model === null ? models.length > 0 : models.some((one) => one.id === model);
 }
 

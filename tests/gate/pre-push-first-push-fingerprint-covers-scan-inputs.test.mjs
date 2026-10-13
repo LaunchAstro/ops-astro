@@ -203,6 +203,7 @@ test('a rule edit during a scan cannot cache unscanned credentials under the ear
     'GIT_CONFIG_COUNT',
   ])
     delete env[name];
+  env.HUB_GATE_TERMS = f.terms;
   let output = '';
   let edited = false;
   const first = await new Promise((resolve, reject) => {

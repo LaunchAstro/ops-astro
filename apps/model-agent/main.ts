@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The model agent's process on the owner's machine (`docs/local/model-agent.md`):
-// its settings, its agent login, custody with Ollama on loopback as its one
-// destination, then calls carried over Realtime until stopped. A custody that
-// stops answering its heartbeat ends the process, and launchd starts it again.
+// its settings, its agent login, custody with Ollama on loopback (and
+// OpenRouter, where its settings name it), then calls carried over Realtime
+// until stopped. A custody that stops answering its heartbeat ends the
+// process, and launchd starts it again.
 
 import { readFileSync, statSync } from 'node:fs';
 import { loadavg } from 'node:os';
@@ -11,10 +12,11 @@ import {
   parseCarryKeys,
   realtimeCarriage,
   startCustody,
+  type Destination,
   type ProcessCustody,
 } from '../../packages/core-custody/src/agent.ts';
 import { agentSignIn } from '../worker/sign-in.ts';
-import { startModelAgent } from './carrier.ts';
+import { startModelAgent, type AgentCustody } from './carrier.ts';
 import { renewing } from './renewing.ts';
 import { parseAgentSettings, type AgentSettings } from './settings.ts';
 
@@ -54,6 +56,33 @@ async function untilStopped(custody: ProcessCustody, ref: string): Promise<numbe
   });
 }
 
+/** Custody's destinations: Ollama on loopback, and OpenRouter's stream where it is set. */
+export const destinationsOf = (settings: AgentSettings): readonly Destination[] => [
+  { key: 'ollama', origin: settings.ollamaOrigin },
+  ...(settings.openrouterOrigin === undefined
+    ? []
+    : [{ key: 'openrouter', origin: settings.openrouterOrigin, stream: 'openai_sse' as const }]),
+];
+
+/**
+ * Custody as the agent hands it a call, under the request's own
+ * destination's credential; an OpenRouter request with none set is refused,
+ * and custody is asked nothing.
+ */
+export const agentCustody = (
+  settings: Pick<AgentSettings, 'credentialRef' | 'openrouterCredentialRef'>,
+  custody: Pick<ProcessCustody, 'dispatchBefore'>,
+): AgentCustody => ({
+  dispatch: async (request, gate, onPiece) => {
+    const ref =
+      request.destination === 'openrouter'
+        ? settings.openrouterCredentialRef
+        : settings.credentialRef;
+    if (ref === undefined) return { kind: 'refused', started: false, code: 'REQUEST_REFUSED' };
+    return await custody.dispatchBefore(ref, request, gate, onPiece);
+  },
+});
+
 export async function main(env: NodeJS.ProcessEnv): Promise<number> {
   const settings = settingsFrom(env[SETTINGS]);
   if (typeof settings === 'string') {
@@ -69,7 +98,7 @@ export async function main(env: NodeJS.ProcessEnv): Promise<number> {
   }
   const custody = await startCustody({
     credentialsFile: settings.credentialsFile,
-    destinations: [{ key: 'ollama', origin: settings.ollamaOrigin }],
+    destinations: destinationsOf(settings),
   });
   const carriage = realtimeCarriage({ url: settings.realtimeUrl, apiKey: settings.providerKey });
   const agent = await startModelAgent({
@@ -79,10 +108,7 @@ export async function main(env: NodeJS.ProcessEnv): Promise<number> {
     business: settings.business,
     agent: settings.agent,
     token: bearer.current,
-    custody: {
-      dispatch: async (request, gate, onPiece) =>
-        await custody.dispatchBefore(settings.credentialRef, request, gate, onPiece),
-    },
+    custody: agentCustody(settings, custody),
     load: () => loadavg()[0] ?? 0,
     log: say,
   });

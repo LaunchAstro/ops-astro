@@ -25,6 +25,11 @@ it to Ollama within 3 seconds of the accept on the M5's clock, or not at all
    `ollamaOrigin` (`http://127.0.0.1:11434`), `credentialsFile` and
    `credentialRef` (`ollama_key`). The agent refuses to start when anyone
    else can read it, or when Ollama is not on loopback.
+   For paid chat (`OPENROUTER.md`), add both or neither of
+   `openrouterCredentialRef` (`openrouter`) and `openrouterOrigin`
+   (exactly `https://openrouter.ai`), and the OpenRouter entry in custody's
+   credential file. Without them the agent refuses every paid request and
+   sends nothing.
 4. Run `scripts/m5/model-agent-install-check.sh <settings> <credentials>`.
 5. Fill the `@…@` values in `deploy/m5/ops-astro-model-agent.plist`, copy it
    to `~/Library/LaunchAgents/` and `launchctl load` it. launchd starts it

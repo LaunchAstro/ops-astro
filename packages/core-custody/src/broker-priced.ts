@@ -12,7 +12,9 @@
 //    message's call first, the ceiling, room for the most, the row.
 // 3. The send, admitted again at the handoff: the call still `dispatched`, and
 //    the caller's grants, session, conversation and page judged at one locked
-//    instant in a transaction held open until custody has started.
+//    instant in a transaction held open until custody has started. A carried
+//    call is judged instead at its offer and its send (`carriage-origin.ts`),
+//    its outside standing with them, and settles only through its fence.
 // 4. The settle and the kept reply in one transaction, as the caller: a
 //    settled paid call always has its reply. An answer from another model, an
 //    unknown cost, a cost above the hold, or a reply that cannot be kept holds
@@ -21,7 +23,7 @@
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { openrouterModel, type ModelOperation } from '../../core-connectors/src/index.ts';
-import { MALFORMED } from './broker-fault.ts';
+import { MALFORMED, WORKER_LOST } from './broker-fault.ts';
 import {
   callModelUnpriced,
   localRoute,
@@ -86,10 +88,9 @@ export async function callModelInConversation(
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
   const fields = outsideFields(request.fields);
   const { paid } = request;
-  // Option B for every priced call the carve-out does not take, and for a carried
-  // deployment, whose judgement at the send does not judge a paid call yet.
+  // Option B for every priced call the carve-out does not take.
   const route =
-    paid === undefined || broker.carrier !== undefined
+    paid === undefined
       ? undefined
       : outsideRoute(businessId, caller, operation, fields, paid, broker);
   if (route === undefined || paid === undefined) {
@@ -127,9 +128,11 @@ async function heldCall(
   const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPriced(tx, request, operation, route, account, callId),
+    async (tx) =>
+      await holdPriced(tx, request, operation, route, { account, carrier: broker.carrier }, callId),
   );
   if (!('reserved' in held)) return held;
+  const { carrier } = broker;
   const outcome = await broker.custody.dispatch(
     route.credentialRef,
     {
@@ -141,7 +144,8 @@ async function heldCall(
       maxResponseBytes: operation.maxResponseBytes,
     },
     piecesOf(operation, request.onPiece),
-    admission(paid, callId),
+    carrier === undefined ? admission(paid, callId) : undefined,
+    carrier === undefined ? undefined : request.carry?.(callId),
   );
   const settlement = settlementOf(outcome, operation, adapter);
   const asked = { reserved: held.reserved, settlement, model: request.model, broker };
@@ -254,15 +258,20 @@ async function settleAndKeep(
   );
   if (call === undefined || !ANSWERABLE.has(call.state)) return await settleLost(tx, asked);
   if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
-  if (settlement.kind === 'nothing') {
-    return await release(tx, reserved, settlement.reason, broker);
-  }
+  if (settlement.kind === 'nothing') return await release(tx, reserved, settlement.reason, broker);
   const { costMinor, answer } = settlement;
   const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
   if (observed === null || observed < 0 || observed > reserved.reservedMinor) {
     return await hold(tx, reserved, observed, null, broker);
   }
   if (!fromAsked(model, answer.model)) return await hold(tx, reserved, observed, MISMATCH, broker);
+  // A carried call settles only through its fence: the runner sent to, before its `answer_by`.
+  const { custody } = broker;
+  if (custody.fenceIn !== undefined && !(await custody.fenceIn(tx, reserved.callId))) {
+    // Already held by the sweep: the most stays held, and the cost it reported is still recorded.
+    if (call.state === 'liability_unknown') return await settleLost(tx, asked);
+    return await hold(tx, reserved, observed, { kind: 'unknown', ...WORKER_LOST }, broker);
+  }
   if (keep === undefined || !(await keep(answer.text))) {
     return await hold(tx, reserved, observed, null, broker);
   }

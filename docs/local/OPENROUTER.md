@@ -51,6 +51,14 @@ what happened.
    - there is no OpenRouter route, or the route is not a cloud API key route;
    - the destination is not exactly `https://openrouter.ai` with `stream: "openai_sse"`.
 
+   On the hosted site (carried mode), the key stays in the model agent's
+   custody on the M5, so the hosted API sets no destinations. It sets the
+   provider and the people list, and adds the one OpenRouter route
+   (`reach` cloud, `credentialKind` api_key) to its `MODEL_BROKER_ROUTES`.
+   Every person on the people list must also be on `MODEL_BROKER_CARRIER`'s
+   people, or the API does not start. The model agent's two paid settings are
+   in `model-agent.md`.
+
 5. **The register.** Record OpenRouter on the overseas-services register as an
    internal-only provider of paid chat answers, with the credit cap.
 
