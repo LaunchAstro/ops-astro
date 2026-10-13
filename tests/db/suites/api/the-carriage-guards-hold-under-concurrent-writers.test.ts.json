@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the members and carriers guards hold under concurrent writers: no open row for an agent or conversation being closed, each carriers time set once, one doorbell"
+}

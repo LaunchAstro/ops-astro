@@ -5,8 +5,8 @@
 // line shut, the record that closes it, and the rows the table refuses by itself.
 
 import {
+  gateEvidence,
   gateRecordBody,
-  legalEvidence,
   OPT_IN_REGISTER,
   OWNER_LINES,
 } from '../acceptance/role-case-gate-bodies.ts';
@@ -180,7 +180,8 @@ const PROCEDURE_TRIES: readonly (readonly [string, object])[] = [
  */
 export async function procedureHeldOpen(w: GateWorld): Promise<string[]> {
   const wrong: string[] = [];
-  const links = await legalEvidence(w.harness.world.db.admin, w.harness.world.alpha);
+  const { world } = w.harness;
+  const links = await gateEvidence(world.db.admin, world.alpha, world.ada.personId as string);
   for (const item of (await readiness(w)).open_items) {
     if (item === PROCEDURE) continue;
     // oxlint-disable-next-line no-await-in-loop
