@@ -990,7 +990,7 @@ insert both, delete pages, and update the site's provider columns; no command
 writes them: the operator binds a site with `bindPartySite`. Tenancy-keyed
 with the restrictive policy.
 
-`party_site_page_snapshots` (20261013140000) keeps, per bound page, the text
+`party_site_page_snapshots` (20261013214000) keeps, per bound page, the text
 of its source file (`source_text`, at most 256 KB) at `source_revision`, as
 the correction job last read it, so the sidebar's `live_correction.locate`
 finds a file without the API holding a site credential. It goes with its page

@@ -646,17 +646,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 115 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 117 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(115);
-    expect(names).toHaveLength(115);
+    expect(new Set(names).size, 'distinct operations').toBe(117);
+    expect(names).toHaveLength(117);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the sixty target-free ones').toStrictEqual(
-      bearing,
-    );
+    expect(
+      names.toSorted(),
+      'every declaration outside the sixty-one target-free ones',
+    ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load
