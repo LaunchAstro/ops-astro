@@ -23,6 +23,18 @@ naming the repository to read. The hook sets `GIT_NO_REPLACE_OBJECTS`, so neithe
 pass what the pushed rules refuse, and a branch that changes a scanner is
 judged by its own version.
 
+A later push of a branch scans what the remote said it did not hold. A
+branch's first push scans every commit this machine's gate has not already
+passed. Nothing local proves what a receiver holds (a remote-tracking ref can
+be stale, and a rewritten URL or SSH command can reach another receiver), so
+the record is of scans, not of remotes: `gate-passed` in the repository's
+common Git directory, one full sha a line, shared by every worktree and never
+fetched or pushed. The hook adds a first push's commit only after every scan
+of it passes. Only a listed commit the pushed commit reaches counts; a missing,
+unreadable or malformed record means the full scan, as does a fresh clone. The
+range stays one `BASE..HEAD`, so scanners in a commit from before this rule
+still read it.
+
 These rules apply to all four:
 
 - **Path rules run first, on every path, with no exclusions.** A directory the
@@ -182,7 +194,7 @@ blob. Approved selections require explicit commits or two-dot ranges, whose
 endpoints resolve to commits. Implicit or ambiguous selections fail closed. A tuple applies only when every inspected occurrence commit is an ancestor of the
 approved anchor. Later reuse of identical bytes, a new path, changed bytes or
 another term still fails. Path rules, unreadable content refusal, hashed/shape
-checks and full first-push history inspection remain unchanged. Invalid supplied
+checks and first-push inspection of every commit this machine has not passed remain unchanged. Invalid supplied
 approval data exits 3. An absent receipt enables no exception. Diagnostics count
 approved historical matches without printing the private receipt or term.
 

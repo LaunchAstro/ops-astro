@@ -37,6 +37,62 @@ scanner_dirs=""
 # shellcheck disable=SC2086
 trap 'rm -rf $scanner_dirs' EXIT
 
+# The commits this machine's gate has passed for publication, one full sha a
+# line, in the repository's common Git directory: shared by every worktree,
+# and never fetched, pushed or cloned, so no remote can add to it. A commit is
+# added only after its push's scans all pass, and every commit it reaches was
+# scanned with it or passed before it.
+passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-passed
+
+# The listed commits this repository still holds, or a failure when the list
+# is missing or unreadable. One line that is not a full sha voids the whole
+# list: a damaged record is not half trusted. A pruned commit is dropped.
+passed_commits() {
+  [ -f "$passed_list" ] && [ -r "$passed_list" ] || return 1
+  if grep -qvE '^[0-9a-f]{40}([0-9a-f]{24})?$' "$passed_list"; then
+    return 1
+  fi
+  sort -u "$passed_list" |
+    git cat-file --batch-check='%(objectname) %(objecttype)' |
+    sed -n 's/ commit$//p'
+}
+
+# The range a branch's first push scans: BASE..LOCAL, with BASE a passed
+# commit. Only a passed commit that LOCAL reaches counts. Everything a passed
+# commit reaches is passed, so no commit the gate has not passed falls outside
+# the range; of the passed commits at the edge of the new ones, BASE is the one
+# that leaves the fewest to scan. With nothing passed, a LOCAL that is not a
+# commit, or any Git error, it is everything LOCAL reaches, as it always was.
+# One range of one form, so a pushed commit's scanners from before this rule
+# still read it.
+first_push_range() {
+  base=""
+  if [ "$(git cat-file -t "$1" 2>/dev/null || true)" = commit ] &&
+    passed=$(passed_commits) && [ -n "$passed" ] &&
+    reached=$({ printf '%s\n' "$passed"; git rev-list "$1"; } | sort | uniq -d) &&
+    [ -n "$reached" ] &&
+    listed=$({ echo "$1"; printf '%s\n' "$reached" | sed 's/^/^/'; } |
+      git rev-list --stdin --boundary); then
+    if [ -z "$(printf '%s\n' "$listed" | sed -n '/^[^-]/p')" ]; then
+      base=$1
+    else
+      fewest=""
+      for edge in $(printf '%s\n' "$listed" | sed -n 's/^-//p'); do
+        if count=$(git rev-list --count "$edge..$1") &&
+          { [ -z "$fewest" ] || [ "$count" -lt "$fewest" ]; }; then
+          fewest=$count
+          base=$edge
+        fi
+      done
+    fi
+  fi
+  if [ -n "$base" ]; then
+    echo "$base..$1"
+  else
+    echo "$1"
+  fi
+}
+
 # Points $GATE and $PUBLIC_CONTENT at one commit's scanners, or at the
 # checkout's with no commit. A commit whose scanners cannot be read is
 # refused: nothing is published unscanned.
@@ -168,9 +224,11 @@ scan() {
 # branch you are actually publishing is clean. A backup branch kept before a
 # history rewrite is the obvious case.
 #
-# An all-zero remote sha means the remote has no such branch yet, so the
-# range is everything reachable from the local ref. That is the first-push
-# case, and it is the one that matters most.
+# An all-zero remote sha means the remote has no such branch yet: the
+# first-push case, and the one that matters most. Nothing local proves what
+# the receiver holds (a remote-tracking ref can be stale, and a rewritten URL
+# or SSH command can reach another receiver), so the range is every commit
+# this machine's gate has not passed, not every commit the remote lacks.
 pushed=""
 had_input=0
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -182,16 +240,24 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   esac
   case "$remote_sha" in
     *[!0]*) pushed="$pushed $local_sha:$remote_sha..$local_sha" ;;
-    *) pushed="$pushed $local_sha:$local_sha" ;;
+    *) pushed="$pushed $local_sha:first" ;;
   esac
 done
 
 if [ -n "$pushed" ]; then
   # Each ref by its own commit's scanners, over its own range.
   for item in $pushed; do
-    use_scanners_of "${item%%:*}"
-    echo "pre-push: scanning what this push would publish: ${item#*:}"
-    scan "${item#*:}"
+    sha=${item%%:*}
+    range=${item#*:}
+    [ "$range" = first ] && range=$(first_push_range "$sha")
+    use_scanners_of "$sha"
+    echo "pre-push: scanning what this push would publish: $range"
+    scan "$range"
+    # Passed only now, every scan clean, and only on a first push: a later
+    # push's range starts at whatever the remote said it held.
+    if [ "${item#*:}" = first ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
+      git rev-parse "$sha" >> "$passed_list"
+    fi
   done
 elif [ "$had_input" -eq 1 ]; then
   # A deletion is not the same as no input. With refs on stdin but nothing to
