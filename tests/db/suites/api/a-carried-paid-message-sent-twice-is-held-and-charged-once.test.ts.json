@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "one carried paid message sent at once on two instances, or again after it was answered, released or held, makes one call, one hold and one charge"
+}

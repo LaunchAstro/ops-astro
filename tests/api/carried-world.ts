@@ -30,7 +30,11 @@ import {
   type Carrier,
   type CarryKeys,
 } from '../../packages/core-custody/src/index.ts';
-import { conversationExchange } from '../../packages/core-commands/src/index.ts';
+import {
+  conversationExchange,
+  type ConversationExchange,
+  type ModelBroker,
+} from '../../packages/core-commands/src/index.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
@@ -73,6 +77,19 @@ export interface CarriedWorld {
   readonly beforeJoin: { run: (topic: string) => Promise<void> };
   /** Runs before the function sends each message on a call's line. */
   readonly beforeSend: { run: (event: string) => Promise<void> };
+  /**
+   * A second instance of the function: the same broker settings over a pool,
+   * custody and API of its own, as another server would run them.
+   */
+  twin(): Promise<CarriedTwin>;
+  close(): Promise<void>;
+}
+
+/** Another instance of the carried function, on its own connections. */
+export interface CarriedTwin {
+  readonly api: Hono;
+  readonly exchange: ConversationExchange;
+  readonly database: Database;
   close(): Promise<void>;
 }
 
@@ -128,8 +145,7 @@ export async function carriedWorld(
   // The people the carrier carries for: the owner, once the world has enrolled them.
   const people: string[] = [];
   const carrier: Carrier = { agent: fixture.agentActorId, people };
-  const exchange = conversationExchange({
-    custody,
+  const settings: Omit<ModelBroker, 'custody'> = {
     operations: catalogue([
       {
         ...OLLAMA_CONVERSATION,
@@ -172,16 +188,19 @@ export async function carriedWorld(
     installation: 'here',
     carrier,
     outsidePeople,
-  });
-  const api: Hono = composeApi({
-    keys: runtimeKeys({ ...fixture.environment }),
-    database,
-    admin: fixture.db.admin,
-    signIn: testSignIn(ISSUER),
-    executeRead,
-    answerConversation: exchange,
-    carrier,
-  }).app;
+  };
+  const exchange = conversationExchange({ custody, ...settings });
+  const apiOver = (pool: Database, answering: ConversationExchange): Hono =>
+    composeApi({
+      keys: runtimeKeys({ ...fixture.environment }),
+      database: pool,
+      admin: fixture.db.admin,
+      signIn: testSignIn(ISSUER),
+      executeRead,
+      answerConversation: answering,
+      carrier,
+    }).app;
+  const api: Hono = apiOver(database, exchange);
   const w = await conversationWorld({ fixture, api });
   people.push(w.owner.personId);
   if (outside) {
@@ -215,6 +234,20 @@ export async function carriedWorld(
     joined,
     beforeJoin,
     beforeSend,
+    twin: async () => {
+      const own = carriedCustody({ carriage: hubCarriage(hub), keys: parsed.keys, key });
+      const pool = connect(fixture.db.appUrl, { source: 'runtime' });
+      const answering = conversationExchange({ custody: own, ...settings });
+      return await Promise.resolve({
+        api: apiOver(pool, answering),
+        exchange: answering,
+        database: pool,
+        close: async () => {
+          await own.stop();
+          await pool.close();
+        },
+      });
+    },
     close: async () => {
       await agent.stop();
       await custody.stop();
