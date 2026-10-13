@@ -116,6 +116,8 @@ describe('the runner’s door', () => {
     ['missing', null],
     ['wrong', 'runner-key-0123456789abcdef0123456789abcdeX'],
     ['short', 'x'],
+    ['longer', 'runner-key-0123456789abcdef0123456789abcdefX'],
+    ['same-length but wider', 'runner-key-0123456789abcdef0123456789abcdeé'],
   ])('refuses a %s bearer with 401 and spawns nothing', async (_label, key) => {
     const { w, r } = await start();
     expect((await call(r, message, { key })).status).toBe(401);

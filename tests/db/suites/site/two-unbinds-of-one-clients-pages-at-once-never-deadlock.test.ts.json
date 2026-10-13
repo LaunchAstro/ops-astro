@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: two unbinds of one client's pages run at once on two connections, the second seen waiting while the first unbinds a second page, so every unbind takes the client's site row before its page and neither ends in a deadlock."
+}
