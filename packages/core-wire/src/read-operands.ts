@@ -104,5 +104,6 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'trace.read': RECORD,
   'harness.read': { runId: 'id' },
   'live_correction.read': { correctionId: 'id' },
+  'live_correction.locate': { ...RECORD, pageUrl: 'text' },
   'automation.registry': NONE,
 };

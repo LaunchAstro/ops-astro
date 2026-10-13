@@ -211,3 +211,49 @@ export async function isPartysTask(
   );
   return rows.length > 0;
 }
+
+/** A bound page's file as the correction job last read it, with the client the task is under. */
+export interface PageSnapshot {
+  readonly partyId: string;
+  readonly path: string;
+  readonly pageUrl: string;
+  readonly revision: string;
+  readonly text: string;
+}
+
+/**
+ * The snapshot of `pageUrl` where it is a page of the live task's own client's site, byte for
+ * byte, in one statement; undefined for another client's page, no client's, a page with no
+ * snapshot yet, or a task that is not live. The caller asks the grant at `partyId`.
+ */
+export async function readPageSnapshot(
+  tx: TenantQuery,
+  taskTypeId: string,
+  taskId: string,
+  pageUrl: string,
+): Promise<PageSnapshot | undefined> {
+  const [row] = await tx.query<{
+    readonly party_id: string;
+    readonly path: string;
+    readonly source_revision: string;
+    readonly source_text: string;
+  }>(
+    `select p.party_id, p.path, s.source_revision, s.source_text
+       from public.records r
+       join public.party_site_pages p on p.business_id = r.business_id and p.party_id = r.uuid_7
+       join public.party_site_page_snapshots s
+         on s.business_id = p.business_id and s.page_url = p.page_url
+      where r.business_id = $1 and r.id = $2::uuid and r.record_type_id = $3::uuid
+        and r.deleted_at is null and p.page_url = $4::text`,
+    [tx.businessId, taskId, taskTypeId, pageUrl],
+  );
+  return row === undefined
+    ? undefined
+    : {
+        partyId: row.party_id,
+        path: row.path,
+        pageUrl,
+        revision: row.source_revision,
+        text: row.source_text,
+      };
+}

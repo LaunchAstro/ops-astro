@@ -11,7 +11,9 @@
 // whole file as it reads now, none of which the sidebar knows: the host hands
 // them in through `Locate`, the site read. Without one no door is drawn.
 
+import type { LiveCorrectionLocateResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import { matchRoute } from '../routes.ts';
 import { settle } from '../records/use-command.ts';
 import { replaced, type CardState, type CorrectionAsk, type ProposePort } from './correction.ts';
 
@@ -58,6 +60,32 @@ export interface CorrectionTarget {
 
 /** The site read that finds a named page's file, or null where the site has no such page. */
 export type Locate = (ask: CorrectionAsk) => Promise<CorrectionTarget | null>;
+
+/**
+ * The site read on a task's page: `live_correction.locate` for that task and the
+ * page address the person typed. Anything but the file is null, so no request
+ * is sent and the door says the page was not found.
+ */
+export const taskLocate =
+  (client: OperationsClient, taskKey: string): Locate =>
+  async (ask) => {
+    const operands = { recordId: taskKey, pageUrl: ask.page };
+    const settled = settle(
+      await client.read<LiveCorrectionLocateResult>('live_correction.locate', operands),
+    );
+    return settled.kind === 'ok' ? settled.value.target : null;
+  };
+
+/** The sidebar host with its site read: the one handed in, else on a task's page that task's. */
+export function withTaskLocate<
+  Host extends { client: OperationsClient; here: string; locate?: Locate | undefined },
+>(host: Host): Host {
+  if (host.locate !== undefined) return host;
+  // The address without its query or fragment, as `App.tsx` routes the page.
+  const page = matchRoute(host.here.split(/[?#]/u)[0] ?? host.here);
+  if (page?.id !== 'agency:task-detail') return host;
+  return { ...host, locate: taskLocate(host.client, page.params.key) };
+}
 
 /** The door's port, bound to `live_correction.request` through the command client. */
 export const requestPort =

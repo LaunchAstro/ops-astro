@@ -172,7 +172,7 @@ export function SidebarCorrections(props: {
 /** What the agent sidebar's host hands in for corrections (`assistant.tsx`). */
 export interface CorrectionHost {
   /** The site read that finds a correction's file (`Locate`); without it no door is drawn. */
-  readonly locate?: Locate;
+  readonly locate?: Locate | undefined;
 }
 
 /** The allowance line, and the correction door and desks where the host hands in the site read. */

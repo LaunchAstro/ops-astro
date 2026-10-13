@@ -161,27 +161,36 @@ export const taskBodyContext = (
       await enrol(world.db.app, world.alpha, 'asker'),
       world.ada,
     ),
-  bindClientSite: async (partyId) =>
-    await world.db.app.withBusiness(
+  // The page bound, and the correction job's snapshot of its file (the sidebar's site read).
+  bindClientSite: async (partyId) => {
+    const pageUrl = await world.db.app.withBusiness(
       world.alpha,
       async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
-    ),
+    );
+    await world.db.admin.execute(
+      `insert into public.party_site_page_snapshots (business_id, page_url, source_revision, source_text)
+       values ($1, $2, $3, $4) on conflict do nothing`,
+      [world.alpha, pageUrl, C80_REQUEST.baseRevision, C80_REQUEST.before],
+    );
+    return pageUrl;
+  },
 });
 
-/** C80's four operations, whose positive bodies are the matrix's from here. */
+/** C80's five operations, whose positive bodies are the matrix's from here. */
 export const C80_NAMES: ReadonlySet<string> = new Set([
   'settings.set_live_correction_approver',
   'live_correction.request',
+  'live_correction.locate',
   'live_correction.decide',
   'live_correction.read',
 ]);
 
-/** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
+/** The matrix's positive bodies for C80's five operations (`role-case-positive-body.ts`). */
 export async function c80PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (name === 'settings.set_live_correction_approver') {
     return { body: { value: context.assigneePersonId } };
   }
-  if (name === 'live_correction.request') {
+  if (name === 'live_correction.request' || name === 'live_correction.locate') {
     // A task under a client the admin makes, named with that client.
     const task = await context.freshTask('a task a live correction is worked under');
     const partyId = await madeClient(context);
@@ -196,6 +205,8 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
       return { exception: 'this harness binds no client site (C80)' };
     }
     const pageUrl = await context.bindClientSite(partyId);
+    // The sidebar's site read: that task and page, answered from the page's snapshot.
+    if (name === 'live_correction.locate') return { body: { recordId: task.id, pageUrl } };
     return { body: { ...C80_REQUEST, partyId, taskId: task.id, pageUrl } };
   }
   // Another member's request, and the admin named as the approver just

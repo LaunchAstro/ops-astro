@@ -112,8 +112,7 @@ export type CommandName =
   | 'legal.draft_version'
   | 'legal.approve_version'
   | 'legal.publish_version'
-  // API-2: an agent credential, issued and revoked by a person on their own
-  // account.
+  // API-2: an agent credential, issued and revoked by a person on their own account.
   | 'credential.issue'
   | 'credential.revoke'
   // C81: the overseas-services register the privacy policy reads.
@@ -163,6 +162,7 @@ export type CommandName =
   // is read back; the publish, revert and receipt are system writes, not rows here.
   | 'live_correction.request'
   | 'live_correction.read'
+  | 'live_correction.locate'
   | 'live_correction.decide'
   | 'settings.set_live_correction_approver'
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.

@@ -185,6 +185,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     page_url: 'https://agency.example/about/',
     path: 'src/pages/about.md',
   },
+  'public.party_site_page_snapshots': {
+    page_url: 'https://agency.example/about/',
+    source_revision: 'rev-1',
+    source_text: 'seed',
+  },
   'public.live_correction_receipts': {
     correction_id: randomUUID(),
     lease_id: randomUUID(),

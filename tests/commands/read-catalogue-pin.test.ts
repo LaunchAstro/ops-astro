@@ -44,6 +44,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.read': [],
   'inbox.unattended': [],
   'invitation.list': [],
+  'live_correction.locate': ['recordId'],
   'live_correction.read': ['correctionId'],
   'map.frontier': ['recordId'],
   'map.view': ['recordId'],
@@ -235,6 +236,16 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.unattended': BODIES.map(() => null),
   // C80's correction and AW-12's run, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  // C80's sidebar door: the task, as `task.execution` takes it, then the page address.
+  'live_correction.locate': BODIES.map(([name]) =>
+    name === 'recordId string'
+      ? {
+          code: 'FIELD_VALUE_INVALID',
+          names: ['pageUrl'],
+          fixes: ['Send pageUrl as the page’s address.'],
+        }
+      : RECORD_ID,
+  ),
   'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
@@ -251,7 +262,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-four reads', () => {
+  it('names the same forty-five reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

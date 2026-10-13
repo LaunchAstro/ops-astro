@@ -633,8 +633,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.liveCorrection,
     async () => {
-      // A correction of bravo's and a fabricated one; a request worked under
-      // bravo's task and under a fabricated one. Each pair answers alike.
+      // A correction of bravo's and a fabricated one; a request, and the sidebar's
+      // site read, under bravo's task and under a fabricated one. Each pair answers alike.
       const { world } = w.h;
       const decision = { decision: 'approve' };
       const theirs = await seedLiveCorrection(
@@ -650,6 +650,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('live_correction.read', 'correctionId', ada, 'NOT_FOUND', {
         foreign: { correctionId: theirs.correctionId },
         fabricated: { correctionId: randomUUID() },
+      });
+      await refuses('live_correction.locate', 'recordId', ada, 'NOT_FOUND', {
+        foreign: { recordId: w.foreign.task.id, pageUrl: C80_REQUEST.pageUrl },
+        fabricated: { recordId: randomUUID(), pageUrl: C80_REQUEST.pageUrl },
       });
       const request = { ...C80_REQUEST, partyId: randomUUID() };
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {

@@ -168,6 +168,8 @@ export type {
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
 export type * from './views-chat.ts';
+// C80's two read answers, beside the decision read's.
+export type { LiveCorrectionLocateResult, LiveCorrectionResult } from './views-run.ts';
 export type {
   MapComponentView,
   MapView,

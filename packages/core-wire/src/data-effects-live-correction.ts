@@ -17,4 +17,5 @@ export const LIVE_CORRECTION_EFFECTS: {
   'live_correction.request': writing(client('live_corrections')),
   'live_correction.decide': writing(client('live_corrections')),
   'live_correction.read': writing([]),
+  'live_correction.locate': writing([]),
 };

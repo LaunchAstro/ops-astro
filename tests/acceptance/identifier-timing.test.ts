@@ -351,14 +351,25 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       },
     );
     const request = { ...C80_REQUEST, partyId: randomUUID() };
-    out.push({
-      op: 'live_correction.request',
-      operand: 'taskId',
-      by: ada,
-      code: 'NOT_FOUND',
-      foreign: () => ({ ...request, taskId: f.task.id }),
-      fabricated: () => ({ ...request, taskId: randomUUID() }),
-    });
+    out.push(
+      // The sidebar door's site read, under bravo's task and under a fabricated one.
+      {
+        op: 'live_correction.locate',
+        operand: 'recordId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ recordId: f.task.id, pageUrl: C80_REQUEST.pageUrl }),
+        fabricated: () => ({ recordId: randomUUID(), pageUrl: C80_REQUEST.pageUrl }),
+      },
+      {
+        op: 'live_correction.request',
+        operand: 'taskId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ ...request, taskId: f.task.id }),
+        fabricated: () => ({ ...request, taskId: randomUUID() }),
+      },
+    );
     const accept = { ...ACCEPTED_PLAN, note: NOBODY };
     out.push({
       op: 'task.accept_plan',
@@ -635,17 +646,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 114 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 117 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(114);
-    expect(names).toHaveLength(114);
+    expect(new Set(names).size, 'distinct operations').toBe(117);
+    expect(names).toHaveLength(117);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the sixty target-free ones').toStrictEqual(
-      bearing,
-    );
+    expect(
+      names.toSorted(),
+      'every declaration outside the sixty-one target-free ones',
+    ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load

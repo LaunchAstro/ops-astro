@@ -384,6 +384,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, party_id, page_url, path)
      select business_id, party_id, 'https://agency.example/about/', 'src/pages/about.md'
        from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // The job's snapshot of that page: nothing the journey does reads a site.
+  'public.party_site_page_snapshots': `insert into public.party_site_page_snapshots
+       (business_id, page_url, source_revision, source_text)
+     select business_id, page_url, 'rev-1', 'seed'
+       from public.party_site_pages where business_id = $1 order by page_url limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)

@@ -63,7 +63,7 @@ import { parseBreachNotices, readBreachNotices, readOperations } from './operati
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
 import { listInvitations } from './invitations.ts';
-import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
+import { LIVE_CORRECTION_READ_ROWS } from './catalogue-live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
@@ -956,16 +956,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
-  // C80: a correction's decision; `run:write` at its party, asked inside the query.
-  'live_correction.read': {
-    identifiers: ['correctionId'],
-    parse: parseCorrectionRead,
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
-    serve: serveCorrectionRead,
-  },
+  ...LIVE_CORRECTION_READ_ROWS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {
