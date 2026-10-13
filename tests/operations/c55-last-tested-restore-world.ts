@@ -114,6 +114,8 @@ export async function drill(
     records,
     recordSignIn: () => Promise.resolve(),
     recordTestedRestore: async () => await writer.recordTestedRestore?.(adminUrl(harness)),
+    stillOperator: () => Promise.resolve(),
+    holdingGrant: <T>(during: (release: () => void) => Promise<T>): Promise<T> => during(() => {}),
   };
   try {
     await drillAsOperator({

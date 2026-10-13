@@ -68,6 +68,7 @@ import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent
 import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
+import { carrierOption } from './model-carrier.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -111,9 +112,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
   for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
-  if (!keys.delegation.ok) {
+  if (!keys.delegation.ok)
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
-  }
   const alerts = outboxAlerts(settings, databaseUrl, required);
   const database = connect(databaseUrl, { source: 'runtime' });
   const { app, resolveBusiness } = composeApi({
@@ -125,6 +125,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
+    ...carrierOption(settings),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);
 

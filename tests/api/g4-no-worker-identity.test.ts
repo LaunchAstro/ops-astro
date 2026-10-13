@@ -61,6 +61,7 @@ const SETTINGS = [
   'GATE_SIGNING_KEY_ID',
   'GATE_SIGNING_SECRET',
   'GOTRUE_URL',
+  'MODEL_BROKER_CARRIER',
   'OPS_ASTRO_CRASH_POINT',
   'OPS_ENVIRONMENT',
   // C55: the error sink's web address, never its DSN (ORCH49).

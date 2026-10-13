@@ -23,6 +23,8 @@ import {
 } from './run-side-rows-fixture.ts';
 const VERSION = '20261007174204_run_bound_keys';
 const AGENT_COLUMNS = '20261011115838_agent_record.sql';
+/** A conversation call's message (#1531): a column on model_calls, which the snapshot reads. */
+const CALL_MESSAGE = '20261013010000_model_call_message.sql';
 const ALL = readMigrations('migrations');
 let beforeDirectory: string;
 
@@ -34,7 +36,10 @@ beforeAll(() => {
   for (const file of readdirSync('migrations')) {
     // With the agent record's columns (20261011115838): today's runtime seeds
     // these rows, and its inbox raise joins an agent's owner.
-    if (file.endsWith('.sql') && (file < `${VERSION}.sql` || file === AGENT_COLUMNS)) {
+    if (
+      file.endsWith('.sql') &&
+      (file < `${VERSION}.sql` || file === AGENT_COLUMNS || file === CALL_MESSAGE)
+    ) {
       copyFileSync(join('migrations', file), join(beforeDirectory, file));
     }
   }

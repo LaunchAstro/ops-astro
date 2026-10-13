@@ -190,11 +190,13 @@ export const ClientRefused = (): ReactElement => (
 );
 
 // An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
+// Nor is a fragment: one may hold a link's token, and the path alone names the address.
 export function NotFound(props: { readonly path: string }): ReactElement {
+  const [path = ''] = props.path.split('#');
   return (
     <div className="readstate" data-outcome="not-found">
       <Empty
-        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : props.path}.`}
+        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : path}.`}
         description="The route registry is the list the application resolves through. An address that is not in it does not resolve, which is a truer answer than a blank page."
         action={
           <a className="sb__addr" href={pathTo('agency:projects-board')}>

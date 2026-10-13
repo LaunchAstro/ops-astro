@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the drill's acts and the held grant their receipts and stamps are written under */
 //
 // The restore drill's acts as the operator the gate admitted
 // (restore-drill.mjs, S0-3d and S0-3e): the newest backup fetched from the
@@ -120,6 +121,60 @@ async function stampIfPassed(gate, act) {
   }
 }
 
+/** A gate that can hold the operator's grant and ask again under it, or a refusal before the store. */
+function holding(gate) {
+  if (typeof gate.holdingGrant !== 'function' || typeof gate.stillOperator !== 'function') {
+    throw new TypeError(
+      'the operator gate cannot hold the grant: it needs holdingGrant and stillOperator, so nothing was written',
+    );
+  }
+  return gate;
+}
+
+/**
+ * `work`, the store's receipt and the stamp, as the operator's attestation:
+ * with their `operations:manage` grant held (operator.ts, `holdingGrant`) and
+ * the gate asked again under that hold first. That answer is the instant the
+ * operator attests. A revocation committed before it refuses here, with
+ * nothing written. What is held is the person's own `operations:manage` grant
+ * rows (`holdingGrant`), so revoking that grant after it waits until `work` is
+ * done. A change the hold does not lock (a grant held through their acting
+ * identity or a parent grant, the membership, a sign-out, the token's own
+ * expiry) is ordered after the act, as on the read path.
+ */
+async function attested(gate, work) {
+  return await holding(gate).holdingGrant(async (release) => {
+    try {
+      await gate.stillOperator();
+    } catch {
+      // The hold ends as this returns; the gate's own words can name its database.
+      throw new Error(
+        'the drill ran, but the operator no longer holds operations:manage, so no receipt was written',
+      );
+    }
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  });
+}
+
+/** On the machine: the drill's receipt in the store, then the stamp of a pass the store took. */
+async function receiptOnMachine(gate, storeUrl, act, fetched, reach) {
+  try {
+    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach, {
+      business: gate.operator.business,
+      archiveId: fetched.archiveId ?? null,
+      digest: fetched.sha256 ?? null,
+    });
+  } catch {
+    // The store's own message can name its host; the operator is told the step.
+    throw new Error('the drill ran, but its receipt could not be written to the store');
+  }
+  return await stampIfPassed(gate, act);
+}
+
 /**
  * `--export`: the newest backup as the store handed it out, into `file` for a
  * drill on another host, with its time and digest beside it
@@ -154,6 +209,9 @@ export async function drillAsOperator({
   reach = stagingReach,
 }) {
   const carried = archiveFile !== undefined;
+  // On the machine the receipt and the stamp need the held grant: a gate that
+  // cannot hold it is refused before the store is reached at all.
+  if (!carried) holding(gate);
   let fetched = {};
   const {
     event: _event,
@@ -182,17 +240,9 @@ export async function drillAsOperator({
     act.lastTestedRestore = null;
     return await recordDeployment(gate, act);
   }
-  try {
-    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach, {
-      business: gate.operator.business,
-      archiveId: fetched.archiveId ?? null,
-      digest: fetched.sha256 ?? null,
-    });
-  } catch {
-    // The store's own message can name its host; the operator is told the step.
-    throw new Error('the drill ran, but its receipt could not be written to the store');
-  }
-  return await recordDeployment(gate, await stampIfPassed(gate, act));
+  // The receipt and the stamp under the held grant; the record after its release.
+  const done = await attested(gate, () => receiptOnMachine(gate, storeUrl, act, fetched, reach));
+  return await recordDeployment(gate, done);
 }
 
 /**
@@ -211,6 +261,7 @@ export async function recordCarried({
   archiveFile,
   reach = stagingReach,
 }) {
+  holding(gate);
   const carried = readCarriedReceipt(receiptFile, gate.operator);
   if (typeof archiveFile !== 'string' || archiveFile === '') {
     throw new Error('--record needs the archive the drill restored: --archive <file>');
@@ -228,14 +279,27 @@ export async function recordCarried({
   // The store takes a receipt once: a pass whose stamp failed is noted beside
   // the receipt, and a re-run of --record writes only the stamp.
   const owed = `${receiptFile}.stamp-owed`;
-  if (outcome === 'passed' && stampOwed(owed, archiveId)) return await stampCarried(gate, owed);
+  if (outcome === 'passed' && stampOwed(owed, archiveId)) {
+    return await recordDeployment(gate, await attested(gate, () => stampCarried(gate, owed)));
+  }
+  const receipt = { ...carried, outcome, archiveTakenAt: carried.archiveTakenAt ?? takenAt };
+  const binding = { archiveId, digest, business: gate.operator.business };
+  // The receipt and the stamp under the held grant; the record after its release.
+  const act = await attested(gate, () =>
+    receiptCarried({ gate, storeUrl, receipt, binding, owed, reach }),
+  );
+  return await recordDeployment(gate, act);
+}
+
+/** A carried drill's receipt into the store, then the stamp of a pass the store took. */
+async function receiptCarried({ gate, storeUrl, receipt, binding, owed, reach }) {
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
       storeUrl,
-      carried.operator,
-      { ...carried, outcome, archiveTakenAt: carried.archiveTakenAt ?? takenAt },
-      { archiveId, digest, business: gate.operator.business },
+      receipt.operator,
+      receipt,
+      binding,
       reach,
     );
   } catch {
@@ -243,10 +307,10 @@ export async function recordCarried({
       "the store did not take the receipt: it has it already, it never handed out that archive, with that digest, to this login inside the window, or this login is not the installation's appointed operator",
     );
   }
-  if (outcome === 'passed' && lastTestedRestore !== null) {
-    return await stampCarried(gate, owed, archiveId);
+  if (receipt.outcome === 'passed' && lastTestedRestore !== null) {
+    return await stampCarried(gate, owed, binding.archiveId);
   }
-  return await recordDeployment(gate, carriedAct(outcome, lastTestedRestore));
+  return carriedAct(receipt.outcome, lastTestedRestore);
 }
 
 const carriedAct = (outcome, lastTestedRestore) => ({
@@ -264,7 +328,7 @@ async function stampCarried(gate, owed, archiveId) {
   });
   // A re-run's stamp is written, so its note goes.
   if (archiveId === undefined) unlinkSync(owed);
-  return await recordDeployment(gate, act);
+  return act;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;

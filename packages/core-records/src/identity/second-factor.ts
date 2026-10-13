@@ -178,12 +178,7 @@ export async function loginVerifiedFactors(
   subject: string,
 ): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly factor_digest: string }>(
-    `select distinct v.factor_digest from ops.second_factor_subjects v
-      where v.subject_digest = ${DIGEST('$1')} and v.state = 'verified'
-        and not exists (
-          select 1 from ops.second_factor_subjects r
-           where r.subject_digest = v.subject_digest and r.factor_digest = v.factor_digest
-             and r.state = 'removed')`,
+    `select unnest(ops.login_verified_factors($1)) as factor_digest`,
     [subject],
   );
   return rows.map((row) => row.factor_digest);

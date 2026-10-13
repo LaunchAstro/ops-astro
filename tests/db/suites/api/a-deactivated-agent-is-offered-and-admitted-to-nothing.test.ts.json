@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a deactivated agent's conversation memberships close, storage refuses it an open one, and no carriage topic admits it"
+}

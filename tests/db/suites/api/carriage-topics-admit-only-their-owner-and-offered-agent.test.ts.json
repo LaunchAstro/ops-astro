@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a carriage topic admits only the call's owner and its member agent, or the doorbell's own agent, in the topic's business only"
+}

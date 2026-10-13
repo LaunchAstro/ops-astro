@@ -130,7 +130,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ],
   [
     'operations.record_gate_item',
-    { item: 'tested-backups', evidence: 'https://evidence.example/tested-backups' },
+    { item: 'tested-backups', evidence: 'https://evidence.example/settings/operations/' },
   ],
   ['operations.change_installation_mode', { mode: 'real' }],
   ['inbox.read', {}],

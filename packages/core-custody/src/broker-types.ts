@@ -75,6 +75,12 @@ export interface AuditNote {
   readonly detail: Readonly<Record<string, unknown>>;
 }
 
+/** The deployment's carrier: its model agent, and the people it carries calls for. */
+export interface Carrier {
+  readonly agent: string;
+  readonly people: readonly string[];
+}
+
 export interface Broker {
   readonly custody: Custody;
   readonly operations: ReadonlyMap<string, ModelOperation>;
@@ -87,6 +93,8 @@ export interface Broker {
    * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
    */
   readonly localOwnerTesting?: boolean;
+  /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
+  readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
 }
@@ -148,6 +156,10 @@ export type BrokerRefusal =
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
   | 'LIABILITY_UNKNOWN'
+  // #1531: the message's one call is on its way or ended; the carrier is no member.
+  | 'STILL_ANSWERING'
+  | 'ANSWER_ENDED'
+  | 'CARRIAGE_UNAVAILABLE'
   | CarryRefusal;
 
 export type ModelCallResult =
