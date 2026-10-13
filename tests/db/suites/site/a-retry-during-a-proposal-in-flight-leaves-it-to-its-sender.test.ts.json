@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's proposal claim under overlap: a retry while the first run is still sending finds the claim inside its send window and settles nothing, so the sender's proposal is recorded and binds rather than being reconciled to unknown mid-send."
+}
