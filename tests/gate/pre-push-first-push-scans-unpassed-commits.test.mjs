@@ -2,6 +2,7 @@
 // A new branch's first push scans only the commits this machine's gate has not
 // already passed, and still refuses a key in any of them.
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { appendFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -139,7 +140,9 @@ test('a private list that arrives after a commit passed means a full scan', (t) 
   const f = firstPushFixture(t);
   assert.equal(f.push('origin', 'main').status, 0);
   const list = join(f.scratch, 'terms.txt');
-  writeFileSync(list, 'synthetic unlisted phrase\n');
+  // Built at run time: a term written here would be found in this file's own
+  // copy, which the fixture commits with the scanners.
+  writeFileSync(list, `zq${randomBytes(8).toString('hex')}\n`);
 
   f.git('checkout', '-q', '-b', 'with-list');
   const tip = f.commit('list.txt', 'clean\n', 'with list');
