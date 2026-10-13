@@ -52,14 +52,17 @@ begin
   if login is null then
     return false;
   end if;
-  -- A session ended as `sessionEnded` reads it, from its first sign-in (the
-  -- earliest `amr` time); one it cannot read is before every ending.
+  -- A session ended as `sessionEnded` reads it, from its first sign-in: the
+  -- earliest `amr` time, a whole number however written (no later than
+  -- `assuranceOf`'s); one it cannot read is before every ending.
   sid := case when pg_input_is_valid(claims::jsonb ->> 'session_id', 'uuid')
               then (claims::jsonb ->> 'session_id')::uuid end;
-  select min((e ->> 'timestamp')::bigint) into signed
+  select min(t)::bigint into signed
     from jsonb_array_elements(case jsonb_typeof(claims::jsonb -> 'amr')
-                                when 'array' then claims::jsonb -> 'amr' else '[]' end) e
-   where jsonb_typeof(e -> 'timestamp') = 'number' and e ->> 'timestamp' ~ '^[1-9][0-9]{0,10}$';
+                                when 'array' then claims::jsonb -> 'amr' else '[]' end) e,
+         lateral (select case jsonb_typeof(e -> 'timestamp')
+                           when 'number' then (e -> 'timestamp')::numeric end as t) n
+   where t between 1 and 99999999999 and t = trunc(t);
   if sid is not null and (
        exists (select 1 from ops.ended_provider_sessions p where p.session_id = sid)
        or exists (select 1 from ops.ended_subject_sessions s
