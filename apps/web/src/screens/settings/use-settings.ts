@@ -281,12 +281,12 @@ export function useSettings(
       return saved !== undefined && desk.owns(saved.tag) ? saved.revision : undefined;
     },
     save,
-    writeOver: () => {
+    writeOver: (ticked) => {
       // Only over what the reread showed: never while it is in flight, and
       // never when it did not answer, which would write with no revision at all.
       if (conflict === null || read.outcome !== 'ready') return;
       setConflict(null);
-      save(conflict.which, conflict.draft);
+      save(conflict.which, ticked ?? conflict.draft);
     },
     retry: settings.reload,
     complain: setComplaint,

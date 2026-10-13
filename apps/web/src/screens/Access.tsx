@@ -17,17 +17,27 @@
 // `access.revoke` ends one grant, by the id the read lists, once confirmed;
 // `access.end` ends a person's access in one act (their login, every session
 // and their grants), sent only once it is confirmed; `delegation.revoke` ends
-// an agent's, by its delegation. After each, the list is read again: the
+// an agent's, by its delegation, also once confirmed. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
+// One write is out at a time. The last write whose answer was lost goes again
+// under its operation id only when the same act is pressed again, so the
+// server replays what it stored; any other act, or a known answer, ends it.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { describeFailure, type SubmitResult } from '../records/submit.ts';
+import { describeFailure } from '../records/submit.ts';
+import { settle } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
-import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import {
+  ConfirmEnd,
+  ConfirmRevokeDelegation,
+  ConfirmRevokeGrant,
+  GiveAccess,
+  type Revoking,
+} from './access/acts.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
 
@@ -36,24 +46,23 @@ export interface AccessScreenProps {
   readonly grantKey: string;
 }
 
-/** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => void;
+/**
+ * One write, then the list read again; a refusal changes nothing but the
+ * outcome line. A write whose answer was lost is sent again under its own id.
+ */
+type Act = (command: AccessCommand, body: Readonly<Record<string, unknown>>, done: string) => void;
 
-const revokeWith =
-  (client: OperationsClient, act: Act) =>
-  (agent: AccessReadResult['agents'][number]): void => {
-    act(
-      () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
-      `Revoked the delegation for ${agent.purpose}.`,
-    );
-  };
+type Agent = AccessReadResult['agents'][number];
+
+type AccessCommand =
+  'delegation.revoke' | 'access.grant' | 'access.end' | 'access.revoke' | 'client.set_privacy';
 
 const giveWith =
-  (client: OperationsClient, act: Act) =>
+  (act: Act) =>
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    act('access.grant', body, `Gave ${holder.name} ${key}.`);
   };
 
 /** A refusal is drawn as Settings draws one; a success stays a quiet line. */
@@ -68,49 +77,80 @@ const Outcome = (props: { readonly text: string; readonly refused: boolean }): R
     </p>
   );
 
-/**
- * The two acts that wait on a confirmation before anything is sent: ending a
- * person's access (`access.end`) and revoking one grant (`access.revoke`).
- */
-function usePending(client: OperationsClient, act: Act) {
-  const [ending, setEnding] = useState<PersonView | null>(null);
-  const [revoking, setRevoking] = useState<Revoking | null>(null);
-  const endAccess = (person: PersonView): void => {
-    setEnding(null);
+/** The three confirmed writes, each sent once its confirmation is pressed. */
+const confirmedWith = (act: Act) => ({
+  end: (person: PersonView): void => {
     act(
-      () => client.mutate('access.end', { holderId: person.personId }),
+      'access.end',
+      { holderId: person.personId },
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
-  };
-  const revokeGrant = ({ person, grant }: Revoking): void => {
-    setRevoking(null);
+  },
+  revokeGrant: ({ person, grant }: Revoking): void => {
     act(
-      () => client.mutate('access.revoke', { grantId: grant.grantId }),
+      'access.revoke',
+      { grantId: grant.grantId },
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
-  };
+  },
+  revokeDelegation: (agent: Agent): void => {
+    act(
+      'delegation.revoke',
+      { delegationId: agent.delegationId },
+      `Revoked the delegation for ${agent.purpose}.`,
+    );
+  },
+});
+
+/**
+ * The three acts that wait on a confirmation before anything is sent: ending a
+ * person's access (`access.end`), revoking one grant (`access.revoke`) and
+ * revoking an agent's delegation (`delegation.revoke`).
+ */
+function usePending(act: Act) {
+  const [ending, setEnding] = useState<PersonView | null>(null);
+  const [revoking, setRevoking] = useState<Revoking | null>(null);
+  const [delegation, setDelegation] = useState<Agent | null>(null);
+  const send = confirmedWith(act);
   const confirmations = (result: AccessReadResult): ReactElement => (
     <>
+      {delegation === null ||
+      !result.agents.some((agent) => agent.delegationId === delegation.delegationId) ? null : (
+        <ConfirmRevokeDelegation
+          agent={delegation}
+          onKeep={() => setDelegation(null)}
+          onRevoke={() => {
+            setDelegation(null);
+            send.revokeDelegation(delegation);
+          }}
+        />
+      )}
       {revoking === null ? null : (
         <ConfirmRevokeGrant
           revoking={revoking}
           result={result}
           onKeep={() => setRevoking(null)}
-          onRevoke={() => revokeGrant(revoking)}
+          onRevoke={() => {
+            setRevoking(null);
+            send.revokeGrant(revoking);
+          }}
         />
       )}
       {ending === null ? null : (
         <ConfirmEnd
           person={ending}
           onKeep={() => setEnding(null)}
-          onEnd={() => endAccess(ending)}
+          onEnd={() => {
+            setEnding(null);
+            send.end(ending);
+          }}
         />
       )}
     </>
   );
   const onRevokeGrant = (person: PersonView, grant: Revoking['grant']): void =>
     setRevoking({ person, grant });
-  return { confirmations, onEnd: setEnding, onRevokeGrant };
+  return { confirmations, onEnd: setEnding, onRevokeGrant, onRevokeDelegation: setDelegation };
 }
 
 function AccessLists(props: {
@@ -121,7 +161,7 @@ function AccessLists(props: {
   readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
-  const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
+  const { confirmations, onEnd, onRevokeGrant, onRevokeDelegation } = usePending(act);
   const clients = result.clientRecords;
   const lists = { clients, onEnd, onRevokeGrant };
   return (
@@ -134,26 +174,51 @@ function AccessLists(props: {
           {confirmations(result)}
           <People id="team" title="Team" people={result.team} {...lists} />
           <People id="clients" title="Clients" people={result.clients} {...lists} />
-          <Agents result={result} onRevoke={revokeWith(client, act)} />
+          <Agents result={result} onRevoke={onRevokeDelegation} />
         </div>
       </section>
       <section className="sec">
-        <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+        <GiveAccess result={result} busy={props.busy} onGive={giveWith(act)} />
       </section>
       <section className="sec">
         <ClientPrivacy
           result={result}
           busy={props.busy}
           onSet={(body, name) =>
-            act(
-              () => client.mutate('client.set_privacy', body),
-              `Saved ${name}'s privacy settings.`,
-            )
+            act('client.set_privacy', body, `Saved ${name}'s privacy settings.`)
           }
         />
       </section>
     </>
   );
+}
+
+/** One write at a time, its outcome line, and the list read again after a success. */
+function useAct(client: OperationsClient, reload: () => void) {
+  const [busy, setBusy] = useState(false);
+  // One write at a time: a second press before the answer sends nothing.
+  const sending = useRef(false);
+  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
+  // The last write whose answer was lost: its act and its operation id.
+  const held = useRef<{ readonly act: string; readonly id: string } | null>(null);
+  const act: Act = (command, body, done) => {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    const words = JSON.stringify([command, body]);
+    const id = held.current?.act === words ? held.current.id : client.newOperationId();
+    held.current = { act: words, id };
+    void (async () => {
+      const answer = await client.mutate(command, body, { operationId: id });
+      if (settle(answer).kind !== 'unknown') held.current = null;
+      const failure = describeFailure(answer);
+      sending.current = false;
+      setBusy(false);
+      setOutcome({ text: failure ?? done, refused: failure !== null });
+      if (failure === null) reload();
+    })();
+  };
+  return { busy, outcome, act };
 }
 
 export function AccessScreen(props: AccessScreenProps): ReactElement {
@@ -163,17 +228,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<AccessReadResult>('access.read', {}),
     deps: [client],
   });
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = (send, done) => {
-    setBusy(true);
-    void (async () => {
-      const failure = describeFailure(await send());
-      setBusy(false);
-      setOutcome({ text: failure ?? done, refused: failure !== null });
-      if (failure === null) reload();
-    })();
-  };
+  const { busy, outcome, act } = useAct(client, reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>

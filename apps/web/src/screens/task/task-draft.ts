@@ -192,8 +192,14 @@ export function saveAttempt(
   if (draft !== null) keepDraft(storage, person, draft, next);
 }
 
+/** Drop the person's kept draft; a copy that cannot be read is held for Cancel to discard. */
 export function dropDraft(storage: Storage | null, person: string): void {
   if (draftProblem(storage, person) !== null) return;
+  discardDraft(storage, person);
+}
+
+/** Cancel: the person discards their kept draft on purpose, an unreadable copy included. */
+export function discardDraft(storage: Storage | null, person: string): void {
   unstored.delete(person);
   try {
     storage?.removeItem(keyOf(person));

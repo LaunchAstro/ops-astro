@@ -28,6 +28,7 @@ import {
 import { useCommand } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { AssigneeField } from './AssigneeField.tsx';
+import { holding, useHeldOperations } from './held-operations.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
@@ -52,24 +53,37 @@ export interface PanelFieldsProps extends ClientSeams {
 
 type FieldCommand = 'task.update' | 'task.set_stage';
 
-/** One field write at the read revision, or the one an edit started from; a landed one is counted. */
+/**
+ * One field write at the read revision, or the one an edit started from; a
+ * landed one is counted. The same write sent again after a lost answer goes
+ * under the same operation id, so the server replays what it stored.
+ */
 function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
   const { busy, because, run } = useCommand();
+  const held = useHeldOperations();
   const write = (
     command: FieldCommand,
     fields: Readonly<Record<string, unknown>>,
     revision = props.task.revision,
+    onNotStored?: () => void,
   ): void => {
+    const recordId = props.task.id;
+    const hold = holding(held, command, { recordId, revision, fields }, () =>
+      props.client.newOperationId(),
+    );
     run(
       () =>
         submitEdit(props.client, {
           command,
-          recordId: props.task.id,
+          recordId,
           expectedRevision: revision,
           fields,
+          operationId: hold.id,
         }),
       (settlement) => {
+        hold.settle(settlement.kind);
         if (settlement.kind === 'ok') props.onChanged();
+        else onNotStored?.();
       },
     );
   };
@@ -90,15 +104,18 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
   // The name being typed and the revision the rename opened at: a re-read
   // keeps the panel mounted, and a colleague's change since answers stale.
   const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null);
+  const [unsaved, setUnsaved] = useState<string | null>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {
       setDraft(null);
+      setUnsaved(null);
     } else if (event.key === 'Enter' && draft !== null) {
       event.preventDefault();
       const name = draft.text.trim();
       setDraft(null);
+      setUnsaved(null);
       if (name !== '' && name !== task.title) {
-        write('task.update', { title: name }, draft.revision);
+        write('task.update', { title: name }, draft.revision, () => setUnsaved(name));
       }
     }
   };
@@ -111,7 +128,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           data-panel-field="name"
           disabled={busy}
           title="Rename"
-          onClick={() => setDraft({ text: task.title ?? '', revision: task.revision })}
+          onClick={() => setDraft({ text: unsaved ?? task.title ?? '', revision: task.revision })}
         >
           {task.title}
         </button>

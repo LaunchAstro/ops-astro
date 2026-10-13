@@ -14,6 +14,44 @@ export interface PrioritySettingsWorld {
   next: 'ok' | 'stale';
   /** How `settings.read` answers: the rows, or a 503 or 403 with none. */
   read: 200 | 503 | 403;
+  /**
+   * What the next priority writes meet, in turn: `unreachable` never reaches
+   * the server, `lose` is stored with its answer lost, `hold` answers when its
+   * release in `held` is called. None: answered at once.
+   */
+  readonly fates: ('unreachable' | 'lose' | 'hold')[];
+  readonly held: (() => void)[];
+}
+
+const SET_PRIORITY = '/settings/set_priority_stages';
+
+/** A stored success by operation id, replayed as the real register does. */
+function replayed(
+  register: Map<string, Response>,
+  world: PrioritySettingsWorld,
+  parsed: Record<string, unknown>,
+): Response {
+  const id = String(parsed['operationId']);
+  const kept = register.get(id) ?? priorityWrite(world, parsed);
+  if (kept.ok) register.set(id, kept);
+  return kept.clone();
+}
+
+/** The priority write as its fate has it reach this screen. */
+async function fated(
+  fate: PrioritySettingsWorld['fates'][number] | undefined,
+  world: PrioritySettingsWorld,
+  answer: () => Response,
+): Promise<Response> {
+  if (fate === 'unreachable') throw new TypeError('Failed to fetch');
+  const response = answer();
+  if (fate === 'lose') throw new TypeError('Failed to fetch');
+  if (fate !== 'hold') return response;
+  return await new Promise<Response>((resolve) => {
+    world.held.push(() => {
+      resolve(response);
+    });
+  });
 }
 
 function json(body: unknown, status = 200): Response {
@@ -87,14 +125,18 @@ function priorityWrite(world: PrioritySettingsWorld, parsed: Record<string, unkn
 // existing React mount/four-eyes world remain the owners under test.
 export function prioritySettingsWorld(businessKey = 'alpha'): PrioritySettingsWorld {
   const legacy = fourEyesWorld({ value: 500, revision: 7 });
+  const register = new Map<string, Response>();
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const at = input instanceof Request ? input.url : String(input);
     const parsed: unknown = JSON.parse(String(init?.body ?? '{}'));
     if (!object(parsed)) throw new Error('Priority fixture received a non-object request');
+    const fate = at.endsWith(SET_PRIORITY) ? world.fates.shift() : undefined;
+    if (fate === 'unreachable') return await fated(fate, world, () => new Response());
     world.sent.push({ at, body: parsed });
     if (at.endsWith('/session/capabilities')) return priorityCapabilities(world, businessKey);
     if (at.endsWith('/settings/read')) return priorityRead(world);
-    if (at.endsWith('/settings/set_priority_stages')) return priorityWrite(world, parsed);
+    if (at.endsWith(SET_PRIORITY))
+      return await fated(fate, world, () => replayed(register, world, parsed));
     // Established fixture handles the untouched legacy settings/cap children.
     return await legacy.fetch(input, init);
   };
@@ -105,6 +147,8 @@ export function prioritySettingsWorld(businessKey = 'alpha'): PrioritySettingsWo
     caps: 'manage',
     next: 'ok',
     read: 200,
+    fates: [],
+    held: [],
     client: new OperationsClient({ origin: '', businessKey, signedIn: true, fetch }),
   };
   return world;
@@ -119,7 +163,7 @@ export function priorityScreen(
   );
 }
 export function priorityWrites(world: PrioritySettingsWorld): readonly Sent[] {
-  return world.sent.filter((one) => one.at.endsWith('/settings/set_priority_stages'));
+  return world.sent.filter((one) => one.at.endsWith(SET_PRIORITY));
 }
 export function priorityInput(page: Mounted, id: string): HTMLInputElement {
   const found = page.find(`[data-settings="priority-stages"] input[value="${id}"]`);

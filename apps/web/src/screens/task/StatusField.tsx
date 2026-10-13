@@ -11,8 +11,8 @@
 // **One completion transition.** Complete (the completed category) is
 // `task.complete`, never `task.set_state`, which refuses it (MP-4-13). Leaving
 // Complete is `task.reopen` first, with its reason, which lands in the
-// unstarted state; the chosen state then goes through `task.set_state` at the
-// revision the reopen answered, unless the unstarted state was the choice. Each
+// first unstarted state; the chosen state then goes through `task.set_state` at
+// the revision the reopen answered, unless that state was the choice. Each
 // write is at the revision read; a landed one is counted (`onChanged`) and a
 // refusal is quoted in the server's words.
 
@@ -29,7 +29,8 @@ import type {
   InternalTaskDetail as Task,
   TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { useCommand } from '../../records/use-command.ts';
+import { settle, useCommand } from '../../records/use-command.ts';
+import { holding, useHeldOperations, type Held } from './held-operations.ts';
 
 const REOPEN_REASON = 'Reopened from the status select.';
 
@@ -44,42 +45,55 @@ export interface StatusFieldProps {
   readonly onChanged: () => void;
 }
 
-/** The one command, or the reopen then the command, that puts the task in `target`. */
+/**
+ * The one command, or the reopen then the command, that puts the task in
+ * `target`. Each goes under the id `held` keeps for it, so the same choice
+ * sent again after a lost answer replays what the server stored.
+ */
 async function sendState(
   client: OperationsClient,
+  held: Held,
   task: Task,
+  states: readonly TaskStateView[],
   target: TaskStateView,
   onReopened: () => void,
 ): Promise<CallResult<CommandOutcome>> {
   const recordId = task.id;
+  const send = async (
+    command: 'task.complete' | 'task.reopen' | 'task.set_state',
+    body: Readonly<Record<string, unknown>>,
+    expectedRevision: number,
+  ): Promise<CallResult<CommandOutcome>> => {
+    const hold = holding(held, command, { body, expectedRevision }, () => client.newOperationId());
+    const answer = await client.mutate(command, body, {
+      expectedRevision,
+      operationId: hold.id,
+    });
+    hold.settle(settle(answer).kind);
+    return answer;
+  };
   if (target.machineCategory === 'completed') {
-    return await client.mutate('task.complete', { recordId }, { expectedRevision: task.revision });
+    return await send('task.complete', { recordId }, task.revision);
   }
   let revision = task.revision;
   if (task.completedAt !== null) {
-    const reopened = await client.mutate(
-      'task.reopen',
-      { recordId, reason: REOPEN_REASON },
-      { expectedRevision: revision },
-    );
+    const reopened = await send('task.reopen', { recordId, reason: REOPEN_REASON }, revision);
     if (isRefusal(reopened) || isUnavailable(reopened)) return reopened;
     onReopened();
-    if (target.machineCategory === 'unstarted') return reopened;
+    // The reopen lands in the first unstarted state, in the order the states were read.
+    const landed = states.find((each) => each.machineCategory === 'unstarted');
+    if (target.id === landed?.id) return reopened;
     revision = reopened.value.revision;
   }
-  return await client.mutate(
-    'task.set_state',
-    { recordId, stateId: target.id },
-    { expectedRevision: revision },
-  );
+  return await send('task.set_state', { recordId, stateId: target.id }, revision);
 }
 
 export function StatusField(props: StatusFieldProps): ReactElement {
   const { client, task, states } = props;
   const { busy, because, run } = useCommand();
+  const held = useHeldOperations();
   const current = task.state;
   const off = current !== null && !states.some((each) => each.id === current.id);
-
   const choose = (stateId: string): void => {
     const target = states.find((each) => each.id === stateId);
     if (target === undefined || stateId === current?.id) return;
@@ -87,7 +101,7 @@ export function StatusField(props: StatusFieldProps): ReactElement {
     let reopened = false;
     run(
       () =>
-        sendState(client, task, target, () => {
+        sendState(client, held, task, states, target, () => {
           reopened = true;
         }),
       (settlement) => {
