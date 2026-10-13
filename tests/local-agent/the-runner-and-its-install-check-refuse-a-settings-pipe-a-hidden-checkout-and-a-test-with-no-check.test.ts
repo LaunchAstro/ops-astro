@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'vitest';
-import { RUNNER_KEY } from './world.ts';
+import { freePort, RUNNER_KEY } from './world.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const check = join(root, 'scripts/m5/gpt-runner-install-check.sh');
@@ -52,7 +52,7 @@ test('a settings FIFO is refused without blocking runner startup', () => {
 });
 
 // eslint-disable-next-line max-lines-per-function -- one case, kept whole as first written
-test('an ancestor symlink cannot hide the git checkout containing the runner home', () => {
+test('an ancestor symlink cannot hide the git checkout containing the runner home', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'linked-home-')));
   try {
     const repo = join(dir, 'repository');
@@ -83,6 +83,8 @@ test('an ancestor symlink cannot hide the git checkout containing the runner hom
         OPS_LOCAL_AGENT_HOME: home,
         OPS_LOCAL_AGENT_CODEX_BIN: join(root, 'tests/local-agent/fake-codex.mjs'),
         OPS_LOCAL_AGENT_KEY: key,
+        // A valid port, so nothing but the checkout can refuse this home.
+        OPS_LOCAL_AGENT_PORT: String(await freePort()),
       }),
       { mode: 0o600 },
     );
@@ -107,6 +109,7 @@ test('an ancestor symlink cannot hide the git checkout containing the runner hom
     });
     assert.equal(ran.error, undefined);
     assert.notEqual(ran.status, 0, `preflight certified a home inside ${repo}: ${ran.stdout}`);
+    assert.match(ran.stderr, /gpt runner install check: the runner home is inside a git checkout/u);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
