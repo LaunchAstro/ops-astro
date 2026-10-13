@@ -39,7 +39,8 @@ environment (`PYTHONPATH`, `NODE_OPTIONS`, `GIT_CONFIG_*` and the like), and a
 matched as gitleaks matches them (any case, dots split), so no spelling of an
 extend path passes; a file the parser refuses is not pinned. Any other push
 scans everything reachable and records nothing. The hook adds a first push's commit only after
-every scan of it passes. A listed commit counts only under the fingerprint the
+every scan of it passes, and only if the fingerprint, read again then, is
+unchanged: a rule edited while the scans ran records nothing. A listed commit counts only under the fingerprint the
 new push would be judged by, and only if the pushed commit reaches it, so
 weaker scanners or a changed rule never vouch for history; a change of rules
 costs one full scan. A missing, unreadable, symlinked or malformed record

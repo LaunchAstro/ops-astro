@@ -356,9 +356,16 @@ if [ -n "$pushed" ]; then
     echo "pre-push: scanning what this push would publish: $range"
     scan "$range"
     # Passed only now, every scan clean, and only on a first push: a later
-    # push's range starts at whatever the remote said it held.
+    # push's range starts at whatever the remote said it held. The rules and
+    # inputs are read again first: an edit while the scans ran (an editor,
+    # another worktree) means they judged under something the fingerprint
+    # does not name, so nothing is recorded.
     if [ -n "$fingerprint" ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
-      echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
+      if pinned_push && [ "$(scan_fingerprint "$sha" || true)" = "$fingerprint" ]; then
+        echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
+      else
+        echo "pre-push: the scan's rules or inputs changed while it ran. Recording nothing."
+      fi
     fi
   done
 elif [ "$had_input" -eq 1 ]; then

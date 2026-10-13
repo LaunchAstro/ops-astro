@@ -5,12 +5,14 @@
 // reads it, and first-pushes a branch built on the commit to another remote.
 // The key must be refused.
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
   firstPushFixture,
   githubShaped,
+  hook,
   scanned,
   source,
   tokenShaped,
@@ -176,4 +178,66 @@ test('a helper earlier on PATH during one push does not vouch for a later push w
 
   f.commit('notes.txt', 'later\n', 'later');
   refused(f, f.push('origin', 'wip'), 'wip');
+});
+
+// oxlint-disable-next-line max-lines-per-function -- a proof kept as written
+test('a rule edit during a scan cannot cache unscanned credentials under the earlier rules', async (t) => {
+  const f = firstPushFixture(t);
+  f.git('checkout', '-q', '-b', 'locked');
+  const key = githubShaped();
+  f.commit('pnpm-lock.yaml', `lockfileVersion: '9.0'\n  token: ${key}\n`, 'lock');
+  const config = join(f.repo, '.gitleaks.toml');
+  const strict = readFileSync(config);
+  const env = { ...process.env, FIRST_PUSH_HOOK: hook };
+  for (const name of [
+    'HUB_GATE_CMD',
+    'HUB_PUBLIC_CONTENT_CMD',
+    'HUB_GATE_TERMS',
+    'HUB_GATE_LITERAL_HISTORY_RECEIPT',
+    'PYTHONPATH',
+    'PYTHONHOME',
+    'PYTHONSTARTUP',
+    'NODE_OPTIONS',
+    'NODE_PATH',
+    'GIT_CONFIG_PARAMETERS',
+    'GIT_CONFIG_COUNT',
+  ])
+    delete env[name];
+  let output = '';
+  let edited = false;
+  const first = await new Promise((resolve, reject) => {
+    const child = spawn('git', ['push', 'elsewhere', 'locked:refs/heads/locked'], {
+      cwd: f.repo,
+      env,
+    });
+    const receive = (bytes) => {
+      output += bytes.toString();
+      // The fingerprint has already been computed; the real scanners still run.
+      // Model an editor or another worktree changing the checkout's rules.
+      if (!edited && output.includes('gate: self-test passed')) {
+        writeFileSync(config, '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["."]\n');
+        edited = true;
+      }
+    };
+    child.stdout.on('data', receive);
+    child.stderr.on('data', receive);
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+  writeFileSync(config, strict);
+  assert.equal(edited, true, 'the rule edit must occur after fingerprinting');
+  // Refusing a concurrent rule edit is also safe.
+  if (first !== 0) {
+    assert.equal(f.published('elsewhere', 'locked'), '');
+    return;
+  }
+  assert.equal(output.includes(key), false, 'the synthetic credential must remain redacted');
+  f.commit('pnpm-lock.yaml', "lockfileVersion: '9.0'\n", 'remove key from tip');
+  const result = f.push('origin', 'locked');
+  assert.equal(
+    result.status,
+    1,
+    `strict rules must refuse the historical credential; exit ${result.status}; scanned ${scanned(result.output)}\n${result.output}`,
+  );
+  assert.equal(f.published('origin', 'locked'), '');
 });
