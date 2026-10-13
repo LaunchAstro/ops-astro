@@ -36,6 +36,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
   InvitationListResult,
   PersonListResult,
@@ -223,6 +224,8 @@ export interface ReadOperands {
   readonly 'harness.read': { readonly runId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
+  /** The task (its id or key) and the page address the sidebar's person named (C80). */
+  readonly 'live_correction.locate': { readonly recordId: string; readonly pageUrl: string };
   readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
@@ -282,6 +285,7 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | LiveCorrectionReadResult
+  | LiveCorrectionLocateResult
   | InvitationListResult
   | MapViewResult
   | MapFrontierResult

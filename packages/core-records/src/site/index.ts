@@ -35,8 +35,10 @@ export {
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
 export {
   bindPartySite,
+  readPageSnapshot,
   readPartySite,
   unbindPartySitePage,
+  type PageSnapshot,
   type PartySiteRecord,
   type SiteWrite,
 } from './party-sites.ts';

@@ -27,6 +27,8 @@ const NOT_DRAWN = new Set([
   'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
+  // C80's sidebar door: it finds a file, and no screen draws its answer.
+  'live_correction.locate',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

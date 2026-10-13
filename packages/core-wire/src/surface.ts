@@ -643,6 +643,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
   // never an agent's, and only the configured approver who is not the requester.
   read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
+  // The sidebar door's site read: `task:read` on the task here, then `run:write` at
+  // its client inside the read, as a request asks both.
+  read('live_correction.locate', TASK_COLLECTION, { authorisedOn: 'record' }),
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,

@@ -199,6 +199,24 @@ export interface ReceiptResult {
 }
 
 /**
+ * C80: the file behind a page the sidebar's person named, from the snapshot
+ * the correction job keeps of each bound page of the task's own client.
+ */
+export interface LiveCorrectionLocateResult {
+  readonly ok: true;
+  /** Where the word sits: what `live_correction.request` takes beside the words. */
+  readonly target: {
+    readonly partyId: string;
+    readonly taskId: string;
+    readonly path: string;
+    readonly pageUrl: string;
+    readonly baseRevision: string;
+    /** The whole file as the snapshot holds it at `baseRevision`. */
+    readonly before: string;
+  };
+}
+
+/**
  * C80: one live correction's decision as a card reads it again. The state as
  * the request and decide commands name it, the person who decided it (the
  * configured approver at that moment) by name or null, and its version; the

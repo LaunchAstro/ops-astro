@@ -11,6 +11,7 @@
 // whole file as it reads now, none of which the sidebar knows: the host hands
 // them in through `Locate`, the site read. Without one no door is drawn.
 
+import type { LiveCorrectionLocateResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { replaced, type CardState, type CorrectionAsk, type ProposePort } from './correction.ts';
@@ -58,6 +59,21 @@ export interface CorrectionTarget {
 
 /** The site read that finds a named page's file, or null where the site has no such page. */
 export type Locate = (ask: CorrectionAsk) => Promise<CorrectionTarget | null>;
+
+/**
+ * The site read on a task's page: `live_correction.locate` for that task and the
+ * page address the person typed. Anything but the file is null, so no request
+ * is sent and the door says the page was not found.
+ */
+export const taskLocate =
+  (client: OperationsClient, taskKey: string): Locate =>
+  async (ask) => {
+    const operands = { recordId: taskKey, pageUrl: ask.page };
+    const settled = settle(
+      await client.read<LiveCorrectionLocateResult>('live_correction.locate', operands),
+    );
+    return settled.kind === 'ok' ? settled.value.target : null;
+  };
 
 /** The door's port, bound to `live_correction.request` through the command client. */
 export const requestPort =

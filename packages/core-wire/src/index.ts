@@ -108,6 +108,7 @@ export type {
   InboxEntry,
   InboxReadResult,
   UnattendedView,
+  LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
   InternalCommentView,
   InternalTaskDetail,

@@ -57,6 +57,7 @@ export type {
   ExecutionGraph,
   ExecutionNode,
   ReceiptResult,
+  LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
 } from './views-run.ts';
 
