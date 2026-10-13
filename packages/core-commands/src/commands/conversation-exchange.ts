@@ -20,7 +20,9 @@
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off). It asks for the conversation's
 //    model (CS-7.30), the default when none is chosen; a chosen model no
-//    longer offered it (`offeredModels`) is refused first, nothing sent.
+//    longer offered it (`offeredModels`) is refused first, nothing sent. Where
+//    the caller takes pieces, the answer's display text goes to it as the
+//    model writes it; it is provisional, and only the settled answer is kept.
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
@@ -82,6 +84,8 @@ export type ConversationExchange = (
   businessId: BusinessId,
   presented: VerifiedSubject,
   asked: Asked,
+  /** Where the answer's display text goes as it is written; only the settled reply is kept. */
+  onPiece?: (text: string) => void,
 ) => Promise<ConversationReply | null>;
 
 /** A reply's body is a message's (0092). */
@@ -208,6 +212,7 @@ async function answerOnce(
   asked: Asked,
   found: { readonly session: Session; readonly question: Question },
   broker: ModelBroker,
+  onPiece: ((text: string) => void) | undefined,
 ): Promise<ConversationReply | null> {
   const { session, question } = found;
   // A read that came back after an earlier answer was kept and its flight ended: read again.
@@ -225,6 +230,7 @@ async function answerOnce(
         { name: 'message', source: 'outside', value: question.body },
       ],
       ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+      ...(onPiece === undefined ? {} : { onPiece }),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );
@@ -253,7 +259,7 @@ async function answerOnce(
  */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   const asking = new Map<string, Promise<ConversationReply | null>>();
-  return async (database, businessId, presented, asked) => {
+  return async (database, businessId, presented, asked, onPiece) => {
     // The provider the deployment's broker runs the conversation on: what it can send.
     const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
@@ -278,6 +284,7 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       asked,
       { ...found, question },
       broker,
+      onPiece,
     ).finally(() => asking.delete(key));
     asking.set(key, answering);
     return await answering;

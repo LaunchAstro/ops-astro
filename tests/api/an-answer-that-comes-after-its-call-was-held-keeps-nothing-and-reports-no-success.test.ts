@@ -47,7 +47,7 @@ describe.skipIf(serverUrl === undefined)('an answer that comes after its call wa
 
   const calls = async (conversationId: string) =>
     await w.fixture.db.admin.execute<Record<string, unknown>>(
-      `select state, actual_minor, completed_at is not null as completed
+      `select state, actual_minor::int as actual_minor, completed_at is not null as completed
          from public.model_calls where conversation_id = $1 order by started_at`,
       [conversationId],
     );
@@ -91,7 +91,7 @@ describe.skipIf(serverUrl === undefined)('an answer that comes after its call wa
     ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
     ollama.open();
     const events = await (await sending).rest();
-    expect(await calls(conversationId)).toStrictEqual([
+    expect(await calls(conversationId)).toEqual([
       { state: 'liability_unknown', actual_minor: null, completed: false },
     ]);
     expect(await agentReplies(conversationId)).toBe(0);
@@ -109,8 +109,8 @@ describe.skipIf(serverUrl === undefined)('an answer that comes after its call wa
     expect(opened.body).toMatchObject({
       reply: { answered: true, body: 'Two tasks are due today.' },
     });
-    expect(await calls(conversationId)).toStrictEqual([
-      { state: 'settled', actual_minor: '0', completed: true },
+    expect(await calls(conversationId)).toEqual([
+      { state: 'settled', actual_minor: 0, completed: true },
     ]);
     expect(await agentReplies(conversationId)).toBe(1);
   }, 60_000);

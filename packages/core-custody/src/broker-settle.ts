@@ -69,9 +69,13 @@ export function settlementOf(
     }
     return { kind: 'unknown', ...failure };
   }
+  // A streamed answer is folded into the one body its schema reads first.
+  const text =
+    operation.fold === undefined ? outcome.outbound.body : operation.fold(outcome.outbound.body);
+  if (text === undefined) return { kind: 'unknown', ...MALFORMED };
   let body: unknown;
   try {
-    body = JSON.parse(outcome.outbound.body);
+    body = JSON.parse(text);
   } catch {
     return { kind: 'unknown', ...MALFORMED };
   }
@@ -191,13 +195,13 @@ export async function release(
   return { ok: false, code: 'CALL_RELEASED', callId, reason };
 }
 
-/** Priced within the hold: settled at the price, the rest released. */
+/** Priced within the hold: settled at the price, the rest released. Whether it moved the call. */
 export async function settlePriced(
   tx: TenantQuery,
   reserved: ReservedCall,
   settlement: Settlement & { kind: 'priced' },
   broker: Broker,
-): Promise<void> {
+): Promise<boolean> {
   const { callId, operation, reservedMinor } = reserved;
   const { costMinor } = settlement;
   const moved = await tx.query(
@@ -225,7 +229,7 @@ export async function settlePriced(
       settlement.answer.usage.outputUnits,
     ],
   );
-  if (moved.length === 0) return;
+  if (moved.length === 0) return false;
   await broker.audit(tx, {
     action: 'model.call_dispatched',
     outcome: 'applied',
@@ -240,6 +244,7 @@ export async function settlePriced(
       releasedMinor: reservedMinor - costMinor,
     },
   });
+  return true;
 }
 
 export async function settle(

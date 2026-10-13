@@ -19,7 +19,7 @@ import {
   WAIT_SECONDS,
   type ReservedCall,
 } from './broker-reserve.ts';
-import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
+import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -48,6 +48,11 @@ export interface ConversationCallRequest {
   readonly fields: readonly ClaimedField[];
   /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
   readonly model?: string;
+  /**
+   * Where the answer's display text goes as it is written, for an operation
+   * that streams (`pieces`). Provisional: only the settled answer is kept.
+   */
+  readonly onPiece?: (text: string) => void;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -156,34 +161,66 @@ async function sendAndSettle(
   called: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
-  model: string | undefined,
+  asked: Pick<ConversationCallRequest, 'model' | 'onPiece'>,
 ): Promise<ModelCallResult> {
   const { callId, operation, route } = called;
+  const { model, onPiece } = asked;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
   const built = adapter.build(values, callId, model);
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
+  const reader = onPiece === undefined ? undefined : operation.pieces?.();
+  const outcome = await broker.custody.dispatch(
+    route.credentialRef,
+    {
+      destination: operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: operation.timeoutMs,
+      maxResponseBytes: operation.maxResponseBytes,
+    },
+    reader === undefined || onPiece === undefined
+      ? undefined
+      : (chunk) => {
+          for (const text of reader.push(chunk)) onPiece(text);
+        },
+  );
   const settlement = settlementOf(outcome, operation, adapter);
-  return await database.withBusiness(businessId, async (tx) => {
-    if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
-    if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
-    if (settlement.costMinor !== 0) {
-      const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
-      return await hold(tx, called, observed, null, broker);
-    }
-    await settlePriced(tx, called, settlement, broker);
-    const { text } = settlement.answer;
-    return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
-  });
+  return await database.withBusiness(
+    businessId,
+    async (tx) => await settledFor(tx, called, settlement, broker),
+  );
+}
+
+/**
+ * Custody's outcome for the person waiting on it: held, released, or settled
+ * at nothing. Only a call still open settles: one the sweep held, or anything
+ * else moved, is no success and keeps no answer.
+ */
+async function settledFor(
+  tx: TenantQuery,
+  called: ReservedCall,
+  settlement: Settlement,
+  broker: Broker,
+): Promise<ModelCallResult> {
+  const { callId } = called;
+  if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
+  if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
+  if (settlement.costMinor !== 0) {
+    const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
+    return await hold(tx, called, observed, null, broker);
+  }
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, callId],
+  );
+  if (call?.state !== 'dispatched' || !(await settlePriced(tx, called, settlement, broker))) {
+    return { ok: false, code: 'DECISION_STALE', callId };
+  }
+  const { text } = settlement.answer;
+  return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
 }
 
 /**
@@ -226,6 +263,6 @@ export async function callModelInConversation(
     { callId, operation, route, reservedMinor: 0 },
     fields,
     broker,
-    request.model,
+    request,
   );
 }
