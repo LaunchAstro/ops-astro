@@ -28,8 +28,8 @@ import {
   outsideFields,
   ownsConversation,
   refused,
-  type ConversationCallRequest,
 } from './broker-conversation.ts';
+import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import { holdPriced } from './broker-hold.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import type { ReservedCall } from './broker-reserve.ts';

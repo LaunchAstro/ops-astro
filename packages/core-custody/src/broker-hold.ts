@@ -10,7 +10,8 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { RATE_LIMITED, refused, type ConversationCallRequest } from './broker-conversation.ts';
+import type { ConversationCallRequest } from './broker-conversation-types.ts';
+import { RATE_LIMITED, refused } from './broker-conversation.ts';
 import { messageCall } from './broker-message-call.ts';
 import { atCeiling, registerPromptCopy, type ReservedCall } from './broker-reserve.ts';
 import type { BrokerRoute, ModelCallResult } from './broker-types.ts';

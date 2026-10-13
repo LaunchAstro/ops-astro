@@ -16,13 +16,8 @@
 // paid chat's held path.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
-import {
-  localRoute,
-  outsideFields,
-  ownsConversation,
-  refused,
-  type ConversationCallRequest,
-} from './broker-conversation.ts';
+import type { ConversationCallRequest } from './broker-conversation-types.ts';
+import { localRoute, outsideFields, ownsConversation, refused } from './broker-conversation.ts';
 import {
   committedUnderSql,
   holdPriced,
