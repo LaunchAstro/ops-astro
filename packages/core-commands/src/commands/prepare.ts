@@ -53,7 +53,7 @@ import type {
   ScopeRequest,
   EntryPoint,
 } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { deploymentCarrier, readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
@@ -698,6 +698,30 @@ async function coveringMap(
 const ACCESS_LOCKERS =
   /^(?:access\.(?:grant|revoke|end|reset_factor)|grant\.revoke|credential\.issue)$/u;
 
+/**
+ * The door's grant and money step-up asked once more after the command's last
+ * wait, the audit chain's included (#444, #1011): the grant at the scope the
+ * door asked it, map and all, judged at this statement's instant. A grant that
+ * expired, or a step-up that went stale, while the command waited refuses it.
+ * A revocation cannot commit in that wait (the access lock is held), but time
+ * passes. A write on authority itself (`ACCESS_LOCKERS`) is judged by its
+ * handler under the exclusive access lock, and asked after the act the door
+ * would read the act's own change, so only its step-up is asked again.
+ */
+export async function askedAtCommit(
+  tx: TenantQuery,
+  session: Session,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest | undefined,
+): Promise<CommandRefusal | undefined> {
+  if (asked !== undefined && !ACCESS_LOCKERS.test(declaration.name)) {
+    const still = await askCovered(tx, session, request, declaration, asked);
+    if ('refusal' in still) return still.refusal;
+  }
+  return await refuseStaleMoneyStep(tx, session, declaration, request);
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -705,7 +729,14 @@ export async function prepareCommand(
   entryPoint: EntryPoint,
   request: UncheckedRequest,
   declaration: CommandDeclaration,
-): Promise<(CommandContext & { readonly request: CommandRequest }) | Refused> {
+): Promise<
+  | (CommandContext & {
+      readonly request: CommandRequest;
+      /** What the door asked, asked again once the command has done its work (`askedAtCommit`). */
+      readonly asked: ScopeRequest | undefined;
+    })
+  | Refused
+> {
   const spoofed = await refuseSystemOwnedFields(tx, request);
   if (spoofed !== undefined) return spoofed;
   const malformed = refuseMalformedIdentifier(request, declaration);
@@ -827,7 +858,16 @@ export async function prepareCommand(
 
   if ('refusal' in parsed) return refused(parsed.refusal);
   const carrier = deploymentCarrier();
-  return { session, declaration, entryPoint, spine, target, carrier, request: parsed.request };
+  return {
+    session,
+    declaration,
+    entryPoint,
+    spine,
+    target,
+    carrier,
+    request: parsed.request,
+    asked,
+  };
 }
 
 /**

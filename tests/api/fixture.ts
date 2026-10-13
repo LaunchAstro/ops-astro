@@ -14,8 +14,8 @@
 // from `apps/api/server.ts`, the wiring the server listens with, so there is
 // no copy here to drift from it. Importing that file starts nothing: its
 // `main` runs only as the process's entry. `composeApi` is a function, so
-// calling it twice is two composition roots over one database, each with an
-// empty resolver cache, which is the restart the journey case needs.
+// calling it twice is two composition roots over one database, each with its
+// own boundary and resolver, which is the restart the journey case needs.
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
@@ -66,7 +66,7 @@ export interface ApiFixture {
    */
   readonly environment: GateEnvironment;
   /**
-   * A composition root from `composeApi`: a fresh boundary, resolver cache and
+   * A composition root from `composeApi`: a fresh boundary, resolver and
    * keys. `database` replaces the one-connection pool, for a case whose two
    * requests must hold transactions at once.
    */

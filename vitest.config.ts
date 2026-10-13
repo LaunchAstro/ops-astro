@@ -108,7 +108,7 @@ const config: ViteUserConfig = defineConfig({
     // cases written beside them, C31's Sol proof files, the Keys panel's DB
     // proofs, and Sol's two ending-claim proofs and agent-login proof (SOLOW-D
     // D3), the two shared-login factor suites, and Sol's six Launch authority
-    // proofs (#1236); without a database they
+    // proofs (#1236), and Sol's two board proofs on #1368; without a database they
     // are left out here, and the manifests run them where there is one. C31's
     // corrupted audit chain fails by design: only the proof that spawns it from
     // inside a test worker collects it.
@@ -121,6 +121,8 @@ const config: ViteUserConfig = defineConfig({
       ...(database
         ? []
         : [
+            'tests/api/a-delayed-board-asks-again-after-its-login-is-remapped.test.ts',
+            'tests/api/boards-on-one-credential-share-one-events-checks.test.ts',
             'tests/api/p18-p09-client-rank-served.test.ts',
             'tests/reads/task-ice-editor-durable.test.ts',
             'tests/reads/task-rank-agent-lifecycle.test.ts',

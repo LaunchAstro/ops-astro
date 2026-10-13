@@ -33,7 +33,16 @@
       "networks": ["production"],
       "restart": "unless-stopped",
       "healthcheck": {
-        "test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "ops_astro_backups"],
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "${PRODUCTION_BACKUPS_ADMIN_USER}",
+          "-d",
+          "ops_astro_backups"
+        ],
         "interval": "5s",
         "timeout": "5s",
         "retries": 20

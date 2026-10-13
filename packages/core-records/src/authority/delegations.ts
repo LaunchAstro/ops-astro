@@ -471,12 +471,13 @@ const standsAt = (
                       and stands_parent.revoked_at is null and stands_parent.settled_at is null
                       and stands_parent.expires_at > ${clock})))`;
 
-export const DELEGATION_STANDS: string = standsAt('now()');
+/** Judged as the statement starts, so a read after a lock wait sees an expiry during it. */
+export const DELEGATION_STANDS: string = standsAt('statement_timestamp()');
 
 /**
- * `DELEGATION_STANDS` at the statement's clock, not the transaction's start:
- * for a write that may have waited on a lock, so an expiry during the wait
- * counts.
+ * `DELEGATION_STANDS` on the clock as it is evaluated, not the statement's
+ * start: for a write that may wait on a lock within the statement, so an
+ * expiry during the wait counts.
  */
 export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
 
@@ -490,11 +491,15 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
  * child credential, so the parent's state is named, not folded into
  * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
  */
+const PARENT_ROW = 'select 1 from public.delegations where business_id = $1 and id = $2';
+
 async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',
 ): Promise<DelegationDecision<Delegation>> {
+  // Locked alone first: a locking select computes its columns before it waits.
+  if (lock !== '') await tx.query(`${PARENT_ROW} ${lock}`, [tx.businessId, parentId]);
   const rows = await tx.query<
     DelegationRow & {
       readonly settled: boolean;
@@ -506,7 +511,7 @@ async function parentStanding(
     `select ${delegationColumns()}, settled_at is not null as settled,
             expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
             revocation_cause as cause
-       from public.delegations where business_id = $1 and id = $2 ${lock}`,
+       from public.delegations where business_id = $1 and id = $2`,
     [tx.businessId, parentId],
   );
   const found = rows[0];
@@ -696,7 +701,7 @@ export async function resolveLiveById(
     `select ${delegationColumns('d')}
        from public.delegations d
       where d.business_id = $1 and d.agent_actor_id = $2 and d.id = $3
-        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is null and d.expires_at > statement_timestamp()`,
     [tx.businessId, agentActorId, delegationId],
   );
   const row = rows[0];
@@ -723,7 +728,8 @@ export async function resolveSettledByLease(
        join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
       where d.business_id = $1 and d.agent_actor_id = $2 and l.id = $3
         and d.credential_hash = $4
-        and d.revoked_at is null and d.settled_at is not null and d.expires_at > now()`,
+        and d.revoked_at is null and d.settled_at is not null
+        and d.expires_at > statement_timestamp()`,
     [tx.businessId, agentActorId, leaseId, digestOf(credential)],
   );
   const row = rows[0];

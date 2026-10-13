@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.execution read after a sign-in row wait reports a gate that expired in the wait as expired, judged on the statement's clock"
+}

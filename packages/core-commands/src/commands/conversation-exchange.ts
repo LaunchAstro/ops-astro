@@ -150,13 +150,16 @@ async function questionOf(
 async function keep(
   tx: TenantQuery,
   session: Session,
-  asked: Asked,
+  asked: Asked & { readonly callId: string },
   body: string,
 ): Promise<Kept | undefined> {
-  // The conversation's row locked, the session asked, then the grants held
-  // for share and judged at the clock after the locks (`hearingAt`): a
-  // revocation that committed first is seen, and one that comes later waits
-  // for this reply to commit.
+  // The call's row held first, so a retry that finds it held waits for this
+  // reply (`messageCall`). The conversation's row locked, the session asked,
+  // then the grants held for share and judged at the clock after the locks
+  // (`hearingAt`): a revocation that committed first is seen, and one that
+  // comes later waits for this reply to commit.
+  const held = [tx.businessId, asked.callId];
+  await tx.query('select from model_calls where business_id = $1 and id = $2 for key share', held);
   const at = await hearingAt(tx, session, asked, 'update');
   if (at === undefined) return undefined;
   const id = randomUUID();
@@ -246,7 +249,7 @@ async function answerOnce(
     database,
     businessId,
     presented,
-    async (tx, now) => await keep(tx, now, asked, result.text),
+    async (tx, now) => await keep(tx, now, { ...asked, callId: result.callId }, result.text),
   ).catch(heldElsewhere);
   if (kept === undefined || isCommandRefusal(kept)) return null;
   // The cites are what this call read, even where a twin request's answer was kept first.

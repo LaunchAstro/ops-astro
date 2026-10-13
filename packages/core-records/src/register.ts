@@ -412,6 +412,12 @@ const ROWS_HEAD = [
     meaning: 'This version is already published',
     source: 'C81 CS-16.20',
   },
+  {
+    code: 'LEGAL_VERSION_SUPERSEDED',
+    status: 409,
+    meaning: 'A later version of this document is already published',
+    source: 'C81 CS-16.20',
+  },
   // C81: a privacy policy reads the overseas-services register (SP-25).
   {
     code: 'LEGAL_REGISTER_CHANGED',
@@ -698,6 +704,13 @@ const ROWS_HEAD = [
     code: 'PRESET_FIELD_DUPLICATE',
     status: 422,
     meaning: 'One preset names the same new field key more than once',
+    source: 'spec D05',
+  },
+  {
+    code: 'PRESET_FIELD_INVALID',
+    status: 422,
+    meaning:
+      'A preset field has a key, label, search setting or operation name a field cannot have',
     source: 'spec D05',
   },
 

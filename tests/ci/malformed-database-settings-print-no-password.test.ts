@@ -34,4 +34,6 @@ it('malformed database addresses never print their password', () => {
       expect(output).not.toContain('ERR_INVALID_URL');
     }
   }
-});
+  // Four node processes, each loading the TypeScript entry and its imports:
+  // 10 s on a loaded machine, past the 5 s default (#1536).
+}, 30_000);

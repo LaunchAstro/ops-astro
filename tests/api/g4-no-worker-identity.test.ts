@@ -29,6 +29,10 @@ const COMMAND = /^POST \/api\/(?:a\/)?b\/:businessKey\/[a-z_]+\/[a-z_]+$/u;
 const OTHERS = [
   'ALL /*',
   'ALL /api/*',
+  // The security detector's step on the routes beside the surface (`BESIDE_THE_SURFACE`).
+  'ALL /api/b/:businessKey/account/*',
+  'ALL /api/b/:businessKey/live/*',
+  'ALL /api/session',
   'GET /api/health',
   // C81: the published legal documents, public by design.
   'GET /api/public/b/:businessKey/legal/:document',
