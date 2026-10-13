@@ -138,6 +138,23 @@ export async function unbindPartySitePage(
   });
 }
 
+/**
+ * Whether the client's site still binds this page to this file. A plain read:
+ * the caller holds the correction naming it, and while that correction is open
+ * an unbind of the page waits for it and is refused, so the page stays.
+ */
+export async function isBoundPage(
+  tx: TenantQuery,
+  page: { readonly partyId: string; readonly pageUrl: string; readonly path: string },
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly bound: boolean }>(
+    `select true as bound from public.party_site_pages
+      where business_id = $1 and party_id = $2::uuid and page_url = $3 and path = $4`,
+    [tx.businessId, page.partyId, page.pageUrl, page.path],
+  );
+  return rows.length > 0;
+}
+
 /** The client's site with its pages, or undefined where the business binds none for it. */
 export async function readPartySite(
   tx: TenantQuery,
