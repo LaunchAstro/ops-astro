@@ -232,12 +232,13 @@ const loaded = load();
 
 /**
  * A PUT its destination lists no route for, or a POST to a destination that
- * takes none: custody never sends one, so it is no request.
+ * takes none or not at that path: custody never sends one, so it is no request.
  */
 const unrouted = (asked: OutboundRequest): boolean => {
   const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
-  return asked.method === 'POST' && destination.post === false;
+  if (asked.method !== 'POST') return false;
+  return destination.post === false || !(destination.posts ?? [asked.path]).includes(asked.path);
 };
 
 process.on('uncaughtException', () => fail('internal fault'));
