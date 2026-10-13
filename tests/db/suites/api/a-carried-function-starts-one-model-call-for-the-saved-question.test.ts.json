@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a configured carried function starts one model call for a signed-in person's saved question"
+}

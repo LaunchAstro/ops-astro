@@ -34,7 +34,7 @@ export const OLLAMA_PATH = '/api/chat';
 export const OLLAMA_MODELS = ['qwen3.6:27b-mlx', 'gemma4:31b-mlx'] as const;
 export const OLLAMA_DEFAULT_MODEL: string = OLLAMA_MODELS[0];
 
-interface Turn {
+export interface Turn {
   readonly role: 'system' | 'user' | 'assistant';
   readonly content: string;
 }
@@ -42,7 +42,7 @@ interface Turn {
 const ROLES: Readonly<Record<string, Turn['role']>> = { person: 'user', agent: 'assistant' };
 
 /** The earlier messages (`conversation-context.ts`, a JSON list of `{ role, body }`) as chat turns; none if unreadable. */
-function earlierTurns(earlier: string | undefined): readonly Turn[] {
+export function earlierTurns(earlier: string | undefined): readonly Turn[] {
   if (earlier === undefined || earlier === '') return [];
   let rows: unknown;
   try {
@@ -62,7 +62,7 @@ function earlierTurns(earlier: string | undefined): readonly Turn[] {
 }
 
 /** The page's title (`{ task, title }`), never its id; null when there is no page or no title. */
-function pageTitle(page: string | undefined): string | null {
+export function pageTitle(page: string | undefined): string | null {
   if (page === undefined || page === '') return null;
   try {
     const { title } = JSON.parse(page) as Record<string, unknown>;

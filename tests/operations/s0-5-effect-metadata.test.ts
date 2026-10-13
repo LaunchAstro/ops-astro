@@ -10,9 +10,8 @@
 // verification and the live change record) is the same for every call and is
 // not a record kind.
 // A declared kind that is no table fails too, so a misspelt one cannot pass. Two commands have no
-// recipe of their own (a grant id, a live delegation) and get one here.
-// A path a positive fixture misses (SEC3BFINAL) is run on its own and must
-// write nothing undeclared; the money paths are `s0-5-effect-money-paths`.
+// recipe of their own (a grant id, a live delegation) and get one here. A path a positive fixture
+// misses (SEC3BFINAL) runs alone, writing nothing undeclared; money is `s0-5-effect-money-paths`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -43,6 +42,7 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  'task.take_launch',
 ]);
 
 let harness: Harness;

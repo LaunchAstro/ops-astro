@@ -75,6 +75,8 @@ export {
   checkableSender,
   checkSender,
   dmarcPolicy,
+  SENDER_FRESH_MS,
+  senderFresh,
   type DmarcPolicy,
   type RecordStatus,
   type SenderReport,
@@ -112,8 +114,11 @@ export {
 } from './catalogue.ts';
 export {
   callConnector,
+  SLOT_SEGMENTS,
   type CallDependencies,
   type ConnectorResult,
+  type CredentialReference,
+  type CustodyAnswer,
   type ProviderResult,
   type ProviderValue,
 } from './call.ts';
@@ -189,6 +194,7 @@ export {
   type PartySite,
   type SiteBinding,
 } from './site/binding.ts';
+export { readServing } from './site/serving.ts';
 export { proposeSource, type ProposeInput } from './site/propose.ts';
 export {
   ACCEPTANCE_CASES,
@@ -235,11 +241,17 @@ export {
 export {
   OPENROUTER_AUD_PER_USD,
   OPENROUTER_BODY_LIMIT,
+  OPENROUTER_CONVERSATION,
   OPENROUTER_CONVERSATION_KEY,
   OPENROUTER_MAX_TOKENS,
   OPENROUTER_MODELS,
+  OPENROUTER_PATH,
   OPENROUTER_PROVIDER,
+  openrouterCostMinor,
   openrouterHoldMinor,
   openrouterModel,
+  openrouterPieces,
+  openrouterRequest,
+  readOpenRouterAnswer,
   type OpenRouterModel,
 } from './openrouter.ts';

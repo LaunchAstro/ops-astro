@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isPartysTask, shareClientSite } from './party-sites.ts';
 import {
   COVERED,
   EFFECTIVE_AT,
@@ -119,18 +120,31 @@ function correctionFrom(row: Row): LiveCorrection {
   };
 }
 
-/** The one refusal of a request: its party is not the client of a live task. */
-export type PartyRefused = { readonly ok: false; readonly code: 'CORRECTION_PARTY_MISMATCH' };
+/**
+ * A request's refusals: its party is not the client of a live task, or its page and file are not
+ * one pair the client's own site holds.
+ */
+export type PartyRefused = {
+  readonly ok: false;
+  readonly code: 'CORRECTION_PARTY_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE';
+};
 
 /**
  * Store a request at its task's own client (the `client` link), read in the insert under a share
  * lock on the task: a party the task does not carry, a record that is no task, or a trashed task
- * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. The version id is minted here.
+ * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. The page and file are joined in the same
+ * statement as one pair of that client's site, key-share locked so an unbind waits for the
+ * request, and the site row share-locked so a move of its providers waits too (and the request
+ * for a move in flight); any other spelling, another client's page or none is
+ * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here. The site row is
+ * share-locked first, on its own: an unbind takes the site before the page, so
+ * a request does too, and neither holds what the other waits on.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
   input: NewLiveCorrection,
 ): Promise<LiveCorrection | PartyRefused> {
+  await shareClientSite(tx, input.partyId);
   const [row] = await tx.query<Row>(
     `insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
@@ -141,8 +155,12 @@ export async function insertLiveCorrection(
             $16::text
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+       join public.party_site_pages p
+         on p.business_id = r.business_id and p.party_id = r.uuid_7
+        and p.page_url = $11::text and p.path = $8::text
+       join public.party_sites s on s.business_id = p.business_id and s.party_id = p.party_id
       where r.business_id = $1 and r.id = $4::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-        and r.deleted_at is null for share of r
+        and r.deleted_at is null for share of r for key share of p for share of s
      returning ${COLUMNS}`,
     [
       tx.businessId,
@@ -163,7 +181,11 @@ export async function insertLiveCorrection(
       input.versionDigest,
     ],
   );
-  return row === undefined ? { ok: false, code: 'CORRECTION_PARTY_MISMATCH' } : correctionFrom(row);
+  if (row !== undefined) return correctionFrom(row);
+  return {
+    ok: false,
+    code: (await isPartysTask(tx, input)) ? 'PAGE_OUTSIDE_PARTY_SITE' : 'CORRECTION_PARTY_MISMATCH',
+  };
 }
 
 /**

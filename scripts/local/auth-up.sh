@@ -133,10 +133,23 @@ if [ ! -s "${KEY_FILE}" ]; then
   KEY_NEW="${KEY_FILE}.$$"
   (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_NEW}")
   [ -s "${KEY_NEW}" ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: no signing key was generated" >&2; exit 1; }
-  # An empty file left by an interrupted run holds no key, so it is replaced.
-  if ln "${KEY_NEW}" "${KEY_FILE}" 2>/dev/null ||
-    { [ ! -s "${KEY_FILE}" ] && mv -f "${KEY_NEW}" "${KEY_FILE}"; }; then
+  if ln "${KEY_NEW}" "${KEY_FILE}" 2>/dev/null; then
     echo "auth-up: wrote ${KEY_FILE}"
+  else
+    # An empty file left by an interrupted run holds no key, so it is replaced:
+    # under a lock, and only while still empty, so a key another run placed (and
+    # may already have started GoTrue with) is never replaced.
+    KEY_LOCK="${KEY_FILE}.lock"
+    tries=0
+    until mkdir "${KEY_LOCK}" 2>/dev/null; do
+      tries=$((tries + 1))
+      [ "${tries}" -lt 100 ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: ${KEY_LOCK} is held; remove it if no auth-up is running" >&2; exit 1; }
+      sleep 0.1
+    done
+    if [ ! -s "${KEY_FILE}" ] && ln -f "${KEY_NEW}" "${KEY_FILE}"; then
+      echo "auth-up: wrote ${KEY_FILE}"
+    fi
+    rmdir "${KEY_LOCK}"
   fi
   rm -f "${KEY_NEW}"
 fi

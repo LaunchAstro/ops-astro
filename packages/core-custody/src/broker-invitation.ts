@@ -44,16 +44,18 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute, type Routed } from './broker-email-route.ts';
+import { observed, reserveFresh, sendRoute, type Routed } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
-import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
+import { readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
+import { liveNow, recordAttempt, undispatchable } from './invitation-rows.ts';
+import { activeWorker } from './worker-standing.ts';
 import { isLoopbackMock } from './email-mock-custody.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
 
-/** Where the link lands: the enrolment page, with the token as its last segment. */
+/** Where the link lands: the enrolment page, with the token in its fragment, never sent to a server. */
 export const ENROL_PATH = '/enrol/';
 
 /**
@@ -63,7 +65,15 @@ export const ENROL_PATH = '/enrol/';
 const TOKEN_SHAPED = /[\w-]{43}/u;
 
 export type InvitationSendRefusal =
-  DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING' | 'REPLAYED';
+  | DeliverRefusal
+  | 'INVITATION_NOT_PENDING'
+  | 'NO_SEND_ACT'
+  | 'EMAIL_AT_CEILING'
+  | 'REPLAYED'
+  | 'WORKER_REQUIRED';
+
+/** Who asked for the send: the login provider's hook message, or the business's worker. */
+type Asker = { readonly hookId: string } | { readonly workerActorId: string } | undefined;
 
 export type InvitationSendResult =
   | { readonly ok: true; readonly attemptId: string; readonly state: 'accepted' }
@@ -82,40 +92,6 @@ interface Asked {
   readonly token: string;
   /** The host's clocks just before the `asked` attempt was written: the fence counts from here. */
   readonly reserved: Reading;
-}
-
-/**
- * One observation, stamped when it is written (`clock_timestamp()`), not when its transaction
- * began: an `asked` counts toward the ceiling from its reservation, however long the send waited
- * on the invitation's lock before it, as `recordAsked` stamps an inbox ask.
- */
-async function recordAttempt(
-  tx: TenantQuery,
-  asked: Pick<Asked, 'invitationId' | 'tokenId'>,
-  seen: { readonly state: string; readonly evidence?: string | null },
-): Promise<string> {
-  const [row] = await tx.query<{ id: string }>(
-    `insert into invitation_delivery_attempts
-       (business_id, id, invitation_id, token_id, state, evidence, observed_at)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, clock_timestamp()) returning id`,
-    [tx.businessId, asked.invitationId, asked.tokenId, seen.state, seen.evidence ?? null],
-  );
-  return row?.id ?? '';
-}
-
-/**
- * Whether the invitation's lifetime is still running, judged by a statement of its own after each
- * lock the send waits on (the invitation's row, the email limit, then a hook message's claim): a
- * send that waited is judged when it got the lock, never when its transaction began, and never by
- * a lock statement's own reading taken before the wait.
- */
-async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
-  const [row] = await tx.query<{ live: boolean }>(
-    `select expires_at > clock_timestamp() as live from invitations
-      where business_id = $1 and id = $2`,
-    [tx.businessId, invitationId],
-  );
-  return row?.live === true;
 }
 
 /** The act checks under the invitation's lock: its address, or why nothing may send. */
@@ -175,13 +151,18 @@ async function claimHookMessage(
   return claimed.length === 1 ? 'INVITATION_NOT_PENDING' : 'REPLAYED';
 }
 
-/** Step 1: every check, the hook message's claim, the minted token's hash and the `asked` observation. */
+/**
+ * Step 1: every check, the hook message's claim, the worker's standing (held last, so a
+ * deactivation committed during any wait above is read), the minted token's hash and the `asked`
+ * observation.
+ */
 async function ask(
   tx: TenantQuery,
   invitationId: string,
   operation: ModelOperation,
-  hookId: string | undefined,
+  asker: Asker,
 ): Promise<Asked | InvitationSendRefusal> {
+  const hookId = asker !== undefined && 'hookId' in asker ? asker.hookId : undefined;
   const act = await pendingAct(tx, invitationId, hookId);
   if (typeof act === 'string') return act;
   if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
@@ -189,6 +170,8 @@ async function ask(
   const unclaimed =
     hookId === undefined ? undefined : await claimHookMessage(tx, invitationId, hookId);
   if (unclaimed !== undefined) return unclaimed;
+  const worker = asker !== undefined && 'workerActorId' in asker ? asker.workerActorId : undefined;
+  if (worker !== undefined && !(await activeWorker(tx, worker))) return 'WORKER_REQUIRED';
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
@@ -211,22 +194,24 @@ async function deliver(
   sent: { readonly mail: MailSettings; readonly asked: Asked },
 ): Promise<InvitationSendResult> {
   const { mail, asked } = sent;
-  const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
+  const link = new URL(`${ENROL_PATH}#${asked.token}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address: link });
-  const read = lapsed(asked.reserved)
-    ? ({ state: 'failed', evidence: 'expired' } as const)
-    : observed(
-        await broker.custody.dispatch(route.credentialRef, {
-          destination: operation.destination,
-          path: built.path,
-          method: built.method,
-          body: built.body,
-          timeoutMs: operation.timeoutMs,
-          maxResponseBytes: operation.maxResponseBytes,
-        }),
-        operation,
-        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
-      );
+  const ended = await undispatchable(database, businessId, asked.invitationId, asked.reserved);
+  const read =
+    ended === undefined
+      ? observed(
+          await broker.custody.dispatch(route.credentialRef, {
+            destination: operation.destination,
+            path: built.path,
+            method: built.method,
+            body: built.body,
+            timeoutMs: operation.timeoutMs,
+            maxResponseBytes: operation.maxResponseBytes,
+          }),
+          operation,
+          isLoopbackMock(broker.custody) ? 'mock' : 'provider',
+        )
+      : ({ state: 'failed', evidence: ended } as const);
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
   const seen = TOKEN_SHAPED.test(read.evidence)
@@ -253,11 +238,41 @@ export async function sendInvitation(
   mail: MailSettings,
   hookId?: string,
 ): Promise<InvitationSendResult> {
+  const asker = hookId === undefined ? undefined : { hookId };
+  return await sendAs(database, businessId, invitationId, broker, mail, asker);
+}
+
+/**
+ * The mail unit's send of an owed invitation, as system work under the business's worker: the
+ * worker is held, active, inside the reservation, so one deactivated since the pass chose this
+ * invitation sends nothing.
+ */
+export async function sendOwedInvitation(
+  database: Database,
+  businessId: BusinessId,
+  workerActorId: string,
+  invitationId: string,
+  broker: Broker,
+  mail: MailSettings,
+): Promise<InvitationSendResult> {
+  return await sendAs(database, businessId, invitationId, broker, mail, { workerActorId });
+}
+
+async function sendAs(
+  database: Database,
+  businessId: BusinessId,
+  invitationId: string,
+  broker: Broker,
+  mail: MailSettings,
+  asker: Asker,
+): Promise<InvitationSendResult> {
   const found = sendRoute(broker, mail);
   if (typeof found === 'string') return { ok: false, code: found };
-  const asked = await database.withBusiness(
+  const asked = await reserveFresh(
+    database,
     businessId,
-    async (tx) => await ask(tx, invitationId, found.operation, hookId),
+    mail.sender,
+    async (tx) => await ask(tx, invitationId, found.operation, asker),
   );
   if (typeof asked === 'string') return { ok: false, code: asked };
   return await deliver(database, businessId, broker, found, { mail, asked });

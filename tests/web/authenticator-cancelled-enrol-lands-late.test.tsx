@@ -29,7 +29,7 @@ const replies: Record<string, Reply> = {
       json(200, {
         id: ordinal === 1 ? 'factor-one' : 'factor-two',
         totp: {
-          qr_code: 'data:image/svg+xml,<svg/>',
+          qr_code: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
           secret: ordinal === 1 ? 'CANCELLED-SECRET' : 'DISPLAYED-SECRET',
           uri: 'otpauth://totp/test',
         },

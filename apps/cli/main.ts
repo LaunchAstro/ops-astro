@@ -40,6 +40,7 @@ import {
 import { handoffOf } from '../../packages/core-wire/src/index.ts';
 import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
 import { createVerbCli, VERB_TABLE } from './verbs.ts';
+import { stepUp } from './second-factor.ts';
 import {
   beginSave,
   CredentialsBusy,
@@ -75,7 +76,7 @@ interface Parsed {
 
 /** Flags that take a value; every other `--name` is a switch. */
 const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web', 'env']);
-const SWITCHES = new Set(['help', 'agent']);
+const SWITCHES = new Set(['help', 'agent', 'second-factor']);
 
 class UsageError extends Error {}
 
@@ -200,6 +201,8 @@ const HELP = [
   '       ops-astro login --email <address> [--gotrue <url>]   (password from',
   '         OPS_ASTRO_PASSWORD, the first line of piped stdin,',
   '         or a prompt with echo off at a terminal)',
+  '       ops-astro login --email <address> --second-factor   (then the authenticator',
+  '         code: the next stdin line, or a hidden prompt)',
   '       ops-astro logout',
   '       (from a checkout without the link, pnpm cli in place of ops-astro)',
   '',
@@ -242,7 +245,27 @@ function redact(answer: CliAnswer, where: string): unknown {
 interface Io {
   readonly out: (line: string) => void;
   readonly err: (line: string) => void;
-  readonly stdin: () => Promise<string>;
+  /** Piped stdin whole, or at a terminal one answer typed after `label` with echo off. */
+  readonly stdin: (label?: string) => Promise<string>;
+}
+
+/**
+ * The password, and with `--second-factor` the authenticator code, both read
+ * before anything is sent: from piped stdin's lines in that order (the code
+ * first when OPS_ASTRO_PASSWORD gives the password), or from two hidden
+ * prompts. The code never comes from a flag or the environment.
+ */
+async function secretsOf(env: Environment, io: Io, withCode: boolean) {
+  const given = env['OPS_ASTRO_PASSWORD'];
+  const typed = given === undefined || given === '' ? (await io.stdin('password')).split('\n') : [];
+  const password = (given === undefined || given === '' ? typed[0] : given) ?? '';
+  if (password === '') throw new UsageError('login needs a password on stdin');
+  if (!withCode) return { password, code: undefined };
+  const code =
+    (typed[1] ?? '').trim() || ((await io.stdin('authenticator code')).split('\n')[0] ?? '').trim();
+  if (code === '')
+    throw new UsageError('login --second-factor needs the authenticator code on stdin');
+  return { password, code };
 }
 
 /**
@@ -271,12 +294,28 @@ async function signInOf(
   };
 }
 
+/** Where `--second-factor` sends its code: the run's own API, under the business named. */
+function stepUpRoute(
+  parsed: Parsed,
+  env: Environment,
+  connection: Connection,
+  code: string | undefined,
+): { readonly businessKey: string; readonly transport: ReturnType<typeof httpTransport> } {
+  const businessKey = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '';
+  if (code !== undefined && businessKey === '') {
+    throw new UsageError(
+      'login --second-factor needs the business: --business or OPS_ASTRO_BUSINESS',
+    );
+  }
+  return { businessKey, transport: httpTransport(connection.api) };
+}
+
 async function login(parsed: Parsed, env: Environment, io: Io, connection: Connection) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
-  const password = env['OPS_ASTRO_PASSWORD'] ?? (await io.stdin()).split('\n')[0] ?? '';
-  if (password === '') throw new UsageError('login needs a password on stdin');
+  const { password, code } = await secretsOf(env, io, parsed.flags['second-factor'] === true);
   const { preset, tokenFile } = connection;
+  const route = stepUpRoute(parsed, env, connection, code);
   assertWritable(tokenFile, 'the login token');
   const epoch = beginSave(tokenFile);
   const address = await signInOf(parsed, env, preset);
@@ -294,8 +333,18 @@ async function login(parsed: Parsed, env: Environment, io: Io, connection: Conne
     io.err(`login: ${loginFailure(watched.status(), shownAddress(gotrueUrl), keyless)}`);
     return EXIT.refused;
   }
+  let token = result.token;
+  if (code !== undefined) {
+    // The password-only token goes no further than this step: never saved or printed.
+    const stepped = await stepUp(route, token, code);
+    if (!stepped.ok) {
+      io.err(`login: the authenticator code was not accepted: ${stepped.because}`);
+      return EXIT.refused;
+    }
+    token = stepped.token;
+  }
   try {
-    if (!saveUnlessSignedOut(tokenFile, epoch, tokenFile, result.token)) {
+    if (!saveUnlessSignedOut(tokenFile, epoch, tokenFile, token)) {
       io.err('login: signed out while signing in; nothing saved');
       return EXIT.refused;
     }
@@ -537,11 +586,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
  * screen; the answer ends at Enter. Ctrl-C or Ctrl-D before Enter gives
  * nothing, and `login` then refuses with exit 2.
  */
-async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
+async function promptHidden(input: NodeJS.ReadStream, label: string): Promise<string> {
   // Echo goes off before the prompt shows, so nothing typed after it is echoed.
   input.setRawMode(true);
   input.setEncoding('utf8');
-  process.stderr.write('password: ');
+  process.stderr.write(`${label}: `);
   try {
     return await new Promise<string>((resolve) => {
       let typed = '';
@@ -557,6 +606,8 @@ async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
       };
       input.on('data', onData);
       input.once('end', () => resolve(''));
+      // An earlier prompt left the terminal paused; a new listener alone does not take it up again.
+      input.resume();
     });
   } finally {
     input.setRawMode(false);
@@ -565,8 +616,8 @@ async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
   }
 }
 
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return await promptHidden(process.stdin);
+async function readStdin(label = 'password'): Promise<string> {
+  if (process.stdin.isTTY) return await promptHidden(process.stdin, label);
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');

@@ -16,6 +16,7 @@ import {
   clientA,
   clientB,
   clientC,
+  clientD,
   closeRoutes,
   eventsFor,
   factorOf,
@@ -60,11 +61,12 @@ describe.skipIf(serverUrl === undefined)(
   () => {
     it.each(HOSTILE)(
       'C59 hostile provider: %s during enrolment is refused, recorded, and changes nothing',
-      async (_, reply) => {
+      async (_, reply, fault) => {
         replies['POST /factors'] = reply;
         const answer = await act('enrol', await fresh(world.noah));
         expect(answer.status).toBe(502);
         expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
+        expect(answer.body['names']).toEqual([fault]);
         expect(JSON.stringify(answer.body)).not.toContain(CANARY);
         expect(await factorOf(world.noah.personId)).toBeUndefined();
         expect((await eventsFor('account.factor_enrol')).at(-1)).toEqual({
@@ -101,6 +103,31 @@ describe.skipIf(serverUrl === undefined)(
       const underPath = await act('enrol', await fresh(clientC), {}, build(undefined, '/auth/v1/'));
       expect(underPath.status).toBe(200);
       expect(seen.map((request) => request.route)).toEqual(['POST /auth/v1/factors']);
+    });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'C59 a person’s own second factor, through the API',
+  () => {
+    it('C59 hostile provider: an issued factor whose QR is not SVG is refused, and the factor left there is reported', async () => {
+      replies['POST /factors'] = json(200, {
+        ...GOOD_ENROL,
+        totp: { qr_code: 'data:text/html,<script>alert(1)</script>', secret: CANARY, uri: 'x' },
+      });
+      const orphanedBefore = (await eventsFor('account.factor_orphaned')).length;
+      const answer = await act('enrol', await fresh(clientD));
+      expect(answer.status).toBe(502);
+      expect(answer.body['names']).toEqual(['malformed']);
+      expect(JSON.stringify(answer.body)).not.toContain(CANARY);
+      expect(await factorOf(clientD.personId)).toBeUndefined();
+      expect((await eventsFor('account.factor_enrol')).at(-1)).toEqual({
+        outcome: 'refused',
+        refusal_code: 'PROVIDER_ANSWER_INVALID',
+      });
+      expect((await eventsFor('account.factor_orphaned')).slice(orphanedBefore)).toEqual([
+        { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
+      ]);
     });
   },
 );

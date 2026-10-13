@@ -15,10 +15,19 @@ export type ProviderAnswer<T> =
 /** A factor the provider has just issued. The secret goes to the person once. */
 export interface IssuedFactor {
   readonly factorId: string;
+  /** The QR as an SVG data URI, drawn as an image. */
   readonly qrCode: string;
   readonly secret: string;
   readonly uri: string;
 }
+
+/**
+ * An enrolment's answer. One refused with the id of the factor the provider
+ * issued names it, so the factor left there is reported, not lost.
+ */
+export type EnrolAnswer =
+  | ProviderAnswer<IssuedFactor>
+  | { readonly ok: false; readonly fault: 'malformed'; readonly strayFactorId: string };
 
 /** The session a verified code gives: now at `aal2`. */
 export interface FactorSession {
@@ -41,7 +50,7 @@ export interface SessionsEnded {
 export interface FactorProvider {
   /** The ids of the factors the provider holds verified for the token's login. */
   verifiedFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
-  enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
+  enrol(accessToken: string): Promise<EnrolAnswer>;
   verify(
     accessToken: string,
     factorId: string,

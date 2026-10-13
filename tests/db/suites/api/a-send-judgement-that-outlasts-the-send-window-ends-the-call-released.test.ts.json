@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a send judgement past the send window ends the carried call released on the agent's sealed refusal"
+}

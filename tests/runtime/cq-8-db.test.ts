@@ -217,6 +217,11 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       if (door >= 0 && firstOrdered >= 0) {
         expect(door, statements[door]?.text).toBeLessThan(firstOrdered);
       }
+      // The audit chain key and the ending keys after it close the order.
+      const firstTail = kinds.indexOf('tail');
+      if (firstTail >= 0 && lastCommand >= 0) {
+        expect(lastCommand, statements[lastCommand]?.text).toBeLessThan(firstTail);
+      }
       commandLocks += kinds.filter((kind) => kind === 'command').length;
       orderedLocks += kinds.filter((kind) => kind === 'ordered').length;
       if (lastCommand < 0 || firstOrdered < 0) continue;

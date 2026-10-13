@@ -50,6 +50,104 @@ export function redacterOf(secrets: readonly string[]): (text: string) => string
 export const secretsOf = ({ scheme, value }: StoredCredential): readonly string[] =>
   scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
 
+/** Percent escapes decoded, each byte as one character. */
+const unpercent = (text: string): string =>
+  text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_, code: string) =>
+    String.fromCodePoint(Number.parseInt(code, 16)),
+  );
+
+/**
+ * A kept value read the ways the caller could read it: as sent; packed for
+ * base64 (whitespace removed, base64url's alphabet as base64's); base64 or
+ * base64url decoded, padding allowed; and percent-decoded.
+ */
+function readingsOf(text: string): readonly string[] {
+  const packed = text.replaceAll(/\s/gu, '').replaceAll('-', '+').replaceAll('_', '/');
+  const decoded = /^[A-Za-z0-9+/]+={0,2}$/u.test(packed)
+    ? Buffer.from(packed, 'base64').toString('latin1')
+    : '';
+  return [text, packed, decoded, unpercent(text)];
+}
+
+/** A secret as itself, in base64 or base64url at any byte offset, and percent-escaped whole. */
+function echoSpellings(secret: string): readonly string[] {
+  const escaped = [...Buffer.from(secret)].map((byte) => `%${byte.toString(16).padStart(2, '0')}`);
+  const lower = escaped.join('');
+  return [secret, ...base64Spellings(secret), lower, lower.toUpperCase()].filter(
+    (spelling) => spelling.length >= secret.length,
+  );
+}
+
+/** Every order of every choice of at least two of `count` values, by index. */
+function* orders(count: number, taken: readonly number[] = []): Generator<readonly number[]> {
+  if (taken.length >= 2) yield taken;
+  for (let at = 0; at < count; at += 1) {
+    if (!taken.includes(at)) yield* orders(count, [...taken, at]);
+  }
+}
+
+/** Every way to take one reading of each value in order. */
+function* choices(readings: readonly (readonly string[])[]): Generator<readonly string[]> {
+  const [first, ...rest] = readings;
+  if (first === undefined) {
+    yield [];
+    return;
+  }
+  for (const reading of first) for (const tail of choices(rest)) yield [reading, ...tail];
+}
+
+const SEPARATORS = ['', ' ', ',', '\n'];
+
+/**
+ * Whether the caller could rebuild the credential from the values it keeps
+ * of an answer (a site answer cut to its declared fields, at most four), so
+ * custody withholds the answer whole. It could if any secret spelling sits in
+ * one value or one reading of it (`readingsOf`), or in a join of some of the
+ * values in any order, one reading of each, with no separator, a space, a
+ * comma or a newline between them, or in such a join of the values as sent,
+ * percent-decoded whole. A spelling across a join reaches only into each
+ * value's ends, so a long reading keeps just its ends there, cut apart by a
+ * character no spelling holds. A value that resembles the secret, short of a
+ * whole spelling, is not withheld.
+ */
+export function withholds(values: readonly string[], credential: StoredCredential): boolean {
+  const spellings = secretsOf(credential).flatMap((secret) => echoSpellings(secret));
+  const holds = (text: string): boolean => spellings.some((spelling) => text.includes(spelling));
+  const read = values.map((value) => readingsOf(value));
+  if (read.some((readings) => readings.some((text) => holds(text)))) return true;
+  const reach = Math.max(...spellings.map((spelling) => spelling.length));
+  const ends = (text: string): string =>
+    text.length <= 2 * reach ? text : `${text.slice(0, reach)}\u0000${text.slice(-reach)}`;
+  const sent = values.map((value) => ends(value));
+  const pieces = read.map((readings) => readings.map((text) => ends(text)));
+  for (const order of orders(values.length)) {
+    for (const separator of SEPARATORS) {
+      const whole = order.map((at) => sent[at] ?? '').join(separator);
+      if (holds(unpercent(whole))) return true;
+      for (const chosen of choices(order.map((at) => pieces[at] ?? []))) {
+        if (holds(chosen.join(separator))) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * The longest spelling of any secret the redacter knows: each character in its
+ * longest form (a four-byte character percent-escaped is twelve). Text held
+ * back this long can still complete a spelling; none is longer.
+ */
+export const longestSpelling = (secrets: readonly string[]): number =>
+  Math.max(
+    ...secrets.map((secret) =>
+      [...secret].reduce(
+        (length, character) =>
+          length + Math.max(...spellingsOf(character).map((spelling) => spelling.text.length)),
+        0,
+      ),
+    ),
+  );
+
 /** An own field, as the parse sets it: a `__proto__` key is a field like any other. */
 const FIELD = { writable: true, enumerable: true, configurable: true } as const;
 const put = (into: object, slot: string | number, value: unknown): void => {

@@ -15,6 +15,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { ASTRO_FILE, ASTRO_PAGE } from './c80-sites.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
@@ -96,7 +97,8 @@ describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () =
   it('stores the one-word correction below frontmatter that quotes an opening brace', async () => {
     const before = "---\nconst marker = '{';\n---\n<p>We are a friendly studio.</p>\n";
     const made = await w.request(w.ava, {
-      path: 'src/pages/about.astro',
+      path: ASTRO_FILE,
+      pageUrl: ASTRO_PAGE,
       before,
       after: before.replace('friendly', 'welcoming'),
     });
@@ -107,7 +109,8 @@ describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () =
   it('stores the correction below a closing fence that has trailing whitespace', async () => {
     const before = "---\nconst marker = 'plain';\n--- \n<p>We are a friendly studio.</p>\n";
     const made = await w.request(w.ava, {
-      path: 'src/pages/about.astro',
+      path: ASTRO_FILE,
+      pageUrl: ASTRO_PAGE,
       before,
       after: before.replace('friendly', 'welcoming'),
     });
@@ -126,7 +129,8 @@ describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () =
       sources.map(async (before) =>
         codeOf(
           await w.request(w.ava, {
-            path: 'src/pages/about.astro',
+            path: ASTRO_FILE,
+            pageUrl: ASTRO_PAGE,
             before,
             after: before.replace('friendly', 'welcoming'),
           }),

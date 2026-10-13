@@ -7,7 +7,7 @@
 // line holding the body a whole answer has. Pieces are provisional; the
 // answer is what counts.
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { LOCAL_GPT_BODY_LIMIT } from '../../packages/core-connectors/src/index.ts';
 import { DEFAULT_MODEL } from './gate.ts';
 
@@ -53,14 +53,18 @@ export interface DoorResponse {
   end(chunk?: string): unknown;
 }
 
-const digest = (text: string): Buffer => createHash('sha256').update(text).digest();
-
+/**
+ * The key is a random token the install makes, not a password a person
+ * chooses, so it is compared as it is: byte for byte in constant time, once
+ * the lengths match. Only its length, which is no secret, can show.
+ */
 export function authorised(request: DoorRequest, key: string): boolean {
   const sent = request.headers['authorization'];
   // Node gives one authorization header as a string; anything else carries no key.
   const header = typeof sent === 'string' ? sent : '';
-  const presented = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-  return timingSafeEqual(digest(presented), digest(key));
+  const presented = Buffer.from(header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '');
+  const expected = Buffer.from(key);
+  return presented.length === expected.length && timingSafeEqual(presented, expected);
 }
 
 /** The request body, or why not: too large, or not the one shape the route takes. */

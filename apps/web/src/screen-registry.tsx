@@ -26,6 +26,7 @@ import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
+import { EnrolScreen } from './screens/Enrol.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
@@ -246,6 +247,17 @@ export interface OpenContext {
 const OPEN_SCREENS: {
   readonly [Id in OpenRouteId]: (params: ParamsOf<Id>, context: OpenContext) => ReactElement;
 } = {
+  // Keyed by the whole address: a new link arriving in the same document is a
+  // new page, which takes its own token and clears its own fragment.
+  'agency:enrol': (_, context) => (
+    <EnrolScreen
+      key={context.path}
+      path={context.path}
+      apiOrigin={context.apiOrigin}
+      fetch={context.fetch}
+      tab={globalThis.window}
+    />
+  ),
   'agency:legal': (params, context) => (
     <LegalScreen
       key={context.path}
@@ -258,6 +270,9 @@ const OPEN_SCREENS: {
   ),
 };
 
-export function drawOpenScreen(match: RouteMatch<OpenRouteId>, context: OpenContext): ReactElement {
+export function drawOpenScreen<Id extends OpenRouteId>(
+  match: RouteMatch<Id>,
+  context: OpenContext,
+): ReactElement {
   return OPEN_SCREENS[match.id](match.params, context);
 }
