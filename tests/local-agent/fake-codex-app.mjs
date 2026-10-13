@@ -177,6 +177,16 @@ async function answer({ id, method, params }) {
   // `prepMs`: a slow preparation, the thread's answer held this long.
   if (method === 'thread/start' && knobs.prepMs) await pause(knobs.prepMs);
   sendLine({ id, result: result(params) });
+  // `afterInit`: notifications sent straight after `initialize`'s answer, as 0.162.1 sends its
+  // remote-control status (`remoteControl`: that status; `disabled` unless it says otherwise).
+  if (method === 'initialize') {
+    notify('remoteControl/status/changed', {
+      installationId: 'inst-1',
+      serverName: 'stand-in',
+      status: knobs.remoteControl ?? 'disabled',
+    });
+    for (const [name, extra] of knobs.afterInit ?? []) notify(name, extra);
+  }
   if (method !== 'turn/start') return;
   if (knobs.waitMs) await pause(knobs.waitMs);
   await playTurn();
