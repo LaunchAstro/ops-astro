@@ -38,7 +38,8 @@ import {
   type Handoff,
   type Line,
 } from './carriage.ts';
-import { opened, sealed, type CarryKeys } from './carry-seal.ts';
+import { sealed, type CarryKeys } from './carry-seal.ts';
+import { listen, type Heard, type Next, type Skew } from './carried-line.ts';
 import type { Custody, CustodyOutcome } from './custody.ts';
 import type { OutboundRequest } from './egress.ts';
 
@@ -61,50 +62,10 @@ const refused = (code: string): CustodyOutcome => ({ kind: 'refused', started: f
 const lost: CustodyOutcome = { kind: 'worker_lost', started: true, fault: 'ours' };
 const nothing = (): void => {};
 
-interface Heard {
-  readonly event: string;
-  readonly seq: number;
+/** The call and the runner a broker message is for. */
+interface Called {
+  readonly k: string;
   readonly runner: string;
-  readonly body: unknown;
-}
-
-type Next = (wanted: (heard: Heard) => boolean, until: number) => Promise<Heard | undefined>;
-
-/** A wait until `wake` is called or `ms` pass, whichever comes first. */
-function waitFor(ms: number, onWake: (wake: () => void) => void): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    onWake(() => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-}
-
-/** The agent's sealed messages for call `k`, as they arrive, each opened before it counts. */
-function listen(line: Line, keys: CarryKeys, k: string, now: () => number): Next {
-  const queue: Heard[] = [];
-  let wake = nothing;
-  line.hear((event, message) => {
-    const result = opened(keys, message, { direction: 'agent', event, now: now() });
-    if (!result.ok || result.sealed.k !== k) return;
-    const { seq, runner } = result.sealed;
-    queue.push({ event, seq, runner, body: result.body });
-    wake();
-  });
-  const setWake = (next: () => void): void => {
-    wake = next;
-  };
-  return async (wanted, until) => {
-    for (;;) {
-      const at = queue.findIndex((heard) => wanted(heard));
-      if (at !== -1) return queue.splice(at, 1)[0];
-      const left = until - now();
-      if (left <= 0) return;
-      // oxlint-disable-next-line no-await-in-loop -- waits for the next message or the time
-      await waitFor(left, setWake);
-    }
-  };
 }
 
 const codeOf = (body: unknown): string => String((body as { code?: unknown } | null)?.code);
@@ -118,15 +79,16 @@ function outcomeOf(body: unknown): CustodyOutcome {
   return { kind: 'answered', started: true, outbound, credentialKind: 'api_key', account: null };
 }
 
-/** A broker message for call `k`, sealed. */
-function sealOf(carrying: Carrying, k: string, runner: string, event: string, body: unknown) {
+/** A broker message for call `k`, sealed to expire one seal's life out on the agent's clock. */
+function sealOf(carrying: Carrying, skew: Skew, call: Called, event: string, body: unknown) {
+  const { k, runner } = call;
   return sealed(carrying.options.key, {
     direction: 'broker',
     k,
     runner,
     event,
     seq: 0,
-    expiresAt: carrying.now() + SEAL_LIFE_MS,
+    expiresAt: carrying.now() + (skew.at ?? 0) + SEAL_LIFE_MS,
     body: JSON.stringify(body),
   });
 }
@@ -164,11 +126,11 @@ async function send(
   carrying: Carrying,
   line: Line,
   next: Next,
-  sending: { readonly k: string; readonly runner: string; readonly heardAt: number },
+  sending: Called & { readonly heardAt: number; readonly skew: Skew },
   request: Record<string, unknown>,
 ): Promise<CustodyOutcome | undefined> {
-  const { k, runner, heardAt } = sending;
-  await line.send('request', sealOf(carrying, k, runner, 'request', request));
+  const { runner, heardAt } = sending;
+  await line.send('request', sealOf(carrying, sending.skew, sending, 'request', request));
   const done = (heard: Heard): boolean =>
     heard.runner === runner && (heard.event === 'written' || heard.event === 'refused');
   const written = await next(done, heardAt + SEND_WINDOW_MS);
@@ -189,7 +151,9 @@ async function carry(
   handoff: Handoff,
 ): Promise<CustodyOutcome> {
   const k = handoff.callId;
-  const next = listen(line, carrying.options.keys, k, carrying.now);
+  const skew: Skew = { at: undefined };
+  const next = listen(line, carrying.options.keys, k, { now: carrying.now, skew });
+  const offeredAt = carrying.now();
   const offer = await handoff.offer();
   if (!offer.ok) return refused(offer.code);
   const accept = await next((heard) => heard.event === 'accept', carrying.now() + ACCEPT_WINDOW_MS);
@@ -198,20 +162,23 @@ async function carry(
   if (accept === undefined || !Number.isSafeInteger(acceptedAt))
     return refused('MODEL_MACHINE_AWAY');
   const { runner } = accept;
+  // The agent stamped its accept after the offer, so its clock is at most this far ahead:
+  // every later seal, both ways, is judged on that, and an expired one is never live.
+  skew.at = acceptedAt - offeredAt;
   const fence = await handoff.fence({ runner, acceptedAt, heardAt });
   if (!fence.ok) return refused(fence.code);
   carrying.runners.set(k, runner);
   const request = { request: asked.request, deadlineAt: deadlineOf(acceptedAt) };
   let ending: CustodyOutcome | undefined;
   try {
-    ending = await send(carrying, line, next, { k, runner, heardAt }, request);
+    ending = await send(carrying, line, next, { k, runner, heardAt, skew }, request);
   } finally {
     await fence.release();
   }
   if (ending !== undefined) return ending;
   const outcome = await follow(carrying, next, runner, asked.onPiece);
   if (outcome.kind !== 'worker_lost')
-    await line.send('settled', sealOf(carrying, k, runner, 'settled', {}));
+    await line.send('settled', sealOf(carrying, skew, { k, runner }, 'settled', {}));
   return outcome;
 }
 
