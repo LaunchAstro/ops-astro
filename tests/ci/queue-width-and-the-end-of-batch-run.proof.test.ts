@@ -46,10 +46,12 @@ it('a pull request without ci-next starts no heavy CI jobs', () => {
       const job = ci.jobs[key];
       if (job === undefined) throw new Error(`Missing job ${key}`);
       let allowed = true;
-      if (job.if !== undefined) {
+      // Visual drift skips only a merge group (cut 6); this run is a pull request's.
+      if (job.if !== undefined && key !== 'visual-drift') {
         expect(job.if).toBe("needs.gate.outputs.scope != 'light'");
         allowed = scope !== 'light';
       }
+      if (key === 'visual-drift') expect(job.if).toBe("github.event_name != 'merge_group'");
       return allowed && (job.needs ?? []).every(runs);
     };
     expect(['check', 'isolation', 'parity', 'visual-drift'].filter(runs)).toEqual([]);
