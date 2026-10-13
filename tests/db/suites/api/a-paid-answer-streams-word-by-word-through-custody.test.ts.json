@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid answer's decoded pieces reach the panel while OpenRouter writes, and the kept reply is the pieces joined, settled at the reported cost"
+}

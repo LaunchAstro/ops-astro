@@ -13,15 +13,23 @@
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path. A dispatch marked `gated` waits after
 // `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
+// A `deadlineAt` gates the write itself (`egress.ts`).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
 import { readFileSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { described, parseCredentials, type StoredCredential } from './credentials.ts';
-import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
+import {
+  parseDestinations,
+  send,
+  type Destination,
+  type Outbound,
+  type OutboundRequest,
+} from './egress.ts';
 import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
 import { redact } from './redaction.ts';
+import { openaiSse } from './stream-decode.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -83,6 +91,13 @@ function isRequest(value: unknown): value is OutboundRequest {
 
 type Message = Record<string, unknown>;
 
+/** A dispatch's deadline as its send gate, noting `written`: none when absent, null when malformed. */
+function sendGateOf(at: unknown, reply: (body: Message) => void) {
+  if (at === undefined) return;
+  if (typeof at !== 'number' || !Number.isSafeInteger(at)) return null;
+  return { deadlineAt: at, onWritten: () => reply({ type: 'written' }) };
+}
+
 const loaded = load();
 
 /**
@@ -94,6 +109,51 @@ const unrouted = (asked: OutboundRequest): boolean => {
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
   return asked.method === 'POST' && destination.post === false;
 };
+
+/**
+ * How an answer goes back. Passed on as it comes only for a credential
+ * presented as nothing: no secret went out, so none can come back in a piece
+ * before redaction. A presented key streams only to a destination that
+ * declares a format custody decodes, as decoded, redacted text
+ * (`stream-decode.ts`), and its answer is the folded body. Any other answer
+ * from a presented key is redacted whole.
+ */
+function streamingOf(
+  credential: StoredCredential,
+  destination: string,
+  piece: (text: string) => void,
+): {
+  readonly onChunk: ((chunk: Buffer) => void) | undefined;
+  readonly answer: (outcome: Outbound) => Outbound;
+} {
+  if (credential.scheme === 'none') {
+    const decoder = new StringDecoder('utf8');
+    return {
+      onChunk: (chunk) => {
+        const text = decoder.write(chunk);
+        if (text !== '') piece(text);
+      },
+      answer: (outcome) => outcome,
+    };
+  }
+  const redacted = (outcome: Outbound): Outbound =>
+    outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
+  if (loaded.destinations.get(destination)?.stream !== 'openai_sse') {
+    return { onChunk: undefined, answer: redacted };
+  }
+  const decoding = openaiSse(credential);
+  return {
+    onChunk: (chunk) => {
+      for (const text of decoding.push(chunk)) piece(text);
+    },
+    answer: (outcome) => {
+      if (!outcome.ok) return outcome;
+      const { pieces, body } = decoding.end();
+      for (const text of pieces) piece(text);
+      return { ...outcome, body };
+    },
+  };
+}
 
 /** Dispatches held after `started` until their admission says `go` or `stop` (#1508). */
 const gates = new Map<string, (go: boolean) => void>();
@@ -113,8 +173,7 @@ async function gateOf(id: string, deadlineMs: number): Promise<boolean> {
 
 /**
  * The answer to a started dispatch: for a gated one, only once its admission
- * says `go`. Passed on as it comes only for a credential presented as nothing:
- * no secret went out, so none can come back in a piece before redaction.
+ * says `go`, sent and passed back as `streamingOf` says.
  */
 async function answer(
   id: string,
@@ -122,23 +181,29 @@ async function answer(
   credential: StoredCredential,
   gated: boolean,
   reply: (body: Message) => void,
+  sendGate?: ReturnType<typeof sendGateOf>,
 ): Promise<void> {
   if (gated && !(await gateOf(id, request.timeoutMs))) {
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
     return;
   }
-  const none = credential.scheme === 'none';
-  const decoder = new StringDecoder('utf8');
-  const onChunk = none
-    ? (chunk: Buffer): void => {
-        const text = decoder.write(chunk);
-        if (text !== '') reply({ type: 'piece', text });
-      }
-    : undefined;
-  const outcome = await send(loaded.destinations, request, credential, undefined, onChunk);
-  const safe =
-    outcome.ok && !none ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
-  reply({ type: 'answer', outcome: safe, kind: credential.kind, account: credential.account });
+  const streaming = streamingOf(credential, request.destination, (text) =>
+    reply({ type: 'piece', text }),
+  );
+  const outcome = await send(
+    loaded.destinations,
+    request,
+    credential,
+    undefined,
+    streaming.onChunk,
+    sendGate ?? undefined,
+  );
+  reply({
+    type: 'answer',
+    outcome: streaming.answer(outcome),
+    kind: credential.kind,
+    account: credential.account,
+  });
 }
 
 process.on('uncaughtException', () => fail('internal fault'));
@@ -163,7 +228,8 @@ process.on('message', (message: unknown) => {
     return;
   }
   const request = shape['request'];
-  if (!isRequest(request) || unrouted(request)) {
+  const sendGate = sendGateOf(shape['deadlineAt'], reply);
+  if (!isRequest(request) || unrouted(request) || sendGate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
@@ -172,7 +238,7 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply);
+  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
 });
 
 process.send?.({ type: 'ready' });

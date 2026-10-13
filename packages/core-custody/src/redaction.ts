@@ -50,6 +50,22 @@ export function redacterOf(secrets: readonly string[]): (text: string) => string
 export const secretsOf = ({ scheme, value }: StoredCredential): readonly string[] =>
   scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
 
+/**
+ * The longest spelling of any secret the redacter knows: each character in its
+ * longest form (a four-byte character percent-escaped is twelve). Text held
+ * back this long can still complete a spelling; none is longer.
+ */
+export const longestSpelling = (secrets: readonly string[]): number =>
+  Math.max(
+    ...secrets.map((secret) =>
+      [...secret].reduce(
+        (length, character) =>
+          length + Math.max(...spellingsOf(character).map((spelling) => spelling.text.length)),
+        0,
+      ),
+    ),
+  );
+
 /** An own field, as the parse sets it: a `__proto__` key is a field like any other. */
 const FIELD = { writable: true, enumerable: true, configurable: true } as const;
 const put = (into: object, slot: string | number, value: unknown): void => {

@@ -71,7 +71,7 @@ function plan(test) {
   // The sink is on the machine: its forwarder pings this heartbeat while the sink answers.
   const { title: name, text: message } = plainAlert('sink-down', 'staging');
   monitors.push({ watch: 'error sink', type: 'heartbeat', name, message });
-  const every = 'every minute; mail at once when a check fails and when it is back';
+  const every = 'every five minutes; mail at once when a check fails and when it is back';
   const rule = 'every event, at once, by email';
   const out = { channel: 'email', recipients, every, monitors, sink: { rule, recipients } };
   console.log(JSON.stringify(out, null, 2));

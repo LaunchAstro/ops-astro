@@ -61,6 +61,12 @@ export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts
 export async function createHarness(part: string): Promise<Harness> {
   const world = await createWorld(part);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
+  // C80's approver from the start, the admin: a request is refused while none is set.
+  await world.db.admin.execute(
+    `update public.business_settings set value = to_jsonb($2::text)
+      where business_id = $1 and key = 'live_correction_approver'`,
+    [world.alpha, world.ada.personId],
+  );
   const clients = await seedFixtureClients(world);
 
   const heldBy = await heldByWithAdminTopUp(world);
@@ -244,6 +250,7 @@ export async function createHarness(part: string): Promise<Harness> {
     inviter: () => inviter,
     asAgent,
     freshTask,
+    bindClientSite: taskBodyContext(world, alphaTask.id).bindClientSite,
     probeBody,
     positiveBody: createPositiveBody({
       ...taskBodyContext(world, alphaTask.id),
