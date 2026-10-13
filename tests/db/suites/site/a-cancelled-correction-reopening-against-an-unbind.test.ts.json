@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: a decided cancelled correction reopened to unknown makes an unbind of its page wait on a second connection, observed, and refuses it; the other order, an unbind while the correction is cancelled, is recorded as a red the rulings leave open."
+}

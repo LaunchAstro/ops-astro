@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a client linked while OpenRouter answers: the request carried no client material, the answer is kept, and nothing more reaches a model"
+}

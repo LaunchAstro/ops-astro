@@ -30,4 +30,7 @@ it('malformed database addresses never print their password in either entry poin
       expect(done.stdout + done.stderr).not.toContain(canary);
     }
   }
-});
+  // Four node processes, each loading a TypeScript entry and its imports: 3.7 to 4.1 s in green
+  // merge groups and 6.0 s in the group it sank (run 38374187832), past the 5 s default (#1536).
+  // The same limit as malformed-database-settings-print-no-password.test.ts.
+}, 30_000);
