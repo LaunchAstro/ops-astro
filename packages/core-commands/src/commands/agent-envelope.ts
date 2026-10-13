@@ -19,10 +19,11 @@
 // see below -- so reporting the delegating person's here would be reporting
 // somebody else's authority as the agent's.
 //
-// **The two operations before there is anything to delegate.** An agent that
+// **The three operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
-// its call with. It may do exactly two things: read `task.queue` and call
-// `task.pickup`. Every other exported operation is refused
+// its call with. It may do exactly three things: read `task.queue`, call
+// `task.pickup`, and take a launch made for it with `task.take_launch`, which
+// hands it that run's delegation. Every other exported operation is refused
 // `DELEGATION_EXCLUDES_OPERATION`, and `task.decide`
 // `DELEGATION_EXCLUDES_DECISION` (minimum contract 8.2 case 9, ledger I12):
 // with no credential presented the call is outside what an agent login may do
@@ -84,9 +85,9 @@ import type { AgentCall, AgentRequest } from './agent-call.ts';
 import type { IdentifiedRequest } from './requests.ts';
 
 /**
- * The two operations an agent may reach before it holds anything.
+ * The three operations an agent may reach before it holds anything.
  *
- * `session.capabilities` is not a third: before a pickup it is refused
+ * `session.capabilities` is not a fourth: before a pickup it is refused
  * `DELEGATION_EXCLUDES_OPERATION` like every other operation outside this set
  * (minimum contract 8.2 case 9). Under a live delegation it answers the
  * delegation's purpose.

@@ -226,6 +226,14 @@ export {
   type LaunchRequest,
   type LaunchResult,
 } from './authority/launches.ts';
+export {
+  ANSWER_RUN_COMMANDS,
+  excludedFromTakenLaunch,
+  TAKEN_FOR,
+  takeLaunch,
+  type LaunchEndCause,
+  type TakeResult,
+} from './authority/launch-take.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';

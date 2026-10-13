@@ -66,6 +66,9 @@
 // agent reaches, one row each in the same three tables and the handler map.
 // Launch from the task adds `task.launch`: a targeted person write no agent
 // reaches, a row in the request and handler maps.
+// The agent runner adds `task.take_launch`: an untargeted write an agent login
+// reaches before any pickup, the third, its `launchId` shaped by the runtime;
+// one row in each table that lists it, and a person handler that refuses.
 // The seventeenth is a person's own agents (Assign to AI): `agent.create` and
 // `agent.rename`, untargeted self writes no agent reaches, one row each in the
 // same three tables and the handler map, beside the `agent.mine` read.
@@ -163,6 +166,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-launch.ts', async (original) => ({
   ...(await original<object>()),
   launchTask: recorder('launchTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-take-launch.ts', async (original) => ({
+  ...(await original<object>()),
+  takeLaunchAsPerson: recorder('takeLaunchAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (original) => ({
   ...(await original<object>()),
@@ -435,6 +442,7 @@ const PINNED_RUNTIME_SHAPED = {
   'task.dispatch': 'leaseId',
   'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
+  'task.take_launch': 'launchId',
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
 };
@@ -526,6 +534,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
+  'task.take_launch': ['launchId'],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
   'tag.create': [],
@@ -675,6 +684,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.restart',
   'task.restore',
   'task.search',
+  'task.take_launch',
   'task.todos',
   'team.list',
   'time.delete',
@@ -712,10 +722,11 @@ const PINNED_AGENT_SURFACE = [
   'task.set_adhoc',
   'task.set_category',
   'task.set_scores',
+  'task.take_launch',
   'task.update',
 ];
 
-const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue'];
+const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue', 'task.take_launch'];
 
 /** One request per write, each operand a distinct value so a dropped or swapped one shows. */
 const REQUESTS: readonly CommandRequest[] = [
@@ -803,6 +814,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
   { command: 'task.trash', operationId: 'op', recordId: 'r' },
   { command: 'task.launch', operationId: 'op', recordId: 'r' },
+  { command: 'task.take_launch', operationId: 'op', launchId: 'launch' },
   { command: 'task.restore', operationId: 'op', batchId: 'batch' },
   { command: 'task.purge', operationId: 'op', olderThanDays: 9 },
   {
@@ -1081,6 +1093,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.rank': ['rankTask', 'after', null],
   'task.trash': ['trashTask'],
   'task.launch': ['launchTask'],
+  'task.take_launch': ['takeLaunchAsPerson'],
   'task.restore': ['restoreTasks', 'batch'],
   'task.purge': ['purgeTasks', 9],
   'settings.set_four_eyes_threshold': [
@@ -1240,7 +1253,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same eight commands', () => {
+  it('shapes the same runtime identifier for the same nine commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -1255,13 +1268,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-six from an expected revision', () => {
+  it('exempts the same one hundred and thirty-seven from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-five, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-six, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

@@ -4,8 +4,7 @@
 // the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects } from './data-effects-types.ts';
-import { business, client, writing } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import {
   CREDENTIAL,
   GRANTS,
@@ -21,6 +20,7 @@ import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 import { CHAT_EFFECTS } from './data-effects-chat.ts';
 import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
+import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -71,7 +71,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // An assignment raises the assignee's item (INB-1).
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   // A run opened for the task's agent, with the delegation it acts under.
-  'task.launch': writing([...client('task_launches'), ...business('delegations')]),
+  ...LAUNCH_EFFECTS,
   'task.triage': TASK,
   'task.set_stage': TASK,
   // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).
