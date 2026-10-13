@@ -157,7 +157,8 @@ const CLOSER = '</think>';
  * Display texts from a streamed chat as its bytes arrive, in order and
  * complete: whole lines only, each line's words, and a leading thinking block
  * held back until it closes and never shown. Leading white space is dropped,
- * as the settled answer drops it. A line that is not a reply piece shows nothing.
+ * as the settled answer drops it. A line that is not a reply piece shows
+ * nothing, and nothing after the `done` line is shown: the fold refuses it.
  */
 export function ollamaPieces(): PieceReader {
   const decoder = new TextDecoder();
@@ -166,6 +167,7 @@ export function ollamaPieces(): PieceReader {
   let phase: 'start' | 'thinking' | 'answer' = 'start';
   let held = '';
   let started = false;
+  let finished = false;
   const shown = (words: string): string => {
     if (phase === 'answer') return words;
     held += words;
@@ -190,7 +192,8 @@ export function ollamaPieces(): PieceReader {
       partial = lines.pop() ?? '';
       const texts: string[] = [];
       for (const text of lines) {
-        const line = lineOf(text);
+        const line = finished ? undefined : lineOf(text);
+        finished ||= line?.['done'] === true;
         const words = line === undefined ? undefined : contentOf(line);
         const out = words === undefined ? '' : shown(words);
         const trimmed = started ? out : out.trimStart();
