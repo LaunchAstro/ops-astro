@@ -26,6 +26,7 @@ declare
   login uuid;
   sid uuid;
   signed bigint;
+  strong boolean;
 begin
   parts := regexp_match(
     topic,
@@ -52,27 +53,27 @@ begin
   if login is null then
     return false;
   end if;
-  -- A session ended as `sessionEnded` reads it, from its first sign-in: the
-  -- earliest `amr` time, a whole number however written (no later than
-  -- `assuranceOf`'s); one it cannot read is before every ending.
-  sid := case when pg_input_is_valid(claims::jsonb ->> 'session_id', 'uuid')
+  -- The session, by the rules login resolution asks (`ops.session_refusal`),
+  -- the 12 hours included: the token read as `assuranceOf` and `sessionIdOf`
+  -- read it, the first sign-in its earliest first-factor `amr` time. Each
+  -- entry as JSON.parse and `String(method)` read it: a time rounded to a
+  -- double, a method through any one-item lists.
+  sid := case when claims::jsonb ->> 'session_id'
+                   ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
               then (claims::jsonb ->> 'session_id')::uuid end;
-  select min(t)::bigint into signed
+  select min(t) filter (where m in ('password', 'otp', 'magiclink', 'email/signup',
+                                    'recovery', 'invite', 'oauth', 'sso/saml'))::bigint,
+         claims::jsonb ->> 'aal' = 'aal2' and bool_or(e ->> 'method' = 'totp')
+    into signed, strong
     from jsonb_array_elements(case jsonb_typeof(claims::jsonb -> 'amr')
                                 when 'array' then claims::jsonb -> 'amr' else '[]' end) e,
-         lateral (select case jsonb_typeof(e -> 'timestamp')
-                           when 'number' then (e -> 'timestamp')::numeric end as t) n
-   where t between 1 and 99999999999 and t = trunc(t);
-  if sid is not null and (
-       exists (select 1 from ops.ended_provider_sessions p where p.session_id = sid)
-       or exists (select 1 from ops.ended_subject_sessions s
-                   where s.subject_digest = encode(sha256(convert_to(sub, 'UTF8')), 'hex')
-                     and s.kept_session is distinct from sid
-                     and (signed is null or to_timestamp(signed) <= s.ended_before + interval '60 s'))
-       or exists (select 1 from ops.subject_resets r
-                   where r.subject_digest = encode(sha256(convert_to(sub, 'UTF8')), 'hex')
-                     and (signed is null or to_timestamp(signed) <= r.open_until and r.settled_at is null
-                          or to_timestamp(signed + 1) <= r.settled_at))) then
+         lateral (select case when jsonb_typeof(e -> 'timestamp') = 'number'
+                               and (e -> 'timestamp')::numeric > 0.5
+                               and (e -> 'timestamp')::numeric < 9007199254740993
+                          then (e -> 'timestamp')::numeric::float8 end as t,
+                         substring((e -> 'method')::text from '^\[*"([^"\\]*)"\]*$') as m) n
+   where t between 1 and 9007199254740991 and t = trunc(t);
+  if ops.session_refusal(sub, sid, signed, coalesce(strong, false), true, true) is not null then
     return false;
   end if;
 
