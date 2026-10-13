@@ -24,7 +24,7 @@ dispatch=$(git rev-parse --path-format=absolute --git-common-dir)/hook-dispatch
 mkdir -p "$dispatch"
 
 for hook in pre-commit commit-msg pre-push; do
-  cat > "$dispatch/$hook.new" <<EOF
+  cat > "$dispatch/$hook.new.$$" <<EOF
 #!/bin/sh
 # Written by scripts/hook-dispatch.sh. Shared by every worktree of this clone.
 top=\$(git rev-parse --show-toplevel 2>/dev/null) || top=.
@@ -36,14 +36,23 @@ echo "$hook: this checkout has no installed hooks (\$top/.husky/_ is missing)." 
 echo "$hook: run pnpm install in it, then try again. Refusing." >&2
 exit 1
 EOF
-  chmod +x "$dispatch/$hook.new"
-  if cmp -s "$dispatch/$hook.new" "$dispatch/$hook"; then
-    rm -f "$dispatch/$hook.new"
+  chmod +x "$dispatch/$hook.new.$$"
+  if cmp -s "$dispatch/$hook.new.$$" "$dispatch/$hook"; then
+    rm -f "$dispatch/$hook.new.$$"
   else
-    mv -f "$dispatch/$hook.new" "$dispatch/$hook"
+    mv -f "$dispatch/$hook.new.$$" "$dispatch/$hook"
   fi
 done
 
-if [ "$(git config core.hooksPath || true)" != "$dispatch" ]; then
-  git config core.hooksPath "$dispatch"
-fi
+# Two installs at once contend for Git's config lock; whoever loses retries
+# until the setting reads right.
+tries=0
+until [ "$(git config core.hooksPath || true)" = "$dispatch" ]; do
+  if [ "$tries" -ge 10 ]; then
+    echo "hook-dispatch: could not point core.hooksPath at $dispatch." >&2
+    exit 1
+  fi
+  [ "$tries" -gt 0 ] && sleep 1
+  git config core.hooksPath "$dispatch" 2>/dev/null || true
+  tries=$((tries + 1))
+done

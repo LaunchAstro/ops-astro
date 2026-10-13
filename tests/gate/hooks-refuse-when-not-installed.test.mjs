@@ -166,3 +166,31 @@ test('the installer outside a Git checkout does nothing and succeeds', (t) => {
   const result = run(scratch, 'sh', [installer]);
   assert.equal(result.status, 0, result.output);
 });
+
+test('twelve installs at once all succeed and leave whole dispatchers', async (t) => {
+  const c = clone(t);
+  const { spawn } = await import('node:child_process');
+  const once = () =>
+    new Promise((done) => {
+      const child = spawn('sh', ['scripts/hook-dispatch.sh'], { cwd: c.repo, stdio: 'ignore' });
+      child.on('exit', (code) => done(code));
+    });
+  const codes = await Promise.all(Array.from({ length: 12 }, once));
+  assert.deepEqual(
+    codes,
+    Array.from({ length: 12 }, () => 0),
+  );
+  const dispatch = join(
+    c.git('rev-parse', '--path-format=absolute', '--git-common-dir'),
+    'hook-dispatch',
+  );
+  assert.equal(c.git('config', 'core.hooksPath'), dispatch);
+  for (const hook of ['pre-commit', 'commit-msg', 'pre-push']) {
+    assert.equal(run(c.repo, 'sh', ['-n', join(dispatch, hook)]).status, 0, hook);
+  }
+  assert.deepEqual(run(c.repo, 'ls', [dispatch]).stdout.trim().split('\n').toSorted(), [
+    'commit-msg',
+    'pre-commit',
+    'pre-push',
+  ]);
+});
