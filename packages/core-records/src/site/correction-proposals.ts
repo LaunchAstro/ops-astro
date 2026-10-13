@@ -21,6 +21,8 @@ export interface CorrectionProposal {
   readonly head: string | null;
   readonly request: string | null;
   readonly state: ProposalState;
+  /** A claim inside its send window, whose sender may still be at work. */
+  readonly inFlight: boolean;
 }
 
 type Refused = { readonly ok: false; readonly code: string };
@@ -35,9 +37,17 @@ export type Claimed =
     }
   | Refused;
 
+/**
+ * How long a claim's sender may still be sending: the proposal's three calls
+ * at their 10-second timeout each, the claim's and settlement's transactions,
+ * and margin. A retry inside it leaves the claim to its sender.
+ */
+const SEND_WINDOW = "interval '90 seconds'";
+
 const COLUMNS = `correction_id as "correctionId", seam_branch as seam,
   base_revision as "baseRevision", pre_image_blob as "preImageBlob",
-  head_commit as head, request_number as request, state`;
+  head_commit as head, request_number as request, state,
+  (state = 'claimed' and clock_timestamp() < claimed_at + ${SEND_WINDOW}) as "inFlight"`;
 
 /** The correction's proposal row, or nothing. */
 export async function readProposal(

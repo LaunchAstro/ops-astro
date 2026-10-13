@@ -157,7 +157,7 @@ async function reconcile(
   return await settle(db, run, held ?? { state: 'unknown' }, ports);
 }
 
-/** A row another claim wrote: its answer, or a claimed one reconciled; never a send. */
+/** A row another claim wrote: its answer, a claim still in flight left alone, or a lost one reconciled; never a send. */
 async function follow(
   db: Database,
   run: CorrectionRun,
@@ -166,6 +166,9 @@ async function follow(
   ports: ProposePorts,
 ): Promise<ProposeResult> {
   if (row.state !== 'claimed') return await answered(db, run, row, ports);
+  // Inside its send window the claim's sender may still be at work: nothing is
+  // read from the seam or settled, so its proposal is not made unknown mid-send.
+  if (row.inFlight) return refused('PROPOSAL_IN_FLIGHT');
   return await reconcile(db, run, row, await imageOf(correction, ports), ports);
 }
 

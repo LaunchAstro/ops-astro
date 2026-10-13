@@ -61,6 +61,12 @@ async function lostAt(knobs: Knobs): Promise<{ id: string; site: StandIn }> {
   await expect(propose(id, site)).rejects.toThrow('worker lost mid-proposal');
   expect((await rowOf(id))?.state).toBe('claimed');
   knobs.crash = undefined;
+  // The lost worker's claim past its send window, as a restart finds it.
+  await w.world.db.admin.execute(
+    `update public.live_correction_proposals set claimed_at = claimed_at - interval '1 hour'
+      where correction_id = $1`,
+    [id],
+  );
   return { id, site };
 }
 
