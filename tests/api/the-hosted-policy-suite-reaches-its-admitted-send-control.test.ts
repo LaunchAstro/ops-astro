@@ -6,6 +6,7 @@ import { createRealtimeDatabase } from '../support/realtime-database.ts';
 import { carriageBusiness, callTopic } from './carriage-fixture.ts';
 import { asIssued } from '../support/realtime-hub.ts';
 
+// oxlint-disable-next-line max-lines-per-function -- one database, a send by hand and the suite's own helper
 it('the hosted policy suite reaches its admitted-send positive control', async () => {
   const db = await createRealtimeDatabase('policy_send_control');
   try {
