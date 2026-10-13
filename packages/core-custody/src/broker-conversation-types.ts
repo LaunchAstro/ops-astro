@@ -4,7 +4,7 @@
 // one-call-per-message module both read it. Types only, apart so neither
 // module imports the other's.
 
-import type { ClaimedField } from './broker-types.ts';
+import type { ClaimedField, PaidSeams } from './broker-types.ts';
 
 /**
  * The conversation as the command layer found it, from its own row under the
@@ -31,4 +31,6 @@ export interface ConversationCallRequest {
   readonly onPiece?: (text: string) => void;
   /** The person's message the call answers: one message has at most one call (#1531). */
   readonly messageId?: string;
+  /** A paid call's seams to the caller's own transactions (#1508); absent, nothing paid is sent. */
+  readonly paid?: PaidSeams;
 }

@@ -1327,7 +1327,13 @@ person message in a conversation of this business whose body is kept, and
 sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
-nothing held). The answer is kept as an `agent` message whose
+nothing held). A conversation on a paid model (#1508) asks its provider's own
+operation (`model.conversation_answer_openrouter`) on the held path instead:
+offered only to a person on `OPS_OUTSIDE_MODEL_PEOPLE` in a conversation with
+no client page, it holds its most against the AI chat budget, is judged again
+at the handoff to custody, and settles with its reply kept in that one
+transaction (`BUDGET_UNAVAILABLE` with what is left, `PROMPT_TOO_LARGE`,
+`CUSTODY_NOT_ADMITTED`, or a held cost). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
 lock, which then holds the caller's conversation grants for share without

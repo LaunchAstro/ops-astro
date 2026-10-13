@@ -43,9 +43,13 @@
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
 
 import { randomUUID } from 'node:crypto';
-import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
+import {
+  CONVERSATION_ANSWER,
+  OPENROUTER_CONVERSATION_KEY,
+} from '../../../core-connectors/src/index.ts';
 import {
   callModelInConversation,
+  type ConversationCallRequest,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
 import { isUuid, withSession } from '../../../core-records/src/index.ts';
@@ -58,18 +62,17 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { contextOf, type Context } from './conversation-context.ts';
 import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
-import { bounded, holdsOwnConversations } from './conversations.ts';
+import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
+import { holdsOwnConversations } from './conversations.ts';
 import { askedModel } from './conversation-model.ts';
 import {
   answered,
   refusedWith,
-  releasedWith,
   type ConversationReply,
   type Kept,
 } from './conversation-replies.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
-import { storableText } from './values.ts';
 
 export type { ConversationReply } from './conversation-replies.ts';
 
@@ -84,9 +87,6 @@ export type ConversationExchange = (
   onPiece?: (text: string) => void,
 ) => Promise<ConversationReply | null>;
 
-/** A reply's body is a message's (0092). */
-const REPLY_LIMIT = 20_000;
-
 interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
@@ -95,6 +95,10 @@ interface Question {
   readonly context: Context;
   /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
   readonly model: string | undefined | null;
+  /** The page task the conversation is on, as read with the context. */
+  readonly page: string | null;
+  /** Who wrote the asked message and each earlier person turn read. */
+  readonly authors: readonly string[];
 }
 
 /** The kept reply to a message, if there is one. */
@@ -120,8 +124,9 @@ async function questionOf(
     readonly owner_person_id: string;
     readonly body: string;
     readonly scope_record_id: string | null;
+    readonly author: string;
   }>(
-    `select c.owner_person_id, m.body, c.scope_record_id
+    `select c.owner_person_id, m.body, c.scope_record_id, m.author_actor_id::text as author
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
@@ -129,6 +134,8 @@ async function questionOf(
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
   );
   if (found === undefined) return undefined;
+  const { body, scope_record_id: page } = found;
+  const context = await contextOf(tx, session, { ...asked, body }, page);
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
     scope: {
@@ -136,9 +143,11 @@ async function questionOf(
       businessId: tx.businessId,
       ownerPersonId: found.owner_person_id,
     },
-    body: found.body,
+    body,
     reply: await replyTo(tx, asked),
-    context: await contextOf(tx, session, { ...asked, body: found.body }, found.scope_record_id),
+    context,
+    page,
+    authors: [found.author, ...context.authors],
   };
 }
 
@@ -185,6 +194,26 @@ async function activeAt(tx: TenantQuery, conversationId: string, at: string): Pr
   );
 }
 
+/** The seam's request for the asked message: its words, the context beside it and the model. */
+function requestOf(
+  question: Question,
+  asked: Asked,
+  operation: string,
+  onPiece: ((text: string) => void) | undefined,
+): ConversationCallRequest {
+  return {
+    conversation: question.scope,
+    messageId: asked.messageId,
+    operation,
+    fields: [
+      ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
+      { name: 'message', source: 'outside', value: question.body },
+    ],
+    ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+    ...(onPiece === undefined ? {} : { onPiece }),
+  };
+}
+
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
   database: Database,
@@ -199,33 +228,27 @@ async function answerOnce(
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
   const pieces = onPiece && judgedPieces(database, businessId, presented, asked, onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
-  const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+  const reread = async () =>
+    await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+  const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
+  const operation = operationFor(question.model);
+  const paid =
+    operation === OPENROUTER_CONVERSATION_KEY
+      ? paidSeams({ database, businessId, presented, asked, ...question, keep })
+      : undefined;
   const result = await callModelInConversation(
     database,
     businessId,
     { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
-    {
-      conversation: question.scope,
-      messageId: asked.messageId,
-      operation: CONVERSATION_ANSWER.key,
-      fields: [
-        ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
-        { name: 'message', source: 'outside', value: question.body },
-      ],
-      ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
-      ...(pieces === undefined ? {} : { onPiece: pieces.push }),
-    },
+    { ...requestOf(question, asked, operation, pieces?.push), ...(paid && { paid: paid.seams }) },
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
-  if (!result.ok) {
-    return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
-  }
+  if (!result.ok) return await unanswered(result, reread);
+  if (paid !== undefined) return paid.replied(question.context.cites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
-  if (!bounded(result.text, REPLY_LIMIT) || !storableText(result.text)) {
-    return refusedWith('ANSWER_UNUSABLE');
-  }
+  if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');
   const kept = await withSession(
     database,
     businessId,

@@ -6,7 +6,8 @@
 // reserved, and a cloud route is refused before anything is written (AW-03
 // egress off), save LA-1's laptop carve-out: the owner's own GPT session
 // (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
-// against the planning budget (`broker-planning.ts`, AW-04's U10).
+// against the planning budget (`broker-planning.ts`, AW-04's U10), and a paid
+// chat reply takes the held path (`broker-priced.ts`, #1508).
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
@@ -33,7 +34,7 @@ export const refused = (code: BrokerRefusal): ModelCallResult => ({
   callId: null,
 });
 
-const RATE_LIMITED: ModelCallResult = {
+export const RATE_LIMITED: ModelCallResult = {
   ok: false,
   code: 'RATE_LIMITED',
   callId: null,
@@ -172,14 +173,14 @@ async function settledFor(
 }
 
 /**
- * A person's model call from their own conversation. Every check runs before
+ * A person's unpriced model call from their own conversation. Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
  * refused, AW-03 egress off), an unpriced operation (#1508, option B: a priced
  * one is refused), then AW-01's ceilings. The answer settles at
  * nothing; a priced answer is above a hold of nothing, so it is held as
  * unknown liability for a person, as any call above its hold is (O9).
  */
-export async function callModelInConversation(
+export async function callModelUnpriced(
   database: Database,
   businessId: BusinessId,
   caller: ModelCaller,
