@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The owner's ChatGPT plan token as custody holds it on the owner's machine
-// (#1620): one file, written by the owner's own sign-in
-// (`apps/model-agent/chatgpt-sign-in.ts`) and read by custody alone, holding
-// an access token, its refresh token and when the access token expires.
+// (#1620): one file, written by the owner's sign-in and read by custody
+// alone, holding an access token, its refresh token and when it expires.
 //
 // Custody refreshes at the token's earliest refresh time, REFRESH_AHEAD_MS
 // before it expires, on its own clock, and only when a call asks for it: no
@@ -20,20 +19,17 @@
 // file renamed over the old, owner-only) before the new access token is used.
 // A write that fails refuses the call `SUBSCRIPTION_STORE_FAILED`, nothing
 // sent, and keeps the pair in memory only to write it on the next call; it is
-// never presented until it is on disk. A refresh the provider refuses means
+// never presented until it is on disk (and, due by then, it is refreshed
+// first). A refresh the provider refuses means
 // the owner must sign in again: every call is refused
 // `SUBSCRIPTION_SIGN_IN_NEEDED` with nothing sent, and nothing more is asked
 // until the file holds a different refresh token. A refresh that fails on the
 // way, or a lock not had in time, is refused `SUBSCRIPTION_REFRESH_FAILED`
-// for that call only; the next call tries again.
-//
-// No token, code or value is ever written to a log: the kinds below only.
+// for that call only; the next call tries again. No token, code or value is
+// ever written to a log: the kinds below only.
 
-import { randomBytes } from 'node:crypto';
-import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readTokenFile, TOKEN_TEXT, writeTokenFile, type PlanTokens } from './token-file.ts';
 import { withTokenLock } from './token-lock.ts';
-
-export { withTokenLock } from './token-lock.ts';
 
 /** How long before expiry a token is refreshed: its earliest refresh time. */
 export const REFRESH_AHEAD_MS: number = 5 * 60_000;
@@ -42,28 +38,14 @@ export const REFRESH_AHEAD_MS: number = 5 * 60_000;
 const REFRESH_TIMEOUT_MS = 30_000;
 
 /**
- * The token endpoint's path and the resource every plan token is for, as
- * OpenAI's open-source token-sharing flow publishes them
- * (https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
- * The page does not spell out the refresh request: it is sent as the code
- * exchange is, form-encoded with the same resource, a best reading until the
- * owner's one real refresh confirms it.
+ * The token endpoint and the resource every plan token is for, as OpenAI's
+ * open-source flow publishes them; its refresh request is read the same way.
  */
 export const PLAN_TOKEN_PATH = '/api/accounts/oauth/token';
 const PLAN_RESOURCE = 'https://api.openai.com/v1';
 
 /** The largest token answer read. */
-const TOKEN_ANSWER_BYTES = 64 * 1024;
-
-export interface PlanTokens {
-  readonly clientId: string;
-  readonly accessToken: string;
-  readonly refreshToken: string;
-  /** Milliseconds since the epoch, on the machine's clock. */
-  readonly expiresAt: number;
-  /** The account the sign-in's validated ID token named, kept across refreshes. */
-  readonly subject?: string;
-}
+const TOKEN_ANSWER_BYTES = 256 * 1024;
 
 export type PlanRefusal =
   | 'SUBSCRIPTION_SIGN_IN_NEEDED'
@@ -75,47 +57,13 @@ export type TokenAnswer =
   | { readonly ok: true; readonly accessToken: string }
   | { readonly ok: false; readonly code: PlanRefusal };
 
-/** Visible ASCII, as a token is written. */
-const TOKEN_TEXT = /^[!-~]{8,8192}$/u;
-
-/** The file's tokens, or why they cannot be used: open to others, or not the shape. */
-export function readTokenFile(file: string): PlanTokens | PlanRefusal {
-  try {
-    if ((statSync(file).mode & 0o077) !== 0) return 'SUBSCRIPTION_TOKEN_FILE_OPEN';
-    const shape: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    if (typeof shape !== 'object' || shape === null) return 'SUBSCRIPTION_SIGN_IN_NEEDED';
-    const { clientId, accessToken, refreshToken, expiresAt } = shape as Record<string, unknown>;
-    if (
-      typeof clientId !== 'string' ||
-      !TOKEN_TEXT.test(clientId) ||
-      typeof accessToken !== 'string' ||
-      !TOKEN_TEXT.test(accessToken) ||
-      typeof refreshToken !== 'string' ||
-      !TOKEN_TEXT.test(refreshToken) ||
-      typeof expiresAt !== 'number' ||
-      !Number.isSafeInteger(expiresAt)
-    ) {
-      return 'SUBSCRIPTION_SIGN_IN_NEEDED';
-    }
-    const { subject } = shape as Record<string, unknown>;
-    return {
-      clientId,
-      accessToken,
-      refreshToken,
-      expiresAt,
-      ...(typeof subject === 'string' ? { subject } : {}),
-    };
-  } catch {
-    return 'SUBSCRIPTION_SIGN_IN_NEEDED';
-  }
-}
-
-/** Write the tokens owner-only: a new file beside the old, renamed over it. */
-export function writeTokenFile(file: string, tokens: PlanTokens): void {
-  const next = `${file}.${randomBytes(6).toString('hex')}.next`;
-  writeFileSync(next, JSON.stringify(tokens), { mode: 0o600, flag: 'wx' });
-  renameSync(next, file);
-}
+export {
+  isPlanTokens,
+  readTokenFile,
+  TOKEN_TEXT,
+  writeTokenFile,
+  type PlanTokens,
+} from './token-file.ts';
 
 /** A token answer's new tokens, or undefined when it is not one. */
 function tokensFrom(body: unknown, held: PlanTokens, now: number): PlanTokens | undefined {
@@ -166,6 +114,8 @@ const refusedGrant = (status: number): boolean => status === 400 || status === 4
 
 type Refreshed =
   | { readonly kind: 'tokens'; readonly tokens: PlanTokens }
+  /** A 200 the holder cannot use whose rotated refresh token it can still keep. */
+  | { readonly kind: 'rotated_only'; readonly refreshToken: string }
   | { readonly kind: 'refused' }
   | { readonly kind: 'failed' };
 
@@ -211,7 +161,12 @@ async function refresh(held: Held, from: PlanTokens): Promise<Refreshed> {
     body = undefined;
   }
   const next = tokensFrom(body, from, held.now());
-  return next === undefined ? { kind: 'failed' } : { kind: 'tokens', tokens: next };
+  if (next !== undefined) return { kind: 'tokens', tokens: next };
+  // The provider has spent the old refresh token: a new one it sent is kept, whatever else failed.
+  const rotated = (body as Record<string, unknown> | undefined)?.['refresh_token'];
+  return typeof rotated === 'string' && TOKEN_TEXT.test(rotated) && rotated !== from.refreshToken
+    ? { kind: 'rotated_only', refreshToken: rotated }
+    : { kind: 'failed' };
 }
 
 /** Write the rotated pair if the file still holds what it replaced; the answer to give. */
@@ -236,14 +191,29 @@ function store(held: Held, tokens: PlanTokens, from: string): TokenAnswer {
 
 /** Under the lock: the file read again, and refreshed only if it is still the pair seen and due. */
 async function locked(held: Held, seen: PlanTokens): Promise<TokenAnswer> {
-  if (held.unwritten !== undefined) return store(held, held.unwritten.tokens, held.unwritten.from);
+  let expected = seen.refreshToken;
+  if (held.unwritten !== undefined) {
+    // The delayed pair goes to disk first; then whatever the file holds is
+    // judged as any held pair is, so one already due is refreshed, never presented.
+    const stored = store(held, held.unwritten.tokens, held.unwritten.from);
+    if (!stored.ok) return stored;
+    const written = readTokenFile(held.options.file);
+    if (typeof written === 'string') return { ok: false, code: written };
+    expected = written.refreshToken;
+  }
   const file = readTokenFile(held.options.file);
   if (typeof file === 'string') return { ok: false, code: file };
-  if (file.refreshToken !== seen.refreshToken || !due(held, file)) {
+  if (file.refreshToken !== expected || !due(held, file)) {
     return { ok: true, accessToken: file.accessToken };
   }
   const refreshed = await refresh(held, file);
   if (refreshed.kind === 'tokens') return store(held, refreshed.tokens, file.refreshToken);
+  if (refreshed.kind === 'rotated_only') {
+    // Kept due now, so the next call refreshes with it; this call sends nothing.
+    const kept = { ...file, refreshToken: refreshed.refreshToken, expiresAt: held.now() };
+    const stored = store(held, kept, file.refreshToken);
+    return stored.ok ? { ok: false, code: 'SUBSCRIPTION_REFRESH_FAILED' } : stored;
+  }
   const after = readTokenFile(held.options.file);
   if (typeof after !== 'string' && after.refreshToken !== file.refreshToken) {
     // A new sign-in landed meanwhile: its pair, not our refusal, stands.

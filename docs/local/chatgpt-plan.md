@@ -69,6 +69,11 @@ tokens and uses it for any later sign-in.
    - `SIGN_IN_IDENTITY_INVALID`: the ID token did not validate (its
      signature, issuer, client, expiry or nonce). Nothing was stored. Tell
      the orchestrator; do not retry repeatedly.
+   - `SIGN_IN_TOKENS_UNUSABLE`: OpenAI returned a client id or token custody
+     could not use. Nothing was stored. Tell the orchestrator.
+   - `SIGN_IN_TOKEN_FILE_UNREADABLE`: a token file is already there but
+     cannot be read (for example, others can read it). Move it aside, then
+     run step 2 again.
    - `SIGN_IN_ACCOUNT_CHANGED`: a later sign-in named another ChatGPT
      account than the saved one. To switch accounts, move the token file
      aside first.

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The owner's sign-in to the ChatGPT plan, run by the owner on the owner's
-// machine (#1620, `docs/local/chatgpt-plan.md`), as OpenAI's open-source
-// token-sharing flow publishes it
-// (https://developers.openai.com/siwc/token-sharing-open-source/sign-in):
+// The owner's plan sign-in on the owner's machine (#1620), as OpenAI's open-source flow
+// publishes it (https://developers.openai.com/siwc/token-sharing-open-source/sign-in):
 //
 //   - The first sign-in registers Ops Astro for this ChatGPT account: it
 //     authorizes with `client_id=dynamic_agent_client`, the app's name hint
@@ -15,25 +13,24 @@
 //     and nonce and a PKCE S256 challenge, back to a `127.0.0.1` loopback
 //     redirect, never `localhost`.
 //   - The code is exchanged, form-encoded, at the token endpoint with the
-//     issued id, the verifier, the same redirect and the same resource, and
-//     the grant must include plan use. The ID token must validate
-//     (`id-token.ts`): signed with the issuer's published key, for this
-//     issuer and client, unexpired, with the nonce sent; a later sign-in must
-//     name the same account. Only then are the tokens written under custody's
-//     lock, owner-only (`plan-token.ts`), with the account they are for.
+//     issued id, verifier, redirect and resource; the grant must include
+//     plan use and its ID token must validate (`id-token.ts`), for the same
+//     account on a later sign-in. Only then, and only tokens custody reads
+//     back, are they written under custody's lock, owner-only.
 //
-// It reads no other sign-in on the machine, and says nothing secret: no
-// token, code or verifier. The owner runs it as `chatgpt-sign-in-command.ts`.
+// It reads no other sign-in on the machine and says nothing secret. The owner
+// runs it as `chatgpt-sign-in-command.ts`.
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { dirname, join } from 'node:path';
 import {
+  isPlanTokens,
   readTokenFile,
-  withTokenLock,
   writeTokenFile,
 } from '../../packages/core-custody/src/plan-token.ts';
+import { withTokenLock } from '../../packages/core-custody/src/token-lock.ts';
 import { validatedSubject } from './id-token.ts';
 
 /** The plan's scopes: identity, then plan use, as the open-source flow asks for them. */
@@ -73,7 +70,9 @@ export type SignInRefusal =
   | 'SIGN_IN_IDENTITY_INVALID'
   | 'SIGN_IN_ACCOUNT_CHANGED'
   | 'SIGN_IN_TIMED_OUT'
-  | 'SIGN_IN_STORE_FAILED';
+  | 'SIGN_IN_STORE_FAILED'
+  | 'SIGN_IN_TOKENS_UNUSABLE'
+  | 'SIGN_IN_TOKEN_FILE_UNREADABLE';
 
 export interface SignInOptions {
   readonly issuer: string;
@@ -238,20 +237,34 @@ async function finished(
   if (asking.savedSubject !== undefined && subject !== asking.savedSubject) {
     return { ok: false, code: 'SIGN_IN_ACCOUNT_CHANGED' };
   }
+  const tokens = {
+    clientId: got.clientId,
+    accessToken: granted.access,
+    refreshToken: granted.refresh,
+    expiresAt: now + granted.expiresIn * 1000,
+    subject,
+  };
+  // Only what custody reads back is written, so a sign-in never "succeeds" into a dead file.
+  if (!isPlanTokens(tokens)) return { ok: false, code: 'SIGN_IN_TOKENS_UNUSABLE' };
+  // A write or rename that fails leaves no copy (`writeTokenFile`) and is refused by name.
   const written = await withTokenLock(options.tokenFile, () => {
-    writeTokenFile(options.tokenFile, {
-      clientId: got.clientId,
-      accessToken: granted.access,
-      refreshToken: granted.refresh,
-      expiresAt: now + granted.expiresIn * 1000,
-      subject,
-    });
-    return true;
-  });
-  return written === undefined ? { ok: false, code: 'SIGN_IN_STORE_FAILED' } : { ok: true };
+    try {
+      writeTokenFile(options.tokenFile, tokens);
+      return true;
+    } catch {
+      return false;
+    }
+  }).catch(() => false);
+  return written === true ? { ok: true } : { ok: false, code: 'SIGN_IN_STORE_FAILED' };
 }
 
 export async function signIn(options: SignInOptions): Promise<{ readonly ok: true } | Refused> {
+  // A token file that is there but cannot be read is never signed over: its saved client
+  // and account would be skipped. The owner moves it aside first.
+  const held = readTokenFile(options.tokenFile);
+  if (typeof held === 'string' && existsSync(options.tokenFile)) {
+    return { ok: false, code: 'SIGN_IN_TOKEN_FILE_UNREADABLE' };
+  }
   const server = createServer();
   await new Promise<void>((resolve) => {
     server.listen(options.port ?? SIGN_IN_PORT, '127.0.0.1', resolve);
@@ -259,7 +272,6 @@ export async function signIn(options: SignInOptions): Promise<{ readonly ok: tru
   try {
     const address = server.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
-    const held = readTokenFile(options.tokenFile);
     const asking: Asking = {
       verifier: base64url(randomBytes(64)),
       state: base64url(randomBytes(32)),

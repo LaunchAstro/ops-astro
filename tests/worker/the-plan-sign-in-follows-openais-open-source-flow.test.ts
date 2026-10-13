@@ -21,7 +21,15 @@
 //
 // The issuer is a fake on loopback.
 
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -149,6 +157,7 @@ it('the code is exchanged form-encoded at the token endpoint with the issued id 
   expect(form.get('resource')).toBe(RESOURCE);
   const held = JSON.parse(readFileSync(tokenFile, 'utf8')) as { clientId: string };
   expect(held.clientId).toBe(ISSUED);
+  expect(readdirSync(folder).filter((name) => name.endsWith('.next'))).toEqual([]);
   expect(statSync(tokenFile).mode & 0o777).toBe(0o600);
 });
 

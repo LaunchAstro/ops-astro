@@ -3,11 +3,19 @@
 // The plan token file's lock (#1620): a holder that resumes after its lock was
 // taken over as stale removes only its own lock, never its successor's, so no
 // third holder enters while the successor still refreshes or writes.
-import { mkdtempSync, rmSync, utimesSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
-import { withTokenLock } from '../../packages/core-custody/src/token-lock.ts';
+import { describe, expect, it } from 'vitest';
+import { takeOverIfStale, withTokenLock } from '../../packages/core-custody/src/token-lock.ts';
 
 function barrier() {
   const gate: { open?: () => void } = {};
@@ -62,4 +70,46 @@ it("a stale holder that resumes leaves its successor's lock in place", async () 
     await Promise.all([first, second]);
     rmSync(folder, { recursive: true, force: true });
   }
+});
+
+/** The lock beside a token file in `folder`. */
+const lockIn = (folder: string): string => join(folder, 'tokens.json.lock');
+
+describe('taking over an abandoned lock is one atomic move', () => {
+  it('an abandoned lock is taken out of the way', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'plan-takeover-'));
+    try {
+      writeFileSync(lockIn(folder), 'abandoned-holder');
+      takeOverIfStale(lockIn(folder), () => 61_000);
+      expect(existsSync(lockIn(folder))).toBe(false);
+      expect(readdirSync(folder)).toEqual([]);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it('a fresh lock made after the abandoned one was judged is put back, untouched', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'plan-takeover-'));
+    try {
+      writeFileSync(lockIn(folder), 'fresh-holder');
+      // Judged abandoned at first look; what the move took was in fact fresh.
+      const ages = [61_000, 0];
+      takeOverIfStale(lockIn(folder), () => ages.shift() ?? 0);
+      expect(readFileSync(lockIn(folder), 'utf8')).toBe('fresh-holder');
+      expect(readdirSync(folder)).toEqual(['tokens.json.lock']);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it('control: a fresh lock is left alone', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'plan-takeover-'));
+    try {
+      writeFileSync(lockIn(folder), 'fresh-holder');
+      takeOverIfStale(lockIn(folder));
+      expect(readFileSync(lockIn(folder), 'utf8')).toBe('fresh-holder');
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
 });

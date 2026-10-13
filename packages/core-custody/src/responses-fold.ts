@@ -13,7 +13,26 @@ import type { StoredCredential } from './credentials.ts';
 import type { Outbound } from './egress-answer.ts';
 import { redactedValue, redacterOf } from './redaction.ts';
 
-/** The completed response of a whole Responses stream, as JSON text, or undefined. */
+/** The deepest nesting a plan answer may have; a Responses answer is a few levels deep. */
+const MOST_DEPTH = 64;
+
+/** Whether a parsed value nests deeper than MOST_DEPTH, judged from its own list, not the call stack. */
+function tooDeep(value: unknown): boolean {
+  const pending: [unknown, number][] = [[value, 0]];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const [item, depth] = next;
+    if (typeof item !== 'object' || item === null) continue;
+    if (depth >= MOST_DEPTH) return true;
+    for (const child of Object.values(item)) pending.push([child, depth + 1]);
+  }
+  return false;
+}
+
+/**
+ * The completed response of a whole Responses stream, as JSON text, or
+ * undefined; undefined too when it nests deeper than MOST_DEPTH, which
+ * nothing below then walks or writes.
+ */
 export function foldResponses(stream: string): string | undefined {
   for (const block of stream.split(/\r?\n\r?\n/u)) {
     const data = block
@@ -33,6 +52,7 @@ export function foldResponses(stream: string): string | undefined {
     const response = shape.response as { status?: unknown } | null | undefined;
     if (typeof response !== 'object' || response === null || Array.isArray(response))
       return undefined;
+    if (tooDeep(response)) return undefined;
     return response.status === 'completed' ? JSON.stringify(response) : undefined;
   }
   return undefined;
@@ -88,7 +108,13 @@ export function foldedReply(
   secrets: readonly string[],
   credential: Pick<StoredCredential, 'kind' | 'account'>,
 ): Record<string, unknown> {
-  const folded = foldedAndRedacted(outcome.body, secrets);
+  let folded: string | undefined;
+  try {
+    folded = foldedAndRedacted(outcome.body, secrets);
+  } catch {
+    // Whatever the answer held, custody withholds it and goes on serving.
+    folded = undefined;
+  }
   return folded === undefined
     ? { type: 'withheld', reason: 'malformed' }
     : {

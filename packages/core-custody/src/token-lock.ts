@@ -9,10 +9,19 @@
 // while it still holds the id expected: its own on release, the abandoned
 // one's on takeover. A holder that resumes after its lock was taken over
 // therefore leaves its successor's lock in place, and no third holder enters
-// while the successor still refreshes or writes.
+// while the successor still refreshes or writes. Taking over an abandoned lock
+// is one atomic rename (`takeOverIfStale`).
 
 import { randomBytes } from 'node:crypto';
-import { readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  linkSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 
 /** How long a lock is waited for, and how old a lock is before it is taken as abandoned. */
 const LOCK_WAIT_MS = 10_000;
@@ -37,15 +46,32 @@ function removeIfHeldBy(lock: string, id: string): void {
   }
 }
 
-/** The abandoned lock removed, if it is still the one judged abandoned. */
-function takeOverIfStale(lock: string): void {
+const ageOf = (path: string): number => Date.now() - statSync(path).mtimeMs;
+
+/**
+ * An abandoned lock taken out of the way by one atomic rename, so two waiters
+ * cannot both remove it, and neither can remove a fresh lock made meanwhile:
+ * a lock found fresh once moved is put back, unless another is there by then.
+ */
+export function takeOverIfStale(lock: string, age: (path: string) => number = ageOf): void {
   try {
-    if (Date.now() - statSync(lock).mtimeMs <= LOCK_STALE_MS) return;
+    if (age(lock) <= LOCK_STALE_MS) return;
   } catch {
     return;
   }
-  const abandoned = holderOf(lock);
-  if (abandoned !== undefined) removeIfHeldBy(lock, abandoned);
+  const aside = `${lock}.${randomBytes(6).toString('hex')}.stale`;
+  try {
+    renameSync(lock, aside);
+  } catch {
+    return;
+  }
+  try {
+    if (age(aside) <= LOCK_STALE_MS) linkSync(aside, lock);
+  } catch {
+    // A new lock is there already: it stands.
+  } finally {
+    rmSync(aside, { force: true });
+  }
 }
 
 /**
