@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A budget answer by a client-wide decider: judged on the task's client read under the task lock, on separate connections, refused with nothing moved when the task moved client meanwhile; a first approver whose client grant was revoked does not pair."
+}
