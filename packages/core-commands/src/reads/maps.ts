@@ -5,7 +5,13 @@
 // tickets in closing order, never stored on the map, so a decision lives once,
 // on its ticket (W2).
 
-import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  clientsReached,
+  readableTaskCondition,
+  readableTaskParams,
+  type Subject,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
 
 interface MapRow {
@@ -141,6 +147,24 @@ async function readMapTickets(
 }
 
 /**
+ * Whether the subjects' grants reach the map now, judged once its lock is held
+ * by this statement's clock: a grant that ended or was revoked while the lock
+ * was awaited reaches nothing.
+ */
+async function stillReaches(
+  tx: TenantQuery,
+  mapId: string,
+  subjects: readonly Subject[],
+): Promise<boolean> {
+  const rows = await tx.query(
+    `select 1 from public.records r where r.business_id = $1 and r.id = $2
+        and ${readableTaskCondition('r', 3)}`,
+    [tx.businessId, mapId, ...readableTaskParams(subjects)],
+  );
+  return rows.length > 0;
+}
+
+/**
  * The map, or undefined when the id names no live map of this business. Its
  * client goes by `readClientFacts`' rule: the id only where the reader's
  * grants reach that client, so a grant on the map alone reads null.
@@ -169,7 +193,7 @@ export async function readMapView(
         and deleted_at is null and data ->> 'type' = 'map' for share`,
     [tx.businessId, mapId],
   );
-  if (held.length === 0) return undefined;
+  if (held.length === 0 || !(await stillReaches(tx, mapId, subjects))) return undefined;
   // The components and versions as of the version read with the map, so a
   // revision committed since is not mixed into this one. A linked ticket's id
   // shows only while it is still a live non-map ticket of this map.
