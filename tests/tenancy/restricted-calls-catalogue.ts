@@ -286,7 +286,8 @@ export async function catalogueFunctions(
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('public', 'ops') and p.prokind = 'f'
         and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      order by 2`,
+      -- Byte order, as the census lists them, whatever the database's collation.
+      order by p.oid::regprocedure::text collate "C"`,
   );
   return rows.map((row) => ({
     qualified: row.qualified,
