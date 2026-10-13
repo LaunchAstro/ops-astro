@@ -15,6 +15,8 @@
 //   is tried again three times. The reset's window has already ended every
 //   session the sign-out would, so it is tidiness, never the security.
 
+import { PASSWORD_RESET_PATHS } from '../../../../packages/core-wire/src/index.ts';
+
 export interface RecoveryRoute {
   /** The provider's own address, its issuer. */
   readonly gotrueUrl: string;
@@ -135,7 +137,7 @@ async function api(
 
 /** Ask for a link to be mailed. The answer is the same for every address. */
 export async function requestReset(route: RecoveryRoute, email: string): Promise<boolean> {
-  const answer = await api(route, '/api/password/reset', {
+  const answer = await api(route, PASSWORD_RESET_PATHS.reset, {
     headers: JSON_BODY,
     body: JSON.stringify({ email }),
   });
@@ -147,7 +149,7 @@ export async function beginReset(
   route: RecoveryRoute,
   accessToken: string,
 ): Promise<'begun' | 'invalid' | 'needs-support' | 'failed'> {
-  const answer = await api(route, '/api/password/begin', { headers: bearer(accessToken) });
+  const answer = await api(route, PASSWORD_RESET_PATHS.begin, { headers: bearer(accessToken) });
   if (answer.status === 200) return 'begun';
   if (answer.code === 'RESET_NEEDS_SUPPORT') return 'needs-support';
   return answer.code === 'RESET_LINK_INVALID' ? 'invalid' : 'failed';
@@ -156,7 +158,8 @@ export async function beginReset(
 /** Tell the API the password is written, so the window settles now. */
 export async function confirmChanged(route: RecoveryRoute, accessToken: string): Promise<boolean> {
   return (
-    (await api(route, '/api/password/changed', { headers: bearer(accessToken) })).status === 200
+    (await api(route, PASSWORD_RESET_PATHS.changed, { headers: bearer(accessToken) })).status ===
+    200
   );
 }
 

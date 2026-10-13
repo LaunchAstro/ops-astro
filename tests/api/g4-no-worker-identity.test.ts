@@ -44,6 +44,11 @@ const OTHERS = [
   'POST /api/b/:businessKey/account/sessions/end-others',
   'POST /api/b/:businessKey/account/sessions/list',
   'POST /api/b/:businessKey/account/sessions/sign-out',
+  // A forgotten password, signed out: a link asked for by address, and the
+  // provider's recovery session beginning and settling its reset.
+  'POST /api/password/begin',
+  'POST /api/password/changed',
+  'POST /api/password/reset',
   'POST /api/session',
   'POST /api/session/end',
 ];
