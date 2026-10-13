@@ -34,6 +34,7 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
+import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -144,9 +145,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
-  // Launch from the task: a person who directs the task's agent opens a run
-  // for it (`tasks-launch.ts`). Never an agent's.
-  declare('task.launch', 'assign'),
+  // Launch from the task, and its agent taking it, in their own file.
+  ...LAUNCH_SURFACE,
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
