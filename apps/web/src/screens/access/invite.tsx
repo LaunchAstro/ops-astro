@@ -24,7 +24,6 @@ import type {
   CapabilitiesResult,
   InvitationRole,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { holds } from '../settings/reads.ts';
 
 /** What `invitation.create` takes: its operands, `surface-operands.ts`. */
 export interface Invitation {
@@ -46,7 +45,8 @@ export const holdsAccess = (
   state: ReadState<CapabilitiesResult>,
   action: 'manage' | 'share',
 ): boolean =>
-  state.outcome === 'ready' && holds(state.value.grants, { collection: 'access', action });
+  state.outcome === 'ready' &&
+  state.value.grants.some((grant) => grant.collection === 'access' && grant.action === action);
 
 /** The server's fixes, under the field its refusal names. */
 const errorOf = (refusal: WireRefusal | null, field: keyof Invitation): string | undefined =>
