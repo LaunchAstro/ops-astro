@@ -84,7 +84,8 @@ export async function readCall(request: DoorRequest): Promise<CallRequest | 400 
   const shape = parsed as Record<string, unknown>;
   const model = shape['model'] ?? DEFAULT_MODEL;
   const fields = shape['fields'];
-  const stream = shape['stream'] ?? false;
+  // Absent is a whole answer; anything there but a boolean (null included) is refused.
+  const stream = 'stream' in shape ? shape['stream'] : false;
   if (typeof model !== 'string' || !MODEL_NAME.test(model)) return 400;
   if (typeof stream !== 'boolean') return 400;
   if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) return 400;

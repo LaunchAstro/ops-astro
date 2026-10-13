@@ -101,6 +101,13 @@ describe('the runner answering a call that asks to stream', () => {
     expect(w.appCalls()).toEqual([]);
   });
 
+  it.each(['yes', 1, null])('refuses a stream flag of %j as a bad request', async (stream) => {
+    const { w, r } = await start();
+    const reply = await call(r, { ...message, stream });
+    expect(reply.status).toBe(400);
+    expect(w.asked()).toEqual([]);
+  });
+
   it('answers a call that does not ask to stream exactly as before, through codex exec', async () => {
     const { w, r } = await start();
     w.knobs({ text: 'Two tasks are due.' });

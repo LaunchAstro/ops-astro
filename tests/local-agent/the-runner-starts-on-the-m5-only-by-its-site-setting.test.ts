@@ -56,6 +56,8 @@ describe('a streamed call on a Codex the runner does not expect', () => {
   it.each([
     ['another version', { userAgent: 'codex_cli_rs/0.163.0 (Mac OS 26.5.0; arm64)' }],
     ['another Codex home', { codexHome: '/elsewhere/codex' }],
+    ['a version with more after it', { userAgent: 'codex_cli_rs/0.162.1-patched (Mac OS)' }],
+    ['no version at all', { userAgent: 'codex_cli_rs' }],
   ])('asks the model nothing on %s', async (_label, knobs) => {
     const { w, r } = await start({ OPS_LOCAL_AGENT_CODEX_VERSION: '0.162.1' });
     w.knobs(knobs);

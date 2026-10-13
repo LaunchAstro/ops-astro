@@ -58,6 +58,9 @@ describe('a reading that does not give permission', () => {
     ['without a weekly window', { noWeekly: true }, 'GPT_USAGE_UNKNOWN'],
     ['false', { permission: false }, 'LOCAL_PLAN_LIMIT'],
     ['with a limit reached', { reached: 'rate_limit_reached' }, 'LOCAL_PLAN_LIMIT'],
+    ['the string "true", not true', { permission: 'true' }, 'GPT_USAGE_UNKNOWN'],
+    ['given, but the week is not a whole percentage', { weekly: '12' }, 'GPT_USAGE_UNKNOWN'],
+    ['given, but the week is a fraction', { weekly: 94.5 }, 'GPT_USAGE_UNKNOWN'],
   ])('asks the model nothing when the permission is %s', async (_label, knobs, code) => {
     const { answer, asked, threads } = await ask(knobs);
     expect(answer).toMatchObject({ text: '', code });
