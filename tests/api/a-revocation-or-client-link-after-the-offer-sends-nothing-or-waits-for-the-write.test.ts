@@ -7,11 +7,12 @@
 // A change that comes once the send judgement has passed waits on the locks
 // it holds until the agent reports the write, so the write happens before
 // the change commits; when no write is reported it waits until the send
-// window has passed, and no longer.
+// window has passed, and no longer. The send is recorded before its
+// judgement, so a refused send has `request_at` set and nothing sent.
 
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addClient } from '../commands/fixture.ts';
+import { addClient, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { carriedWorld, type CarriedWorld } from './carried-world.ts';
 import {
@@ -61,8 +62,12 @@ describe.skipIf(serverUrl === undefined)('authority ending after the offer', () 
     const task = String(made.body['recordId']);
     const client = randomUUID();
     await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
+    await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+      await grantTo(tx, w.owner, 'share');
+    });
     const link = async (): Promise<void> => {
       const linked = await w.as(w.owner, 'task.set_party', {
+        operationId: randomUUID(),
         recordId: task,
         expectedRevision: made.body['revision'],
         fields: { client },
@@ -82,7 +87,7 @@ describe.skipIf(serverUrl === undefined)('authority ending after the offer', () 
       expect(world.agent.sent).toHaveLength(0);
       expect(world.ollama.seen).toHaveLength(0);
       expect(await callFor(world, body)).toEqual([
-        { state: 'released', offered: true, requested: false, actual: null },
+        { state: 'released', offered: true, requested: true, actual: null },
       ]);
       expect(await repliesTo(world, body)).toBe(0);
       expect(JSON.parse(events.at(-1)?.data ?? '{}')).toMatchObject({ reply: { answered: false } });

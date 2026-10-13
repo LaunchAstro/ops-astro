@@ -90,10 +90,11 @@ export async function revokeOwn(world: CarriedWorld, tx: TenantQuery): Promise<v
 
 /** The agent deactivated, in `tx`, as the operator's script does. */
 export async function deactivateAgent(world: CarriedWorld, tx: TenantQuery): Promise<void> {
-  await tx.query(`update public.actors set active = false where business_id = $1 and id = $2`, [
-    tx.businessId,
-    world.carrier.agent,
-  ]);
+  await tx.query(
+    `update public.actors set active = false, deactivated_at = clock_timestamp()
+      where business_id = $1 and id = $2`,
+    [tx.businessId, world.carrier.agent],
+  );
 }
 
 /** The agent's actor row held so a carriage judgement waits on it; `letGo` commits what the case adds. */

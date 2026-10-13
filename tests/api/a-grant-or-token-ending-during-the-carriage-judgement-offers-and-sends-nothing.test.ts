@@ -88,7 +88,8 @@ describe.skipIf(serverUrl === undefined)('a change during the carriage judgement
       expect(world.agent.sent).toHaveLength(0);
       expect(world.ollama.seen).toHaveLength(0);
       const [call] = await callFor(world, body);
-      expect(call).toMatchObject({ state: 'released', requested: false });
+      // A send is recorded before its judgement: refused there, `request_at` is set and nothing sent.
+      expect(call).toMatchObject({ state: 'released', requested: at === 'send' });
       if (at === 'offer') {
         expect(call?.offered).toBe(false);
         expect(await stored(world)).toEqual([]);

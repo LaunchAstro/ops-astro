@@ -23,14 +23,14 @@ export function hubCarriage(
   hub: RealtimeHub,
   joined: string[] = [],
   /** Runs before each join is answered: for the function, after its command commits and before the offer. */
-  beforeJoin: { run: (topic: string) => Promise<void> } = { run: async () => {} },
+  beforeJoin?: { run: (topic: string) => Promise<void> },
 ): Carriage {
   return {
     join: async (topic, accessToken) => {
       const subscription = await hub.join(topic, { sub: subOf(accessToken) });
       if (subscription === 'refused') return { ok: false, code: 'CARRIAGE_UNAVAILABLE' };
       joined.push(topic);
-      await beforeJoin.run(topic);
+      await beforeJoin?.run(topic);
       const listeners = new Set<(event: string, message: unknown) => void>();
       const { heard } = subscription;
       // The hub pushes what it delivers onto `heard`; each push is heard as it comes.

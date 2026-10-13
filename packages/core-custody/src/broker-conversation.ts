@@ -13,14 +13,10 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, mayCarry } from './credentials.ts';
 import { sendingCarrier } from './broker-carrier.ts';
-import {
-  atCeiling,
-  registerPromptCopy,
-  WAIT_SECONDS,
-  type ReservedCall,
-} from './broker-reserve.ts';
-import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
+import { atCeiling, registerPromptCopy, WAIT_SECONDS } from './broker-reserve.ts';
+import { sendAndSettle } from './broker-conversation-send.ts';
 import { carriedIn, writeCarriers } from './broker-carriage.ts';
+import type { Handoff } from './carriage.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -57,6 +53,11 @@ export interface ConversationCallRequest {
   readonly onPiece?: (text: string) => void;
   /** The person's message the call answers: one message has at most one call (#1531). */
   readonly messageId?: string;
+  /**
+   * A carried call's handoff (live chat route B): the command layer's
+   * judgements and the person's token, for the call the broker writes.
+   */
+  readonly carry?: (callId: string) => Handoff;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -200,77 +201,9 @@ async function insertStarted(
   return callId;
 }
 
-/** Through custody, then the answer settles at nothing or is held (never settled above nothing). */
-async function sendAndSettle(
-  database: Database,
-  businessId: BusinessId,
-  called: ReservedCall,
-  fields: readonly ResolvedField[],
-  broker: Broker,
-  asked: Pick<ConversationCallRequest, 'model' | 'onPiece'> & { readonly streamed: boolean },
-): Promise<ModelCallResult> {
-  const { callId, operation, route } = called;
-  const { model, onPiece, streamed } = asked;
-  const adapter = broker.providers.get(operation.provider);
-  if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
-  const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
-  // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId, model, streamed);
-  const reader = onPiece === undefined || !streamed ? undefined : operation.pieces?.();
-  const outcome = await broker.custody.dispatch(
-    route.credentialRef,
-    {
-      destination: operation.destination,
-      path: built.path,
-      method: built.method,
-      body: built.body,
-      timeoutMs: operation.timeoutMs,
-      maxResponseBytes: operation.maxResponseBytes,
-    },
-    reader === undefined || onPiece === undefined
-      ? undefined
-      : (chunk) => {
-          for (const text of reader.push(chunk)) onPiece(text);
-        },
-  );
-  const settlement = settlementOf(outcome, operation, adapter, streamed);
-  return await database.withBusiness(
-    businessId,
-    async (tx) => await settledFor(tx, called, settlement, broker),
-  );
-}
-
 /**
- * Custody's outcome for the person waiting on it: held, released, or settled
- * at nothing. Only a call still open settles: one the sweep held, or anything
- * else moved, is no success and keeps no answer.
- */
-async function settledFor(
-  tx: TenantQuery,
-  called: ReservedCall,
-  settlement: Settlement,
-  broker: Broker,
-): Promise<ModelCallResult> {
-  const { callId } = called;
-  if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
-  if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
-  if (settlement.costMinor !== 0) {
-    const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
-    return await hold(tx, called, observed, null, broker);
-  }
-  const [call] = await tx.query<{ readonly state: string }>(
-    'select state from public.model_calls where business_id = $1 and id = $2 for update',
-    [tx.businessId, callId],
-  );
-  if (call?.state !== 'dispatched' || !(await settlePriced(tx, called, settlement, broker))) {
-    return { ok: false, code: 'DECISION_STALE', callId };
-  }
-  const { text } = settlement.answer;
-  return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
-}
-
-/**
- * A person's model call from their own conversation. Every check runs before
+ * A person's model call from their own conversation, streamed only where
+ * custody presents no credential the answer could echo (`sendingCarrier`). Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
  * refused, AW-03 egress off), an unpriced operation (#1508, option B: a priced
  * one is refused), then AW-01's ceilings. The answer settles at
@@ -295,7 +228,6 @@ export async function callModelInConversation(
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
   const { route } = chosen;
   const { account, presentsNothing } = await sendingCarrier(broker, route, operation.destination);
-  // Streamed only where custody sends no credential the answer could echo.
   const streamed = presentsNothing && operation.fold !== undefined;
   const started = await database.withBusiness(
     businessId,
