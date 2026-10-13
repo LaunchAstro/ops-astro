@@ -123,7 +123,7 @@ export async function callModelForPlanning(
   const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPriced(tx, request, operation, route, account),
+    async (tx) => await holdPriced(tx, request, operation, route, { account }),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);

@@ -144,3 +144,4 @@ export {
 } from './carry-seal.ts';
 export { carriedCustody, type CarriedCustodyOptions } from './carried-custody.ts';
 export { realtimeCarriage, type RealtimeCarriageOptions } from './realtime-carriage.ts';
+export { standsOutside } from './outside-carriage.ts';
