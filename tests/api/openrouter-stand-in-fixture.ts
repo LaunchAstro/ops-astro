@@ -15,7 +15,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { latch } from '../support/lock-wait-race.ts';
+
+/** A promise opened by hand, kept here so the stand-in reaches no database harness. */
+function latch(): { readonly promise: Promise<void>; readonly open: () => void } {
+  const box: { open?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    box.open = resolve;
+  });
+  return { promise, open: () => box.open?.() };
+}
 
 export const HAIKU = 'anthropic/claude-haiku-5.5';
 export const HAIKU_DATED = 'anthropic/claude-haiku-5.5-20261007';
