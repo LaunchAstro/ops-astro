@@ -78,6 +78,7 @@ function hook(name: string, lockfile: string): { status: number | null; out: str
   mkdirSync(join(dir, '.husky'));
   copyFileSync(join(ROOT, '.husky/pre-commit'), join(dir, '.husky/pre-commit'));
   cpSync(join(ROOT, 'scripts/gate'), join(dir, 'scripts/gate'), { recursive: true });
+  copyFileSync(join(ROOT, 'scripts/hook-dispatch.sh'), join(dir, 'scripts/hook-dispatch.sh'));
   mkdirSync(join(dir, 'tests/gate'), { recursive: true });
   for (const canary of ['canary.txt', 'shape-canary.txt'])
     copyFileSync(join(ROOT, 'tests/gate', canary), join(dir, 'tests/gate', canary));

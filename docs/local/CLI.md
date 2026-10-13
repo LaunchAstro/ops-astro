@@ -26,6 +26,24 @@ pnpm cli logout
 `node apps/cli/main.ts` runs the same entry without pnpm. `pnpm cli` prints
 nothing of its own on stdout, so the output can be piped to `jq`.
 
+## Installing
+
+The entry is executable and starts with `#!/usr/bin/env node`, so a link to it
+on your PATH is the installed command. The command needs only a checkout of
+the repository and Node 24 or later first on the PATH. It imports nothing
+from `node_modules`, so it does not need `pnpm install`.
+
+```sh
+mkdir -p ~/.local/bin                     # must be on PATH
+ln -sf "$PWD/apps/cli/main.ts" ~/.local/bin/ops-astro
+ops-astro help
+```
+
+Run the `ln` from the checkout the command should use. Keep that checkout on
+`main`; `git pull` there updates the command. `ops-astro` behaves exactly like
+`pnpm cli` from that checkout; its help names both.
+It keeps its credential files in that checkout's `.local/`, as below.
+
 The operation list comes from `COMMAND_SURFACE`
 (`packages/core-wire/src/surface.ts`), the same registry the API
 mounts its routes from. The command line answers an operation it does not know on its

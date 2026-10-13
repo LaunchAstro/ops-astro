@@ -1,12 +1,15 @@
 name: codeql
 
-# CI-QUEUE: CodeQL's advanced setup, in place of default setup. Default setup
-# never runs on a merge queue's build (GitHub: code scanning merge protection
-# "will not apply to merge queue groups"), so it cannot scan a group. This
-# workflow scans what default setup scanned, with its settings:
-# the languages it found (actions, javascript-typescript, python), the
-# default query suite, no build, on a pull request, a push to main and a
-# weekly schedule, and on `merge_group` as well.
+# CodeQL's advanced setup, in place of default setup. This workflow scans
+# what default setup scanned, with its settings: the languages it found
+# (actions, javascript-typescript, python), the default query suite, no
+# build, on a pull request, a push to main and a nightly schedule.
+#
+# Not on `merge_group` (RELAYROI1515 cut 6, 13 October 2026). GitHub never
+# applies code scanning merge protection to a merge queue group, so a group's
+# scan blocked nothing and cost the queue 5 minutes of runners. The pull
+# request is scanned and gated before it is queued, and main is scanned on
+# every push and each night.
 #
 # `CodeQL` is not a job here. It is the code scanning results check that
 # GitHub Advanced Security (integration 57789) posts on a commit once an
@@ -21,16 +24,16 @@ on:
   pull_request:
   push:
     branches: [main]
-  merge_group:
+  # 03:41 UTC each night.
   schedule:
-    - cron: '41 3 * * 1'
+    - cron: '41 3 * * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Never a merge group (CI-SPEED); see ci.yml.
+  # The same rule as ci.yml's; this workflow no longer runs on a merge group.
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
