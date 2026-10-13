@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Review evidence, bound to the revision being merged (ADR 0046).
 //
-// 1. The pull request body carries the review checkpoint block from
-//    scripts/review-preflight.mjs, and its head is the head being merged.
+// 1. With the trusted epoch and debt label, Git computes the range. Otherwise
+//    the body carries the checkpoint from scripts/review-preflight.mjs,
+//    whose head is the head being merged.
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
 // 3. CQ-13, product issue 42: the body carries the record of the review by a
@@ -10,11 +11,10 @@
 //    Sol's review is owed (owner, 1 October 2026), the `needs-sol` label and
 //    a `Sol-owed:` line naming its row in stage1/SOL-OWED.md.
 //
-// 4. The trusted internal Stage 1 owner epoch permits an explicit unreviewed,
-//    full-range debt marker to defer model and human review outcomes/records.
-//    Its range ends at HEAD_SHA and starts at BASE_SHA or at the merge base of
-//    BASE_SHA and HEAD_SHA (owner, 11 October), so main moving does not stale
-//    it. Checkpoints and every non-review check remain required.
+// 4. The trusted internal Stage 1 owner epoch and needs-sol label defer
+//    model and human review outcomes/records. Git computes the range from
+//    the judged base and PR head. Legacy full-range debt markers and their
+//    checkpoints remain valid strictly before 2026-11-01T00:00:00Z.
 //
 // It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
 // runs in continuous integration and in its own tests. It reads no reviewer
@@ -216,25 +216,45 @@ const failures = [];
 // delivery. Only trusted repository configuration may activate this route.
 // The PR supplies scope and debt, never authority. No outcome is invented.
 const DEFERRAL_EPOCH = 'DOMAINFIRST20261008';
-const deferring =
-  process.env['OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL'] === DEFERRAL_EPOCH && deferrals.length > 0;
+const LEGACY_DEFERRAL_CUTOFF = '2026-11-01T00:00:00Z';
+const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
+const trustedEpoch = process.env['OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL'] === DEFERRAL_EPOCH;
+const computedRange = trustedEpoch && labels.has('needs-sol') && deferrals.length === 0;
+const computedDeferral =
+  computedRange && Object.values(record).every((values) => values.length === 0);
+const deferring = trustedEpoch && (deferrals.length > 0 || computedDeferral);
+const forkPoint = () => {
+  try {
+    return execFileSync('git', ['merge-base', base, head], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return '';
+  }
+};
+let rangeBase = '';
+if (computedRange) {
+  if (/^[0-9a-f]{40}$/u.test(base) && /^[0-9a-f]{40}$/u.test(head)) rangeBase = forkPoint();
+  if (rangeBase === '') {
+    failures.push(
+      'review deferral requires full BASE_SHA and HEAD_SHA commits with a readable merge base.',
+    );
+  }
+}
 const DEFERRAL_FORM =
   /^Review deferral: DOMAINFIRST20261008 internal-stage1 (?<base>[0-9a-f]{40})\.\.(?<head>[0-9a-f]{40}) stage1\/SOL-OWED\.md$/u;
 if (deferrals.length > 0 && !deferring) {
   failures.push('review deferral requires the trusted internal Stage 1 owner epoch.');
 }
-if (deferring) {
+if (deferring && !computedDeferral) {
+  if (!(Date.now() < Date.parse(LEGACY_DEFERRAL_CUTOFF))) {
+    failures.push(
+      `legacy review deferral expired at ${LEGACY_DEFERRAL_CUTOFF}; ` +
+        'remove the pasted marker and use the trusted epoch with needs-sol.',
+    );
+  }
   const mark = deferrals.length === 1 ? DEFERRAL_FORM.exec(deferrals[0].line) : null;
-  const forkPoint = () => {
-    try {
-      return execFileSync('git', ['merge-base', base, head], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim();
-    } catch {
-      return '';
-    }
-  };
   const from = mark?.groups.base;
   if (
     mark === null ||
@@ -248,16 +268,17 @@ if (deferring) {
         'BASE_SHA and HEAD_SHA, and stage1/SOL-OWED.md.',
     );
   }
-  if (
-    stated.length > 0 ||
+}
+if (
+  deferring &&
+  (stated.length > 0 ||
     owed.length > 0 ||
     Object.values(record).some((values) => values.length > 0) ||
     /\b(?:approve[ds]?|approval|accepted|reviewed|no\s+findings|all\s+closed|reviews?\s+(?:complete[ds]?|passed))\b/iu.test(
       prose,
-    )
-  ) {
-    failures.push('review deferral cannot carry review outcomes, records or approval claims.');
-  }
+    ))
+) {
+  failures.push('review deferral cannot carry review outcomes, records or approval claims.');
 }
 
 // A recorded revision names this head when either is a prefix of the other,
@@ -296,13 +317,13 @@ if (deferring) {
   }
 }
 
-if (checkpoint === null) {
+if (!computedRange && checkpoint === null) {
   failures.push(
     'the pull request carries no review checkpoint block.\n' +
       '        Run `node scripts/review-preflight.mjs` and paste what it prints.\n' +
       '        See docs/agents/review-checkpoint.md.',
   );
-} else {
+} else if (!computedRange) {
   const recorded = (checkpoint[1] ?? '').toLowerCase();
   if (!namesHead(recorded)) {
     failures.push(
@@ -413,10 +434,14 @@ const companiesOf = (model) =>
 const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 if (deferring) {
-  const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
-  const debtLabel = builtBy.has('OpenAI') ? 'needs-second-model' : 'needs-sol';
-  if (!labels.has('unreviewed') || !labels.has(debtLabel)) {
-    failures.push(`review deferral requires current labels unreviewed and ${debtLabel}.`);
+  // Retain the old debt label only for pasted markers already in flight.
+  if (
+    !computedDeferral &&
+    (!labels.has('unreviewed') || (!labels.has('needs-sol') && !labels.has('needs-second-model')))
+  ) {
+    failures.push(
+      'legacy review deferral requires current labels unreviewed and needs-sol or needs-second-model.',
+    );
   }
   if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
 }
@@ -531,6 +556,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
+if (computedRange) console.log(`review-evidence: range ${rangeBase}..${head}`);
 if (deferring) {
   console.log(
     'review-evidence: REVIEW DEFERRED INTERNAL STAGE1. ' +
