@@ -26,6 +26,7 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
+export { routeTemplate, siteCustody, siteDestination } from './site-custody.ts';
 export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
 export { custodySenderSource, type DomainRead } from './email-sender-custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
@@ -146,3 +147,4 @@ export {
 } from './carry-seal.ts';
 export { carriedCustody, type CarriedCustodyOptions } from './carried-custody.ts';
 export { realtimeCarriage, type RealtimeCarriageOptions } from './realtime-carriage.ts';
+export { standsOutside } from './outside-carriage.ts';

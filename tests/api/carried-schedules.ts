@@ -6,7 +6,12 @@
 // a carriage judgement at its lock (a judgement reads the actor `for share`;
 // the call's own writes only take its key, so they pass the hold).
 
+import { randomUUID } from 'node:crypto';
+import { expect } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { revokeGrant, type TenantQuery } from '../../packages/core-records/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import { addClient, grantTo } from '../commands/fixture.ts';
 import type { CarriedWorld } from './carried-world.ts';
 import { holdApp, waitersOf, type HeldApp } from './carried-exchange-fixture.ts';
 import { sendStreaming, type Streaming } from './streamed-reply-fixture.ts';
@@ -24,14 +29,39 @@ export const ask = (
   body: string,
   token?: string,
   task?: string,
+  model?: string,
 ): Promise<Streaming> =>
   sendStreaming(
     world.api,
     world.w.owner,
     'conversation.start',
-    { body, ...(task === undefined ? {} : { scope: { kind: 'task', id: task } }) },
+    {
+      body,
+      ...(task === undefined ? {} : { scope: { kind: 'task', id: task } }),
+      ...(model === undefined ? {} : { model }),
+    },
     token,
   );
+
+/** The paid call asked with `body`: its hold and what it committed under the chat budget. */
+export async function heldFor(
+  world: CarriedWorld,
+  body: string,
+): Promise<readonly { readonly reserved: number; readonly committed: number }[]> {
+  return await world.w.fixture.db.admin.execute(
+    `select c.reserved_minor::int as reserved,
+            (case when c.state = 'settled' then c.actual_minor
+                  when c.state in ('reserved', 'dispatched', 'liability_unknown')
+                    then c.reserved_minor else 0 end)::int as committed
+       from public.model_calls c
+       join public.planning_envelopes e
+         on e.business_id = c.business_id and e.id = c.planning_envelope_id
+       join public.conversation_messages m
+         on m.business_id = c.business_id and m.id = c.conversation_message_id
+      where m.body = $1`,
+    [body],
+  );
+}
 
 /** The agent's membership of call `k`'s conversation closed, as a model change closes it. */
 export async function leaveMembership(tx: TenantQuery, k: string): Promise<void> {
@@ -112,3 +142,88 @@ export async function holdAgent(world: CarriedWorld): Promise<HeldApp<void>> {
 export const judgementWaits = async (world: CarriedWorld, holder: HeldApp<void>): Promise<void> => {
   await waitersOf(world.w.fixture.db.admin, holder.pid);
 };
+
+/**
+ * A task for the owner to ask on, and how to link a client to it as the
+ * person does, on a connection of its own: the link waits on the rows it
+ * writes, never on the app's one connection.
+ */
+export async function linkableTask(
+  world: CarriedWorld,
+): Promise<{ readonly task: string; readonly link: () => Promise<void> }> {
+  const { w } = world;
+  const made = await w.as(w.owner, 'task.create', { fields: { title: `Plan ${randomUUID()}` } });
+  const task = String(made.body['recordId']);
+  const client = randomUUID();
+  await addClient(w.fixture.db.app, w.fixture.business, client, w.owner);
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, w.owner, 'share');
+  });
+  const link = async (): Promise<void> => {
+    const own = connect(w.fixture.db.appUrl, { source: 'runtime' });
+    try {
+      const placed = await executeCommand(own, w.fixture.business, w.owner.presented, 'api', {
+        command: 'task.set_party',
+        operationId: randomUUID(),
+        recordId: task,
+        expectedRevision: made.body['revision'],
+        fields: { client },
+      } as never);
+      expect(placed).toMatchObject({ recordId: task });
+    } finally {
+      await own.close();
+    }
+  };
+  return { task, link };
+}
+
+const nothing = (): void => {};
+
+/** How many backends of this database wait on a lock another holds. */
+async function blockedNow(world: CarriedWorld): Promise<number> {
+  const [row] = await world.w.fixture.db.admin.execute<{ readonly n: number }>(
+    `select count(*)::int as n from pg_stat_activity
+      where datname = current_database() and cardinality(pg_blocking_pids(pid)) > 0`,
+  );
+  return row?.n ?? 0;
+}
+
+/**
+ * Runs `change` once the carried send is judged, holding the agent's write
+ * report until the change is seen blocked or has committed: the order of
+ * `blocked`, `written` and `committed`. A send that holds its locks until the
+ * write gives all three in that order.
+ */
+export async function againstTheWrite(
+  world: CarriedWorld,
+  change: () => Promise<void>,
+): Promise<readonly string[]> {
+  const order: string[] = [];
+  let letWrite = nothing;
+  const writing = new Promise<void>((resolve) => {
+    letWrite = resolve;
+  });
+  world.agent.beforeWritten = async () => {
+    await writing;
+    order.push('written');
+  };
+  await world.agent.dispatched(1);
+  const changing = (async () => {
+    await change();
+    order.push('committed');
+  })();
+  for (let tries = 0; tries < 500 && !order.includes('committed'); tries += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polls the server
+    if ((await blockedNow(world)) > 0) {
+      order.push('blocked');
+      break;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- polls the server
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+  letWrite();
+  await changing;
+  return order;
+}

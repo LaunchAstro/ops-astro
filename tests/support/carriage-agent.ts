@@ -34,6 +34,8 @@ export interface AgentStandIn {
   release(): void;
   /** Runs before each accept is sent: a case's chance to change the world after the offer. */
   beforeAccept: (k: string) => Promise<void>;
+  /** Runs before the write is reported: a case's chance to see what waits on the send. */
+  beforeWritten: () => Promise<void>;
   /** Runs before a request past its deadline is refused: how late the refusal comes. */
   beforeLapse: () => Promise<void>;
   /** Added to the stand-in's own clock, as a machine whose clock disagrees with the function's. */
@@ -54,6 +56,8 @@ export interface AgentOptions {
   readonly key: string;
   readonly keys: CarryKeys;
   readonly ollama: string;
+  /** The stand-in OpenRouter a paid call's request goes to, where the world has one. */
+  readonly openrouter?: string;
   readonly runner?: string;
 }
 
@@ -92,6 +96,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
     accepted: [],
     beforeAccept: async () => {},
     beforeLapse: async () => {},
+    beforeWritten: async () => {},
     clockOffset: 0,
     requests: [],
     dispatched: async (n) => {
@@ -124,7 +129,8 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
       await say('refused', { code: 'MODEL_MACHINE_BUSY' });
       return;
     }
-    const asked = request['request'] as { path: string; body: string };
+    const asked = request['request'] as { destination: string; path: string; body: string };
+    const origin = asked.destination === 'openrouter' ? options.openrouter : options.ollama;
     const clock = ownClock();
     standIn.requests.push({ deadlineAt: Number(request['deadlineAt']), heardAt: clock });
     if (!sendable(Number(request['deadlineAt']), clock)) {
@@ -133,7 +139,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
       return;
     }
     if (standIn.mode !== 'unreported') await say('started', {});
-    const responding = fetch(`${options.ollama}${asked.path}`, {
+    const responding = fetch(`${origin ?? ''}${asked.path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: asked.body,
@@ -144,6 +150,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
       await gate();
       return;
     }
+    await standIn.beforeWritten();
     await say('written', {});
     const reader = ollamaPieces();
     let body = '';

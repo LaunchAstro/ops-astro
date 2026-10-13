@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's bound runner ports observe each run afresh: a revert served after its publish on the same ports reads reverted, and an alias read that failed once does not answer for a later observation."
+}

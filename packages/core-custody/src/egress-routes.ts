@@ -11,15 +11,35 @@
 // exact paths only: the mail provider's, whose key could otherwise create keys
 // or read contacts. A destination may declare the stream format custody
 // decodes for it (`stream: 'openai_sse'`, #1508).
+//
+// A route may instead be a catalogued call's fixed template, query included
+// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
+// is one segment or query value, a `{name*}` slot one segment or more. A
+// request matches it whole or not at all, so no query is free. A query value
+// is what `URLSearchParams` writes for one value: unreserved characters, `+`
+// and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw
+// `&`, `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields its answer is cut to
+// (`fields`, the catalogued response schema, at most four).
+
+import type { Fields } from './egress-answer.ts';
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
  * A PUT is only ever one `/*` segment under a prefix, never an exact path.
  */
-export interface Route {
+export interface PathRoute {
   readonly method: 'DELETE' | 'GET' | 'PUT';
   readonly path: string;
 }
+
+/** A catalogued call's whole shape, path and query, and the fields its answer keeps. */
+export interface TemplateRoute {
+  readonly method: 'GET' | 'POST' | 'PUT';
+  readonly template: string;
+  readonly fields: Fields;
+}
+
+export type Route = PathRoute | TemplateRoute;
 
 export type Method = 'POST' | Route['method'];
 
@@ -61,6 +81,114 @@ export interface Extras {
   readonly stream?: 'openai_sse';
 }
 
+/**
+ * A template's path: literal segments (never `.` or `..`, and no longer than
+ * a slot's segment, so every literal is a segment `PATH_SLOT` admits) and slots.
+ */
+const TEMPLATE_PATH = /^(?:\/(?:\{[a-z]+\*?\}|(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]{1,256}))+$/u;
+/** A template's query: each parameter a literal value or one slot. */
+const TEMPLATE_QUERY =
+  /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
+/** What a path slot stands for: one segment, never `.` or `..`, and no escape. */
+const PATH_SLOT = /^(?!\.\.?$)[A-Za-z0-9._~-]{1,256}$/u;
+/** What a query slot stands for: one value as `URLSearchParams` writes it. */
+const QUERY_SLOT = /^(?:[A-Za-z0-9*._~+-]|%[0-9A-F]{2}){1,768}$/u;
+/** A template slot: `{name}` for one segment or value, `{name*}` for one segment or more. */
+const SLOT = /^\{[a-z]+(\*?)\}$/u;
+/** A declared field: dotted names, as the catalogue writes them. */
+const FIELD = /^[A-Za-z0-9_$]{1,64}(?:\.[A-Za-z0-9_$]{1,64}){0,7}$/u;
+const KINDS: ReadonlySet<unknown> = new Set(['string', 'number', 'boolean']);
+/** A schema of more fields would make custody's echo check (`withholds`) too costly. */
+const MOST_FIELDS = 4;
+
+function templateOf(template: string): boolean {
+  const [path = '', query, ...more] = template.split('?');
+  return (
+    more.length === 0 &&
+    TEMPLATE_PATH.test(path) &&
+    (query === undefined || TEMPLATE_QUERY.test(query))
+  );
+}
+
+/** The text before and after the first `?`, or the whole and undefined. */
+function split(text: string): readonly [string, string | undefined] {
+  const at = text.indexOf('?');
+  return at === -1 ? [text, undefined] : [text.slice(0, at), text.slice(at + 1)];
+}
+
+/** Whether a template segment that is no many-segment slot takes this path segment. */
+const takes = (want: string, given: string | undefined): boolean =>
+  given !== undefined && (want === given || SLOT.exec(want)?.[1] === '');
+
+/** Whether `block` takes the path's segments from `at` on. */
+const blockAt = (block: readonly string[], path: readonly string[], at: number): boolean =>
+  block.every((want, offset) => takes(want, path[at + offset]));
+
+/**
+ * Whether path segments fill template segments: a literal as written, a slot
+ * by `PATH_SLOT`, a many-segment slot one segment or more. Every segment is
+ * checked once, and the template's many-segment slots split it into blocks:
+ * the first is matched from the left, the last from the right, and each other
+ * at its first place after one segment or more. No literal is a segment
+ * `PATH_SLOT` refuses, so a path with one fills nothing, and a slot never
+ * needs a later place than the first; the time is the path's length times
+ * the template's, and nothing recurses.
+ */
+function segmentsFill(template: readonly string[], path: readonly string[]): boolean {
+  if (!path.every((segment) => PATH_SLOT.test(segment))) return false;
+  const blocks: string[][] = [[]];
+  for (const want of template) {
+    if (SLOT.exec(want)?.[1] === '*') blocks.push([]);
+    else blocks.at(-1)?.push(want);
+  }
+  const [first = [], ...others] = blocks;
+  const last = others.pop();
+  if (last === undefined) return path.length === first.length && blockAt(first, path, 0);
+  const end = path.length - last.length;
+  if (end < first.length || !blockAt(first, path, 0) || !blockAt(last, path, end)) return false;
+  let at = first.length;
+  for (const block of others) {
+    let place = at + 1;
+    while (place + block.length < end && !blockAt(block, path, place)) place += 1;
+    if (place + block.length >= end) return false;
+    at = place + block.length;
+  }
+  return end - at >= 1;
+}
+
+/** Whether query parameters fill the template's, in order: a literal value as written, a slot by `QUERY_SLOT`. */
+function queryFills(template: readonly string[], query: readonly string[]): boolean {
+  return (
+    template.length === query.length &&
+    template.every((want, at) => {
+      const [name = '', value = ''] = want.split('=');
+      const given = query[at] ?? '';
+      if (!given.startsWith(`${name}=`)) return false;
+      const sent = given.slice(name.length + 1);
+      return SLOT.test(value) ? QUERY_SLOT.test(sent) : sent === value;
+    })
+  );
+}
+
+/** Whether a request's path and query fill the template exactly, by comparison and fixed checks only. */
+function fills(template: string, path: string): boolean {
+  const [wantPath, wantQuery] = split(template);
+  const [givenPath, givenQuery] = split(path);
+  if ((wantQuery === undefined) !== (givenQuery === undefined)) return false;
+  if (!givenPath.startsWith('/')) return false;
+  if (!segmentsFill(wantPath.slice(1).split('/'), givenPath.slice(1).split('/'))) return false;
+  return wantQuery === undefined || queryFills(wantQuery.split('&'), (givenQuery ?? '').split('&'));
+}
+
+function fieldsOf(value: unknown): Fields | undefined {
+  if (!isObject(value)) return undefined;
+  const entries = Object.entries(value);
+  const valid =
+    entries.length <= MOST_FIELDS &&
+    entries.every(([name, kind]) => FIELD.test(name) && KINDS.has(kind));
+  return valid ? (Object.fromEntries(entries) as Fields) : undefined;
+}
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -78,6 +206,14 @@ function headersOf(value: unknown): Record<string, string> | undefined {
 }
 
 function routeOf(value: unknown): Route | undefined {
+  if (isObject(value) && Object.keys(value).toSorted().join() === 'fields,method,template') {
+    const { method, template } = value;
+    const fields = fieldsOf(value['fields']);
+    const known = method === 'GET' || method === 'POST' || method === 'PUT';
+    return known && typeof template === 'string' && templateOf(template) && fields !== undefined
+      ? { method, template, fields }
+      : undefined;
+  }
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
   const { method, path } = value;
   if (typeof path !== 'string') return undefined;
@@ -128,6 +264,9 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
   return extras;
 }
 
+/** The longest path, query included, a request may name: no route needs more. */
+const MOST_PATH = 8_192;
+
 /** A path under the origin: starts with one slash, no scheme, no authority, no traversal, no control bytes. */
 const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
@@ -137,14 +276,29 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
  * for any other method, only a route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
+  if (path.length > MOST_PATH) return false;
+  const routes = extras.routes ?? [];
+  if (templateFilled(extras, method, path) !== undefined) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
   if (method === 'POST') {
     return extras.post !== false && (extras.posts === undefined || extras.posts.includes(path));
   }
-  return (extras.routes ?? []).some((route) => {
-    if (route.method !== method) return false;
+  return routes.some((route) => {
+    if (!('path' in route) || route.method !== method) return false;
     if (!route.path.endsWith('/*')) return route.path === path;
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
+}
+
+/** The template route a request fills, if any: its answer is cut to the route's fields. */
+export function templateFilled(
+  extras: Extras,
+  method: Method,
+  path: string,
+): TemplateRoute | undefined {
+  return (extras.routes ?? []).find(
+    (route): route is TemplateRoute =>
+      'template' in route && route.method === method && fills(route.template, path),
+  );
 }

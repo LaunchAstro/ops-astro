@@ -314,7 +314,8 @@ it('a pending revert keeps the original decision time until observation', async 
   expect(await revertCorrection(input, p)).toMatchObject({
     state: 'reverted',
     decidedAt: new Date(decided).toISOString(),
-    intervalMs: 181_000,
+    // The deployment is read before and after the capture, a second each here.
+    intervalMs: 182_000,
   });
 });
 

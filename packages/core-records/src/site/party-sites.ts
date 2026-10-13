@@ -138,6 +138,23 @@ export async function unbindPartySitePage(
   });
 }
 
+/**
+ * Whether the client's site still binds this page to this file. A plain read:
+ * the caller holds the correction naming it, and while that correction is open
+ * an unbind of the page waits for it and is refused, so the page stays.
+ */
+export async function isBoundPage(
+  tx: TenantQuery,
+  page: { readonly partyId: string; readonly pageUrl: string; readonly path: string },
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly bound: boolean }>(
+    `select true as bound from public.party_site_pages
+      where business_id = $1 and party_id = $2::uuid and page_url = $3 and path = $4`,
+    [tx.businessId, page.partyId, page.pageUrl, page.path],
+  );
+  return rows.length > 0;
+}
+
 /** The client's site with its pages, or undefined where the business binds none for it. */
 export async function readPartySite(
   tx: TenantQuery,
@@ -165,6 +182,19 @@ export async function readPartySite(
     project: site.project,
     pages: pages.map((page) => ({ pageUrl: page.page_url, path: page.path })),
   };
+}
+
+/**
+ * The client's site row, share-locked on its own before a request locks its
+ * page: an unbind takes the site before the page, so a request does too.
+ */
+export async function shareClientSite(tx: TenantQuery, partyId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.party_sites
+      where business_id = $1 and party_id = $2::uuid
+        for share`,
+    [tx.businessId, partyId],
+  );
 }
 
 /** Whether the task is a live task of the named party: asked only of the operand party. */

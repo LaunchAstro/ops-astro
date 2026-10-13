@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { isPartysTask } from './party-sites.ts';
+import { isPartysTask, shareClientSite } from './party-sites.ts';
 import {
   COVERED,
   EFFECTIVE_AT,
@@ -136,12 +136,15 @@ export type PartyRefused = {
  * statement as one pair of that client's site, key-share locked so an unbind waits for the
  * request, and the site row share-locked so a move of its providers waits too (and the request
  * for a move in flight); any other spelling, another client's page or none is
- * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here.
+ * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here. The site row is
+ * share-locked first, on its own: an unbind takes the site before the page, so
+ * a request does too, and neither holds what the other waits on.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
   input: NewLiveCorrection,
 ): Promise<LiveCorrection | PartyRefused> {
+  await shareClientSite(tx, input.partyId);
   const [row] = await tx.query<Row>(
     `insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,

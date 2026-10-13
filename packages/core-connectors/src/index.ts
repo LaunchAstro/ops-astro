@@ -114,8 +114,11 @@ export {
 } from './catalogue.ts';
 export {
   callConnector,
+  SLOT_SEGMENTS,
   type CallDependencies,
   type ConnectorResult,
+  type CredentialReference,
+  type CustodyAnswer,
   type ProviderResult,
   type ProviderValue,
 } from './call.ts';
@@ -191,6 +194,7 @@ export {
   type PartySite,
   type SiteBinding,
 } from './site/binding.ts';
+export { readServing } from './site/serving.ts';
 export { proposeSource, type ProposeInput } from './site/propose.ts';
 export {
   ACCEPTANCE_CASES,
