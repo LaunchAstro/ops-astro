@@ -17,7 +17,8 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import type { ConversationCallRequest } from './broker-conversation-types.ts';
-import { localRoute, outsideFields, ownsConversation, refused } from './broker-conversation.ts';
+import { conversationAdmitFor } from './broker-admission.ts';
+import { judged, localRoute, ownsConversation, refused } from './broker-conversation.ts';
 import {
   committedUnderSql,
   holdPriced,
@@ -63,6 +64,7 @@ async function sendPlanning(
   reserved: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
+  request: ConversationCallRequest,
 ): Promise<ModelCallResult> {
   const { callId, operation, route, reservedMinor } = reserved;
   const adapter = broker.providers.get(operation.provider);
@@ -70,14 +72,19 @@ async function sendPlanning(
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
   const built = adapter.build(values, callId);
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
+  const outcome = await broker.custody.dispatch(
+    route.credentialRef,
+    {
+      destination: operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: operation.timeoutMs,
+      maxResponseBytes: operation.maxResponseBytes,
+    },
+    undefined,
+    conversationAdmitFor(database, businessId, request, route)?.(callId),
+  );
   const settlement = settlementOf(outcome, operation, adapter);
   return await database.withBusiness(businessId, async (tx) => {
     if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
@@ -116,8 +123,8 @@ export async function callModelForPlanning(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
-  const fields = outsideFields(request.fields);
-  const chosen = localRoute(operation, fields, caller, broker);
+  const { fields, clientWork } = await judged(database, businessId, request);
+  const chosen = localRoute(operation, fields, caller, broker, clientWork);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
   const account = await sendingAccount(broker, route, operation.destination);
@@ -126,7 +133,7 @@ export async function callModelForPlanning(
     async (tx) => await holdPriced(tx, request, operation, route, { account }),
   );
   if (!('reserved' in held)) return held;
-  return await sendPlanning(database, businessId, held.reserved, fields, broker);
+  return await sendPlanning(database, businessId, held.reserved, fields, broker, request);
 }
 
 /**

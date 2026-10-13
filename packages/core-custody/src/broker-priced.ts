@@ -26,12 +26,14 @@ import { openrouterModel, type ModelOperation } from '../../core-connectors/src/
 import { MALFORMED, WORKER_LOST } from './broker-fault.ts';
 import {
   callModelUnpriced,
+  judged,
   localRoute,
   outsideFields,
   ownsConversation,
   refused,
 } from './broker-conversation.ts';
 import type { ConversationCallRequest } from './broker-conversation-types.ts';
+import { opened, stillDispatched } from './broker-admission.ts';
 import { holdPriced } from './broker-hold.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import type { ReservedCall } from './broker-reserve.ts';
@@ -94,7 +96,8 @@ export async function callModelInConversation(
       ? undefined
       : outsideRoute(businessId, caller, operation, fields, paid, broker);
   if (route === undefined || paid === undefined) {
-    const chosen = localRoute(operation, fields, caller, broker);
+    const found = await judged(database, businessId, request);
+    const chosen = localRoute(operation, found.fields, caller, broker, found.clientWork);
     return refused(chosen.ok ? 'BUDGET_UNAVAILABLE' : chosen.code);
   }
   // A paid model is the one the person picked, never a default (C7).
@@ -157,14 +160,6 @@ async function heldCall(
 }
 
 /** A promise and the function that settles it. */
-function opened<T>(): { readonly promise: Promise<T>; readonly settle: (value: T) => void } {
-  const box: { settle?: (value: T) => void } = {};
-  const promise = new Promise<T>((resolve) => {
-    box.settle = resolve;
-  });
-  return { promise, settle: (value) => box.settle?.(value) };
-}
-
 /**
  * Custody's display texts for the person, as the operation reads them; none
  * where the caller takes none or the operation streams nothing. Provisional:
@@ -216,14 +211,6 @@ function admission(paid: PaidSeams, callId: string): Admit {
       .then(lost, lost);
     return await verdict.promise;
   };
-}
-
-async function stillDispatched(tx: TenantQuery, callId: string): Promise<boolean> {
-  const [call] = await tx.query<{ readonly state: string }>(
-    'select state from public.model_calls where business_id = $1 and id = $2 for update',
-    [tx.businessId, callId],
-  );
-  return call?.state === 'dispatched';
 }
 
 interface Asked {

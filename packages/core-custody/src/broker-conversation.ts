@@ -5,8 +5,9 @@
 // version. Local routes only and unpriced: no money moves, so nothing is
 // reserved, and a cloud route is refused before anything is written (AW-03
 // egress off), save LA-1's laptop carve-out: the owner's own GPT session
-// (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
-// against the planning budget (`broker-planning.ts`, AW-04's U10), and a paid
+// (`carriesLocally`), a cloud subscription judged by owner line 72's source
+// rule (`broker-conversation-source.ts`). A priced planning reply takes the
+// same checks and holds against the planning budget (`broker-planning.ts`, AW-04's U10), and a paid
 // chat reply takes the held path (`broker-priced.ts`, #1508).
 
 import type { BusinessId, Database } from '../../core-records/src/index.ts';
@@ -17,6 +18,8 @@ import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
 import { carriedIn } from './broker-carriage.ts';
 import { insertStarted, messageCall } from './broker-message-call.ts';
+import { conversationSource, judgedFields } from './broker-conversation-source.ts';
+import { conversationAdmitFor } from './broker-admission.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -64,29 +67,48 @@ export function ownsConversation(
   );
 }
 
-/** A local route the fields may take and the person's own session may carry, or why not. */
+/**
+ * The request's fields as the broker acts on them, judged by the
+ * conversation's source (owner line 72, `broker-conversation-source.ts`), and
+ * whether it is a client's work. Read in a transaction of its own before any
+ * route is chosen; the command layer's held page check refuses a client link
+ * that lands after it.
+ */
+export async function judged(
+  database: Database,
+  businessId: BusinessId,
+  request: ConversationCallRequest,
+): Promise<{ readonly fields: readonly ResolvedField[]; readonly clientWork: boolean }> {
+  const source = await database.withBusiness(
+    businessId,
+    async (tx) => await conversationSource(tx, request),
+  );
+  return { fields: judgedFields(request.fields, source), clientWork: source.clientWork };
+}
+
+/** A route the fields may take and the person's own session may carry, or why not. */
 export function localRoute(
   operation: ModelOperation,
   fields: readonly ResolvedField[],
   caller: ModelCaller,
   broker: Broker,
+  clientWork: boolean,
 ):
   | { readonly ok: true; readonly route: BrokerRoute }
   | { readonly ok: false; readonly code: BrokerRefusal } {
-  // LA-1's laptop carve-out: the owner's GPT session is a cloud route, taken here only for
-  // the person's own typed message in their own conversation, and only where the broker
-  // carries the carve-out (`carriesLocally`). Every other cloud route stays refused.
-  const local = broker.routes.filter(
+  // LA-1's laptop carve-out: the owner's GPT session is a cloud route carried by a
+  // subscription, offered here only where the broker carries the carve-out
+  // (`carriesLocally`). It is judged as the cloud route it is (owner line 72): it
+  // takes the owner's own free text and never a client's work. Every other cloud
+  // route stays refused.
+  const candidates = broker.routes.filter(
     (route) =>
       (route.reach === 'local' || carriesLocally(broker, route)) &&
       route.provider === operation.provider,
   );
-  // The carve-out's route counts as local for the data classes, and is recorded as admitted:
-  // the conversation row's reach is `local` by AW-03's own constraint (0107), and its
-  // provider `local_gpt` says the answer came from the owner's GPT session.
-  const candidates = local.map((route): BrokerRoute =>
-    carriesLocally(broker, route) ? Object.assign({}, route, { reach: 'local' as const }) : route,
-  );
+  if (clientWork && candidates.some((route) => route.credentialKind === 'subscription')) {
+    return { ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' };
+  }
   const choice = eligibleRoutes(operation.fields, fields, candidates);
   const route = choice.ok
     ? candidates.find((candidate) => choice.routes.includes(candidate))
@@ -99,6 +121,7 @@ export function localRoute(
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
+    clientWork,
   });
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
@@ -123,8 +146,8 @@ export async function callModelUnpriced(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
-  const fields = outsideFields(request.fields);
-  const chosen = localRoute(operation, fields, caller, broker);
+  const { fields, clientWork } = await judged(database, businessId, request);
+  const chosen = localRoute(operation, fields, caller, broker, clientWork);
   if (!chosen.ok) return refused(chosen.code);
   // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
@@ -159,6 +182,6 @@ export async function callModelUnpriced(
     { callId, operation, route, reservedMinor: 0 },
     fields,
     broker,
-    { ...request, streamed },
+    { ...request, streamed, admit: conversationAdmitFor(database, businessId, request, route) },
   );
 }

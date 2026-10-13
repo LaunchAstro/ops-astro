@@ -12,6 +12,7 @@ import type { ReservedCall } from './broker-reserve.ts';
 import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
 import type { Broker, ModelCallResult, ResolvedField } from './broker-types.ts';
 import type { Handoff } from './carriage.ts';
+import type { Admit } from './custody.ts';
 
 /** Through custody, then the answer settles at nothing or is held (never settled above nothing). */
 export async function sendAndSettle(
@@ -25,10 +26,12 @@ export async function sendAndSettle(
     readonly onPiece?: (text: string) => void;
     readonly carry?: (callId: string) => Handoff;
     readonly streamed: boolean;
+    /** The judgement again at custody's handoff, for a send that needs one (`broker-admission.ts`). */
+    readonly admit?: ((callId: string) => Admit) | undefined;
   },
 ): Promise<ModelCallResult> {
   const { callId, operation, route } = called;
-  const { model, onPiece, streamed, carry } = asked;
+  const { model, onPiece, streamed, carry, admit } = asked;
   // A carried call's pieces come as display text already, filtered on the owner's machine.
   const handoff = carry?.(callId);
   const adapter = broker.providers.get(operation.provider);
@@ -52,7 +55,7 @@ export async function sendAndSettle(
       : (chunk) => {
           for (const text of reader.push(chunk)) onPiece(text);
         },
-    undefined,
+    admit?.(callId),
     handoff,
   );
   const settlement = settlementOf(outcome, operation, adapter, streamed);
