@@ -4,13 +4,16 @@
 // answered: an empty take stays empty though a launch was made since, and a
 // replayed take keeps its task as the audit subject. A write under a launch's
 // credential that was waiting on the task's lock when a take started that
-// launch is refused once it gets the lock, and writes nothing.
+// launch is refused once it gets the lock, and writes nothing. A take that
+// presents a delegation credential is refused on its replay as on a fresh
+// call, and a write under a waiting launch takes the cap before the task, as
+// every other holder of both does, so it waits rather than deadlocks.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { holdRow, waiterOf } from '../support/lock-wait-race.ts';
-import { aiWorld, type AiWorld } from './ai-assign-world.ts';
+import { hold, holdRow, waiterOf } from '../support/lock-wait-race.ts';
+import { aiWorld, revisionOf, type AiWorld } from './ai-assign-world.ts';
 import { codeOf } from './agent-fixture.ts';
 import { APPLIED, derivedFor, launchOf, launchedTask, takenAs } from './take-launch-world.ts';
 
@@ -100,3 +103,121 @@ it('a replayed take keeps its task in the audit chain', async () => {
     { outcome: 'replayed', subject: task },
   ]);
 });
+
+it('an empty take asked again with a credential is refused as a fresh one is', async () => {
+  const own = await aiWorld('takereplaycredential');
+  try {
+    const request = { command: 'task.take_launch', operationId: randomUUID() };
+    expect(takenAs(await own.world.asAgent(request))).toEqual({ state: 'none' });
+    // The credential travels beside the request, outside its digest, so the
+    // replay must judge it again. One that resolves to nothing is refused too.
+    const credential = `synthetic-${randomUUID()}`;
+    const fresh = await own.world.asAgent({ ...request, operationId: randomUUID() }, credential);
+    expect(codeOf(fresh)).toBe('SCOPE_NOT_GRANTED');
+    const repeated = await own.world.asAgent(request, credential);
+    expect(codeOf(repeated)).toBe('SCOPE_NOT_GRANTED');
+    const rows = await own.world.db.admin.execute<{ outcome: string; code: string | null }>(
+      'select outcome, refusal_code as code from public.audit_events where operation_id = $1 order by seq',
+      [request.operationId],
+    );
+    expect(rows).toEqual([
+      { outcome: 'applied', code: null },
+      { outcome: 'refused', code: 'SCOPE_NOT_GRANTED' },
+    ]);
+  } finally {
+    await own.world.drop();
+  }
+}, 180_000);
+
+it('a take asked again with no launch named stays on its first launch once that ends', async () => {
+  const own = await aiWorld('takereplayended');
+  try {
+    const task = await launchedTask(own, 'The launch first taken');
+    const firstLaunch = await launchOf(own, task);
+    const request = { command: 'task.take_launch', operationId: randomUUID() };
+    expect(codeOf(await own.world.asAgent(request))).toBe(APPLIED);
+    await own.world.db.admin.execute(
+      'update public.delegations set revoked_at = clock_timestamp() where id = $1',
+      [firstLaunch.delegationId],
+    );
+    const ended = await own.world.asAgent({
+      ...request,
+      operationId: randomUUID(),
+      launchId: firstLaunch.id,
+    });
+    const endedAs = { launchId: firstLaunch.id, state: 'ended', cause: 'revoked' };
+    expect(takenAs(ended)).toMatchObject(endedAs);
+    const laterTask = await launchedTask(own, 'A later waiting launch');
+    expect(takenAs(await own.world.asAgent(request))).toMatchObject(endedAs);
+    expect(await launchOf(own, laterTask)).toMatchObject({ state: 'waiting', takenAt: null });
+  } finally {
+    await own.world.drop();
+  }
+}, 180_000);
+
+const deadlocksIn = async (own: AiWorld): Promise<number> => {
+  const [row] = await own.world.db.admin.execute<{ n: number }>(
+    'select deadlocks::int as n from pg_stat_database where datname = current_database()',
+  );
+  return row?.n ?? 0;
+};
+
+/** Cap, then task: the order a proposal, a handback and the runtime's `acquire` take them in. */
+const holdCapThenTask = async (own: AiWorld, task: string) =>
+  await hold(
+    own.world.db,
+    async (execute) => {
+      await execute('select 1 from public.budget_caps where business_id = $1 for update', [
+        own.world.business,
+      ]);
+    },
+    async (execute) => {
+      await execute('select 1 from public.records where business_id = $1 and id = $2 for update', [
+        own.world.business,
+        task,
+      ]);
+    },
+  );
+
+const proposeUnder = async (own: AiWorld, task: string, credential: string) =>
+  await own.world.asAgent(
+    {
+      command: 'task.propose',
+      operationId: randomUUID(),
+      recordId: task,
+      expectedRevision: await revisionOf(own, task),
+      purpose: `draft_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3000,
+      currency: 'AUD',
+      payload: { instruction: 'a synthetic draft' },
+      step: { kind: 'compose', payload: {} },
+    },
+    credential,
+  );
+
+it('a proposal under a waiting launch waits behind a cap holder and does not deadlock', async () => {
+  const own = await aiWorld('takecaporder');
+  try {
+    const task = await launchedTask(own, 'A waiting launch proposes under its own authority');
+    const credential = await derivedFor(own, (await launchOf(own, task)).id);
+    const before = await deadlocksIn(own);
+    const held = await holdCapThenTask(own, task);
+    const writing = proposeUnder(own, task, credential).then(
+      (result) => codeOf(result),
+      () => 'raised',
+    );
+    try {
+      await waiterOf(own.world.db, held);
+    } finally {
+      await held.letGo();
+      await writing;
+    }
+    // Statistics publish when a backend ends: close the pools, then read afresh.
+    await own.world.db.closeSessions();
+    await own.world.db.admin.execute('select pg_stat_clear_snapshot()');
+    expect(await deadlocksIn(own)).toBe(before);
+    expect(await writing).toBe(APPLIED);
+  } finally {
+    await own.world.drop();
+  }
+}, 180_000);

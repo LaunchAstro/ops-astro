@@ -240,9 +240,15 @@ export async function excludedFromTakenLaunch(
     [tx.businessId, delegationId],
   );
   if (launches.length === 0) return false;
-  // The launch's task first, as a take takes it, then the launch read afresh:
-  // a take that started the launch while this call waited for the task is
-  // seen once it has committed, so a write parked behind it is refused.
+  // The global lock order (`core-runtime/src/locks.ts`): the business's caps,
+  // then the launch's task, as a take takes it, then the launch read afresh.
+  // The caps come first because the write this call admits may go on to take
+  // one (a proposal does) while a holder of that cap waits on the task. A take
+  // that started the launch while this call waited for the task is seen once
+  // it has committed, so a write parked behind it is refused.
+  await tx.query(`select 1 from public.budget_caps where business_id = $1 order by id for update`, [
+    tx.businessId,
+  ]);
   await tx.query(
     `select 1 from public.records where business_id = $1 and id = any($2::uuid[]) for no key update`,
     [tx.businessId, launches.map((launch) => launch.task_id)],

@@ -20,12 +20,12 @@
 import { takeLaunch } from '../../../core-records/src/index.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
 import { isIdentifier } from './operands.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 
 const NOT_YOURS_FIX = 'Take only a launch made for you; ask with no launch named for your own.';
 
-const notYours = (fix: string): HandlerOutcome =>
+const notYours = (fix: string): Refused =>
   refused(refuseCommand('SCOPE_NOT_GRANTED', ['launch'], [fix]));
 
 /** A person's call: the run is the agent's to take. */
@@ -47,16 +47,21 @@ export function takeLaunchOperands(request: AgentRequest): TakeOperands {
     : { launchId: undefined, malformed: true };
 }
 
+/** A credential presented to a take, on a fresh call or its replay alike. */
+export const presentedCredential = ({ credential }: AgentCall): Refused | undefined =>
+  credential === undefined || credential === ''
+    ? undefined
+    : notYours('Take a launch on your own login, presenting no credential.');
+
 export async function serveTakeLaunch(
   tx: Parameters<typeof takeLaunch>[0],
-  { session, credential }: AgentCall,
+  call: AgentCall,
   { launchId, malformed }: TakeOperands,
 ): Promise<HandlerOutcome> {
-  if (credential !== undefined && credential !== '') {
-    return notYours('Take a launch on your own login, presenting no credential.');
-  }
+  const presented = presentedCredential(call);
+  if (presented !== undefined) return presented;
   if (malformed) return notYours(NOT_YOURS_FIX);
-  const taken = await takeLaunch(tx, session.actorId, launchId);
+  const taken = await takeLaunch(tx, call.session.actorId, launchId);
   switch (taken.kind) {
     case 'none':
       return applied(null, null, { state: 'none' });
