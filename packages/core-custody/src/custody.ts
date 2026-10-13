@@ -65,7 +65,11 @@ export interface Custody {
   stop(): Promise<void>;
 }
 
-/** Custody's own process, which can also send a request that must be written by a deadline. */
+/**
+ * Custody's own process, which can also send a request that must be written
+ * by a deadline on this machine's clock: it says when it was written, and
+ * past the deadline it writes nothing and is refused `SEND_LAPSED`.
+ */
 export interface ProcessCustody extends Custody {
   dispatchBefore(
     credentialRef: string,
@@ -103,15 +107,22 @@ async function ready(child: ChildProcess): Promise<void> {
   });
 }
 
+/** What custody notes while a dispatch runs, each passed on and never taken as the answer. */
+interface Notes {
+  readonly started?: () => void;
+  readonly piece?: ((text: string) => void) | undefined;
+  readonly written?: (() => void) | undefined;
+}
+
 type Exchange = (
   body: Record<string, unknown>,
-  onStarted?: () => void,
-  onPiece?: (text: string) => void,
+  notes?: Notes,
 ) => Promise<Record<string, unknown> | 'lost'>;
 
 /**
  * One message out and its answer back, or `lost` when custody goes first. A
- * `started` note and each `piece` note are passed on, never taken as the answer.
+ * `started` note, each `piece` note and a `written` note are passed on, never
+ * taken as the answer.
  */
 function exchangeWith(child: ChildProcess): Exchange {
   const waiting = new Map<string, (message: Record<string, unknown>) => void>();
@@ -127,7 +138,7 @@ function exchangeWith(child: ChildProcess): Exchange {
   child.on('exit', loseAll);
   // A write to a custody that died before its exit was handled fails as EPIPE: lost, as on exit, not a crash.
   child.on('error', loseAll);
-  return async (body, onStarted, onPiece) =>
+  return async (body, notes = {}) =>
     await new Promise((resolve) => {
       const id = randomUUID();
       const onLost = (): void => {
@@ -138,11 +149,15 @@ function exchangeWith(child: ChildProcess): Exchange {
       lost.add(onLost);
       waiting.set(id, (message) => {
         if (message['type'] === 'started') {
-          onStarted?.();
+          notes.started?.();
+          return;
+        }
+        if (message['type'] === 'written') {
+          notes.written?.();
           return;
         }
         if (message['type'] === 'piece') {
-          if (typeof message['text'] === 'string') onPiece?.(message['text']);
+          if (typeof message['text'] === 'string') notes.piece?.(message['text']);
           return;
         }
         waiting.delete(id);
@@ -173,6 +188,17 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }
 
+/** One dispatch through custody, its started note kept and the others passed on. */
+async function dispatchOn(
+  exchange: Exchange,
+  body: Record<string, unknown>,
+  notes: Omit<Notes, 'started'>,
+): Promise<CustodyOutcome> {
+  let started = false;
+  const reply = await exchange(body, { ...notes, started: () => (started = true) });
+  return outcomeOf(reply, started);
+}
+
 export async function startCustody(config: CustodyConfig): Promise<ProcessCustody> {
   const child = forkCustody(config);
   let errors = '';
@@ -183,20 +209,16 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
   await ready(child);
   const custody: ProcessCustody = {
     pid: child.pid ?? -1,
-    dispatchBefore: async (credentialRef, request, _gate, onPiece) =>
-      await custody.dispatch(credentialRef, request, onPiece),
-    dispatch: async (credentialRef, request, onPiece) => {
-      let started = false;
-      const markStarted = (): void => {
-        started = true;
-      };
-      const reply = await exchange(
-        { type: 'dispatch', credentialRef, request },
-        markStarted,
-        onPiece,
-      );
-      return outcomeOf(reply, started);
+    dispatchBefore: async (credentialRef, request, gate, onPiece) => {
+      const body = { type: 'dispatch', credentialRef, request, deadlineAt: gate.deadlineAt };
+      const outcome = await dispatchOn(exchange, body, { written: gate.onWritten, piece: onPiece });
+      // Past the deadline custody wrote nothing: a refusal, not an answer.
+      const lapsed =
+        outcome.kind === 'answered' && !outcome.outbound.ok && outcome.outbound.fault === 'lapsed';
+      return lapsed ? { kind: 'refused', started: false, code: 'SEND_LAPSED' } : outcome;
     },
+    dispatch: async (credentialRef, request, onPiece) =>
+      await dispatchOn(exchange, { type: 'dispatch', credentialRef, request }, { piece: onPiece }),
     describe: async (credentialRef, destination) => {
       const reply = await exchange({ type: 'describe', credentialRef, destination });
       if (reply === 'lost' || reply['type'] !== 'described') return null;

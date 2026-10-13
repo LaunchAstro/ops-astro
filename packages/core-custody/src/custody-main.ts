@@ -11,7 +11,7 @@
 // or a fault. For a credential presented as nothing (`none`), it also passes
 // each chunk of a successful answer on as a `piece` note while it reads:
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
-// refused, so there is no borrow path.
+// refused, so there is no borrow path. A `deadlineAt` gates the write (`egress.ts`).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -228,6 +228,13 @@ function isRequest(value: unknown): value is OutboundRequest {
 
 type Message = Record<string, unknown>;
 
+/** A dispatch's deadline as its send gate, noting `written`: none when absent, null when malformed. */
+function gateOf(at: unknown, reply: (body: Message) => void) {
+  if (at === undefined) return;
+  if (typeof at !== 'number' || !Number.isSafeInteger(at)) return null;
+  return { deadlineAt: at, onWritten: () => reply({ type: 'written' }) };
+}
+
 const loaded = load();
 
 /**
@@ -257,7 +264,8 @@ process.on('message', (message: unknown) => {
     return;
   }
   const request = shape['request'];
-  if (!isRequest(request) || unrouted(request)) {
+  const gate = gateOf(shape['deadlineAt'], reply);
+  if (!isRequest(request) || unrouted(request) || gate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
@@ -277,7 +285,7 @@ process.on('message', (message: unknown) => {
       }
     : undefined;
   void (async (): Promise<void> => {
-    const outcome = await send(loaded.destinations, request, credential, undefined, onChunk);
+    const outcome = await send(loaded.destinations, request, credential, undefined, onChunk, gate);
     const safe =
       outcome.ok && !none ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
     reply({
