@@ -63,6 +63,23 @@ describe('the sidebar door on a task’s page', () => {
     ]);
   });
 
+  it('names the task by its key alone when the address carries a query or a fragment', async () => {
+    const { client, calls } = business(true);
+    const view = await mount(
+      <AssistantView
+        client={client}
+        route="agency:task-detail"
+        here="/task/T-12?tab=history#notes"
+        entry={null}
+      />,
+    );
+    await tick();
+    await askFor(view, ASK);
+    expect(sent(calls, '/live_correction/locate')).toStrictEqual([
+      { recordId: 'T-12', pageUrl: ABOUT_FILE.pageUrl },
+    ]);
+  });
+
   it('sends no request for a page the site read does not find', async () => {
     const { client, calls } = business(false);
     const view = await mount(
