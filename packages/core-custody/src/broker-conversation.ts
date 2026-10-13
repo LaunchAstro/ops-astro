@@ -138,40 +138,23 @@ export function localRoute(
 /**
  * The message's call, if one was made: a retry is answered from it, never a
  * second call (#1531). A kept reply is found before the broker is asked. A
- * call still with the model, or settled with its reply being kept (the keep
- * holds the call's row), is on its way; a released or held one kept nothing.
- * A settled one whose keep failed, its row free and no reply kept, gives the
- * message up: the retry asks again, and its reply is kept once.
+ * call still with the model, or settled in the last 30 s (its reply is still
+ * being kept), is on its way; any other ending kept nothing.
  */
 async function messageCall(
   tx: TenantQuery,
   messageId: string | undefined,
 ): Promise<ModelCallResult | undefined> {
   if (messageId === undefined) return undefined;
-  const [call] = await tx.query<{ readonly id: string; readonly state: string }>(
-    `select id, state from public.model_calls
+  const [call] = await tx.query<{ readonly id: string; readonly answering: boolean }>(
+    `select id, (state = 'dispatched' or state = 'settled'
+                 and ended_at > clock_timestamp() - interval '30 seconds') as answering
+       from public.model_calls
       where business_id = $1 and conversation_message_id = $2`,
     [tx.businessId, messageId],
   );
   if (call === undefined) return undefined;
-  const ended = (code: 'STILL_ANSWERING' | 'ANSWER_ENDED'): ModelCallResult => ({
-    ok: false,
-    code,
-    callId: call.id,
-  });
-  if (call.state !== 'settled')
-    return ended(call.state === 'dispatched' ? 'STILL_ANSWERING' : 'ANSWER_ENDED');
-  const lost = await tx.query(
-    `update public.model_calls set conversation_message_id = null
-      where business_id = $1 and id = $2
-        and id in (select id from public.model_calls where business_id = $1 and id = $2
-                    for update skip locked)
-        and not exists (select 1 from public.conversation_messages
-                         where business_id = $1 and answers_message_id = $3)
-      returning id`,
-    [tx.businessId, call.id, messageId],
-  );
-  return lost.length > 0 ? undefined : ended('STILL_ANSWERING');
+  return { ok: false, code: call.answering ? 'STILL_ANSWERING' : 'ANSWER_ENDED', callId: call.id };
 }
 
 /**

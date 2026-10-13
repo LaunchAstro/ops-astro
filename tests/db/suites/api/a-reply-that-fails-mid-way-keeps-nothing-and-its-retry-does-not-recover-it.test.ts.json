@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A model reply that fails part way through being kept, rolled back or with its backend ended, keeps nothing; its retry asks the model no second time and the lost reply is not recovered. Judged on a real migrated database with the local model."
+}
