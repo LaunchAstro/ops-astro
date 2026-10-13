@@ -13,6 +13,9 @@
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path. A dispatch marked `gated` waits after
 // `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
+// A request on a template route is answered with its declared fields only,
+// or `withheld` whole: `malformed` when it is not JSON or does not fill them,
+// `echoed` when the caller could rebuild the credential from them.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -26,8 +29,9 @@ import {
   type Outbound,
   type OutboundRequest,
 } from './egress.ts';
-import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
-import { redact } from './redaction.ts';
+import { keptOf } from './egress-answer.ts';
+import { METHODS, pathAllowed, templateFilled, type Extras } from './egress-routes.ts';
+import { redact, withholds } from './redaction.ts';
 import { openaiSse } from './stream-decode.ts';
 
 interface Loaded {
@@ -185,13 +189,19 @@ async function answer(
   const streaming = streamingOf(credential, request.destination, (text) =>
     reply({ type: 'piece', text }),
   );
-  const outcome = await send(
-    loaded.destinations,
-    request,
-    credential,
-    undefined,
-    streaming.onChunk,
-  );
+  const destination: Extras = loaded.destinations.get(request.destination) ?? {};
+  const route = templateFilled(destination, request.method, request.path);
+  // A template route's answer is judged whole, so none of it goes out as it is read.
+  const onChunk = route === undefined ? streaming.onChunk : undefined;
+  let outcome = await send(loaded.destinations, request, credential, undefined, onChunk);
+  if (route !== undefined && outcome.ok) {
+    const kept = keptOf(outcome, route.fields);
+    if (kept === undefined || withholds(kept.values, credential)) {
+      reply({ type: 'withheld', reason: kept === undefined ? 'malformed' : 'echoed' });
+      return;
+    }
+    outcome = { ...outcome, body: kept.body };
+  }
   reply({
     type: 'answer',
     outcome: streaming.answer(outcome),

@@ -13,7 +13,12 @@
 // A route may instead be a catalogued call's fixed template, query included
 // (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
 // is one segment or query value, a `{name*}` slot one segment or more. A
-// request matches it whole or not at all, so no query is free.
+// request matches it whole or not at all, so no query is free. A query value
+// may hold `%2F`, the guarded call's spelling of `/` (a branch name), and no
+// other escape. Each template route names the fields its answer is cut to
+// (`fields`, the catalogued response schema, at most four).
+
+import type { Fields } from './egress-answer.ts';
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -24,10 +29,11 @@ export interface PathRoute {
   readonly path: string;
 }
 
-/** A catalogued call's whole shape, path and query. */
+/** A catalogued call's whole shape, path and query, and the fields its answer keeps. */
 export interface TemplateRoute {
   readonly method: 'GET' | 'POST' | 'PUT';
   readonly template: string;
+  readonly fields: Fields;
 }
 
 export type Route = PathRoute | TemplateRoute;
@@ -77,6 +83,13 @@ const TEMPLATE_QUERY =
   /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
 /** What a slot stands for: one segment, never `.` or `..`, and no escape. */
 const SLOT_VALUE = String.raw`(?!\.\.?(?:/|\?|&|$))[A-Za-z0-9._~-]{1,256}`;
+/** What a query slot stands for: the same, or `%2F` in place of any character. */
+const QUERY_VALUE = String.raw`(?!\.\.?(?:&|$))(?:[A-Za-z0-9._~-]|%2F){1,256}`;
+/** A declared field: dotted names, as the catalogue writes them. */
+const FIELD = /^[A-Za-z0-9_$]{1,64}(?:\.[A-Za-z0-9_$]{1,64}){0,7}$/u;
+const KINDS: ReadonlySet<unknown> = new Set(['string', 'number', 'boolean']);
+/** A schema of more fields would make custody's echo check (`withholds`) too costly. */
+const MOST_FIELDS = 4;
 
 function templateOf(template: string): boolean {
   const [path = '', query, ...more] = template.split('?');
@@ -89,11 +102,25 @@ function templateOf(template: string): boolean {
 
 /** Whether a request's path and query fill the template exactly. */
 function fills(template: string, path: string): boolean {
-  const pattern = template.replaceAll(/\{[a-z]+(\*?)\}|[.?]/gu, (slot, many?: string) => {
-    if (slot === '.' || slot === '?') return `\\${slot}`;
-    return many === '*' ? `${SLOT_VALUE}(?:/${SLOT_VALUE})*` : SLOT_VALUE;
-  });
+  const query = template.indexOf('?');
+  const pattern = template.replaceAll(
+    /\{[a-z]+(\*?)\}|[.?]/gu,
+    (slot, many: string, at: number) => {
+      if (slot === '.' || slot === '?') return `\\${slot}`;
+      if (query !== -1 && at > query) return QUERY_VALUE;
+      return many === '*' ? `${SLOT_VALUE}(?:/${SLOT_VALUE})*` : SLOT_VALUE;
+    },
+  );
   return new RegExp(`^${pattern}$`, 'u').test(path);
+}
+
+function fieldsOf(value: unknown): Fields | undefined {
+  if (!isObject(value)) return undefined;
+  const entries = Object.entries(value);
+  const valid =
+    entries.length <= MOST_FIELDS &&
+    entries.every(([name, kind]) => FIELD.test(name) && KINDS.has(kind));
+  return valid ? (Object.fromEntries(entries) as Fields) : undefined;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -113,11 +140,12 @@ function headersOf(value: unknown): Record<string, string> | undefined {
 }
 
 function routeOf(value: unknown): Route | undefined {
-  if (isObject(value) && Object.keys(value).toSorted().join() === 'method,template') {
+  if (isObject(value) && Object.keys(value).toSorted().join() === 'fields,method,template') {
     const { method, template } = value;
+    const fields = fieldsOf(value['fields']);
     const known = method === 'GET' || method === 'POST' || method === 'PUT';
-    return known && typeof template === 'string' && templateOf(template)
-      ? { method, template }
+    return known && typeof template === 'string' && templateOf(template) && fields !== undefined
+      ? { method, template, fields }
       : undefined;
   }
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
@@ -170,10 +198,7 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
   const routes = extras.routes ?? [];
-  const templated = routes.some(
-    (route) => 'template' in route && route.method === method && fills(route.template, path),
-  );
-  if (templated) return true;
+  if (templateFilled(extras, method, path) !== undefined) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
   if (method === 'POST') return extras.post !== false;
   return routes.some((route) => {
@@ -182,4 +207,16 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
+}
+
+/** The template route a request fills, if any: its answer is cut to the route's fields. */
+export function templateFilled(
+  extras: Extras,
+  method: Method,
+  path: string,
+): TemplateRoute | undefined {
+  return (extras.routes ?? []).find(
+    (route): route is TemplateRoute =>
+      'template' in route && route.method === method && fills(route.template, path),
+  );
 }

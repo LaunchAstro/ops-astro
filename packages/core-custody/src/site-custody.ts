@@ -3,10 +3,12 @@
 // The live correction's provider calls carried by custody, so the caller's
 // process never holds a site token. Custody's destination for each site entry
 // is derived from the connector catalogue: exactly the catalogued calls that
-// use that entry, each as its fixed template (`routeTemplate`), no POST beside
-// them, and the headers the guarded call would send; custody redacts its
-// answers as it does every destination's. A call catalogued later is admitted
-// with no second list. The port hands each guarded call to custody by its entry's name, with
+// use that entry, each as its fixed template (`routeTemplate`) with its
+// catalogued response schema as the fields custody keeps, no POST beside
+// them, and the headers the guarded call would send. Custody passes back only
+// those fields, or withholds the answer whole when the caller could rebuild
+// the credential from them. A call catalogued later is admitted with no
+// second list. The port hands each guarded call to custody by its entry's name, with
 // no header of the caller's. This file runs in the caller's process, never in
 // custody's.
 
@@ -49,7 +51,8 @@ export function siteDestination(
     const { method, credential } = registration.connector;
     if (credential !== entry || method === 'PATCH') continue;
     const template = routeTemplate(registration);
-    routes.set(`${method} ${template}`, { method, template });
+    const fields = registration.connector.responseSchema;
+    routes.set(`${method} ${template}`, { method, template, fields });
   }
   return {
     key: entry,
@@ -61,6 +64,10 @@ export function siteDestination(
 }
 
 const EMPTY = new Uint8Array();
+const WITHHELD = {
+  echoed: 'PROVIDER_CREDENTIAL_ECHOED',
+  malformed: 'PROVIDER_RESPONSE_MALFORMED',
+} as const;
 
 /** The guarded call's custody port: a referenced call dispatched to the entry's own destination. */
 export function siteCustody(
@@ -80,11 +87,13 @@ export function siteCustody(
     if (outcome.kind === 'refused') return { kind: 'refused', code: outcome.code };
     // Custody lost mid-call may have sent it: unreadable, so a write stays unknown.
     if (outcome.kind === 'worker_lost') return { kind: 'failed' };
+    // Withheld after sending: unreadable, so a write stays unknown.
+    if (outcome.kind === 'withheld') return { kind: 'withheld', code: WITHHELD[outcome.reason] };
     const { outbound } = outcome;
-    // Custody passes no response header; the guarded call's JSON parse is the check on the body.
     if (outbound.ok) {
       const body = new TextEncoder().encode(outbound.body);
-      const headers = { 'content-type': 'application/json' };
+      const { mediaType } = outbound;
+      const headers = mediaType === undefined ? {} : { 'content-type': mediaType };
       return { kind: 'answer', status: outbound.status, headers, body };
     }
     switch (outbound.fault) {

@@ -4,8 +4,9 @@
 // for each site entry come from the connector catalogue, every catalogued
 // call that uses the entry and nothing else, and a call the catalogue gains
 // later is admitted with no second list. The caller answers only a reference;
-// custody adds the token, and redacts a provider's echo of it, so the token is
-// never back in the caller's process. A local stand-in answers
+// custody adds the token, passes back only the declared fields, and withholds
+// an answer that echoes the token, so the token is never back in the caller's
+// process. A local stand-in answers
 // in place of either provider.
 
 import { randomBytes } from 'node:crypto';
@@ -181,8 +182,8 @@ it('a site call by reference reaches the provider with the token custody adds, a
     kind: 'ok',
     value: { 'deployments.0.uid': 'dpl_1', 'deployments.0.meta.githubCommitSha': 'c0ffee' },
   });
-  // The stand-in answers no contents fields: custody sent it, and the schema check refused it.
-  expect(read).toEqual({ kind: 'refused', code: 'PROVIDER_RESPONSE_SCHEMA' });
+  // The stand-in answers no contents fields: custody sent it, and withheld the answer as malformed.
+  expect(read).toEqual({ kind: 'refused', code: 'PROVIDER_RESPONSE_MALFORMED' });
   expect(later).toEqual({ kind: 'ok', value: { 'domains.0.name': 'www.example.com' } });
   expect(seen.map((one) => [one.url, one.authorization])).toEqual([
     [
@@ -198,7 +199,7 @@ it('a site call by reference reaches the provider with the token custody adds, a
   expect(call.byCaller).toEqual([]);
 });
 
-it('a call off the catalogue is refused by custody before a socket, and an echoed token is never returned', async () => {
+it('a call off the catalogue is refused by custody before a socket, and an answer echoing the token is withheld', async () => {
   seen.length = 0;
   const call = deps();
   // The later read's route is not on the source entry's list.
@@ -222,6 +223,7 @@ it('a call off the catalogue is refused by custody before a socket, and an echoe
       call.deps,
     );
     expect(JSON.stringify(echoed).includes(tokens.hosting)).toBe(false);
+    expect(echoed).toEqual({ kind: 'refused', code: 'PROVIDER_CREDENTIAL_ECHOED' });
   } finally {
     echoing = false;
   }

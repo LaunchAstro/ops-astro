@@ -3,7 +3,8 @@
 // Custody's fixed route templates: a destination may list a call's exact
 // shape, query included, and custody sends only a request that fills it. No
 // other path, no extra or missing query parameter, no free query string.
-// Custody adds the destination's credential itself. A local stand-in answers
+// Custody adds the destination's credential itself, and passes back only the
+// fields each route declares. A local stand-in answers
 // in place of any provider.
 
 import { randomBytes } from 'node:crypto';
@@ -22,6 +23,7 @@ import {
 
 const LOOKUP = '/v6/deployments?projectId={project}&sha={sha}&target=production&limit=1';
 const READ = '/v13/deployments/{deployment}';
+const FIELDS = { 'deployments.0.uid': 'string' };
 const canary = `canary-${randomBytes(18).toString('hex')}`;
 const seen: { method: string; url: string; authorization: string | undefined }[] = [];
 let server: Server;
@@ -68,8 +70,8 @@ beforeAll(async () => {
     origin,
     post: false,
     routes: [
-      { method: 'GET', template: LOOKUP },
-      { method: 'GET', template: READ },
+      { method: 'GET', template: LOOKUP, fields: FIELDS },
+      { method: 'GET', template: READ, fields: { content: 'string' } },
     ],
   } as unknown as Destination;
   custody = await startCustody({ credentialsFile, destinations: [hosting] });
@@ -99,7 +101,14 @@ const FILLED = '/v6/deployments?projectId=prj_abc&sha=c0ffee&target=production&l
 it('a request filling a listed template, query included, is sent with the credential custody adds', async () => {
   seen.length = 0;
   const outcome = await dispatch('GET', FILLED);
-  expect(outcome).toMatchObject({ kind: 'answered', outbound: { ok: true, status: 200 } });
+  expect(outcome).toMatchObject({
+    kind: 'answered',
+    outbound: {
+      ok: true,
+      status: 200,
+      body: JSON.stringify({ deployments: { 0: { uid: 'dpl_1' } } }),
+    },
+  });
   expect(await dispatch('GET', '/v13/deployments/dpl_1')).toMatchObject({
     outbound: { ok: true },
   });
@@ -150,19 +159,22 @@ it('a malformed template is refused at load', () => {
   const origin = 'https://api.example.com';
   const load = (extra: Record<string, unknown>) =>
     parseDestinations([{ key: 'hosting', origin, ...extra }]);
-  expect(load({ routes: [{ method: 'GET', template: LOOKUP }] })).toMatchObject({
+  expect(load({ routes: [{ method: 'GET', template: LOOKUP, fields: FIELDS }] })).toMatchObject({
     ok: true,
   });
+  const route = (method: string, template: string, more: Record<string, unknown> = {}) => ({
+    routes: [{ method, template, fields: FIELDS, ...more }],
+  });
   const refused: Record<string, unknown>[] = [
-    { routes: [{ method: 'GET', template: '/v6/deployments?{query}' }] },
-    { routes: [{ method: 'GET', template: '/v6/deployments?projectId={project*}' }] },
-    { routes: [{ method: 'GET', template: '/v6/{a}/../x' }] },
-    { routes: [{ method: 'GET', template: 'v6/deployments' }] },
-    { routes: [{ method: 'GET', template: '//evil.example.com/x' }] },
-    { routes: [{ method: 'GET', template: '/v6/deployments?a=1&&b=2' }] },
-    { routes: [{ method: 'DELETE', template: '/v6/deployments' }] },
-    { routes: [{ method: 'PATCH', template: '/v6/deployments' }] },
-    { routes: [{ method: 'GET', template: '/v6/deployments', path: '/v6/deployments' }] },
+    route('GET', '/v6/deployments?{query}'),
+    route('GET', '/v6/deployments?projectId={project*}'),
+    route('GET', '/v6/{a}/../x'),
+    route('GET', 'v6/deployments'),
+    route('GET', '//evil.example.com/x'),
+    route('GET', '/v6/deployments?a=1&&b=2'),
+    route('DELETE', '/v6/deployments'),
+    route('PATCH', '/v6/deployments'),
+    route('GET', '/v6/deployments', { path: '/v6/deployments' }),
   ];
   for (const extra of refused) {
     expect(load(extra), JSON.stringify(extra)).toMatchObject({

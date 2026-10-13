@@ -63,6 +63,8 @@ export function settlementOf(
 ): Settlement {
   if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
   if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
+  // A withheld outcome comes only from a site template route.
+  if (outcome.kind === 'withheld') return { kind: 'unknown', ...MALFORMED };
   if (!outcome.outbound.ok) {
     const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
     if (declaresNothing(operation, failure.providerCode)) {

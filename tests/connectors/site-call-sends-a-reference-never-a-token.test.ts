@@ -3,8 +3,8 @@
 // The guarded call's token-free mode: when its credential port answers a
 // reference to a custody entry, no token is ever in the caller's process. The
 // request leaves with no Authorization header, through the custody port, named
-// by the entry; custody adds the credential and redacts it from the answer. Stand-in
-// ports only: nothing here reaches a provider.
+// by the entry; custody adds the credential and withholds an answer that
+// echoes it. Stand-in ports only: nothing here reaches a provider.
 
 import { expect, it } from 'vitest';
 import {
@@ -94,6 +94,33 @@ it('custody refusing a write before sending it is a refusal, not an unknown', as
     write.deps,
   );
   expect(published).toEqual({ kind: 'refused', code: 'CUSTODY_ROUTE_REFUSED' });
+});
+
+it('an answer custody withheld after sending is unreadable: a refused read, an unknown write', async () => {
+  for (const code of ['PROVIDER_CREDENTIAL_ECHOED', 'PROVIDER_RESPONSE_MALFORMED']) {
+    const read = world({ kind: 'withheld', code });
+    // oxlint-disable-next-line no-await-in-loop
+    expect(await callConnector(op('site.deployment.lookup'), LOOKUP, read.deps)).toEqual({
+      kind: 'refused',
+      code,
+    });
+    const write = world({ kind: 'withheld', code }, { ref: 'source_control' });
+    // oxlint-disable-next-line no-await-in-loop
+    const published = await callConnector(
+      op('site.publish'),
+      {
+        repository: 'agency/site',
+        path: 'src/pages/about.astro',
+        message: 'm',
+        content: 'PHA+',
+        sha: 'abc',
+        branch: 'main',
+      },
+      write.deps,
+    );
+    expect(published).toEqual({ kind: 'unknown', code });
+    expect([...read.recorded, ...write.recorded]).toEqual([code, code]);
+  }
 });
 
 it('a reference to another entry, or a reference with no custody port, sends nothing', async () => {
