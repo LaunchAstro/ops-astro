@@ -90,8 +90,13 @@ async function stillOperator(
 ): Promise<boolean> {
   const session = await resolveLogin(tx, presented);
   if ('refused' in session || session.personId !== run.gate.operator.personId) return false;
-  const subjects = subjectsOf(session);
-  await tx.query(HELD_GRANTS, [subjects.map((subject) => subject.id), ...KEY]);
+  await tx.query(HELD_GRANTS, [subjectsOf(session).map((subject) => subject.id), ...KEY]);
+  // What was resolved before that wait is stale: the membership, the person
+  // and the login are read again, after it, before anything is admitted.
+  const now = await resolveLogin(tx, presented);
+  if ('refused' in now || now.personId !== session.personId || now.actorId !== session.actorId)
+    return false;
+  const subjects = subjectsOf(now);
   const scope = { kind: 'business', id: null } as const;
   const decision = await checkAuthority(tx, subjects, { ...OPERATIONS_MANAGE, scope });
   return decision.ok && !(await sessionEndedHeld(tx, presented));
