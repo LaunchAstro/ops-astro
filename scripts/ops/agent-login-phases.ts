@@ -11,7 +11,6 @@ import { agentSignIn } from '../../apps/worker/sign-in.ts';
 import { executeAgentCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import {
   acting,
-  admission,
   admitted,
   liveLogins,
   signedIn,
@@ -21,11 +20,14 @@ import {
   type Execute,
   type Run,
 } from './agent-login-acting.ts';
+import { admission, type Admission } from './agent-login-admission.ts';
 import { providerUser } from './agent-login-provider.ts';
 import { Refusal } from './staging-reset.ts';
 
 /** A named point of the act; a test's throw there is a crash at that point. */
 export type At = (point: string) => Promise<void>;
+/** An act's admission: make's, or restore's (agent-login-restore.ts). */
+export type Admit = (execute: Execute, run: Run) => Promise<Admission>;
 
 const PROBE_FAILED =
   'the probe did not answer as the agent: the login stays bound, and a rerun probes again';
@@ -52,20 +54,27 @@ const advance = async (
   return row;
 };
 
-async function reserve(execute: Execute, run: Run, at: At): Promise<Act | { already: Act }> {
-  const decided = await admission(execute, run);
+async function reserve(
+  execute: Execute,
+  run: Run,
+  at: At,
+  admit: Admit,
+): Promise<Act | { already: Act }> {
+  const decided = await admit(execute, run);
   await at('reserve');
   if (!('fresh' in decided)) return 'open' in decided ? decided.open : decided;
   const [act] = await execute<Act>(
     `insert into ops.agent_login_acts
        (business_id, agent_actor_id, act, generation, email, custody_item, phase, operator_person_id)
-     values ($1, $2, 'make', 1, $3, $4, 'reserved', $5) returning *`,
+     values ($1, $2, $6, $7, $3, $4, 'reserved', $5) returning *`,
     [
       run.businessId,
       run.make.agentId,
       decided.fresh.email,
       decided.fresh.item,
       run.gate.operator.personId,
+      run.make.act,
+      decided.fresh.generation,
     ],
   );
   if (act === undefined) throw new Error('agent-login: the act was not reserved');
@@ -74,18 +83,27 @@ async function reserve(execute: Execute, run: Run, at: At): Promise<Act | { alre
 
 /** The act row locked after the agent, its owner and its mappings; `live` the mappings' logins. */
 async function locked(execute: Execute, run: Run, id: string) {
-  const { ownerActor } = await admitted(execute, run);
+  const { ownerActor } = await admitted(execute, run, run.make.act === 'make');
   const live = await liveLogins(execute, run);
-  return { ownerActor, live, act: await actRow(execute, id) };
+  const act = await actRow(execute, id);
+  if (act.closed_at !== null && act.phase !== 'probed')
+    throw new Refusal('the act was closed by a stop');
+  return { ownerActor, live, act };
 }
 
 /**
- * The provider phase judges the make's admission again under its own locks,
+ * The provider phase judges the act's admission again under its own locks,
  * no live login on the agent but its act's included, and the operator's
  * bearer after the last of those waits, before it makes a provider user.
  */
-async function provide(execute: Execute, run: Run, id: string, password: string, at: At) {
-  const decided = await admission(execute, run);
+async function provide(
+  execute: Execute,
+  run: Run,
+  id: string,
+  password: string,
+  { at, admit }: { at: At; admit: Admit },
+) {
+  const decided = await admit(execute, run);
   const act = 'open' in decided ? decided.open : await actRow(execute, id);
   if (act.id !== id || act.phase !== 'reserved') return act;
   await signedIn(run);
@@ -110,6 +128,12 @@ async function bind(execute: Execute, run: Run, id: string): Promise<Act> {
      values ($1, gen_random_uuid(), $2, $3, true, $4)`,
     [run.businessId, login?.id, run.make.agentId, ownerActor],
   );
+  // A restore switches the agent back on with its new login; its delegations stay revoked.
+  if (act.act === 'restore')
+    await execute(
+      'update public.actors set active = true, deactivated_at = null where business_id = $1 and id = $2',
+      [run.businessId, run.make.agentId],
+    );
   return await advance(execute, id, "login_id = $2, phase = 'bound'", [login?.id]);
 }
 
@@ -158,14 +182,23 @@ export async function makeAct(
   run: Run,
   password: string,
   at: At,
+  admit: Admit = admission,
 ): Promise<{ act: Act; already: boolean }> {
-  const reserved = await acting(run, null, async (execute) => await reserve(execute, run, at));
+  const reserved = await acting(
+    run,
+    null,
+    async (execute) => await reserve(execute, run, at, admit),
+  );
   if ('already' in reserved) return { act: reserved.already, already: true };
   let act = reserved;
   await at('reserved');
   if (act.phase === 'reserved') {
     const { id } = act;
-    act = await acting(run, null, async (execute) => await provide(execute, run, id, password, at));
+    act = await acting(
+      run,
+      null,
+      async (execute) => await provide(execute, run, id, password, { at, admit }),
+    );
     await at('user_made');
   }
   if (act.phase === 'user_made') {

@@ -18,12 +18,15 @@ export interface User {
   email: string;
   password: string;
   app_metadata: Record<string, unknown>;
+  banned_until?: string;
 }
 
 /** The provider's users, what it was asked, and the next id it issues when one is set. */
 export interface Users {
   readonly list: User[];
   nextId?: string | undefined;
+  /** While set, a ban is answered as by a provider that is down. */
+  down?: boolean;
   world?: World;
   readonly handle: Handler;
 }
@@ -32,7 +35,8 @@ const shown = ({ password: _password, ...user }: User): Omit<User, 'password'> =
 
 async function grant(users: Users, body: Record<string, unknown>): Promise<Answer> {
   const user = users.list.find((u) => u.email === body['email'] && u.password === body['password']);
-  if (user === undefined) return [400, { error_description: 'Invalid login credentials' }];
+  if (user === undefined || user.banned_until !== undefined)
+    return [400, { error_description: 'Invalid login credentials' }];
   const claims = { sub: user.id, aud: 'authenticated', iss: users.world?.env['GOTRUE_URL'] };
   const exp = Math.floor(Date.now() / 1000) + 600;
   const token = await signBearer({
@@ -60,8 +64,10 @@ function admin(users: Users, method: string, route: string, body: Record<string,
     return [200, { users: listed.map((user) => shown(user)) }];
   }
   const user = users.list.find((u) => u.id === path.split('/')[3]);
-  if (user === undefined) return [404, { code: 'user_not_found' }];
-  if (method === 'PUT') Object.assign(user, body);
+  if (user === undefined) return [404, { error_code: 'user_not_found' }];
+  if (method === 'PUT' && users.down === true) return [503, {}];
+  // A ban as GoTrue answers it: the user named back, banned until a century on.
+  if (method === 'PUT') user.banned_until = new Date(Date.now() + 3e12).toISOString();
   return [200, shown(user)];
 }
 

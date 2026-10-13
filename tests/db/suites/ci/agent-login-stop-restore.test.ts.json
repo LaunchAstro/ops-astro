@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's stop switches the agent off, ends its sessions everywhere and bans its provider user, or records the subject shared, or owes the ban on a committed receipt; its restore makes a new user and refuses what it did not switch off"
+}
