@@ -11,10 +11,11 @@
 # and signed in to the ChatGPT plan. Custody's credential file is a regular 0600
 # file of this user, read through the descriptor that was judged, that custody's
 # own parser loads, holding the runner's own key, and only it, for the runner's
-# door, presented as the door takes it (the authorization header, bearer). A
-# runner already listening listens on loopback alone, read by an lsof that
-# completed; when lsof sees none, the runner's own bind is tried. Prints a kind,
-# never a value.
+# door, presented as the door takes it (the authorization header, bearer). No
+# access list lets others into either file or either home. The settings fix the
+# runner's port, and a runner already listening there listens on loopback
+# alone, read by an lsof that completed; when lsof sees none, the runner's own
+# bind is tried. Prints a kind, never a value.
 #
 # Usage: scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>
 
@@ -68,6 +69,16 @@ for (const dir of [home, codexHome]) {
     fault('the runner home or its Codex home is missing');
   }
   if (!stat.isDirectory() || (stat.mode & 0o077) !== 0) fault('the runner home or its Codex home is open to others (chmod 700)');
+}
+// Mode bits miss an access list: macOS lists its entries under `ls -le`, and
+// one that allows anything lets someone else in; Linux marks any list with `+`.
+for (const path of [settingsFile, credentialFile, home, codexHome]) {
+  const darwin = process.platform === 'darwin';
+  const listed = spawnSync('/bin/ls', [darwin ? '-lde' : '-ld', path], { encoding: 'utf8' });
+  if (listed.status !== 0) fault('the access lists of the runner’s files could not be read');
+  const [first = '', ...entries] = listed.stdout.split('\n').filter((line) => line !== '');
+  const opened = darwin ? entries.some((entry) => / allow /u.test(entry)) : first.split(/\s/u)[0].endsWith('+');
+  if (opened) fault('an access list lets others into a runner file or home');
 }
 for (let dir = home; dir !== dirname(dir); dir = dirname(dir)) {
   if (present(join(dir, '.git'))) fault('the runner home is inside a git checkout');
@@ -131,32 +142,32 @@ if (door.length !== 1 || door[0].header !== 'authorization' || custody.presented
   fault('custody holds no credential, or another, for the runner’s door');
 }
 
+// Custody's destination names the port, so the runner must not leave it to the system.
 const port = env.OPS_LOCAL_AGENT_PORT ?? '';
-if (port !== '') {
-  // -b skips calls that can block on a mount and -w drops warnings, so any
-  // stderr is a failure. Only exit 1 with no output at all means no listener.
-  const listed = spawnSync('lsof', ['-b', '-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 10_000,
+if (!/^[1-9]\d{0,4}$/u.test(port) || Number(port) > 65_535) fault('the settings fix no port for the runner (1 to 65535)');
+// -b skips calls that can block on a mount and -w drops warnings, so any
+// stderr is a failure. Only exit 1 with no output at all means no listener.
+const listed = spawnSync('lsof', ['-b', '-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
+  encoding: 'utf8',
+  stdio: ['ignore', 'pipe', 'pipe'],
+  timeout: 10_000,
+});
+const out = listed.stdout ?? '';
+const addresses = out.split('\n').filter((line) => line.startsWith('n')).map((line) => line.slice(1));
+const none = listed.status === 1 && out === '' && listed.stderr === '';
+const some = listed.status === 0 && listed.stderr === '' && addresses.length > 0;
+if (listed.error !== undefined || !(none || some)) {
+  fault('the listeners on the runner’s port could not be read (is lsof installed?)');
+}
+if (addresses.some((address) => address !== `127.0.0.1:${port}`)) fault('the runner listens beyond loopback');
+// lsof without root sees no other user's listener, so the runner's own bind has the last word.
+if (none) {
+  const bound = await new Promise((done) => {
+    const probe = createServer();
+    probe.once('error', () => done(false));
+    probe.listen(Number(port), '127.0.0.1', () => probe.close(() => done(true)));
   });
-  const out = listed.stdout ?? '';
-  const addresses = out.split('\n').filter((line) => line.startsWith('n')).map((line) => line.slice(1));
-  const none = listed.status === 1 && out === '' && listed.stderr === '';
-  const some = listed.status === 0 && listed.stderr === '' && addresses.length > 0;
-  if (listed.error !== undefined || !(none || some)) {
-    fault('the listeners on the runner’s port could not be read (is lsof installed?)');
-  }
-  if (addresses.some((address) => address !== `127.0.0.1:${port}`)) fault('the runner listens beyond loopback');
-  // lsof without root sees no other user's listener, so the runner's own bind has the last word.
-  if (none) {
-    const bound = await new Promise((done) => {
-      const probe = createServer();
-      probe.once('error', () => done(false));
-      probe.listen(Number(port), '127.0.0.1', () => probe.close(() => done(true)));
-    });
-    if (!bound) fault('something lsof cannot see holds the runner’s port');
-  }
+  if (!bound) fault('something lsof cannot see holds the runner’s port');
 }
 process.stdout.write('gpt runner install check: passed\n');
 JS
