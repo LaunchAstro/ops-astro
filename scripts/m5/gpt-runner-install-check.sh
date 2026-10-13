@@ -1,17 +1,20 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# Before the GPT runner's LaunchAgent is loaded on the M5 (docs/local/GPT-RUNNER.md):
-# the settings and credential files are regular files of this user that no one
-# else can open; the settings are the M5 site's, with the Codex version pinned;
-# the runner's home and its Codex home are private and hold no instructions or
-# config; Codex is the pinned version and signed in to the ChatGPT plan; custody's
-# credential file is one custody itself loads (its own parser, no second one)
-# and holds the runner's own key, and only it, for the runner's door, presented
-# as the door takes it (the authorization header, bearer); and a runner already
-# listening listens on loopback alone, read by an lsof that completed. Prints a
-# kind, never a value. The checks are a Node program, so file modes read the
-# same on macOS and Linux.
+# Before the GPT runner's LaunchAgent is loaded on the M5 (docs/local/GPT-RUNNER.md),
+# it certifies the runner the plist will start. The settings are read by the
+# runner's own loader (settings-file.ts, settings.ts), from the file alone: the
+# M5 site's, with the Codex version pinned, and naming the runner home and the
+# Codex binary by plain absolute paths. The runner home, its Codex home and the
+# child's working folder hold no instructions or config, before Codex runs and
+# after, and no git checkout holds the home. That binary is the pinned version
+# and signed in to the ChatGPT plan. Custody's credential file is a regular 0600
+# file of this user, read through the descriptor that was judged, that custody's
+# own parser loads, holding the runner's own key, and only it, for the runner's
+# door, presented as the door takes it (the authorization header, bearer). A
+# runner already listening listens on loopback alone, read by an lsof that
+# completed; when lsof sees none, the runner's own bind is tried. Prints a kind,
+# never a value.
 #
 # Usage: scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>
 
@@ -20,8 +23,9 @@ set -eu
 root=$(cd "${0%/*}/../.." && pwd)
 node --input-type=module - "$root" "${1:?settings file}" "${2:?credential file}" <<'JS'
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const fault = (kind) => {
@@ -29,36 +33,33 @@ const fault = (kind) => {
   process.exit(1);
 };
 const [root, settingsFile, credentialFile] = process.argv.slice(2);
-const custody = await import(pathToFileURL(join(root, 'packages/core-custody/src/credentials.ts')).href);
-const own = (path, mode) => {
-  let stat;
+const load = (path) => import(pathToFileURL(join(root, path)).href);
+const custody = await load('packages/core-custody/src/credentials.ts');
+const { withSettingsFile } = await load('apps/local-agent/settings-file.ts');
+const { readSettings } = await load('apps/local-agent/settings.ts');
+
+// The runner's own loader, given the file alone: a setting the plist or launchd
+// would add is one the runner then refuses as set twice, or one checked here as missing.
+const loaded = withSettingsFile({ OPS_LOCAL_AGENT_SETTINGS: settingsFile });
+if (!loaded.ok) fault(`the runner refuses its settings file: ${loaded.message}`);
+const env = loaded.env;
+if (env.OPS_LOCAL_AGENT_SITE !== 'm5') fault('the settings are not the M5 site’s');
+const read = readSettings(env);
+if (!read.ok) fault(`the runner refuses these settings: ${read.code}`);
+const { key, home, codexHome, codexBin, codexVersion } = read.settings;
+if (env.OPS_LOCAL_AGENT_HOME !== home || resolve(home) !== home) {
+  fault('the settings name no plain absolute runner home');
+}
+if (!isAbsolute(codexBin)) fault('the settings name no absolute Codex binary');
+
+const present = (path) => {
   try {
-    stat = lstatSync(path);
+    lstatSync(path);
+    return true;
   } catch {
     return false;
   }
-  return !stat.isSymbolicLink() && (stat.mode & 0o777) === mode && stat.uid === process.getuid();
 };
-if (!own(settingsFile, 0o600) || !own(credentialFile, 0o600)) {
-  fault('a file is missing, a link, not this user’s, or open to others (chmod 600)');
-}
-let settings;
-let filed;
-try {
-  settings = JSON.parse(readFileSync(settingsFile, 'utf8'));
-  filed = JSON.parse(readFileSync(credentialFile, 'utf8'));
-} catch {
-  fault('a file is not JSON');
-}
-const text = (name) => (typeof settings?.[name] === 'string' ? settings[name] : '');
-if (text('OPS_LOCAL_AGENT_SITE') !== 'm5') fault('the settings are not the M5 site’s');
-const version = text('OPS_LOCAL_AGENT_CODEX_VERSION');
-if (!/^\d{1,4}\.\d{1,4}\.\d{1,4}$/u.test(version)) fault('no Codex version is pinned');
-const home = text('OPS_LOCAL_AGENT_HOME');
-const key = text('OPS_LOCAL_AGENT_KEY');
-if (!isAbsolute(home)) fault('the runner home is not an absolute path');
-if (key.length < 32) fault('the runner key is missing or short');
-const codexHome = join(home, 'codex');
 for (const dir of [home, codexHome]) {
   let stat;
   try {
@@ -68,47 +69,94 @@ for (const dir of [home, codexHome]) {
   }
   if (!stat.isDirectory() || (stat.mode & 0o077) !== 0) fault('the runner home or its Codex home is open to others (chmod 700)');
 }
-for (const name of ['AGENTS.md', 'AGENTS.override.md', 'config.toml']) {
-  if (existsSync(join(codexHome, name))) fault('the Codex home holds instructions or a config');
+for (let dir = home; dir !== dirname(dir); dir = dirname(dir)) {
+  if (present(join(dir, '.git'))) fault('the runner home is inside a git checkout');
 }
-const bin = text('OPS_LOCAL_AGENT_CODEX_BIN') || 'codex';
+// Codex reads instructions from its home and its working folder; a dangling link counts.
+const planted = () => {
+  for (const dir of [home, codexHome, join(home, 'cwd')]) {
+    for (const name of ['AGENTS.md', 'AGENTS.override.md', 'config.toml']) {
+      if (present(join(dir, name))) fault('a runner folder holds instructions or a config');
+    }
+  }
+};
+planted();
 const childEnv = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(home, 'home'), CODEX_HOME: codexHome };
 // Both streams are read: Codex 0.162.1 writes its login status to stderr.
 const run = (args) => {
-  const ran = spawnSync(bin, args, { env: childEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 });
+  let ran;
+  try {
+    ran = spawnSync(codexBin, args, { env: childEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 });
+  } catch {
+    fault('the Codex binary cannot be started');
+  }
   return { ok: ran.status === 0, out: `${ran.stdout ?? ''}${ran.stderr ?? ''}` };
 };
-const reported = /\b(\d+\.\d+\.\d+)\b/u.exec(run(['--version']).out)?.[1];
-if (reported !== version) fault('Codex is not the pinned version');
+const version = run(['--version']);
+if (!version.ok || /^codex-cli (\S+)$/mu.exec(version.out)?.[1] !== codexVersion) fault('Codex is not the pinned version');
 const login = run(['login', 'status']);
 if (!login.ok || !login.out.split('\n').some((line) => line.trim() === 'Logged in using ChatGPT')) {
   fault('signed_out: Codex here is not signed in to the ChatGPT plan');
 }
+planted();
+
+// Opened once, without following a link or waiting on a pipe, and judged and read through that descriptor.
+let credentialText;
+try {
+  const descriptor = openSync(credentialFile, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(descriptor);
+    if (stat.isFile() && (stat.mode & 0o777) === 0o600 && stat.uid === process.getuid()) {
+      credentialText = readFileSync(descriptor, 'utf8');
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+} catch {
+  credentialText = undefined;
+}
+if (credentialText === undefined) fault('the credential file is missing, a link, not a file, not this user’s, or not 0600');
+let filed;
+try {
+  filed = JSON.parse(credentialText);
+} catch {
+  fault('the credential file is not JSON');
+}
 // Custody's own parser: a file it refuses at load is refused here, by the same rules.
-const loaded = custody.parseCredentials(filed);
-if (!loaded.ok) fault(`custody refuses the credential file (${loaded.code})`);
-const door = [...loaded.credentials.values()].filter((entry) => entry.destination === 'local_gpt');
+const credentials = custody.parseCredentials(filed);
+if (!credentials.ok) fault(`custody refuses the credential file (${credentials.code})`);
+const door = [...credentials.credentials.values()].filter((entry) => entry.destination === 'local_gpt');
 // The runner's door takes only `Authorization: Bearer <key>` (door.ts): another header or scheme is answered 401.
 if (door.length !== 1 || door[0].header !== 'authorization' || custody.presented(door[0]) !== `Bearer ${key}`) {
   fault('custody holds no credential, or another, for the runner’s door');
 }
-const port = text('OPS_LOCAL_AGENT_PORT');
+
+const port = env.OPS_LOCAL_AGENT_PORT ?? '';
 if (port !== '') {
   // -b skips calls that can block on a mount and -w drops warnings, so any
   // stderr is a failure. Only exit 1 with no output at all means no listener.
-  const read = spawnSync('lsof', ['-b', '-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
+  const listed = spawnSync('lsof', ['-b', '-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 10_000,
   });
-  const out = read.stdout ?? '';
+  const out = listed.stdout ?? '';
   const addresses = out.split('\n').filter((line) => line.startsWith('n')).map((line) => line.slice(1));
-  const none = read.status === 1 && out === '' && read.stderr === '';
-  const listed = read.status === 0 && read.stderr === '' && addresses.length > 0;
-  if (read.error !== undefined || !(none || listed)) {
+  const none = listed.status === 1 && out === '' && listed.stderr === '';
+  const some = listed.status === 0 && listed.stderr === '' && addresses.length > 0;
+  if (listed.error !== undefined || !(none || some)) {
     fault('the listeners on the runner’s port could not be read (is lsof installed?)');
   }
   if (addresses.some((address) => address !== `127.0.0.1:${port}`)) fault('the runner listens beyond loopback');
+  // lsof without root sees no other user's listener, so the runner's own bind has the last word.
+  if (none) {
+    const bound = await new Promise((done) => {
+      const probe = createServer();
+      probe.once('error', () => done(false));
+      probe.listen(Number(port), '127.0.0.1', () => probe.close(() => done(true)));
+    });
+    if (!bound) fault('something lsof cannot see holds the runner’s port');
+  }
 }
 process.stdout.write('gpt runner install check: passed\n');
 JS
