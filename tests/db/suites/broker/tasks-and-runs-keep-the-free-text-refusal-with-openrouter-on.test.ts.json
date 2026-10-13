@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "with OpenRouter configured, a run's step asking the paid operation with free text is refused with a refused row and nothing sent"
+}

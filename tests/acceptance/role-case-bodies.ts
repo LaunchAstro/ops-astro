@@ -117,7 +117,7 @@ export interface BodyContext extends C80Seeds {
   clearGateItem?(item: string): Promise<void>;
   /** S0-5: the installation back on made-up data, so each change to real is a real change. */
   madeUpInstallation?(): Promise<void>;
-  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  /** S0-5, C81: every gate item's evidence, items 3 to 6's links answered (`gateEvidence`). */
   legalEvidence?(): Promise<Readonly<Record<string, string>>>;
   /** MP-14-7a: a broken connection to repair, owner-written. */
   brokenConnection?(): Promise<string>;

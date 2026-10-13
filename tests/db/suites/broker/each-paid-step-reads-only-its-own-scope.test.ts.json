@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "each paid read-then-write is scoped: another person, another business, a conversation handed on mid-answer and a page moved before the send"
+}

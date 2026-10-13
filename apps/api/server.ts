@@ -97,7 +97,9 @@ import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { carrierSettings } from './model-carrier.ts';
+import { carriedAnswers } from './model-carriage.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountEnrolment } from './enrolment.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
@@ -354,6 +356,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
   if (config.authEmailHook !== undefined) {
     mountAuthEmailHook(server, database, config.authEmailHook);
   }
+  // C39-T: an invitation accepted on its one-time link, which needs the database alone.
+  mountEnrolment(server, database);
   // C40: a reset token's password set, mounted when given; `main()` does not yet.
   if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
@@ -614,7 +618,9 @@ async function main(): Promise<void> {
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
-    ...(carried.kind === 'carried' ? { carrier: carried.carrier } : {}),
+    ...(carried.kind === 'carried'
+      ? { carrier: carried.carrier, ...carriedAnswers(environment, carried) }
+      : {}),
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,

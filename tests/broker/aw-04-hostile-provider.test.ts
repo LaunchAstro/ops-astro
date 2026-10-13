@@ -91,6 +91,7 @@ it('AW-04 hostile provider: each hostile planning reply is held within its own h
     ok: false,
     code: 'BUDGET_UNAVAILABLE',
     callId: null,
+    leftMinor: MAXIMUM - 1,
   });
   expect(await callCount()).toBe(calls);
   expect(world.provider.seen.length).toBe(sent);

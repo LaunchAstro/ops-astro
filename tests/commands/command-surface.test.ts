@@ -2,13 +2,12 @@
 //
 // The surface, checked against the model rather than against itself.
 //
-// Minimum contract 5.3's fourth assertion is the one this file exists for:
-// "for each protected field, the owning operation named in `owning_operation`
-// exists and is reachable through an endpoint. A protected field whose owning
-// operation does not exist is a field nobody can change." The names are in
-// `field_defs`, written per business at install time, so the check reads the
-// installed model and not a list in a module — which is the whole reason T1e
-// put the classification in the data.
+// Minimum contract 5.3's fourth assertion is the one this file exists for: "for each protected
+// field, the owning operation named in `owning_operation` exists and is reachable through an
+// endpoint. A protected field whose owning operation does not exist is a field nobody can
+// change." The names are in `field_defs`, written per business at install time, so the check
+// reads the installed model and not a list in a module — which is the whole reason T1e put the
+// classification in the data.
 //
 // It is also what settles the count. The contract names nine commands and the split is titled
 // after them; the seeded task type names ten owning operations. Nine is not enough for the model
@@ -112,6 +111,7 @@ const DECLARED_READS = [
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'invitation.list',
   'live_correction.read',
   'map.frontier',
   'map.view',
@@ -138,7 +138,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the forty-three reads as reads, and everything else as a write', () => {
+  it('declares the forty-four reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

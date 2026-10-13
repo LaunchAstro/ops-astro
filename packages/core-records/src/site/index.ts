@@ -44,6 +44,7 @@ export {
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
 export {
   bindPartySite,
+  isBoundPage,
   readPartySite,
   unbindPartySitePage,
   type PartySiteRecord,
