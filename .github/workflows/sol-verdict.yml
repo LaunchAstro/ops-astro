@@ -46,6 +46,7 @@ jobs:
       # The token reaches only gh. Complete arrays are materialised before the
       # checker runs, and a failed read fails the job, including for a group.
       - name: Read the current records
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -54,9 +55,9 @@ jobs:
             mkdir -p "${RUNNER_TEMP}/pr-${PR_NUMBER}"
             gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"
             gh api --paginate --slurp "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" \
-              --jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/comments.json"
+              | jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/comments.json"
             gh api --paginate --slurp "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-              --jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/reviews.json"
+              | jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/reviews.json"
           done < "${RUNNER_TEMP}/prs.txt"
       - name: Judge every pull request
         env:

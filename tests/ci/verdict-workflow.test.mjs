@@ -29,6 +29,10 @@ test('the advisory job runs on pull requests, formal review changes and merge gr
     ),
   );
   assert.ok(!Object.hasOwn(w.on, 'pull_request_target'));
+  assert.equal(
+    w.jobs['sol-verdict'].steps.find((step) => step.name === 'Read the current records').shell,
+    'bash',
+  );
   for (const step of w.jobs['sol-verdict'].steps) assert.ok(!step['continue-on-error']);
 });
 
@@ -95,10 +99,10 @@ if (process.env.FAILURE && endpoint.endsWith(process.env.FAILURE)) process.exit(
 const n = Number(endpoint.split('/')[4]);
 const p = JSON.parse(fs.readFileSync('pulls.json')).find(p => p.number === n);
 if (endpoint.endsWith('/comments') || endpoint.endsWith('/reviews')) {
-  if (!args.includes('--paginate') || !args.includes('--slurp') || args[args.indexOf('--jq') + 1] !== 'add') process.exit(2);
+  if (!args.includes('--paginate') || !args.includes('--slurp') || args.includes('--jq') || args.includes('--template')) process.exit(2);
   const body = 'Reviewer: Sol (Codex)\\nHead SHA: ' + p.head.sha + '\\nVerdict: ' + (process.env.NEGATIVE === 'yes' && n === 12 ? 'changes requested' : 'approve');
   const r = { id: n, body, user: { login: 'fixture-reviewer' }, updated_at: '2026-10-01T01:00:00Z', submitted_at: '2026-10-01T01:00:00Z' };
-  console.log(JSON.stringify(endpoint.endsWith('/comments') ? [r] : []));
+  console.log(JSON.stringify([endpoint.endsWith('/comments') ? [r] : []]));
 } else { if (process.env.STALE === 'yes') p.head.sha = 'b'.repeat(40); console.log(JSON.stringify(p)); }
 `,
     { mode: 0o755 },
