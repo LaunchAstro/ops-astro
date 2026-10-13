@@ -17,6 +17,30 @@ import {
 const recordOf = (f) =>
   join(f.git('rev-parse', '--path-format=absolute', '--git-common-dir'), 'gate-passed');
 
+const publicRecordOf = (f) =>
+  join(f.git('rev-parse', '--path-format=absolute', '--git-common-dir'), 'gate-public-passed');
+
+const publicFinding = () => `https://${'pitch'}.example.invalid/fixture\n`;
+
+const inheritedFinding = (t) => {
+  const f = firstPushFixture(t, { hooked: false });
+  f.commit('inherited.txt', publicFinding(), 'inherited note');
+  f.git('push', '-q', 'origin', 'main');
+  f.git('fetch', '-q', 'origin');
+  installHook(f.repo);
+  f.git('checkout', '-q', '-b', 'fresh');
+  return f;
+};
+
+test('a first push with one clean new commit passes an old finding identical to main without scanning old history', (t) => {
+  const f = inheritedFinding(t);
+  const tip = f.commit('fresh.txt', 'clean\n', 'fresh');
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /public-content: 1 commit\(s\)/u);
+  assert.equal(f.published('origin', 'fresh'), tip);
+});
+
 test('a clean new branch scans only its own commits, not history the gate already passed', (t) => {
   const f = firstPushFixture(t);
   const main = f.push('origin', 'main');
