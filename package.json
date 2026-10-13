@@ -60,7 +60,7 @@
     "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs tests/ci/db-shard-declaration-cruise.test.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
     "local:cases": "node --test tests/ci/s0-7-auth-up-replaces-18.test.mjs tests/ci/s0-7-auth-up-cases.mjs tests/ci/s0-7-auth-up-restarts-gotrue.test.mjs tests/ci/s0-7-db-up-then-auth-up-remigrates.test.mjs tests/ci/restore-check-barrier-and-logs.proof.test.mjs tests/ci/restore-refuses-permissive-barrier.proof.test.mjs tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
-    "node:cases": "node --test tests/ci/t2f-biting-crossings-clear-unproven.test.mjs tests/ci/t3b-unwire-declares-runtime-pass-dependents.test.mjs tests/ci/t3e2-outage-isolation-matrix.test.mjs tests/gate/pre-push-double-url-rewrite-scans-history.test.mjs tests/gate/pre-push-relative-url-naming-remote-scans-history.test.mjs tests/gate/pre-push-remote-url-change-scans-history.test.mjs tests/gate/pre-push-ssh-transport-scans-history.test.mjs tests/gate/pre-push-exports-published-scanners-not-replacements.test.mjs tests/gate/pre-push-ignores-uncommitted-canary-bytes.test.mjs tests/gate/hooks-refuse-when-not-installed.test.mjs tests/ci/package-entry-imports.test.mjs",
+    "node:cases": "node --test tests/ci/t2f-biting-crossings-clear-unproven.test.mjs tests/ci/t3b-unwire-declares-runtime-pass-dependents.test.mjs tests/ci/t3e2-outage-isolation-matrix.test.mjs tests/gate/pre-push-double-url-rewrite-scans-history.test.mjs tests/gate/pre-push-relative-url-naming-remote-scans-history.test.mjs tests/gate/pre-push-remote-url-change-scans-history.test.mjs tests/gate/pre-push-ssh-transport-scans-history.test.mjs tests/gate/pre-push-exports-published-scanners-not-replacements.test.mjs tests/gate/pre-push-ignores-uncommitted-canary-bytes.test.mjs tests/gate/pre-push-first-push-scans-unpassed-commits.test.mjs tests/gate/pre-push-first-push-passed-record-covers-history.test.mjs tests/gate/pre-push-first-push-fingerprint-covers-scan-inputs.test.mjs tests/gate/hooks-refuse-when-not-installed.test.mjs tests/ci/package-entry-imports.test.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "db:up": "bash scripts/local/db-up.sh",
@@ -88,12 +88,14 @@
     "verify:runtime-proofs": "bash scripts/local/runtime-proofs.sh",
     "cli": "node apps/cli/main.ts",
     "worker": "node apps/worker/main.ts",
+    "model-agent": "node apps/model-agent/main.ts",
     "forwarder": "node scripts/ops/forwarder.mjs",
     "endings": "node apps/endings/main.ts",
     "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
+    "@supabase/realtime-js": "2.117.2",
     "hono": "4.13.9",
     "parse5": "8.0.1"
   },

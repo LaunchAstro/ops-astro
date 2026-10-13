@@ -145,4 +145,18 @@ export const EFFECT_ROWS = [
       "The deployment's model agent is not a member of this conversation, so nothing was sent",
     source: '#1531',
   },
+  // #1508: the paid chat's held path.
+  {
+    code: 'PROMPT_TOO_LARGE',
+    status: 422,
+    meaning: "The paid model's request would be past its size limit, so nothing was held or sent",
+    source: '#1508',
+  },
+  {
+    code: 'CUSTODY_NOT_ADMITTED',
+    status: 409,
+    meaning:
+      'The paid send was no longer admitted at the handoff, so nothing was sent and the hold was freed',
+    source: '#1508',
+  },
 ] as const;

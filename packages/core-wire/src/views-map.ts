@@ -62,6 +62,13 @@ export interface MapView {
   }[];
 }
 
+/** The map a ticket belongs to, as its detail names it for the link back. */
+export interface TaskMapLink {
+  readonly id: string;
+  readonly key: string | null;
+  readonly title: string | null;
+}
+
 export interface MapViewResult {
   readonly ok: true;
   readonly map: MapView;

@@ -37,7 +37,8 @@ const refuse = (message: string): FileSettings => ({ ok: false, message });
 function readOwn(file: string): string | { readonly refused: string } {
   let descriptor: number;
   try {
-    descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // O_NONBLOCK: a pipe in the file's place is opened and refused below, never waited on.
+    descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     return { refused: `${SETTINGS_FILE} names no file this runner can open (missing, or a link)` };
   }

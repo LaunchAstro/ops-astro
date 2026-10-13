@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "authority ending after the offer sends nothing, or waits for the write"
+}

@@ -18,6 +18,7 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
+import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
@@ -101,9 +102,11 @@ export async function seedLiveCorrection(
 ): Promise<{ readonly correctionId: string; readonly versionId: string }> {
   const at = await underClient(database, business, taskId, maker);
   return await database.withBusiness(business, async (tx) => {
+    const pageUrl = await bindAboutPage(tx, at.partyId, requester.actorId as string);
     const stored = await insertLiveCorrection(tx, {
       ...C80_REQUEST_ROW,
       ...at,
+      pageUrl,
       requestedByActorId: requester.actorId as string,
       requestedByPersonId: requester.personId as string,
       seam: `seam-${randomUUID()}`,
@@ -118,7 +121,6 @@ const C80_REQUEST_ROW = {
   targetPath: C80_REQUEST.path,
   word: C80_REQUEST.word,
   replacement: C80_REQUEST.replacement,
-  pageUrl: C80_REQUEST.pageUrl,
   preImageDigest: 'sha256:matrix',
   baseRevision: C80_REQUEST.baseRevision,
   versionDigest: 'sha256:matrix',
@@ -131,11 +133,18 @@ const C80_REQUEST_ROW = {
 export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
   taskId: string,
-): Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection'> => ({
+): Required<
+  Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
+> => ({
   alphaTaskId: taskId,
   adminPersonId: world.ada.personId as string,
   seedCorrection: async () =>
     await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia, world.ada),
+  bindClientSite: async (partyId) =>
+    await world.db.app.withBusiness(
+      world.alpha,
+      async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
+    ),
 });
 
 /** C80's four operations, whose positive bodies are the matrix's from here. */
@@ -161,7 +170,12 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
       fields: { client: partyId },
     });
     if (set.code !== 'ok') throw new Error(`matrix: task.set_party refused ${set.code}`);
-    return { body: { ...C80_REQUEST, partyId, taskId: task.id } };
+    // The client's own page, bound on its site: a request stores only for such a page.
+    if (context.bindClientSite === undefined) {
+      return { exception: 'this harness binds no client site (C80)' };
+    }
+    const pageUrl = await context.bindClientSite(partyId);
+    return { body: { ...C80_REQUEST, partyId, taskId: task.id, pageUrl } };
   }
   // Another member's request, and the admin named as the approver just
   // before: the requester never approves, and only the configured one does.
@@ -179,7 +193,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
 }
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */
-type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
+type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask' | 'bindClientSite'> & {
   reserve(task: Task, purpose: string): Promise<Answer>;
   asAgent(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
 };
@@ -191,7 +205,7 @@ type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
  */
 export async function c80AgentPickup(
   harness: AgentCase,
-): Promise<{ readonly pickup: Answer; readonly partyId: string }> {
+): Promise<{ readonly pickup: Answer; readonly partyId: string; readonly pageUrl: string }> {
   const task = await harness.freshTask('a task an agent asks a live correction under');
   const made = await harness.asPerson('client.create', { name: `A client ${randomUUID()}` });
   if (made.code !== 'ok') throw new Error(`d06: client.create refused ${made.code}`);
@@ -202,18 +216,21 @@ export async function c80AgentPickup(
     fields: { client: partyId },
   });
   if (set.code !== 'ok') throw new Error(`d06: task.set_party refused ${set.code}`);
+  if (harness.bindClientSite === undefined)
+    throw new Error('d06: the harness binds no client site');
+  const pageUrl = await harness.bindClientSite(partyId);
   const decided = await harness.reserve(task, PROPOSAL.purpose);
   if (decided.code !== 'ok') throw new Error(`d06: the reservation refused ${decided.code}`);
   const { reservationId } = decided.body['detail'] as Record<string, unknown>;
-  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId };
+  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId, pageUrl };
 }
 
 /** D06's positive agent body for C80's request: the picked-up task, at its client. */
 export const c80AgentBody = (
   operationId: string,
   held: { readonly taskId: string; readonly credential: string },
-  partyId: string,
+  at: { readonly partyId: string; readonly pageUrl: string },
 ): { body: Record<string, unknown>; credential: string } => ({
-  body: { operationId, ...C80_REQUEST, partyId, taskId: held.taskId },
+  body: { operationId, ...C80_REQUEST, ...at, taskId: held.taskId },
   credential: held.credential,
 });

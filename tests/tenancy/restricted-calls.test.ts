@@ -368,6 +368,22 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (select id, fence from public.leases
                            where business_id = c.business_id order by id limit 1) l on true
       where c.business_id = $1 order by c.id limit 1 returning 1`,
+  // C80's party sites: the journey binds no site. One per business on its first
+  // client, repository and project unique by a fresh id, and one page on it.
+  'public.party_sites': `insert into public.party_sites
+       (business_id, party_id, repository, default_branch, project, changed_by_actor_id)
+     select $1, coalesce(c.id, gen_random_uuid()), 'seed/' || s.id, 'main', 'prj_' || s.id,
+            coalesce(a.id, gen_random_uuid())
+       from (select gen_random_uuid()::text as id) s
+       left join lateral (
+         select id from public.clients where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  'public.party_site_pages': `insert into public.party_site_pages
+       (business_id, party_id, page_url, path)
+     select business_id, party_id, 'https://agency.example/about/', 'src/pages/about.md'
+       from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
@@ -598,6 +614,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, invitation_id, token_id, state)
      select business_id, gen_random_uuid(), invitation_id, id, 'asked'
        from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
+  // The login that invitation's accept owes the provider.
+  'public.login_provisions': `insert into public.login_provisions
+       (business_id, id, invitation_id, login_id)
+     select $1, gen_random_uuid(),
+            (select id from public.invitations where business_id = $1 order by id limit 1),
+            (select id from public.logins where business_id = $1 order by id limit 1)
+     returning 1`,
 };
 
 /**
@@ -703,6 +726,7 @@ async function roleClasses(
  */
 const DEFINERS: readonly string[] = [
   'conversation_agent_members_close()',
+  'enrolment_token_find(text)',
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
@@ -1067,6 +1091,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
+  });
+
+  it('the enrolment token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'enrolment_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
   });
 
   it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {

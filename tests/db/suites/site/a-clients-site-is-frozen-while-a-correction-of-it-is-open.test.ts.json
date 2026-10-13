@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: a client's site cannot be unbound or moved while a correction of it is open, and an unbind and a request on one page are held in either order on two connections, the waiting side observed, so a request never stores against an unbound page and an unbind never strands an open correction."
+}

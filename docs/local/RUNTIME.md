@@ -1798,7 +1798,7 @@ totals.
   longer fits is refused.
 - **On the settings page.** `settings.read` carries `planningCap` (limit,
   currency, and `set` false while it is the default) for every settings reader;
-  the page's AI planning budget field moves it through the command, opened only
+  the page's AI chat budget field moves it through the command, opened only
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
 As a money action (`billing:decide`) the command asks C59's recent sign-in in

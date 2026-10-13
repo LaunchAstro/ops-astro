@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid page send holds the caller's task read grant from its admission until custody has the request, so a revocation of the read waits for the send"
+}
