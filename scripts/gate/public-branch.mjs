@@ -13,13 +13,15 @@ function publicReceipts(path, hex) {
   }
   if (!stat.isFile()) throw new Error('invalid public record');
   const text = readFileSync(path, 'utf8');
-  if (text && !new RegExp(`^(?:[0-9a-f]{${hex}} [0-9a-f]{${hex}}\\n)+$`, 'u').test(text))
-    throw new Error('invalid public record');
-  return text
+  if (text && !/^(?:[0-9a-f]+ [0-9a-f]+\n)+$/u.test(text)) throw new Error('invalid public record');
+  const rows = text
     .trim()
     .split('\n')
     .filter(Boolean)
     .map((row) => row.split(' '));
+  if (rows.some((row) => row.some((hash) => hash.length !== hex)))
+    throw new Error('invalid public record');
+  return rows;
 }
 
 export function branchHistorySelection(git, tip, branch) {

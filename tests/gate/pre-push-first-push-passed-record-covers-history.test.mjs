@@ -6,9 +6,11 @@
 // remote, and expects the key in that unscanned history to be refused.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { branchHistorySelection } from '../../scripts/gate/public-branch.mjs';
 import {
   firstPushFixture,
   installHook,
@@ -174,3 +176,70 @@ test('the unreadable receipt check fails when permission denial is disabled', ()
       output,
   );
 });
+
+const receiptRepository = (t, format) => {
+  const repo = mkdtempSync(join(tmpdir(), 'public-receipts-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (args) => execFileSync('git', ['-C', repo, ...args]);
+  git(['init', '-q', `--object-format=${format}`]);
+  const commit = (message) => {
+    git([
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.name=gate',
+      '-c',
+      'user.email=gate@example.invalid',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      message,
+    ]);
+    return git(['rev-parse', 'HEAD']).toString().trim();
+  };
+  const main = commit('baseline');
+  git(['update-ref', 'refs/remotes/origin/main', main]);
+  const tip = commit('branch');
+  const fingerprint = 'a'.repeat(main.length);
+  const row = `${tip} ${fingerprint}\n`;
+  const receipt = join(repo, '.git', 'gate-public-passed');
+  return { git, main, tip, fingerprint, row, receipt };
+};
+
+for (const format of ['sha1', 'sha256']) {
+  test(`public receipts require complete hash pairs for ${format} repositories`, (t) => {
+    const { git, main, tip, fingerprint, row, receipt } = receiptRepository(t, format);
+    const cases = [
+      ['empty', '', [main]],
+      ['one pair', row, [main, tip]],
+      ['duplicates', row + row, [main, tip]],
+      ['final blank line', row + '\n', null],
+      ['other fingerprint', `${tip} ${'b'.repeat(main.length)}\n`, [main]],
+      ['short hash', `${tip.slice(1)} ${fingerprint}\n`, null],
+      ['long hash', `${tip}a ${fingerprint}\n`, null],
+      ['short fingerprint', `${tip} ${fingerprint.slice(1)}\n`, null],
+      ['long fingerprint', `${tip} ${fingerprint}a\n`, null],
+      ['uppercase', row.toUpperCase(), null],
+      ['tab', row.replace(' ', '\t'), null],
+      ['extra space', row.replace(' ', '  '), null],
+      ['carriage return', row.replace('\n', '\r\n'), null],
+      ['missing newline', row.trimEnd(), null],
+      ['embedded blank line', row + '\n' + row, null],
+      ['non-hex', row.replace(/^./u, 'g'), null],
+      ['nul', row + '\0', null],
+      ['unicode separator', row.replace(' ', '\u00A0'), null],
+      ['quoted hash', `"${tip}" ${fingerprint}\n`, null],
+      ['comment', row + '# comment\n', null],
+      ['regexp syntax', `${tip} ${'.'.repeat(main.length)}\n`, null],
+    ];
+    for (const [name, text, bases] of cases) {
+      writeFileSync(receipt, text);
+      const result = branchHistorySelection(git, tip, { main, fingerprint });
+      assert.deepEqual(result.selection, bases ? [tip, '--not', ...bases] : [tip], name);
+      assert.equal(result.seen.size, 0, name);
+    }
+  });
+}
