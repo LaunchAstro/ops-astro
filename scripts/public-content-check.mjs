@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { checkCandidate, indexFiles, options } from './candidate-snapshot.mjs';
 import { addressRules } from './public-addresses.mjs';
 import { historyReader } from './history-objects.mjs';
+import { branchHistorySelection } from './gate/public-branch.mjs';
 
 // This small public-foundation policy supplements the existing contamination
 // and secret scanners. Hashes avoid publishing excluded names and identities.
@@ -156,55 +156,11 @@ export function publicHistory(repository, range, branch) {
     });
     selection = [commits.join('..')];
   }
-  const seen = new Set();
-  if (branch) {
-    try {
-      const main = git(['rev-parse', '--verify', 'refs/remotes/origin/main^{commit}'])
-        .toString()
-        .trim();
-      if (main !== branch.main) throw new Error('main changed');
-      const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'])
-        .toString()
-        .trim();
-      const record = join(common, 'gate-public-passed');
-      let rows = [];
-      try {
-        if (!lstatSync(record).isFile()) throw new Error('invalid public record');
-        const text = readFileSync(record, 'utf8');
-        const hex = main.length;
-        if (text && !new RegExp(`^(?:[0-9a-f]{${hex}} [0-9a-f]{${hex}}\\n)+$`, 'u').test(text))
-          throw new Error('invalid public record');
-        rows = text.trim().split('\n').filter(Boolean);
-      } catch (error) {
-        // A fresh clone has no receipts yet. Every other read failure scans all.
-        if (error.code !== 'ENOENT') throw error;
-      }
-      const reached = new Set(git(['rev-list', range]).toString().trim().split('\n'));
-      const passed = rows
-        .map((row) => row.split(' '))
-        .filter(([sha, fingerprint]) => fingerprint === branch.fingerprint && reached.has(sha))
-        .map(([sha]) => sha);
-      const bases = [main, ...new Set(passed)];
-      for (const base of bases) {
-        const tree = git(['ls-tree', '-rz', '--full-tree', base]).toString('utf8');
-        for (const line of tree.split('\0').filter(Boolean)) {
-          const split = line.indexOf('\t');
-          const [, type, oid] = line.slice(0, split).split(' ');
-          if (type !== 'blob') throw new Error('unsupported baseline entry');
-          seen.add(`${oid}\0${line.slice(split + 1)}`);
-        }
-      }
-      // Exclude whole reachable histories, but only skip exact blob/path pairs
-      // at the baseline tips. Changed bytes, renamed paths and reintroductions
-      // of older main versions still get inspected in every new commit.
-      selection = [range, '--not', ...bases];
-      git(['rev-list', ...selection]);
-    } catch {
-      seen.clear();
-      selection = [range];
-      console.log('public-content: branch state could not be read; scanning full history');
-    }
-  }
+  const chosen = branch
+    ? branchHistorySelection(git, range, branch)
+    : { selection, seen: new Set() };
+  selection = chosen.selection;
+  const seen = chosen.seen;
   const commits = git(['rev-list', ...selection])
     .toString()
     .trim()
