@@ -54,8 +54,17 @@ and in the environment. A refusal names a setting, never a value.
    one sign-in sign each other out.
 3. Write the settings file, and file the same key in custody's credential file
    for destination `local_gpt` (both 0600).
-4. The install check, which certifies these files, both homes, the sign-in
-   and the runner's door before the plist is loaded, comes in a follow-up.
+4. Run `scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>`.
+   It passes only when:
+   - both files are 0600 and the user's own;
+   - the settings are the M5 site's, with the Codex version pinned;
+   - both homes are private and hold no `AGENTS.md`, `AGENTS.override.md` or
+     `config.toml`;
+   - Codex is the pinned version and signed in to the ChatGPT plan;
+   - custody holds the runner's key, and only it, for the door;
+   - a runner already listening listens on loopback alone.
+
+   It prints a kind, never a value. `signed_out` means step 2 is owed.
 
 5. Fill the plist's placeholders and load it with `launchctl bootstrap gui/<uid>`.
 6. **Live control, once.** One `codex exec --json` call on the pinned version
@@ -73,4 +82,5 @@ home. No code or setting changes. The 95% weekly stop then reads that account.
 ## When it is signed out
 
 A streamed call answers `GPT_SIGNED_OUT` and asks the model nothing; the panel
-says so, and no other model is tried. Sign in again (step 2).
+says so, and no other model is tried. The install check says `signed_out`. Sign
+in again (step 2).
