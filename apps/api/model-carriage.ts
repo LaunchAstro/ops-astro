@@ -8,22 +8,18 @@
 // deployment does not start, naming the setting and never its value.
 
 import {
-  catalogue,
-  OLLAMA_CONVERSATION,
-  OLLAMA_PROVIDER,
-  ollamaAdapter,
-  ollamaCostMinor,
-} from '../../packages/core-connectors/src/index.ts';
-import {
   conversationExchange,
   type ConversationExchange,
+  type ModelBroker,
 } from '../../packages/core-commands/src/index.ts';
 import {
   carriedCustody,
   parseCarryKeys,
   realtimeCarriage,
+  type Custody,
 } from '../../packages/core-custody/src/index.ts';
 import type { Carrier } from '../../packages/core-custody/src/index.ts';
+import { catalogueOf } from './broker-catalogue.ts';
 import { carrierSettings, type CarriedSettings } from './model-carrier.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
@@ -31,6 +27,19 @@ type Settings = Readonly<Record<string, string | undefined>>;
 export const CARRY_KEY_SETTING = 'MODEL_BROKER_CARRY_KEY';
 export const CARRY_KEY_NEXT_SETTING = 'MODEL_BROKER_CARRY_KEY_NEXT';
 export const REALTIME_URL_SETTING = 'SUPABASE_REALTIME_URL';
+
+/**
+ * The carried broker over `custody`, holding no credential: Ollama's
+ * conversation, and OpenRouter's paid one where the outside provider is on.
+ */
+export const carriedBroker = (carried: CarriedSettings, custody: Custody): ModelBroker => ({
+  custody,
+  ...catalogueOf('ollama', carried.outsidePeople.length > 0),
+  routes: carried.routes,
+  installation: carried.installation,
+  carrier: carried.carrier,
+  outsidePeople: carried.outsidePeople,
+});
 
 /** The carried exchange, or a throw naming the setting that is missing or malformed. */
 export function carriedAnswers(
@@ -55,15 +64,7 @@ export function carriedAnswers(
     keys: keys.keys,
     key,
   });
-  const answerConversation = conversationExchange({
-    custody,
-    operations: catalogue([OLLAMA_CONVERSATION]),
-    providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
-    routes: carried.routes,
-    installation: carried.installation,
-    carrier: carried.carrier,
-  });
-  return { answerConversation };
+  return { answerConversation: conversationExchange(carriedBroker(carried, custody)) };
 }
 
 /**

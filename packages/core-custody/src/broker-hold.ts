@@ -14,7 +14,8 @@ import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import { RATE_LIMITED, refused } from './broker-conversation.ts';
 import { messageCall } from './broker-message-call.ts';
 import { atCeiling, registerPromptCopy, type ReservedCall } from './broker-reserve.ts';
-import type { BrokerRoute, ModelCallResult } from './broker-types.ts';
+import { carriedIn, writeCarriers } from './broker-carriage.ts';
+import type { BrokerRoute, Carrier, ModelCallResult } from './broker-types.ts';
 
 /** The planning cap of a business nobody has moved it for: AUD 50, in minor units. */
 export const PLANNING_CAP_DEFAULT = { limitMinor: 5_000, currency: 'AUD' } as const;
@@ -97,17 +98,19 @@ export type Held = { readonly ok: true; readonly reserved: ReservedCall } | Mode
  * Under the cap's lock: the message's call first (a twin is told where its
  * answer is, never that the model is busy), then the ceiling, room
  * for the priced maximum, the envelope and the held, sent row naming its
- * message. A twin that inserted after the lookup wins the unique index, and
- * this holds nothing.
+ * message, with its carriers row on a carried deployment, whose agent must
+ * still be a member. A twin that inserted after the lookup wins the unique
+ * index, and this holds nothing.
  */
 export async function holdPriced(
   tx: TenantQuery,
   request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
-  account: string | null,
+  sent: { readonly account: string | null; readonly carrier?: Carrier | undefined },
   callId: string = randomUUID(),
 ): Promise<Held> {
+  const { account, carrier } = sent;
   const cap = await lockedOrDefault(tx);
   const earlier = await messageCall(tx, request.messageId);
   if (earlier !== undefined) return earlier;
@@ -120,12 +123,16 @@ export async function holdPriced(
     const leftMinor = Math.max(0, limitMinor - committed);
     return { ok: false, code: 'BUDGET_UNAVAILABLE', callId: null, leftMinor };
   }
+  if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
+    return refused('CARRIAGE_UNAVAILABLE');
+  }
   const envelopeId = await envelopeOf(tx, cap.id, request);
   const held = { callId, envelopeId, operation, route, account };
   if (!(await insertHeld(tx, request, held))) {
     return (await messageCall(tx, request.messageId)) ?? refused('STILL_ANSWERING');
   }
   await registerPromptCopy(tx, callId);
+  if (carrier !== undefined) await writeCarriers(tx, callId, carrier);
   return {
     ok: true,
     reserved: { callId, operation, route, reservedMinor: operation.maximumMinor },

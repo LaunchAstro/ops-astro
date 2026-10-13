@@ -1228,7 +1228,7 @@
     "tests/runtime/written-off-while-dispatched.test.ts": 5.0,
     "tests/site/c80-agent-replay.test.ts": 4.1,
     "tests/site/c80-agent-request.test.ts": 5.5,
-    "tests/site/c80-approval.test.ts": 4.0,
+    "tests/site/c80-decision.test.ts": 4.0,
     "tests/site/c80-authority-after-wait-agent.test.ts": 7.3,
     "tests/site/c80-authority-after-wait.test.ts": 7.2,
     "tests/site/c80-decision-read.test.ts": 3.7,

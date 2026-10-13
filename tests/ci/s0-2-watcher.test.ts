@@ -37,6 +37,7 @@ interface Monitor {
 interface Plan {
   readonly channel: string;
   readonly recipients: readonly string[];
+  readonly every: string;
   readonly monitors: readonly Monitor[];
   readonly sink: { readonly recipients: readonly string[] };
 }
@@ -147,6 +148,17 @@ describe('S0-2 alerts go by email, at once, to the owner and the second operator
     expect(result.channel).toBe('email');
     expect(result.recipients).toEqual([OWNER, SECOND]);
     expect(result.sink.recipients).toEqual([OWNER, SECOND]);
+  });
+
+  // The watcher's plan checks every five minutes (UptimeRobot's free plan has
+  // no shorter interval), so no alert may promise a check more often.
+  it('the plan and every alert name the five-minute check the watcher runs', () => {
+    const result = plan({ ...BASE, OPS_WATCH_PRODUCTION_URL: 'https://production.example.test/' });
+    expect(result.every).toMatch(/^every five minutes;/u);
+    for (const monitor of result.monitors) {
+      expect(monitor.message).not.toMatch(/every minute/u);
+    }
+    expect(plainAlert('web-down', 'production').text).toContain('every five minutes');
   });
 
   it('a missing or malformed address is refused by name, and the value is not printed', () => {

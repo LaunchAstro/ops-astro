@@ -121,6 +121,7 @@ export {
   type FactorCaller,
 } from './commands/account-factor.ts';
 export {
+  type EnrolAnswer,
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
