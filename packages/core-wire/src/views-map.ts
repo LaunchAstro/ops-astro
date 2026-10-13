@@ -77,6 +77,9 @@ export interface MapListResult {
   }[];
 }
 
+/** Every map read's answer, as the read path names them. */
+export type MapReadResult = MapViewResult | MapFrontierResult | MapListResult;
+
 /** A map's frontier and fog (WF-2): each from its read model, in order. */
 export interface MapFrontierResult {
   readonly ok: true;

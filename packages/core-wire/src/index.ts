@@ -174,6 +174,7 @@ export type {
   MapViewResult,
   MapFrontierResult,
   MapListResult,
+  MapReadResult,
 } from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
