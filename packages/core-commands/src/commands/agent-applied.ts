@@ -45,12 +45,17 @@ export async function recordApplied(
     revision: outcome.revision,
     detail: outcome.detail,
   };
+  // The audit subject rides beside the answer, as the person envelope keeps
+  // it, so the replay's audit event names the same record.
+  const { auditSubjectId } = outcome;
+  const kept: CommandHandle & { readonly auditSubjectId?: string } =
+    auditSubjectId === undefined ? storable(handle) : { ...storable(handle), auditSubjectId };
   await registerAttempt(tx, {
     operationId: request.operationId,
     command: request.command,
     actorId: session.actorId,
     digest,
-    result: storable(handle),
+    result: kept,
     recordId: outcome.recordId,
   });
   await writeAppliedEvents(

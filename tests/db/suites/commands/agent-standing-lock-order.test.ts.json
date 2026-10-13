@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a stop of an agent login and an agent write at once never deadlock: whichever holds its locks first, the other waits behind it at each lock in turn and finishes"
+}

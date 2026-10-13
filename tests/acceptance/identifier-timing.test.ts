@@ -30,6 +30,7 @@ import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
+import { foreignLaunch } from './foreign-launch.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -590,6 +591,16 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       code: 'RESERVATION_NOT_CLAIMABLE',
       foreign: () => ({ reservationId: f.picked.reservationId }),
       fabricated: () => ({ reservationId: randomUUID() }),
+    });
+    // The agent's take, on its own login: bravo's real launch and a made-up one.
+    const bravoLaunch = await foreignLaunch(w);
+    out.push({
+      op: 'task.take_launch',
+      operand: 'launchId',
+      by: { kind: 'agent', identity: w.h.world.agent },
+      code: 'SCOPE_NOT_GRANTED',
+      foreign: () => ({ launchId: bravoLaunch }),
+      fabricated: () => ({ launchId: randomUUID() }),
     });
     const picked = await w.pickUp(w.h.world.agent, 'the timing agent’s own work');
     const agent: Presenter = {

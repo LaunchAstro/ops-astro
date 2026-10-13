@@ -315,11 +315,20 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return agentCell(agent, name, { outcome: 'completed' }, String(detail['credential']), null);
   }
 
-  /** AW-11's two on an agent's own lease; every other operation as `applied` builds it. */
+  /**
+   * The take on a fresh agent's own login, no credential and no launch named:
+   * it has none open, so the take applies and answers that.
+   */
+  const ownTake = async (): Promise<Cell> =>
+    agentCell(await freshAgent(), 'task.take_launch', {}, undefined, null);
+
+  /** AW-11's two and the take on an agent's own login; every other operation as `applied` builds it. */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
       ? await childCell(declaration.name)
-      : await applied(declaration);
+      : declaration.name === 'task.take_launch'
+        ? await ownTake()
+        : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(

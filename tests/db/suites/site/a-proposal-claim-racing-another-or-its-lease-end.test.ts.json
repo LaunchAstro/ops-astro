@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Two claims of one correction's proposal at once write one row, the second waiting on the correction lock; a claim racing its lease's end waits on the other in either order, and claims nothing once the lease has ended. Each wait is seen in pg_stat_activity."
+}

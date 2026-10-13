@@ -1,0 +1,86 @@
+name: Sol verdict
+
+# Advisory in the current round. The orchestrator enables this check at a
+# round boundary after configuring SOL_REVIEWER_ACCOUNT. A comment verdict
+# needs a rerun of this workflow; formal review changes trigger it directly.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  sol-verdict:
+    name: Sol verdict for this revision
+    runs-on: ubuntu-latest
+    if: github.event_name == 'merge_group' || github.event.pull_request.state == 'open'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The checker's own cases
+        run: node --test tests/ci/verdict-record-check.test.mjs tests/ci/verdict-workflow.test.mjs tests/ci/edited-verdict-and-required-check.proof.test.mjs
+      - name: The pull requests being judged
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request_review ]; then
+            export GITHUB_EVENT_NAME=pull_request
+          fi
+          node scripts/merge-group.mjs list > "${RUNNER_TEMP}/prs.txt"
+      # The token reaches only gh. Complete arrays are materialised before the
+      # checker runs, and a failed read fails the job, including for a group.
+      - name: Read the current records
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          while read -r PR_NUMBER _; do
+            mkdir -p "${RUNNER_TEMP}/pr-${PR_NUMBER}"
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"
+            gh api --paginate --slurp "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" \
+              | jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/comments.json"
+            # REST reviews expose submitted_at only. Read bodies and edit
+            # timestamps together so an edited refusal supersedes older text.
+            gh api graphql --paginate --slurp \
+              -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="${PR_NUMBER}" \
+              -f query='query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    reviews(first: 100, after: $endCursor) {
+                      nodes { id author { login } body state submittedAt updatedAt }
+                      pageInfo { hasNextPage endCursor }
+                    }
+                  }
+                }
+              }' \
+              | jq '[.[].data.repository.pullRequest.reviews.nodes[] | {
+                  id, user: {login: .author.login}, body, state,
+                  submitted_at: .submittedAt, updated_at: .updatedAt
+                }]' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/reviews.json"
+          done < "${RUNNER_TEMP}/prs.txt"
+      - name: Judge every pull request
+        env:
+          SOL_REVIEWER_ACCOUNT: ${{ vars.SOL_REVIEWER_ACCOUNT }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request_review ]; then
+            export GITHUB_EVENT_NAME=pull_request
+          fi
+          node scripts/merge-group.mjs each --pulls "${RUNNER_TEMP}" \
+            sh -c 'node scripts/sol-verdict-check.mjs --records "$RUNNER_TEMP/pr-$PR_NUMBER"'

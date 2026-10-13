@@ -90,11 +90,15 @@ const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
 /**
  * Columns unique across the whole installation, so each business's seed row names its own:
- * a site's repository and hosting project are bound once (C80).
+ * a site's repository and hosting project are bound once (C80), and an agent login
+ * act's address is one generation of one agent in every business.
  */
 function installationUnique(table: string, business: string): Record<string, string> {
-  if (table !== 'public.party_sites') return {};
-  return { repository: `seed/${business}`, project: `prj_${business}` };
+  if (table === 'public.party_sites') {
+    return { repository: `seed/${business}`, project: `prj_${business}` };
+  }
+  if (table === 'ops.agent_login_acts') return { email: `agent-${business}+g1@example.test` };
+  return {};
 }
 
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
@@ -184,6 +188,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     party_id: randomUUID(),
     page_url: 'https://agency.example/about/',
     path: 'src/pages/about.md',
+  },
+  'public.live_correction_proposals': {
+    correction_id: randomUUID(),
+    seam_branch: 'seam-seed',
+    base_revision: 'rev-1',
+    pre_image_blob: 'blob-seed',
+    lease_id: randomUUID(),
+    fence: 1,
   },
   'public.live_correction_receipts': {
     correction_id: randomUUID(),
@@ -582,6 +594,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     token_hash: '0'.repeat(64),
     created_at: '2099-01-01T00:00:00Z',
     expires_at: '2099-01-01T00:10:00Z',
+  },
+  // AW-08: only the agent login tool writes an act, and the journey never runs it.
+  'ops.agent_login_acts': {
+    agent_actor_id: randomUUID(),
+    act: 'make',
+    generation: 1,
+    custody_item: 'restricted calls seed',
+    phase: 'reserved',
+    operator_person_id: randomUUID(),
   },
 };
 

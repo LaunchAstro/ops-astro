@@ -26,7 +26,6 @@
 // exactly a day apart would miss a day by the previous send's own delay.
 
 import {
-  isUuid,
   toldAtOnce,
   type BusinessId,
   type Database,
@@ -34,6 +33,7 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import { DAY_MS, NOTHING_SENT } from './email-class.ts';
+import { activeWorker } from './worker-standing.ts';
 import { emailAtOnce, emailDailyBatch, type EmailTiming } from './email-timing.ts';
 
 export type DeliveryPass =
@@ -52,22 +52,6 @@ const DUE = `select i.id, i.recipient_person_id as recipient, i.reason
                      and a.channel = 'email'
                    order by a.observed_seq desc limit 1), true)
   order by i.raised_at, i.id`;
-
-/**
- * The worker actor, held `for share` and active: a deactivation in flight is waited on and then
- * read, and one that comes later waits for this transaction's end. The recheck relies on the
- * order in `deliver` (`broker-email.ts`): custody is asked only after the send's transaction
- * commits, so the one send a deactivation can still meet is one that held the worker first.
- */
-async function activeWorker(tx: TenantQuery, actorId: string): Promise<boolean> {
-  if (!isUuid(actorId)) return false;
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.actors
-      where business_id = $1 and id = $2 and kind = 'worker' and active for share`,
-    [tx.businessId, actorId],
-  );
-  return rows.length === 1;
-}
 
 /** Whom this pass tries: the due items told at once, or the people waiting for the day's email. */
 async function whomToTry(
