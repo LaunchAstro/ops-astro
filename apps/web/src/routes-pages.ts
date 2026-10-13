@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Two agency pages kept apart from `routes.ts` so it stays under its line cap;
+// Agency pages kept apart from `routes.ts` so it stays under its line cap;
 // `ROUTES` spreads them in place and checks them as it checks its own.
 
 export const PAGE_ROUTES = {
@@ -23,5 +23,14 @@ export const PAGE_ROUTES = {
     title: 'Onboarding',
     surface: 'none',
     authenticated: true,
+  },
+  // A forgotten password, signed out: ask for a link, then set one from it. The
+  // provider's one-time hash is in the fragment, so the address matched is the page alone.
+  'agency:reset': {
+    namespace: 'agency',
+    path: '/reset',
+    title: 'Reset your password',
+    surface: 'none',
+    authenticated: false,
   },
 } as const;

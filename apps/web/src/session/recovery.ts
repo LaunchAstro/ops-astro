@@ -62,11 +62,17 @@ async function objectOf(answer: Response): Promise<Json | undefined> {
 const bearer = (accessToken: string) => ({ authorization: `Bearer ${accessToken}` });
 const JSON_BODY = { 'content-type': 'application/json' };
 
+/** The recovery session, once opened: in the page's memory, for a second try at the password. */
+export interface RecoverySession {
+  readonly accessToken: string;
+  readonly subject: string;
+}
+
 /** The provider's recovery session for the mailed link's hash, or nothing. */
 export async function verifyRecovery(
   route: RecoveryRoute,
   tokenHash: string,
-): Promise<{ readonly accessToken: string; readonly subject: string } | undefined> {
+): Promise<RecoverySession | undefined> {
   const answer = await ask(route, provider(route, '/verify'), {
     method: 'POST',
     headers: JSON_BODY,
@@ -152,4 +158,38 @@ export async function confirmChanged(route: RecoveryRoute, accessToken: string):
   return (
     (await api(route, '/api/password/changed', { headers: bearer(accessToken) })).status === 200
   );
+}
+
+/** Where "Change password" ended: the page's next stage, a password to choose again, or changed. */
+export type ChangeOutcome =
+  | { readonly stage: 'invalid' | 'needs-support' | 'failed' }
+  | { readonly refusal: 'refused' | 'failed' }
+  | { readonly stage: 'changed'; readonly signedOut: boolean };
+
+/**
+ * "Change password", in its fixed order: open the provider's recovery session
+ * with the link's hash (once; a second try keeps it), begin the reset, which
+ * ends every session of the login, write the password to the provider, tell
+ * the API it is changed, then sign out everywhere and forget the session.
+ */
+export async function changePassword(
+  route: RecoveryRoute,
+  tokenHash: string,
+  opened: { current: RecoverySession | null },
+  password: string,
+): Promise<ChangeOutcome> {
+  if (opened.current === null) {
+    const session = await verifyRecovery(route, tokenHash);
+    if (session === undefined) return { stage: 'invalid' };
+    opened.current = session;
+  }
+  const { accessToken, subject } = opened.current;
+  const begun = await beginReset(route, accessToken);
+  if (begun !== 'begun') return { stage: begun };
+  const written = await setNewPassword(route, accessToken, subject, password);
+  if (written !== 'set') return { refusal: written };
+  // Settles the window now; refused or lost, the window ends at its bound, five minutes on.
+  await confirmChanged(route, accessToken);
+  opened.current = null;
+  return { stage: 'changed', signedOut: await signOutEverywhere(route, accessToken) };
 }

@@ -11,8 +11,9 @@
 //   over them, and the same statement runs for each
 //   (`requestPasswordReset`). The caller is the first `x-forwarded-for`
 //   address, Vercel's own, kept only as its digest; none is the empty one.
-// - `POST /api/password/begin`, with the recovery session's bearer, opens
-//   the reset's window before the browser's write (`beginPasswordReset`):
+// - `POST /api/password/begin`, with the recovery session's bearer
+//   (`recoveryBearer`, below), opens the reset's window before the
+//   browser's write (`beginPasswordReset`):
 //   200 `{}`, the same for a repeat on the session; 401 `RESET_LINK_INVALID`
 //   for any other bearer, a session no minted link opened, a login mapped
 //   nowhere, or a window already settled; 403 `RESET_NEEDS_SUPPORT` for a
@@ -28,7 +29,7 @@
 // 503 `RESET_UNAVAILABLE` when the provider's keys cannot be reached to check
 // the bearer, `RESET_FAULT` for anything else failing.
 
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
   beginPasswordReset,
@@ -37,13 +38,13 @@ import {
   settlePasswordReset,
   type BeginCode,
 } from '../../packages/core-commands/src/index.ts';
-import type { Database } from '../../packages/core-records/src/index.ts';
-import { readBounded } from './auth/factors.ts';
 import {
-  createRecoveryVerifier,
-  type RecoveryBearer,
-  type SupabaseVerifierOptions,
-} from './auth/supabase.ts';
+  SIGN_IN_CLOCK_SKEW_SECONDS,
+  type Database,
+} from '../../packages/core-records/src/index.ts';
+import { readBounded } from './auth/factors.ts';
+import { bearerOf } from './auth/session.ts';
+import { createTokenCheck, sessionIdOf, type SupabaseVerifierOptions } from './auth/supabase.ts';
 
 export const RESET_REQUEST_PATH = '/api/password/reset';
 export const RESET_BEGIN_PATH = '/api/password/begin';
@@ -70,6 +71,62 @@ const BEGIN_STATUS: Readonly<Record<BeginCode, 401 | 403>> = {
   RESET_LINK_INVALID: 401,
   RESET_NEEDS_SUPPORT: 403,
 };
+
+/** The provider's one-time recovery session, as `begin` and `changed` take it. */
+export interface RecoveryBearer {
+  readonly token: string;
+  readonly subject: string;
+  readonly sessionId: string;
+  /** The session's one sign-in, its `otp` stamp, in whole seconds. */
+  readonly signedInAt: number;
+}
+
+export type RecoveryVerifier = (
+  request: Context['req'],
+) => Promise<RecoveryBearer | 'unavailable' | undefined>;
+
+/** How old a recovery session's sign-in may be: it sets a password, then signs out. */
+export const RECOVERY_SESSION_SECONDS = 600;
+
+/** The `otp` stamp of a token whose `amr` is exactly one `otp` entry at `aal1`, or none. */
+function otpStampOf(claims: Readonly<Record<string, unknown>>): number | undefined {
+  const methods = claims['amr'];
+  if (claims['aal'] !== 'aal1' || !Array.isArray(methods) || methods.length !== 1) return;
+  const [only] = methods as readonly unknown[];
+  if (typeof only !== 'object' || only === null) return;
+  const { method, timestamp } = only as Record<string, unknown>;
+  return method === 'otp' && Number.isSafeInteger(timestamp) ? (timestamp as number) : undefined;
+}
+
+/**
+ * The reset's own verifier, `recoveryBearer`: the bearer alone, its signature
+ * and issuer checked as the ordinary verifier checks them, then only a
+ * session a mailed link opened. That is `aal1`, an `amr` of exactly one `otp`
+ * entry stamped within the last 10 minutes (and no more than the clock's
+ * minute ahead), and a `session_id`. A password sign-in, a session with a
+ * second factor, or anything malformed is nothing.
+ */
+export function createRecoveryVerifier(options: SupabaseVerifierOptions): RecoveryVerifier {
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  const check = createTokenCheck(options);
+  return async function recoveryBearer(
+    request: Context['req'],
+  ): Promise<RecoveryBearer | 'unavailable' | undefined> {
+    const token = bearerOf(request);
+    if (token === undefined) return undefined;
+    const claims = await check(token);
+    if (claims === 'unavailable') return 'unavailable';
+    if (typeof claims !== 'object') return undefined;
+    const subject = claims['sub'];
+    const sessionId = sessionIdOf(claims);
+    const signedInAt = otpStampOf(claims);
+    if (typeof subject !== 'string' || subject === '') return undefined;
+    if (sessionId === undefined || signedInAt === undefined) return undefined;
+    const age = now() - signedInAt;
+    if (age > RECOVERY_SESSION_SECONDS || age < -SIGN_IN_CLOCK_SKEW_SECONDS) return undefined;
+    return { token, subject, sessionId, signedInAt };
+  };
+}
 
 /** The address the body holds, or none; a body that is not one asks for none. */
 async function addressOf(request: Request): Promise<string> {
@@ -139,13 +196,51 @@ async function writtenSince(
   }
 }
 
+type Verified = RecoveryBearer | Response;
+
+/** The request's recovery session, or the answer refusing it. */
+async function sessionOf(context: Context, verify: RecoveryVerifier): Promise<Verified> {
+  const bearer = await verify(context.req);
+  if (bearer === 'unavailable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
+  return bearer ?? context.json({ code: 'RESET_LINK_INVALID' }, 401);
+}
+
+const fault = (context: Context): Response => context.json({ code: 'RESET_FAULT' }, 503);
+
+/** `begin`: the session's one window opened, or the refusal. */
+async function begin(context: Context, database: Database, verify: RecoveryVerifier) {
+  const bearer = await sessionOf(context, verify);
+  if (bearer instanceof Response) return bearer;
+  const begun = await beginPasswordReset(database, bearer);
+  if (begun.ok) return context.json({}, 200);
+  return context.json({ code: begun.code }, BEGIN_STATUS[begun.code]);
+}
+
+/** `changed`: the session's open window settled once the provider shows the write. */
+async function changed(
+  context: Context,
+  database: Database,
+  verify: RecoveryVerifier,
+  options: PasswordResetOptions,
+) {
+  const bearer = await sessionOf(context, verify);
+  if (bearer instanceof Response) return bearer;
+  const openedAt = await openWindowOf(database, bearer);
+  if (openedAt === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
+  if (!(await writtenSince(options, bearer, openedAt))) {
+    return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
+  }
+  await settlePasswordReset(database, bearer);
+  return context.json({}, 200);
+}
+
 /** Mount the three routes on `server`, the way `composeApi` mounts the hooks. */
 export function mountPasswordReset(
   server: Hono,
   database: Database,
   options: PasswordResetOptions,
 ): void {
-  const recoveryBearer = createRecoveryVerifier({
+  const verify = createRecoveryVerifier({
     ...options.signIn,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
@@ -172,34 +267,15 @@ export function mountPasswordReset(
     }
     return context.json({}, 202);
   });
-
-  server.post(RESET_BEGIN_PATH, empty, async (context) => {
-    try {
-      const bearer = await recoveryBearer(context.req);
-      if (bearer === 'unavailable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
-      if (bearer === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-      const begun = await beginPasswordReset(database, bearer);
-      if (begun.ok) return context.json({}, 200);
-      return context.json({ code: begun.code }, BEGIN_STATUS[begun.code]);
-    } catch {
-      return context.json({ code: 'RESET_FAULT' }, 503);
-    }
-  });
-
-  server.post(RESET_CHANGED_PATH, empty, async (context) => {
-    try {
-      const bearer = await recoveryBearer(context.req);
-      if (bearer === 'unavailable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
-      if (bearer === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-      const openedAt = await openWindowOf(database, bearer);
-      if (openedAt === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-      if (!(await writtenSince(options, bearer, openedAt))) {
-        return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
-      }
-      await settlePasswordReset(database, bearer);
-      return context.json({}, 200);
-    } catch {
-      return context.json({ code: 'RESET_FAULT' }, 503);
-    }
-  });
+  server.post(
+    RESET_BEGIN_PATH,
+    empty,
+    async (context) => await begin(context, database, verify).catch(() => fault(context)),
+  );
+  server.post(
+    RESET_CHANGED_PATH,
+    empty,
+    async (context) =>
+      await changed(context, database, verify, options).catch(() => fault(context)),
+  );
 }

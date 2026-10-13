@@ -168,14 +168,14 @@ function everyPageAtItsAddress(): void {
   });
 }
 
-// The registry's pages: wave 0's four, the signed-out reset page, the public legal page (C81), the task page
+// The registry's pages: wave 0's four, the public legal page (C81), the task page
 // with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
 // MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1),
 // MP-7-10's Team, SL06's Clients book, a conversation's own address (C36),
-// a Wayfinder map (WF-3), the Executive page and the onboarding look.
+// a Wayfinder map (WF-3), the Executive page, the onboarding look and the
+// signed-out password reset.
 const BUILT_PAGES = [
   'agency:sign-in',
-  'agency:reset',
   'agency:legal',
   'agency:projects-board',
   'agency:task-detail',
@@ -184,6 +184,7 @@ const BUILT_PAGES = [
   'agency:connections',
   'agency:executive',
   'agency:onboarding',
+  'agency:reset',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
