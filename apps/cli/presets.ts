@@ -50,7 +50,7 @@ export function presetOf(
       : undefined;
   if (selector === undefined) return undefined;
   const name = String(selector === '--env' ? flag : env['OPS_ASTRO_ENV']);
-  const origin = PRESETS[name];
+  const origin = Object.hasOwn(PRESETS, name) ? PRESETS[name] : undefined;
   if (origin === undefined) {
     throw new Error(`${selector} ${name} is not a preset; use sandbox or production`);
   }

@@ -77,11 +77,13 @@ describe('a preset beside a hand-set origin is refused', () => {
     expect(seen).toStrictEqual([]);
   });
 
-  it('an unknown preset is refused and the two presets are named', async () => {
-    const refused = await run(['person.list', '--env', 'staging'], env);
-    expect(refused.code).toBe(2);
-    expect(refused.err).toContain('sandbox');
-    expect(refused.err).toContain('production');
-    expect(seen).toStrictEqual([]);
+  ['staging', 'constructor', 'toString'].forEach((name) => {
+    it(`an unknown preset (${name}) is refused and the two presets are named`, async () => {
+      const refused = await run(['person.list', '--env', name], env);
+      expect(refused.code).toBe(2);
+      expect(refused.err).toContain('sandbox');
+      expect(refused.err).toContain('production');
+      expect(seen).toStrictEqual([]);
+    });
   });
 });
