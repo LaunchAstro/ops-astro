@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the call-topic join refuses a password-only login with a verified factor and a token past its 12 hours"
+}

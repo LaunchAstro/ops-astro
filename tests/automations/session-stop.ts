@@ -70,7 +70,11 @@ function stoppedTransaction(
       const rows = await tx.query<Row>(text, parameters);
       if (text.includes('pg_advisory_xact_lock(') && parameters?.[0] === chainKey) chained = true;
       const live = (rows[0] as { readonly ended?: unknown } | undefined)?.ended === false;
-      if (chained && live && text.includes('ended_provider_sessions')) {
+      if (
+        chained &&
+        live &&
+        (text.includes('ended_provider_sessions') || text.includes('ops.session_'))
+      ) {
         const stop = take();
         if (stop !== undefined) {
           stop.reached();

@@ -5,7 +5,11 @@
 // and `restricted-calls-catalogue.ts` beside the rest. Apart from them to keep both under the
 // line limit. `PART_GROUPS` and `PART_UPDATES` gather it with #1531's part.
 
-import { CARRIAGE_GROUPS, CARRIAGE_UPDATES } from './restricted-calls-carriage.ts';
+import {
+  CARRIAGE_EXECUTES,
+  CARRIAGE_GROUPS,
+  CARRIAGE_UPDATES,
+} from './restricted-calls-carriage.ts';
 
 /**
  * Table grants: a class's record is read and its revision bumped by column grant; a mandate is
@@ -56,6 +60,7 @@ export const PART_GROUPS: readonly (readonly [string, string])[] = [
   ...MANDATE_GROUPS,
   ...CARRIAGE_GROUPS,
 ];
+export const PART_EXECUTES: readonly string[] = [...MANDATE_EXECUTES, ...CARRIAGE_EXECUTES];
 export const PART_UPDATES: readonly {
   readonly table: string;
   readonly from: string;

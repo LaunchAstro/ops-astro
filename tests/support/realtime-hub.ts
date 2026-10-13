@@ -21,6 +21,17 @@ import postgres from 'postgres';
 
 export interface Claims {
   readonly sub: string;
+  readonly [claim: string]: unknown;
+}
+
+/**
+ * Claims as the provider issues them: GoTrue stamps every token's first
+ * sign-in in `amr`, so claims that name none were signed in now.
+ */
+export function asIssued<T extends Record<string, unknown>>(claims: T): T {
+  return 'amr' in claims
+    ? claims
+    : { ...claims, amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }] };
 }
 
 export interface Heard {
@@ -59,7 +70,7 @@ const CALL_TOPIC = /^carry:[^:]+:call:[^:]+$/u;
 async function judged(sql: postgres.Sql, topic: string, claims: Claims): Promise<boolean> {
   return await sql.begin(async (tx) => {
     await tx`set local role authenticated`;
-    await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
+    await tx`select set_config('request.jwt.claims', ${JSON.stringify(asIssued(claims))}, true)`;
     await tx`select set_config('realtime.topic', ${topic}, true)`;
     const [row] = await tx<{ ok: boolean }[]>`
       select public.ops_carry_may_join(realtime.topic()) as ok`;
