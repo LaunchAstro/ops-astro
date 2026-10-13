@@ -14,6 +14,7 @@ import {
   admission,
   admitted,
   liveLogins,
+  signedIn,
   NOT_OURS,
   subjectFree,
   type Act,
@@ -78,9 +79,16 @@ async function locked(execute: Execute, run: Run, id: string) {
   return { ownerActor, live, act: await actRow(execute, id) };
 }
 
+/**
+ * The provider phase judges the make's admission again under its own locks,
+ * no live login on the agent but its act's included, and the operator's
+ * bearer after the last of those waits, before it makes a provider user.
+ */
 async function provide(execute: Execute, run: Run, id: string, password: string, at: At) {
-  const { act } = await locked(execute, run, id);
-  if (act.phase !== 'reserved') return act;
+  const decided = await admission(execute, run);
+  const act = 'open' in decided ? decided.open : await actRow(execute, id);
+  if (act.id !== id || act.phase !== 'reserved') return act;
+  await signedIn(run);
   const subject = await providerUser(run, act, password);
   await at('provider');
   await subjectFree(execute, subject, null);
@@ -107,6 +115,7 @@ async function bind(execute: Execute, run: Run, id: string): Promise<Act> {
 
 /** The stored credential signs in, and the agent door answers as the agent, with no delegation. */
 async function probe(run: Run, act: Act, password: string): Promise<void> {
+  await signedIn(run);
   const gotrueUrl = run.env['GOTRUE_URL'] ?? '';
   const providerKey = run.env['SUPABASE_SERVICE_KEY'] ?? '';
   const bearer = await agentSignIn(
