@@ -533,6 +533,8 @@ async function promptHidden(input: NodeJS.ReadStream, label: string): Promise<st
       };
       input.on('data', onData);
       input.once('end', () => resolve(''));
+      // An earlier prompt left the terminal paused; a new listener alone does not take it up again.
+      input.resume();
     });
   } finally {
     input.setRawMode(false);
