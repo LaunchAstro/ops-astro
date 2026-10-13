@@ -30,6 +30,7 @@ export const PINNED_SHAPE = {
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
   'live_correction.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'invitation.list': { spine: false, subject: false, authority: 'declared' },
   'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preference.read': { spine: false, subject: false, authority: 'self' },

@@ -10,7 +10,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 type Body = Readonly<Record<string, unknown>>;
 
 /**
- * The sixty operations that name no identifier, each with a minimal valid body.
+ * The sixty-one operations that name no identifier, each with a minimal valid body.
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
  * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
  * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
@@ -143,6 +143,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['chat.conversations', {}],
   // C39-T: a new invitation names a person and an address, no record.
   ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
+  // C39-T: the business's invitations, which names no record.
+  ['invitation.list', {}],
   // The Workflow triggers registry (C33) names no row.
   ['automation.registry', {}],
   // Assign to AI: the caller makes an agent of their own, and lists their own.

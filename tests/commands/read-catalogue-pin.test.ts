@@ -43,6 +43,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'invitation.list': [],
   'live_correction.read': ['correctionId'],
   'map.frontier': ['recordId'],
   'map.list': [],
@@ -241,6 +242,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
+  'invitation.list': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */

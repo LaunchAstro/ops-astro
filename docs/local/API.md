@@ -2526,6 +2526,18 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 `{ invitationId, state }`. The business's worker expires lapsed invitations
 (`expireInvitations`, audited `invitation.expire`).
 
+The read `invitation.list` (`POST /api/b/<key>/invitation/list`, body `{}`)
+asks the same `access:share` for the whole business and no agent route serves
+it. It answers `{ ok: true, invitations }`, newest first, each
+`{ invitationId, name, address, role, state, createdAt, sentAt, expiresAt }`:
+`state` is `expired` once a pending invitation's lifetime has passed, before
+the worker ends it, and `sentAt` is the last attempt the provider accepted or
+delivered (`null` when none was). Only this business's invitations are listed,
+and no enrolment token or hash is part of the answer. Without the key it is
+`SCOPE_NOT_GRANTED` 403; a client-scoped grant does not count. Settings ▸
+Access draws the form and the list for a holder of `access:share`
+(`apps/web/src/screens/access/`).
+
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
@@ -2546,8 +2558,8 @@ evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
 Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
-here yet: the send mounted after the command, the hook wired in `main`, the
-enrolment page and the Access screen (C39-T P3).
+here yet: the send mounted after the command, the hook wired in `main` and the
+enrolment page (C39-T P3).
 
 ## Tags
 
@@ -2595,7 +2607,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,
-`trace.read`, `harness.read`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
+`trace.read`, `harness.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

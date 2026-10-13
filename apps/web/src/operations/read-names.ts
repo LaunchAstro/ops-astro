@@ -106,6 +106,8 @@ export const READ_NAMES = [
   'harness.read',
   // One live correction's decision, read again for its card (C80).
   'live_correction.read',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.
   'automation.registry',
 ] as const;

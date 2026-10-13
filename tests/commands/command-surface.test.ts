@@ -111,6 +111,7 @@ const DECLARED_READS = [
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'invitation.list',
   'live_correction.read',
   'map.frontier',
   'map.list',
@@ -207,11 +208,10 @@ describe("MP-6-2's state revised", () => {
 });
 
 describe('the surface as a table', () => {
-  // A case asserting that every action is one of the seven a grant can carry
-  // was removed: `action` is typed `Action`, so an eighth is a type error and
-  // the case could not fail. What is worth checking is that the actions are
-  // not all the same one, which is what would happen if a declaration were
-  // copied rather than decided.
+  // A case asserting that every action is one of the seven a grant can carry was removed: `action`
+  // is typed `Action`, so an eighth is a type error and the case could not fail. What is worth
+  // checking is that the actions are not all the same one, which is what would happen if a
+  // declaration were copied rather than decided.
   it('does not give every command the same action', () => {
     const actions = new Set(COMMAND_SURFACE.map((command) => command.action));
     expect([...actions].toSorted()).toStrictEqual([
