@@ -55,7 +55,8 @@ export interface AgentOptions {
   readonly runner?: string;
 }
 
-function sendOn(line: Line, key: string, k: string, runner: string) {
+/** Seals on `clock`, the agent's own, as a machine seals on its own clock. */
+function sendOn(line: Line, key: string, k: string, runner: string, clock: () => number) {
   let seq = 0;
   return async (event: string, body: unknown, numbered = false): Promise<void> => {
     const message = sealed(key, {
@@ -64,7 +65,7 @@ function sendOn(line: Line, key: string, k: string, runner: string) {
       runner,
       event,
       seq: numbered ? seq : 0,
-      expiresAt: Date.now() + SEAL_LIFE_MS,
+      expiresAt: clock() + SEAL_LIFE_MS,
       body: JSON.stringify(body),
     });
     if (numbered) seq += 1;
@@ -111,15 +112,17 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
   );
   if (!doorbell.ok) throw new Error('the agent stand-in could not join its doorbell');
   lines.push(doorbell.line);
+  /** The agent's own clock: it seals, opens, accepts and checks the deadline on it. */
+  const ownClock = (): number => Date.now() + standIn.clockOffset;
 
   const run = async (line: Line, k: string, request: Record<string, unknown>): Promise<void> => {
-    const say = sendOn(line, options.key, k, runner);
+    const say = sendOn(line, options.key, k, runner, ownClock);
     if (standIn.mode === 'refuse') {
       await say('refused', { code: 'MODEL_MACHINE_BUSY' });
       return;
     }
     const asked = request['request'] as { path: string; body: string };
-    const clock = Date.now() + standIn.clockOffset;
+    const clock = ownClock();
     standIn.requests.push({ deadlineAt: Number(request['deadlineAt']), heardAt: clock });
     if (!sendable(Number(request['deadlineAt']), clock)) {
       await say('refused', { code: 'SEND_LAPSED' });
@@ -164,15 +167,15 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
         const result = opened(options.keys, message, {
           direction: 'broker',
           event: 'request',
-          now: Date.now(),
+          now: ownClock(),
         });
         if (!result.ok || result.sealed.k !== k || result.sealed.runner !== runner) return;
         void run(line, k, result.body as Record<string, unknown>);
       });
       await standIn.beforeAccept(k);
       standIn.accepted.push(k);
-      const acceptedAt = Date.now() + standIn.clockOffset;
-      await sendOn(line, options.key, k, runner)('accept', { acceptedAt });
+      const acceptedAt = ownClock();
+      await sendOn(line, options.key, k, runner, ownClock)('accept', { acceptedAt });
     })();
   });
   return standIn;
