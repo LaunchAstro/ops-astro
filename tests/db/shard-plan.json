@@ -325,6 +325,7 @@
     "tests/authority/a-manager-revoked-during-the-access-lock-wait-cannot-act.test.ts": 5.2,
     "tests/authority/a-money-protection-switch-waiting-at-sign-in-cannot-use-an-expired-step-up.test.ts": 4.2,
     "tests/authority/access-ended-answer-is-its-own-code.test.ts": 5.2,
+    "tests/authority/an-access-ending-revokes-an-expired-delegation-only-while-it-still-carries-work.test.ts": 5.0,
     "tests/authority/an-access-ending-whose-provider-user-is-gone-is-settled-for-good.test.ts": 4.6,
     "tests/authority/c32-clients-and-grants-isolation.test.ts": 4.8,
     "tests/authority/c32-clients-and-grants-refusals.test.ts": 5.9,

@@ -456,8 +456,10 @@ async function heldAndGiven(
 
 /**
  * Under the complete lock set: revoke the person's grants, then name what lost
- * its authority. Every delegation the person gave loses its ceiling with their
- * grants; an attempt still covered by another live grant is untouched.
+ * its authority. Every delegation the person gave that is still live loses its
+ * ceiling with their grants; one that expired, even while this waited for its
+ * row, has nothing left to revoke and is not counted. An attempt still covered
+ * by another live grant is untouched.
  */
 async function revokeHeldAndGiven(
   tx: TenantQuery,
@@ -474,7 +476,13 @@ async function revokeHeldAndGiven(
     // eslint-disable-next-line no-await-in-loop -- the person's grants, already locked
     await revokeGrant(tx, grantId);
   }
-  const lost = new Set(given);
+  const live = await tx.query<{ readonly id: string }>(
+    `select id from public.delegations
+      where business_id = $1 and id = any($2::uuid[])
+        and revoked_at is null and settled_at is null and expires_at > clock_timestamp()`,
+    [tx.businessId, given],
+  );
+  const lost = new Set(live.map((row) => row.id));
   const lostLeases: string[] = [];
   for (const dependent of candidates) {
     // eslint-disable-next-line no-await-in-loop -- one per live attempt, each decisive
@@ -496,7 +504,8 @@ export interface EndedAuthority {
  * `access.end` (C58): every live grant the person holds, as themselves or as
  * their acting identity, and every delegation they gave an agent, ended in one
  * authority-loss classification, so the work they carried is classified
- * exactly as a revocation classifies it.
+ * exactly as a revocation classifies it, and each task manager is told of a
+ * hold it quarantined as a revocation tells them.
  *
  * The caller holds the access lock. The person's grant rows are locked next,
  * all of them and in id order, before any runtime lock: the order a single
@@ -545,6 +554,7 @@ export async function endPersonAuthority(
       return written;
     },
   });
+  await raiseIncident(tx, loss.classified);
   return {
     grantsRevoked: loss.value,
     delegationsRevoked,
