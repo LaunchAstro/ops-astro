@@ -51,6 +51,7 @@ const FAULTS: Readonly<Record<Exclude<OutboundFault, 'status'>, CallFault>> = {
   unlisted: 'ours',
   bad_path: 'ours',
   forbidden: 'ours',
+  lapsed: 'ours',
 };
 
 /** What a failed exchange was, from its fault and status alone. */
