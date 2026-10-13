@@ -39,6 +39,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { mailDeliverySettings, startMailDelivery } from '../api/mail-delivery.ts';
 import { createBusinessResolver } from '../api/server.ts';
+import { txtOrNone } from './dmarc.ts';
 import { mailUnitSettings, type Environment } from './settings.ts';
 
 const stopWith = (problem: string): never => {
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
       async () => await Promise.resolve(businesses),
       {},
       undefined,
-      resolveTxt,
+      txtOrNone(resolveTxt),
     );
   } catch (error) {
     await Promise.allSettled([database.close(), fake?.close()]);
