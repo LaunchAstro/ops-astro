@@ -30,6 +30,8 @@ export interface World {
   readonly env: Record<string, string | undefined>;
   knobs(knobs: Record<string, unknown>): void;
   calls(): readonly FakeCall[];
+  /** What the app-server stand-in got: its start (argv, environment, folder), then each message. */
+  appCalls(): readonly Record<string, unknown>[];
   ledger(): readonly Record<string, unknown>[];
   /** A file in the runner's home: a string as it is, anything else as JSON. */
   write(name: string, value: unknown): void;
@@ -70,6 +72,7 @@ export function makeWorld({ absentHome = false }: { absentHome?: boolean } = {})
       writeFileSync(join(codexHome, 'fake.json'), JSON.stringify(knobs));
     },
     calls: () => readLines(calls) as FakeCall[],
+    appCalls: () => readLines(join(codexHome, 'app-calls.jsonl')) as Record<string, unknown>[],
     ledger: () => readLines(join(agentHome, 'ledger.jsonl')) as Record<string, unknown>[],
     write: (name, value) => {
       writeFileSync(
