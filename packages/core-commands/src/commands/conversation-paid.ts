@@ -14,7 +14,8 @@ import {
   conversationOperationOf,
 } from '../../../core-connectors/src/index.ts';
 import type { ModelCallResult, PaidSeams } from '../../../core-custody/src/index.ts';
-import { withSession } from '../../../core-records/src/index.ts';
+import { subjectsOf, withSession } from '../../../core-records/src/index.ts';
+import { holdCoveringGrants } from '../../../core-runtime/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -54,7 +55,8 @@ export function operationFor(model: string | undefined | null): string {
  * At a paid send's handoff, in the caller's transaction: the conversation
  * still theirs and kept, their session and grant live (`hearingAt`), its model
  * still the paid one asked, the page the one the context read, and that page still no client's and theirs to
- * read, held for share without waiting: a task being written refuses.
+ * read, it and the caller's task grants held for share without waiting: a
+ * task or grant being written refuses.
  */
 async function stillAsked(
   tx: TenantQuery,
@@ -69,7 +71,10 @@ async function stillAsked(
     [tx.businessId, asked.conversationId],
   );
   if (now === undefined || now.page !== page || now.model !== ask.model) return false;
-  return page === null || typeof (await pageOf(tx, session, page, 'share nowait')) !== 'string';
+  if (page === null) return true;
+  // The task grants held too, so a revocation of the read waits for the send, as the conversation's do.
+  await holdCoveringGrants(tx, subjectsOf(session), 'task', 'nowait');
+  return typeof (await pageOf(tx, session, page, 'share nowait')) !== 'string';
 }
 
 export interface PaidAsk {
