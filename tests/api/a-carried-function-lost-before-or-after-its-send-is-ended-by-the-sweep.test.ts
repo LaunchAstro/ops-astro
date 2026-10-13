@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A hosted function lost partway through a carried call, and the sweep that
-// ends the call by what the carried custody recorded. Lost before its send
-// (stopped as it joins the call's line): `request_at` is null, so nothing was
-// sent and the call is released once 60 seconds have passed. Lost after it
+// ends the call by what the carried custody recorded. Lost before its offer
+// (stopped as it joins the call's line): a call never offered is no carried
+// one's to release, since a process custody sends without an offer, so it is
+// held by the ten-minute rule and never released at 60 seconds. Lost after it
 // (stopped as it sends the request): `request_at` is set, so the request may
 // have gone and the call is held once `answer_by` plus 60 seconds has passed,
 // never sooner and never while the send's own judgement still holds it. A
@@ -113,20 +114,30 @@ describe.skipIf(serverUrl === undefined)('a carried function lost mid-answer', (
     expect(world.ollama.seen).toHaveLength(1);
   }
 
-  it('lost before its send: released after 60 seconds, nothing sent', async () => {
+  it('lost before its offer: held after ten minutes, never released at 60 seconds', async () => {
     const lost = stopOnce();
     world.beforeJoin.run = lost.stop;
-    const body = 'What is due? (lost before the send)';
+    const body = 'What is due? (lost before the offer)';
     const asking = ask(world, body);
     await lost.stopped;
-    await age(body, 59);
+    await age(body, 61);
+    expect(await sweep()).toEqual({ held: 0, released: 0 });
+    await age(body, 538);
     expect(await sweep()).toEqual({ held: 0, released: 0 });
     await age(body, 2);
-    expect(await sweep()).toEqual({ held: 0, released: 1 });
-    const released = [{ state: 'released', offered: false, requested: false, actual: null }];
-    expect(await callFor(world, body)).toEqual(released);
+    expect(await sweep()).toEqual({ held: 1, released: 0 });
+    const held = [{ state: 'liability_unknown', offered: false, requested: false, actual: null }];
+    expect(await callFor(world, body)).toEqual(held);
     lost.go();
-    await afterResume(asking, body, released);
+    // The resumed function's offer finds the call held: nothing offered, nothing sent. Its
+    // refusal is proof nothing went, so the call may be released from its hold, never settled.
+    await afterResume(asking, body, [
+      expect.objectContaining({
+        state: expect.stringMatching(/^(liability_unknown|released)$/u),
+        offered: false,
+        requested: false,
+      }),
+    ]);
     expect(world.agent.accepted).toHaveLength(1);
   }, 120_000);
 
