@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
 import {
+  businessDayOf,
   closeDrill,
   drill,
   harness,
@@ -68,7 +69,7 @@ describe.skipIf(serverUrl === undefined)('C81 the breach drill', () => {
     expect(notices.length).toBe(3);
     for (const notice of notices) {
       expect(notice.subject, 'the subject carries the day found, filled').toBe(
-        `A privacy incident found on ${sent.foundAt.slice(0, 10)}`,
+        `A privacy incident found on ${businessDayOf(sent.foundAt)}`,
       );
       expect(notice.subject, 'no placeholder is left in the subject').not.toContain('<');
     }

@@ -69,7 +69,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ]),
   'task.start': TASK,
   // An assignment raises the assignee's item (INB-1).
-  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.assign': writing(TASK.writes.concat(client('inbox_items'))),
   // A run opened for the task's agent, with the delegation it acts under.
   'task.launch': writing([...client('task_launches'), ...business('delegations')]),
   'task.triage': TASK,
@@ -97,7 +97,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...TASK.writes,
     ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
     ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
-    ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
+    ...client('map_components', 'map_versions'),
   ]),
   'task.read': READ,
   'task.board': READ,

@@ -10,7 +10,9 @@
 // open. The mode and the items live in `ops`, which the
 // application's role reads through `public.first_client_readiness()` and
 // writes only through the gate's own commands (`gate-write.ts`, migration
-// 0059); the readiness value itself is derived, never written.
+// 0059); the readiness value itself is derived, never written. The stop and
+// removal controls (`STOP_CONTROLS`) are the one exception to the class: a shut
+// gate never keeps a person from stopping work or erasing data.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/src/index.ts';
@@ -45,6 +47,23 @@ export interface Readiness {
   readonly open_items: readonly string[];
 }
 
+/**
+ * The commands that only stop work, withdraw authority or erase data. They
+ * write client rows, so the catalogue classes them `client-data`, but they
+ * bring no client data in, and a gate shut after go-live must not keep anyone
+ * from cancelling a run, revoking an agent's delegation or mandate, writing off
+ * a spend or trashing and purging a task.
+ */
+export const STOP_CONTROLS: ReadonlySet<CommandName> = new Set<CommandName>([
+  'task.cancel',
+  'delegation.revoke',
+  'mandate.revoke',
+  'run.end_at_budget_stop',
+  'budget.write_off',
+  'task.trash',
+  'task.purge',
+]);
+
 const GATE_FIXES: readonly string[] = [
   'This installation holds real client data, so client records and client invitations wait until every item on the first-client gate is done.',
   'Ask the owner to record the open items named here, each with its evidence link, then try again.',
@@ -69,7 +88,7 @@ export async function firstClientGate(
   name: CommandName,
 ): Promise<CommandRefusal | undefined> {
   const effects = COMMAND_EFFECTS[name];
-  if (classOf(effects) === 'made-up-safe') return undefined;
+  if (classOf(effects) === 'made-up-safe' || STOP_CONTROLS.has(name)) return undefined;
   // A database from before 0058 has neither the function nor the table, and
   // 0058 provisions it made-up. Either one alone is not that: the call below
   // then fails, and the command with it.

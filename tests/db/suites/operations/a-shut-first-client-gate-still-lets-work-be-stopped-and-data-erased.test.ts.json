@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a first-client gate shut after go-live still lets a person cancel a run, revoke a delegation or mandate, end a run at its budget stop, write off a spend, and trash and purge a task"
+}

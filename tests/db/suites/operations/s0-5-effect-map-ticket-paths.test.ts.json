@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "each task command on an open ticket under a live map declares the map summary and frontier tables its records trigger writes, and writes nothing undeclared"
+}

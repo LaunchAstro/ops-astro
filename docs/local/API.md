@@ -3236,8 +3236,8 @@ runbook's "Template: notice to affected people" once for the OAIC (the runbook
 says its statement carries the same content) and once per person, and answers
 `{ ok, runbook: { version, digest }, notices }`, each notice `{ to: 'oaic' |
 'person', name, address, subject, body }`, the OAIC's first. The date is the
-day found, as the record holds it (UTC); the kinds are the incident's. It
-writes nothing beyond its one audit event, which carries no recipient, and
+day found on the business's own clock (Australia/Brisbane), never the UTC day;
+the kinds are the incident's. It writes nothing beyond its one audit event, which carries no recipient, and
 sends nothing: the owner decides what is sent (owner line 54). A recipient or
 address missing is `FIELD_VALUE_INVALID` 422 naming `oaic` or `people`, another
 business's incident and a made-up one are `NOT_FOUND` 404, no published
