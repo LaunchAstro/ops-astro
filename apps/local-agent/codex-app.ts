@@ -81,12 +81,13 @@ function conversation(
     if (typeof method === 'string' && id !== undefined) {
       // A request of the runner (an approval, a tool, a token refresh): refused, and the call stops.
       send({ id, error: { code: -32601, message: 'refused' } });
-      return { result: UNKNOWN, kill: false };
+      return { result: turnStarted ? UNKNOWN : null, kill: false };
     }
     if (typeof method === 'string') {
       const params = record(message['params']) ?? {};
       const reading = readNotification(method, params, turn, listener.onDelta);
-      if (reading === 'refused') return { result: UNKNOWN, kill: true };
+      // Before its turn is sent the model was never asked: a refused call is charged nothing.
+      if (reading === 'refused') return broken(turnStarted);
       return reading === 'completed' ? { result: resultOf(turn, plan.model), kill: false } : null;
     }
     if (message['error'] !== undefined) return broken(turnStarted);
