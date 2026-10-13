@@ -10,6 +10,9 @@ import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { carriedWorld, type CarriedWorld } from './carried-world.ts';
 import { ask, linkableTask } from './carried-schedules.ts';
 import { HAIKU } from './openrouter-stand-in-fixture.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
 
 const LIVE_TASK_READS = `select id from public.grants
   where business_id = $1 and collection = 'task' and action = 'read' and revoked_at is null`;
@@ -33,31 +36,36 @@ async function revokeTaskReads(current: CarriedWorld): Promise<number> {
   });
 }
 
-it('revoking task read between the offer and the send sends nothing to the paid provider', async () => {
-  vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');
-  const current = await carriedWorld('carried_task_read_revoked', undefined, {}, true);
-  world = current;
-  const { task } = await linkableTask(current);
-  const [page] = await current.w.fixture.db.admin.execute<{ title: string }>(
-    'select txt_4 as title from public.records where id = $1',
-    [task],
-  );
-  expect(page?.title).toMatch(/^Plan /u);
-  let revoked = 0;
-  current.agent.beforeAccept = async () => {
-    revoked = await revokeTaskReads(current);
-  };
-  const events = await (
-    await ask(current, 'Read revoked once offered', undefined, task, HAIKU)
-  ).rest();
-  expect(revoked).toBeGreaterThan(0);
-  const live = await current.w.count(`select count(*)::text as n from (${LIVE_TASK_READS}) live`, [
-    current.w.fixture.business,
-  ]);
-  expect(live).toBe(0);
-  expect(
-    current.openrouter?.received,
-    'the paid provider received the page title after every task read was revoked',
-  ).toHaveLength(0);
-  expect(JSON.parse(events.at(-1)?.data ?? '{}')).toMatchObject({ reply: { answered: false } });
-}, 60_000);
+it.skipIf(serverUrl === undefined)(
+  'revoking task read between the offer and the send sends nothing to the paid provider',
+  async () => {
+    vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');
+    const current = await carriedWorld('carried_task_read_revoked', undefined, {}, true);
+    world = current;
+    const { task } = await linkableTask(current);
+    const [page] = await current.w.fixture.db.admin.execute<{ title: string }>(
+      'select txt_4 as title from public.records where id = $1',
+      [task],
+    );
+    expect(page?.title).toMatch(/^Plan /u);
+    let revoked = 0;
+    current.agent.beforeAccept = async () => {
+      revoked = await revokeTaskReads(current);
+    };
+    const events = await (
+      await ask(current, 'Read revoked once offered', undefined, task, HAIKU)
+    ).rest();
+    expect(revoked).toBeGreaterThan(0);
+    const live = await current.w.count(
+      `select count(*)::text as n from (${LIVE_TASK_READS}) live`,
+      [current.w.fixture.business],
+    );
+    expect(live).toBe(0);
+    expect(
+      current.openrouter?.received,
+      'the paid provider received the page title after every task read was revoked',
+    ).toHaveLength(0);
+    expect(JSON.parse(events.at(-1)?.data ?? '{}')).toMatchObject({ reply: { answered: false } });
+  },
+  60_000,
+);
