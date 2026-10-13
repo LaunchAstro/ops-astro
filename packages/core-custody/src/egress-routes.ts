@@ -1,25 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a destination adds to, and allows beyond, a POST (AW-13): fixed
-// headers custody sets on every request to it, and the few DELETE, GET and
-// PUT routes it answers (the trace store's expiry and the read that confirms
-// it; the login provider's update of one user, C40). Both are custody's own
-// list, read once at start; a caller names neither. A destination marked
-// `post: false` takes no POST at all, only its listed routes: the login
-// provider's, whose service key could otherwise mint sign-in links or users
-// (C40 security review M1). A destination with `posts` takes a POST to those
-// exact paths only: the mail provider's, whose key could otherwise create keys
-// or read contacts. A destination may declare the stream format custody
-// decodes for it (`stream: 'openai_sse'`, #1508).
+// What a destination adds to, and allows beyond, a POST (AW-13): fixed headers custody sets on
+// every request to it, and the few DELETE, GET and PUT routes it answers (the trace store's expiry
+// and the read that confirms it; the login provider's update of one user, C40). Both are custody's
+// own list, read once at start; a caller names neither. A destination marked `post: false` takes no
+// POST at all, only its listed routes: the login provider's, whose service key could otherwise mint
+// sign-in links or users (C40 security review M1). A destination with `posts` takes a POST to those
+// exact paths only: the mail provider's, whose key could otherwise create keys or read contacts. A
+// destination may declare the stream format custody decodes for it (`stream: 'openai_sse'`, #1508).
 //
 // A route may instead be a catalogued call's fixed template, query included
-// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
-// is one segment or query value, a `{name*}` slot one segment or more. A
-// request matches it whole or not at all, so no query is free. A query value
-// is what `URLSearchParams` writes for one value: unreserved characters, `+`
-// and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw
-// `&`, `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields its answer is cut to
-// (`fields`, the catalogued response schema, at most four).
+// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot is one segment or
+// query value, a `{name*}` slot one segment or more. A request matches it whole or not at all, so
+// no query is free. A query value is what `URLSearchParams` writes for one value: unreserved
+// characters, `+` and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw `&`,
+// `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields
+// its answer is cut to (`fields`, the catalogued response schema, at most four).
 
 import type { Fields } from './egress-answer.ts';
 
