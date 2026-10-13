@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Review evidence, bound to the revision being merged (ADR 0046).
 //
-// 1. The pull request body carries the review checkpoint block from
-//    scripts/review-preflight.mjs, and its head is the head being merged.
+// 1. With the trusted epoch and debt label, Git computes the range. Otherwise
+//    the body carries the checkpoint from scripts/review-preflight.mjs,
+//    whose head is the head being merged.
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
 // 3. CQ-13, product issue 42: the body carries the record of the review by a
@@ -13,7 +14,7 @@
 // 4. The trusted internal Stage 1 owner epoch and needs-sol label defer
 //    model and human review outcomes/records. Git computes the range from
 //    the judged base and PR head. Legacy full-range debt markers and their
-//    checkpoints remain valid until a later round-boundary removal ticket.
+//    checkpoints remain valid strictly before 2026-11-01T00:00:00Z.
 //
 // It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
 // runs in continuous integration and in its own tests. It reads no reviewer
@@ -215,13 +216,12 @@ const failures = [];
 // delivery. Only trusted repository configuration may activate this route.
 // The PR supplies scope and debt, never authority. No outcome is invented.
 const DEFERRAL_EPOCH = 'DOMAINFIRST20261008';
+const LEGACY_DEFERRAL_CUTOFF = '2026-11-01T00:00:00Z';
 const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
 const trustedEpoch = process.env['OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL'] === DEFERRAL_EPOCH;
+const computedRange = trustedEpoch && labels.has('needs-sol') && deferrals.length === 0;
 const computedDeferral =
-  trustedEpoch &&
-  labels.has('needs-sol') &&
-  deferrals.length === 0 &&
-  Object.values(record).every((values) => values.length === 0);
+  computedRange && Object.values(record).every((values) => values.length === 0);
 const deferring = trustedEpoch && (deferrals.length > 0 || computedDeferral);
 const forkPoint = () => {
   try {
@@ -234,7 +234,7 @@ const forkPoint = () => {
   }
 };
 let rangeBase = '';
-if (computedDeferral) {
+if (computedRange) {
   if (/^[0-9a-f]{40}$/u.test(base) && /^[0-9a-f]{40}$/u.test(head)) rangeBase = forkPoint();
   if (rangeBase === '') {
     failures.push(
@@ -248,6 +248,12 @@ if (deferrals.length > 0 && !deferring) {
   failures.push('review deferral requires the trusted internal Stage 1 owner epoch.');
 }
 if (deferring && !computedDeferral) {
+  if (!(Date.now() < Date.parse(LEGACY_DEFERRAL_CUTOFF))) {
+    failures.push(
+      `legacy review deferral expired at ${LEGACY_DEFERRAL_CUTOFF}; ` +
+        'remove the pasted marker and use the trusted epoch with needs-sol.',
+    );
+  }
   const mark = deferrals.length === 1 ? DEFERRAL_FORM.exec(deferrals[0].line) : null;
   const from = mark?.groups.base;
   if (
@@ -311,13 +317,13 @@ if (deferring) {
   }
 }
 
-if (!computedDeferral && checkpoint === null) {
+if (!computedRange && checkpoint === null) {
   failures.push(
     'the pull request carries no review checkpoint block.\n' +
       '        Run `node scripts/review-preflight.mjs` and paste what it prints.\n' +
       '        See docs/agents/review-checkpoint.md.',
   );
-} else if (!computedDeferral) {
+} else if (!computedRange) {
   const recorded = (checkpoint[1] ?? '').toLowerCase();
   if (!namesHead(recorded)) {
     failures.push(
@@ -550,8 +556,8 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
+if (computedRange) console.log(`review-evidence: range ${rangeBase}..${head}`);
 if (deferring) {
-  if (computedDeferral) console.log(`review-evidence: range ${rangeBase}..${head}`);
   console.log(
     'review-evidence: REVIEW DEFERRED INTERNAL STAGE1. ' +
       'Model and human reviews remain owed for this exact range in stage1/SOL-OWED.md. ' +

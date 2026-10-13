@@ -43,12 +43,18 @@ PR and merge-group runs. A move of `main` or a rebase needs no pasted range
 or checkpoint update. Review remains owed; this check does not establish
 Sol's verdict. The separate reviewer must judge the exact current head.
 
+Adding a complete current verdict record keeps the computed range and requires
+no pasted checkpoint. The checker still validates every record and outcome
+line against the current head, builder provenance and changed paths.
+
 Lanes already carrying the top-level `Review deferral:` marker and a current
 checkpoint may keep that format. Its base must be the judged base or its merge
 base with the PR head. The legacy route still requires `unreviewed` and accepts
-`needs-sol` or the old `needs-second-model` label. These pasted markers have no
-expiry date. Their removal needs a later ticket at a round boundary. Other
-checks remain required on both routes.
+`needs-sol` or the old `needs-second-model` label. Legacy pasted ranges pass
+strictly before `2026-11-01T00:00:00Z` and refuse at or after that instant.
+Remove the pasted marker to use the computed range with `needs-sol` and the
+trusted epoch, which remains available after the cut-off. Other checks remain
+required on both routes.
 
 Outside that trusted deferral, the normal review evidence below still applies.
 
