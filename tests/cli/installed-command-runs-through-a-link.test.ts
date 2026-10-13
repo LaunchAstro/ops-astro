@@ -4,7 +4,7 @@
 // checkout (docs/local/CLI.md, "Installing"). The link is run as a program in
 // its own right, from a folder outside the checkout, so the entry's shebang,
 // its executable bit and its real-path check are what make it answer. The help
-// names the command the way it was typed.
+// names the installed command.
 
 import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
@@ -46,14 +46,14 @@ async function run(args: readonly string[]) {
 }
 
 describe('the installed command runs through a link on PATH', () => {
-  it('ops-astro --help lists the operations under its own name', async () => {
+  it('ops-astro --help lists the operations under the installed name', async () => {
     const { code, out } = await run(['--help']);
     expect(code).toBe(0);
     expect(out).toContain('usage: ops-astro <operation>');
     expect(out).toContain('  task.read\n');
   });
 
-  it('ops-astro help lists the verbs under its own name', async () => {
+  it('ops-astro help lists the verbs under the installed name', async () => {
     const { code, out } = await run(['help']);
     expect(code).toBe(0);
     expect(out).toContain('ops-astro <verb> [args]');

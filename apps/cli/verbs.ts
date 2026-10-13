@@ -140,10 +140,11 @@ export const VERB_TABLE: readonly VerbRow[] = [
 ];
 
 /** The whole help, as an agent loads it: one line per verb. */
-export function verbHelp(command = 'pnpm cli'): string {
+export function verbHelp(): string {
   return [
-    `${command} <verb> [args]. Writes print "ok <command> <id> r<revision>"; pass that revision`,
-    'to the next write. Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
+    'ops-astro <verb> [args] (pnpm cli from a checkout). Writes print "ok <command> <id> r<revision>";',
+    'pass that revision to the next write.',
+    'Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
     'No answer or a fault prints the operationId; send the same line with --operation <id> to replay.',
     ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');
@@ -208,9 +209,7 @@ function operationOf(row: VerbRow, flags: Flags, agent: boolean): Body {
   return {};
 }
 
-export function createVerbCli(
-  options: CliOptions & { readonly address?: string; readonly command?: string },
-): {
+export function createVerbCli(options: CliOptions & { readonly address?: string }): {
   readonly run: (argv: readonly string[]) => Promise<VerbAnswer>;
 } {
   const cli = createCli(options);
@@ -224,7 +223,7 @@ export function createVerbCli(
         const parsed = parse(argv);
         flags = parsed.flags;
         const [group = 'help', verb, id, ...extra] = parsed.words;
-        if (group === 'help') return { exit: EXIT.ok, out: verbHelp(options.command) };
+        if (group === 'help') return { exit: EXIT.ok, out: verbHelp() };
         row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
         if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
         if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);

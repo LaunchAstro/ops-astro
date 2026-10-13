@@ -30,7 +30,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
 import { withProviderKey } from '../web/src/session/provider-key.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -51,17 +51,6 @@ import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
 import { createVerbCli, VERB_TABLE } from './verbs.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-
-/** This process was started as the entry itself, directly or through a link to it. */
-const ENTRY =
-  process.argv[1] !== undefined &&
-  realpathSync(process.argv[1]) === realpathSync(import.meta.filename);
-
-/** The command as it was typed: a link's own name (`ops-astro`), else the package script. */
-const COMMAND =
-  ENTRY && basename(process.argv[1] as string) !== basename(import.meta.filename)
-    ? basename(process.argv[1] as string)
-    : 'pnpm cli';
 
 /**
  * Exit codes, as `docs/local/CLI.md` lists them. `fault` is an answer that is
@@ -187,13 +176,14 @@ function body(flags: Parsed['flags']): Record<string, unknown> {
 }
 
 const HELP = [
-  `usage: ${COMMAND} <operation> [--json <object> | --body-file <path>] [--business <key>]`,
+  'usage: ops-astro <operation> [--json <object> | --body-file <path>] [--business <key>]',
   '         [--api <url>] [--agent]',
-  `       ${COMMAND} <visual operation> [--json <object>] [--web <app origin>]`,
-  `       ${COMMAND} login --email <address> [--gotrue <url>]   (password from`,
+  '       ops-astro <visual operation> [--json <object>] [--web <app origin>]',
+  '       ops-astro login --email <address> [--gotrue <url>]   (password from',
   '         OPS_ASTRO_PASSWORD, the first line of piped stdin,',
   '         or a prompt with echo off at a terminal)',
-  `       ${COMMAND} logout`,
+  '       ops-astro logout',
+  '       (from a checkout without the link, pnpm cli in place of ops-astro)',
   '',
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
   '             OPS_ASTRO_GOTRUE_URL, SUPABASE_PUBLISHABLE_KEY, OPS_ASTRO_AGENT=1,',
@@ -308,7 +298,6 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     entry: agent ? 'agent' : 'person',
     ...(delegation === undefined ? {} : { delegation }),
     address: shownAddress(api),
-    command: COMMAND,
   });
   const answer = await cli.run(rest);
   const said = answer.exit === EXIT.transport ? `cli: ${answer.out}` : answer.out;
@@ -526,7 +515,7 @@ async function readStdin(): Promise<string> {
 }
 
 // The entry point by real path, so a link to it, or a checkout reached through one, still runs.
-if (ENTRY) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
   process.exitCode = await main(process.argv.slice(2), process.env, {
     out: (line) => process.stdout.write(`${line}\n`),
     err: (line) => process.stderr.write(`${line}\n`),
