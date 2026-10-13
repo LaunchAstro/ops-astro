@@ -72,8 +72,11 @@ test('a quoted TOML extend path cannot cache a scan that skips a credential', (t
   writeFileSync(extended, '[extend]\nuseDefault = true\n');
   const tip = f.commit('notes.txt', 'later\n', 'later');
   const result = f.push('origin', 'locked');
-  assert.equal(result.status, 1,
-    `credential-bearing history was published; scanned ${scanned(result.output)}\n${result.output}`);
+  assert.equal(
+    result.status,
+    1,
+    `credential-bearing history was published; scanned ${scanned(result.output)}\n${result.output}`,
+  );
   assert.equal(f.published('origin', 'locked'), '');
   assert.deepEqual(scanned(result.output), [tip]);
 });

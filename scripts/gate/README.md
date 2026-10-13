@@ -35,8 +35,10 @@ ignore file, the paths and versions of the tools that run the scans, and the
 private list and receipt. Only a pinned push narrows its range or adds to the
 record: no scanner override, no interpreter or Git start-up setting in the
 environment (`PYTHONPATH`, `NODE_OPTIONS`, `GIT_CONFIG_*` and the like), and a
-`.gitleaks.toml` that extends no other file. Any other push scans everything
-reachable and records nothing. The hook adds a first push's commit only after
+`.gitleaks.toml` that extends no other file, read by a TOML parser with keys
+matched as gitleaks matches them (any case, dots split), so no spelling of an
+extend path passes; a file the parser refuses is not pinned. Any other push
+scans everything reachable and records nothing. The hook adds a first push's commit only after
 every scan of it passes. A listed commit counts only under the fingerprint the
 new push would be judged by, and only if the pushed commit reaches it, so
 weaker scanners or a changed rule never vouch for history; a change of rules

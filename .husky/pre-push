@@ -73,9 +73,34 @@ pinned_push() {
     GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM; do
     eval "[ -z \"\${$setting:-}\" ]" || return 1
   done
-  if grep -qE '^[[:space:]]*path[[:space:]]*=' .gitleaks.toml 2>/dev/null; then
-    return 1
-  fi
+  gitleaks_extends_nothing
+}
+
+# The checkout's gitleaks rules name no other file. A key has many spellings
+# (quoted, dotted, escaped, an inline table), and gitleaks' loader matches keys
+# case-insensitively and splits them on dots, so a TOML parser reads the file
+# and every key is compared the way that loader compares it. Under extend only
+# the built-in rule switches pass. A file the parser refuses is not pinned.
+gitleaks_extends_nothing() {
+  python3 -I - .gitleaks.toml 2>/dev/null <<'PY'
+import sys, tomllib
+
+def leaves(table, prefix):
+    for key, value in table.items():
+        if not key.isascii():
+            sys.exit(1)
+        path = prefix + [part.lower() for part in key.split('.')]
+        if isinstance(value, dict):
+            yield from leaves(value, path)
+        else:
+            yield path
+
+with open(sys.argv[1], 'rb') as rules:
+    config = tomllib.load(rules)
+for path in leaves(config, []):
+    if path[0] == 'extend' and path[1:] not in (['usedefault'], ['disabledrules']):
+        sys.exit(1)
+PY
 }
 
 # What judges a pinned push of commit $1: that commit's scanners and canaries,
