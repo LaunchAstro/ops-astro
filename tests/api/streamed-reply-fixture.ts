@@ -54,6 +54,7 @@ export async function sendStreaming(
   member: Member,
   name: string,
   body: Record<string, unknown>,
+  token?: string,
 ): Promise<Streaming> {
   const aborting = new AbortController();
   const response = await api.fetch(
@@ -62,7 +63,7 @@ export async function sendStreaming(
       headers: {
         'content-type': 'application/json',
         accept: 'text/event-stream',
-        ...authorised(await tokenFor(member.presented.subject)),
+        ...authorised(token ?? (await tokenFor(member.presented.subject))),
       },
       body: JSON.stringify({ operationId: randomUUID(), ...body }),
       signal: aborting.signal,

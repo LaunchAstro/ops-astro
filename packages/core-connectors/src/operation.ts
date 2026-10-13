@@ -42,6 +42,8 @@ export interface ModelAnswer {
   readonly usage: { readonly inputUnits: number; readonly outputUnits: number };
   /** The provider's own code for an answer that did nothing (a refusal before any work). */
   readonly providerCode: string | null;
+  /** What the provider says the answer cost, in its own currency; a price reads it, never estimates. */
+  readonly reportedCost?: { readonly currency: string; readonly amount: number };
 }
 
 /** A model id as a provider may name one; 0098 holds the same shape. */

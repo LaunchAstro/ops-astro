@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried deployment offers a priced operation nothing: no call, line, doorbell or request"
+}

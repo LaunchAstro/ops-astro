@@ -168,7 +168,13 @@ export type {
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
 export type * from './views-chat.ts';
-export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
+export type {
+  MapComponentView,
+  MapView,
+  MapViewResult,
+  MapFrontierResult,
+  TaskMapLink,
+} from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,
@@ -179,6 +185,12 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+export type {
+  InvitationListResult,
+  InvitationRole,
+  InvitationState,
+  InvitationView,
+} from './views-invitations.ts';
 // Settings ▸ Workflow triggers' registry (C33).
 export type {
   ActivationView,

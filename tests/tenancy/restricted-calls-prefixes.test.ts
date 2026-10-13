@@ -88,6 +88,15 @@ const PART = suitePart(process.env['SUITE_PART']);
 /** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
 const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
+/**
+ * Columns unique across the whole installation, so each business's seed row names its own:
+ * a site's repository and hosting project are bound once (C80).
+ */
+function installationUnique(table: string, business: string): Record<string, string> {
+  if (table !== 'public.party_sites') return {};
+  return { repository: `seed/${business}`, project: `prj_${business}` };
+}
+
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
@@ -165,6 +174,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     version_id: randomUUID(),
     version_digest: 'sha256:seed',
   },
+  // C80: a client's site and one page of it; nothing the journey does binds one.
+  'public.party_sites': {
+    party_id: randomUUID(),
+    default_branch: 'main',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.party_site_pages': {
+    party_id: randomUUID(),
+    page_url: 'https://agency.example/about/',
+    path: 'src/pages/about.md',
+  },
   'public.live_correction_receipts': {
     correction_id: randomUUID(),
     lease_id: randomUUID(),
@@ -208,6 +228,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     owner_person_id: randomUUID(),
     title: 'restricted calls seed',
   },
+  // #1531: no journey step carries a call.
+  'public.conversation_agent_members': {
+    conversation_id: randomUUID(),
+    agent_actor_id: randomUUID(),
+    added_by_actor_id: randomUUID(),
+    joined_at: new Date(0),
+    left_at: new Date(0),
+  },
+  'public.model_call_carriers': { call_id: randomUUID(), agent_actor_id: randomUUID() },
   'public.conversation_messages': {
     conversation_id: randomUUID(),
     role: 'person',
@@ -546,6 +575,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     token_id: randomUUID(),
     state: 'asked',
   },
+  'public.login_provisions': { invitation_id: randomUUID(), login_id: randomUUID() },
   // C40B: nothing on the journey asks for a password reset.
   'public.password_reset_tokens': {
     login_id: randomUUID(),
@@ -629,7 +659,8 @@ async function seedPrefix(
     const names = present.map((column) => column.name);
     for (const business of businesses) {
       let reason = '';
-      for (const row of rows) {
+      for (const seed of rows) {
+        const row = { ...seed, ...installationUnique(table.qualified, business) };
         const columns = names
           .filter((name) => name in row || name === 'id' || name === 'business_id')
           .map((name) => `"${name}"`)

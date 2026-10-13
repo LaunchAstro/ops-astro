@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a drill's receipt and tested-restore stamp are written only under the operator's held grant, asked again under the hold: a revocation before that answer writes neither, and one begun after it commits only after the stamp"
+}

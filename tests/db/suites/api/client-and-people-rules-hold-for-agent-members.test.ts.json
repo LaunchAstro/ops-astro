@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the carrier's agent joins only a listed person's internal conversation on a model it carries, and leaves on another model or a purge"
+}

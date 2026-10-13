@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid call against the clock: a twin reaching the hold after the reply was kept gets that reply; a sweep before the send sends nothing; a late answer after the sweep settles with its reply"
+}

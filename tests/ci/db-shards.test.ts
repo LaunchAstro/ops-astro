@@ -81,13 +81,15 @@ function balance(
   return { heaviest: Math.max(...loads), bound: Math.max(longest, (total / count) * 1.1) };
 }
 
-// CIITEM3, the owner's 12 October 2026 decision: 30 shards, each job in about 10 minutes
-// (#1478): at most 9.5 minutes of measured items a shard, beside about a minute of checkout,
-// install and the migrated template. A plan past it needs more shards or a finer split.
-const SHARD_ITEM_SECONDS = 9.5 * 60;
+// RELAYSHARD1830, the director's 13 October 2026 decision: 12 shards, so a merge group runs
+// about 20 jobs at once and two groups fit the account's 60. At most 20 minutes of measured
+// items a shard (18.9 at this plan), beside about a minute of checkout, install and the
+// migrated template, well inside the job's 35-minute limit. A plan past it needs more shards
+// or a finer split.
+const SHARD_ITEM_SECONDS = 20 * 60;
 
-it('the run is split 30 ways, each shard near its share', () => {
-  expect(shardCount).toBe(30);
+it('the run is split 12 ways, each shard near its share', () => {
+  expect(shardCount).toBe(12);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
   expect(heaviest, 'the heaviest shard, in seconds of measured items').toBeLessThanOrEqual(

@@ -210,12 +210,14 @@ describe('merge group: the range scans judge every pull request in the group', (
   }
 });
 
-// ORCH55-CQL: CodeQL's default setup never runs on a group, so advanced setup takes its place.
-describe('merge group: CodeQL reports on a group', () => {
-  it('runs on a pull request, a push to main, a group and a weekly schedule, for the languages default setup scanned', () => {
+// ORCH55-CQL: CodeQL's advanced setup in place of default setup. Cut 6 (13 October 2026) took it
+// off merge groups, where code scanning merge protection never applies.
+describe('merge group: CodeQL scans each pull request and main, not a group', () => {
+  it('runs on a pull request, a push to main and a nightly schedule, for the languages default setup scanned', () => {
     expect(top(CODEQL, 'on')).toMatch(
-      /^ {2}pull_request:\n {2}push:\n {4}branches: \[main\]\n {2}merge_group:\n {2}schedule:\n/mu,
+      /^ {2}pull_request:\n {2}push:\n {4}branches: \[main\]\n(?: {2}#.*\n)* {2}schedule:\n/mu,
     );
+    expect(top(CODEQL, 'on')).not.toMatch(/merge_group/u);
     expect(CODEQL).toContain('language: [actions, javascript-typescript, python]');
     expect(CODEQL).toContain("category: '/language:${{ matrix.language }}'");
   });

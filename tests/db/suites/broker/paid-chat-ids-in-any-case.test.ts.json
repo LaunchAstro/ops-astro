@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the paid path judges ids in any case: a page refusal holds in upper case, upper-case message, business and listed-person ids make one call"
+}

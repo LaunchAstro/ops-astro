@@ -22,6 +22,7 @@ import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
 import { cutWithEllipsis } from './ellipsis.ts';
+import { followModel } from './conversation-agents.ts';
 import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -204,10 +205,9 @@ export async function startConversation(
     ],
   );
   // CS-7.30: kept before the commit, so the first exchange asks for it; refused, nothing kept.
-  const chosen = fields.model ?? null;
-  const notKept =
-    chosen === null ? undefined : await keepModel(tx, session, conversationId, chosen);
+  const notKept = await keepModel(tx, session, conversationId, fields.model ?? null);
   if (notKept !== undefined) return refused(notKept);
+  await followModel(tx, context, conversationId, fields.model ?? null);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)

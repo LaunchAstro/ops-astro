@@ -102,8 +102,9 @@ export const ROUTES = {
   },
   // A Wayfinder map (WF-3, WF-4): its sections edited in place, and its
   // tickets, frontier and fog views. Keyed like a task, by the map's own key.
-  // Its look waits on the accepted prototype W4, so `surface` is `none` rather
-  // than a letter it has not earned; the manifest has no page for it.
+  // Its look is the accepted prototype W4, which names no surface letter, so
+  // `surface` is `none`. It is no manifest page (a key is not a rail address);
+  // the rail lights Projects on it, as on a task.
   'agency:map': {
     namespace: 'agency',
     path: '/map/:key',

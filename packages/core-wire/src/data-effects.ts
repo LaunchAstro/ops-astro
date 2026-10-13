@@ -19,6 +19,7 @@ import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 import { CHAT_EFFECTS } from './data-effects-chat.ts';
 import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
+import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 export type {
@@ -229,10 +230,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
-  // C39-T: admits no outsider, sends nothing; a create writes its person, expiring a lapsed one.
-  'invitation.create': writing(business('people', 'invitations', 'actors')),
-  'invitation.resend': writing(business('invitations')),
-  'invitation.revoke': writing(business('invitations')),
+  ...INVITATION_EFFECTS,
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),

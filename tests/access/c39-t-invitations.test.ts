@@ -131,7 +131,10 @@ describe.skipIf(noDatabase)('C39-T invitations', () => {
     expect(body['to']).toStrictEqual([address]);
     expect(body['from']).toBe(MAIL.from);
     const { link, token } = linkIn(message?.body);
-    expect(link.startsWith(`${MAIL.appOrigin}/enrol/`)).toBe(true);
+    // The token travels in the fragment, which no request carries to a server.
+    const landing = new URL(link);
+    expect(landing.origin + landing.pathname + landing.search).toBe(`${MAIL.appOrigin}/enrol/`);
+    expect(landing.hash).toBe(`#${token}`);
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/u);
 
     const tokens = await w.db.admin.execute<{ token_hash: string; spent_at: Date | null }>(

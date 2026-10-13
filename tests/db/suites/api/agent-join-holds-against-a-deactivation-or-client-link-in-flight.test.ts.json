@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent's join against a deactivation or a client link on its task in flight leaves no open membership for an inactive agent or on a client's task, whichever commits first"
+}

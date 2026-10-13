@@ -23,8 +23,9 @@
 // them against the latest revision. The screen registry keys this screen by
 // map and grant, so another map or another reader starts with none.
 //
-// The look waits on the accepted prototype W4 (#603); until then the page is
-// drawn with the kit's existing section and button classes.
+// The accepted prototype W4 (#603) is its visual reference; until the visual
+// match lands, the page is drawn with the kit's existing section and button
+// classes.
 
 import { useRef, useState, type ReactElement } from 'react';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';

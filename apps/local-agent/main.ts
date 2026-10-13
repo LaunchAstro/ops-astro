@@ -2,24 +2,31 @@
 //
 // The local runner process (LA-1, #859): `node apps/local-agent/main.ts`.
 //
-// It reads its settings from the environment (settings.ts), refuses to start
-// anywhere but OPS_ENVIRONMENT=local, and prints the loopback origin the
-// broker's `local_gpt` destination points at. OPS_LOCAL_AGENT_PORT fixes the
+// It reads its settings from the environment (settings.ts), and from the file
+// OPS_LOCAL_AGENT_SETTINGS names when set (settings-file.ts). It refuses to
+// start anywhere but OPS_ENVIRONMENT=local or the M5 site, and prints the
+// loopback origin the broker's `local_gpt` destination points at. OPS_LOCAL_AGENT_PORT fixes the
 // port; unset, the system picks one. It never prints a setting's value.
 
 import { createRunner, type Runner } from './runner.ts';
 import { readSettings } from './settings.ts';
+import { withSettingsFile } from './settings-file.ts';
 
 export async function main(
   env: Readonly<Record<string, string | undefined>>,
   print: (line: string) => void = (line) => process.stdout.write(`${line}\n`),
 ): Promise<Runner | number> {
-  const read = readSettings(env);
+  const loaded = withSettingsFile(env);
+  if (!loaded.ok) {
+    print(`SETTINGS_REFUSED: ${loaded.message}`);
+    return 1;
+  }
+  const read = readSettings(loaded.env);
   if (!read.ok) {
     print(`${read.code}: ${read.message}`);
     return 1;
   }
-  const port = Number(env['OPS_LOCAL_AGENT_PORT'] ?? '0');
+  const port = Number(loaded.env['OPS_LOCAL_AGENT_PORT'] ?? '0');
   if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
     print('OPS_LOCAL_AGENT_PORT is a port number');
     return 2;

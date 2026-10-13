@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T invitation.list judges a pending invitation's lifetime on the clock at the read: one expiring while the read waits in login resolution is listed as expired"
+}

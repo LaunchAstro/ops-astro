@@ -610,6 +610,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.seen',
   'inbox.unattended',
   'invitation.create',
+  'invitation.list',
   'invitation.resend',
   'invitation.revoke',
   'legal.approve_version',
