@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// A new branch's first push scans only the commits this machine's gate has not
-// already passed, and still refuses a key in any of them.
+// First pushes skip passed commits and still refuse new findings.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, chmodSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -106,6 +113,42 @@ test('renaming an inherited finding gives it a new path and refuses publication'
   const result = f.push('origin', 'fresh');
   assert.equal(result.status, 1, result.output);
   assert.match(result.output, /renamed.txt \[private-pitch-url\]/u);
+});
+
+test('a public receipt under weaker rules cannot hide an old branch finding from restored rules', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('scripts/public-content-check.mjs', 'process.exit(0);\n', 'weaker check');
+  f.commit('new.txt', publicFinding(), 'new note');
+  assert.equal(f.push('origin', 'fresh').status, 0);
+  f.git('checkout', 'origin/main', '--', 'scripts');
+  f.commit('new.txt', null, 'restore rules and remove note');
+  const result = f.push('elsewhere', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /new.txt \[private-pitch-url\]/u);
+});
+
+test('a failed baseline Git read falls back to full public history and refuses the old finding', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('fresh.txt', 'clean\n', 'fresh');
+  const shim = join(f.scratch, 'shim');
+  mkdirSync(shim);
+  const actualGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const main = f.git('rev-parse', 'origin/main');
+  const marker = join(f.scratch, 'failed-once');
+  const script = [
+    '#!/bin/sh',
+    `case "$*" in *"ls-tree -rz --full-tree ${main}"*)`,
+    `  if [ ! -e '${marker}' ]; then touch '${marker}'; exit 1; fi ;;`,
+    'esac',
+    `exec '${actualGit}' "$@"`,
+    '',
+  ].join('\n');
+  writeFileSync(join(shim, 'git'), script);
+  chmodSync(join(shim, 'git'), 0o755);
+  const result = f.push('origin', 'fresh', { env: { PATH: `${shim}:${process.env.PATH}` } });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /branch state could not be read; scanning full history/u);
+  assert.match(result.output, /inherited.txt \[private-pitch-url\]/u);
 });
 
 test('a clean new branch scans only its own commits, not history the gate already passed', (t) => {
