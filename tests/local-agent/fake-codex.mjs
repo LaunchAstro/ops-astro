@@ -27,6 +27,12 @@ const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
 const knobs = existsSync(knobsFile) ? JSON.parse(readFileSync(knobsFile, 'utf8')) : {};
 
+// `codex --version`: the version fake.json names (`version`), 0.162.1 unless it says otherwise.
+if (process.argv[2] === '--version') {
+  process.stdout.write(`codex-cli ${knobs.version ?? '0.162.1'}\n`);
+  process.exit(0);
+}
+
 // `codex login status`: the login fake.json names (ChatGPT unless it says otherwise).
 if (process.argv[2] === 'login') {
   const login = knobs.login ?? 'chatgpt';
