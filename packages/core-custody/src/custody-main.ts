@@ -99,7 +99,11 @@ const loaded = load();
 const unrouted = (asked: OutboundRequest): boolean => {
   const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
-  return asked.method === 'POST' && destination.post === false;
+  return (
+    asked.method === 'POST' &&
+    destination.post === false &&
+    !pathAllowed(destination, 'POST', asked.path)
+  );
 };
 
 /**
