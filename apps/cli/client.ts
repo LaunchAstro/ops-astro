@@ -99,6 +99,26 @@ export async function statusOnlyRedirect(response: Response): Promise<Response> 
 export const unredirected: typeof globalThis.fetch = async (input, init) =>
   await statusOnlyRedirect(await globalThis.fetch(input, { ...init, redirect: 'manual' }));
 
+/**
+ * `inner`, remembering the status of the last answer it passed on. The command
+ * line's `login` names a refused sign-in by that status alone, never by the
+ * service's words, which can echo what was sent.
+ */
+export function statusWatched(inner: typeof globalThis.fetch): {
+  readonly send: typeof globalThis.fetch;
+  readonly status: () => number | undefined;
+} {
+  let last: number | undefined;
+  return {
+    send: async (input, init) => {
+      const answer = await inner(input, init);
+      last = answer.status;
+      return answer;
+    },
+    status: () => last,
+  };
+}
+
 export interface CliOptions {
   readonly transport: Transport;
   /**
