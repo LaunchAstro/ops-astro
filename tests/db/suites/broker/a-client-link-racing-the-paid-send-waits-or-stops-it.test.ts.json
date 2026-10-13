@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a client link before the handoff stops the paid send; one after admission waits for custody; a held task row admits nothing"
+}

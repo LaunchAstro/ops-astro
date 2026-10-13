@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried call judged late, sent again or purged writes at most once and keeps nothing purged"
+}

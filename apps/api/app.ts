@@ -110,6 +110,7 @@ import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts'
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
   bearerOf,
+  sessionCookieOf,
   cookieMaxAge,
   cookieNameFor,
   CROSS_SITE_FIXES,
@@ -439,10 +440,9 @@ export function createApi(options: ApiOptions): Hono {
     // own row, and a body that does not match is refused there.
     const { name } = declaration;
     if (isReadName(name)) {
-      // An absent or mistyped operand is refused by the read itself, inside
-      // its audited transaction (`reads/dispatch.ts`), not here.
-      // The name comes from the route here too, so a caller cannot post to
-      // one read and have another one run.
+      // An absent or mistyped operand is refused by the read itself, inside its audited
+      // transaction (`reads/dispatch.ts`), not here. The name comes from the route here
+      // too, so a caller cannot post to one read and have another one run.
       const read = await options.executeRead(options.database, businessId, presented, {
         ...body,
         read: name,
@@ -475,10 +475,11 @@ export function createApi(options: ApiOptions): Hono {
     // commits, in transactions of their own after the act's
     // (`settle-after-commit.ts`); what fails stays owed for the retry.
     const settled = await settleAfterCommit(options, businessId, name, result);
+    const token = bearerOf(context.req) ?? sessionCookieOf(context.req);
     if (asksForPieces(context, options, name)) {
-      return streamedReply(context, options, businessId, presented, settled);
+      return streamedReply(context, options, businessId, presented, settled, token);
     }
-    const reply = await replyTo(options, businessId, presented, settled);
+    const reply = await replyTo(options, businessId, presented, settled, undefined, token);
     return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });
 

@@ -98,6 +98,7 @@ import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-ho
 import { mountPasswordReset } from './password-reset.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { carrierSettings } from './model-carrier.ts';
+import { carriedAnswers } from './model-carriage.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountEnrolment } from './enrolment.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
@@ -620,7 +621,9 @@ async function main(): Promise<void> {
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
-    ...(carried.kind === 'carried' ? { carrier: carried.carrier } : {}),
+    ...(carried.kind === 'carried'
+      ? { carrier: carried.carrier, ...carriedAnswers(environment, carried) }
+      : {}),
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,

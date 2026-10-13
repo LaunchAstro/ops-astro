@@ -62,4 +62,4 @@ export {
   type SeenSession,
   type SessionEndReason,
 } from './sessions.ts';
-export { holdSubjectEnding } from './ending-keys.ts';
+export { holdSubjectEnding, sessionKey, subjectKey } from './ending-keys.ts';

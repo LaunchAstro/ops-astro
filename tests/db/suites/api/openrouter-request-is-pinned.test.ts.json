@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "OpenRouter receives the pinned request with custody's bearer key, and the key reaches nothing on the API's side"
+}

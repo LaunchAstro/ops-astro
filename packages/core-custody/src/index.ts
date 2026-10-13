@@ -37,11 +37,12 @@ export {
   type InvitationSendResult,
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
-export { callModelInConversation } from './broker-conversation.ts';
+export { callModelInConversation } from './broker-priced.ts';
 export type { ConversationCallRequest, ConversationScope } from './broker-conversation-types.ts';
+export type { PaidCaller, PaidSeams } from './broker-types.ts';
+export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
 export {
   callModelForPlanning,
-  PLANNING_CAP_DEFAULT,
   readPlanningAllowance,
   readPlanningCap,
   type PlanningAllowance,
@@ -125,6 +126,8 @@ export {
   type Carriage,
   type CarryBodies,
   type CarryEvent,
+  type Handoff,
+  type Judged,
   type Line,
   type OfferBody,
   type Topic,
@@ -138,3 +141,5 @@ export {
   type SealRefusal,
   type Sealed,
 } from './carry-seal.ts';
+export { carriedCustody, type CarriedCustodyOptions } from './carried-custody.ts';
+export { realtimeCarriage, type RealtimeCarriageOptions } from './realtime-carriage.ts';

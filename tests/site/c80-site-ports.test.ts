@@ -5,6 +5,7 @@
 // human review screen. Bindings refuse other corrections before provider
 // calls, captures or reconciliation receipts. Nothing reaches a live system.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { AFTER, BEFORE } from './c80-world.ts';
 import { line } from './c80-site-provider.ts';
@@ -20,6 +21,27 @@ import {
 } from './c80-register-world.ts';
 
 useRegisterWorld();
+
+/** Party A's approved correction copied onto `pageUrl` and `path` by the owner, past the store. */
+async function approvedPastTheStore(pageUrl: string, path: string): Promise<string> {
+  const own = await approved();
+  const id = randomUUID();
+  await w.world.db.admin.execute(
+    `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        delegation_id, target_path, word, replacement, page_url, pre_image_digest,
+        base_revision, seam, version_id, version_digest, state, decided_by_actor_id,
+        decided_by_person_id, decided_at, decided_version_digest)
+     select business_id, $2::uuid, party_id, task_id, requested_by_actor_id,
+            requested_by_person_id, delegation_id, $4, word, replacement, $3,
+            pre_image_digest, base_revision, 'seam-' || $2, gen_random_uuid(), version_digest,
+            state, decided_by_actor_id, decided_by_person_id, decided_at,
+            decided_version_digest
+       from public.live_corrections where id = $1`,
+    [own, id, pageUrl, path],
+  );
+  return id;
+}
 
 const SOURCE = 'GET /repos/agency/site/contents/src/pages/about.md?ref=main';
 const WRITE = 'PUT /repos/agency/site/contents/src/pages/about.md';
@@ -107,8 +129,9 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it("sends and captures nothing for party A's correction naming party B's page and file", async () => {
-      // Stored today: the request does not yet read a party's site (#989's request-time half).
-      const crossing = await approved({ pageUrl: B_PAGE, path: B_FILE });
+      // The request now refuses this crossing, so it is written past the store,
+      // as a row stored before the request read a client's site.
+      const crossing = await approvedPastTheStore(B_PAGE, B_FILE);
       await expect(bound(crossing)).rejects.toThrow('not bound: PAGE_OUTSIDE_PARTY_SITE');
       // Ports bound to party A's own correction on its own page, run on the crossing one.
       const own = await approved();

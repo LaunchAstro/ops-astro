@@ -185,6 +185,9 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['STILL_ANSWERING', 409, 'caller'],
   ['ANSWER_ENDED', 409, 'caller'],
   ['CARRIAGE_UNAVAILABLE', 409, 'caller'],
+  // #1508: the paid chat's held path.
+  ['PROMPT_TOO_LARGE', 422, 'caller'],
+  ['CUSTODY_NOT_ADMITTED', 409, 'caller'],
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
@@ -199,6 +202,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
   ['SELF_APPROVAL_REFUSED', 403, 'caller'],
   ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
+  ['PAGE_OUTSIDE_PARTY_SITE', 409, 'caller'],
 ];
 
 /**

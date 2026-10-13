@@ -216,6 +216,8 @@ export interface ConversationModelView {
   readonly provider: string;
   readonly reach: 'local' | 'cloud';
   readonly ceilingMinor: number;
+  /** The picker's words for a paid model (#1508); absent, the id is shown. */
+  readonly label?: string;
 }
 
 /** `conversation.models`' answer: what the picker offers, and the conversation's choice. */

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "one business's paid holds, settlements, refusals and held calls leave another's budget, envelopes and calls as they were; a person listed for one is refused in another"
+}

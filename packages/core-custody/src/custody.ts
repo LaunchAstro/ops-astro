@@ -14,11 +14,19 @@
 // dispatch answers `worker_lost` with the fault ours: the provider may or may
 // not have acted, so the broker holds the reservation and never redispatches
 // without positive proof.
+//
+// A paid send is admitted again at the handoff (#1508, #1509's hook): the
+// broker's `admit` judges it in a transaction it holds open until custody says
+// `started` (or answers first), so a revocation that commits after the
+// judgement waits until custody has the request. Refused, custody is never
+// asked, and the dispatch answers `CUSTODY_NOT_ADMITTED`: nothing was sent.
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { StorableKind } from './credentials.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { Handoff } from './carriage.ts';
 import type { Destination, Outbound, OutboundRequest } from './egress.ts';
 
 export type CustodyOutcome =
@@ -44,13 +52,35 @@ export interface CustodyConfig {
   readonly destinations: readonly Destination[];
 }
 
+/**
+ * A send admitted at the handoff, its transaction still open. At custody's
+ * `started`, `go` asks that transaction one statement more: answered, its
+ * locks were held to that instant and custody sends; a transaction lost since
+ * the verdict answers false and nothing is sent. `end` lets it go either way.
+ */
+export interface Admission {
+  readonly go: () => Promise<boolean>;
+  readonly end: () => void;
+}
+
+/** The judgement at the handoff: the admission, or undefined when nothing may be sent. */
+export type Admit = () => Promise<Admission | undefined>;
+
 export interface Custody {
   readonly pid: number;
   dispatch(
     credentialRef: string,
     request: OutboundRequest,
     onPiece?: (text: string) => void,
+    admit?: Admit,
+    /** A carried call's handoff from the command layer (`carried-custody.ts`); process custody takes none. */
+    handoff?: Handoff,
   ): Promise<CustodyOutcome>;
+  /**
+   * A carried custody's settlement fence, in the settling transaction: whether
+   * the call may still settle on the answer heard. Process custody has none.
+   */
+  fenceIn?(tx: TenantQuery, callId: string): Promise<boolean>;
   /**
    * The kind and account of the credential custody would present to
    * `destination` under `credentialRef`, or null when it holds none there:
@@ -97,6 +127,8 @@ type Exchange = (
   body: Record<string, unknown>,
   onStarted?: () => void,
   onPiece?: (text: string) => void,
+  /** Asked at `started` for a gated dispatch: true sends `go`, anything else `stop`. */
+  gate?: () => Promise<boolean>,
 ) => Promise<Record<string, unknown> | 'lost'>;
 
 /**
@@ -117,7 +149,7 @@ function exchangeWith(child: ChildProcess): Exchange {
   child.on('exit', loseAll);
   // A write to a custody that died before its exit was handled fails as EPIPE: lost, as on exit, not a crash.
   child.on('error', loseAll);
-  return async (body, onStarted, onPiece) =>
+  return async (body, onStarted, onPiece, gate) =>
     await new Promise((resolve) => {
       const id = randomUUID();
       const onLost = (): void => {
@@ -129,6 +161,10 @@ function exchangeWith(child: ChildProcess): Exchange {
       waiting.set(id, (message) => {
         if (message['type'] === 'started') {
           onStarted?.();
+          gate?.().then(
+            (go) => child.send({ type: go ? 'go' : 'stop', id }),
+            () => child.send({ type: 'stop', id }),
+          );
           return;
         }
         if (message['type'] === 'piece') {
@@ -163,6 +199,32 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }
 
+/** A dispatch over `exchange`: where it asks to be admitted, gated on that admission at `started`. */
+function dispatchOn(exchange: Exchange): Custody['dispatch'] {
+  return async (credentialRef, request, onPiece, admit) => {
+    let started = false;
+    const admission = admit === undefined ? undefined : await admit().catch(() => null);
+    if (admit !== undefined && (admission === undefined || admission === null)) {
+      return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
+    }
+    const markStarted = (): void => {
+      started = true;
+    };
+    const gated = admission === undefined ? {} : { gated: true };
+    try {
+      const reply = await exchange(
+        { type: 'dispatch', credentialRef, request, ...gated },
+        markStarted,
+        onPiece,
+        admission?.go,
+      );
+      return outcomeOf(reply, started);
+    } finally {
+      admission?.end();
+    }
+  };
+}
+
 export async function startCustody(config: CustodyConfig): Promise<Custody> {
   const child = forkCustody(config);
   let errors = '';
@@ -173,18 +235,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
   await ready(child);
   return {
     pid: child.pid ?? -1,
-    dispatch: async (credentialRef, request, onPiece) => {
-      let started = false;
-      const markStarted = (): void => {
-        started = true;
-      };
-      const reply = await exchange(
-        { type: 'dispatch', credentialRef, request },
-        markStarted,
-        onPiece,
-      );
-      return outcomeOf(reply, started);
-    },
+    dispatch: dispatchOn(exchange),
     describe: async (credentialRef, destination) => {
       const reply = await exchange({ type: 'describe', credentialRef, destination });
       if (reply === 'lost' || reply['type'] !== 'described') return null;

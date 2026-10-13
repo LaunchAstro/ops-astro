@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid chat reply holds its most in its envelope before OpenRouter has the request, then settles at the reported cost and frees the rest"
+}

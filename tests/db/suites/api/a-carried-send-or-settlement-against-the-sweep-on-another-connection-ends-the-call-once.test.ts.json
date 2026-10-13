@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried send record or settlement against the sweep ends the call once"
+}
