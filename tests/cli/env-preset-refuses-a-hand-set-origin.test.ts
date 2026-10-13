@@ -77,6 +77,16 @@ describe('a preset beside a hand-set origin is refused', () => {
     expect(seen).toStrictEqual([]);
   });
 
+  it('an empty --env is refused, not read as no preset', async () => {
+    const refused = await run(['person.list', '--env='], {
+      ...env,
+      OPS_ASTRO_API_URL: 'https://e.example.test',
+    });
+    expect(refused.code).toBe(2);
+    expect(refused.err).toContain('--env');
+    expect(seen).toStrictEqual([]);
+  });
+
   ['staging', 'constructor', 'toString'].forEach((name) => {
     it(`an unknown preset (${name}) is refused and the two presets are named`, async () => {
       const refused = await run(['person.list', '--env', name], env);
