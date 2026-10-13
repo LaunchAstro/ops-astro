@@ -291,6 +291,11 @@ minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
 served.
 
+The only first factor is `password`. A session the provider opened from a
+mailed link (`amr` `otp`, or `magiclink`, `recovery`, `invite`,
+`email/signup`) has no first-sign-in time, so every route answers it
+`AUTH_SESSION_EXPIRED`: a link sets a password and signs nobody into content.
+
 A session is GoTrue's `session_id` claim, read by the verifier only when it is
 a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
@@ -413,6 +418,13 @@ Two more settings stop the server at start: a `local` route any of whose
 operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
 eligible route itself, never another found by its key.
+
+A carried deployment (#1531) sets `MODEL_BROKER_CARRIER`,
+`{"agent":<agent actor id>,"people":[<person id>, ...]}` (`model-carrier.ts`),
+with `OPS_AGENT_PROVIDER=ollama`, an Ollama `local` route and
+`MODEL_BROKER_INSTALLATION`, and never beside a credentials file or destination
+list. Both entries hand it to `composeApi`; a listed person's internal
+conversation then gains its agent as a member (`conversation-agents.ts`).
 
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once

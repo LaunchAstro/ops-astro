@@ -36,7 +36,11 @@ export function stoppedAfterAudit(tx: TransactionQuery, stop: Stop): Transaction
       const chained =
         text.includes('pg_advisory_xact_lock(') && parameters?.[0] === tx.businessId.toLowerCase();
       const reached =
-        stop.at === 'chain' ? chained : audited && live && text.includes('ended_provider_sessions');
+        stop.at === 'chain'
+          ? chained
+          : audited &&
+            live &&
+            (text.includes('ended_provider_sessions') || text.includes('ops.session_'));
       if (reached && stop.armed) {
         const wait = stop.armed;
         delete stop.armed;

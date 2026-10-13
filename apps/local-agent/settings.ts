@@ -48,10 +48,18 @@ export interface RunnerSettings {
     readonly LOGNAME: string;
   };
   readonly timeoutMs: number;
+  /** The Codex version a streamed call must report; on the M5 it is always pinned. */
+  readonly codexVersion: string | null;
 }
 
 export type StartRefusal =
-  'LOCAL_ONLY' | 'KEY_REFUSED' | 'HOME_NOT_ABSOLUTE' | 'CAP_MALFORMED' | 'CAP_NOT_APPROVED';
+  | 'LOCAL_ONLY'
+  | 'HOSTED_REFUSED'
+  | 'VERSION_UNPINNED'
+  | 'KEY_REFUSED'
+  | 'HOME_NOT_ABSOLUTE'
+  | 'CAP_MALFORMED'
+  | 'CAP_NOT_APPROVED';
 
 export type SettingsResult =
   | { readonly ok: true; readonly settings: RunnerSettings }
@@ -119,13 +127,47 @@ function childEnvOf(
   };
 }
 
+/** A Codex version as the runner pins it: three numbers, nothing to split. */
+const CODEX_VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/u;
+
+/**
+ * Where the runner may start: the owner's laptop (OPS_ENVIRONMENT=local), or
+ * the M5 by its own site setting with the Codex version pinned; never on a
+ * hosted function. Undefined when it may.
+ */
+function siteRefusal(
+  env: Readonly<Record<string, string | undefined>>,
+): SettingsResult | undefined {
+  const site = env['OPS_LOCAL_AGENT_SITE'] ?? '';
+  const version = env['OPS_LOCAL_AGENT_CODEX_VERSION'] ?? '';
+  if ((env['VERCEL'] ?? '') !== '') {
+    return refuse('HOSTED_REFUSED', 'the local runner never starts on a hosted function');
+  }
+  if (site !== '' && site !== 'm5') {
+    return refuse('LOCAL_ONLY', 'OPS_LOCAL_AGENT_SITE is m5 or unset');
+  }
+  if (site === '' && env['OPS_ENVIRONMENT'] !== 'local') {
+    return refuse(
+      'LOCAL_ONLY',
+      'the local runner starts only where OPS_ENVIRONMENT is local, or on the M5 by OPS_LOCAL_AGENT_SITE',
+    );
+  }
+  if (version !== '' && !CODEX_VERSION.test(version)) {
+    return refuse('VERSION_UNPINNED', 'OPS_LOCAL_AGENT_CODEX_VERSION is a version, such as 1.2.3');
+  }
+  if (site === 'm5' && version === '') {
+    return refuse('VERSION_UNPINNED', 'on the M5, set OPS_LOCAL_AGENT_CODEX_VERSION');
+  }
+  return undefined;
+}
+
 export function readSettings(
   env: Readonly<Record<string, string | undefined>>,
   userHome: string = homedir(),
 ): SettingsResult {
-  if (env['OPS_ENVIRONMENT'] !== 'local') {
-    return refuse('LOCAL_ONLY', 'the local runner starts only where OPS_ENVIRONMENT is local');
-  }
+  const site = siteRefusal(env);
+  if (site !== undefined) return site;
+  const codexVersion = env['OPS_LOCAL_AGENT_CODEX_VERSION'] || null;
   const key = env['OPS_LOCAL_AGENT_KEY'] ?? '';
   if (key.length < MIN_KEY_LENGTH) {
     return refuse(
@@ -162,6 +204,7 @@ export function readSettings(
       childEnv: childEnvOf(env, join(home, 'home')),
       // Under custody's 120 s for the call, so the runner gives up first.
       timeoutMs: 100_000,
+      codexVersion,
     },
   };
 }

@@ -96,6 +96,8 @@ export async function carriedThroughPsql(live: Live): Promise<void> {
     records: mkdtempSync(join(live.scratch, 'records-')),
     recordSignIn: () => Promise.resolve(),
     recordTestedRestore: () => Promise.resolve(new Date().toISOString()),
+    stillOperator: () => Promise.resolve(),
+    holdingGrant: <T>(during: (release: () => void) => Promise<T>): Promise<T> => during(() => {}),
   };
   const appointed = live.logins['operator'] ?? '';
   const file = join(mkdtempSync(join(live.scratch, 'carry-')), 'archive.sealed');

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the hosted policy suite's send helper issues claims as the provider does, so its admitted send reaches the policy"
+}

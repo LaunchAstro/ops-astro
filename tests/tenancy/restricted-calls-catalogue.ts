@@ -6,7 +6,7 @@
 // the line limit; the contract and the catalogue reads are unchanged.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { MANDATE_GRANTS, MANDATE_UPDATES, OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
+import { MANDATE_GRANTS, OCCURRENCE_ROLE, PART_UPDATES } from './restricted-calls-cases.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
@@ -54,7 +54,7 @@ const COLUMN_UPDATES: readonly {
     from: '20261005200007',
     columns: ['closed_at', 'failures', 'state'],
   },
-  ...MANDATE_UPDATES,
+  ...PART_UPDATES,
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   {
     table: 'public.clients',
@@ -286,7 +286,7 @@ export async function catalogueFunctions(
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('public', 'ops') and p.prokind = 'f'
         and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      order by 2`,
+      order by p.oid::regprocedure::text collate "C" -- byte order, at any collation`,
   );
   return rows.map((row) => ({
     qualified: row.qualified,
