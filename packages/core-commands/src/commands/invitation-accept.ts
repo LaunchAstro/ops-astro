@@ -166,6 +166,38 @@ async function inviterHolds(tx: TenantQuery, held: Held): Promise<boolean> {
   return held.roleKey !== 'admin' || (await holds('manage'));
 }
 
+/** Owe the new login to the provider and audit the accept and the login. */
+async function oweAndAudit(
+  tx: TenantQuery,
+  found: Found,
+  held: Held,
+  loginId: string,
+): Promise<void> {
+  const { businessId } = tx;
+  await tx.query(
+    `insert into login_provisions (business_id, id, invitation_id, login_id)
+     values ($1, gen_random_uuid(), $2, $3)`,
+    [businessId, found.invitation, loginId],
+  );
+  const worker = await workerActor(tx);
+  await writeAuditEvent(tx, {
+    actorId: worker,
+    command: ACCEPT_OPERATION,
+    operationId: `${ACCEPT_OPERATION}:${found.invitation}`,
+    outcome: 'applied',
+    subjectRecordId: found.invitation,
+    payloadDigest: payloadDigest({ invitationId: found.invitation }),
+  });
+  await writeAuditEvent(tx, {
+    actorId: worker,
+    command: LOGIN_CREATE_OPERATION,
+    operationId: `${LOGIN_CREATE_OPERATION}:${loginId}`,
+    outcome: 'applied',
+    subjectRecordId: loginId,
+    payloadDigest: payloadDigest({ loginId, personId: held.personId }),
+  });
+}
+
 /** Step 3: spend, accept, seat, owe the login, audit; `false` when the spend found nothing. */
 async function seat(tx: TenantQuery, found: Found, held: Held): Promise<boolean> {
   const { businessId } = tx;
@@ -210,28 +242,7 @@ async function seat(tx: TenantQuery, found: Found, held: Held): Promise<boolean>
      values ($1, gen_random_uuid(), $2, $3, true)`,
     [businessId, held.personId, held.roleKey],
   );
-  await tx.query(
-    `insert into login_provisions (business_id, id, invitation_id, login_id)
-     values ($1, gen_random_uuid(), $2, $3)`,
-    [businessId, found.invitation, loginId],
-  );
-  const worker = await workerActor(tx);
-  await writeAuditEvent(tx, {
-    actorId: worker,
-    command: ACCEPT_OPERATION,
-    operationId: `${ACCEPT_OPERATION}:${found.invitation}`,
-    outcome: 'applied',
-    subjectRecordId: found.invitation,
-    payloadDigest: payloadDigest({ invitationId: found.invitation }),
-  });
-  await writeAuditEvent(tx, {
-    actorId: worker,
-    command: LOGIN_CREATE_OPERATION,
-    operationId: `${LOGIN_CREATE_OPERATION}:${loginId}`,
-    outcome: 'applied',
-    subjectRecordId: loginId,
-    payloadDigest: payloadDigest({ loginId, personId: held.personId }),
-  });
+  await oweAndAudit(tx, found, held, loginId);
   return true;
 }
 

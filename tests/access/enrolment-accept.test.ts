@@ -4,80 +4,28 @@
 // An invitation accepted on its one-time link: the token alone is the
 // authority, and the accept seats the invited person with no grant and owes
 // their login to the provider. Every link that is not live is one answer
-// that writes nothing. The accept judges everything after its last lock wait,
-// on the clock, in the order every invitation writer takes its locks, so two
-// accepts, or an accept beside a revoke or a resend, end in one consistent
-// state. The first-client gate refuses it as it refuses `invitation.create`.
+// that writes nothing. The first-client gate refuses it as it refuses
+// `invitation.create`.
 
 import { randomBytes } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { mountEnrolment } from '../../apps/api/enrolment.ts';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
-import { connect, lockAccess } from '../../packages/core-records/src/index.ts';
 import {
-  addressFor,
   as,
   auditOf,
   c,
   codeOf,
-  linkIn,
   noDatabase,
   send,
   storedText,
   useInvitationWorld,
   w,
 } from './c39-t-world.ts';
+import { invited, NOTHING, one, seated } from './enrolment-accept-world.ts';
 
 useInvitationWorld();
-
-/** A gate a schedule holds closed until it lets the waiting side on. */
-function latch(): { readonly opened: Promise<void>; open: () => void } {
-  const gate = { opened: Promise.resolve(), open: (): void => {} };
-  gate.opened = new Promise<void>((resolve) => {
-    gate.open = resolve;
-  });
-  return gate;
-}
-
-/** Invite, send, and the token the mail carried. */
-async function invited(
-  who = c.admin,
-  role = 'member',
-  business = w.alpha,
-): Promise<{ id: string; token: string; address: string }> {
-  const address = addressFor('joiner');
-  const result = await as(who, 'invitation.create', { name: 'Jo Joiner', email: address, role });
-  const id = String((result as { recordId?: unknown }).recordId);
-  expect(await send(id, business)).toMatchObject({ ok: true });
-  return { id, token: linkIn(w.provider.outbox.at(-1)?.body).token, address };
-}
-
-async function one<T extends Record<string, unknown>>(sql: string, values: unknown[]): Promise<T> {
-  const [row] = await w.db.admin.execute<T>(sql, values);
-  return row as T;
-}
-
-/** What an accept writes, counted for one invitation's person. */
-async function seated(invitationId: string): Promise<Record<string, unknown>> {
-  return await one(
-    `select i.state,
-            (select count(*)::int from enrolment_tokens t
-              where t.invitation_id = i.id and t.spent_at is not null) as spent,
-            (select count(*)::int from actors a
-              where a.person_id = i.person_id and a.kind = 'person' and a.active) as actors,
-            (select count(*)::int from memberships m where m.person_id = i.person_id and m.active) as memberships,
-            (select count(*)::int from person_logins pl where pl.person_id = i.person_id and pl.active) as logins,
-            (select count(*)::int from grants g where g.subject_id = i.person_id
-                or g.subject_id in (select id from actors where person_id = i.person_id)) as grants,
-            (select count(*)::int from login_provisions p where p.invitation_id = i.id) as owed
-       from invitations i where i.id = $1`,
-    [invitationId],
-  );
-}
-
-const NOTHING = { spent: 0, actors: 0, memberships: 0, logins: 0, grants: 0, owed: 0 };
 
 describe.skipIf(noDatabase)('an invitation accepted on its one-time link', () => {
   it('seats the invited person with no grant, owes their login, and audits both acts', async () => {
@@ -259,83 +207,5 @@ describe.skipIf(noDatabase)('an invitation accepted on its one-time link', () =>
       413,
       { code: 'ENROLMENT_TOO_LARGE' },
     ]);
-  });
-});
-
-describe.skipIf(noDatabase)('accepts beside each other and beside other acts', () => {
-  it('two accepts of one link at once seat one person once', async () => {
-    const { id, token } = await invited();
-    const [a, b] = [connect(w.db.appUrl), connect(w.db.appUrl)];
-    try {
-      const answers = await Promise.all([acceptInvitation(a, token), acceptInvitation(b, token)]);
-      expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
-      expect(await seated(id)).toMatchObject({
-        state: 'accepted',
-        actors: 1,
-        memberships: 1,
-        owed: 1,
-      });
-    } finally {
-      await Promise.all([a.close(), b.close()]);
-    }
-  });
-
-  it.each(['invitation.revoke', 'invitation.resend'])(
-    'an accept beside %s ends in one consistent state, with no deadlock',
-    async (command) => {
-      const { id, token } = await invited();
-      const [held, other] = [connect(w.db.appUrl), connect(w.db.appUrl)];
-      try {
-        // Both queue behind one holder of the access lock, then race for the row.
-        const gate = latch();
-        const holding = held.withBusiness(w.alpha, async (tx) => {
-          await lockAccess(tx);
-          await gate.opened;
-        });
-        await delay(100);
-        const accepting = acceptInvitation(other, token);
-        const acting = as(c.admin, command, { invitationId: id });
-        await delay(300);
-        gate.open();
-        await holding;
-        const [accepted, acted] = await Promise.all([accepting, acting]);
-        const state = await seated(id);
-        if (accepted.ok) {
-          expect(state).toMatchObject({ state: 'accepted', memberships: 1, owed: 1 });
-          expect(codeOf(acted)).toBe('TRANSITION_NOT_PERMITTED');
-        } else {
-          expect(codeOf(acted)).toBe('applied');
-          expect(state).toMatchObject({ memberships: 0, owed: 0, spent: 0 });
-        }
-      } finally {
-        await Promise.all([held.close(), other.close()]);
-      }
-    },
-  );
-
-  it('a lifetime that ends while the accept waits on the access lock refuses it', async () => {
-    const { id, token } = await invited();
-    await w.db.admin.execute(
-      `update invitations set expires_at = clock_timestamp() + interval '1500 milliseconds'
-        where id = $1`,
-      [id],
-    );
-    const [held, other] = [connect(w.db.appUrl), connect(w.db.appUrl)];
-    try {
-      const gate = latch();
-      const holding = held.withBusiness(w.alpha, async (tx) => {
-        await lockAccess(tx);
-        await gate.opened;
-      });
-      await delay(100);
-      const accepting = acceptInvitation(other, token);
-      await delay(2000);
-      gate.open();
-      await holding;
-      expect(await accepting).toStrictEqual({ ok: false, code: 'ENROLMENT_LINK_INVALID' });
-      expect(await seated(id)).toMatchObject(NOTHING);
-    } finally {
-      await Promise.all([held.close(), other.close()]);
-    }
   });
 });
