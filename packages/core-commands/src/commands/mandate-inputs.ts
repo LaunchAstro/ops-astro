@@ -3,7 +3,7 @@
 // The mandate commands' closed inputs (MP-14-10a). Each answers the value it
 // accepts, or null, and the command names the field it refuses.
 
-import type { MandateFiling } from '../../../core-records/src/index.ts';
+import type { MandateFiling, MandateRow } from '../../../core-records/src/index.ts';
 import { labelText } from './values.ts';
 
 type Ceiling = NonNullable<MandateFiling['ceiling']>;
@@ -70,4 +70,22 @@ export function classesOf(value: unknown, choices: readonly string[]): readonly 
     return null;
   }
   return new Set(value).size === value.length ? value : null;
+}
+
+const wordSet = (list: readonly string[]): string => JSON.stringify([...new Set(list)].toSorted());
+
+/** Whether a mandate carries exactly this filing: its classes as a set, and every other value. */
+export function sameFiling(
+  mandate: MandateRow,
+  filing: Pick<MandateFiling, 'classes' | 'refuses' | 'ceiling' | 'expiresAt' | 'label'>,
+): boolean {
+  return (
+    wordSet(mandate.classes) === wordSet(filing.classes) &&
+    mandate.refuses === filing.refuses &&
+    mandate.ceilingMinor === (filing.ceiling?.amountMinor ?? null) &&
+    mandate.currency === (filing.ceiling?.currency ?? null) &&
+    mandate.expiresAt.getTime() === filing.expiresAt.getTime() &&
+    mandate.label === filing.label &&
+    mandate.graduationClass === null
+  );
 }

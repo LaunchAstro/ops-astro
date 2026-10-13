@@ -89,13 +89,19 @@ async function mandateBody(name: CommandName, context: SetupContext): Promise<Bo
   if (made === undefined) return { body: madeUpMandateBody(name, ceiling, expiresAt) };
   const filing = { clientId: made.clientId, classes: ['social.post'], ceiling, expiresAt };
   const promoting = { classId: made.classId, ceiling, expiresAt };
-  if (name === 'mandate.file') return { body: { ...filing, label: 'The matrix files one' } };
+  if (name === 'mandate.file') {
+    return { body: { ...filing, draftId: randomUUID(), label: 'The matrix files one' } };
+  }
   if (name === 'graduation.promote') return { body: promoting };
   if (name === 'graduation.demote') {
     await context.asPerson('graduation.promote', promoting);
     return { body: { classId: made.classId } };
   }
-  const filed = await context.asPerson('mandate.file', { ...filing, label: 'To be revoked' });
+  const filed = await context.asPerson('mandate.file', {
+    ...filing,
+    draftId: randomUUID(),
+    label: 'To be revoked',
+  });
   return {
     body: { mandateId: String((filed.body['detail'] as Record<string, unknown>)['mandateId']) },
   };
@@ -111,6 +117,7 @@ function madeUpMandateBody(
     case 'mandate.file':
       return {
         clientId: randomUUID(),
+        draftId: randomUUID(),
         classes: ['social.post'],
         ceiling,
         expiresAt,
