@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an answer after the sweep held its call settles nothing, keeps no reply and reports no success"
+}

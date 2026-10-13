@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, mayCarry } from './credentials.ts';
-import { sendingAccount } from './broker-carrier.ts';
+import { sendingCarrier } from './broker-carrier.ts';
 import {
   atCeiling,
   registerPromptCopy,
@@ -161,16 +161,16 @@ async function sendAndSettle(
   called: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
-  asked: Pick<ConversationCallRequest, 'model' | 'onPiece'>,
+  asked: Pick<ConversationCallRequest, 'model' | 'onPiece'> & { readonly streamed: boolean },
 ): Promise<ModelCallResult> {
   const { callId, operation, route } = called;
-  const { model, onPiece } = asked;
+  const { model, onPiece, streamed } = asked;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId, model);
-  const reader = onPiece === undefined ? undefined : operation.pieces?.();
+  const built = adapter.build(values, callId, model, streamed);
+  const reader = onPiece === undefined || !streamed ? undefined : operation.pieces?.();
   const outcome = await broker.custody.dispatch(
     route.credentialRef,
     {
@@ -187,7 +187,7 @@ async function sendAndSettle(
           for (const text of reader.push(chunk)) onPiece(text);
         },
   );
-  const settlement = settlementOf(outcome, operation, adapter);
+  const settlement = settlementOf(outcome, operation, adapter, streamed);
   return await database.withBusiness(
     businessId,
     async (tx) => await settledFor(tx, called, settlement, broker),
@@ -248,7 +248,9 @@ export async function callModelInConversation(
   // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
   const { route } = chosen;
-  const account = await sendingAccount(broker, route, operation.destination);
+  const { account, presentsNothing } = await sendingCarrier(broker, route, operation.destination);
+  // Streamed only where custody sends no credential the answer could echo.
+  const streamed = presentsNothing && operation.fold !== undefined;
   const callId = await database.withBusiness(businessId, async (tx) =>
     (await atCeiling(tx, operation, route))
       ? null
@@ -263,6 +265,6 @@ export async function callModelInConversation(
     { callId, operation, route, reservedMinor: 0 },
     fields,
     broker,
-    request,
+    { ...request, streamed },
   );
 }

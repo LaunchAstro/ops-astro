@@ -70,10 +70,14 @@ const byByte = (bytes: Uint8Array): Uint8Array[] =>
   Array.from(bytes, (_byte, at) => bytes.slice(at, at + 1));
 const whole = (bytes: Uint8Array): Uint8Array[] => [bytes];
 
+const asked = (streamed?: boolean): unknown =>
+  JSON.parse(ollamaAdapter({ message: 'What is due?' }, 'call-1', undefined, streamed).body);
+
 describe('the Ollama adapter streams', () => {
-  it('asks for a streamed chat with thinking off', () => {
-    const body = JSON.parse(ollamaAdapter({ message: 'What is due?' }).body) as unknown;
-    expect(body).toMatchObject({ stream: true, think: false });
+  it('asks for a streamed chat with thinking off only when told, and a whole one otherwise', () => {
+    expect(asked(true)).toMatchObject({ stream: true, think: false });
+    expect(asked(false)).toMatchObject({ stream: false, think: false });
+    expect(asked()).toMatchObject({ stream: false, think: false });
   });
 
   it('declares the fold and the piece reader, and the catalogue takes it', () => {
