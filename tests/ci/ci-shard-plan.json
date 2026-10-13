@@ -32,7 +32,6 @@
     "tests/api/aw-03-isolation.test.ts": 4.4,
     "tests/api/c36-isolation.test.ts": 3.7,
     "tests/api/c4-notifications-live.test.ts": 10.7,
-    "tests/api/c40-password-set.test.ts": 10.8,
     "tests/api/c54-isolation.test.ts": 4.9,
     "tests/api/c58-end-others-every-business.test.ts": 4.4,
     "tests/api/c58-sessions.test.ts": 7.1,
