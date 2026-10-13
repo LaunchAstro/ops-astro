@@ -20,7 +20,7 @@ it('a dotted field through __proto__, constructor or prototype reads nothing', (
   expect(fieldAt(parsed, '__proto__.x')).toBeUndefined();
   expect(fieldAt(parsed, 'a.constructor.x')).toBeUndefined();
   expect(fieldAt({ prototype: { x: 'p' } }, 'prototype.x')).toBeUndefined();
-  expect(fieldAt(parsed, 'a')).toStrictEqual({ constructor: { x: 'c' } });
+  expect(JSON.stringify(fieldAt(parsed, 'a'))).toBe('{"constructor":{"x":"c"}}');
 });
 
 it('a declared field naming __proto__ keeps nothing, and pollutes nothing', () => {

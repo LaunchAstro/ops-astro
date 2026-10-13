@@ -112,6 +112,11 @@ const dispatchRead = async () =>
     maxResponseBytes: 262_144,
   });
 
+// Custody is stricter on one point: a path through a prototype key reads nothing (the
+// catalogue declares none), where the connector reads an own `__proto__` key.
+const prototypeKey = (path: string) =>
+  /(?:^|\.)(?:__proto__|constructor|prototype)(?:\.|$)/u.test(path);
+
 it('custody’s field reader reads what the guarded call’s reads, over one table', () => {
   const list = [{ uid: 'dpl_1', meta: { githubCommitSha: 'c0ffee' } }, { uid: 'dpl_2' }];
   const bodies: unknown[] = [
@@ -142,7 +147,8 @@ it('custody’s field reader reads what the guarded call’s reads, over one tab
   ];
   for (const one of bodies) {
     for (const path of paths) {
-      expect(fieldAt(one, path), `${JSON.stringify(one)} ${path}`).toEqual(readField(one, path));
+      const expected = prototypeKey(path) ? undefined : readField(one, path);
+      expect(fieldAt(one, path), `${JSON.stringify(one)} ${path}`).toEqual(expected);
     }
   }
 });

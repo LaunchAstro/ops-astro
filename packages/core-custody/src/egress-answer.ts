@@ -100,6 +100,13 @@ export async function answerOf(
   };
 }
 
+/** Names that would step past a plain value into an object's prototype. */
+const PROTOTYPE_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** A dotted path none of whose parts is a prototype key. */
+const plainPath = (dotted: string): boolean =>
+  dotted.split('.').every((part) => !PROTOTYPE_KEYS.has(part));
+
 /** A declared field's type, as the connector catalogue names it. */
 export type FieldKind = 'string' | 'number' | 'boolean';
 export type Fields = Readonly<Record<string, FieldKind>>;
@@ -110,6 +117,7 @@ export type Fields = Readonly<Record<string, FieldKind>>;
  * `readField` reads it. Custody keeps its own copy: it loads no connector code.
  */
 export function fieldAt(body: unknown, dotted: string): unknown {
+  if (!plainPath(dotted)) return undefined;
   let value: unknown = body;
   for (const part of dotted.split('.')) {
     if (Array.isArray(value)) {
@@ -129,6 +137,17 @@ const put = (into: object, key: string, value: unknown): void => {
   Object.defineProperty(into, key, { value, writable: true, enumerable: true, configurable: true });
 };
 
+/** `value` at `parts` under `into`, each level a prototype-free object made as needed. */
+function placed(into: Record<string, unknown>, parts: readonly string[], value: unknown): void {
+  const [head = '', ...rest] = parts;
+  if (rest.length === 0) {
+    put(into, head, value);
+    return;
+  }
+  if (!Object.hasOwn(into, head)) put(into, head, Object.create(null));
+  placed(into[head] as Record<string, unknown>, rest, value);
+}
+
 /**
  * What the caller may keep of a JSON answer: each declared field, of its
  * declared type, as text (`values`) and rebuilt as the only fields of the body
@@ -146,20 +165,15 @@ export function keptOf(
   } catch {
     return undefined;
   }
-  const kept = {};
+  const kept: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   const values: string[] = [];
   for (const [dotted, kind] of Object.entries(fields)) {
+    if (!plainPath(dotted)) return undefined;
     const value = fieldAt(parsed, dotted);
     // oxlint-disable-next-line valid-typeof -- `kind` is the declared type's own name
     if (typeof value !== kind) return undefined;
     values.push(typeof value === 'string' ? value : JSON.stringify(value));
-    const parts = dotted.split('.');
-    let into: Record<string, unknown> = kept;
-    for (const part of parts.slice(0, -1)) {
-      if (!Object.hasOwn(into, part)) put(into, part, {});
-      into = into[part] as Record<string, unknown>;
-    }
-    put(into, parts.at(-1) ?? '', value);
+    placed(kept, dotted.split('.'), value);
   }
   return { body: JSON.stringify(kept), values };
 }

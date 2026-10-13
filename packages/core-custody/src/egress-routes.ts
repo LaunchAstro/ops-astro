@@ -82,10 +82,12 @@ const TEMPLATE_PATH = /^(?:\/(?:\{[a-z]+\*?\}|(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]+)
 /** A template's query: each parameter a literal value or one slot. */
 const TEMPLATE_QUERY =
   /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
-/** What a slot stands for: one segment, never `.` or `..`, and no escape. */
-const SLOT_VALUE = String.raw`(?!\.\.?(?:/|\?|&|$))[A-Za-z0-9._~-]{1,256}`;
+/** What a path slot stands for: one segment, never `.` or `..`, and no escape. */
+const PATH_SLOT = /^(?!\.\.?$)[A-Za-z0-9._~-]{1,256}$/u;
 /** What a query slot stands for: one value as `URLSearchParams` writes it. */
-const QUERY_VALUE = String.raw`(?:[A-Za-z0-9*._~+-]|%[0-9A-F]{2}){1,768}`;
+const QUERY_SLOT = /^(?:[A-Za-z0-9*._~+-]|%[0-9A-F]{2}){1,768}$/u;
+/** A template slot: `{name}` for one segment or value, `{name*}` for one segment or more. */
+const SLOT = /^\{[a-z]+(\*?)\}$/u;
 /** A declared field: dotted names, as the catalogue writes them. */
 const FIELD = /^[A-Za-z0-9_$]{1,64}(?:\.[A-Za-z0-9_$]{1,64}){0,7}$/u;
 const KINDS: ReadonlySet<unknown> = new Set(['string', 'number', 'boolean']);
@@ -101,18 +103,50 @@ function templateOf(template: string): boolean {
   );
 }
 
-/** Whether a request's path and query fill the template exactly. */
-function fills(template: string, path: string): boolean {
-  const query = template.indexOf('?');
-  const pattern = template.replaceAll(
-    /\{[a-z]+(\*?)\}|[.?]/gu,
-    (slot, many: string, at: number) => {
-      if (slot === '.' || slot === '?') return `\\${slot}`;
-      if (query !== -1 && at > query) return QUERY_VALUE;
-      return many === '*' ? `${SLOT_VALUE}(?:/${SLOT_VALUE})*` : SLOT_VALUE;
-    },
+/** The text before and after the first `?`, or the whole and undefined. */
+function split(text: string): readonly [string, string | undefined] {
+  const at = text.indexOf('?');
+  return at === -1 ? [text, undefined] : [text.slice(0, at), text.slice(at + 1)];
+}
+
+/** Whether path segments fill template segments: a literal as written, a slot by `PATH_SLOT`. */
+function segmentsFill(template: readonly string[], path: readonly string[]): boolean {
+  const [want, ...rest] = template;
+  if (want === undefined) return path.length === 0;
+  const slot = SLOT.exec(want);
+  if (slot === null) return path[0] === want && segmentsFill(rest, path.slice(1));
+  if (slot[1] !== '*') {
+    return path[0] !== undefined && PATH_SLOT.test(path[0]) && segmentsFill(rest, path.slice(1));
+  }
+  // A many-segment slot takes one segment or more, then the rest of the template.
+  for (let taken = 1; taken <= path.length; taken += 1) {
+    if (!path.slice(0, taken).every((segment) => PATH_SLOT.test(segment))) return false;
+    if (segmentsFill(rest, path.slice(taken))) return true;
+  }
+  return false;
+}
+
+/** Whether query parameters fill the template's, in order: a literal value as written, a slot by `QUERY_SLOT`. */
+function queryFills(template: readonly string[], query: readonly string[]): boolean {
+  return (
+    template.length === query.length &&
+    template.every((want, at) => {
+      const [name = '', value = ''] = want.split('=');
+      const given = query[at] ?? '';
+      if (!given.startsWith(`${name}=`)) return false;
+      const sent = given.slice(name.length + 1);
+      return SLOT.test(value) ? QUERY_SLOT.test(sent) : sent === value;
+    })
   );
-  return new RegExp(`^${pattern}$`, 'u').test(path);
+}
+
+/** Whether a request's path and query fill the template exactly, by comparison and fixed checks only. */
+function fills(template: string, path: string): boolean {
+  const [wantPath, wantQuery] = split(template);
+  const [givenPath, givenQuery] = split(path);
+  if ((wantQuery === undefined) !== (givenQuery === undefined)) return false;
+  if (!segmentsFill(wantPath.split('/'), givenPath.split('/'))) return false;
+  return wantQuery === undefined || queryFills(wantQuery.split('&'), (givenQuery ?? '').split('&'));
 }
 
 function fieldsOf(value: unknown): Fields | undefined {
