@@ -35,9 +35,12 @@ export interface StoredCredential {
   /**
    * How an `authorization` value is presented: `bearer` (the default), or
    * `basic` for a `user:secret` pair sent as HTTP Basic, as the trace
-   * target's project route takes it (AW-13).
+   * target's project route takes it (AW-13). `none` is a destination that
+   * asks for no key (Ollama on loopback): it is filed with no header and no
+   * value and presented as nothing, so the answer holds no secret to echo
+   * and custody may pass it on as it arrives.
    */
-  readonly scheme: 'bearer' | 'basic';
+  readonly scheme: 'bearer' | 'basic' | 'none';
   readonly value: string;
 }
 
@@ -121,6 +124,61 @@ const REF = /^[a-z][a-z0-9_]{0,62}$/u;
 /** A Basic pair: one colon, a user, and a secret of 8 or more; the value holds no space. */
 const PAIR = /^[^:]+:[^:]{8,}$/u;
 
+/** A `none` entry: no header and no value, a stored kind and its account, or undefined. */
+function presentedAsNothing(
+  shape: Record<string, unknown>,
+  credentials: ReadonlyMap<string, StoredCredential>,
+): StoredCredential | undefined {
+  const { ref, kind, account, destination } = shape;
+  if (
+    'header' in shape ||
+    'value' in shape ||
+    typeof ref !== 'string' ||
+    !REF.test(ref) ||
+    credentials.has(ref) ||
+    (kind !== 'api_key' && kind !== 'cloud_credential') ||
+    typeof destination !== 'string' ||
+    !REF.test(destination) ||
+    typeof account !== 'string' ||
+    account === ''
+  ) {
+    return undefined;
+  }
+  return { ref, kind, account, destination, header: 'authorization', scheme: 'none', value: '' };
+}
+
+/** One entry of the list as a stored credential, or why it is refused. */
+function credentialOf(
+  shape: Record<string, unknown>,
+  credentials: ReadonlyMap<string, StoredCredential>,
+): StoredCredential | CredentialRefusal {
+  const { ref, kind, account, destination, header, value } = shape;
+  // Absent only: JSON has no undefined, so a null or empty scheme is malformed.
+  const scheme = 'scheme' in shape ? shape['scheme'] : 'bearer';
+  if (kind === 'subscription') return 'CREDENTIAL_NOT_STORABLE';
+  if (scheme === 'none') return presentedAsNothing(shape, credentials) ?? 'CREDENTIAL_MALFORMED';
+  if (typeof value === 'string' && isSessionToken(value)) return 'SESSION_TOKEN_REFUSED';
+  if (
+    typeof ref !== 'string' ||
+    !REF.test(ref) ||
+    credentials.has(ref) ||
+    (kind !== 'api_key' && kind !== 'cloud_credential' && kind !== 'replay') ||
+    typeof destination !== 'string' ||
+    !REF.test(destination) ||
+    (header !== 'authorization' && header !== 'x-api-key') ||
+    (scheme !== 'bearer' && scheme !== 'basic') ||
+    (scheme === 'basic' && header !== 'authorization') ||
+    typeof value !== 'string' ||
+    (scheme === 'basic' && !PAIR.test(value)) ||
+    value.length < 8 ||
+    /[\s\0]/u.test(value) ||
+    (kind === 'replay' ? account !== null : typeof account !== 'string' || account === '')
+  ) {
+    return 'CREDENTIAL_MALFORMED';
+  }
+  return { ref, kind, account: account as string | null, destination, header, scheme, value };
+}
+
 /**
  * Read custody's credential list, refusing the whole list on any bad entry.
  * A refusal names the entry's position and why, and never its value.
@@ -135,41 +193,9 @@ export function parseCredentials(
   for (const [at, entry] of entries.entries()) {
     if (typeof entry !== 'object' || entry === null)
       return { ok: false, code: 'CREDENTIAL_MALFORMED', at };
-    const shape = entry as Record<string, unknown>;
-    const { ref, kind, account, destination, header, value } = shape;
-    // Absent only: JSON has no undefined, so a null or empty scheme is malformed.
-    const scheme = 'scheme' in shape ? shape['scheme'] : 'bearer';
-    if (kind === 'subscription') return { ok: false, code: 'CREDENTIAL_NOT_STORABLE', at };
-    if (typeof value === 'string' && isSessionToken(value)) {
-      return { ok: false, code: 'SESSION_TOKEN_REFUSED', at };
-    }
-    if (
-      typeof ref !== 'string' ||
-      !REF.test(ref) ||
-      credentials.has(ref) ||
-      (kind !== 'api_key' && kind !== 'cloud_credential' && kind !== 'replay') ||
-      typeof destination !== 'string' ||
-      !REF.test(destination) ||
-      (header !== 'authorization' && header !== 'x-api-key') ||
-      (scheme !== 'bearer' && scheme !== 'basic') ||
-      (scheme === 'basic' && header !== 'authorization') ||
-      typeof value !== 'string' ||
-      (scheme === 'basic' && !PAIR.test(value)) ||
-      value.length < 8 ||
-      /[\s\0]/u.test(value) ||
-      (kind === 'replay' ? account !== null : typeof account !== 'string' || account === '')
-    ) {
-      return { ok: false, code: 'CREDENTIAL_MALFORMED', at };
-    }
-    credentials.set(ref, {
-      ref,
-      kind,
-      account: account as string | null,
-      destination,
-      header,
-      scheme,
-      value,
-    });
+    const read = credentialOf(entry as Record<string, unknown>, credentials);
+    if (typeof read === 'string') return { ok: false, code: read, at };
+    credentials.set(read.ref, read);
   }
   return { ok: true, credentials };
 }
@@ -250,5 +276,7 @@ export function described(
   if (credential === undefined || credential.destination !== destination) {
     return { type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' };
   }
-  return { type: 'described', kind: credential.kind, account: credential.account };
+  // Whether it is sent at all: an answer to one that is sent may echo it, so is never streamed.
+  const presents = credential.scheme !== 'none';
+  return { type: 'described', kind: credential.kind, account: credential.account, presents };
 }

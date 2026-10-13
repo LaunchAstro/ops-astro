@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "no piece is handed on after a revocation, sign-out, purge or access ending commits, before, during or between judgements"
+}

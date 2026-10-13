@@ -38,6 +38,10 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/runtime/aw-13-local-target.test.ts':
     'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',
+  'tests/custody/custody-streams-pieces-only-for-a-credential-it-never-presents.test.ts':
+    'imports a harness module for a pure part and opens no database',
+  'tests/custody/custody-pieces-stay-with-their-own-request.test.ts':
+    'imports a harness module for a pure part and opens no database',
   'tests/acceptance/restart-http.test.ts':
     'skips without L5_RESTART_CONTAINER_NAME and L5_RESTART_API_PORT',
   'tests/pickup/pickup-replay-restart.test.ts':
