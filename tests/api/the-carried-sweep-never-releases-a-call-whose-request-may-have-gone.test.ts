@@ -41,7 +41,7 @@ const PROBE_KEY = 'race:carried-sweep';
 
 /** The sender's write, in the shape the carriers row takes it: every send time at once. */
 const SEND = `update model_call_carriers
-                 set offered_at = clock_timestamp() - interval '1 second', runner = gen_random_uuid(),
+                 set runner = gen_random_uuid(),
                      request_at = clock_timestamp(), send_by = clock_timestamp() + interval '5 seconds',
                      answer_by = clock_timestamp() + interval '120 seconds'
                where business_id = $1 and call_id = $2`;
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)('the carried sweep against a sender', (
     return one;
   };
 
-  /** A carried call on its own conversation, unsent, started `seconds` ago. */
+  /** A carried call on its own conversation, offered and unsent, started `seconds` ago. */
   async function unsent(business: CarriageBusiness, seconds: number): Promise<string> {
     const { callId } = await db.app.withBusiness(
       business.id,
@@ -97,6 +97,11 @@ describe.skipIf(serverUrl === undefined)('the carried sweep against a sender', (
           set accepted_at = accepted_at - make_interval(secs => $2),
               started_at = started_at - make_interval(secs => $2)
         where id = $1`,
+      [callId, seconds],
+    );
+    await db.admin.execute(
+      `update public.model_call_carriers set offered_at = clock_timestamp() - make_interval(secs => $2)
+        where call_id = $1`,
       [callId, seconds],
     );
     return callId;
@@ -198,7 +203,7 @@ describe.skipIf(serverUrl === undefined)('the carried sweep against a sender', (
     await db.app.withBusiness(alpha.id, async (tx) => {
       await tx.query(
         `update model_call_carriers
-            set offered_at = clock_timestamp() - interval '200 seconds', runner = gen_random_uuid(),
+            set runner = gen_random_uuid(),
                 request_at = clock_timestamp() - interval '199 seconds',
                 send_by = clock_timestamp() - interval '195 seconds',
                 answer_by = clock_timestamp() - interval '61 seconds'
