@@ -38,6 +38,7 @@ import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
+import { approverConfigured, decisionRefusal } from './live-correction-decision-checks.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export { setApprover } from './live-correction-approver.ts';
@@ -165,12 +166,13 @@ export async function storeRequest(
   });
 }
 
-/** The requester's authority read again after the insert's lock wait (`live-correction-standing.ts`). */
+/** After the insert's wait: an approver still set, then the requester's authority again. */
 async function endedSince(
   tx: TenantQuery,
   requester: Requester,
   partyId: string,
 ): Promise<ReturnType<typeof refused> | undefined> {
+  if (!(await approverConfigured(tx))) return refused(UNCONFIGURED);
   const { delegationId } = requester;
   const stood = await standsAfterWaits(tx, {
     covering: { subjects: requester.subjects, collection: RUN_COLLECTION, action: 'write' },
@@ -232,10 +234,8 @@ export async function decideLiveCorrection(
   if (approver.toLowerCase() !== session.personId) return refused(NOT_THE_APPROVER);
   if (correction.state !== 'requested') return refused(DECIDED);
   if (correction.versionId !== request.versionId.toLowerCase()) return refused(STALE);
-  // The gate grant again after the approver setting's wait: one that expired
-  // while the decision waited covers nothing, as a grant that never did.
-  const stood = await standsAfterWaits(tx, { covering: gate, partyId: correction.partyId });
-  if (stood !== 'stands') return refused(NOT_VISIBLE);
+  const after = await decisionRefusal(tx, correction, { gate, unseen: NOT_VISIBLE });
+  if (after !== undefined) return refused(after);
 
   const decided = await writeCorrectionDecision(tx, {
     id: correction.id,
