@@ -11,10 +11,18 @@ import { callModelInConversation } from '../../packages/core-custody/src/index.t
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { folded } from '../api/openrouter-stand-in-fixture.ts';
-import { HAIKU, HOLD, PAID_KEY, pricedWorld, type PricedWorld } from './priced-chat-world.ts';
+import {
+  HAIKU,
+  HOLD,
+  noCaller,
+  PAID_KEY,
+  pricedWorld,
+  type PricedWorld,
+} from './priced-chat-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- two businesses, one schedule per kind of spend
 describe.skipIf(serverUrl === undefined)('chat budgets keep businesses apart', () => {
   let p: PricedWorld;
   let bravo: string;
@@ -73,7 +81,7 @@ describe.skipIf(serverUrl === undefined)('chat budgets keep businesses apart', (
         operation: PAID_KEY,
         model: HAIKU,
         fields: [{ name: 'message', source: 'outside', value: 'What is due today?' }],
-        paid: { authors: [owner.actorId], asCaller: async () => await Promise.resolve(undefined) },
+        paid: { authors: [owner.actorId], asCaller: noCaller },
       },
       { ...p.broker, audit: async () => await Promise.resolve() },
     );

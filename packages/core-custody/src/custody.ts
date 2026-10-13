@@ -186,6 +186,37 @@ function handOff(): { readonly promise: Promise<void>; readonly done: () => void
   return { promise, done: () => settle.resolve?.() };
 }
 
+/**
+ * A dispatch over `exchange`: admitted first where it asks to be, with the
+ * admission held open until custody has started the send or answered.
+ */
+function dispatchOn(exchange: Exchange): Custody['dispatch'] {
+  return async (credentialRef, request, onPiece, admit) => {
+    let started = false;
+    const handedOff = handOff();
+    const sent = handedOff.done;
+    const admitted = admit === undefined ? true : await admit(handedOff.promise).catch(() => false);
+    if (!admitted) {
+      sent();
+      return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
+    }
+    const markStarted = (): void => {
+      started = true;
+      sent();
+    };
+    try {
+      const reply = await exchange(
+        { type: 'dispatch', credentialRef, request },
+        markStarted,
+        onPiece,
+      );
+      return outcomeOf(reply, started);
+    } finally {
+      sent();
+    }
+  };
+}
+
 export async function startCustody(config: CustodyConfig): Promise<Custody> {
   const child = forkCustody(config);
   let errors = '';
@@ -196,31 +227,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
   await ready(child);
   return {
     pid: child.pid ?? -1,
-    dispatch: async (credentialRef, request, onPiece, admit) => {
-      let started = false;
-      const handedOff = handOff();
-      const sent = handedOff.done;
-      const admitted =
-        admit === undefined ? true : await admit(handedOff.promise).catch(() => false);
-      if (!admitted) {
-        sent();
-        return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
-      }
-      const markStarted = (): void => {
-        started = true;
-        sent();
-      };
-      try {
-        const reply = await exchange(
-          { type: 'dispatch', credentialRef, request },
-          markStarted,
-          onPiece,
-        );
-        return outcomeOf(reply, started);
-      } finally {
-        sent();
-      }
-    },
+    dispatch: dispatchOn(exchange),
     describe: async (credentialRef, destination) => {
       const reply = await exchange({ type: 'describe', credentialRef, destination });
       if (reply === 'lost' || reply['type'] !== 'described') return null;

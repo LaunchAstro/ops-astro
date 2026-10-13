@@ -12,6 +12,7 @@ import { pricedWorld, scopeOf, type PricedWorld } from './priced-chat-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- one world, a planted turn and its controls
 describe.skipIf(serverUrl === undefined)("another person's turns never reach OpenRouter", () => {
   let p: PricedWorld;
 

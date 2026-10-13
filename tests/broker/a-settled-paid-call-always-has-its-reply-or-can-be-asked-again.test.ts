@@ -57,7 +57,7 @@ describe.skipIf(serverUrl === undefined)('a settled paid call always has its rep
     const step = stepped(db.appUrl, "set state = 'settled'", 'hold-after');
     const answer = p.exchange(step.database, business, p.w.owner.presented, asked);
     // A crash rejects it while the case still waits on the crash: handled from the start.
-    answer.catch(() => undefined);
+    answer.catch(() => null);
     await step.reached;
     return { step, answer };
   }

@@ -15,7 +15,7 @@ import {
 import {
   OUTSIDE_OPERATION,
   OUTSIDE_PROVIDER,
-} from '../../packages/core-custody/src/credentials.ts';
+} from '../../packages/core-custody/src/outside-carriage.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -35,9 +35,12 @@ it('carriesOutside is called only from the held path', () => {
     .toSorted();
   expect(callers).toStrictEqual([
     'packages/core-custody/src/broker-priced.ts',
-    'packages/core-custody/src/credentials.ts',
+    'packages/core-custody/src/outside-carriage.ts',
   ]);
-  const definition = readFileSync(join(ROOT, 'packages/core-custody/src/credentials.ts'), 'utf8');
+  const definition = readFileSync(
+    join(ROOT, 'packages/core-custody/src/outside-carriage.ts'),
+    'utf8',
+  );
   expect(definition.match(/\bcarriesOutside\s*\(/gu)).toHaveLength(1);
 });
 

@@ -27,7 +27,10 @@ const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /** Custody whose dispatch runs `before` first, and `admitted` once a send is admitted. */
 const wrapping =
-  (before: () => Promise<void>, admitted: () => Promise<void> = async () => undefined) =>
+  (
+    before: () => Promise<void>,
+    admitted: () => Promise<void> = async () => await Promise.resolve(),
+  ) =>
   (broker: PricedWorld['broker']): PricedWorld['broker'] => {
     const custody: Custody = broker.custody;
     const wrapAdmit = (admit: Admit | undefined): Admit | undefined =>
@@ -168,7 +171,7 @@ describe.skipIf(serverUrl === undefined)('a client link racing the paid send', (
       }
       throw new Error('the link never waited on the admission');
     };
-    const exchange = await p.twin(wrapping(async () => undefined, startLinking));
+    const exchange = await p.twin(wrapping(async () => await Promise.resolve(), startLinking));
     await exchange(db.app, business, p.w.owner.presented, asked);
     await linking;
     expect(pendingAtAdmission).toStrictEqual([true]);

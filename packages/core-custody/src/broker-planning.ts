@@ -12,34 +12,28 @@
 // as unknown liability. Nothing here is a second ledger: committed is the
 // calls' holds and settled actuals, read under that lock.
 //
-// Lock order: the cap (`for update`, the contract's first class), then AW-01's
-// ceiling key and route key (`atCeiling`), as `core-runtime/src/locks.ts` says.
+// The cap, its envelopes and the hold are `broker-hold.ts`'s, shared with the
+// paid chat's held path.
 
-import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import {
   localRoute,
-  messageCall,
   outsideFields,
   ownsConversation,
-  RATE_LIMITED,
   refused,
   type ConversationCallRequest,
 } from './broker-conversation.ts';
-import { atCeiling, registerPromptCopy, type ReservedCall } from './broker-reserve.ts';
+import {
+  committedUnderSql,
+  holdPriced,
+  planningCap,
+  PLANNING_CAP_DEFAULT,
+  type Cap,
+} from './broker-hold.ts';
+import type { ReservedCall } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
-import type {
-  Broker,
-  BrokerRoute,
-  ModelCaller,
-  ModelCallResult,
-  ResolvedField,
-} from './broker-types.ts';
-
-/** The planning cap of a business nobody has moved it for: AUD 50, in minor units. */
-export const PLANNING_CAP_DEFAULT = { limitMinor: 5_000, currency: 'AUD' } as const;
+import type { Broker, ModelCaller, ModelCallResult, ResolvedField } from './broker-types.ts';
 
 /** The business's planning cap as a person is shown it: `set` false is the default. */
 export interface PlanningCapView {
@@ -59,150 +53,12 @@ export interface PlanningAllowance {
   readonly conversation: { readonly spentMinor: number; readonly heldMinor: number };
 }
 
-interface Cap {
-  readonly id: string;
-  readonly limit_minor: string;
-  readonly currency: string;
-}
-
-/** A call's committed amount: its actual once settled, its hold while held, else nothing. */
-const COMMITTED = `case when m.state = 'settled' then m.actual_minor
-                        when m.state in ('reserved', 'dispatched', 'liability_unknown')
-                          then m.reserved_minor
-                        else 0 end`;
-
-async function planningCap(tx: TenantQuery, lock: boolean): Promise<Cap | undefined> {
-  const [cap] = await tx.query<Cap>(
-    `select id, limit_minor::text, currency from public.budget_caps
-      where business_id = $1 and key = 'planning'${lock ? ' for update' : ''}`,
-    [tx.businessId],
-  );
-  return cap;
-}
-
-/** The cap under its row lock, the default written as the business's row when there is none. */
-async function lockedOrDefault(tx: TenantQuery): Promise<Cap> {
-  const cap = await planningCap(tx, true);
-  if (cap !== undefined) return cap;
-  await tx.query(
-    `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
-     values ($1, $2, 'planning', $3, $4)
-     on conflict (business_id, key) do nothing`,
-    [tx.businessId, randomUUID(), PLANNING_CAP_DEFAULT.limitMinor, PLANNING_CAP_DEFAULT.currency],
-  );
-  const written = await planningCap(tx, true);
-  if (written === undefined) throw new Error("the business's planning cap was not written");
-  return written;
-}
-
 /** The limit, its currency, and whether a cap row holds it; the default when none does. */
 export async function readPlanningCap(tx: TenantQuery): Promise<PlanningCapView> {
   const cap = await planningCap(tx, false);
   return cap === undefined
     ? { ...PLANNING_CAP_DEFAULT, set: false }
     : { limitMinor: Number(cap.limit_minor), currency: cap.currency, set: true };
-}
-
-/** What is committed in business `$1` under the cap `capId` names, as one value. */
-const committedUnderSql = (capId: string): string =>
-  `(select coalesce(sum(${COMMITTED}), 0) from public.model_calls m
-      join public.planning_envelopes e
-        on e.business_id = m.business_id and e.id = m.planning_envelope_id
-     where m.business_id = $1 and e.cap_id = ${capId})::text`;
-
-async function committedUnder(tx: TenantQuery, capId: string): Promise<number> {
-  const sql = `select ${committedUnderSql('$2')} as committed`;
-  const [row] = await tx.query<{ committed: string }>(sql, [tx.businessId, capId]);
-  return Number(row?.committed ?? 0);
-}
-
-/** The conversation's one envelope, opened on its first priced reply. */
-async function envelopeOf(
-  tx: TenantQuery,
-  capId: string,
-  { conversation }: ConversationCallRequest,
-): Promise<string> {
-  await tx.query(
-    `insert into public.planning_envelopes
-       (business_id, id, cap_id, conversation_id, owner_person_id)
-     values ($1, $2, $3, $4, $5)
-     on conflict (business_id, conversation_id) do nothing`,
-    [tx.businessId, randomUUID(), capId, conversation.id, conversation.ownerPersonId],
-  );
-  const [envelope] = await tx.query<{ id: string }>(
-    `select id from public.planning_envelopes
-      where business_id = $1 and conversation_id = $2 and owner_person_id = $3`,
-    [tx.businessId, conversation.id, conversation.ownerPersonId],
-  );
-  if (envelope === undefined)
-    throw new Error("the conversation's planning envelope is not its owner's");
-  return envelope.id;
-}
-
-export type Held = { readonly ok: true; readonly reserved: ReservedCall } | ModelCallResult;
-
-/**
- * Under the cap's lock: the message's call first (a twin is told where its
- * answer is, never that the model is busy, #1508 F7), then the ceiling, room
- * for the priced maximum, the envelope and the held, sent row naming its
- * message. A twin that inserted after the lookup wins the unique index, and
- * this holds nothing.
- */
-export async function holdPriced(
-  tx: TenantQuery,
-  request: ConversationCallRequest,
-  operation: ModelOperation,
-  route: BrokerRoute,
-  account: string | null,
-  callId: string = randomUUID(),
-): Promise<Held> {
-  const cap = await lockedOrDefault(tx);
-  const earlier = await messageCall(tx, request.messageId);
-  if (earlier !== undefined) return earlier;
-  if (await atCeiling(tx, operation, route)) {
-    return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
-  }
-  const committed = await committedUnder(tx, cap.id);
-  const limitMinor = Number(cap.limit_minor);
-  if (committed + operation.maximumMinor > limitMinor) {
-    const leftMinor = Math.max(0, limitMinor - committed);
-    return { ok: false, code: 'BUDGET_UNAVAILABLE', callId: null, leftMinor };
-  }
-  const envelopeId = await envelopeOf(tx, cap.id, request);
-  const inserted = await tx.query(
-    `insert into public.model_calls
-       (business_id, id, conversation_id, conversation_message_id, planning_envelope_id,
-        operation_key, state, reserved_minor, route_key, route_reach, credential_kind, provider,
-        credential_ref, account, started_at)
-     values ($1, $2, $3, $4, $5, $6, 'dispatched', $7, $8, $9, $10, $11, $12, $13,
-             clock_timestamp())
-     on conflict (business_id, conversation_message_id) where conversation_message_id is not null
-     do nothing
-     returning id`,
-    [
-      tx.businessId,
-      callId,
-      request.conversation.id,
-      request.messageId ?? null,
-      envelopeId,
-      operation.key,
-      operation.maximumMinor,
-      route.key,
-      route.reach,
-      route.credentialKind,
-      route.provider,
-      route.credentialRef,
-      account,
-    ],
-  );
-  if (inserted.length === 0) {
-    return (await messageCall(tx, request.messageId)) ?? refused('STILL_ANSWERING');
-  }
-  await registerPromptCopy(tx, callId);
-  return {
-    ok: true,
-    reserved: { callId, operation, route, reservedMinor: operation.maximumMinor },
-  };
 }
 
 /** Through custody, then settled at its price within the hold, released, or held for a person. */

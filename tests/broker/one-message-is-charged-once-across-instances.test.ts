@@ -15,6 +15,7 @@ import { PAID_KEY, pricedWorld, type PricedWorld } from './priced-chat-world.ts'
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- two instances, one schedule per way a twin meets the call
 describe.skipIf(serverUrl === undefined)('one paid message across two instances', () => {
   let p: PricedWorld;
   let twin: ConversationExchange;
@@ -69,7 +70,9 @@ describe.skipIf(serverUrl === undefined)('one paid message across two instances'
       );
       if (waiting > 0) break;
       // oxlint-disable-next-line no-await-in-loop -- polls the server
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
     }
     // Another writer names the message after this send's lookup: an ended call of its own.
     await db.admin.execute(

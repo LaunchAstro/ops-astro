@@ -27,7 +27,10 @@ const serverUrl = databaseUrlFromEnvironment();
 
 /** Custody whose dispatch runs `before` first, and `admitted` once a send is admitted. */
 const wrapping =
-  (before: () => Promise<void>, admitted: () => Promise<void> = async () => undefined) =>
+  (
+    before: () => Promise<void>,
+    admitted: () => Promise<void> = async () => await Promise.resolve(),
+  ) =>
   (broker: PricedWorld['broker']): PricedWorld['broker'] => {
     const custody: Custody = broker.custody;
     const wrapAdmit = (admit: Admit | undefined): Admit | undefined =>
@@ -159,11 +162,13 @@ describe.skipIf(serverUrl === undefined)('a paid send is admitted again at the h
           return;
         }
         // oxlint-disable-next-line no-await-in-loop -- polls the server
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
       }
       throw new Error('the revocation never waited on the admission');
     };
-    const exchange = await p.twin(wrapping(async () => undefined, startRevoking));
+    const exchange = await p.twin(wrapping(async () => await Promise.resolve(), startRevoking));
     const { db, business } = p.w.fixture;
     await exchange(db.app, business, p.w.owner.presented, asked);
     await revoking;

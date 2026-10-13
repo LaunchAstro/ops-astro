@@ -9,12 +9,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ModelCaller } from '../../packages/core-custody/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { pricedWorld, scopeOf, type PricedWorld } from './priced-chat-world.ts';
+import { noCaller, pricedWorld, scopeOf, type PricedWorld } from './priced-chat-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
 describe.skipIf(serverUrl === undefined)(
   'agents and delegates never carry free text outside',
+  // oxlint-disable-next-line max-lines-per-function -- one world, one schedule per caller
   () => {
     let p: PricedWorld;
 
@@ -59,7 +60,7 @@ describe.skipIf(serverUrl === undefined)(
         const result = await p.direct(
           {
             ...scopeOf(p, asked),
-            paid: { authors: [p.w.owner.actorId], asCaller: async () => undefined },
+            paid: { authors: [p.w.owner.actorId], asCaller: noCaller },
           },
           caller,
         );

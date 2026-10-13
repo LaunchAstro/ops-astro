@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the stand-ins, custody, the broker and the reads the paid cases share */
 //
 // The paid chat cases' world: one business with its owner (listed for the
 // outside paid model) and a colleague, the stand-in Ollama and the stand-in
@@ -179,6 +180,10 @@ const asked = (answer: Awaited<ReturnType<ConversationWorld['as']>>): Asked => (
   conversationId: String(detail(answer)['conversationId']),
   messageId: String(detail(answer)['messageId']),
 });
+
+/** Seams whose caller can no longer be resolved: no transaction is ever opened as them. */
+// oxlint-disable-next-line unicorn/no-useless-undefined -- the seam answers undefined for that
+export const noCaller: PaidSeams['asCaller'] = async () => await Promise.resolve(undefined);
 
 /** The outside people setting, as `OPS_OUTSIDE_MODEL_PEOPLE` lists them. */
 export const listed = (businessId: string, member: Member): string =>

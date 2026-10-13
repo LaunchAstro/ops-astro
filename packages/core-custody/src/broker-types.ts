@@ -138,6 +138,26 @@ export interface ResolvedField {
   readonly value: string;
 }
 
+/** What a paid call asks of the caller, inside a transaction opened as them. */
+export interface PaidCaller {
+  /** After the call's own lock: whether the send still rests on live facts. */
+  readonly stillAdmitted: () => Promise<boolean>;
+  /** Keeps the answer as the reply, in the settling transaction; false when it cannot be. */
+  readonly keep: (text: string) => Promise<boolean>;
+}
+
+export interface PaidSeams {
+  /** Who wrote each person turn the call sends: the asked message and the earlier ones. */
+  readonly authors: readonly string[];
+  /**
+   * Runs `work` in a transaction as the caller, resolved again from their
+   * session; undefined when they cannot be, or a lock they need is held elsewhere.
+   */
+  readonly asCaller: <T>(
+    work: (tx: TenantQuery, caller: PaidCaller) => Promise<T>,
+  ) => Promise<T | undefined>;
+}
+
 export interface ModelCallRequest {
   readonly leaseId: string;
   readonly fence: number;

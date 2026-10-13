@@ -95,8 +95,8 @@ const PAGE_REFUSALS: readonly PageRefusal[] = [
   'NOT_FOUND',
 ];
 
-/** The page task, held for share, if the caller may read it and it is no client's. */
-async function pageOf(
+/** The page task, held for share (no wait at a paid handoff), if readable and no client's. */
+export async function pageOf(
   tx: TenantQuery,
   session: Session,
   taskId: string,
@@ -295,17 +295,4 @@ export async function contextOf(
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
   const authors = rows.filter((row) => row.role === 'person').map((row) => row.author);
   return { refused: false, fields, cites, authors };
-}
-
-/**
- * At a paid send's handoff: whether the page task, held for share without
- * waiting, is still one the caller may read and no client's (#1508 F5). A
- * task being written at that moment refuses (`55P03`), as a grant does.
- */
-export async function pageAdmits(
-  tx: TenantQuery,
-  session: Session,
-  taskId: string,
-): Promise<boolean> {
-  return typeof (await pageOf(tx, session, taskId, 'share nowait')) !== 'string';
 }

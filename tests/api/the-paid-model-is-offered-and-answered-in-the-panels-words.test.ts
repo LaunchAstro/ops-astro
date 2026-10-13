@@ -28,6 +28,7 @@ const words = (reply: ReturnType<typeof refusedWith>): string =>
 const offered = (answer: { body: unknown }): readonly { id: string; label?: string }[] =>
   (answer.body as { models: { id: string; label?: string }[] }).models;
 
+// oxlint-disable-next-line max-lines-per-function -- one world, the offer three ways and the words
 describe.skipIf(serverUrl === undefined)("the paid model in the panel's words", () => {
   let p: PricedWorld;
 

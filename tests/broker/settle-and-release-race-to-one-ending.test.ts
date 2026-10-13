@@ -20,6 +20,7 @@ import { centsOf, HOLD, pricedWorld, type PricedWorld } from './priced-chat-worl
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- one world, a schedule per pair of writers
 describe.skipIf(serverUrl === undefined)('settle and release race to one ending', () => {
   let p: PricedWorld;
 

@@ -12,6 +12,7 @@ import { pricedWorld, scopeOf, type PricedWorld } from './priced-chat-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- one world, a case per shape of fields
 describe.skipIf(serverUrl === undefined)('a first paid message', () => {
   let p: PricedWorld;
 

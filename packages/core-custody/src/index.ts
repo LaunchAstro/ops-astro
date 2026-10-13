@@ -38,16 +38,12 @@ export {
   type InvitationSendResult,
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
-export {
-  type ConversationCallRequest,
-  type ConversationScope,
-  type PaidCaller,
-  type PaidSeams,
-} from './broker-conversation.ts';
+export { type ConversationCallRequest, type ConversationScope } from './broker-conversation.ts';
 export { callModelInConversation } from './broker-priced.ts';
+export type { PaidCaller, PaidSeams } from './broker-types.ts';
+export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
 export {
   callModelForPlanning,
-  PLANNING_CAP_DEFAULT,
   readPlanningAllowance,
   readPlanningCap,
   type PlanningAllowance,

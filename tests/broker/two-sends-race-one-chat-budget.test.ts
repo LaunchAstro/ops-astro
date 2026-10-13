@@ -14,6 +14,7 @@ import { HOLD, pricedWorld, type PricedWorld } from './priced-chat-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// oxlint-disable-next-line max-lines-per-function -- one world, two schedules on the budget lock
 describe.skipIf(serverUrl === undefined)('two sends race one chat budget', () => {
   let p: PricedWorld;
 
@@ -37,7 +38,9 @@ describe.skipIf(serverUrl === undefined)('two sends race one chat budget', () =>
       );
       if (found >= n) return;
       // oxlint-disable-next-line no-await-in-loop -- polls the server
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
     }
     throw new Error(`${String(n)} backends never waited on the budget`);
   }
