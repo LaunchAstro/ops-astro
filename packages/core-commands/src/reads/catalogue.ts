@@ -34,7 +34,8 @@ import {
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
-import { readMapFrontier, readMapView, readTicketMap } from './maps.ts';
+import { readMapFrontier, readMapView } from './maps.ts';
+import { readTicketMap } from './ticket-map.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
