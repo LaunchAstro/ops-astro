@@ -61,8 +61,10 @@ and in the environment. A refusal names a setting, never a value.
    - both homes are private and hold no `AGENTS.md`, `AGENTS.override.md` or
      `config.toml`;
    - Codex is the pinned version and signed in to the ChatGPT plan;
-   - custody holds the runner's key, and only it, for the door;
-   - a runner already listening listens on loopback alone.
+   - custody itself would load the credential file (its own parser), and it
+     holds the runner's key, and only it, for the door;
+   - a runner already listening listens on loopback alone. When `lsof` is
+     missing or fails, the check fails: it never reads that as no listener.
 
    It prints a kind, never a value. `signed_out` means step 2 is owed.
 
