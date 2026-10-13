@@ -25,7 +25,7 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { exchangeWith, type Exchange, type Notes } from './custody-exchange.ts';
 import { join } from 'node:path';
-import type { StorableKind } from './credentials.ts';
+import type { CredentialKind } from './credentials.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { Handoff } from './carriage.ts';
 import type { Destination, Outbound, OutboundRequest, SendGate } from './egress.ts';
@@ -37,7 +37,7 @@ export type CustodyOutcome =
       readonly kind: 'answered';
       readonly started: boolean;
       readonly outbound: Outbound;
-      readonly credentialKind: StorableKind;
+      readonly credentialKind: CredentialKind;
       readonly account: string | null;
     }
   | { readonly kind: 'refused'; readonly started: false; readonly code: string }
@@ -45,7 +45,7 @@ export type CustodyOutcome =
   | { readonly kind: 'withheld'; readonly started: true; readonly reason: 'echoed' | 'malformed' };
 
 export interface Carrier {
-  readonly credentialKind: StorableKind;
+  readonly credentialKind: CredentialKind;
   readonly account: string | null;
   /** Whether custody sends the credential: false only for one filed as `none`. */
   readonly presents: boolean;
@@ -148,7 +148,7 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
       kind: 'answered',
       started: true,
       outbound: reply['outcome'] as Outbound,
-      credentialKind: reply['kind'] as StorableKind,
+      credentialKind: reply['kind'] as CredentialKind,
       account: (reply['account'] as string | null) ?? null,
     };
   }
@@ -227,7 +227,7 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
       const reply = await exchange({ type: 'describe', credentialRef, destination });
       if (reply === 'lost' || reply['type'] !== 'described') return null;
       return {
-        credentialKind: reply['kind'] as StorableKind,
+        credentialKind: reply['kind'] as CredentialKind,
         account: (reply['account'] as string | null) ?? null,
         presents: reply['presents'] !== false,
       };

@@ -9,7 +9,10 @@
 // refused at start, so a call never leaves the machine for a model. The paid
 // chat's settings are optional and go together: custody's credential
 // reference for OpenRouter, and OpenRouter's address, which must be exactly
-// `https://openrouter.ai`.
+// `https://openrouter.ai`. The owner's ChatGPT plan's settings are optional
+// and go together too (#1620): custody's reference for the plan sign-in, the
+// Responses address, exactly `https://api.openai.com`, and the sign-in
+// address that refreshes it, exactly `https://auth.openai.com`.
 
 import { parseCarryKeys } from '../../packages/core-custody/src/agent.ts';
 
@@ -29,10 +32,18 @@ export interface AgentSettings {
   /** Custody's reference for OpenRouter's key; absent, no paid chat is sent. */
   readonly openrouterCredentialRef?: string;
   readonly openrouterOrigin?: string;
+  /** Custody's reference for the owner's plan sign-in; absent, nothing goes to the plan. */
+  readonly chatgptCredentialRef?: string;
+  readonly chatgptOrigin?: string;
+  readonly chatgptSignInOrigin?: string;
 }
 
 /** OpenRouter's one address. */
 export const OPENROUTER_ORIGIN = 'https://openrouter.ai';
+
+/** The plan's Responses address, and the sign-in address that refreshes its token. */
+export const CHATGPT_PLAN_ORIGIN = 'https://api.openai.com';
+export const CHATGPT_SIGN_IN_ORIGIN = 'https://auth.openai.com';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const TEXTS =
@@ -62,7 +73,18 @@ function problemIn(shape: Record<string, unknown>): string | undefined {
   if (next !== undefined && typeof next !== 'string') return 'carryKeyNext is malformed';
   if (!parseCarryKeys(text('carryKey'), next).ok) return 'the carry key is malformed';
   if (!loopback(text('ollamaOrigin') ?? '')) return "ollamaOrigin is not this machine's loopback";
-  return paidProblemIn(shape);
+  return paidProblemIn(shape) ?? planProblemIn(shape);
+}
+
+/** The plan's three settings: all or none, each address exactly the plan's own. */
+function planProblemIn(shape: Record<string, unknown>): string | undefined {
+  const { chatgptCredentialRef: ref, chatgptOrigin: origin, chatgptSignInOrigin: signIn } = shape;
+  if (ref === undefined && origin === undefined && signIn === undefined) return undefined;
+  if (typeof ref !== 'string' || ref === '') return 'chatgptCredentialRef is missing';
+  if (origin !== CHATGPT_PLAN_ORIGIN) return `chatgptOrigin is not ${CHATGPT_PLAN_ORIGIN}`;
+  return signIn === CHATGPT_SIGN_IN_ORIGIN
+    ? undefined
+    : `chatgptSignInOrigin is not ${CHATGPT_SIGN_IN_ORIGIN}`;
 }
 
 /** The paid chat's two settings: both or neither, the address exactly OpenRouter's. */

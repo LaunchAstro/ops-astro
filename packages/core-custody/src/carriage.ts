@@ -130,7 +130,7 @@ export type CarriedOutcome =
   | {
       readonly kind: 'answered';
       readonly outbound: Outbound;
-      readonly credentialKind: 'api_key' | 'cloud_credential';
+      readonly credentialKind: 'api_key' | 'cloud_credential' | 'subscription';
       readonly account: string | null;
     }
   | { readonly kind: 'refused'; readonly code: string };

@@ -101,6 +101,11 @@ export interface Broker {
    */
   readonly localOwnerTesting?: boolean;
   /**
+   * The owner's ChatGPT plan (#1620): the person whose started runs alone the
+   * `chatgpt_plan` route carries (`planCarry`). Unset, it carries none.
+   */
+  readonly planOwnerPersonId?: string;
+  /**
    * `OPS_OUTSIDE_MODEL_PEOPLE` (#1508): the `businessId:personId` pairs whose own
    * typed words may go to the outside paid route (`carriesOutside`). Absent or
    * empty, nobody's do.

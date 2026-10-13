@@ -11,7 +11,7 @@
 
 import type { BusinessId, Database } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
-import { carriesLocally, mayCarry } from './credentials.ts';
+import { carriesLocally, mayCarry, planCarry } from './credentials.ts';
 import { sendingCarrier } from './broker-carrier.ts';
 import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
@@ -99,6 +99,7 @@ export function localRoute(
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
+    plan: planCarry(broker, route, caller.attendedByPersonId),
   });
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }

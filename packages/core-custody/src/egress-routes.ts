@@ -8,7 +8,8 @@
 // `post: false` takes no POST at all, only its listed routes: the login
 // provider's, whose service key could otherwise mint sign-in links or users
 // (C40 security review M1). A destination may declare the stream format
-// custody decodes for it (`stream: 'openai_sse'`, #1508).
+// custody decodes for it (`stream: 'openai_sse'`, #1508), or folds whole
+// (`stream: 'responses_sse'`, #1620).
 //
 // A route may instead be a catalogued call's fixed template, query included
 // (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
@@ -73,8 +74,12 @@ export interface Extras {
   readonly routes?: readonly Route[];
   /** `false`: no POST to any path, only the listed routes. */
   readonly post?: false;
-  /** A stream format custody decodes itself, so a presented key may stream (#1508). */
-  readonly stream?: 'openai_sse';
+  /**
+   * A stream format custody decodes itself, so a presented key may stream
+   * (#1508); or `responses_sse`, a stream custody reads whole and folds to
+   * its completed response before redacting it (#1620).
+   */
+  readonly stream?: 'openai_sse' | 'responses_sse';
 }
 
 /**
@@ -226,11 +231,11 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
     headers?: Record<string, string>;
     routes?: Route[];
     post?: false;
-    stream?: 'openai_sse';
+    stream?: 'openai_sse' | 'responses_sse';
   } = {};
   if (entry['stream'] !== undefined) {
-    if (entry['stream'] !== 'openai_sse') return undefined;
-    extras.stream = 'openai_sse';
+    if (entry['stream'] !== 'openai_sse' && entry['stream'] !== 'responses_sse') return undefined;
+    extras.stream = entry['stream'];
   }
   if (entry['post'] !== undefined) {
     if (entry['post'] !== false) return undefined;

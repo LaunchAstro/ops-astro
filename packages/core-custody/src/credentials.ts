@@ -19,6 +19,14 @@
 // `OPS_ENVIRONMENT=local`, and only for a route whose provider is
 // `local_gpt`. Another installation's tenant stays refused under it, and so
 // does an attended call for someone else's work. Everywhere else, unchanged.
+//
+// The owner's ChatGPT plan (#1620): custody on the owner's machine files one
+// subscription, the owner's own refreshable sign-in, by its token file and
+// the sign-in destination that refreshes it (`plan-token.ts`), never by a
+// value. Its route carries a run only when the owner started it, attended or
+// not; any other run is refused `SUBSCRIPTION_NOT_OWNER_STARTED`.
+
+import { isSessionToken } from './session-token.ts';
 
 export type CredentialKind = 'subscription' | 'api_key' | 'cloud_credential' | 'replay';
 
@@ -26,7 +34,8 @@ export type StorableKind = Exclude<CredentialKind, 'subscription'>;
 
 export interface StoredCredential {
   readonly ref: string;
-  readonly kind: StorableKind;
+  /** A subscription only as the owner's plan sign-in (`oauth_refresh`). */
+  readonly kind: CredentialKind;
   /** The account that carries the call; none for `replay`. */
   readonly account: string | null;
   /** The one destination this credential may be sent to. */
@@ -38,86 +47,20 @@ export interface StoredCredential {
    * target's project route takes it (AW-13). `none` is a destination that
    * asks for no key (Ollama on loopback): it is filed with no header and no
    * value and presented as nothing, so the answer holds no secret to echo
-   * and custody may pass it on as it arrives.
+   * and custody may pass it on as it arrives. `oauth_refresh` is the
+   * owner's plan sign-in: no value is filed, and custody presents the token
+   * file's current access token as a bearer.
    */
-  readonly scheme: 'bearer' | 'basic' | 'none';
+  readonly scheme: 'bearer' | 'basic' | 'none' | 'oauth_refresh';
   readonly value: string;
+  /** For `oauth_refresh`: the owner-only file the sign-in wrote, a whole path. */
+  readonly tokenFile?: string;
+  /** For `oauth_refresh`: the destination whose token endpoint refreshes it. */
+  readonly refreshDestination?: string;
 }
 
 export type CredentialRefusal =
   'CREDENTIAL_NOT_STORABLE' | 'SESSION_TOKEN_REFUSED' | 'CREDENTIAL_MALFORMED';
-
-/** What can stand between one token and the next in a pasted value. */
-const SEPARATOR = /[\s"'&,:;=\u200B-\u200D\u2060]/u;
-
-/**
- * Shapes of a browser session token for a consumer chat product, or of the
- * cookie that carries one. Never stored. Matched anywhere in the value, so a
- * pasted cookie pair (`sessionKey=sk-ant-sid01-...`) is caught as well as the
- * bare token. A `sess-` token, or an encrypted one, is matched where a token
- * can start: the value's start, or after a separator (`SEPARATOR`), such as a
- * Basic pair's colon, a cookie's `=` or `;`, a query's `&`, a quote, white
- * space or a zero-width character.
- */
-const SESSION_TOKEN = [
-  /sk-ant-sid/iu,
-  new RegExp(`(?:^|${SEPARATOR.source})sess-`, 'iu'),
-  /sessionkey/iu,
-  /session[-_]?token/iu,
-  /__secure-next-auth/iu,
-];
-
-/** Printable text, as a base64 value that is really an encoded pair decodes to. */
-const PRINTABLE = /^[\u0020-\u007E]+$/u;
-
-/**
- * The value and each percent-decoding of it, until decoding changes nothing;
- * and, for a value wholly base64 or base64url (a Basic header's encoded pair
- * pasted alone), its decoding when that is printable text.
- */
-function readings(value: string): readonly string[] {
-  const seen = [value];
-  if (/^[\w+/-]+={0,2}$/u.test(value)) {
-    const decoded = Buffer.from(value, 'base64').toString('latin1');
-    if (PRINTABLE.test(decoded)) seen.push(decoded);
-  }
-  for (let round = 0; round < 3; round += 1) {
-    let next: string;
-    try {
-      next = decodeURIComponent(seen.at(-1) ?? value);
-    } catch {
-      break;
-    }
-    if (next === seen.at(-1)) break;
-    seen.push(next);
-  }
-  return seen;
-}
-
-/**
- * An encrypted token in compact form: five base64url parts, the first a
- * header naming its content encryption. The chat product's sign-in library
- * writes its session cookie so; an API key or a signed cloud token never is.
- */
-function isEncryptedToken(text: string): boolean {
-  const parts = text.split('.');
-  if (parts.length !== 5 || !parts.every((part) => /^[\w-]*$/u.test(part))) return false;
-  try {
-    const header: unknown = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString('utf8'));
-    return typeof header === 'object' && header !== null && 'enc' in header;
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a value is, or carries, a consumer chat product's browser session. */
-function isSessionToken(value: string): boolean {
-  return readings(value).some(
-    (text) =>
-      SESSION_TOKEN.some((pattern) => pattern.test(text)) ||
-      text.split(SEPARATOR).some((piece) => isEncryptedToken(piece)),
-  );
-}
 
 const REF = /^[a-z][a-z0-9_]{0,62}$/u;
 
@@ -147,6 +90,44 @@ function presentedAsNothing(
   return { ref, kind, account, destination, header: 'authorization', scheme: 'none', value: '' };
 }
 
+/** The owner's plan sign-in: a subscription with a token file and a refresh destination, and no value. */
+function refreshableSignIn(
+  shape: Record<string, unknown>,
+  credentials: ReadonlyMap<string, StoredCredential>,
+): StoredCredential | undefined {
+  const { ref, kind, account, destination, tokenFile, refreshDestination } = shape;
+  if (
+    'header' in shape ||
+    'value' in shape ||
+    kind !== 'subscription' ||
+    typeof ref !== 'string' ||
+    !REF.test(ref) ||
+    credentials.has(ref) ||
+    typeof destination !== 'string' ||
+    !REF.test(destination) ||
+    typeof refreshDestination !== 'string' ||
+    !REF.test(refreshDestination) ||
+    typeof tokenFile !== 'string' ||
+    !tokenFile.startsWith('/') ||
+    /[\s\0]/u.test(tokenFile) ||
+    typeof account !== 'string' ||
+    account === ''
+  ) {
+    return undefined;
+  }
+  return {
+    ref,
+    kind,
+    account,
+    destination,
+    header: 'authorization',
+    scheme: 'oauth_refresh',
+    value: '',
+    tokenFile,
+    refreshDestination,
+  };
+}
+
 /** One entry of the list as a stored credential, or why it is refused. */
 function credentialOf(
   shape: Record<string, unknown>,
@@ -155,6 +136,9 @@ function credentialOf(
   const { ref, kind, account, destination, header, value } = shape;
   // Absent only: JSON has no undefined, so a null or empty scheme is malformed.
   const scheme = 'scheme' in shape ? shape['scheme'] : 'bearer';
+  if (scheme === 'oauth_refresh') {
+    return refreshableSignIn(shape, credentials) ?? 'CREDENTIAL_MALFORMED';
+  }
   if (kind === 'subscription') return 'CREDENTIAL_NOT_STORABLE';
   if (scheme === 'none') return presentedAsNothing(shape, credentials) ?? 'CREDENTIAL_MALFORMED';
   if (typeof value === 'string' && isSessionToken(value)) return 'SESSION_TOKEN_REFUSED';
@@ -221,10 +205,37 @@ export interface CarryContext {
   readonly credentialInstallation: string;
   /** LA-1's local carve-out: true only on the laptop, on a `local_gpt` route. */
   readonly localOwnerTesting?: boolean;
+  /** Present only on the owner's plan route (`planCarry`). */
+  readonly plan?: { readonly ownerStarted: boolean } | undefined;
 }
 
 export type CarryRefusal =
-  'SUBSCRIPTION_UNATTENDED' | 'SUBSCRIPTION_OTHER_TENANT' | 'SUBSCRIPTION_NOT_OWN_WORK';
+  | 'SUBSCRIPTION_UNATTENDED'
+  | 'SUBSCRIPTION_OTHER_TENANT'
+  | 'SUBSCRIPTION_NOT_OWN_WORK'
+  | 'SUBSCRIPTION_NOT_OWNER_STARTED';
+
+/**
+ * The owner's plan provider key (`CHATGPT_PLAN_PROVIDER` in core-connectors),
+ * written out here for the same reason as the local session's; a test holds
+ * the two equal.
+ */
+export const CHATGPT_PLAN_PROVIDER = 'chatgpt_plan';
+
+/**
+ * The plan's part of the carry context: on the plan's route only, whether the
+ * run works for the plan's owner as the broker's setting names them. Unset,
+ * no run is the owner's.
+ */
+export function planCarry(
+  broker: { readonly planOwnerPersonId?: string },
+  route: { readonly provider: string },
+  workForPersonId: string | null,
+): { readonly ownerStarted: boolean } | undefined {
+  if (route.provider !== CHATGPT_PLAN_PROVIDER) return undefined;
+  const owner = broker.planOwnerPersonId;
+  return { ownerStarted: owner !== undefined && owner !== '' && workForPersonId === owner };
+}
 
 /**
  * The local session's provider key (`LOCAL_GPT_PROVIDER` in core-connectors).
@@ -246,9 +257,15 @@ export function mayCarry(
   kind: CredentialKind,
   context: CarryContext,
 ): { readonly ok: true } | { readonly ok: false; readonly code: CarryRefusal } {
-  if (kind !== 'subscription') return { ok: true };
+  // The plan's route is the owner's whatever its credential is filed as.
+  if (context.plan === undefined && kind !== 'subscription') return { ok: true };
   if (context.tenantInstallation !== context.credentialInstallation) {
     return { ok: false, code: 'SUBSCRIPTION_OTHER_TENANT' };
+  }
+  if (context.plan !== undefined) {
+    return context.plan.ownerStarted
+      ? { ok: true }
+      : { ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' };
   }
   const unattended = context.unattended || context.sessionPersonId === null;
   // Under the carve-out an unattended call has no session to compare its work with.

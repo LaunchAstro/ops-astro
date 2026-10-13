@@ -5,10 +5,18 @@
 // answer size the catalogue gives an Ollama chat. OpenRouter's paid chat,
 // exactly as the broker pins it (`openrouterRequest`), every value checked
 // nested, within its declaration's wait and answer size, so nothing can widen
-// what a reply may cost. Anything else is refused before custody sees it.
+// what a reply may cost. The owner's ChatGPT plan's Responses request, exactly
+// as `chatgptPlanRequest` writes it: an offered model, the instructions, the
+// turns, function tools if any, store off and streaming on, and no other
+// field. Anything else is refused before custody sees it.
 
 import { isDeepStrictEqual } from 'node:util';
 import {
+  CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_DESTINATION,
+  CHATGPT_PLAN_MODELS,
+  CHATGPT_PLAN_PATH,
+  CHATGPT_PLAN_TURN,
   OLLAMA_MODELS,
   OLLAMA_PATH,
   OPENROUTER_CONVERSATION,
@@ -28,6 +36,14 @@ const BOUNDS: ReadonlyMap<string, { path: string; ms: number; bytes: number }> =
       path: OPENROUTER_PATH,
       ms: OPENROUTER_CONVERSATION.timeoutMs,
       bytes: OPENROUTER_CONVERSATION.maxResponseBytes,
+    },
+  ],
+  [
+    CHATGPT_PLAN_DESTINATION,
+    {
+      path: CHATGPT_PLAN_PATH,
+      ms: CHATGPT_PLAN_TURN.timeoutMs,
+      bytes: CHATGPT_PLAN_TURN.maxResponseBytes,
     },
   ],
 ]);
@@ -84,7 +100,54 @@ function paidChat(chat: Record<string, unknown>, body: string): boolean {
   );
 }
 
-/** One of the agent's two requests, within the catalogue's bounds. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** A plan turn: a person's or the model's words, nothing else. */
+const planTurn = (turn: unknown): boolean =>
+  isRecord(turn) &&
+  same(keysOf(turn), 'content,role') &&
+  (turn['role'] === 'user' || turn['role'] === 'assistant') &&
+  typeof turn['content'] === 'string';
+
+/** A plan tool: a function, not strict, with a name, a description and its parameters. */
+const planTool = (tool: unknown): boolean =>
+  isRecord(tool) &&
+  same(keysOf(tool), 'description,name,parameters,strict,type') &&
+  tool['type'] === 'function' &&
+  tool['strict'] === false &&
+  typeof tool['name'] === 'string' &&
+  /^[a-z][a-z0-9_]{0,63}$/u.test(tool['name']) &&
+  typeof tool['description'] === 'string' &&
+  isRecord(tool['parameters']);
+
+/**
+ * The plan's pinned Responses request, the body sent being exactly its own
+ * serialisation (no key named twice), within its byte limit.
+ */
+function planAsk(ask: Record<string, unknown>, body: string): boolean {
+  if (JSON.stringify(ask) !== body || Buffer.byteLength(body) > CHATGPT_PLAN_BODY_LIMIT) {
+    return false;
+  }
+  const tools = ask['tools'];
+  const fields =
+    tools === undefined
+      ? 'input,instructions,model,store,stream'
+      : 'input,instructions,model,store,stream,tools';
+  return (
+    same(keysOf(ask), fields) &&
+    CHATGPT_PLAN_MODELS.includes(String(ask['model'])) &&
+    typeof ask['instructions'] === 'string' &&
+    Array.isArray(ask['input']) &&
+    ask['input'].every((turn) => planTurn(turn)) &&
+    (tools === undefined ||
+      (Array.isArray(tools) && tools.length > 0 && tools.every((tool) => planTool(tool)))) &&
+    ask['store'] === false &&
+    ask['stream'] === true
+  );
+}
+
+/** One of the agent's requests, within the catalogue's bounds. */
 export function chatOf(request: unknown): OutboundRequest | undefined {
   if (typeof request !== 'object' || request === null) return undefined;
   const asked = request as OutboundRequest;
@@ -111,6 +174,8 @@ export function chatOf(request: unknown): OutboundRequest | undefined {
     return undefined;
   }
   if (typeof chat !== 'object' || chat === null || Array.isArray(chat)) return undefined;
+  if (asked.destination === CHATGPT_PLAN_DESTINATION)
+    return planAsk(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   if (asked.destination !== 'ollama')
     return paidChat(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   const { model, messages, stream, think } = chat as Record<string, unknown>;
