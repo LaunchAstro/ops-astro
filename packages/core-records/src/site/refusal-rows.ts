@@ -42,4 +42,10 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: "The correction's page and file are not one pair its client's own site holds",
     source: 'C80, the party-site store',
   },
+  {
+    code: 'REQUESTER_GRANT_ENDED',
+    status: 409,
+    meaning: 'The person who asked for the correction no longer holds run:write at its client',
+    source: 'C80, the approval checks',
+  },
 ] as const;

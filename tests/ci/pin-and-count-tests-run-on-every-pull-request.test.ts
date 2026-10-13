@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import { parseDocument } from 'yaml';
 import { expect, it } from 'vitest';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { readScopeMap } from '../../scripts/ci-scope.ts';
 
 it.each(['pull_request', 'merge_group', 'push', ''])(
   'runs the migration-order pin on %s without reading changed imports',
@@ -47,23 +49,27 @@ it('runs the pin job before the full-check label and keeps the database shards q
 });
 
 it('lists every repository pin and catalogue count in the always-run settings', () => {
-  const settings = JSON.parse(readFileSync('scripts/ci-scope.json', 'utf8'));
-  expect(settings.alwaysRunTests).toEqual(
-    expect.arrayContaining([
-      'tests/reads/task-rank-core-contract.test.ts',
-      'tests/reads/repository-catalogue-and-migration-counts.test.ts',
-      'tests/tenancy/migration-ids.test.ts',
-      'tests/commands/runtime-codes.test.ts',
-      'tests/connectors/aw-01-operations.test.ts',
-      'tests/surfaces/read-names.test.ts',
-      'tests/site/c80-catalogue.test.ts',
-      'tests/site/c80-receipts.test.ts',
-      'tests/sandbox/run-outcome-names-one-reason.test.ts',
-      'tests/docs/c82-design-system-copy.test.ts',
-      'tests/ci/structural-checks.test.ts',
-      'tests/ci/pin-and-count-tests-run-on-every-pull-request.test.ts',
-    ]),
+  const settings = readScopeMap('scripts/ci-scope.json');
+  const named = readNamedSuites('.');
+  const database = new Set(
+    [...named.invariant, ...named.conformance].map((path) => path.split('#')[0]),
   );
+  // Discover literal catalogue pins, static collection counts, migration readers and doc counts.
+  // Numeric limits such as timeouts are not collection counts. Database suites stay queue-only.
+  const contracts = globSync('tests/**/*.test.{ts,tsx}').filter((path) => {
+    if (database.has(path)) return false;
+    const source = readFileSync(path, 'utf8');
+    return (
+      /\bPINNED_[A-Z_]+/u.test(source) ||
+      /expect\([A-Z][A-Z0-9_]+\)\.toHaveLength\(\d/u.test(source) ||
+      /expect\([A-Z][A-Z0-9_]+\.(?:length|size)\)\.to(?:Be|Equal)\(\d/u.test(source) ||
+      /\breadMigrations\(/u.test(source) ||
+      (/new URL\(['"`][^'"`]*docs\//u.test(source) &&
+        /\.toHaveLength\(\d|\.length\)\.to(?:Be|Equal)\(\d/u.test(source))
+    );
+  });
+  expect(contracts.length).toBeGreaterThan(0);
+  expect(contracts.filter((path) => !settings.alwaysRunTests.includes(path))).toEqual([]);
   expect(new Set(settings.alwaysRunTests).size).toBe(settings.alwaysRunTests.length);
 });
 

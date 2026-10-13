@@ -15,6 +15,8 @@
   "visualDrift": ["apps/web/", "packages/ui/", "tests/visual/"],
   "queueOnly": ["local checks", "isolation tests"],
   "alwaysRunTests": [
+    "tests/commands/command-catalogue-pin.test.ts",
+    "tests/commands/read-catalogue-pin.test.ts",
     "tests/reads/task-rank-core-contract.test.ts",
     "tests/tenancy/migration-ids.test.ts",
     "tests/commands/runtime-codes.test.ts",

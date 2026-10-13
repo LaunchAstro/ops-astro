@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's lock order: a request and an unbind of one client's page each take the client's site row before the page, so an unbind holding the site keeps a request waiting on two connections and neither ends in a deadlock."
+}

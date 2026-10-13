@@ -33,8 +33,10 @@ async function requested(): Promise<{ correctionId: string; versionId: string }>
 describe.skipIf(serverUrl === undefined)('C80 approver', () => {
   it('refuses every approval while no approver is configured', async () => {
     const { correctionId, versionId } = await requested();
+    expect(codeOf(await w.setApprover(null))).toBe('not-a-refusal');
     expect(codeOf(await w.approve(w.ben, correctionId, versionId))).toBe('APPROVER_NOT_CONFIGURED');
     expect(await w.stateOf(correctionId)).toBe('requested');
+    expect(codeOf(await w.setApprover(w.ben.personId))).toBe('not-a-refusal');
   });
 
   it('refuses a configured approver who is not an active member of the business', async () => {
