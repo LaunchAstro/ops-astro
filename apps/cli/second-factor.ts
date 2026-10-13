@@ -8,25 +8,20 @@
 // (`account/sessions/sign-out`), as the web ends a code step that is left.
 
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
+import type { Transport } from './client.ts';
 
 export type StepUp =
   { readonly ok: true; readonly token: string } | { readonly ok: false; readonly because: string };
 
+/** The person's account routes in `businessKey`, posted through the CLI's one transport (`client.ts`). */
 interface Route {
-  readonly api: string;
   readonly businessKey: string;
-  readonly fetch: typeof globalThis.fetch;
+  readonly transport: Transport;
 }
 
-const accountPath = (route: Route, act: string): string =>
-  `${route.api.replace(/\/$/u, '')}${PREFIX.person}${encodeURIComponent(route.businessKey)}/account/${act}`;
-
 async function post(route: Route, act: string, bearer: string, body: unknown): Promise<Response> {
-  return await route.fetch(accountPath(route, act), {
-    method: 'POST',
-    headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const path = `${PREFIX.person}${encodeURIComponent(route.businessKey)}/account/${act}`;
+  return await route.transport(path, JSON.stringify(body), bearer);
 }
 
 /** What the answer says, by its refusal code or its status alone: never a value it carries. */

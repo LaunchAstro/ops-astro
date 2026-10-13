@@ -246,10 +246,10 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
   const { password, code } = await secretsOf(env, io, parsed.flags['second-factor'] === true);
+  const api = text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api;
   const route = {
-    api: text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api,
     businessKey: text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '',
-    fetch: unredirected,
+    transport: httpTransport(api.replace(/\/$/u, '')),
   };
   if (code !== undefined && route.businessKey === '') {
     throw new UsageError(
