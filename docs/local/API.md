@@ -3162,6 +3162,69 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
+### Password reset
+
+A forgotten password is reset on the login provider's one-time recovery
+session (`apps/api/password-reset.ts`, mounted by `composeApi` always, outside
+the business prefix). The person's browser writes the new password straight
+to the provider; no product code, process or table sees one. Answers carry a
+code alone, and nothing is logged.
+
+`POST /api/password/reset` with `{ email }` asks for a link and needs no
+sign-in. It is 202 `{}` for every body: any address, known or unknown, inside
+its limits or over them, a body too large or not an address at all. Every
+request runs the same statement, `ops.password_reset_request(address,
+caller)` (20261013060059), a security definer function that takes advisory
+locks on the address's SHA-256 and then the caller's, held to commit, counts
+the hour's requests for each and records one only with room: 3 per address
+and 10 per caller. The caller is the first `x-forwarded-for` address, kept
+only as its digest. The M5 unit mails the link from the recorded row.
+
+The mailed link is `/reset#token_hash=<hash>`. The page (`apps/web/src/screens/Reset.tsx`)
+reads the fragment once and clears it before any request, then opens the
+provider's recovery session (`POST /verify`) and calls, with that session's
+bearer:
+
+| Route                        | Answer   | Refusals                                            |
+| ---------------------------- | -------- | --------------------------------------------------- |
+| `POST /api/password/begin`   | 200 `{}` | 401 `RESET_LINK_INVALID`, 403 `RESET_NEEDS_SUPPORT` |
+| `POST /api/password/changed` | 200 `{}` | 401 `RESET_LINK_INVALID`, 409 `RESET_NOT_CONFIRMED` |
+
+Both take only a recovery session (`createRecoveryVerifier`, beside the
+ordinary verifier, with its signature and issuer checks): `aal1`, an `amr` of
+exactly one `otp` entry no more than 10 minutes old, and a `session_id`.
+Anything else is 401 `RESET_LINK_INVALID`.
+
+`begin`, in one transaction under the login's factor lock, answers a session
+that already has a window with that window (200 while open, 401 once
+settled). Otherwise it consumes one recovery link the unit recorded for the
+login (`ops.recovery_link_consume`), minted inside the link's life and no
+later than the session's sign-in, so a sign-in link's session is 401. A login
+mapped live in no business is 401; one with a verified authenticator in any
+business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
+(`ops.subject_resets`) and records it against the session's digest
+(`ops.recovery_resets`). From that commit every session of the login, in
+every business, is refused up to the window's bound (five minutes), the
+recovery session's own included, so a page that fails after the password
+write leaves no old session usable.
+
+`changed` finds the session's open window (none, or settled: 401), then asks
+the provider `GET /user` on the same bearer, from its own origin, following no
+redirect. Unless the answer names the login and shows it updated after the
+window opened, it is 409 `RESET_NOT_CONFIRMED` and the window is left to its
+bound. Otherwise, in the database clock's next whole second, the window
+settles once and `account.password_reset` is audited once, in the first
+business the login is mapped in, as the person mapped there, with a digest
+alone. A retry settles nothing and audits nothing. A sign-in after the settle
+is served.
+
+The page then signs out everywhere at the provider (`POST /logout?scope=global`,
+204 only, tried again three times) and sends the person to sign in. Every
+browser call uses `redirect: 'error'`, and a provider answer counts only from
+the provider's origin (`apps/web/src/session/recovery.ts`). 503
+`RESET_UNAVAILABLE` is the provider's keys out of reach; `RESET_FAULT` is
+anything else failing.
+
 ## The operations view and privacy incidents (C55)
 
 `operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`

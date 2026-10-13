@@ -95,6 +95,7 @@ import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
+import { mountPasswordReset } from './password-reset.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { carrierSettings } from './model-carrier.ts';
 import { carriedAnswers } from './model-carriage.ts';
@@ -355,6 +356,12 @@ export function composeApi(config: ApiConfig): ComposedApi {
   }
   // C39-T: an invitation accepted on its one-time link, which needs the database alone.
   mountEnrolment(server, database);
+  // Password reset on the provider's recovery session: the database and the
+  // provider's public keys alone, so always mounted.
+  mountPasswordReset(server, database, {
+    signIn: config.signIn,
+    ...(key === '' ? {} : { providerKey: key }),
+  });
 
   server.route(
     '/',

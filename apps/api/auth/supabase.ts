@@ -102,8 +102,16 @@ export function keySetUrlFor(named: string, issuer: string): string | undefined 
   return LOOPBACK.test(named) && LOOPBACK.test(issuer) ? named : undefined;
 }
 
-export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
-  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+/**
+ * A token's signature, `exp`, audience and issuer checked against the
+ * provider's published keys: its claims, `'expired'`, `'unavailable'` when
+ * the key set could not be reached to check it, or nothing.
+ */
+type TokenCheck = (
+  token: string,
+) => Promise<Readonly<Record<string, unknown>> | 'expired' | 'unavailable' | undefined>;
+
+function createTokenCheck(options: SupabaseVerifierOptions): TokenCheck {
   // Whether the latest key set fetch failed to reach the provider, rather than
   // bringing back a set this refused for what it held.
   let unreached = false;
@@ -117,6 +125,21 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
       options.onRefusal?.(refusal);
     },
   });
+  return async (token) => {
+    // ES256 pinned, the key chosen by `kid` from the published set, and only
+    // a signature that verified can be reported as expired (`jwks.ts`).
+    const verdict = await verifyToken(token);
+    if (verdict.outcome === 'expired') return 'expired';
+    if (verdict.outcome === 'refused') {
+      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
+    }
+    return verdict.claims;
+  };
+}
+
+export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  const check = createTokenCheck(options);
 
   return async function verifySupabaseToken(
     request: Context['req'],
@@ -126,15 +149,11 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const token = bearerOf(request) ?? sessionCookieOf(request);
     if (token === undefined) return presentsCredential(request) ? undefined : 'absent';
 
-    // ES256 pinned, the key chosen by `kid` from the published set, and only
-    // a signature that verified can be reported as expired (`jwks.ts`).
-    const verdict = await verifyToken(token);
-    if (verdict.outcome === 'expired') return 'expired';
-    if (verdict.outcome === 'refused') {
-      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
-    }
+    const verdict = await check(token);
+    if (typeof verdict !== 'object') return verdict;
+    const claims = verdict;
 
-    const subject = verdict.claims['sub'];
+    const subject = claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
     // `sub` crosses, and beside it how strongly the provider says the caller
@@ -142,12 +161,63 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // `user_metadata` are the provider's business and carry no authority here:
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
-    const assurance = assuranceOf(verdict.claims);
+    const assurance = assuranceOf(claims);
     if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
-    const sessionId = sessionIdOf(verdict.claims);
+    const sessionId = sessionIdOf(claims);
     return sessionId === undefined
       ? { provider: SUPABASE_PROVIDER, subject, assurance }
       : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
+  };
+}
+
+/** The provider's one-time recovery session, as the reset's routes take it. */
+export interface RecoveryBearer {
+  readonly token: string;
+  readonly subject: string;
+  readonly sessionId: string;
+  /** The session's one sign-in, its `otp` stamp, in whole seconds. */
+  readonly signedInAt: number;
+}
+
+export type RecoveryVerifier = (
+  request: Context['req'],
+) => Promise<RecoveryBearer | 'unavailable' | undefined>;
+
+/** How old a recovery session's sign-in may be: it sets a password, then signs out. */
+export const RECOVERY_SESSION_SECONDS = 600;
+
+/**
+ * The reset's own verifier, `recoveryBearer`: the bearer alone, its signature
+ * and issuer checked as the ordinary verifier checks them, then only a
+ * session a mailed link opened. That is `aal1`, an `amr` of exactly one `otp`
+ * entry stamped within the last 10 minutes (and no more than the clock's
+ * minute ahead), and a `session_id`. A password sign-in, a session with a
+ * second factor, or anything malformed is nothing. Product routes never take
+ * one: the ordinary verifier serves a `password` first factor only.
+ */
+export function createRecoveryVerifier(options: SupabaseVerifierOptions): RecoveryVerifier {
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  const check = createTokenCheck(options);
+  return async function recoveryBearer(request) {
+    const token = bearerOf(request);
+    if (token === undefined) return undefined;
+    const claims = await check(token);
+    if (claims === 'unavailable') return 'unavailable';
+    if (typeof claims !== 'object') return undefined;
+    const subject = claims['sub'];
+    const sessionId = sessionIdOf(claims);
+    const methods = claims['amr'];
+    if (typeof subject !== 'string' || subject === '' || sessionId === undefined) return undefined;
+    if (claims['aal'] !== 'aal1' || !Array.isArray(methods) || methods.length !== 1) {
+      return undefined;
+    }
+    const [only] = methods as readonly unknown[];
+    if (typeof only !== 'object' || only === null) return undefined;
+    const { method, timestamp } = only as Record<string, unknown>;
+    if (method !== 'otp' || !Number.isSafeInteger(timestamp)) return undefined;
+    const age = now() - (timestamp as number);
+    if (age > RECOVERY_SESSION_SECONDS || age < -SIGN_IN_CLOCK_SKEW_SECONDS) return undefined;
+    return { token, subject, sessionId, signedInAt: timestamp as number };
   };
 }
 

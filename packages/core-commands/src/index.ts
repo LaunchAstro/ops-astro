@@ -143,6 +143,16 @@ export {
   type AcceptResult,
 } from './commands/invitation-accept.ts';
 export {
+  beginPasswordReset,
+  openWindowOf,
+  requestPasswordReset,
+  RESET_AUDIT_COMMAND,
+  settlePasswordReset,
+  type BeginCode,
+  type BeginResult,
+  type RecoverySession,
+} from './commands/password-reset.ts';
+export {
   endOtherSessions,
   listOwnSessions,
   signOutSession,

@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   alpha,
-  auditsIn,
+  auditsOf,
   begin,
   changed,
   db,
@@ -60,7 +60,7 @@ describe('begin', () => {
         where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
       [person.subject],
     );
-    expect(links).toStrictEqual([{ consumed: true }]);
+    expect(links.map(({ consumed }) => consumed)).toStrictEqual([true]);
   });
 });
 
@@ -100,7 +100,7 @@ describe('changed', () => {
     const answer = await changed(token);
     expect(answer).toMatchObject({ status: 409, body: { code: 'RESET_NOT_CONFIRMED' } });
     expect(await windowsOf(token)).toStrictEqual([{ settled: false, reset_settled: false }]);
-    expect(await auditsIn(alpha)).toStrictEqual([]);
+    expect(await auditsOf(person, alpha)).toStrictEqual([]);
   });
 
   withProvider('settles the window and audits once after the password is written', async () => {
@@ -112,11 +112,11 @@ describe('changed', () => {
     const answer = await changed(token);
     expect(answer).toMatchObject({ status: 200, body: {} });
     expect(await windowsOf(token)).toStrictEqual([{ settled: true, reset_settled: true }]);
-    const audits = await auditsIn(alpha);
+    const audits = await auditsOf(person, alpha);
     expect(audits).toHaveLength(1);
     // Digests only: no password, no token, no session id.
     for (const secret of [NEW_PASSWORD, person.password, token]) {
-      expect(audits[0]?.row).not.toContain(secret);
+      expect(audits[0]).not.toContain(secret);
     }
   });
 
@@ -130,7 +130,7 @@ describe('changed', () => {
     expect(together.filter((answer) => answer.status === 200).length).toBeGreaterThan(0);
     const again = await changed(token);
     expect(again.status).not.toBe(200);
-    expect(await auditsIn(alpha)).toHaveLength(1);
+    expect(await auditsOf(person, alpha)).toHaveLength(1);
     // A settled window is not opened again by a later begin.
     expect((await begin(token)).body).toStrictEqual({ code: 'RESET_LINK_INVALID' });
     expect(await windowsOf(token)).toStrictEqual([{ settled: true, reset_settled: true }]);

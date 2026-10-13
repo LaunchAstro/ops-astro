@@ -28,6 +28,7 @@ import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { EnrolScreen } from './screens/Enrol.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
+import { ResetScreen } from './screens/Reset.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
@@ -238,6 +239,8 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
 /** What an open route's screen is handed: the public reads only, never the session's client. */
 export interface OpenContext {
   readonly apiOrigin: string;
+  /** The login provider's address, for the reset page's recovery session. */
+  readonly gotrueUrl: string;
   readonly fetch: typeof globalThis.fetch;
   /** The whole address, its query included: an evidence link pins a version there. */
   readonly path: string;
@@ -266,6 +269,15 @@ const OPEN_SCREENS: {
       query={new URL(context.path, 'http://here').search}
       apiOrigin={context.apiOrigin}
       read={context.fetch}
+    />
+  ),
+  'agency:reset': (_, context) => (
+    <ResetScreen
+      path={context.path}
+      gotrueUrl={context.gotrueUrl}
+      apiOrigin={context.apiOrigin}
+      fetch={context.fetch}
+      tab={globalThis.window}
     />
   ),
 };
