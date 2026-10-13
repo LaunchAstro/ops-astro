@@ -98,9 +98,7 @@ export type RunResult =
   | { readonly kind: 'recorded'; readonly state: string; readonly receiptId: string }
   | { readonly kind: 'unrecorded'; readonly outcome: string; readonly code: string };
 
-export function refused(code: string): RunResult {
-  return { kind: 'refused', code };
-}
+export const refused = (code: string): RunResult => ({ kind: 'refused', code });
 
 /** A refusal that waits on a person, with its task raised. */
 async function waiting(code: string, ports: RunnerPorts): Promise<RunResult> {
@@ -174,9 +172,11 @@ async function observe(
     capture: capturePort(correction.pageUrl, ports.capture),
     raiseTask: async (reason) => await ports.raiseTask(reason),
   });
+  const unserved = landed.state === 'unknown';
   const observations = {
     ...pinnedObservations(correction, ports.refusals()),
-    ...landedObservations(correction, landed),
+    ...landedObservations(correction, unserved ? accepted : landed),
+    ...(unserved ? { deployment_served: seen('not serving'), waits_on: seen('person') } : {}),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
   };
   return await record(db, run, { step: 'publish', outcome: landed.state, observations }, ports);
