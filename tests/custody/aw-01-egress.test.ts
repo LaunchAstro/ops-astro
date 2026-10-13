@@ -74,6 +74,12 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/health/tracing.ts': "reads the tracing service's public health route (C34)",
   'apps/web/src/screen-registry.tsx':
     "threads the page's fetch to the public legal page's reader, same origin (C81)",
+  // Password reset on the sign-in provider's recovery session (20261013060059):
+  'apps/api/password-reset.ts':
+    "asks the sign-in provider `GET /user` on the reset's own bearer, at its issuer's origin, no redirect",
+  'apps/web/src/screens/Reset.tsx': "threads the page's fetch to the reset's calls",
+  'apps/web/src/session/recovery.ts':
+    "the reset page's calls: the sign-in provider's recovery session and the product's own reset routes, no redirect",
 };
 
 const MODULES =

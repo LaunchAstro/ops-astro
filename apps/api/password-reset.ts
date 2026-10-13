@@ -42,13 +42,10 @@ import {
   SIGN_IN_CLOCK_SKEW_SECONDS,
   type Database,
 } from '../../packages/core-records/src/index.ts';
+import { PASSWORD_RESET_PATHS } from '../../packages/core-wire/src/index.ts';
 import { readBounded } from './auth/factors.ts';
 import { bearerOf } from './auth/session.ts';
 import { createTokenCheck, sessionIdOf, type SupabaseVerifierOptions } from './auth/supabase.ts';
-
-export const RESET_REQUEST_PATH = '/api/password/reset';
-export const RESET_BEGIN_PATH = '/api/password/begin';
-export const RESET_CHANGED_PATH = '/api/password/changed';
 
 /** An address and room for its JSON, no more. */
 const REQUEST_MAX_BYTES = 1024;
@@ -254,7 +251,7 @@ export function mountPasswordReset(
     onError: (context) => context.json({ code: 'RESET_LINK_INVALID' }, 401),
   });
 
-  server.post(RESET_REQUEST_PATH, request, async (context) => {
+  server.post(PASSWORD_RESET_PATHS.reset, request, async (context) => {
     try {
       const address = await addressOf(context.req.raw);
       await requestPasswordReset(
@@ -268,12 +265,12 @@ export function mountPasswordReset(
     return context.json({}, 202);
   });
   server.post(
-    RESET_BEGIN_PATH,
+    PASSWORD_RESET_PATHS.begin,
     empty,
     async (context) => await begin(context, database, verify).catch(() => fault(context)),
   );
   server.post(
-    RESET_CHANGED_PATH,
+    PASSWORD_RESET_PATHS.changed,
     empty,
     async (context) =>
       await changed(context, database, verify, options).catch(() => fault(context)),

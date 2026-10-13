@@ -53,6 +53,9 @@ const TRANSPORTS = new Map([
       'props.fetch(`${props.apiOrigin}${ENROL_API_PATH}`, {',
     ],
   ],
+  // a forgotten password, on the provider's recovery session and the API's reset routes: a
+  // session, not a record
+  ['session/recovery.ts', ["route.fetch(url, { ...init, redirect: 'error' })"]],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
 // first occurrence in code counts; one after `//` or a `/*` still open on its line, or on a
