@@ -134,12 +134,26 @@ export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
   taskId: string,
 ): Required<
-  Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
+  Pick<
+    BodyContext,
+    'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
+  >
 > => ({
   alphaTaskId: taskId,
   adminPersonId: world.ada.personId as string,
   seedCorrection: async () =>
     await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia, world.ada),
+  seedLiveCorrection: async () => {
+    const seeded = await seedLiveCorrection(
+      world.db.app,
+      world.alpha,
+      taskId,
+      world.mia,
+      world.ada,
+    );
+    await recordLive(world.db.admin, seeded.correctionId, world.ada);
+    return seeded;
+  },
   bindClientSite: async (partyId) =>
     await world.db.app.withBusiness(
       world.alpha,
@@ -147,12 +161,35 @@ export const taskBodyContext = (
     ),
 });
 
-/** C80's four operations, whose positive bodies are the matrix's from here. */
+/**
+ * A requested correction decided by `decider` and recorded live, as the owner: the runner's
+ * observed publish, which no command writes.
+ */
+async function recordLive(
+  admin: Pick<World['db']['admin'], 'execute'>,
+  correctionId: string,
+  decider: Seeder,
+): Promise<void> {
+  await admin.execute(
+    `update public.live_corrections
+        set state = 'approved', decided_by_actor_id = $2, decided_by_person_id = $3,
+            decided_at = now(), decided_version_digest = version_digest, revision = revision + 1
+      where id = $1`,
+    [correctionId, decider.actorId, decider.personId],
+  );
+  await admin.execute(
+    `update public.live_corrections set state = 'live', revision = revision + 1 where id = $1`,
+    [correctionId],
+  );
+}
+
+/** C80's five operations, whose positive bodies are the matrix's from here. */
 export const C80_NAMES: ReadonlySet<string> = new Set([
   'settings.set_live_correction_approver',
   'live_correction.request',
   'live_correction.decide',
   'live_correction.read',
+  'live_correction.revert',
 ]);
 
 /** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
@@ -182,6 +219,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   if (context.seedCorrection === undefined || context.adminPersonId === undefined) {
     return { exception: 'this harness seeds no live correction (C80)' };
   }
+  if (name === 'live_correction.revert') return await revertBody(context);
   const correction = await context.seedCorrection();
   // The decision read: that request, read back under the admin's run:write.
   if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
@@ -190,6 +228,19 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   });
   if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
   return { body: { ...correction, decision: 'approve' } };
+}
+
+/** The revert ask: another member's correction recorded live, the admin named its approver. */
+async function revertBody(context: BodyContext): Promise<Prepared> {
+  if (context.seedLiveCorrection === undefined || context.adminPersonId === undefined) {
+    return { exception: 'this harness records no live correction (C80)' };
+  }
+  const { correctionId } = await context.seedLiveCorrection();
+  const named = await context.asPerson('settings.set_live_correction_approver', {
+    value: context.adminPersonId,
+  });
+  if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
+  return { body: { correctionId } };
 }
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */
