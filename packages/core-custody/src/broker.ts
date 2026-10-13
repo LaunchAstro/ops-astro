@@ -47,6 +47,7 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { sweepCarried } from './broker-carriage.ts';
 import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
@@ -69,6 +70,7 @@ export type {
   BoundField,
   BrokerRoute,
   CallFault,
+  Carrier,
   ClaimedField,
   DropCause,
   ModelCaller,
@@ -257,16 +259,23 @@ export async function sweepModelCalls(
   );
   // A conversation call has no lease: started, it is dropped once it has
   // outlived five times the longest wait custody allows (120 s) and held,
-  // so a lost process never leaves it counting as in flight.
+  // so a lost process never leaves it counting as in flight. A carried call
+  // is the next statement's.
   const conversations = await tx.query(
-    `update public.model_calls
+    `update public.model_calls c
         set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
             unknown_since = clock_timestamp()
-      where business_id = $1 and conversation_id is not null and state = 'dispatched'
-        and started_at <= clock_timestamp() - interval '10 minutes'
-      returning id`,
+      where c.business_id = $1 and c.conversation_id is not null and c.state = 'dispatched'
+        and c.started_at <= clock_timestamp() - interval '10 minutes'
+        and not exists (select 1 from public.model_call_carriers k
+                         where k.business_id = c.business_id and k.call_id = c.id)
+      returning c.id`,
     [tx.businessId],
   );
+  const carried = await sweepCarried(tx);
   const released = await releaseUnsent(tx);
-  return { held: held.length + conversations.length, released: released.length };
+  return {
+    held: held.length + conversations.length + carried.held,
+    released: released.length + carried.released,
+  };
 }

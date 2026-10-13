@@ -20,10 +20,12 @@ import {
   type ReservedCall,
 } from './broker-reserve.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
+import { carriedIn, writeCarriers } from './broker-carriage.ts';
 import type {
   Broker,
   BrokerRefusal,
   BrokerRoute,
+  Carrier,
   ClaimedField,
   ModelCaller,
   ModelCallResult,
@@ -48,6 +50,8 @@ export interface ConversationCallRequest {
   readonly fields: readonly ClaimedField[];
   /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
   readonly model?: string;
+  /** The person's message the call answers: one message has at most one call (#1531). */
+  readonly messageId?: string;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -55,6 +59,13 @@ export const refused = (code: BrokerRefusal): ModelCallResult => ({
   code,
   callId: null,
 });
+
+const RATE_LIMITED: ModelCallResult = {
+  ok: false,
+  code: 'RATE_LIMITED',
+  callId: null,
+  retryAfterSeconds: WAIT_SECONDS,
+};
 
 /** S3: a claim of business-internal only narrows; the person's words are outside. */
 export function outsideFields(fields: readonly ClaimedField[]): readonly ResolvedField[] {
@@ -118,24 +129,55 @@ export function localRoute(
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
-/** The row, started: nothing held, the conversation and no task fact. */
+/** The message's call, if one was made: a retry is answered from it, never a second call (#1531). */
+async function messageCall(
+  tx: TenantQuery,
+  messageId: string | undefined,
+): Promise<ModelCallResult | undefined> {
+  if (messageId === undefined) return undefined;
+  const [call] = await tx.query<{ readonly id: string; readonly state: string }>(
+    `select id, state from public.model_calls
+      where business_id = $1 and conversation_message_id = $2`,
+    [tx.businessId, messageId],
+  );
+  if (call === undefined) return undefined;
+  // A kept reply is found before the broker is asked; any other ending kept nothing.
+  return {
+    ok: false,
+    code: call.state === 'dispatched' ? 'STILL_ANSWERING' : 'ANSWER_ENDED',
+    callId: call.id,
+  };
+}
+
+/**
+ * The row, started: nothing held, the conversation and its message, no task
+ * fact. A message that has a call already gets none (the unique index decides
+ * a race), and undefined comes back. A carried deployment's call is written
+ * with its carriers row, naming the agent.
+ */
 async function insertStarted(
   tx: TenantQuery,
-  conversationId: string,
+  request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
   account: string | null,
-): Promise<string> {
+  carrier: Carrier | undefined,
+): Promise<string | undefined> {
   const callId = randomUUID();
-  await tx.query(
+  const inserted = await tx.query(
     `insert into public.model_calls
-       (business_id, id, conversation_id, operation_key, state, reserved_minor,
-        route_key, route_reach, credential_kind, provider, credential_ref, account, started_at)
-     values ($1, $2, $3, $4, 'dispatched', 0, $5, $6, $7, $8, $9, $10, clock_timestamp())`,
+       (business_id, id, conversation_id, conversation_message_id, operation_key, state,
+        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref, account,
+        started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', 0, $6, $7, $8, $9, $10, $11, clock_timestamp())
+     on conflict (business_id, conversation_message_id) where conversation_message_id is not null
+     do nothing
+     returning id`,
     [
       tx.businessId,
       callId,
-      conversationId,
+      request.conversation.id,
+      request.messageId ?? null,
       operation.key,
       route.key,
       route.reach,
@@ -145,7 +187,9 @@ async function insertStarted(
       account,
     ],
   );
+  if (inserted.length === 0) return undefined;
   await registerPromptCopy(tx, callId);
+  if (carrier !== undefined) await writeCarriers(tx, callId, carrier);
   return callId;
 }
 
@@ -212,14 +256,28 @@ export async function callModelInConversation(
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
   const { route } = chosen;
   const account = await sendingAccount(broker, route, operation.destination);
-  const callId = await database.withBusiness(businessId, async (tx) =>
-    (await atCeiling(tx, operation, route))
-      ? null
-      : await insertStarted(tx, request.conversation.id, operation, route, account),
+  const started = await database.withBusiness(
+    businessId,
+    async (tx): Promise<string | ModelCallResult> => {
+      const earlier = await messageCall(tx, request.messageId);
+      if (earlier !== undefined) return earlier;
+      // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
+      if (await atCeiling(tx, operation, route)) {
+        return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
+      }
+      const { carrier } = broker;
+      if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
+        return refused('CARRIAGE_UNAVAILABLE');
+      }
+      return (
+        (await insertStarted(tx, request, operation, route, account, carrier)) ??
+        (await messageCall(tx, request.messageId)) ??
+        RATE_LIMITED
+      );
+    },
   );
-  if (callId === null) {
-    return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
-  }
+  if (typeof started !== 'string') return started;
+  const callId = started;
   return await sendAndSettle(
     database,
     businessId,

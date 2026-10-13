@@ -28,9 +28,12 @@
 //    with the grants held for share and judged at the clock after the locks;
 //    a grant being changed at that moment keeps nothing.
 //
-// A message has at most one reply. A repeat of the request finds the reply
-// kept and answers with it, and the model is not asked again; a repeat while
-// the answer is with the model, in the same process, waits for it. The model's words
+// A message has at most one reply, and at most one model call, whichever
+// process asks (#1531). A repeat of the request finds the reply kept and
+// answers with it, and the model is not asked again; a repeat while the answer
+// is with the model, in the same process, waits for it; in another process it
+// is told the answer is on its way, and after a call that kept no reply, that
+// the answer ended and the message is to be sent again. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
 // words, never the model's or the person's. Words the store cannot hold as
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
@@ -225,6 +228,7 @@ async function answerOnce(
     { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
     {
       conversation: question.scope,
+      messageId: asked.messageId,
       operation: CONVERSATION_ANSWER.key,
       fields: [
         ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
