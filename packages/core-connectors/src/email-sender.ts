@@ -11,9 +11,15 @@
 // return path's MX are both `record: "SPF"` and told apart by type. Anything
 // else, a missing record or an unknown status, is not verified.
 //
-// Where it comes from sits behind `SenderSource`. With no provider account
-// yet (owner line 68: not now), the only source is the fake
-// (`email-sender-fake.ts`), and a report drawn from it says `mock: true`.
+// Where it comes from sits behind `SenderSource`: the fake
+// (`email-sender-fake.ts`), whose reports say `mock: true`, or the provider
+// read through custody (`email-sender-custody.ts`).
+//
+// A report is stamped with both host clocks when its answer came back, and a
+// send judges it after its last lock wait (`senderFresh`): one older than
+// `SENDER_FRESH_MS` on either clock sends nothing, however verified it was.
+
+import { performance } from 'node:perf_hooks';
 
 export type RecordStatus = 'verified' | 'pending' | 'failed' | 'missing';
 export type DmarcPolicy = 'reject' | 'quarantine' | 'none' | 'missing' | 'invalid';
@@ -36,7 +42,33 @@ export interface SenderReport {
   };
   readonly dmarc: DmarcPolicy;
   readonly mock: boolean;
+  /** `performance.now()` when the source answered (or failed to). */
+  readonly checkedAt: number;
+  /** `Date.now()` at the same moment: the wall clock counts a suspended host. */
+  readonly checkedWallAt: number;
 }
+
+/** How long a verified report stands, from its answer to a send's reservation. */
+export const SENDER_FRESH_MS = 60_000;
+
+/**
+ * Answered at most `SENDER_FRESH_MS` ago on both host clocks. The monotonic clock does not count
+ * a suspended host and the wall clock can step, so either one past the window ends the report,
+ * as the send fence does (`lapsed`). Age only: whether the report verifies is the sender gate's
+ * (`fromVerifiedSender`), judged on the same report.
+ */
+export function senderFresh(report: SenderReport): boolean {
+  return (
+    performance.now() - report.checkedAt <= SENDER_FRESH_MS &&
+    Date.now() - report.checkedWallAt <= SENDER_FRESH_MS
+  );
+}
+
+/** Both clocks' stamps for a report answered now. */
+const stamped = (): Pick<SenderReport, 'checkedAt' | 'checkedWallAt'> => ({
+  checkedAt: performance.now(),
+  checkedWallAt: Date.now(),
+});
 
 const STATUSES: ReadonlySet<string> = new Set(['verified', 'pending', 'failed']);
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u;
@@ -100,6 +132,7 @@ export async function checkSender(
     records: { dkim: 'missing', spf: 'missing', returnPathMx: 'missing' },
     dmarc: 'missing',
     mock: source.mock,
+    ...stamped(),
   };
   if (!checkableSender(subdomain, root)) return unverified;
   let answer: unknown;
@@ -107,18 +140,19 @@ export async function checkSender(
   try {
     [answer, txt] = await Promise.all([source.domain(), source.dmarc(root)]);
   } catch {
-    return unverified;
+    return { ...unverified, ...stamped() };
   }
+  const checked = stamped();
   const dmarc =
     Array.isArray(txt) && txt.every((t) => typeof t === 'string') ? dmarcPolicy(txt) : 'invalid';
-  if (typeof answer !== 'object' || answer === null) return { ...unverified, dmarc };
+  if (typeof answer !== 'object' || answer === null) return { ...unverified, dmarc, ...checked };
   const { name, records } = answer as Record<string, unknown>;
-  if (name !== subdomain || !Array.isArray(records)) return { ...unverified, dmarc };
+  if (name !== subdomain || !Array.isArray(records)) return { ...unverified, dmarc, ...checked };
   const found = {
     dkim: statusOf(records, 'DKIM', ['TXT', 'CNAME']),
     spf: statusOf(records, 'SPF', ['TXT']),
     returnPathMx: statusOf(records, 'SPF', ['MX']),
   };
   const verified = Object.values(found).every((status) => status === 'verified');
-  return { subdomain, verified, records: found, dmarc, mock: source.mock };
+  return { subdomain, verified, records: found, dmarc, mock: source.mock, ...checked };
 }
