@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "A model reply that fails part way through being kept, rolled back or with its backend ended, keeps nothing; asked again it is kept once in the conversation's current epoch and then answered from what was kept. Judged on a real migrated database with the local model."
-}

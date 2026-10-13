@@ -23,6 +23,7 @@ import {
   insertMembership,
   insertPerson,
 } from '../identity/fixture.ts';
+import { asIssued } from '../support/realtime-hub.ts';
 
 export interface Party {
   readonly person: string;
@@ -162,7 +163,7 @@ export async function carriageBusiness(
   });
 }
 
-/** The join function's answer for `topic`, with `sub` as the JWT's subject. */
+/** The join function's answer for `topic`, with `sub` as the JWT's subject, signed in now unless `amr` says. */
 export async function mayJoin(
   admin: AdminConnection,
   topic: string,
@@ -170,7 +171,8 @@ export async function mayJoin(
 ): Promise<boolean> {
   return await admin.transaction(async (execute) => {
     if (claims !== null) {
-      const text = typeof claims === 'string' ? claims : JSON.stringify(claims);
+      // Text is set as written; an object is issued as the provider issues it.
+      const text = typeof claims === 'string' ? claims : JSON.stringify(asIssued(claims));
       await execute(`select set_config('request.jwt.claims', $1, true)`, [text]);
     }
     const [row] = await execute<{ readonly ok: boolean }>(

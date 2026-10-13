@@ -31,12 +31,12 @@ import {
   settleResetWindow,
 } from '../../packages/core-records/src/identity/sessions.ts';
 
-/** Claims for `sub`'s session `sessionId`, first signed in at `signedInAt` (seconds), if given. */
+/** Claims for `sub`'s session `sessionId`, first signed in at `signedInAt` (seconds); none readable if not given. */
 const claimsOf = (sub: string, sessionId: string, signedInAt?: number) => ({
   sub,
   session_id: sessionId,
   role: 'authenticated',
-  ...(signedInAt === undefined ? {} : { amr: [{ method: 'password', timestamp: signedInAt }] }),
+  amr: signedInAt === undefined ? [] : [{ method: 'password', timestamp: signedInAt }],
 });
 
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
@@ -103,7 +103,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       expect(await mayJoin(db.admin, topic, claimsOf(others.owner.sub, unread))).toBe(false);
       // Another login's sessions are not this ending's.
       const doorbell = doorbellTopic(others.id, others.agent.actor);
-      expect(await mayJoin(db.admin, doorbell, claimsOf(others.agent.sub, unread))).toBe(true);
+      expect(await mayJoin(db.admin, doorbell, claimsOf(others.agent.sub, unread, after))).toBe(
+        true,
+      );
     });
 
     it('a session signed in before a reset settles is refused; one signed in after it joins', async () => {

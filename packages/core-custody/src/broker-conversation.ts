@@ -8,57 +8,24 @@
 // (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
 // against the planning budget (`broker-planning.ts`, AW-04's U10).
 
-import { randomUUID } from 'node:crypto';
-import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
+import type { BusinessId, Database } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, mayCarry } from './credentials.ts';
 import { sendingCarrier } from './broker-carrier.ts';
-import { atCeiling, registerPromptCopy, WAIT_SECONDS } from './broker-reserve.ts';
+import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
-import { carriedIn, writeCarriers } from './broker-carriage.ts';
-import type { Handoff } from './carriage.ts';
+import { carriedIn } from './broker-carriage.ts';
+import { insertStarted, messageCall } from './broker-message-call.ts';
 import type {
   Broker,
   BrokerRefusal,
   BrokerRoute,
-  Carrier,
   ClaimedField,
   ModelCaller,
   ModelCallResult,
   ResolvedField,
 } from './broker-types.ts';
-
-/**
- * The conversation as the command layer found it, from its own row under the
- * caller's business (the conversation's table and its checks are SL12's; the
- * foreign key joins at the batch 3 join). The broker rechecks each fact
- * against the authenticated caller, never the body.
- */
-export interface ConversationScope {
-  readonly id: string;
-  readonly businessId: string;
-  readonly ownerPersonId: string;
-}
-
-export interface ConversationCallRequest {
-  readonly conversation: ConversationScope;
-  readonly operation: string;
-  readonly fields: readonly ClaimedField[];
-  /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
-  readonly model?: string;
-  /**
-   * Where the answer's display text goes as it is written, for an operation
-   * that streams (`pieces`). Provisional: only the settled answer is kept.
-   */
-  readonly onPiece?: (text: string) => void;
-  /** The person's message the call answers: one message has at most one call (#1531). */
-  readonly messageId?: string;
-  /**
-   * A carried call's handoff (live chat route B): the command layer's
-   * judgements and the person's token, for the call the broker writes.
-   */
-  readonly carry?: (callId: string) => Handoff;
-}
+import type { ConversationCallRequest } from './broker-conversation-types.ts';
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
   ok: false,
@@ -133,89 +100,6 @@ export function localRoute(
     localOwnerTesting: carriesLocally(broker, route),
   });
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
-}
-
-/**
- * The message's call, if one was made: a retry is answered from it, never a
- * second call (#1531). A kept reply is found before the broker is asked. A
- * call still with the model, or settled with its reply being kept (the keep
- * holds the call's row), is on its way; a released or held one kept nothing.
- * A settled one whose keep failed, its row free and no reply kept, gives the
- * message up: the retry asks again, and its reply is kept once.
- */
-async function messageCall(
-  tx: TenantQuery,
-  messageId: string | undefined,
-): Promise<ModelCallResult | undefined> {
-  if (messageId === undefined) return undefined;
-  const [call] = await tx.query<{ readonly id: string; readonly state: string }>(
-    `select id, state from public.model_calls
-      where business_id = $1 and conversation_message_id = $2`,
-    [tx.businessId, messageId],
-  );
-  if (call === undefined) return undefined;
-  const ended = (code: 'STILL_ANSWERING' | 'ANSWER_ENDED'): ModelCallResult => ({
-    ok: false,
-    code,
-    callId: call.id,
-  });
-  if (call.state !== 'settled')
-    return ended(call.state === 'dispatched' ? 'STILL_ANSWERING' : 'ANSWER_ENDED');
-  const lost = await tx.query(
-    `update public.model_calls set conversation_message_id = null
-      where business_id = $1 and id = $2
-        and id in (select id from public.model_calls where business_id = $1 and id = $2
-                    for update skip locked)
-        and not exists (select 1 from public.conversation_messages
-                         where business_id = $1 and answers_message_id = $3)
-      returning id`,
-    [tx.businessId, call.id, messageId],
-  );
-  return lost.length > 0 ? undefined : ended('STILL_ANSWERING');
-}
-
-/**
- * The row, started: nothing held, the conversation and its message, no task
- * fact. A message that has a call already gets none (the unique index decides
- * a race), and undefined comes back. A carried deployment's call is written
- * with its carriers row, naming the agent.
- */
-async function insertStarted(
-  tx: TenantQuery,
-  request: ConversationCallRequest,
-  operation: ModelOperation,
-  route: BrokerRoute,
-  account: string | null,
-  carrier: Carrier | undefined,
-): Promise<string | undefined> {
-  const callId = randomUUID();
-  const inserted = await tx.query(
-    `insert into public.model_calls
-       (business_id, id, conversation_id, conversation_message_id, operation_key, state,
-        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref, account,
-        started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', 0, $6, $7, $8, $9, $10, $11, clock_timestamp())
-     on conflict (business_id, conversation_message_id) where conversation_message_id is not null
-     do nothing
-     returning id`,
-    [
-      tx.businessId,
-      callId,
-      request.conversation.id,
-      request.messageId ?? null,
-      operation.key,
-      route.key,
-      route.reach,
-      route.credentialKind,
-      route.provider,
-      route.credentialRef,
-      account,
-    ],
-  );
-  if (inserted.length === 0) return undefined;
-  await registerPromptCopy(tx, callId);
-  if (carrier !== undefined) await writeCarriers(tx, callId, carrier);
-  return callId;
 }
 
 /**

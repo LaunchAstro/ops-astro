@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #1531's part of the restricted-calls contract (20261013010100, 20261013010200): an agent's
-// conversation membership and a carried call's record, gathered with MP-14-10a's part in
+// #1531's part of the restricted-calls contract (20261013010100, 20261013010200,
+// 20261013044500): an agent's conversation membership, a carried call's record and the one
+// session rule, gathered with MP-14-10a's part in
 // `restricted-calls-mandates.ts` and spread into the main lists beside the rest. Apart from
 // them to keep each under the line limit.
 
 /** Table grants: a membership closes, and a carried call's times are set, by column grant. */
 export const CARRIAGE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'conversation_agent_members model_call_carriers'],
+];
+
+/**
+ * Executed: the one session rule, login resolution's and the carriage join's; security
+ * invoker, so each reads no more than its caller may.
+ */
+export const CARRIAGE_EXECUTES: readonly string[] = [
+  'ops.session_ended',
+  'ops.login_verified_factors',
+  'ops.session_refusal',
 ];
 
 /** Update: a membership closes once; each of a carried call's times is set once. */
