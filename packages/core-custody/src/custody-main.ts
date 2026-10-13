@@ -11,7 +11,8 @@
 // or a fault. For a credential presented as nothing (`none`), it also passes
 // each chunk of a successful answer on as a `piece` note while it reads:
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
-// refused, so there is no borrow path.
+// refused, so there is no borrow path. A dispatch marked `gated` waits after
+// `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -146,12 +147,66 @@ function streamingOf(
   };
 }
 
+/** Dispatches held after `started` until their admission says `go` or `stop` (#1508). */
+const gates = new Map<string, (go: boolean) => void>();
+
+/** Whether a gated dispatch may send: its admission's word, or no within the request's own deadline. */
+async function gateOf(id: string, deadlineMs: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => settle(false), deadlineMs);
+    const settle = (go: boolean): void => {
+      clearTimeout(timer);
+      gates.delete(id);
+      resolve(go);
+    };
+    gates.set(id, settle);
+  });
+}
+
+/**
+ * The answer to a started dispatch: for a gated one, only once its admission
+ * says `go`, sent and passed back as `streamingOf` says.
+ */
+async function answer(
+  id: string,
+  request: OutboundRequest,
+  credential: StoredCredential,
+  gated: boolean,
+  reply: (body: Message) => void,
+): Promise<void> {
+  if (gated && !(await gateOf(id, request.timeoutMs))) {
+    reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
+    return;
+  }
+  const streaming = streamingOf(credential, request.destination, (text) =>
+    reply({ type: 'piece', text }),
+  );
+  const outcome = await send(
+    loaded.destinations,
+    request,
+    credential,
+    undefined,
+    streaming.onChunk,
+  );
+  reply({
+    type: 'answer',
+    outcome: streaming.answer(outcome),
+    kind: credential.kind,
+    account: credential.account,
+  });
+}
+
 process.on('uncaughtException', () => fail('internal fault'));
 
 process.on('message', (message: unknown) => {
   const shape = (typeof message === 'object' && message !== null ? message : {}) as Message;
   const id = typeof shape['id'] === 'string' ? shape['id'] : '';
   const reply = (body: Message): void => void process.send?.({ id, ...body });
+  if ((shape['type'] === 'go' || shape['type'] === 'stop') && id !== '') {
+    // A gated dispatch's word: anything for no waiting dispatch is dropped, never answered.
+    gates.get(id)?.(shape['type'] === 'go');
+    return;
+  }
   const ref = shape['credentialRef'];
   const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
   if (shape['type'] === 'describe' && id !== '') {
@@ -172,24 +227,7 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
-  const streaming = streamingOf(credential, request.destination, (text) =>
-    reply({ type: 'piece', text }),
-  );
-  void (async (): Promise<void> => {
-    const outcome = await send(
-      loaded.destinations,
-      request,
-      credential,
-      undefined,
-      streaming.onChunk,
-    );
-    reply({
-      type: 'answer',
-      outcome: streaming.answer(outcome),
-      kind: credential.kind,
-      account: credential.account,
-    });
-  })();
+  void answer(id, request, credential, shape['gated'] === true, reply);
 });
 
 process.send?.({ type: 'ready' });

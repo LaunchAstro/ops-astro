@@ -51,11 +51,18 @@ export interface CustodyConfig {
 }
 
 /**
- * The judgement at the handoff: whether the send may go, judged in a
- * transaction held open until `sent` settles (custody's `started`, or its
- * answer). False, or a failure, admits nothing.
+ * A send admitted at the handoff, its transaction still open. At custody's
+ * `started`, `go` asks that transaction one statement more: answered, its
+ * locks were held to that instant and custody sends; a transaction lost since
+ * the verdict answers false and nothing is sent. `end` lets it go either way.
  */
-export type Admit = (sent: Promise<void>) => Promise<boolean>;
+export interface Admission {
+  readonly go: () => Promise<boolean>;
+  readonly end: () => void;
+}
+
+/** The judgement at the handoff: the admission, or undefined when nothing may be sent. */
+export type Admit = () => Promise<Admission | undefined>;
 
 export interface Custody {
   readonly pid: number;
@@ -111,6 +118,8 @@ type Exchange = (
   body: Record<string, unknown>,
   onStarted?: () => void,
   onPiece?: (text: string) => void,
+  /** Asked at `started` for a gated dispatch: true sends `go`, anything else `stop`. */
+  gate?: () => Promise<boolean>,
 ) => Promise<Record<string, unknown> | 'lost'>;
 
 /**
@@ -131,7 +140,7 @@ function exchangeWith(child: ChildProcess): Exchange {
   child.on('exit', loseAll);
   // A write to a custody that died before its exit was handled fails as EPIPE: lost, as on exit, not a crash.
   child.on('error', loseAll);
-  return async (body, onStarted, onPiece) =>
+  return async (body, onStarted, onPiece, gate) =>
     await new Promise((resolve) => {
       const id = randomUUID();
       const onLost = (): void => {
@@ -143,6 +152,10 @@ function exchangeWith(child: ChildProcess): Exchange {
       waiting.set(id, (message) => {
         if (message['type'] === 'started') {
           onStarted?.();
+          gate?.().then(
+            (go) => child.send({ type: go ? 'go' : 'stop', id }),
+            () => child.send({ type: 'stop', id }),
+          );
           return;
         }
         if (message['type'] === 'piece') {
@@ -177,42 +190,28 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }
 
-/** The handoff a held admission waits on, and what settles it: custody started, or answered first. */
-function handOff(): { readonly promise: Promise<void>; readonly done: () => void } {
-  const settle: { resolve?: () => void } = {};
-  const promise = new Promise<void>((resolve) => {
-    settle.resolve = resolve;
-  });
-  return { promise, done: () => settle.resolve?.() };
-}
-
-/**
- * A dispatch over `exchange`: admitted first where it asks to be, with the
- * admission held open until custody has started the send or answered.
- */
+/** A dispatch over `exchange`: where it asks to be admitted, gated on that admission at `started`. */
 function dispatchOn(exchange: Exchange): Custody['dispatch'] {
   return async (credentialRef, request, onPiece, admit) => {
     let started = false;
-    const handedOff = handOff();
-    const sent = handedOff.done;
-    const admitted = admit === undefined ? true : await admit(handedOff.promise).catch(() => false);
-    if (!admitted) {
-      sent();
+    const admission = admit === undefined ? undefined : await admit().catch(() => null);
+    if (admit !== undefined && (admission === undefined || admission === null)) {
       return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
     }
     const markStarted = (): void => {
       started = true;
-      sent();
     };
+    const gated = admission === undefined ? {} : { gated: true };
     try {
       const reply = await exchange(
-        { type: 'dispatch', credentialRef, request },
+        { type: 'dispatch', credentialRef, request, ...gated },
         markStarted,
         onPiece,
+        admission?.go,
       );
       return outcomeOf(reply, started);
     } finally {
-      sent();
+      admission?.end();
     }
   };
 }

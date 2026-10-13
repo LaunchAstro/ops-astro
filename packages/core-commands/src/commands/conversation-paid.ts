@@ -52,22 +52,23 @@ export function operationFor(model: string | undefined | null): string {
 
 /**
  * At a paid send's handoff, in the caller's transaction: the conversation
- * still theirs and kept, their session and grant live (`hearingAt`), the page
- * the one the context read, and that page still no client's and theirs to
+ * still theirs and kept, their session and grant live (`hearingAt`), its model
+ * still the paid one asked, the page the one the context read, and that page still no client's and theirs to
  * read, held for share without waiting: a task being written refuses.
  */
 async function stillAsked(
   tx: TenantQuery,
   session: Session,
-  asked: Asked,
-  page: string | null,
+  ask: Pick<PaidAsk, 'asked' | 'page' | 'model'>,
 ): Promise<boolean> {
+  const { asked, page } = ask;
   if ((await hearingAt(tx, session, asked, 'share')) === undefined) return false;
-  const [now] = await tx.query<{ readonly page: string | null }>(
-    `select scope_record_id as page from conversations where business_id = $1 and id = $2`,
+  const [now] = await tx.query<{ readonly page: string | null; readonly model: string | null }>(
+    `select scope_record_id as page, model_id as model from conversations
+      where business_id = $1 and id = $2`,
     [tx.businessId, asked.conversationId],
   );
-  if (now === undefined || now.page !== page) return false;
+  if (now === undefined || now.page !== page || now.model !== ask.model) return false;
   return page === null || typeof (await pageOf(tx, session, page, 'share nowait')) !== 'string';
 }
 
@@ -78,6 +79,8 @@ export interface PaidAsk {
   readonly asked: Asked;
   /** The page task the context read, if any. */
   readonly page: string | null;
+  /** The paid model the conversation was asked on: still its model at the handoff. */
+  readonly model: string | undefined | null;
   /** Who wrote the asked message and each earlier person turn read. */
   readonly authors: readonly string[];
   /** The exchange's keep: the reply under the conversation's lock, or the one already kept. */
@@ -102,7 +105,7 @@ export function paidSeams(ask: PaidAsk): {
       // Boxed, so a refusal is told apart from whatever the work answers.
       const done = await withSession(database, businessId, presented, async (tx, session) => ({
         value: await work(tx, {
-          stillAdmitted: async () => await stillAsked(tx, session, asked, ask.page),
+          stillAdmitted: async () => await stillAsked(tx, session, ask),
           keep: async (text) => {
             if (!usableReply(text)) return false;
             kept = await ask.keep(tx, session, asked, text);
@@ -116,10 +119,19 @@ export function paidSeams(ask: PaidAsk): {
   return { seams, replied: (cites) => (kept === undefined ? null : answered(kept, cites)) };
 }
 
-/** A call that kept no reply, in the panel's words. */
-export function unanswered(
+/**
+ * A call that kept no reply, in the panel's words. Told the message's call is
+ * answering or ended, the reply is read again: a twin's answer kept while this
+ * one waited is that reply, never a reason to send the message again.
+ */
+export async function unanswered(
   result: Exclude<ModelCallResult, { readonly ok: true }>,
-): ConversationReply {
+  reread: () => Promise<Kept | object | undefined>,
+): Promise<ConversationReply | null> {
+  if (result.code === 'STILL_ANSWERING' || result.code === 'ANSWER_ENDED') {
+    const kept = await reread();
+    if (kept !== undefined) return isCommandRefusal(kept) ? null : answered(kept as Kept, []);
+  }
   if (result.code === 'CALL_RELEASED') return releasedWith(result.reason);
   if (result.code === 'LIABILITY_UNKNOWN' && 'heldMinor' in result && result.heldMinor > 0) {
     return heldWith(result.heldMinor);

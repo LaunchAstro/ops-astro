@@ -228,9 +228,10 @@ async function answerOnce(
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
   const pieces = onPiece && judgedPieces(database, businessId, presented, asked, onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
-  const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+  const reread = async () =>
+    await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+  const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
-  // The model picks the operation: a paid model's provider has its own (#1508).
   const operation = operationFor(question.model);
   const paid =
     operation === OPENROUTER_CONVERSATION_KEY
@@ -244,8 +245,7 @@ async function answerOnce(
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
-  if (!result.ok) return unanswered(result);
-  // A paid reply was kept in the settle's own transaction.
+  if (!result.ok) return await unanswered(result, reread);
   if (paid !== undefined) return paid.replied(question.context.cites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');

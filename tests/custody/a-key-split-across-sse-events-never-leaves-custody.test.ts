@@ -28,7 +28,7 @@ const MODEL = 'anthropic/claude-haiku-5.5';
 /** The key as an answer's text might echo it: plainly, percent-escaped and in base64. */
 const SPELLINGS: readonly (readonly [string, string])[] = [
   ['plain', KEY],
-  ['percent-escaped', [...KEY].map((c) => `%${c.charCodeAt(0).toString(16)}`).join('')],
+  ['percent-escaped', [...KEY].map((c) => `%${(c.codePointAt(0) ?? 0).toString(16)}`).join('')],
   ['base64', Buffer.from(KEY).toString('base64')],
 ];
 
@@ -39,7 +39,7 @@ const leaks = (text: string): boolean =>
 /** A content delta whose JSON escapes every character of its text (`\u0061`): decoded, it is the text. */
 const escapedEvent = (text: string): string =>
   `data: {"model":"${MODEL}","choices":[{"index":0,"delta":{"content":"${[...text]
-    .map((c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+    .map((c) => `\\u${(c.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`)
     .join('')}"},"finish_reason":null}]}\n\n`;
 
 describe('a key split across server-sent events', () => {

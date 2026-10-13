@@ -35,7 +35,7 @@ import { sendingAccount } from './broker-carrier.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
 import { carriesOutside } from './outside-carriage.ts';
-import type { Admit } from './custody.ts';
+import type { Admission, Admit } from './custody.ts';
 import type {
   Broker,
   BrokerRoute,
@@ -152,6 +152,15 @@ async function heldCall(
   );
 }
 
+/** A promise and the function that settles it. */
+function opened<T>(): { readonly promise: Promise<T>; readonly settle: (value: T) => void } {
+  const box: { settle?: (value: T) => void } = {};
+  const promise = new Promise<T>((resolve) => {
+    box.settle = resolve;
+  });
+  return { promise, settle: (value) => box.settle?.(value) };
+}
+
 /**
  * Custody's display texts for the person, as the operation reads them; none
  * where the caller takes none or the operation streams nothing. Provisional:
@@ -171,24 +180,38 @@ function piecesOf(
 /**
  * The judgement at the handoff, in the caller's transaction: the call still
  * `dispatched` under its own lock (a swept call is never sent), then what the
- * send rests on. Admitted, the transaction stays open until custody has
- * started, so a change to any of it waits for the send. Anything else,
- * including a lock held elsewhere, admits nothing.
+ * send rests on. Admitted, the transaction stays open; at custody's `started`
+ * it answers one statement more before custody sends (`go`), so a change to
+ * any of it waits for the send, and a transaction lost since the verdict sends
+ * nothing. Anything else, including a lock held elsewhere, admits nothing.
  */
 function admission(paid: PaidSeams, callId: string): Admit {
-  return async (sent) =>
-    await new Promise<boolean>((resolve) => {
-      paid
-        .asCaller(async (tx, as) => {
-          const admitted = (await stillDispatched(tx, callId)) && (await as.stillAdmitted());
-          resolve(admitted);
-          if (admitted) await sent;
-        })
-        .then(
-          () => resolve(false),
-          () => resolve(false),
-        );
-    });
+  return async () => {
+    const verdict = opened<Admission | undefined>();
+    const step = opened<boolean>();
+    const held = opened<boolean>();
+    const admitted: Admission = {
+      go: async () => {
+        step.settle(true);
+        return await held.promise;
+      },
+      end: () => step.settle(false),
+    };
+    const lost = (): void => {
+      verdict.settle(undefined);
+      held.settle(false);
+    };
+    void paid
+      .asCaller(async (tx, as) => {
+        if (!((await stillDispatched(tx, callId)) && (await as.stillAdmitted()))) return;
+        verdict.settle(admitted);
+        if (!(await step.promise)) return;
+        await tx.query('select 1');
+        held.settle(true);
+      })
+      .then(lost, lost);
+    return await verdict.promise;
+  };
 }
 
 async function stillDispatched(tx: TenantQuery, callId: string): Promise<boolean> {
