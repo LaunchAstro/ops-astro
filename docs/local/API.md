@@ -3700,7 +3700,7 @@ statement? }`: one of the eight items, three closing lines or the procedure
   published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`.
   `tested-backups` takes only the operations page, `https://<host>/settings/operations/`,
   with no query and the same link rules, while `ops.last_tested_restore` holds a
-  passed drill inside the restore window (35 days), else `evidence` is refused;
+  passed drill inside the restore window, else `evidence` is refused;
   `second-factor` is refused naming `item` unless the person recording it has a
   verified factor: on their row here, or on their own signed-in login through
   any business, not since removed. Both are read after the installation's row lock. An item is
