@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's request side of the approver rule: a correction is stored only while an approver is configured and an active staff member, and an unset of the setting in flight is waited for on a second connection, so a request never commits without an approver."
+}

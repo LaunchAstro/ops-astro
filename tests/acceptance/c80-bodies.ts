@@ -14,6 +14,8 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import { insertLiveCorrection } from '../../packages/core-records/src/site/live-corrections.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { enrol } from '../commands/fixture.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -103,6 +105,17 @@ export async function seedLiveCorrection(
   const at = await underClient(database, business, taskId, maker);
   return await database.withBusiness(business, async (tx) => {
     const pageUrl = await bindAboutPage(tx, at.partyId, requester.actorId as string);
+    // The run:write a request rests on, which its decision reads again.
+    const granted = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: requester.personId as string },
+      scope: { kind: 'business', id: null },
+      collection: 'run',
+      action: 'write',
+      canDelegate: false,
+      parentGrantId: null,
+      grantedByActorId: requester.actorId as string,
+    });
+    if (!granted.ok) throw new Error(`seedLiveCorrection: grant refused ${granted.refusal.code}`);
     const stored = await insertLiveCorrection(tx, {
       ...C80_REQUEST_ROW,
       ...at,
@@ -128,18 +141,26 @@ const C80_REQUEST_ROW = {
 
 /**
  * The task the recipes name, with C80's approver (`ada`, the admin) and a
- * correction another member (`mia`) requested, under a client task `ada` makes.
+ * correction a member of its own requested, under a client task `ada` makes.
  */
 export const taskBodyContext = (
-  world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
+  world: Pick<World, 'db' | 'alpha' | 'ada'>,
   taskId: string,
 ): Required<
   Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
 > => ({
   alphaTaskId: taskId,
   adminPersonId: world.ada.personId as string,
+  // Asked for by a member of its own, holding the run:write the request rests on,
+  // so the matrix's callers keep exactly their declared grants.
   seedCorrection: async () =>
-    await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia, world.ada),
+    await seedLiveCorrection(
+      world.db.app,
+      world.alpha,
+      taskId,
+      await enrol(world.db.app, world.alpha, 'asker'),
+      world.ada,
+    ),
   bindClientSite: async (partyId) =>
     await world.db.app.withBusiness(
       world.alpha,

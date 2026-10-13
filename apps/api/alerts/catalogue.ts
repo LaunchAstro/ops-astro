@@ -16,17 +16,17 @@ const WORDS = {
   'web-down': [
     '{Place} is not loading in the browser',
     'Nobody can open the app on {place}',
-    'The watcher keeps checking every minute and mails again when it is back; if it stays down, the owner restarts the web service from the runbook',
+    'The watcher keeps checking every five minutes and mails again when it is back; if it stays down, the owner restarts the web service from the runbook',
   ],
   'api-down': [
     "{Place}'s API is not answering its health check",
     'Tasks cannot be opened, created or changed on {place}',
-    'The watcher keeps checking every minute and mails again when it is back; if it stays down, the owner restarts the API from the runbook',
+    'The watcher keeps checking every five minutes and mails again when it is back; if it stays down, the owner restarts the API from the runbook',
   ],
   'sink-down': [
     'The error sink is not answering',
     'Application errors are not being recorded, so no error alerts can be sent',
-    'The watcher keeps checking every minute and mails again when it is back; if it stays down, the owner restarts the error sink from the runbook',
+    'The watcher keeps checking every five minutes and mails again when it is back; if it stays down, the owner restarts the error sink from the runbook',
   ],
   'backup-silent': [
     "{Place}'s backup did not check in on time",
