@@ -178,7 +178,7 @@ export async function loginVerifiedFactors(
   subject: string,
 ): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly factor_digest: string }>(
-    `select factor_digest from ops.login_verified_factors($1) as factor_digest`,
+    `select unnest(ops.login_verified_factors($1)) as factor_digest`,
     [subject],
   );
   return rows.map((row) => row.factor_digest);

@@ -32,17 +32,18 @@ create function ops.session_ended(session uuid, subject text, signed_in bigint, 
 
 -- The login's factors verified, and not removed, through any business (0064).
 create function ops.login_verified_factors(subject text)
-  returns setof text
+  returns text[]
   language sql
   stable
   set search_path = pg_catalog
   as $$
+    select array(
     select distinct v.factor_digest from ops.second_factor_subjects v
       where v.subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex') and v.state = 'verified'
         and not exists (
           select 1 from ops.second_factor_subjects r
            where r.subject_digest = v.subject_digest and r.factor_digest = v.factor_digest
-             and r.state = 'removed')
+             and r.state = 'removed'))
   $$;
 
 -- Why the session is refused, or null: past the 12 hours from its first
@@ -66,7 +67,7 @@ create function ops.session_refusal(
       when session is not null
            and (select e.ended from ops.session_ended(session, subject, signed_in, 60) e)
         then 'AUTH_SESSION_EXPIRED'
-      when factor_asked and not aal2 and exists (select 1 from ops.login_verified_factors(subject))
+      when factor_asked and not aal2 and cardinality(ops.login_verified_factors(subject)) > 0
         then 'AUTH_SECOND_FACTOR_REQUIRED'
     end
   $$;
