@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Run from the repository root: node tests/api/reset-provider-containers.mjs
 // The password reset's cases against a real login provider: a throwaway
-// Postgres and the pinned GoTrue, then reset-begin-changed,
-// reset-ends-sessions and reset-late-write (which waits out the five-minute
+// Postgres and the pinned GoTrue, then reset-audit-target,
+// reset-begin-changed, reset-ends-sessions and reset-late-write (which waits out the five-minute
 // bound) with RESET_AUTH_URL and RESET_AUTH_KEYS set. Owns and
 // removes only its throwaway containers, volume, network and keys.
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -141,6 +141,7 @@ try {
       'exec',
       'vitest',
       'run',
+      'tests/api/reset-audit-target.test.ts',
       'tests/api/reset-begin-changed.test.ts',
       'tests/api/reset-ends-sessions.test.ts',
       'tests/api/reset-late-write.test.ts',
