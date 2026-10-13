@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a streamed answer holds its caller's concurrent slot until it ends"
+}

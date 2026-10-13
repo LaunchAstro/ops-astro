@@ -7,6 +7,7 @@
 
 import type { Context } from 'hono';
 import { streamSSE, type SSEMessage } from 'hono/streaming';
+import { holdQuotaSlot } from '../../packages/core-records/src/index.ts';
 import type {
   ConversationExchange,
   ConversationReply,
@@ -77,7 +78,9 @@ export const asksForPieces = (
  * `outcome` event whose data is exactly the JSON body the request answers
  * without a stream. Pieces are provisional; only the outcome's reply is kept.
  * A browser that leaves stops only the writing: the answer still settles and
- * its reply is kept, read on the next `conversation.read`.
+ * its reply is kept, read on the next `conversation.read`. Like the JSON
+ * answer it replaces, it holds the caller's concurrent slot until the answer
+ * ends, not only until the response starts (API-3).
  */
 export function streamedReply(
   context: Context,
@@ -86,26 +89,31 @@ export function streamedReply(
   presented: Parameters<ConversationExchange>[2],
   settled: Kept,
 ): Response {
+  const release = holdQuotaSlot();
   return streamSSE(context, async (stream) => {
-    // One write at a time, in order; a write to a stream the browser left is dropped.
-    let written = Promise.resolve();
-    const after = async (previous: Promise<void>, message: SSEMessage): Promise<void> => {
-      await previous;
-      if (!stream.aborted) await stream.writeSSE(message).catch(() => {});
-    };
-    const write = (message: SSEMessage): void => {
-      written = after(written, message);
-    };
-    let seq = 0;
-    const reply = await replyTo(options, businessId, presented, settled, (data) => {
-      write({ event: 'piece', id: String(seq), data });
-      seq += 1;
-    });
-    write({
-      event: 'outcome',
-      data: JSON.stringify({ ...settled, ...(reply === null ? {} : { reply }) }),
-    });
-    await written;
+    try {
+      // One write at a time, in order; a write to a stream the browser left is dropped.
+      let written = Promise.resolve();
+      const after = async (previous: Promise<void>, message: SSEMessage): Promise<void> => {
+        await previous;
+        if (!stream.aborted) await stream.writeSSE(message).catch(() => {});
+      };
+      const write = (message: SSEMessage): void => {
+        written = after(written, message);
+      };
+      let seq = 0;
+      const reply = await replyTo(options, businessId, presented, settled, (data) => {
+        write({ event: 'piece', id: String(seq), data });
+        seq += 1;
+      });
+      write({
+        event: 'outcome',
+        data: JSON.stringify({ ...settled, ...(reply === null ? {} : { reply }) }),
+      });
+      await written;
+    } finally {
+      release();
+    }
   });
 }
 

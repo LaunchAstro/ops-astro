@@ -59,6 +59,7 @@ export function settlementOf(
   outcome: CustodyOutcome,
   operation: ModelOperation,
   adapter: ProviderAdapter,
+  streamed = false,
 ): Settlement {
   if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
   if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
@@ -69,9 +70,9 @@ export function settlementOf(
     }
     return { kind: 'unknown', ...failure };
   }
-  // A streamed answer is folded into the one body its schema reads first.
-  const text =
-    operation.fold === undefined ? outcome.outbound.body : operation.fold(outcome.outbound.body);
+  // A stream asked for is folded first; one asked for whole is read whole (a stream is no answer).
+  const { body: sent } = outcome.outbound;
+  const text = streamed && operation.fold !== undefined ? operation.fold(sent) : sent;
   if (text === undefined) return { kind: 'unknown', ...MALFORMED };
   let body: unknown;
   try {

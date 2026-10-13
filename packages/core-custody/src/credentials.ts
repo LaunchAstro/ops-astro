@@ -276,5 +276,7 @@ export function described(
   if (credential === undefined || credential.destination !== destination) {
     return { type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' };
   }
-  return { type: 'described', kind: credential.kind, account: credential.account };
+  // Whether it is sent at all: an answer to one that is sent may echo it, so is never streamed.
+  const presents = credential.scheme !== 'none';
+  return { type: 'described', kind: credential.kind, account: credential.account, presents };
 }

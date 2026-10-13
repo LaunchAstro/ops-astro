@@ -35,6 +35,8 @@ export type CustodyOutcome =
 export interface Carrier {
   readonly credentialKind: StorableKind;
   readonly account: string | null;
+  /** Whether custody sends the credential: false only for one filed as `none`. */
+  readonly presents: boolean;
 }
 
 export interface CustodyConfig {
@@ -189,6 +191,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       return {
         credentialKind: reply['kind'] as StorableKind,
         account: (reply['account'] as string | null) ?? null,
+        presents: reply['presents'] !== false,
       };
     },
     stderr: () => errors,
