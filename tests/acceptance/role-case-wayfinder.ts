@@ -76,6 +76,11 @@ const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
   }),
   'map.view': async (context) => ({ recordId: (await freshMap(context)).recordId }),
   'map.frontier': async (context) => ({ recordId: (await freshMap(context)).recordId }),
+  // A map filed first, so the list has a row to read.
+  'map.list': async (context) => {
+    await freshMap(context);
+    return {};
+  },
   // WF-2, each on a map and ticket filed through the routes.
   'map.chart': () => ({
     title: 'a charted map',
