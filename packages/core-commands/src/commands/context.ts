@@ -11,6 +11,8 @@
 // here, in the module both sides depend on, and the dispatch stays where the
 // exported surface check reads it from.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type { Carrier } from '../../../core-custody/src/index.ts';
 import {
   readTaskStates,
   TASK_TYPE_KEY,
@@ -58,7 +60,27 @@ export interface CommandContext {
   readonly spine: TaskSpine;
   /** Present exactly when the declaration targets an existing record. */
   readonly target: TaskRow | undefined;
+  /**
+   * The deployment's model agent and the people it carries calls for (#1531),
+   * where the composition root was handed one: the conversation commands add
+   * it to a conversation as a member. Never from a body.
+   */
+  readonly carrier: Carrier | undefined;
 }
+
+const deployment = new AsyncLocalStorage<Carrier | undefined>();
+
+/**
+ * Runs `run` with the deployment's carrier, as `withRuntimeKeys` runs it with
+ * the keys: a composed app runs each request so, and two apps in one process
+ * keep their own. Outside one there is no carrier.
+ */
+export function withCarrier<T>(carrier: Carrier | undefined, run: () => T): T {
+  return deployment.run(carrier, run);
+}
+
+/** The carrier of the composition this command runs under, if it has one. */
+export const deploymentCarrier = (): Carrier | undefined => deployment.getStore();
 
 /**
  * The type's identifiers for this business.
