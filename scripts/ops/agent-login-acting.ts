@@ -67,22 +67,33 @@ const OWNER_LEFT =
 const ROLLBACK = Symbol('rollback');
 const NOTHING = async (): Promise<void> => {};
 
+const KEY = [OPERATIONS_MANAGE.collection, OPERATIONS_MANAGE.action];
+/**
+ * Every live grant of the key any of the session's subjects holds (the
+ * person's and the actor's, as the gate accepts either), with the grants it
+ * stands on, held for share: its revocation waits until the step commits.
+ */
+const HELD_GRANTS = `
+  with recursive held as (
+    select id, parent_grant_id from public.grants
+     where subject_id = any($1::uuid[]) and collection = $2 and action = $3 and revoked_at is null
+    union
+    select g.id, g.parent_grant_id from public.grants g join held h on g.id = h.parent_grant_id
+  )
+  select id from public.grants where id in (select id from held) order by id for share`;
+
 /** Whether the operator still holds the grant, the sign-in and the session, read in `tx`. */
 async function stillOperator(
   tx: Parameters<Parameters<Database['withBusiness']>[1]>[0],
   run: Run,
   presented: VerifiedSubject,
 ): Promise<boolean> {
-  const { personId } = run.gate.operator;
-  await tx.query(
-    `select id from public.grants where subject_id = $1 and collection = $2 and action = $3
-        and revoked_at is null for share`,
-    [personId, OPERATIONS_MANAGE.collection, OPERATIONS_MANAGE.action],
-  );
   const session = await resolveLogin(tx, presented);
-  if ('refused' in session || session.personId !== personId) return false;
+  if ('refused' in session || session.personId !== run.gate.operator.personId) return false;
+  const subjects = subjectsOf(session);
+  await tx.query(HELD_GRANTS, [subjects.map((subject) => subject.id), ...KEY]);
   const scope = { kind: 'business', id: null } as const;
-  const decision = await checkAuthority(tx, subjectsOf(session), { ...OPERATIONS_MANAGE, scope });
+  const decision = await checkAuthority(tx, subjects, { ...OPERATIONS_MANAGE, scope });
   return decision.ok && !(await sessionEndedHeld(tx, presented));
 }
 
@@ -120,13 +131,22 @@ async function holdOperator(run: Run, presented: VerifiedSubject): Promise<() =>
   };
 }
 
+/**
+ * The operator's bearer verified now, its expiry and its session's absolute
+ * limit included; refused as no longer the operator. Asked after every wait
+ * and before every write or provider call.
+ */
+export async function signedIn(run: Run): Promise<VerifiedSubject> {
+  const presented = await run.verify(run.env['OPS_ASTRO_TOKEN'] ?? '');
+  if (presented === undefined) throw new Refusal(NO_LONGER);
+  return presented;
+}
+
 async function actOnce<T>(
   run: Run,
   subject: string | null,
   body: (execute: Execute) => Promise<T>,
 ): Promise<T> {
-  const presented = await run.verify(run.env['OPS_ASTRO_TOKEN'] ?? '');
-  if (presented === undefined) throw new Refusal(NO_LONGER);
   // On the owner login as the gate resolved it, before the transaction takes its one connection.
   if ((await businessOf(run.admin, run.gate.operator.business)) !== run.businessId)
     throw new Refusal('OPS_ASTRO_BUSINESS no longer names the business the gate checked');
@@ -137,8 +157,13 @@ async function actOnce<T>(
       await execute(`select set_config('app.business_id', $1, true)`, [run.businessId]);
       await advisoryLock(tx, `agent-login:${run.businessId}:${run.make.agentId}`);
       if (subject !== null) await lockLoginFactors(tx, subject);
-      release = await holdOperator(run, presented);
-      return await body(execute);
+      // The bearer is judged after each wait, never carried across one: it may expire meanwhile.
+      release = await holdOperator(run, await signedIn(run));
+      await signedIn(run);
+      const done = await body(execute);
+      // After the step's own row locks, before its writes commit.
+      await signedIn(run);
+      return done;
     });
   } finally {
     await release();
