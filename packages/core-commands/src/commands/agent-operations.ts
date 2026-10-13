@@ -83,6 +83,7 @@ interface AgentOperationRow<O extends object> {
     | 'correctionRequest'
     | 'pickup'
     | 'serveAgain'
+    | 'takeLaunch'
     | 'settledHandback'
     | 'childPickup'
     | 'childHandback';

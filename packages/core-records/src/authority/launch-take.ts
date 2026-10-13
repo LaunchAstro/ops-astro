@@ -235,6 +235,18 @@ export async function excludedFromTakenLaunch(
   command: string,
 ): Promise<boolean> {
   if (ANSWER_RUN_COMMANDS.has(command)) return false;
+  const launches = await tx.query<{ readonly task_id: string }>(
+    `select task_id from public.task_launches where business_id = $1 and delegation_id = $2`,
+    [tx.businessId, delegationId],
+  );
+  if (launches.length === 0) return false;
+  // The launch's task first, as a take takes it, then the launch read afresh:
+  // a take that started the launch while this call waited for the task is
+  // seen once it has committed, so a write parked behind it is refused.
+  await tx.query(
+    `select 1 from public.records where business_id = $1 and id = any($2::uuid[]) for no key update`,
+    [tx.businessId, launches.map((launch) => launch.task_id)],
+  );
   const rows = await tx.query(
     `select 1 from public.task_launches
       where business_id = $1 and delegation_id = $2 and state <> 'waiting'`,

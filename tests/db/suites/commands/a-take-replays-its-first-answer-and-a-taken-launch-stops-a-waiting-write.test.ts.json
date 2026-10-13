@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A take asked again under its operation answers as it first did, about the same launch, and keeps its task in the audit chain; a write under the launch's credential that waited on the task lock is refused once a take started the launch"
+}

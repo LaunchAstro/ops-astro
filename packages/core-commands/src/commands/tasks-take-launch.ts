@@ -103,14 +103,14 @@ export async function serveTakeLaunch(
  */
 export const TAKE_LAUNCH_ROW: {
   readonly authority: 'beforePickup';
-  readonly replay: 'serveAgain';
+  readonly replay: 'takeLaunch';
   readonly operands: typeof takeLaunchOperands;
   readonly serve: typeof serveTakeLaunch;
 } = {
   authority: 'beforePickup',
-  // Served again on replay: a take is judged as the launch stands now, and the
-  // stored answer keeps no credential to release.
-  replay: 'serveAgain',
+  // On replay, served again for the launch it first named, as that launch
+  // stands now (`replayTake`); the stored answer keeps no credential.
+  replay: 'takeLaunch',
   operands: takeLaunchOperands,
   serve: serveTakeLaunch,
 };
