@@ -12,9 +12,10 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync 
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { FAKE_CODEX, makeWorld, RUNNER_KEY, type World } from './world.ts';
+import { FAKE_CODEX, freePort, makeWorld, RUNNER_KEY, type World } from './world.ts';
 
 const CHECK = resolve(import.meta.dirname, '../../scripts/m5/gpt-runner-install-check.sh');
+const PORT = String(await freePort());
 const DOOR = [
   {
     ref: 'local_runner',
@@ -51,6 +52,7 @@ function installation(settings: Record<string, unknown> = {}): Files {
     OPS_LOCAL_AGENT_HOME: w.agentHome,
     OPS_LOCAL_AGENT_CODEX_BIN: FAKE_CODEX,
     OPS_LOCAL_AGENT_KEY: RUNNER_KEY,
+    OPS_LOCAL_AGENT_PORT: PORT,
     ...settings,
   };
   for (const [name, value] of Object.entries(written)) {
@@ -226,4 +228,32 @@ it('refuses a Codex binary it cannot start without printing the path', () => {
   const result = checked(files);
   refused(result);
   expect(`${result.stdout}${result.stderr}`).not.toContain('private-path');
+});
+
+it.each([
+  ['no port', { OPS_LOCAL_AGENT_PORT: undefined }],
+  ['port 0, which leaves the port to the system at start', { OPS_LOCAL_AGENT_PORT: '0' }],
+])('refuses settings with %s, since custody must know the runner’s port', (_label, settings) => {
+  refused(checked(installation(settings)));
+});
+
+const darwin = process.platform === 'darwin';
+
+it.runIf(darwin).each([
+  ['the credential file', (files: Files) => files.credentialFile],
+  ['the settings file', (files: Files) => files.settingsFile],
+  ['the runner home', (files: Files) => files.w.agentHome],
+  ['the Codex home', (files: Files) => files.w.codexHome],
+])('refuses %s opened to others by an access list, whatever its mode bits', (_label, target) => {
+  const files = installation();
+  expect(spawnSync('/bin/chmod', ['+a', 'everyone allow read', target(files)]).status).toBe(0);
+  refused(checked(files));
+});
+
+it.runIf(darwin)('passes a runner home whose access list only denies', () => {
+  const files = installation();
+  expect(spawnSync('/bin/chmod', ['+a', 'everyone deny chown', files.w.agentHome]).status).toBe(0);
+  const result = checked(files);
+  expect(result.stdout).toContain('gpt runner install check: passed');
+  expect(result.status).toBe(0);
 });

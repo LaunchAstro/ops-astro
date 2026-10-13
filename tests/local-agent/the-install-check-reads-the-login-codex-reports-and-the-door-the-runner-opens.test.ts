@@ -13,9 +13,10 @@ import { createRunner, type Runner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
 import { parseCredentials, presented } from '../../packages/core-custody/src/credentials.ts';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/local-gpt.ts';
-import { FAKE_CODEX, makeWorld, RUNNER_KEY, type World } from './world.ts';
+import { FAKE_CODEX, freePort, makeWorld, RUNNER_KEY, type World } from './world.ts';
 
 const CHECK = resolve(import.meta.dirname, '../../scripts/m5/gpt-runner-install-check.sh');
+const PORT = String(await freePort());
 let world: World | undefined;
 let runner: Runner | undefined;
 afterEach(async () => {
@@ -38,6 +39,7 @@ function install(bin = FAKE_CODEX, header = 'authorization') {
     OPS_LOCAL_AGENT_HOME: w.agentHome,
     OPS_LOCAL_AGENT_CODEX_BIN: bin,
     OPS_LOCAL_AGENT_KEY: RUNNER_KEY,
+    OPS_LOCAL_AGENT_PORT: PORT,
   };
   const credentials = [
     {

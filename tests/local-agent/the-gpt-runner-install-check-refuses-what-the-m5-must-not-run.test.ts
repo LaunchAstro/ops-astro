@@ -13,10 +13,11 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FAKE_CODEX, makeWorld, RUNNER_KEY, type World } from './world.ts';
+import { FAKE_CODEX, freePort, makeWorld, RUNNER_KEY, type World } from './world.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const CHECK = join(ROOT, 'scripts/m5/gpt-runner-install-check.sh');
+const PORT = String(await freePort());
 
 let world: World | undefined;
 afterEach(() => {
@@ -62,6 +63,7 @@ function check(install: Partial<Install> = {}): { code: number; output: string }
       OPS_LOCAL_AGENT_HOME: w.agentHome,
       OPS_LOCAL_AGENT_CODEX_BIN: FAKE_CODEX,
       OPS_LOCAL_AGENT_KEY: RUNNER_KEY,
+      OPS_LOCAL_AGENT_PORT: PORT,
       ...settings,
     }),
   );
