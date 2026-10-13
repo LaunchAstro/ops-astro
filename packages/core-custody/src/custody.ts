@@ -37,6 +37,8 @@ export interface Carrier {
   readonly account: string | null;
   /** Whether custody sends the credential: false only for one filed as `none`. */
   readonly presents: boolean;
+  /** How it is sent: as a bearer token, a Basic pair, or not at all. */
+  readonly scheme: 'bearer' | 'basic' | 'none';
 }
 
 export interface CustodyConfig {
@@ -192,6 +194,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
         credentialKind: reply['kind'] as StorableKind,
         account: (reply['account'] as string | null) ?? null,
         presents: reply['presents'] !== false,
+        scheme: (reply['scheme'] as Carrier['scheme'] | undefined) ?? 'bearer',
       };
     },
     stderr: () => errors,

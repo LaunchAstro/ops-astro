@@ -278,5 +278,11 @@ export function described(
   }
   // Whether it is sent at all: an answer to one that is sent may echo it, so is never streamed.
   const presents = credential.scheme !== 'none';
-  return { type: 'described', kind: credential.kind, account: credential.account, presents };
+  return {
+    type: 'described',
+    kind: credential.kind,
+    account: credential.account,
+    presents,
+    scheme: credential.scheme,
+  };
 }

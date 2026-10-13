@@ -161,7 +161,8 @@ async function startMockCustody(destination: Destination): Promise<Custody> {
 
 /**
  * Real custody over the provider key, refusing to start unless the file can be read and holds
- * `email_key` for `email`. The file is checked for access here and read by custody alone.
+ * `email_key` for `email` as the provider reads a key: an `api_key`, presented as a bearer token.
+ * The file is checked for access here and read by custody alone.
  */
 async function startProviderCustody(
   settings: Extract<MailDeliverySettings, { kind: 'resend' }>,
@@ -175,10 +176,16 @@ async function startProviderCustody(
     credentialsFile: settings.credentialsFile,
     destinations: [settings.destination],
   });
-  if ((await custody.describe(MAIL_CREDENTIAL, settings.destination.key)) === null) {
+  const carrier = await custody.describe(MAIL_CREDENTIAL, settings.destination.key);
+  if (
+    carrier === null ||
+    !carrier.presents ||
+    carrier.scheme !== 'bearer' ||
+    carrier.credentialKind !== 'api_key'
+  ) {
     await custody.stop();
     throw new Error(
-      `MAIL_CREDENTIALS_FILE holds no ${MAIL_CREDENTIAL} for the ${settings.destination.key} destination`,
+      `MAIL_CREDENTIALS_FILE holds no bearer api_key ${MAIL_CREDENTIAL} for the ${settings.destination.key} destination`,
     );
   }
   return custody;

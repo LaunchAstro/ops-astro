@@ -128,10 +128,10 @@ it('a credentials file that is not there stops the start, naming the setting and
 it('a credentials file with no provider key for the mail destination stops the start, naming the key', async () => {
   const other = fileWith('other.json', [entry('trace_key', 'trace_target')]);
   await expect(start(valid(other))).rejects.toThrow(
-    /^MAIL_CREDENTIALS_FILE holds no email_key for the email destination/u,
+    /^MAIL_CREDENTIALS_FILE holds no bearer api_key email_key for the email destination/u,
   );
   const elsewhere = fileWith('elsewhere.json', [entry('email_key', 'trace_target')]);
-  await expect(start(valid(elsewhere))).rejects.toThrow(/holds no email_key/u);
+  await expect(start(valid(elsewhere))).rejects.toThrow(/holds no bearer api_key email_key/u);
   expect(heard).toEqual([]);
 });
 
