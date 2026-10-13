@@ -66,6 +66,9 @@ export async function operatorReceiptCase(): Promise<void> {
       recordSignIn: async () => {},
       // C55: only the pass stamps the operations view's date (migration 0070).
       recordTestedRestore: () => Promise.resolve(String((stamped += 1))),
+      stillOperator: () => Promise.resolve(),
+      holdingGrant: <T>(during: (release: () => void) => Promise<T>): Promise<T> =>
+        during(() => {}),
     };
     const backup = await asRole(backupLogin.url, BACKUP);
     try {
