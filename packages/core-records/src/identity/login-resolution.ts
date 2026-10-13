@@ -25,8 +25,7 @@ import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import { refuse, noMembership, NO_MEMBERSHIP_FIXES, type Refusal } from './access-ended.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { admitQuota, type QuotaRefusal } from './quota.ts';
-import { loginHasVerifiedFactor } from './second-factor.ts';
-import { sessionEnded, sessionEndedHeld } from './sessions.ts';
+import { sessionEndedHeld, sessionRefusal } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -143,20 +142,17 @@ export async function standingOf(
   // A session the person has ended (C58: signed out, or ended from another
   // session or by a factor change) is over from that commit, whatever the
   // token's own expiry says. Before the factor, so an ended session is told
-  // to sign in again rather than to give a code.
-  if (await sessionEnded(tx, presented)) {
-    return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
-  }
-
-  // After the person is known and active, and before anything is served: a
-  // sign-in that stopped at the password is not yet a sign-in for a login
-  // that verified a second factor, in any business (C59, LF-4). The factor is
-  // this login's: another login mapped to the same person holds none of it at
-  // the provider, so is never asked for its code.
+  // to sign in again rather than to give a code. Then, after the person is
+  // known and active, and before anything is served: a sign-in that stopped
+  // at the password is not yet a sign-in for a login that verified a second
+  // factor, in any business (C59, LF-4). The factor is this login's: another
+  // login mapped to the same person holds none of it at the provider, so is
+  // never asked for its code. Both in `ops.session_refusal`, which the
+  // carriage join asks too (#1531).
   const assurance = presented.assurance ?? NO_ASSURANCE;
-  const short = assurance.level !== 'aal2';
-  const asked = rule === 'required' && short && found.by_subject;
-  if (asked && (await loginHasVerifiedFactor(tx, presented.subject))) {
+  const refusal = await sessionRefusal(tx, presented, rule === 'required' && found.by_subject);
+  if (refusal === 'AUTH_SESSION_EXPIRED') return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
+  if (refusal === 'AUTH_SECOND_FACTOR_REQUIRED') {
     return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 

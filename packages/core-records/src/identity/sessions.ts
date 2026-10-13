@@ -218,20 +218,7 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
   // shares the settle's second; a failed one ends the login to the instant
   // plus the skew minute, as every ending does.
   const [row] = await tx.query<{ readonly ended: boolean; readonly open: boolean }>(
-    `with reset as (
-       select (to_timestamp($3::bigint) <= r.open_until and r.settled_at is null) as open,
-              to_timestamp($3::bigint + 1) <= r.settled_at as settled
-         from ops.subject_resets r
-        where r.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex'))
-     select exists (
-       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
-     ) or exists (
-       select 1 from ops.ended_subject_sessions s
-        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
-          and s.kept_session is distinct from $1::uuid
-          and to_timestamp($3::bigint) <= s.ended_before + make_interval(secs => $4)
-     ) or exists (select 1 from reset where open or settled) as ended,
-     exists (select 1 from reset where open) as open`,
+    `select ended, open from ops.session_ended($1::uuid, $2, $3, $4)`,
     [
       presented.sessionId,
       presented.subject,
@@ -241,6 +228,47 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
   );
   if (row?.open === true) await tx.query(END_PROVIDER_SESSIONS, [[presented.sessionId]]);
   return row?.ended === true;
+}
+
+/** Why login resolution refuses the session, by the one rule the carriage join asks too. */
+export type SessionRefusal = 'AUTH_SESSION_EXPIRED' | 'AUTH_SECOND_FACTOR_REQUIRED';
+
+/**
+ * `ops.session_refusal` for a verified token (20261013010250): ended, as
+ * `sessionEnded` reads it, or stopped at the password for a login with a
+ * verified factor when `factorAsked`. The 12 hours are the verifier's, judged
+ * before the database. A session refused while a reset is open is ended for
+ * good, as `sessionEnded` records it.
+ */
+export async function sessionRefusal(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  factorAsked: boolean,
+): Promise<SessionRefusal | null> {
+  const assurance = presented.assurance;
+  // Nothing to ask, as before: no session to have ended, no factor to ask for.
+  const short = assurance?.level !== 'aal2';
+  if (presented.sessionId === undefined && !(factorAsked && short)) return null;
+  const [row] = await tx.query<{
+    readonly refusal: SessionRefusal | null;
+    readonly ended: boolean;
+    readonly open: boolean | null;
+  }>(
+    `select refusal, refusal is not distinct from 'AUTH_SESSION_EXPIRED' as ended, open
+       from (select ops.session_refusal($1, $2::uuid, $3, $4, $5, false) as refusal,
+                    $2::uuid is not null
+                      and (select open from ops.session_ended($2::uuid, $1, $3, $6)) as open) s`,
+    [
+      presented.subject,
+      presented.sessionId ?? null,
+      assurance?.signedInAt ?? null,
+      !short,
+      factorAsked,
+      SIGN_IN_CLOCK_SKEW_SECONDS,
+    ],
+  );
+  if (row?.open === true) await tx.query(END_PROVIDER_SESSIONS, [[presented.sessionId]]);
+  return row?.refusal ?? null;
 }
 
 /**
