@@ -81,7 +81,8 @@ export async function whileServed<T extends object>(
 ): Promise<T | 'pending' | 'unserved'> {
   const served = async () => {
     const answer = await read(deployed.deploymentId);
-    if (answer.kind === 'unknown') return 'unserved';
+    // A read that fails, refused or unknown, is unserved: a person is asked, never a wait.
+    if (answer.kind !== 'ok') return 'unserved';
     const ok = answer.kind === 'ok' && answer.value.served;
     return ok && answer.value.revision === deployed.revision ? 'served' : 'pending';
   };

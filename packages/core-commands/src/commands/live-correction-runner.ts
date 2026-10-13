@@ -2,11 +2,10 @@
 //
 // C80's system runner: the job a worker runs under its lease once the gate has
 // passed, composing the reviewed executable (`core-connectors`) with the records:
-// 1. Read the correction under the lease and ask the effect register
-//    (`live-correction-effect.ts`) whether its publish happened. One it holds is
-//    observed again, never sent again; an unknown one it does not hold waits on
-//    a person, asked once. Only a correction a person approved publishes, and a
-//    stored page the C18-1 fence refuses stops the run first.
+// 1. Read the correction under the lease and ask the effect register (`live-correction-effect.ts`)
+//    whether its publish happened. One it holds is observed again, never sent again; an unknown
+//    one it does not hold waits on a person, asked once. Only a correction a person approved
+//    publishes, and a stored page the C18-1 fence refuses stops the run first.
 // 2. Rebuild the exact approved bytes from the pinned source, then take the
 //    dispatch under the lease (approved moves to unknown with its receipt), so a
 //    second runner finds it unknown. A check that refuses after the take proves
@@ -252,10 +251,11 @@ async function dispatch(
       await ports.raiseTask('EFFECT_NOT_REGISTERED');
     return await observe(db, run, correction, outcome, ports);
   }
+  const refusals = ports.refusals();
   const observations: Observations = {
-    ...pinnedObservations(correction, ports.refusals()),
+    ...pinnedObservations(correction, refusals),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
-    ...notAccepted(outcome, ports.refusals()),
+    ...notAccepted(outcome, refusals),
   };
   const state = outcome.state === 'refused' ? 'failed' : outcome.state;
   return await record(db, run, { step: 'publish', outcome: state, observations }, ports);

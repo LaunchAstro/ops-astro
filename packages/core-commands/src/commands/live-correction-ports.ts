@@ -85,7 +85,8 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     revert: async (input) => await revertForward(binding, input, guarded),
     raiseTask: deps.raiseTask,
     now: deps.now,
-    refusals: () => [...codes],
+    // A run's refusals, read once at its receipt: the next run on these ports starts with none.
+    refusals: () => codes.splice(0),
     unbound: (correction) => bindingRefuses(binding, correction),
   };
 }
