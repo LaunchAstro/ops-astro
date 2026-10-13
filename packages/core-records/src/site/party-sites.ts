@@ -113,13 +113,23 @@ export async function bindPartySite(
   });
 }
 
-/** Unbind one page of a client's site, unless an open correction names it. */
+/**
+ * Unbind one page of a client's site, unless an open correction names it. The
+ * site row is taken before the page, the order every writer of the site keeps,
+ * so two unbinds of one client's pages queue on it rather than deadlock.
+ */
 export async function unbindPartySitePage(
   tx: TransactionQuery,
   partyId: string,
   pageUrl: string,
 ): Promise<SiteWrite> {
   return await held(tx, async (inner) => {
+    await inner.query(
+      `select 1 from public.party_sites
+        where business_id = $1 and party_id = $2::uuid
+          for no key update`,
+      [tx.businessId, partyId],
+    );
     await inner.query(
       `delete from public.party_site_pages
         where business_id = $1 and party_id = $2::uuid and page_url = $3`,

@@ -144,7 +144,9 @@ grant execute on function public.party_site_under_correction(uuid, uuid) to ops_
 
 -- A page's delete takes its site row first, so a request in flight on any page
 -- of the client (which share-locks that row) is waited for, then refuses while
--- a correction of the client is open.
+-- a correction of the client is open. The delete has locked its page by then,
+-- so the store's unbind takes the site row before it deletes: two unbinds of
+-- one client's pages queue on the site rather than deadlock.
 create or replace function public.party_site_pages_held()
   returns trigger
   language plpgsql

@@ -197,8 +197,12 @@ export const seenWaiting = async (w: C80World, statement: RegExp): Promise<boole
     () => false,
   );
 
-/** The statements each side runs, as pg_stat_activity shows them. */
-export const UNBIND: RegExp = /delete from public\.party_site_pages/u;
+/**
+ * The statements each side runs, as pg_stat_activity shows them. An unbind
+ * waits at its site row, or at its page's delete behind it.
+ */
+export const UNBIND: RegExp =
+  /delete from public\.party_site_pages|from public\.party_sites\s+where business_id = \$1 and party_id = \$2::uuid\s+for no key update/u;
 export const BIND: RegExp = /insert into public\.party_sites/u;
 export const PAGE_BIND: RegExp = /insert into public\.party_site_pages/u;
 export const REQUEST: RegExp = /insert into public\.live_corrections/u;
