@@ -108,9 +108,7 @@ export type {
   InboxEntry,
   InboxReadResult,
   UnattendedView,
-  LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
-  LiveCorrectionResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,
@@ -170,6 +168,8 @@ export type {
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
 export type * from './views-chat.ts';
+// C80's two read answers, beside the decision read's.
+export type { LiveCorrectionLocateResult, LiveCorrectionResult } from './views-run.ts';
 export type {
   MapComponentView,
   MapView,

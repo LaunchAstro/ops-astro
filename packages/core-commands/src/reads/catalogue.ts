@@ -63,12 +63,7 @@ import { parseBreachNotices, readBreachNotices, readOperations } from './operati
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
 import { listInvitations } from './invitations.ts';
-import {
-  parseCorrectionLocate,
-  parseCorrectionRead,
-  serveCorrectionLocate,
-  serveCorrectionRead,
-} from './live-correction.ts';
+import { LIVE_CORRECTION_READ_ROWS } from './catalogue-live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
@@ -961,25 +956,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
-  // C80: a correction's decision; `run:write` at its party, asked inside the query.
-  'live_correction.read': {
-    identifiers: ['correctionId'],
-    parse: parseCorrectionRead,
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
-    serve: serveCorrectionRead,
-  },
-  // C80: the sidebar door's site read; what a request asks, asked inside the read.
-  'live_correction.locate': {
-    identifiers: ['recordId'],
-    parse: parseCorrectionLocate,
-    spine: true,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    serve: serveCorrectionLocate,
-  },
+  ...LIVE_CORRECTION_READ_ROWS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {
