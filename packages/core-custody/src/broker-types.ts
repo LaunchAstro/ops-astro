@@ -31,6 +31,8 @@ export interface ProviderAdapter {
     streamed?: boolean,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
+  /** The most bytes a built request's body may hold; a paid call above it is refused before its hold. */
+  readonly bodyLimit?: number;
   readonly lookup?: (operationId: string) => AdapterRequest;
   readonly readLookup?: (body: unknown) => string | undefined;
 }
@@ -68,7 +70,12 @@ export interface BrokerRoute {
  */
 export interface AuditNote {
   readonly action:
-    'model.call_dispatched' | 'model.call_released' | 'model.call_refused' | 'model.call_held';
+    | 'model.call_dispatched'
+    | 'model.call_released'
+    | 'model.call_refused'
+    | 'model.call_held'
+    // A paid answer whose call another writer had already ended: no money moved, nothing kept.
+    | 'model.call_settle_lost';
   readonly outcome: 'applied' | 'refused';
   /** Set on a refusal, from the refusal register. */
   readonly refusalCode: BrokerRefusal | null;
@@ -93,6 +100,12 @@ export interface Broker {
    * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
    */
   readonly localOwnerTesting?: boolean;
+  /**
+   * `OPS_OUTSIDE_MODEL_PEOPLE` (#1508): the `businessId:personId` pairs whose own
+   * typed words may go to the outside paid route (`carriesOutside`). Absent or
+   * empty, nobody's do.
+   */
+  readonly outsidePeople?: readonly string[];
   /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
   readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
@@ -160,6 +173,9 @@ export type BrokerRefusal =
   | 'STILL_ANSWERING'
   | 'ANSWER_ENDED'
   | 'CARRIAGE_UNAVAILABLE'
+  // #1508: a paid request past its destination's size; the send no longer admitted at the handoff.
+  | 'PROMPT_TOO_LARGE'
+  | 'CUSTODY_NOT_ADMITTED'
   | CarryRefusal;
 
 export type ModelCallResult =
@@ -178,6 +194,8 @@ export type ModelCallResult =
       readonly callId: string | null;
       readonly words?: string;
       readonly retryAfterSeconds?: number;
+      /** What the allowance has left, on a paid call refused for want of room. */
+      readonly leftMinor?: number;
     }
   | {
       readonly ok: false;

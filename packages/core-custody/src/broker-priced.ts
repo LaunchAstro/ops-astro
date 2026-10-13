@@ -1,0 +1,252 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The conversation seam, split on price (#1508, option A). An unpriced call
+// is `callModelUnpriced`, unchanged. A paid call takes the held path, and only
+// through the carve-out (`carriesOutside`): every other priced operation is
+// refused as option B refused it, before anything is written.
+//
+// The held path, in order:
+// 1. Checks that write nothing: the owner, the route the carve-out admits, a
+//    model of that provider's, the request built and within its size.
+// 2. The hold, in one transaction under the cap's lock (`holdPriced`): the
+//    message's call first, the ceiling, room for the most, the row.
+// 3. The send, admitted again at the handoff: the call still `dispatched`, and
+//    the caller's grants, session, conversation and page judged at one locked
+//    instant in a transaction held open until custody has started.
+// 4. The settle and the kept reply in one transaction, as the caller: a
+//    settled paid call always has its reply. An answer from another model, an
+//    unknown cost, a cost above the hold, or a reply that cannot be kept holds
+//    the most; a call another writer ended moves no money and keeps nothing.
+
+import { randomUUID } from 'node:crypto';
+import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
+import { openrouterModel, type ModelOperation } from '../../core-connectors/src/index.ts';
+import { MALFORMED } from './broker-fault.ts';
+import {
+  callModelUnpriced,
+  localRoute,
+  outsideFields,
+  ownsConversation,
+  refused,
+  type ConversationCallRequest,
+  type PaidSeams,
+} from './broker-conversation.ts';
+import { holdPriced } from './broker-planning.ts';
+import { sendingAccount } from './broker-carrier.ts';
+import type { ReservedCall } from './broker-reserve.ts';
+import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
+import { carriesOutside } from './credentials.ts';
+import type { Admit } from './custody.ts';
+import type {
+  Broker,
+  BrokerRoute,
+  ModelCaller,
+  ModelCallResult,
+  ResolvedField,
+} from './broker-types.ts';
+
+/** The states an answer may close, as `broker-settle.ts` has them. */
+const ANSWERABLE: ReadonlySet<string> = new Set(['reserved', 'dispatched', 'liability_unknown']);
+
+/** The outside route the carve-out admits for this call, if one does. */
+function outsideRoute(
+  businessId: BusinessId,
+  caller: ModelCaller,
+  operation: ModelOperation,
+  fields: readonly ResolvedField[],
+  paid: PaidSeams,
+  broker: Broker,
+): BrokerRoute | undefined {
+  const call = {
+    businessId,
+    operation,
+    caller,
+    fieldNames: fields.map((field) => field.name),
+    authors: paid.authors,
+  };
+  return broker.routes.find((route) => carriesOutside(broker, route, call));
+}
+
+/**
+ * A person's model call from their own conversation: an unpriced one as
+ * before; a priced one only on the held path, through the carve-out.
+ */
+export async function callModelInConversation(
+  database: Database,
+  businessId: BusinessId,
+  caller: ModelCaller,
+  request: ConversationCallRequest,
+  broker: Broker,
+): Promise<ModelCallResult> {
+  const operation = broker.operations.get(request.operation);
+  if (operation === undefined || operation.maximumMinor === 0) {
+    return await callModelUnpriced(database, businessId, caller, request, broker);
+  }
+  if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
+  if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  const fields = outsideFields(request.fields);
+  const { paid } = request;
+  // Option B for every priced call the carve-out does not take, and for a carried
+  // deployment, whose judgement at the send does not judge a paid call yet.
+  const route =
+    paid === undefined || broker.carrier !== undefined
+      ? undefined
+      : outsideRoute(businessId, caller, operation, fields, paid, broker);
+  if (route === undefined || paid === undefined) {
+    const chosen = localRoute(operation, fields, caller, broker);
+    return refused(chosen.ok ? 'BUDGET_UNAVAILABLE' : chosen.code);
+  }
+  // A paid model is the one the person picked, never a default (C7).
+  if (openrouterModel(request.model) === undefined) return refused('LOCAL_MODEL_REQUIRED');
+  return await heldCall(database, businessId, request, { operation, route, fields, paid }, broker);
+}
+
+interface Chosen {
+  readonly operation: ModelOperation;
+  readonly route: BrokerRoute;
+  readonly fields: readonly ResolvedField[];
+  readonly paid: PaidSeams;
+}
+
+async function heldCall(
+  database: Database,
+  businessId: BusinessId,
+  request: ConversationCallRequest,
+  chosen: Chosen,
+  broker: Broker,
+): Promise<ModelCallResult> {
+  const { operation, route, fields, paid } = chosen;
+  const adapter = broker.providers.get(operation.provider);
+  if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
+  const callId = randomUUID();
+  const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
+  const built = adapter.build(values, callId, request.model, false);
+  if (adapter.bodyLimit !== undefined && Buffer.byteLength(built.body) > adapter.bodyLimit) {
+    return refused('PROMPT_TOO_LARGE');
+  }
+  const account = await sendingAccount(broker, route, operation.destination);
+  const held = await database.withBusiness(
+    businessId,
+    async (tx) => await holdPriced(tx, request, operation, route, account, callId),
+  );
+  if (!('reserved' in held)) return held;
+  const outcome = await broker.custody.dispatch(
+    route.credentialRef,
+    {
+      destination: operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: operation.timeoutMs,
+      maxResponseBytes: operation.maxResponseBytes,
+    },
+    undefined,
+    admission(paid, callId),
+  );
+  const settlement = settlementOf(outcome, operation, adapter);
+  const asked = { reserved: held.reserved, settlement, model: request.model, broker };
+  // Kept as the caller; one who can no longer be keeps nothing, and the money is judged alone.
+  return (
+    (await paid.asCaller(async (tx, as) => await settleAndKeep(tx, asked, as.keep))) ??
+    (await database.withBusiness(businessId, async (tx) => await settleAndKeep(tx, asked)))
+  );
+}
+
+/**
+ * The judgement at the handoff, in the caller's transaction: the call still
+ * `dispatched` under its own lock (a swept call is never sent), then what the
+ * send rests on. Admitted, the transaction stays open until custody has
+ * started, so a change to any of it waits for the send. Anything else,
+ * including a lock held elsewhere, admits nothing.
+ */
+function admission(paid: PaidSeams, callId: string): Admit {
+  return async (sent) =>
+    await new Promise<boolean>((resolve) => {
+      paid
+        .asCaller(async (tx, as) => {
+          const admitted = (await stillDispatched(tx, callId)) && (await as.stillAdmitted());
+          resolve(admitted);
+          if (admitted) await sent;
+        })
+        .then(
+          () => resolve(false),
+          () => resolve(false),
+        );
+    });
+}
+
+async function stillDispatched(tx: TenantQuery, callId: string): Promise<boolean> {
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, callId],
+  );
+  return call?.state === 'dispatched';
+}
+
+interface Asked {
+  readonly reserved: ReservedCall;
+  readonly settlement: Settlement;
+  readonly model: string | undefined;
+  readonly broker: Broker;
+}
+
+/** The answer came from a model the asked one may be named as (#1508 F2). */
+const fromAsked = (model: string | undefined, answered: string | null): boolean =>
+  answered !== null && (openrouterModel(model)?.acceptedIds.includes(answered) ?? false);
+
+/** Held as the provider's answer, named in the call's provider code (0110's shape). */
+const MISMATCH = { kind: 'unknown', ...MALFORMED, providerCode: 'model_mismatch' } as const;
+
+/**
+ * The settle and the kept reply, one transaction under the call's lock: both
+ * or neither. A paid call settles only at a whole cost within its hold, from
+ * the model asked, with its reply kept; anything else is released on proof
+ * that nothing happened, or holds the most.
+ */
+async function settleAndKeep(
+  tx: TenantQuery,
+  asked: Asked,
+  keep?: (text: string) => Promise<boolean>,
+): Promise<ModelCallResult> {
+  const { reserved, settlement, model, broker } = asked;
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, reserved.callId],
+  );
+  if (call === undefined || !ANSWERABLE.has(call.state)) return await settleLost(tx, asked);
+  if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
+  if (settlement.kind === 'nothing') {
+    return await release(tx, reserved, settlement.reason, broker);
+  }
+  const { costMinor, answer } = settlement;
+  const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
+  if (observed === null || observed < 0 || observed > reserved.reservedMinor) {
+    return await hold(tx, reserved, observed, null, broker);
+  }
+  if (!fromAsked(model, answer.model)) return await hold(tx, reserved, observed, MISMATCH, broker);
+  if (keep === undefined || !(await keep(answer.text))) {
+    return await hold(tx, reserved, observed, null, broker);
+  }
+  await settlePriced(tx, reserved, settlement, broker);
+  return {
+    ok: true,
+    callId: reserved.callId,
+    text: answer.text,
+    reservedMinor: reserved.reservedMinor,
+    actualMinor: observed,
+    releasedMinor: reserved.reservedMinor - observed,
+  };
+}
+
+/** A call another writer ended first: no money moves, nothing is kept, and the loss is recorded. */
+async function settleLost(tx: TenantQuery, asked: Asked): Promise<ModelCallResult> {
+  const { reserved, settlement, broker } = asked;
+  const observedMinor = settlement.kind === 'priced' ? settlement.costMinor : null;
+  await broker.audit(tx, {
+    action: 'model.call_settle_lost',
+    outcome: 'refused',
+    refusalCode: 'DECISION_STALE',
+    detail: { callId: reserved.callId, operation: reserved.operation.key, observedMinor },
+  });
+  return { ok: false, code: 'DECISION_STALE', callId: reserved.callId };
+}

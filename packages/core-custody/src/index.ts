@@ -39,10 +39,12 @@ export {
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
 export {
-  callModelInConversation,
   type ConversationCallRequest,
   type ConversationScope,
+  type PaidCaller,
+  type PaidSeams,
 } from './broker-conversation.ts';
+export { callModelInConversation } from './broker-priced.ts';
 export {
   callModelForPlanning,
   PLANNING_CAP_DEFAULT,

@@ -43,10 +43,17 @@
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
 
 import { randomUUID } from 'node:crypto';
-import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
+import {
+  CONVERSATION_ANSWER,
+  CONVERSATION_MODELS,
+  conversationOperationOf,
+  OPENROUTER_CONVERSATION_KEY,
+} from '../../../core-connectors/src/index.ts';
 import {
   callModelInConversation,
   type ConversationScope,
+  type ModelCallResult,
+  type PaidSeams,
 } from '../../../core-custody/src/index.ts';
 import { isUuid, withSession } from '../../../core-records/src/index.ts';
 import type {
@@ -56,12 +63,14 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { contextOf, type Context } from './conversation-context.ts';
+import { contextOf, pageAdmits, type Context } from './conversation-context.ts';
 import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
 import { askedModel } from './conversation-model.ts';
 import {
   answered,
+  budgetWith,
+  heldWith,
   refusedWith,
   releasedWith,
   type ConversationReply,
@@ -95,6 +104,10 @@ interface Question {
   readonly context: Context;
   /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
   readonly model: string | undefined | null;
+  /** The page task the conversation is on, as read with the context. */
+  readonly page: string | null;
+  /** Who wrote the asked message and each earlier person turn read. */
+  readonly authors: readonly string[];
 }
 
 /** The kept reply to a message, if there is one. */
@@ -120,8 +133,9 @@ async function questionOf(
     readonly owner_person_id: string;
     readonly body: string;
     readonly scope_record_id: string | null;
+    readonly author: string;
   }>(
-    `select c.owner_person_id, m.body, c.scope_record_id
+    `select c.owner_person_id, m.body, c.scope_record_id, m.author_actor_id::text as author
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
@@ -129,6 +143,12 @@ async function questionOf(
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
   );
   if (found === undefined) return undefined;
+  const context = await contextOf(
+    tx,
+    session,
+    { ...asked, body: found.body },
+    found.scope_record_id,
+  );
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
     scope: {
@@ -138,8 +158,71 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    context: await contextOf(tx, session, { ...asked, body: found.body }, found.scope_record_id),
+    context,
+    page: found.scope_record_id,
+    authors: [found.author, ...context.authors],
   };
+}
+
+/**
+ * At a paid send's handoff, in the caller's transaction: the conversation
+ * still theirs and kept, their session and grant live (`hearingAt`), the page
+ * the one the context read, and that page still no client's and theirs to read.
+ */
+async function stillAsked(
+  tx: TenantQuery,
+  session: Session,
+  asked: Asked,
+  page: string | null,
+): Promise<boolean> {
+  if ((await hearingAt(tx, session, asked, 'share')) === undefined) return false;
+  const [now] = await tx.query<{ readonly page: string | null }>(
+    `select scope_record_id as page from conversations where business_id = $1 and id = $2`,
+    [tx.businessId, asked.conversationId],
+  );
+  if (now === undefined || now.page !== page) return false;
+  return page === null || (await pageAdmits(tx, session, page));
+}
+
+/** A paid call's seams, and the reply its settle kept. */
+function paidSeams(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  asked: Asked,
+  question: Question,
+): { readonly seams: PaidSeams; readonly kept: () => Kept | undefined } {
+  let kept: Kept | undefined;
+  const seams: PaidSeams = {
+    authors: question.authors,
+    asCaller: async (work) => {
+      // Boxed, so a refusal is told apart from whatever the work answers.
+      const done = await withSession(database, businessId, presented, async (tx, session) => ({
+        value: await work(tx, {
+          stillAdmitted: async () => await stillAsked(tx, session, asked, question.page),
+          keep: async (text) => {
+            if (!bounded(text, REPLY_LIMIT) || !storableText(text)) return false;
+            kept = await keep(tx, session, asked, text);
+            return kept !== undefined;
+          },
+        }),
+      })).catch(heldElsewhere);
+      return done === undefined || isCommandRefusal(done) ? undefined : done.value;
+    },
+  };
+  return { seams, kept: () => kept };
+}
+
+/** A call that kept no reply, in the panel's words. */
+function unanswered(result: Exclude<ModelCallResult, { readonly ok: true }>): ConversationReply {
+  if (result.code === 'CALL_RELEASED') return releasedWith(result.reason);
+  if (result.code === 'LIABILITY_UNKNOWN' && 'heldMinor' in result && result.heldMinor > 0) {
+    return heldWith(result.heldMinor);
+  }
+  if (result.code === 'BUDGET_UNAVAILABLE' && 'leftMinor' in result) {
+    return budgetWith(result.leftMinor);
+  }
+  return refusedWith(result.code);
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */
@@ -201,6 +284,14 @@ async function answerOnce(
   // A read that came back after an earlier answer was kept and its flight ended: read again.
   const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
+  // The model picks the operation: a paid model's provider has its own (#1508).
+  const provider = CONVERSATION_MODELS.find((model) => model.id === question.model)?.provider;
+  const operation =
+    provider === undefined ? CONVERSATION_ANSWER.key : conversationOperationOf(provider);
+  const paid =
+    operation === OPENROUTER_CONVERSATION_KEY
+      ? paidSeams(database, businessId, presented, asked, question)
+      : undefined;
   const result = await callModelInConversation(
     database,
     businessId,
@@ -208,19 +299,23 @@ async function answerOnce(
     {
       conversation: question.scope,
       messageId: asked.messageId,
-      operation: CONVERSATION_ANSWER.key,
+      operation,
       fields: [
         ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
         { name: 'message', source: 'outside', value: question.body },
       ],
       ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
       ...(pieces === undefined ? {} : { onPiece: pieces.push }),
+      ...(paid === undefined ? {} : { paid: paid.seams }),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
-  if (!result.ok) {
-    return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
+  if (!result.ok) return unanswered(result);
+  // A paid reply was kept in the settle's own transaction.
+  if (paid !== undefined) {
+    const kept = paid.kept();
+    return kept === undefined ? null : answered(kept, question.context.cites);
   }
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!bounded(result.text, REPLY_LIMIT) || !storableText(result.text)) {

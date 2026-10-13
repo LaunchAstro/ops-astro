@@ -20,17 +20,14 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import {
   localRoute,
+  messageCall,
   outsideFields,
   ownsConversation,
+  RATE_LIMITED,
   refused,
   type ConversationCallRequest,
 } from './broker-conversation.ts';
-import {
-  atCeiling,
-  registerPromptCopy,
-  WAIT_SECONDS,
-  type ReservedCall,
-} from './broker-reserve.ts';
+import { atCeiling, registerPromptCopy, type ReservedCall } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
@@ -142,36 +139,51 @@ async function envelopeOf(
   return envelope.id;
 }
 
-type Held = { readonly ok: true; readonly reserved: ReservedCall } | ModelCallResult;
+export type Held = { readonly ok: true; readonly reserved: ReservedCall } | ModelCallResult;
 
-/** Under the cap's lock: room for the priced maximum, then the envelope and the held, sent row. */
-async function holdPlanning(
+/**
+ * Under the cap's lock: the message's call first (a twin is told where its
+ * answer is, never that the model is busy, #1508 F7), then the ceiling, room
+ * for the priced maximum, the envelope and the held, sent row naming its
+ * message. A twin that inserted after the lookup wins the unique index, and
+ * this holds nothing.
+ */
+export async function holdPriced(
   tx: TenantQuery,
   request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
   account: string | null,
+  callId: string = randomUUID(),
 ): Promise<Held> {
   const cap = await lockedOrDefault(tx);
+  const earlier = await messageCall(tx, request.messageId);
+  if (earlier !== undefined) return earlier;
   if (await atCeiling(tx, operation, route)) {
-    return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
+    return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
   }
   const committed = await committedUnder(tx, cap.id);
-  if (committed + operation.maximumMinor > Number(cap.limit_minor)) {
-    return refused('BUDGET_UNAVAILABLE');
+  const limitMinor = Number(cap.limit_minor);
+  if (committed + operation.maximumMinor > limitMinor) {
+    const leftMinor = Math.max(0, limitMinor - committed);
+    return { ok: false, code: 'BUDGET_UNAVAILABLE', callId: null, leftMinor };
   }
   const envelopeId = await envelopeOf(tx, cap.id, request);
-  const callId = randomUUID();
-  await tx.query(
+  const inserted = await tx.query(
     `insert into public.model_calls
-       (business_id, id, conversation_id, planning_envelope_id, operation_key, state,
-        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref,
-        account, started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, $12, clock_timestamp())`,
+       (business_id, id, conversation_id, conversation_message_id, planning_envelope_id,
+        operation_key, state, reserved_minor, route_key, route_reach, credential_kind, provider,
+        credential_ref, account, started_at)
+     values ($1, $2, $3, $4, $5, $6, 'dispatched', $7, $8, $9, $10, $11, $12, $13,
+             clock_timestamp())
+     on conflict (business_id, conversation_message_id) where conversation_message_id is not null
+     do nothing
+     returning id`,
     [
       tx.businessId,
       callId,
       request.conversation.id,
+      request.messageId ?? null,
       envelopeId,
       operation.key,
       operation.maximumMinor,
@@ -183,6 +195,9 @@ async function holdPlanning(
       account,
     ],
   );
+  if (inserted.length === 0) {
+    return (await messageCall(tx, request.messageId)) ?? refused('STILL_ANSWERING');
+  }
   await registerPromptCopy(tx, callId);
   return {
     ok: true,
@@ -257,7 +272,7 @@ export async function callModelForPlanning(
   const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPlanning(tx, request, operation, route, account),
+    async (tx) => await holdPriced(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);

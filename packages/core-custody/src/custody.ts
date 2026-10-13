@@ -14,6 +14,12 @@
 // dispatch answers `worker_lost` with the fault ours: the provider may or may
 // not have acted, so the broker holds the reservation and never redispatches
 // without positive proof.
+//
+// A paid send is admitted again at the handoff (#1508, #1509's hook): the
+// broker's `admit` judges it in a transaction it holds open until custody says
+// `started` (or answers first), so a revocation that commits after the
+// judgement waits until custody has the request. Refused, custody is never
+// asked, and the dispatch answers `CUSTODY_NOT_ADMITTED`: nothing was sent.
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -44,12 +50,20 @@ export interface CustodyConfig {
   readonly destinations: readonly Destination[];
 }
 
+/**
+ * The judgement at the handoff: whether the send may go, judged in a
+ * transaction held open until `sent` settles (custody's `started`, or its
+ * answer). False, or a failure, admits nothing.
+ */
+export type Admit = (sent: Promise<void>) => Promise<boolean>;
+
 export interface Custody {
   readonly pid: number;
   dispatch(
     credentialRef: string,
     request: OutboundRequest,
     onPiece?: (text: string) => void,
+    admit?: Admit,
   ): Promise<CustodyOutcome>;
   /**
    * The kind and account of the credential custody would present to
@@ -163,6 +177,15 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }
 
+/** The handoff a held admission waits on, and what settles it: custody started, or answered first. */
+function handOff(): { readonly promise: Promise<void>; readonly done: () => void } {
+  const settle: { resolve?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    settle.resolve = resolve;
+  });
+  return { promise, done: () => settle.resolve?.() };
+}
+
 export async function startCustody(config: CustodyConfig): Promise<Custody> {
   const child = forkCustody(config);
   let errors = '';
@@ -173,17 +196,30 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
   await ready(child);
   return {
     pid: child.pid ?? -1,
-    dispatch: async (credentialRef, request, onPiece) => {
+    dispatch: async (credentialRef, request, onPiece, admit) => {
       let started = false;
+      const handedOff = handOff();
+      const sent = handedOff.done;
+      const admitted =
+        admit === undefined ? true : await admit(handedOff.promise).catch(() => false);
+      if (!admitted) {
+        sent();
+        return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
+      }
       const markStarted = (): void => {
         started = true;
+        sent();
       };
-      const reply = await exchange(
-        { type: 'dispatch', credentialRef, request },
-        markStarted,
-        onPiece,
-      );
-      return outcomeOf(reply, started);
+      try {
+        const reply = await exchange(
+          { type: 'dispatch', credentialRef, request },
+          markStarted,
+          onPiece,
+        );
+        return outcomeOf(reply, started);
+      } finally {
+        sent();
+      }
     },
     describe: async (credentialRef, destination) => {
       const reply = await exchange({ type: 'describe', credentialRef, destination });

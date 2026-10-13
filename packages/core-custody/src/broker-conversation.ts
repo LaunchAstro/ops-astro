@@ -6,7 +6,8 @@
 // reserved, and a cloud route is refused before anything is written (AW-03
 // egress off), save LA-1's laptop carve-out: the owner's own GPT session
 // (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
-// against the planning budget (`broker-planning.ts`, AW-04's U10).
+// against the planning budget (`broker-planning.ts`, AW-04's U10), and a paid
+// chat reply takes the held path (`broker-priced.ts`, #1508).
 
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
@@ -57,6 +58,28 @@ export interface ConversationCallRequest {
   readonly onPiece?: (text: string) => void;
   /** The person's message the call answers: one message has at most one call (#1531). */
   readonly messageId?: string;
+  /** A paid call's seams to the caller's own transactions (#1508); absent, nothing paid is sent. */
+  readonly paid?: PaidSeams;
+}
+
+/** What a paid call asks of the caller, inside a transaction opened as them. */
+export interface PaidCaller {
+  /** After the call's own lock: whether the send still rests on live facts (#1508 F3, F5). */
+  readonly stillAdmitted: () => Promise<boolean>;
+  /** Keeps the answer as the reply, in the settling transaction; false when it cannot be. */
+  readonly keep: (text: string) => Promise<boolean>;
+}
+
+export interface PaidSeams {
+  /** Who wrote each person turn the call sends: the asked message and the earlier ones. */
+  readonly authors: readonly string[];
+  /**
+   * Runs `work` in a transaction as the caller, resolved again from their
+   * session; undefined when they cannot be, or a lock they need is held elsewhere.
+   */
+  readonly asCaller: <T>(
+    work: (tx: TenantQuery, caller: PaidCaller) => Promise<T>,
+  ) => Promise<T | undefined>;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -65,7 +88,7 @@ export const refused = (code: BrokerRefusal): ModelCallResult => ({
   callId: null,
 });
 
-const RATE_LIMITED: ModelCallResult = {
+export const RATE_LIMITED: ModelCallResult = {
   ok: false,
   code: 'RATE_LIMITED',
   callId: null,
@@ -140,7 +163,7 @@ export function localRoute(
  * call still with the model, or settled in the last 30 s (its reply is still
  * being kept), is on its way; any other ending kept nothing.
  */
-async function messageCall(
+export async function messageCall(
   tx: TenantQuery,
   messageId: string | undefined,
 ): Promise<ModelCallResult | undefined> {
@@ -270,14 +293,14 @@ async function settledFor(
 }
 
 /**
- * A person's model call from their own conversation. Every check runs before
+ * A person's unpriced model call from their own conversation. Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
  * refused, AW-03 egress off), an unpriced operation (#1508, option B: a priced
  * one is refused), then AW-01's ceilings. The answer settles at
  * nothing; a priced answer is above a hold of nothing, so it is held as
  * unknown liability for a person, as any call above its hold is (O9).
  */
-export async function callModelInConversation(
+export async function callModelUnpriced(
   database: Database,
   businessId: BusinessId,
   caller: ModelCaller,

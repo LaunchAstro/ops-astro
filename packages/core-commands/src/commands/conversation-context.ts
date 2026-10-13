@@ -59,6 +59,8 @@ export interface Context {
   /** The extra prompt fields, in the order the model reads them; empty ones are left out. */
   readonly fields: readonly { readonly name: 'page' | 'earlier'; readonly value: string }[];
   readonly cites: readonly Cite[];
+  /** Who wrote each earlier person turn read: a paid call carries only the caller's own. */
+  readonly authors: readonly string[];
 }
 
 export const EARLIER_COUNT = 10;
@@ -98,6 +100,7 @@ async function pageOf(
   tx: TenantQuery,
   session: Session,
   taskId: string,
+  lock: 'share' | 'share nowait' = 'share',
 ): Promise<PageRow | PageRefusal> {
   // Before the task is touched: a caller who may not read it neither waits on its writer nor reads it.
   if (!(await reads(tx, session, taskId))) return 'SCOPE_NOT_GRANTED';
@@ -106,7 +109,7 @@ async function pageOf(
     `select id, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
        from records
       where business_id = $1 and id = $2 and deleted_at is null
-      for share`,
+      for ${lock === 'share' ? 'share' : 'share nowait'}`,
     [tx.businessId, taskId],
   );
   if (task === undefined) return 'NOT_FOUND';
@@ -135,7 +138,7 @@ function earlierOf(
 
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
-const REFUSED: Context = { refused: true, fields: [], cites: [] };
+const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [] };
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
 
@@ -226,13 +229,16 @@ export async function waitsFirst(
  * every message write takes. A reply counts only when its question does too,
  * so one kept after the purge to a question from before it is cut with it.
  */
-async function earlierRows(
-  tx: TenantQuery,
-  asked: Asked,
-): Promise<readonly { readonly role: string; readonly body: string }[]> {
-  return await tx.query<{ readonly role: string; readonly body: string }>(
-    `select role, body from (
-       select m.role, m.body, m.created_at, m.id
+interface EarlierRow {
+  readonly role: string;
+  readonly body: string;
+  readonly author: string;
+}
+
+async function earlierRows(tx: TenantQuery, asked: Asked): Promise<readonly EarlierRow[]> {
+  return await tx.query<EarlierRow>(
+    `select role, body, author from (
+       select m.role, m.body, m.created_at, m.id, m.author_actor_id::text as author
          from conversation_messages m
          join conversation_messages a
            on a.business_id = m.business_id and a.conversation_id = m.conversation_id
@@ -287,5 +293,19 @@ export async function contextOf(
   ]);
   const earlier = earlierOf(rows, around);
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
-  return { refused: false, fields, cites };
+  const authors = rows.filter((row) => row.role === 'person').map((row) => row.author);
+  return { refused: false, fields, cites, authors };
+}
+
+/**
+ * At a paid send's handoff: whether the page task, held for share without
+ * waiting, is still one the caller may read and no client's (#1508 F5). A
+ * task being written at that moment refuses (`55P03`), as a grant does.
+ */
+export async function pageAdmits(
+  tx: TenantQuery,
+  session: Session,
+  taskId: string,
+): Promise<boolean> {
+  return typeof (await pageOf(tx, session, taskId, 'share nowait')) !== 'string';
 }
