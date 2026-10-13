@@ -4,6 +4,11 @@
 
 set -e
 
+# 0. Every worktree's hooks run through the shared dispatchers, which refuse
+#    in a checkout without installed hooks. An older commit's install points
+#    core.hooksPath back at .husky/_; this puts it right again.
+sh scripts/hook-dispatch.sh
+
 # pnpm may only exist through corepack on this machine.
 if command -v pnpm >/dev/null 2>&1; then
   pm() { pnpm "$@"; }
