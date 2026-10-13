@@ -36,8 +36,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
-  LiveCorrectionLocateResult,
-  LiveCorrectionReadResult,
+  LiveCorrectionResult,
   InvitationListResult,
   PersonListResult,
   TagListResult,
@@ -134,8 +133,7 @@ export interface ReadOperands {
    * What a preset would do to this business's model, computed without doing
    * any of it. It is a read because it writes nothing — including on success,
    * which is D05's whole claim — and it asks for `manage` on presets rather
-   * than `read` on a collection, which is why the declaration carries its own
-   * action.
+   * than `read` on a collection, which is why the declaration carries its own action.
    */
   readonly 'preset.plan': {
     readonly recordTypeKey: string;
@@ -222,9 +220,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
-  /** One live correction's decision, read again for its card (C80). */
+  /** C80: a correction's decision read again for its card; the sidebar door's site read. */
   readonly 'live_correction.read': { readonly correctionId: string };
-  /** The task (its id or key) and the page address the sidebar's person named (C80). */
   readonly 'live_correction.locate': { readonly recordId: string; readonly pageUrl: string };
   readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
@@ -284,8 +281,7 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | LiveCorrectionReadResult
-  | LiveCorrectionLocateResult
+  | LiveCorrectionResult
   | InvitationListResult
   | MapViewResult
   | MapFrontierResult

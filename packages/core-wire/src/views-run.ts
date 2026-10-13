@@ -231,3 +231,6 @@ export interface LiveCorrectionReadResult {
     readonly versionId: string;
   };
 }
+
+/** C80's two reads' answers. */
+export type LiveCorrectionResult = LiveCorrectionReadResult | LiveCorrectionLocateResult;

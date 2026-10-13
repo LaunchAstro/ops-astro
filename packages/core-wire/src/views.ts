@@ -59,6 +59,7 @@ export type {
   ReceiptResult,
   LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
+  LiveCorrectionResult,
 } from './views-run.ts';
 
 // The run ledger, conversation and awaiting-review views live in their own

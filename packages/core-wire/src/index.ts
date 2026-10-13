@@ -110,6 +110,7 @@ export type {
   UnattendedView,
   LiveCorrectionLocateResult,
   LiveCorrectionReadResult,
+  LiveCorrectionResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,

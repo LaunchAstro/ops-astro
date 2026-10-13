@@ -65,9 +65,9 @@ import type {
   OperationsClient,
 } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
-import { matchRoute, pathTo, ROUTES, type RouteId } from '../routes.ts';
+import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
-import { taskLocate, type Locate } from '../assistant/correction-desks.ts';
+import { withTaskLocate } from '../assistant/correction-desks.ts';
 import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
@@ -248,12 +248,6 @@ const answering =
     }
   };
 
-/** On a task's page, the site read for that task: the correction door is drawn there. */
-function onTaskPage(props: AssistantViewProps): Locate | undefined {
-  const page = matchRoute(props.here);
-  return page?.id === 'agency:task-detail' ? taskLocate(props.client, page.params.key) : undefined;
-}
-
 export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
@@ -281,10 +275,7 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
-      allowance={besideAllowance(allowanceFor(props.client, chat), {
-        ...props,
-        locate: props.locate ?? onTaskPage(props),
-      })}
+      allowance={besideAllowance(allowanceFor(props.client, chat), withTaskLocate(props))}
       draft={state.draft}
       answering={(state.answering[state.selected] ?? 0) > 0}
       history={useHistoryList(props.client, store)}

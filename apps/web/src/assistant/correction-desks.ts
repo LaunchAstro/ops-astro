@@ -13,6 +13,7 @@
 
 import type { LiveCorrectionLocateResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import { matchRoute } from '../routes.ts';
 import { settle } from '../records/use-command.ts';
 import { replaced, type CardState, type CorrectionAsk, type ProposePort } from './correction.ts';
 
@@ -74,6 +75,16 @@ export const taskLocate =
     );
     return settled.kind === 'ok' ? settled.value.target : null;
   };
+
+/** The sidebar host with its site read: the one handed in, else on a task's page that task's. */
+export function withTaskLocate<
+  Host extends { client: OperationsClient; here: string; locate?: Locate | undefined },
+>(host: Host): Host {
+  if (host.locate !== undefined) return host;
+  const page = matchRoute(host.here);
+  if (page?.id !== 'agency:task-detail') return host;
+  return { ...host, locate: taskLocate(host.client, page.params.key) };
+}
 
 /** The door's port, bound to `live_correction.request` through the command client. */
 export const requestPort =

@@ -112,8 +112,7 @@ export type CommandName =
   | 'legal.draft_version'
   | 'legal.approve_version'
   | 'legal.publish_version'
-  // API-2: an agent credential, issued and revoked by a person on their own
-  // account.
+  // API-2: an agent credential, issued and revoked by a person on their own account.
   | 'credential.issue'
   | 'credential.revoke'
   // C81: the overseas-services register the privacy policy reads.

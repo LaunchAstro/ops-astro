@@ -32,9 +32,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-if (serverUrl === undefined) {
-  console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
-}
+if (serverUrl === undefined) console.warn('command surface: DATABASE_URL is unset; none ran.');
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =

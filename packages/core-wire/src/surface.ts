@@ -34,6 +34,7 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
+import { LIVE_CORRECTION_READS } from './surface-live-correction.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -637,15 +638,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
-  // read inside its query), so one client's grant reaches no other client's
-  // correction. The request is `run:write`, an agent's inside its delegation; the
-  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
-  // never an agent's, and only the configured approver who is not the requester.
-  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
-  // The sidebar door's site read asks what a request asks: `run:write` at the
-  // task's client and `task:read` on the task, both inside the read.
-  read('live_correction.locate', RUN_COLLECTION, { action: 'write' }),
+  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the reads
+  // inside their queries), so one client's grant reaches no other client's correction.
+  // The request is `run:write`, an agent's inside its delegation; the approval is
+  // `gate:decide`, only the configured approver's who is not the requester.
+  ...LIVE_CORRECTION_READS,
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,
