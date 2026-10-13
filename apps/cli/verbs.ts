@@ -203,6 +203,12 @@ function shape(row: VerbRow, answered: Readonly<Record<string, unknown>>, flags:
   }
   const { ok: _ok, detail: _detail, ...rest } = body;
   const inner = Object.values(rest).length === 1 ? Object.values(rest)[0] : rest;
+  if (Array.isArray(inner)) {
+    const items = (inner as Readonly<Record<string, unknown>>[]).map((item) =>
+      select(item, picked),
+    );
+    return asJson ? JSON.stringify(items) : pageText(items, null);
+  }
   const view = select(inner as Readonly<Record<string, unknown>>, picked);
   return asJson ? JSON.stringify(view) : text(view);
 }
