@@ -26,9 +26,10 @@ import {
   recordFactorRemoved,
   recordFactorVerified,
 } from '../../../core-records/src/index.ts';
-import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import {
   providerRefusal,
+  type EnrolAnswer,
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
@@ -115,11 +116,26 @@ export async function enrolSecondFactor(
     });
     return undefined;
   });
-  if (!issued.ok) return recorded ?? providerRefusal('malformed', 'answer');
-  // Issued there, refused here: the factor stays at the provider, reported (#300).
-  const stray = { providerFactorId: issued.value.factorId };
-  if (recorded !== undefined) await reportOrphan(caller, stray, sending.operation, recorded.code);
-  return recorded ?? issued.value;
+  // Issued there, refused here, its answer or its record: the factor stays at
+  // the provider, reported (#300).
+  const stray = strayOf(issued, recorded);
+  if (stray !== undefined) await reportOrphan(caller, stray, sending.operation, stray.code);
+  return recorded ?? (issued.ok ? issued.value : providerRefusal('malformed', 'answer'));
+}
+
+/** The factor an enrolment left at the provider with no record here, and why. */
+function strayOf(
+  issued: EnrolAnswer,
+  recorded: CommandRefusal | undefined,
+): { readonly providerFactorId: string; readonly code: RefusalCode } | undefined {
+  if (!issued.ok) {
+    return 'strayFactorId' in issued
+      ? { providerFactorId: issued.strayFactorId, code: 'PROVIDER_ANSWER_INVALID' }
+      : undefined;
+  }
+  return recorded === undefined
+    ? undefined
+    : { providerFactorId: issued.value.factorId, code: recorded.code };
 }
 
 /**

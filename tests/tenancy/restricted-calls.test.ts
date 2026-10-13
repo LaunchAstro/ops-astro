@@ -385,6 +385,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, party_id, page_url, path)
      select business_id, party_id, 'https://agency.example/about/', 'src/pages/about.md'
        from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // C80: a correction's proposal, claimed on the seeded correction under a lease the
+  // journey left; nothing the journey does proposes one.
+  'public.live_correction_proposals': `insert into public.live_correction_proposals
+       (business_id, correction_id, seam_branch, base_revision, pre_image_blob, lease_id, fence)
+     select c.business_id, c.id, 'seam-seed', 'rev-1', 'blob-seed',
+            coalesce(l.id, gen_random_uuid()), coalesce(l.fence, 1)
+       from public.live_corrections c
+       left join lateral (select id, fence from public.leases
+                           where business_id = c.business_id order by id limit 1) l on true
+      where c.business_id = $1 order by c.id limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)

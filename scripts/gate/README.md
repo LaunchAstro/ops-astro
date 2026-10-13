@@ -92,6 +92,9 @@ covered. Categories are `pii`, `provenance` and `infra`.
 **The maintainer layer is literal.** A maintainer may supply an external
 clear-text list through `HUB_GATE_TERMS`. Keep it outside the repository.
 It drives `--literal` at pre-push. When the file is absent the script says so and exits 2. It never pretends to have run.
+The pre-push hook refuses a push when that happens: its message names
+`HUB_GATE_TERMS`, never the list or its path. Every machine that pushes needs
+the list; `HUSKY=0` still skips every hook, deliberately.
 
 The historical approval checks give each Git read 120 seconds (`HUB_GATE_GIT_TIMEOUT` sets another bound). A read that runs over stops the sweep with exit 3 and says it timed out; it never passes.
 

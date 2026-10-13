@@ -13,6 +13,10 @@
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path. A dispatch marked `gated` waits after
 // `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
+// A request on a template route is answered with its declared fields only,
+// or `withheld` whole: `malformed` when it is not JSON or does not fill them,
+// `echoed` when the caller could rebuild the credential from them.
+// A `deadlineAt` gates the write itself (`egress.ts`).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -26,8 +30,9 @@ import {
   type Outbound,
   type OutboundRequest,
 } from './egress.ts';
-import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
-import { redact } from './redaction.ts';
+import { keptOf } from './egress-answer.ts';
+import { METHODS, pathAllowed, templateFilled, type Extras } from './egress-routes.ts';
+import { redact, withholds } from './redaction.ts';
 import { openaiSse } from './stream-decode.ts';
 
 interface Loaded {
@@ -90,6 +95,13 @@ function isRequest(value: unknown): value is OutboundRequest {
 
 type Message = Record<string, unknown>;
 
+/** A dispatch's deadline as its send gate, noting `written`: none when absent, null when malformed. */
+function sendGateOf(at: unknown, reply: (body: Message) => void) {
+  if (at === undefined) return;
+  if (typeof at !== 'number' || !Number.isSafeInteger(at)) return null;
+  return { deadlineAt: at, onWritten: () => reply({ type: 'written' }) };
+}
+
 const loaded = load();
 
 /**
@@ -99,7 +111,11 @@ const loaded = load();
 const unrouted = (asked: OutboundRequest): boolean => {
   const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
-  return asked.method === 'POST' && destination.post === false;
+  return (
+    asked.method === 'POST' &&
+    destination.post === false &&
+    !pathAllowed(destination, 'POST', asked.path)
+  );
 };
 
 /**
@@ -173,6 +189,7 @@ async function answer(
   credential: StoredCredential,
   gated: boolean,
   reply: (body: Message) => void,
+  sendGate?: ReturnType<typeof sendGateOf>,
 ): Promise<void> {
   if (gated && !(await gateOf(id, request.timeoutMs))) {
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
@@ -181,13 +198,26 @@ async function answer(
   const streaming = streamingOf(credential, request.destination, (text) =>
     reply({ type: 'piece', text }),
   );
-  const outcome = await send(
+  const destination: Extras = loaded.destinations.get(request.destination) ?? {};
+  const route = templateFilled(destination, request.method, request.path);
+  // A template route's answer is judged whole, so none of it goes out as it is read.
+  const onChunk = route === undefined ? streaming.onChunk : undefined;
+  let outcome = await send(
     loaded.destinations,
     request,
     credential,
     undefined,
-    streaming.onChunk,
+    onChunk,
+    sendGate ?? undefined,
   );
+  if (route !== undefined && outcome.ok) {
+    const kept = keptOf(outcome, route.fields);
+    if (kept === undefined || withholds(kept.values, credential)) {
+      reply({ type: 'withheld', reason: kept === undefined ? 'malformed' : 'echoed' });
+      return;
+    }
+    outcome = { ...outcome, body: kept.body };
+  }
   reply({
     type: 'answer',
     outcome: streaming.answer(outcome),
@@ -218,7 +248,8 @@ process.on('message', (message: unknown) => {
     return;
   }
   const request = shape['request'];
-  if (!isRequest(request) || unrouted(request)) {
+  const sendGate = sendGateOf(shape['deadlineAt'], reply);
+  if (!isRequest(request) || unrouted(request) || sendGate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
@@ -227,7 +258,7 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply);
+  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
 });
 
 process.send?.({ type: 'ready' });
