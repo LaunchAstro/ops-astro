@@ -16,6 +16,7 @@
 // A request on a template route is answered with its declared fields only,
 // or `withheld` whole: `malformed` when it is not JSON or does not fill them,
 // `echoed` when the caller could rebuild the credential from them.
+// A `deadlineAt` gates the write itself (`egress.ts`).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -93,6 +94,13 @@ function isRequest(value: unknown): value is OutboundRequest {
 }
 
 type Message = Record<string, unknown>;
+
+/** A dispatch's deadline as its send gate, noting `written`: none when absent, null when malformed. */
+function sendGateOf(at: unknown, reply: (body: Message) => void) {
+  if (at === undefined) return;
+  if (typeof at !== 'number' || !Number.isSafeInteger(at)) return null;
+  return { deadlineAt: at, onWritten: () => reply({ type: 'written' }) };
+}
 
 const loaded = load();
 
@@ -181,6 +189,7 @@ async function answer(
   credential: StoredCredential,
   gated: boolean,
   reply: (body: Message) => void,
+  sendGate?: ReturnType<typeof sendGateOf>,
 ): Promise<void> {
   if (gated && !(await gateOf(id, request.timeoutMs))) {
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
@@ -193,7 +202,14 @@ async function answer(
   const route = templateFilled(destination, request.method, request.path);
   // A template route's answer is judged whole, so none of it goes out as it is read.
   const onChunk = route === undefined ? streaming.onChunk : undefined;
-  let outcome = await send(loaded.destinations, request, credential, undefined, onChunk);
+  let outcome = await send(
+    loaded.destinations,
+    request,
+    credential,
+    undefined,
+    onChunk,
+    sendGate ?? undefined,
+  );
   if (route !== undefined && outcome.ok) {
     const kept = keptOf(outcome, route.fields);
     if (kept === undefined || withholds(kept.values, credential)) {
@@ -232,7 +248,8 @@ process.on('message', (message: unknown) => {
     return;
   }
   const request = shape['request'];
-  if (!isRequest(request) || unrouted(request)) {
+  const sendGate = sendGateOf(shape['deadlineAt'], reply);
+  if (!isRequest(request) || unrouted(request) || sendGate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
@@ -241,7 +258,7 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply);
+  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
 });
 
 process.send?.({ type: 'ready' });

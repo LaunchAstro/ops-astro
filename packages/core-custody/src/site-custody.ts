@@ -102,6 +102,9 @@ export function siteCustody(
         return { kind: 'refused', code: 'CUSTODY_ROUTE_REFUSED' };
       case 'forbidden':
         return { kind: 'refused', code: 'DESTINATION_ADDRESS_DENIED' };
+      // A gated send past its deadline wrote nothing; a site call is never gated.
+      case 'lapsed':
+        return { kind: 'refused', code: 'SEND_LAPSED' };
       case 'redirect':
       case 'status':
         return { kind: 'answer', status: outbound.status ?? 0, headers: {}, body: EMPTY };
