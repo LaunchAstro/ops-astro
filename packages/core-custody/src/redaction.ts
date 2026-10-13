@@ -203,12 +203,43 @@ function readingsOf(text: string): readonly string[] {
 }
 
 /**
+ * The shortest piece of a secret, or of its base64, an answer string may not
+ * hold. The caller keeps only its schema's few declared fields and may join
+ * them in any order, so a secret split across them leaves at least one field
+ * holding a piece this long: a secret of 40 characters or more over up to five.
+ */
+const PIECE = 8;
+
+/** Every `PIECE`-long run of each secret and of its base64 spellings; a shorter form whole. */
+function piecesOf(secrets: readonly string[]): { runs: ReadonlySet<string>; whole: string[] } {
+  const runs = new Set<string>();
+  const whole: string[] = [];
+  for (const form of secrets.flatMap((secret) => [secret, ...base64Spellings(secret)])) {
+    if (form.length < PIECE) whole.push(form);
+    for (let at = 0; at + PIECE <= form.length; at += 1) runs.add(form.slice(at, at + PIECE));
+  }
+  return { runs, whole };
+}
+
+/** Whether a text, as given or with its whitespace removed, holds any piece. */
+function holdsPiece(text: string, { runs, whole }: ReturnType<typeof piecesOf>): boolean {
+  return [text, text.replaceAll(/\s/gu, '')].some((one) => {
+    if (whole.some((form) => form !== '' && one.includes(form))) return true;
+    for (let at = 0; at + PIECE <= one.length; at += 1) {
+      if (runs.has(one.slice(at, at + PIECE))) return true;
+    }
+    return false;
+  });
+}
+
+/**
  * Whether an answer carries the credential: any spelling `redact` removes, or
- * the secret inside a string, or inside all of a JSON answer's strings joined
- * in order (a secret split across fields), each read as sent, base64 decoded
- * (line breaks ignored) or percent-decoded. A destination that refuses echoes
- * withholds such an answer whole. An arbitrary transform stays out of reach;
- * the credential's own scope bounds that.
+ * inside any one of a JSON answer's strings, read as sent, base64 decoded (line
+ * breaks ignored) or percent-decoded, a piece of the secret or of its base64
+ * (`PIECE`), so a secret split across fields is caught in any order and past
+ * any field between. A destination that refuses echoes withholds such an
+ * answer whole. An arbitrary transform stays out of reach; the credential's own
+ * scope bounds that.
  */
 export function echoes(text: string, credential: StoredCredential): boolean {
   const secrets = secretsOf(credential);
@@ -221,9 +252,9 @@ export function echoes(text: string, credential: StoredCredential): boolean {
   }
   const { strings, others } = leavesOf(decoded);
   if (others.some((one) => redactText(one) !== one)) return true;
-  return [...strings, strings.join('')].some(
+  const pieces = piecesOf(secrets);
+  return strings.some(
     (one) =>
-      redactText(one) !== one ||
-      readingsOf(one).some((reading) => secrets.some((secret) => reading.includes(secret))),
+      redactText(one) !== one || readingsOf(one).some((reading) => holdsPiece(reading, pieces)),
   );
 }

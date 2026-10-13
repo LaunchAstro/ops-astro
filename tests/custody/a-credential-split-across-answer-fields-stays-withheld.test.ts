@@ -38,7 +38,9 @@ beforeAll(async () => {
       response.writeHead(200, { 'content-type': contentType }).end(body);
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   folder = mkdtempSync(join(tmpdir(), 'split-echo-'));
   const credentialsFile = join(folder, 'credentials.json');
