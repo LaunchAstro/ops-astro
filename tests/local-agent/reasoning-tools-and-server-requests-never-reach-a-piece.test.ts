@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #859 (GPT streamed): the app-server's messages are read as a closed
+// GPT streamed (LA-1's runner): the app-server's messages are read as a closed
 // grammar. Only the agent's message is ever a piece: its reasoning never is. A
 // tool item, a request the server makes of the runner (an approval, a tool
 // call, a token refresh) or a message this grammar does not know stops the

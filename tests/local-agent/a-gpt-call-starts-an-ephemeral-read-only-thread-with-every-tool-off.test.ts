@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #859 (GPT streamed): a streamed call keeps every isolation `codex exec`
+// GPT streamed (LA-1's runner): a streamed call keeps every isolation `codex exec`
 // had. The app-server child runs on stdio only, in the runner's empty folder
 // and its own Codex home, with the runner's minimal environment and every
 // tool feature off. Its thread is ephemeral, read-only and never asks for
@@ -66,7 +66,7 @@ describe('the app-server child', () => {
     await runCodexApp(settings, MODEL, PROMPT, () => null);
     expect(sent(w, 'thread/start')?.['params']).toMatchObject({
       model: MODEL,
-      cwd: realpathSync(join(w.agentHome, 'cwd')),
+      cwd: join(w.agentHome, 'cwd'),
       ephemeral: true,
       sandbox: 'read-only',
       approvalPolicy: 'never',

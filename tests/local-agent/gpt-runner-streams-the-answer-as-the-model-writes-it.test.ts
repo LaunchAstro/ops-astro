@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #859 (GPT on the owner's plan, streamed): `codex exec` hands back only the
+// GPT on the owner's plan, streamed (LA-1's runner): `codex exec` hands back only the
 // finished message, so a call that asks to stream runs through `codex
 // app-server` on stdio, here a stand-in, and each piece of the agent's message
 // reaches the caller while the model is still writing. The runner answers such
