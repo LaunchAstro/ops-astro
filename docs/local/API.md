@@ -3702,7 +3702,8 @@ statement? }`: one of the eight items, three closing lines or the procedure
   with no query and the same link rules, while `ops.last_tested_restore` holds a
   passed drill inside the restore window (35 days), else `evidence` is refused;
   `second-factor` is refused naming `item` unless the person recording it has a
-  verified factor. Both are read after the installation's row lock. An item is
+  verified factor: on their row here, or on their own signed-in login through
+  any business, not since removed. Both are read after the installation's row lock. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

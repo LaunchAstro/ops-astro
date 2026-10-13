@@ -25,6 +25,7 @@
 
 import {
   legalVersionPath,
+  loginHasVerifiedFactor,
   ONE_PAGE_WORDS,
   readPublishedLegal,
   wordsIn,
@@ -182,13 +183,23 @@ async function restoreTested(tx: TenantQuery, evidence: string): Promise<boolean
   return stamp?.fresh === true;
 }
 
-/** Whether the person has a verified factor: their row's copy (`identity/second-factor.ts`). */
-async function factorVerified(tx: TenantQuery, personId: string): Promise<boolean> {
+/**
+ * Whether the person recording has a verified factor: their row's copy here,
+ * or their own signed-in login's, verified and not removed through any
+ * business (0064), as the sign-in's own second-factor rule reads it.
+ */
+async function factorVerified(
+  tx: TenantQuery,
+  session: CommandContext['session'],
+): Promise<boolean> {
   const [person] = await tx.query<{ readonly verified: boolean }>(
     'select second_factor_verified as verified from public.people where business_id = $1 and id = $2',
-    [tx.businessId, personId],
+    [tx.businessId, session.personId],
   );
-  return person?.verified === true;
+  if (person?.verified === true) return true;
+  return (
+    session.presented !== undefined && (await loginHasVerifiedFactor(tx, session.presented.subject))
+  );
 }
 
 const isOutcome = (value: Installation | HandlerOutcome): value is HandlerOutcome =>
@@ -215,7 +226,7 @@ export async function recordGateItem(
   if (item === 'tested-backups' && !(await restoreTested(tx, evidence))) {
     return invalid('evidence');
   }
-  if (item === 'second-factor' && !(await factorVerified(tx, context.session.personId))) {
+  if (item === 'second-factor' && !(await factorVerified(tx, context.session))) {
     return invalid('item');
   }
   const document = GATE_EVIDENCE_DOCUMENTS[item];
