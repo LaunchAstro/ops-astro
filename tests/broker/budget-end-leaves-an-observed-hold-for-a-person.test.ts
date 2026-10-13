@@ -163,15 +163,7 @@ it('a top-up after the stopped step was written off with its effect unknown is r
   const { w, lease, runId, askId } = await stoppedAfterItsEffect();
   expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
   // A person accepts the cost without knowing whether the step's effect happened.
-  const written = await asPerson(s, {
-    command: 'budget.write_off',
-    operationId: randomUUID(),
-    recordId: w.taskId,
-    attemptId: w.attemptId,
-    // Any amount above nothing settles the step at an unknown outcome.
-    amountMinor: 1,
-    reason: 'The provider billed the call; nobody can say whether the step ran.',
-  });
+  const written = await asPerson(s, writeOff(w));
   expect(codeOf(written)).toBe('applied');
   const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
   expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'actual', answers: 0 });
@@ -186,6 +178,70 @@ it('a top-up after the stopped step was written off with its effect unknown is r
     'applied',
   );
   expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
+});
+
+/** A positive write-off of the stopped step: any amount above nothing settles it at an unknown outcome. */
+const writeOff = (w: { taskId: string; attemptId: string }) => ({
+  command: 'budget.write_off',
+  operationId: randomUUID(),
+  recordId: w.taskId,
+  attemptId: w.attemptId,
+  amountMinor: 1,
+  reason: 'The provider billed the call; nobody can say whether the step ran.',
+});
+
+it('a top-up after a write-off is refused even when the write-off and the ask share a start time', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  expect(codeOf(await asPerson(s, writeOff(w)))).toBe('applied');
+  // As if settled and asked in one transaction: the stamps are equal.
+  await s.db.admin.execute(
+    `update public.attempts set settled_at = (select raised_at from public.budget_asks where id = $2)
+      where id = $1`,
+    [w.attemptId, askId],
+  );
+  const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
+  const topUp = { command: 'run.top_up', recordId: w.taskId, runId, askId };
+  expect(await answer(people.approver, { ...topUp, amountMinor: 1_000, currency: 'AUD' })).toBe(
+    'TRANSITION_NOT_PERMITTED',
+  );
+  expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
+});
+
+it('a top-up that waited behind a write-off is refused once the write-off commits', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  const topUp = { command: 'run.top_up', recordId: w.taskId, runId, askId };
+  const held = racer(s);
+  let topped: Promise<string> | undefined;
+  try {
+    await held.withBusiness(s.business, async (tx) => {
+      const inTx = { ...held, withBusiness: async (_b, run) => await run(tx) } as Database;
+      expect(codeOf(await asPerson(s, writeOff(w), inTx))).toBe('applied');
+      // The top-up starts while the write-off holds its locks, and parks behind them.
+      topped = answer(people.approver, { ...topUp, amountMinor: 1_000, currency: 'AUD' });
+      await expect
+        .poll(
+          async () =>
+            (
+              await one<{ n: string }>(
+                `select count(*)::text as n from pg_stat_activity
+                  where datname = current_database() and wait_event_type = 'Lock'`,
+                [],
+              )
+            ).n,
+          { timeout: 10_000 },
+        )
+        .not.toBe('0');
+    });
+  } finally {
+    await held.close();
+  }
+  expect(await topped).toBe('TRANSITION_NOT_PERMITTED');
+  expect(await moneyOf(runId)).toMatchObject({ run: 'waiting_budget', answers: 0 });
+  expect(await stateOf(runId, w.attemptId)).toMatchObject({ reservation: 'actual' });
 });
 
 /** A `happened` through the command entry, in a transaction on its own connection begun before `stop`. */
