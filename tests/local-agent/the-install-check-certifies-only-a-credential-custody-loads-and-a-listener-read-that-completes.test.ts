@@ -150,6 +150,7 @@ it('the install check passes a runner listening on loopback alone, and a port no
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
   }
+  world?.remove();
   // lsof finds nothing on the closed port: a read that completed, not a failed one.
   const quiet = checked(installation(LOOPBACK_ONLY, address.port));
   expect(quiet.stdout).toContain('gpt runner install check: passed');

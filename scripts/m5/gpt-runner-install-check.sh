@@ -6,26 +6,30 @@
 # else can open; the settings are the M5 site's, with the Codex version pinned;
 # the runner's home and its Codex home are private and hold no instructions or
 # config; Codex is the pinned version and signed in to the ChatGPT plan; custody's
-# credential file holds the runner's own key, and only it, for the runner's door,
-# presented as the door takes it (the authorization header, bearer);
-# and a runner already listening listens on loopback alone. Prints a kind, never
-# a value. The checks are a Node program, so file modes read the same on macOS
-# and Linux.
+# credential file is one custody itself loads (its own parser, no second one)
+# and holds the runner's own key, and only it, for the runner's door, presented
+# as the door takes it (the authorization header, bearer); and a runner already
+# listening listens on loopback alone, read by an lsof that completed. Prints a
+# kind, never a value. The checks are a Node program, so file modes read the
+# same on macOS and Linux.
 #
 # Usage: scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>
 
 set -eu
 
-node - "${1:?settings file}" "${2:?credential file}" <<'JS'
-const { execFileSync, spawnSync } = require('node:child_process');
-const { existsSync, lstatSync, readFileSync } = require('node:fs');
-const { isAbsolute, join } = require('node:path');
+root=$(cd "${0%/*}/../.." && pwd)
+node --input-type=module - "$root" "${1:?settings file}" "${2:?credential file}" <<'JS'
+import { spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const fault = (kind) => {
   process.stderr.write(`gpt runner install check: ${kind}\n`);
   process.exit(1);
 };
-const [settingsFile, credentialFile] = process.argv.slice(2);
+const [root, settingsFile, credentialFile] = process.argv.slice(2);
+const custody = await import(pathToFileURL(join(root, 'packages/core-custody/src/credentials.ts')).href);
 const own = (path, mode) => {
   let stat;
   try {
@@ -80,22 +84,30 @@ const login = run(['login', 'status']);
 if (!login.ok || !login.out.split('\n').some((line) => line.trim() === 'Logged in using ChatGPT')) {
   fault('signed_out: Codex here is not signed in to the ChatGPT plan');
 }
-const door = Array.isArray(filed) ? filed.filter((entry) => entry?.destination === 'local_gpt') : [];
+// Custody's own parser: a file it refuses at load is refused here, by the same rules.
+const loaded = custody.parseCredentials(filed);
+if (!loaded.ok) fault(`custody refuses the credential file (${loaded.code})`);
+const door = [...loaded.credentials.values()].filter((entry) => entry.destination === 'local_gpt');
 // The runner's door takes only `Authorization: Bearer <key>` (door.ts): another header or scheme is answered 401.
-const bearer = (entry) =>
-  entry.header === 'authorization' && (entry.scheme === undefined || entry.scheme === 'bearer');
-if (door.length !== 1 || door[0].value !== key || !bearer(door[0])) {
+if (door.length !== 1 || door[0].header !== 'authorization' || custody.presented(door[0]) !== `Bearer ${key}`) {
   fault('custody holds no credential, or another, for the runner’s door');
 }
 const port = text('OPS_LOCAL_AGENT_PORT');
 if (port !== '') {
-  let listening = '';
-  try {
-    listening = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-  } catch {
-    listening = '';
+  // -b skips calls that can block on a mount and -w drops warnings, so any
+  // stderr is a failure. Only exit 1 with no output at all means no listener.
+  const read = spawnSync('lsof', ['-b', '-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+  });
+  const out = read.stdout ?? '';
+  const addresses = out.split('\n').filter((line) => line.startsWith('n')).map((line) => line.slice(1));
+  const none = read.status === 1 && out === '' && read.stderr === '';
+  const listed = read.status === 0 && read.stderr === '' && addresses.length > 0;
+  if (read.error !== undefined || !(none || listed)) {
+    fault('the listeners on the runner’s port could not be read (is lsof installed?)');
   }
-  const addresses = listening.split('\n').slice(1).map((line) => line.trim().split(/\s+/u)[8]).filter(Boolean);
   if (addresses.some((address) => address !== `127.0.0.1:${port}`)) fault('the runner listens beyond loopback');
 }
 process.stdout.write('gpt runner install check: passed\n');
