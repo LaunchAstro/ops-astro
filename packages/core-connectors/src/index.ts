@@ -51,6 +51,7 @@ export {
   emailText,
   readEmailAnswer,
   RESEND_DESTINATION,
+  resendDestination,
 } from './email.ts';
 export {
   startFakeEmailProvider,

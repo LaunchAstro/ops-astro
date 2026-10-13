@@ -74,10 +74,12 @@ export {
 export {
   AT_ONCE_EVERY_MS,
   deliverDue,
+  deliverOwedInvitations,
   startMailWorker,
   type DeliveryPass,
   type MailCadence,
   type MailTarget,
+  type PassTiming,
 } from './email-worker.ts';
 export {
   callModel,

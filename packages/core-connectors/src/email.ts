@@ -25,6 +25,28 @@ export const EMAIL_NOTHING_HAPPENED = 'rejected_before_sending';
 /** The production destination, the one entry custody's list holds for mail. */
 export const RESEND_DESTINATION = { key: 'email', origin: 'https://api.resend.com' } as const;
 
+/**
+ * Custody's entry for the provider: a POST to the send's path alone, and a GET of the one sending
+ * domain's status. The provider's key can do far more (create keys, read contacts), so these two
+ * are all custody will present it on. The origin is the code's unless a test hands in a stand-in.
+ */
+export function resendDestination(
+  domainId: string,
+  origin: string = RESEND_DESTINATION.origin,
+): {
+  readonly key: string;
+  readonly origin: string;
+  readonly posts: readonly string[];
+  readonly routes: readonly { readonly method: 'GET'; readonly path: string }[];
+} {
+  return {
+    key: RESEND_DESTINATION.key,
+    origin,
+    posts: [EMAIL_PATH],
+    routes: [{ method: 'GET', path: `/domains/${domainId}` }],
+  };
+}
+
 /** The only words an email carries besides its one address. */
 export const EMAIL_SUBJECT = 'Something is waiting for you';
 

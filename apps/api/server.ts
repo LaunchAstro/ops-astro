@@ -556,11 +556,14 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
-  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
-  // account yet); mock with a setting missing or malformed stops the server here.
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock`; mock with a
+  // setting missing or malformed stops the server here. The real provider runs
+  // in the mail unit (`apps/mail/main.ts`) only, so this process never holds its key.
   const mailConfig = mailDeliverySettings(environment);
-  if (mailConfig.kind === 'invalid') {
-    console.error(`api: ${mailConfig.problem}`);
+  if (mailConfig.kind === 'invalid' || mailConfig.kind === 'resend') {
+    console.error(
+      `api: ${mailConfig.kind === 'resend' ? 'MAIL_DELIVERY=resend runs in the mail unit, not the API' : mailConfig.problem}`,
+    );
     process.exit(1);
   }
   const broker =

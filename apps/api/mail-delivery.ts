@@ -1,36 +1,49 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-07b's delivery worker, as the API's composition root starts it: what
-// makes inbox mail go out (`email-worker.ts`), over the deployment's
-// businesses, each under its active worker actor.
+// AW-07b's delivery worker, as a composition root starts it: what makes inbox
+// mail and owed invitations go out (`email-worker.ts`), over the deployment's
+// businesses, each under its active worker actor. The M5 mail unit
+// (`apps/mail/main.ts`) starts it for both values below; the API's own
+// `main` starts `mock` only, so the API process never holds the real key.
 //
-// **Mock only, and said so.** There is no provider account yet (owner line
-// 68: not now), so `MAIL_DELIVERY` is `off` (the default) or `mock`: the
-// fake provider's outbox stands in for the inbox, as staging's owner check
-// asks. Under `mock` three things are made up, each labelled `mock`: the
+// `MAIL_DELIVERY` is `off` (the default), `mock` or `resend`. The two starts
+// share no path: `mock` never starts real custody or reads a credentials
+// file, and `resend` never starts the loopback mock.
+//
+// **`mock`.** The fake provider's outbox stands in for the inbox, as staging's
+// owner check asks. Three things are made up, each labelled `mock`: the
 // provider, the sending subdomain's setup check (`fakeSenderSource`, verified
-// for the subdomain `MAIL_FROM` names) and every person's email choice
-// (MP-2-11's setting is not in yet; anything not told at once waits for the
-// daily batch). A real provider is a new switch value with a real sender
-// source, never `mock` pointed elsewhere: mock takes a provider on this machine only,
-// and the send accepts the mock report only over the custody core-custody started
-// for that loopback provider (`startLoopbackMockCustody`, `email-mock-custody.ts`).
-// Mock records each send `accepted` (as `mock:<id>`), so it runs only where
-// `OPS_ENVIRONMENT`, the deployment's own marker, is unset or exactly `staging`;
-// any other value, empty or misspelt, refuses it: over real people's items it
-// would mark mail sent that no one received.
+// for the subdomain `MAIL_FROM` names) and every person's email choice. Mock
+// custody runs over a credentials file this module writes, holding a random
+// key of its own, so a real file set by mistake is refused, never read. Mock
+// takes a provider on this machine only, and the send accepts the mock report
+// only over the custody core-custody started for that loopback provider
+// (`startLoopbackMockCustody`). Mock records each send as `mock:<id>`, so it
+// runs only where `OPS_ENVIRONMENT`, the deployment's own marker, is unset or
+// exactly `staging`: over real people's items it would mark mail sent that no
+// one received.
 //
-// **Delivery is custody's egress**, as the trace export's is: a custody
-// process of its own holds the provider key for the one `email` destination,
-// and the worker sends only through the broker's catalogued `email.send`.
-// The settings are read like the trace export's: on with one missing or
-// malformed, the server stops naming the setting and never its value. The
-// sender check is run again at every pass, so a later real sender source that
-// stops verifying stops the next pass's sends.
+// **`resend`.** Real custody over `MAIL_CREDENTIALS_FILE`, which must hold the
+// provider key `email_key` for the `email` destination, and nothing starts
+// until it does. The provider's address is the code's; custody presents the
+// key on POST `/emails` and GET `/domains/<MAIL_DOMAIN_ID>` alone. The sender
+// check reads that domain through custody. Until MP-2-11's setting exists,
+// every person's choice is owner answer 10's default: decisions and incidents
+// at once, everything else in the daily batch. The source says so, and is not
+// mock.
+//
+// **Delivery is custody's egress**, as the trace export's is, and the worker
+// sends only through the broker's catalogued `email.send`. The settings are
+// read like the trace export's: one missing or malformed stops the start,
+// naming the setting and never its value. The sender check runs again at
+// every pass, and before a send once its report is half its freshness old.
 
+import { randomBytes } from 'node:crypto';
+import { accessSync, constants, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   catalogue,
-  checkableSender,
   checkSender,
   EMAIL_SEND,
   emailAdapter,
@@ -39,138 +52,37 @@ import {
   type SenderReport,
 } from '../../packages/core-connectors/src/index.ts';
 import {
-  fromVerifiedSender,
-  parseDestinations,
+  custodySenderSource,
+  startCustody,
   startLoopbackMockCustody,
   startMailWorker,
   type Broker,
   type Custody,
   type Destination,
-  type EmailPreferences,
   type EmailTiming,
   type MailCadence,
   type MailTarget,
 } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
+import {
+  DEFAULT_PREFERENCES,
+  MAIL_CREDENTIAL,
+  MOCK_PREFERENCES,
+  rootOf,
+  type MailDeliverySettings,
+  type Started,
+} from './mail-settings.ts';
 
-export const MAIL_DELIVERY_SWITCH = 'MAIL_DELIVERY';
-/** The deployment's marker (`deploy/staging/README.md`): `staging` or `production`. */
-const DEPLOYMENT_MARKER = 'OPS_ENVIRONMENT';
-export const MAIL_DELIVERY_SETTINGS = [
-  'MAIL_PROVIDER_ORIGIN',
-  'MAIL_CREDENTIALS_FILE',
-  'MAIL_APP_ORIGIN',
-  'MAIL_FROM',
-] as const;
-
-/** The provider key's reference in custody's credentials file, for the `email` destination. */
-export const MAIL_CREDENTIAL = 'email_key';
-
-export type MailDeliverySettings =
-  | { readonly kind: 'off' }
-  | {
-      readonly kind: 'mock';
-      readonly destination: Destination;
-      readonly credentialsFile: string;
-      readonly appOrigin: string;
-      readonly from: string;
-      readonly subdomain: string;
-    }
-  | { readonly kind: 'invalid'; readonly problem: string };
-
-/** Every person's email choice while MP-2-11's setting is not in: made up, and marked so. */
-export const MOCK_PREFERENCES: EmailPreferences = {
-  mock: true,
-  choice: async () => await Promise.resolve('daily_batch'),
-};
-
-const invalid = (problem: string): MailDeliverySettings => ({ kind: 'invalid', problem });
-
-/** Plain http only to this machine, as the trace export's target. */
-const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
-const ADDRESS = /^[^@\s]+@([a-z0-9-]+(?:\.[a-z0-9-]+){2,})$/u;
-
-/** A bare origin, https or loopback http, or undefined. */
-function originOf(value: string): string | undefined {
-  try {
-    const url = new URL(value);
-    if (url.origin !== value) return undefined;
-    if (url.protocol === 'https:') return value;
-    return url.protocol === 'http:' && LOOPBACK.test(url.hostname) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function onThisMachine(origin: string | undefined): string | undefined {
-  return origin !== undefined && LOOPBACK.test(new URL(origin).hostname) ? origin : undefined;
-}
-
-/** The root a sending subdomain is set up under: everything after its first label. */
-const rootOf = (subdomain: string): string => subdomain.slice(subdomain.indexOf('.') + 1);
-
-/**
- * The sending subdomain `from` is on, or undefined where the sender gate would refuse `from` or
- * the setup check could never verify its subdomain.
- */
-function sendingSubdomain(from: string): string | undefined {
-  const subdomain = ADDRESS.exec(from)?.[1];
-  // The send's own address rule and the setup check's host rule, run once here, so a from
-  // either would refuse stops the start rather than leave every email unsent.
-  const accepted =
-    subdomain !== undefined &&
-    checkableSender(subdomain, rootOf(subdomain)) &&
-    fromVerifiedSender(from, { verified: true, subdomain, mock: false });
-  return accepted ? subdomain : undefined;
-}
-
-export function mailDeliverySettings(
-  environment: Readonly<Record<string, string | undefined>>,
-): MailDeliverySettings {
-  const toggle = environment[MAIL_DELIVERY_SWITCH] ?? '';
-  if (toggle === '' || toggle === 'off') return { kind: 'off' };
-  if (toggle !== 'mock') {
-    return invalid(`${MAIL_DELIVERY_SWITCH} is neither off nor mock (no provider account yet)`);
-  }
-  // An allowlist: an empty or misspelt marker may be production, so it refuses mock.
-  const where = environment[DEPLOYMENT_MARKER];
-  if (where !== undefined && where !== 'staging') {
-    return invalid(
-      `${MAIL_DELIVERY_SWITCH} is mock where ${DEPLOYMENT_MARKER} is set but not staging (mock mail reaches no one)`,
-    );
-  }
-  const value = (name: (typeof MAIL_DELIVERY_SETTINGS)[number]): string => environment[name] ?? '';
-  const missing = MAIL_DELIVERY_SETTINGS.filter((name) => value(name) === '');
-  if (missing.length > 0)
-    return invalid(`mail delivery is mock but not set: ${missing.join(', ')}`);
-  // A made-up sender check may only ever reach a made-up provider on this machine.
-  const origin = onThisMachine(originOf(value('MAIL_PROVIDER_ORIGIN')));
-  const parsed = parseDestinations([{ key: RESEND_DESTINATION.key, origin }]);
-  const destination = parsed.ok ? parsed.destinations.get(RESEND_DESTINATION.key) : undefined;
-  if (origin === undefined || destination === undefined) {
-    return invalid(
-      'MAIL_PROVIDER_ORIGIN is not a bare origin on this machine (mock reaches no real provider)',
-    );
-  }
-  const appOrigin = originOf(value('MAIL_APP_ORIGIN'));
-  if (appOrigin === undefined) {
-    return invalid('MAIL_APP_ORIGIN is not a bare https origin (or http on this machine)');
-  }
-  const subdomain = sendingSubdomain(value('MAIL_FROM'));
-  if (subdomain === undefined) {
-    return invalid(
-      'MAIL_FROM is not an address the sender gate accepts (a dot-atom name of at most 64 octets, 254 in all, at a sending subdomain such as send.<your domain>, its labels letters, digits and inner hyphens)',
-    );
-  }
-  return {
-    kind: 'mock',
-    destination,
-    credentialsFile: value('MAIL_CREDENTIALS_FILE'),
-    appOrigin,
-    from: value('MAIL_FROM'),
-    subdomain,
-  };
-}
+export {
+  DEFAULT_PREFERENCES,
+  MAIL_CREDENTIAL,
+  MAIL_DELIVERY_SWITCH,
+  mailDeliverySettings,
+  MOCK_MAIL_SETTINGS,
+  MOCK_PREFERENCES,
+  RESEND_MAIL_SETTINGS,
+  type MailDeliverySettings,
+} from './mail-settings.ts';
 
 /** Each business with its active worker actor; one without is skipped until it has one. */
 async function targetsOf(
@@ -225,26 +137,94 @@ function mailBroker(custody: Custody): Broker {
 }
 
 /**
- * Custody's own process for the provider, the broker over it, and the worker's two passes. The
- * sender check (`mockSender` unless a test hands in its own) is run at the start of every pass.
+ * Mock custody over a credentials file of its own, holding a random key. Custody reads its file
+ * once, at load, so the file is removed as soon as custody has started.
+ */
+async function startMockCustody(destination: Destination): Promise<Custody> {
+  const folder = mkdtempSync(join(tmpdir(), 'ops-astro-mail-mock-'));
+  try {
+    const credentialsFile = join(folder, 'credentials.json');
+    const made = {
+      ref: MAIL_CREDENTIAL,
+      kind: 'api_key',
+      account: 'mock',
+      destination: destination.key,
+      header: 'authorization',
+      value: randomBytes(32).toString('hex'),
+    };
+    writeFileSync(credentialsFile, JSON.stringify([made]), { mode: 0o600 });
+    return await startLoopbackMockCustody(credentialsFile, destination);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Real custody over the provider key, refusing to start unless the file can be read and holds
+ * `email_key` for `email`. The file is checked for access here and read by custody alone.
+ */
+async function startProviderCustody(
+  settings: Extract<MailDeliverySettings, { kind: 'resend' }>,
+): Promise<Custody> {
+  try {
+    accessSync(settings.credentialsFile, constants.R_OK);
+  } catch {
+    throw new Error('MAIL_CREDENTIALS_FILE cannot be read');
+  }
+  const custody = await startCustody({
+    credentialsFile: settings.credentialsFile,
+    destinations: [settings.destination],
+  });
+  if ((await custody.describe(MAIL_CREDENTIAL, settings.destination.key)) === null) {
+    await custody.stop();
+    throw new Error(
+      `MAIL_CREDENTIALS_FILE holds no ${MAIL_CREDENTIAL} for the ${settings.destination.key} destination`,
+    );
+  }
+  return custody;
+}
+
+/**
+ * Custody's own process for the provider, the broker over it, and the worker's passes. The sender
+ * check is run at the start of every pass: `mockSender` under mock, the provider's domain read
+ * through custody under resend (with `txt`, the root's TXT reader), unless a test hands in its
+ * own `senderCheck`.
  */
 export async function startMailDelivery(
-  settings: Extract<MailDeliverySettings, { kind: 'mock' }>,
+  settings: Started,
   database: Database,
   businesses: () => Promise<readonly BusinessId[]>,
   cadence: MailCadence = {},
-  senderCheck: (subdomain: string) => Promise<SenderReport> = mockSender,
+  senderCheck?: (subdomain: string) => Promise<SenderReport>,
+  txt?: (name: string) => Promise<string[][]>,
 ): Promise<{ readonly stop: () => Promise<void> }> {
-  const custody = await startLoopbackMockCustody(settings.credentialsFile, settings.destination);
+  const custody =
+    settings.kind === 'mock'
+      ? await startMockCustody(settings.destination)
+      : await startProviderCustody(settings);
+  const check =
+    senderCheck ??
+    (settings.kind === 'mock'
+      ? mockSender
+      : async (subdomain: string) => {
+          if (txt === undefined) throw new Error('resend: no TXT reader for the DMARC record');
+          const read = {
+            credentialRef: MAIL_CREDENTIAL,
+            destination: settings.destination.key,
+            domainId: settings.domainId,
+          };
+          const source = custodySenderSource(custody, read, txt);
+          return await checkSender(source, subdomain, rootOf(subdomain));
+        });
   const broker = mailBroker(custody);
   const timing = async (): Promise<EmailTiming> => ({
     broker,
     mail: {
       appOrigin: settings.appOrigin,
       from: settings.from,
-      sender: await senderCheck(settings.subdomain),
+      sender: await check(settings.subdomain),
     },
-    preferences: MOCK_PREFERENCES,
+    preferences: settings.kind === 'mock' ? MOCK_PREFERENCES : DEFAULT_PREFERENCES,
   });
   const worker = startMailWorker(
     database,
