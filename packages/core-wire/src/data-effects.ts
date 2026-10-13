@@ -224,12 +224,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
   // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
-  // AW-12's harness result, AW-11's child work, and the accepted plan.
+  // AW-11's child work and the accepted plan.
   'conversation.allowance': READ,
   'conversation.models': READ,
   'definition.attribution': READ,
   'trace.read': READ,
-  'harness.read': READ,
   ...INVITATION_EFFECTS,
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),

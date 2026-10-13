@@ -68,7 +68,7 @@ import type {
   MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt } from '../../../core-runtime/src/index.ts';
 import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -219,8 +219,6 @@ export interface ReadOperands {
   readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
-  /** The run whose harness test result is read (AW-12). */
-  readonly 'harness.read': { readonly runId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
   readonly 'invitation.list': NoOperands;
@@ -296,5 +294,4 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading }
   | AutomationRegistryResult;
