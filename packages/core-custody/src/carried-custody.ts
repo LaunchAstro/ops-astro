@@ -136,10 +136,12 @@ async function send(
   const written = await next(done, heardAt + SEND_WINDOW_MS);
   if (written?.event === 'refused') return refused(codeOf(written.body));
   if (written !== undefined) return undefined;
+  // Past W a late request is still refused, sealed: nothing was written.
   const started = await next(
-    (heard) => heard.runner === runner && heard.event === 'started',
+    (heard) => heard.runner === runner && (heard.event === 'started' || heard.event === 'refused'),
     heardAt + SEND_WINDOW_MS + STARTED_GRACE_MS,
   );
+  if (started?.event === 'refused') return refused(codeOf(started.body));
   return started === undefined ? lost : undefined;
 }
 
