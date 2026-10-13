@@ -12,12 +12,13 @@
 // the provider's own words, which could carry anything, go nowhere.
 
 import type {
+  EnrolAnswer,
   FactorProvider,
   FactorSession,
-  IssuedFactor,
   ProviderAnswer,
   ProviderFault,
 } from '../../../packages/core-commands/src/index.ts';
+import { qrImage } from './factor-qr.ts';
 
 export interface GoTrueFactorOptions {
   /** GoTrue's own URL, `GOTRUE_URL`. The only destination this adapter calls. */
@@ -38,6 +39,9 @@ const DEFAULT_MAX_BYTES = 16 * 1024;
 // metadata is the person's own and may be large; one megabyte bounds it
 // without refusing an ordinary login. Only `GET /user` reads to this bound.
 const USER_MAX_BYTES = 1024 * 1024;
+// An enrol's QR runs to a megabyte of characters (`factor-qr.ts`), and the
+// enrol alone reads to twice that, so the QR's own bound is the one met.
+const ENROL_MAX_BYTES = 2 * 1024 * 1024;
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -71,9 +75,10 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   const request = requestGoTrue(options, limits.timeoutMs);
   const call = callGoTrue(request, limits);
   const readUser = callGoTrue(request, { ...limits, maxBytes: USER_MAX_BYTES });
+  const readEnrol = callGoTrue(request, { ...limits, maxBytes: ENROL_MAX_BYTES });
   return {
     verifiedFactors: (accessToken) => verifiedFactors(readUser, accessToken),
-    enrol: (accessToken) => enrol(call, accessToken),
+    enrol: (accessToken) => enrol(readEnrol, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
     signOut: (accessToken, scope) => signOut(request, limits, accessToken, scope),
@@ -154,19 +159,20 @@ async function verifiedFactors(
   return { ok: true, value: verified };
 }
 
-async function enrol(call: Call, accessToken: string): Promise<ProviderAnswer<IssuedFactor>> {
+// A factor id the answer carries is kept when the rest is refused: the
+// provider issued that factor, and the act reports it.
+async function enrol(call: Call, accessToken: string): Promise<EnrolAnswer> {
   const answer = await call('POST', '/factors', accessToken, { factor_type: 'totp' });
   if (!answer.ok) return answer;
   const id = answer.value['id'];
+  if (!isFactorId(id)) return { ok: false, fault: 'malformed' };
   const totp = answer.value['totp'];
-  if (!isFactorId(id) || typeof totp !== 'object' || totp === null) {
-    return { ok: false, fault: 'malformed' };
+  const { qr_code: qrCode, secret, uri } = (typeof totp === 'object' ? (totp ?? {}) : {}) as Json;
+  const image = qrImage(qrCode);
+  if (image === undefined || !isBoundedText(secret, 128) || !isBoundedText(uri, 1024)) {
+    return { ok: false, fault: 'malformed', strayFactorId: id };
   }
-  const { qr_code: qrCode, secret, uri } = totp as Json;
-  if (!isBoundedText(qrCode, 8192) || !isBoundedText(secret, 128) || !isBoundedText(uri, 1024)) {
-    return { ok: false, fault: 'malformed' };
-  }
-  return { ok: true, value: { factorId: id, qrCode, secret, uri } };
+  return { ok: true, value: { factorId: id, qrCode: image, secret, uri } };
 }
 
 async function verify(

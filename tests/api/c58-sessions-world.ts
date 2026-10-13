@@ -28,6 +28,7 @@ import {
 } from '../acceptance/world.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
 import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { gotrueQrSvg } from './gotrue-qr-svg.ts';
 
 export const CANARY = 'CANARY-c58-session-words-4b1d7e';
 
@@ -54,7 +55,7 @@ export const GOOD: Readonly<Record<string, Reply>> = {
   'POST /factors': json(200, {
     id: 'factor-one',
     type: 'totp',
-    totp: { qr_code: 'data:,x', secret: 'S', uri: 'otpauth://totp/x' },
+    totp: { qr_code: gotrueQrSvg(2000), secret: 'S', uri: 'otpauth://totp/x' },
   }),
   'POST /factors/factor-one/challenge': json(200, { id: 'challenge-one', type: 'totp' }),
   'POST /factors/factor-one/verify': json(200, {
