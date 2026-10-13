@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An approved correction's proposal is claimed under the worker's live lease before its first send and sent by one run only; a lost answer or a lost worker is recovered by the seam, recorded proposed only on an exact match with the claim and the after-image, else unknown with one person task; only a proposed row feeds the publish's binding."
+}
