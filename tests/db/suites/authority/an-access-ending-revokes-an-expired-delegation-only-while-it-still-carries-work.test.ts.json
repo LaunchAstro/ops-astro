@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "an access ending still revokes, counts and classifies an expired delegation that carries live agent work, because the classifier accepts authority_revoked only on a recorded revocation"
+  "why": "an access ending classifies the live work of an expired delegation on a recorded revocation without counting it, and keeps a marked agent attempt's full hold while telling every remaining task manager"
 }
