@@ -11,7 +11,11 @@
 //
 // Items 3 to 6 take one evidence link only: the link to their document's
 // published version in the operator's business (C81), read under the same
-// lock, with the breach runbook held to one page.
+// lock, with the breach runbook held to one page. Two items take evidence the
+// installation holds itself, read under the lock too: `tested-backups` a
+// restore drill passed inside the window the operations view calls fresh
+// (0070), linked by the operations page that shows its date; `second-factor`
+// the recording person's own verified factor.
 //
 // Both take the installation's row lock first and check the operator under
 // it, so a refusal writes nothing. Every field is checked here, before the
@@ -27,6 +31,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { LegalDocument, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { RESTORE_FRESH_DAYS } from '../reads/operations.ts';
 import { GATE_ITEMS } from './first-client-gate.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
@@ -68,10 +73,17 @@ function dated(line: string): boolean {
   });
 }
 
+/** The operations page's path, where the last tested restore's date is shown (C55). */
+const OPERATIONS_PAGE = '/settings/operations/';
+
 const FIXES: Readonly<Record<string, readonly string[]>> = {
-  item: [`Send one of: ${GATE_ITEMS.join(', ')}.`],
+  item: [
+    `Send one of: ${GATE_ITEMS.join(', ')}.`,
+    'For the second factor, the person recording it first sets up their authenticator app (Settings > Authenticator app).',
+  ],
   evidence: [
     'Send the evidence as one https link of at most 2000 characters, with no spaces.',
+    `For tested backups, a restore drill passes first, within the last ${String(RESTORE_FRESH_DAYS)} days; link the operations page that shows its date (${OPERATIONS_PAGE}), with no query.`,
     "For the privacy opt-in, a lodged form or a receipt keeps it shut: link the OAIC's public Privacy Opt-In Register.",
     `For items 3 to 6, link the published version of the item's document, approved by the owner; the breach runbook fits on one page (${String(ONE_PAGE_WORDS)} words).`,
   ],
@@ -110,11 +122,26 @@ async function lockedForOperator(
 }
 
 /**
+ * `evidence` as a URL, unless it carries a user name, a password, a port other
+ * than 443 or a fragment. The host is not checked: commands are not told the
+ * host the installation serves (`SERVED_HOST` stays at the function's entry).
+ */
+function plainLink(evidence: string): URL | undefined {
+  const url = URL.canParse(evidence) ? new URL(evidence) : undefined;
+  // The URL parser drops a bare `#` and the default port, so the text is read for the first.
+  const plain =
+    url !== undefined &&
+    !evidence.includes('#') &&
+    url.username === '' &&
+    url.password === '' &&
+    url.port === '';
+  return plain ? url : undefined;
+}
+
+/**
  * Whether `evidence` links the published version of `document` in the
- * caller's business, where the breach runbook also fits on one page. A link
- * with a user name, a password, a port other than 443 or a fragment is not
- * one. The host is not checked: commands are not told the host the
- * installation serves (`SERVED_HOST` stays at the function's entry).
+ * caller's business, where the breach runbook also fits on one page, as a
+ * plain link (`plainLink`).
  */
 async function linksPublished(
   tx: TenantQuery,
@@ -128,19 +155,40 @@ async function linksPublished(
     'select key from public.businesses where business_id = $1 and id = $1',
     [tx.businessId],
   );
-  const url = URL.canParse(evidence) ? new URL(evidence) : undefined;
-  // The URL parser drops a bare `#` and the default port, so the text is read for the first.
-  const plain =
-    url !== undefined &&
-    !evidence.includes('#') &&
-    url.username === '' &&
-    url.password === '' &&
-    url.port === '';
+  const url = plainLink(evidence);
   return (
     business !== undefined &&
-    plain &&
+    url !== undefined &&
     `${url.pathname}${url.search}` === legalVersionPath(business.key, published)
   );
+}
+
+/**
+ * Whether `evidence` is the operations page as a plain link with no query
+ * (the parser drops a bare `?`, so the text is read for it), and a restore
+ * drill passed inside the window the operations view calls fresh: the row a
+ * passed drill stamps (0070), as committed when this statement runs.
+ */
+async function restoreTested(tx: TenantQuery, evidence: string): Promise<boolean> {
+  const url = plainLink(evidence);
+  if (url?.pathname !== OPERATIONS_PAGE || url.search !== '' || evidence.includes('?')) {
+    return false;
+  }
+  const [stamp] = await tx.query<{ readonly fresh: boolean }>(
+    // The time read now, after the lock wait: never the transaction's start.
+    'select at >= clock_timestamp() - make_interval(days => $1) as fresh from ops.last_tested_restore',
+    [RESTORE_FRESH_DAYS],
+  );
+  return stamp?.fresh === true;
+}
+
+/** Whether the person has a verified factor: their row's copy (`identity/second-factor.ts`). */
+async function factorVerified(tx: TenantQuery, personId: string): Promise<boolean> {
+  const [person] = await tx.query<{ readonly verified: boolean }>(
+    'select second_factor_verified as verified from public.people where business_id = $1 and id = $2',
+    [tx.businessId, personId],
+  );
+  return person?.verified === true;
 }
 
 const isOutcome = (value: Installation | HandlerOutcome): value is HandlerOutcome =>
@@ -164,6 +212,12 @@ export async function recordGateItem(
   if (item === 'training-line' && !dated(statement as string)) return invalid('statement');
   const installation = await lockedForOperator(tx, context);
   if (isOutcome(installation)) return installation;
+  if (item === 'tested-backups' && !(await restoreTested(tx, evidence))) {
+    return invalid('evidence');
+  }
+  if (item === 'second-factor' && !(await factorVerified(tx, context.session.personId))) {
+    return invalid('item');
+  }
   const document = GATE_EVIDENCE_DOCUMENTS[item];
   if (document !== undefined && !(await linksPublished(tx, document, evidence))) {
     return invalid('evidence');
