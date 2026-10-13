@@ -3709,7 +3709,13 @@ statement? }`: one of the eight items, three closing lines or the procedure
   where the runbook fits on one page (1,000 words). A link with a user name,
   password, port other than 443 or fragment is refused; the host is not
   checked, since commands are not told the served host. Any other link, or none
-  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
+  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`.
+  `tested-backups` takes only the operations page, `https://<host>/settings/operations/`,
+  with no query and the same link rules, while `ops.last_tested_restore` holds a
+  passed drill inside the restore window, else `evidence` is refused;
+  `second-factor` is refused naming `item` unless the person recording it has a
+  verified factor: on their row here, or on their own signed-in login through
+  any business, not since removed. Both are read after the installation's row lock. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
