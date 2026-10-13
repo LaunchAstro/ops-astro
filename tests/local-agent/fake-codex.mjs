@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { appServer, until } from './fake-codex-app.mjs';
 
 const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
@@ -55,6 +56,12 @@ if (process.argv[2] === 'login') {
   else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
   else process.stdout.write('Not logged in\n');
   process.exit(login === 'none' ? 1 : 0);
+}
+
+// `codex app-server` over stdio: one JSON-RPC message per line each way (appServer below).
+if (process.argv[2] === 'app-server') {
+  await appServer(home, knobs);
+  process.exit(0);
 }
 
 let stdin = '';
@@ -105,6 +112,8 @@ process.stdin.on('end', () => {
     }
     process.exit(knobs.exit ?? 0);
   };
-  if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
+  // `gate` holds the whole answer as it holds the app-server's after its first piece.
+  if (knobs.gate) void until(knobs.gate).then(answer);
+  else if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
   else answer();
 });
