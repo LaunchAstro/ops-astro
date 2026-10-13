@@ -65,6 +65,10 @@ main. An unreadable, symlinked or malformed receipt, missing main, or a failed
 Git read falls back to all history reachable from the pushed commit. A moved
 main or changed scan rules cannot reuse an earlier public receipt. Unpinned
 pushes and manual hook runs retain the original public-content range checks.
+The hook uses branch selection only when the pushed scanner's
+`--supports-branch` probe declares `branch-v1`. Older scanners receive the
+full tip through their existing `--range` interface and create no public
+branch receipt.
 
 These rules apply to all four:
 

@@ -207,6 +207,10 @@ export function publicHistory(repository, range, branch) {
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
+    if (args.length === 1 && args[0] === '--supports-branch') {
+      console.log('branch-v1');
+      process.exit(0);
+    }
     const outgoingAt = args.indexOf('--outgoing');
     const outgoing = outgoingAt !== -1;
     if (outgoing) args.splice(outgoingAt, 1);

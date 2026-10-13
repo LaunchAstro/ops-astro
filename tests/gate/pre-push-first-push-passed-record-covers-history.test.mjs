@@ -5,11 +5,17 @@
 // history was not scanned, then first-pushes a branch built on it to another
 // remote, and expects the key in that unscanned history to be refused.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstPushFixture, installHook, scanned, tokenShaped } from './first-push-fixture.mjs';
+import {
+  firstPushFixture,
+  installHook,
+  scanned,
+  source,
+  tokenShaped,
+} from './first-push-fixture.mjs';
 
 const refused = (f, result, ref) => {
   assert.equal(
@@ -105,4 +111,66 @@ test('a failed baseline Git read falls back to full public history and refuses t
   assert.equal(result.status, 1, result.output);
   assert.match(result.output, /branch state could not be read; scanning full history/u);
   assert.match(result.output, /inherited.txt \[private-pitch-url\]/u);
+});
+
+test('a clean branch carrying the earlier public scanner can still be pushed', (t) => {
+  const f = firstPushFixture(t, { hooked: false });
+  const previousScanner = execFileSync(
+    'git',
+    [
+      '-C',
+      source,
+      'show',
+      'b0f662bb37d0274bb32c2bc14ba7f6dc2e7edd93:scripts/public-content-check.mjs',
+    ],
+    { encoding: 'utf8' },
+  );
+  f.commit('scripts/public-content-check.mjs', previousScanner + '\n', 'previous scanner');
+  f.git('push', '-q', 'origin', 'main');
+  f.git('fetch', '-q', 'origin');
+  f.git('checkout', '-q', '-b', 'clean-older-branch');
+  const tip = f.commit('fresh.txt', 'clean\n', 'clean change');
+  installHook(f.repo);
+  const result = f.push('origin', 'clean-older-branch');
+  assert.equal(result.status, 0, result.output);
+  assert.equal(f.published('origin', 'clean-older-branch'), tip);
+});
+
+test('the unreadable receipt check fails when permission denial is disabled', () => {
+  // Change only the test's chmod operation. The scanners and hook are intact.
+  // first-push-fixture clears NODE_OPTIONS before starting the hook.
+  const loader = `import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    const chmod = fs.chmodSync;
+    fs.chmodSync = (path, mode) => {
+      if (String(path).endsWith('/gate-public-passed') && mode === 0) {
+        fs.readFileSync(path);
+        console.error('control: receipt remains readable');
+        return;
+      }
+      return chmod(path, mode);
+    };
+    syncBuiltinESMExports();`;
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'data:text/javascript,' + encodeURIComponent(loader),
+      '--test',
+      '--test-name-pattern=^a public receipt with unreadable state',
+      join(import.meta.dirname, 'pre-push-first-push-scans-unpassed-commits.test.mjs'),
+    ],
+    { encoding: 'utf8', timeout: 120000, env },
+  );
+  const output = result.stdout + result.stderr;
+  assert.match(output, /a public receipt with unreadable state/u);
+  assert.match(output, /control: receipt remains readable/u);
+  assert.notEqual(
+    result.status,
+    0,
+    'The unreadable-receipt claim still passes when chmod is skipped and the file is readable.\n' +
+      output,
+  );
 });

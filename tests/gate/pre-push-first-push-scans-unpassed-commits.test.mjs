@@ -2,7 +2,14 @@
 // First pushes skip passed commits and still refuse new findings.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, chmodSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -73,14 +80,21 @@ test('a same-regime public receipt skips commits already passed on this machine'
 });
 
 for (const broken of ['malformed', 'symlink', 'unreadable']) {
-  test(`a ${broken} public receipt falls back to full history and refuses the old finding`, (t) => {
+  test(`a public receipt with ${broken} state falls back to full history and refuses the old finding`, (t) => {
     const f = inheritedFinding(t);
     f.commit('fresh.txt', 'clean\n', 'fresh');
     const record = publicRecordOf(f);
-    if (broken === 'symlink') symlinkSync(join(f.scratch, 'absent'), record);
+    if (broken === 'unreadable') {
+      const passed = f.push('elsewhere', 'fresh');
+      assert.equal(passed.status, 0, passed.output);
+      assert.match(
+        readFileSync(record, 'utf8'),
+        /^(?:[0-9a-f]{40} [0-9a-f]{40}|[0-9a-f]{64} [0-9a-f]{64})\n$/u,
+      );
+      chmodSync(record, 0o000);
+    } else if (broken === 'symlink') symlinkSync(join(f.scratch, 'absent'), record);
     else {
       writeFileSync(record, 'broken receipt\n');
-      if (broken === 'unreadable') chmodSync(record, 0o000);
     }
     const result = f.push('origin', 'fresh');
     assert.equal(result.status, 1, result.output);

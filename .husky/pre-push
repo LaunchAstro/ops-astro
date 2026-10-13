@@ -253,7 +253,15 @@ scan() {
   #    main cannot be read, inspect everything reachable from this tip.
   #    Unpinned and manual runs keep the original range selection.
   if [ -n "${public_fingerprint:-}" ]; then
-    set -- --branch "$public_tip" --main "$public_main" --fingerprint "$public_fingerprint"
+    if public_capability=$($PUBLIC_CONTENT --supports-branch 2>/dev/null) &&
+      [ "$public_capability" = branch-v1 ]; then
+      set -- --branch "$public_tip" --main "$public_main" --fingerprint "$public_fingerprint"
+    else
+      # Older pushed scanners understand only ranges. Give them the full tip
+      # and record no branch receipt when that capability was not declared.
+      public_fingerprint=""
+      set -- --range "$public_tip"
+    fi
   elif [ -n "${public_tip:-}" ]; then
     set -- --range "$public_tip"
   elif [ -n "$range" ]; then
