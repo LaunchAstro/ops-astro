@@ -286,7 +286,10 @@ describe('the workflow', () => {
       const block = job(key);
       const conds = [...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1]);
       expect(block, key).toMatch(/node scripts\/ci-scope\.ts/u);
-      expect(conds, key).toStrictEqual(key === 'database-shard' ? [SKIPS_PULL_REQUESTS] : []);
+      const only = key === 'visual-drift' ? "github.event_name != 'merge_group'" : undefined;
+      expect(conds, key).toStrictEqual(
+        key === 'database-shard' ? [SKIPS_PULL_REQUESTS] : only ? [only] : [],
+      );
       expect(block, key).not.toMatch(/needs: \[[^\]]*scope/u);
     }
     const others = ci
