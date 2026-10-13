@@ -36,7 +36,7 @@ import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from 
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
 import { readMapFrontier, readMapList, readMapView } from './maps.ts';
-import { readTicketMap } from './ticket-map.ts';
+import { memberFacts } from './ticket-map.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -67,7 +67,6 @@ import { listInvitations } from './invitations.ts';
 import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
-import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
 import { readChatConversations, readChatMessages } from './chat.ts';
@@ -148,20 +147,6 @@ const NO_GRANT_AT_ALL = refuseCommand(
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
-
-/** What a member's task detail adds: the Client field's facts and the ticket's map. */
-async function memberFacts(
-  tx: TenantQuery,
-  session: Session,
-  spine: { readonly taskTypeId: string },
-  taskId: string,
-) {
-  const subjects = subjectsOf(session);
-  return {
-    ...(await readClientFacts(tx, taskId, subjects)),
-    map: await readTicketMap(tx, spine.taskTypeId, taskId, subjects),
-  };
-}
 
 /** A live task that is not a map is named as one; anything else is not there. */
 async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
