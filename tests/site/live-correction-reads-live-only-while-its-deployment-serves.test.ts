@@ -2,7 +2,7 @@
 //
 // A correction reads live, or reverted, only while the written commit's deployment is the one
 // serving the bound page: the project's current production deployment, read before and after
-// the page capture, and the page's host assigned to it, read once per run. Ready on production
+// the page capture, and the page's host assigned to it, read with each. Ready on production
 // is not enough. Anything else is unknown with a person task, never live and never sent again.
 // The providers are the double behind the guarded call's transport; nothing leaves the process.
 
@@ -18,7 +18,7 @@ const writes = (site: Provider) => site.sent.filter((sent) => sent.method === 'P
 describe.skipIf(serverUrl === undefined)(
   'a correction reads live only while its deployment serves the page',
   () => {
-    it('reads the production deployment before and after the capture, and the host once', async () => {
+    it('reads the production deployment and the host’s alias before and after the capture', async () => {
       const id = await approved();
       const { site, ports } = await bound(id);
       expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
@@ -29,6 +29,7 @@ describe.skipIf(serverUrl === undefined)(
         'GET /v4/aliases/agency.example?projectId=prj_site',
         'GET /v13/deployments/dpl_merged',
         'GET /v9/projects/prj_site',
+        'GET /v4/aliases/agency.example?projectId=prj_site',
       ]);
     });
 
