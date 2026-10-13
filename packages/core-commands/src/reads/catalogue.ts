@@ -34,7 +34,7 @@ import {
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
-import { readMapFrontier, readMapView } from './maps.ts';
+import { readMapFrontier, readMapView, readTicketMap } from './maps.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -145,6 +145,20 @@ const NO_GRANT_AT_ALL = refuseCommand(
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
+
+/** What a member's task detail adds: the Client field's facts and the ticket's map. */
+async function memberFacts(
+  tx: TenantQuery,
+  session: Session,
+  spine: { readonly taskTypeId: string },
+  taskId: string,
+) {
+  const subjects = subjectsOf(session);
+  return {
+    ...(await readClientFacts(tx, taskId, subjects)),
+    map: await readTicketMap(tx, spine.taskTypeId, taskId, subjects),
+  };
+}
 
 /** A live task that is not a map is named as one; anything else is not there. */
 async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
@@ -301,11 +315,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
-      // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view carry neither, at any detail level.
-      const shown = agent
-        ? task
-        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      // The Client field's facts (MP-4-8) and the ticket's map go to a member
+      // alone: an agent's detail and the shared view carry neither, at any
+      // detail level.
+      const shown = agent ? task : { ...task, ...(await memberFacts(tx, session, spine, task.id)) };
       if (operands.detail !== undefined) {
         const blockers = await readerBlockers(tx, session, recordId);
         return {

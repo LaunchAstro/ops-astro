@@ -12,7 +12,12 @@ import {
   type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
-import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
+import type {
+  MapComponentView,
+  MapFrontierResult,
+  MapView,
+  TaskMapLink,
+} from '../../../core-wire/src/index.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -261,4 +266,30 @@ export async function readMapFrontier(
       .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
     fog: fog.map((row) => ({ id: row.id, text: row.body })),
   };
+}
+
+/**
+ * The map a ticket belongs to, or null: a live map the ticket is filed under
+ * now, and only where the subjects' grants reach that map itself (a ticket's
+ * grant never reaches up to its map). One statement reads the ticket's map
+ * and judges the grant, so a map it has left, or one retyped, is not named.
+ */
+export async function readTicketMap(
+  tx: TenantQuery,
+  taskTypeId: string,
+  ticketId: string,
+  subjects: readonly Subject[],
+): Promise<TaskMapLink | null> {
+  const rows = await tx.query<TaskMapLink>(
+    `select m.id, m.txt_1 as key, m.txt_4 as title
+       from public.records t
+       join public.records m on m.business_id = t.business_id and m.id = t.uuid_4
+        and m.record_type_id = t.record_type_id
+      where t.business_id = $1 and t.id = $2 and t.record_type_id = $3
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
+        and m.deleted_at is null and m.data ->> 'type' = 'map'
+        and ${readableTaskCondition('m', 4)}`,
+    [tx.businessId, ticketId, taskTypeId, ...readableTaskParams(subjects)],
+  );
+  return rows[0] ?? null;
 }
