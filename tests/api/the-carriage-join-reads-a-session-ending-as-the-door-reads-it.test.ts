@@ -305,6 +305,10 @@ describe.skipIf(serverUrl === undefined)(
         ['zero', password(0)],
         ['negative', password(-(E - 600))],
         ['a fraction', password(`${String(E - 600)}.5`)],
+        [
+          'a fraction after every ending',
+          password(`${String(Math.floor(Date.now() / 1000) - 5)}.5`),
+        ],
         ['a string', password(`"${String(E - 600)}"`)],
         ['twelve digits', password(100_000_000_000)],
         ['far future', password(99_999_999_999)],
