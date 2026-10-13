@@ -155,16 +155,17 @@ async function carry(
   const k = handoff.callId;
   const skew: Skew = { at: undefined };
   const next = listen(line, carrying.options.keys, k, { now: carrying.now, skew });
-  const offeredAt = carrying.now();
   const offer = await handoff.offer();
   if (!offer.ok) return refused(offer.code);
+  // Read once the offer has committed: its judgement's wait is this side's, not the agent's clock.
+  const offeredAt = carrying.now();
   const accept = await next((heard) => heard.event === 'accept', carrying.now() + ACCEPT_WINDOW_MS);
   const heardAt = carrying.now();
   const acceptedAt = Number((accept?.body as { acceptedAt?: unknown } | null)?.acceptedAt);
   if (accept === undefined || !Number.isSafeInteger(acceptedAt))
     return refused('MODEL_MACHINE_AWAY');
   const { runner } = accept;
-  // The agent stamped its accept after the offer, so its clock is at most this far ahead:
+  // The agent stamped its accept once the offer was rung, so its clock is at most this far ahead:
   // every later seal, both ways, is judged on that, and an expired one is never live.
   skew.at = acceptedAt - offeredAt;
   const fence = await handoff.fence({ runner, acceptedAt, heardAt });
