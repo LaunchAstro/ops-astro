@@ -36,4 +36,10 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: 'The correction names a party that is not the client of its task',
     source: 'C80, P26 security review',
   },
+  {
+    code: 'PAGE_OUTSIDE_PARTY_SITE',
+    status: 409,
+    meaning: "The correction's page and file are not one pair its client's own site holds",
+    source: 'C80, the party-site store',
+  },
 ] as const;

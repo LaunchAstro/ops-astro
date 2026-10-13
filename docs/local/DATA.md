@@ -966,3 +966,25 @@ row could hold. The exchange asks again whether it is still offered before
 any call; the call records the model the answer named (`model_calls.model_id`).
 The table's grants already cover it, and the purge keeps it, as it keeps the
 title and the page.
+
+## A client's site (20261013051839, C80)
+
+`party_sites` holds one row per client whose website a live correction may
+change: its repository (`owner/name` in lower case), default branch and
+hosting project id, with who changed it, when, and its `revision`.
+`party_site_pages` maps each page address of that site to its source file;
+the address is the key in a business, so a page names one client, and
+several pages may share one file. The repository and the project are each
+unique across the installation (`party_sites_repository_key`,
+`party_sites_project_key`), so no business binds a site another holds.
+`live_corrections`' insert joins the page row of the task's own client, page
+and file as one pair, key-share locked: another client's page, or a page no
+client holds, stores nothing (`PAGE_OUTSIDE_PARTY_SITE`).
+
+While a correction of the client is open (`requested` to `live`), no page of
+its site is deleted and its providers do not change (`party_site_pages_held`,
+`party_sites_held`, each share-locking the corrections first); a page is
+never updated (`party_site_pages_fixed`). The application may select and
+insert both, delete pages, and update the site's provider columns; no command
+writes them: the operator binds a site with `bindPartySite`. Tenancy-keyed
+with the restrictive policy.
