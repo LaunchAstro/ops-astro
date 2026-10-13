@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried call's start against a model pick, purge or deactivation in flight writes no carriers row for a closed membership, records the close after the call, and neither side is aborted"
+}

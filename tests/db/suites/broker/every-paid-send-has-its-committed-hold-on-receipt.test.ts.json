@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "every paid request reaches OpenRouter behind a committed dispatched hold in its envelope, read on another connection at receipt"
+}

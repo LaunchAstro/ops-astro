@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a client linked to a paid conversation's page before the send is refused with no row and no request"
+}

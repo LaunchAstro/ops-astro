@@ -7,7 +7,8 @@
 // list, read once at start; a caller names neither. A destination marked
 // `post: false` takes no POST at all, only its listed routes: the login
 // provider's, whose service key could otherwise mint sign-in links or users
-// (C40 security review M1).
+// (C40 security review M1). A destination may declare the stream format
+// custody decodes for it (`stream: 'openai_sse'`, #1508).
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -52,6 +53,8 @@ export interface Extras {
   readonly routes?: readonly Route[];
   /** `false`: no POST to any path, only the listed routes. */
   readonly post?: false;
+  /** A stream format custody decodes itself, so a presented key may stream (#1508). */
+  readonly stream?: 'openai_sse';
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -83,7 +86,16 @@ function routeOf(value: unknown): Route | undefined {
 
 /** A destination entry's headers, routes and POST bar, or `undefined` when one is malformed. */
 export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | undefined {
-  const extras: { headers?: Record<string, string>; routes?: Route[]; post?: false } = {};
+  const extras: {
+    headers?: Record<string, string>;
+    routes?: Route[];
+    post?: false;
+    stream?: 'openai_sse';
+  } = {};
+  if (entry['stream'] !== undefined) {
+    if (entry['stream'] !== 'openai_sse') return undefined;
+    extras.stream = 'openai_sse';
+  }
   if (entry['post'] !== undefined) {
     if (entry['post'] !== false) return undefined;
     extras.post = false;

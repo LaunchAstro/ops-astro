@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the whole lost-call sweep ends a carried call once against an offer, a send, a crash and a second sweeper in every order, never releases a sent call, and no call it ended is sent afterwards"
+}

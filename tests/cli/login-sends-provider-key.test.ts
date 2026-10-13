@@ -4,7 +4,7 @@
 // grant without the project's publishable key (`No API key found in
 // request`). With `SUPABASE_PUBLISHABLE_KEY` set the command line sends it as
 // `apikey`, as the web does (`withProviderKey`), and the token is saved;
-// without it the refusal is GoTrue's own words and names the setting. The
+// without it the refusal is the command line's own line naming the setting. The
 // sign-in service here is a stand-in on a loopback port.
 
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -69,8 +69,7 @@ describe('cli login sends the publishable key to a hosted sign-in service', () =
   it('without it, the refusal is clear, names the setting and saves nothing', async () => {
     const { code, printed, tokenFile } = await login('keyless', {});
     expect(code).toBe(1);
-    expect(printed).toContain('No API key found in request');
-    expect(printed).toContain('SUPABASE_PUBLISHABLE_KEY');
+    expect(printed).toContain('needs SUPABASE_PUBLISHABLE_KEY');
     expect(() => statSync(tokenFile)).toThrow();
     expect(printed.includes(PASSWORD)).toBe(false);
   });

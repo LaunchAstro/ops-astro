@@ -12,8 +12,8 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
-export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
+import { PART_EXECUTES, PART_GROUPS } from './restricted-calls-mandates.ts';
+export { MANDATE_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -107,8 +107,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
-  // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
-  ['si', 'enrolment_tokens invitation_delivery_attempts'],
+  // C39-T (20261005154858, 20261013053949): attempt, token and owed login, written once.
+  ['si', 'enrolment_tokens invitation_delivery_attempts login_provisions'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
@@ -124,8 +124,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0051 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0052 (C81): a row of the overseas-services register is set by insert or
-  // update; never deleted.
+  // 0052 (C81): an overseas-services register row is set by insert or update; never deleted.
   ['siu', 'overseas_services'],
   // 0053 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
@@ -190,7 +189,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  ...MANDATE_GROUPS,
+  ...PART_GROUPS,
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -243,13 +242,14 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 20261005144947 (C40B): the reset's token lookup, two ids for one hash.
+  // C39-T (20261013053949) and C40B (20261005144947): an accept's, a reset's token lookup.
+  'public.enrolment_token_find',
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
-  ...MANDATE_EXECUTES,
+  ...PART_EXECUTES,
   'public.priority_stage_ids_valid',
 ];
 
