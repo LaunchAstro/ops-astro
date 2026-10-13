@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
-        run: node --test tests/ci/verdict-record-check.test.mjs tests/ci/verdict-workflow.test.mjs
+        run: node --test tests/ci/verdict-record-check.test.mjs tests/ci/verdict-workflow.test.mjs tests/ci/edited-verdict-and-required-check.proof.test.mjs
       - name: The pull requests being judged
         run: |
           if [ "$GITHUB_EVENT_NAME" = pull_request_review ]; then
@@ -56,8 +56,24 @@ jobs:
             gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"
             gh api --paginate --slurp "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" \
               | jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/comments.json"
-            gh api --paginate --slurp "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" \
-              | jq 'add' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/reviews.json"
+            # REST reviews expose submitted_at only. Read bodies and edit
+            # timestamps together so an edited refusal supersedes older text.
+            gh api graphql --paginate --slurp \
+              -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="${PR_NUMBER}" \
+              -f query='query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    reviews(first: 100, after: $endCursor) {
+                      nodes { id author { login } body state submittedAt updatedAt }
+                      pageInfo { hasNextPage endCursor }
+                    }
+                  }
+                }
+              }' \
+              | jq '[.[].data.repository.pullRequest.reviews.nodes[] | {
+                  id, user: {login: .author.login}, body, state,
+                  submitted_at: .submittedAt, updated_at: .updatedAt
+                }]' > "${RUNNER_TEMP}/pr-${PR_NUMBER}/reviews.json"
           done < "${RUNNER_TEMP}/prs.txt"
       - name: Judge every pull request
         env:

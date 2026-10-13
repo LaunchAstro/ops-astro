@@ -16,7 +16,7 @@ const record = (
   user: { login: account },
   body,
   created_at: '2026-10-01T01:00:00Z',
-  updated_at: '2026-10-01T01:00:00Z',
+  updated_at: extra.submitted_at ?? '2026-10-01T01:00:00Z',
   ...extra,
 });
 

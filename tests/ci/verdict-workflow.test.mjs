@@ -10,7 +10,7 @@ import { parse } from 'yaml';
 const root = resolve(import.meta.dirname, '../..');
 const workflow = () => parse(readFileSync(join(root, '.github/workflows/sol-verdict.yml'), 'utf8'));
 
-test('the advisory job runs on pull requests, formal review changes and merge groups', () => {
+test('the verdict job runs on pull requests, formal review changes and merge groups', () => {
   const w = workflow();
   assert.deepEqual(w.on.pull_request.types, [
     'opened',
@@ -23,11 +23,6 @@ test('the advisory job runs on pull requests, formal review changes and merge gr
   assert.ok(Object.hasOwn(w.on, 'merge_group'));
   assert.deepEqual(w.permissions, { contents: 'read', 'pull-requests': 'read' });
   assert.equal(w.jobs['sol-verdict'].name, 'Sol verdict for this revision');
-  assert.ok(
-    !readFileSync(join(root, '.github/required-checks.json'), 'utf8').includes(
-      'Sol verdict for this revision',
-    ),
-  );
   assert.ok(!Object.hasOwn(w.on, 'pull_request_target'));
   assert.equal(
     w.jobs['sol-verdict'].steps.find((step) => step.name === 'Read the current records').shell,
@@ -94,7 +89,9 @@ function fakeGh(dir) {
     `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
-const endpoint = args.find(a => a.startsWith('repos/')).split('?')[0];
+const graphql = args[1] === 'graphql';
+const field = name => args.find(a => a.startsWith(name + '='))?.slice(name.length + 1);
+const endpoint = graphql ? 'repos/fixture/repository/pulls/' + field('number') + '/reviews' : args.find(a => a.startsWith('repos/')).split('?')[0];
 if (process.env.FAILURE && endpoint.endsWith(process.env.FAILURE)) process.exit(1);
 const n = Number(endpoint.split('/')[4]);
 const p = JSON.parse(fs.readFileSync('pulls.json')).find(p => p.number === n);
@@ -102,7 +99,13 @@ if (endpoint.endsWith('/comments') || endpoint.endsWith('/reviews')) {
   if (!args.includes('--paginate') || !args.includes('--slurp') || args.includes('--jq') || args.includes('--template')) process.exit(2);
   const body = 'Reviewer: Sol (Codex)\\nHead SHA: ' + p.head.sha + '\\nVerdict: ' + (process.env.NEGATIVE === 'yes' && n === 12 ? 'changes requested' : 'approve');
   const r = { id: n, body, user: { login: 'fixture-reviewer' }, updated_at: '2026-10-01T01:00:00Z', submitted_at: '2026-10-01T01:00:00Z' };
-  console.log(JSON.stringify([endpoint.endsWith('/comments') ? [r] : []]));
+  const review = { ...r, body: body.replace('approve', 'changes requested'), submitted_at: '2026-10-01T00:00:00Z' };
+  if (graphql) {
+    if (!field('query')?.includes('updatedAt') || !field('query')?.includes('endCursor')) process.exit(2);
+    const nodes = process.env.EDITED_REVIEW === 'yes' ? [{ id: String(n), author: r.user, body: review.body, state: 'CHANGES_REQUESTED', submittedAt: review.submitted_at, updatedAt: '2026-10-01T02:00:00Z' }] : [];
+    const page = (nodes, hasNextPage) => ({ data: { repository: { pullRequest: { reviews: { nodes, pageInfo: { hasNextPage, endCursor: hasNextPage ? 'next' : null } } } } } });
+    console.log(JSON.stringify(process.env.BAD_REVIEWS === 'yes' ? [{ errors: [{ message: 'unreadable reviews' }], data: null }] : [page([], true), page(nodes, false)]));
+  } else console.log(JSON.stringify([endpoint.endsWith('/comments') ? [r] : process.env.EDITED_REVIEW === 'yes' ? [review] : []]));
 } else { if (process.env.STALE === 'yes') p.head.sha = 'b'.repeat(40); console.log(JSON.stringify(p)); }
 `,
     { mode: 0o755 },
@@ -125,12 +128,16 @@ function runSteps(exec, env) {
   return results.at(-1);
 }
 
+const fixtureGitOptions = ['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null'];
+
 function exercise({
   group = false,
   negative = false,
   failure = '',
   stale = false,
   reviewEvent = false,
+  editedReview = false,
+  badReviews = false,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'verdict-workflow-'));
   const exec = (command, args, env = {}) =>
@@ -140,13 +147,7 @@ function exercise({
       encoding: 'utf8',
     });
   const git = (...args) => {
-    const out = exec('git', [
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'core.hooksPath=/dev/null',
-      ...args,
-    ]);
+    const out = exec('git', [...fixtureGitOptions, ...args]);
     assert.equal(out.status, 0, out.stderr);
     return out.stdout.trim();
   };
@@ -169,6 +170,8 @@ function exercise({
       FAILURE: failure,
       NEGATIVE: negative ? 'yes' : '',
       STALE: stale ? 'yes' : '',
+      EDITED_REVIEW: editedReview ? 'yes' : '',
+      BAD_REVIEWS: badReviews ? 'yes' : '',
     };
     return runSteps(exec, env);
   } finally {
@@ -197,3 +200,15 @@ for (const [name, options] of [
     const out = exercise(options);
     assert.notEqual(out.status, 0, out.stdout + out.stderr);
   });
+
+test('refuses an edited formal review from a later API page', () => {
+  const out = exercise({ editedReview: true, reviewEvent: true });
+  assert.equal(out.status, 1, out.stdout + out.stderr);
+  assert.match(out.stderr, /the newest record must contain/u);
+});
+
+test('refuses an unreadable GraphQL reviews response', () => {
+  const out = exercise({ badReviews: true });
+  assert.notEqual(out.status, 0, out.stdout + out.stderr);
+  assert.match(out.stderr, /jq:/u);
+});

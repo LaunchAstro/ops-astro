@@ -40,7 +40,9 @@ try {
       !(record.body ?? '').includes('Reviewer: Sol (Codex)')
     )
       continue;
-    const stamp = kind === 'reviews' ? record.submitted_at : record.updated_at;
+    // Both sources carry their current update time. REST reviews omit it, so
+    // the workflow obtains formal review timestamps and bodies via GraphQL.
+    const stamp = record.updated_at;
     const time = typeof stamp === 'string' ? Date.parse(stamp) : NaN;
     if (!Number.isFinite(time)) fail('a candidate record has an unreadable timestamp.');
     candidates.push({ record, read, time, kind });
