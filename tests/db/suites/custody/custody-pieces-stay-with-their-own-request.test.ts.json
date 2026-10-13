@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "custody's pieces stay with the request that asked"
-}
