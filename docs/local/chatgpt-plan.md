@@ -12,9 +12,11 @@ rest of the M5 install.
 
 ## How it works
 
-- The owner signs in once on the M5 through the loopback PKCE flow, with the
-  scopes `offline_access resource.invoke chatgpt.tokens.use.direct`. The
-  sign-in command writes the token file, mode 600.
+- The owner signs in once on the M5 through OpenAI's open-source
+  token-sharing flow: loopback PKCE, with the scopes `openid profile email
+offline_access resource.invoke chatgpt.tokens.use.direct` and the resource
+  `https://api.openai.com/v1`. The sign-in command writes the token file,
+  mode 600, with the client id OpenAI issued.
 - Custody's credential file names that token file. Custody refreshes the
   access token 5 minutes before it expires, when a call asks, and writes the
   rotated pair before it uses it. A refused refresh means a new sign-in:
@@ -39,28 +41,37 @@ rest of the M5 install.
 Do these on the M5, in a terminal you are logged in to yourself. Never paste a
 token, a code or the token file into chat, a ticket or a file in Git.
 
-1. Have the client id that the plan's open-source token sharing gave Ops
-   Astro. It is not a secret. If you have none, stop here and tell the
-   orchestrator: nothing below works without it.
-2. Choose the token file's place, outside any repository, for example
-   `~/.ops-astro/chatgpt-plan.json`. Make its folder yours only:
+No client id is needed beforehand. The first sign-in registers Ops Astro with
+your ChatGPT account, as OpenAI's open-source token-sharing flow publishes it
+(<https://developers.openai.com/siwc/token-sharing-open-source/sign-in>), and
+OpenAI issues the client id during it. The command saves that id with the
+tokens and uses it for any later sign-in.
+
+1. Make a folder that is yours only, outside any repository:
    `mkdir -p ~/.ops-astro && chmod 700 ~/.ops-astro`.
-3. From the ops-astro checkout on the M5, run:
+2. From the ops-astro checkout on the M5, run:
 
    ```sh
    node apps/model-agent/chatgpt-sign-in-command.ts \
-     --client-id <client id> \
      --token-file "$HOME/.ops-astro/chatgpt-plan.json"
    ```
 
-4. Your browser opens the ChatGPT sign-in. Sign in with the ChatGPT account
-   the plan is on and approve. The page then says you can close the tab.
-5. The terminal says `Signed in.` A refusal names its reason
-   (`SIGN_IN_STATE_MISMATCH`, `SIGN_IN_DECLINED`, `SIGN_IN_EXCHANGE_FAILED`,
-   `SIGN_IN_TIMED_OUT`, `SIGN_IN_STORE_FAILED`); run step 3 again.
-6. Check the file is yours only: `ls -l ~/.ops-astro/chatgpt-plan.json` shows
-   `-rw-------`.
-7. Add the plan's entry to custody's credential file (mode 600), using the
+3. Your browser opens the ChatGPT sign-in. Sign in with the ChatGPT account
+   the plan is on. ChatGPT asks you to name the agent (it suggests
+   `Ops Astro`) and to approve its use of your plan. Approve. The page then
+   says you can close the tab.
+4. The terminal says `Signed in.` A refusal names its reason:
+   - `SIGN_IN_DECLINED`: the sign-in was declined, or plan use is not
+     enabled for the account. Enable it in ChatGPT and run step 2 again.
+   - `SIGN_IN_REGISTRATION_INCOMPLETE`: no client id came back. Run step 2
+     again.
+   - `SIGN_IN_PLAN_USE_NOT_GRANTED`: the grant did not include plan use.
+   - `SIGN_IN_STATE_MISMATCH`, `SIGN_IN_EXCHANGE_FAILED`,
+     `SIGN_IN_TIMED_OUT`, `SIGN_IN_STORE_FAILED`: run step 2 again.
+5. Check the file is yours only: `ls -l ~/.ops-astro/chatgpt-plan.json` shows
+   `-rw-------`. The folder also holds `chatgpt-host.json`, this machine's
+   host id for the sign-in (not a secret).
+6. Add the plan's entry to custody's credential file (mode 600), using the
    whole path of the token file:
 
    ```json
@@ -75,7 +86,7 @@ token, a code or the token file into chat, a ticket or a file in Git.
    }
    ```
 
-8. Add the three plan settings to the model agent's settings file, all
+7. Add the three plan settings to the model agent's settings file, all
    together: `chatgptCredentialRef` (`chatgpt_plan`), `chatgptOrigin`
    (exactly `https://api.openai.com`) and `chatgptSignInOrigin` (exactly
    `https://auth.openai.com`). Restart the model agent.
@@ -106,5 +117,6 @@ token, a code or the token file into chat, a ticket or a file in Git.
 
 - No one but the owner runs these steps, and only on the M5.
 - Nothing reads or reuses another ChatGPT or Codex login on the machine.
-- To switch to another ChatGPT account later, run the sign-in again with the
-  same token file. No code changes.
+- To switch to another ChatGPT account later, move the token file aside and
+  run the sign-in again; it registers Ops Astro with that account. No code
+  changes.

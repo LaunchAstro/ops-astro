@@ -3,13 +3,13 @@
 // How custody presents the owner's plan sign-in (#1620): a credential filed
 // `oauth_refresh` is presented as its token file's current access token, as
 // a bearer, refreshed first when due at its refresh destination's token
-// endpoint (`plan-token.ts`); any other credential as filed. The secrets an
-// answer is redacted of are the access token and the refresh token held, so
+// endpoint, `/api/accounts/oauth/token` (`plan-token.ts`); any other
+// credential as filed. The secrets an answer is redacted of are the access token and the refresh token held, so
 // neither can come back. A call the plan cannot be presented for is refused
 // by code, before custody says `started`.
 
 import type { StoredCredential } from './credentials.ts';
-import { readTokenFile, tokenHolder, type TokenHolder } from './plan-token.ts';
+import { PLAN_TOKEN_PATH, readTokenFile, tokenHolder, type TokenHolder } from './plan-token.ts';
 
 export type Presented =
   { readonly credential: StoredCredential; readonly secrets: readonly string[] } | string;
@@ -27,7 +27,7 @@ export function planPresenter(
     if (origin === undefined || file === undefined) return 'CUSTODY_CREDENTIAL_UNKNOWN';
     let holder = holders.get(credential.ref);
     if (holder === undefined) {
-      holder = tokenHolder({ file, tokenUrl: `${origin}/oauth/token`, log });
+      holder = tokenHolder({ file, tokenUrl: `${origin}${PLAN_TOKEN_PATH}`, log });
       holders.set(credential.ref, holder);
     }
     const token = await holder.current();

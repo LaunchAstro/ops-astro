@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The owner's one sign-in to the ChatGPT plan on the owner's machine (#1620):
-// the loopback PKCE flow. The address the owner opens asks for the plan's
-// scopes with an S256 challenge and a fresh state; the answer comes back to
-// loopback only; a wrong state is refused and nothing is exchanged; the code
-// is exchanged with the verifier that matches the challenge; and the tokens
-// land in custody's file, owner-only, with nothing secret said on the way.
-// The issuer is a fake on loopback.
+// the loopback PKCE flow, whose published request shape the open-source flow
+// test holds. Here: a wrong state is refused and nothing is exchanged; a
+// declined sign-in is refused by name; the code is exchanged with the
+// verifier that matches the challenge; and the tokens land in custody's file,
+// owner-only, with nothing secret said on the way. The issuer is a fake on
+// loopback.
 
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { CHATGPT_PLAN_SCOPES, signIn } from '../../apps/model-agent/chatgpt-sign-in.ts';
+import { signIn } from '../../apps/model-agent/chatgpt-sign-in.ts';
 
 interface Issuer {
   readonly origin: string;
@@ -34,7 +34,12 @@ async function fakeIssuer(): Promise<Issuer> {
       exchanges.push(new URLSearchParams(text));
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(
-        JSON.stringify({ access_token: ACCESS, refresh_token: REFRESH, expires_in: 3600 }),
+        JSON.stringify({
+          access_token: ACCESS,
+          refresh_token: REFRESH,
+          expires_in: 3600,
+          scope: 'openid offline_access resource.invoke chatgpt.tokens.use.direct',
+        }),
       );
     });
   });
@@ -73,7 +78,6 @@ async function signedIn(answer: (asked: URL) => string) {
   let asked: URL | undefined;
   const result = await signIn({
     issuer: issuer.origin,
-    clientId: 'app_fake_client',
     tokenFile,
     port: 0,
     timeoutMs: 5_000,
@@ -87,24 +91,9 @@ async function signedIn(answer: (asked: URL) => string) {
   return { result, said, asked, tokenFile };
 }
 
-it('the opened address asks for the plan scopes with an S256 challenge, back to loopback', async () => {
-  const { asked } = await signedIn((url) => `code=c1&state=${url.searchParams.get('state') ?? ''}`);
-  expect(asked?.origin).toBe(issuer.origin);
-  expect(asked?.pathname).toBe('/oauth/authorize');
-  expect(asked?.searchParams.get('response_type')).toBe('code');
-  expect(asked?.searchParams.get('client_id')).toBe('app_fake_client');
-  expect(asked?.searchParams.get('scope')).toBe(CHATGPT_PLAN_SCOPES);
-  expect(CHATGPT_PLAN_SCOPES).toBe('offline_access resource.invoke chatgpt.tokens.use.direct');
-  expect(asked?.searchParams.get('code_challenge_method')).toBe('S256');
-  expect(asked?.searchParams.get('state')).toMatch(/^[\w-]{32,}$/u);
-  const back = new URL(asked?.searchParams.get('redirect_uri') ?? '');
-  expect(back.hostname).toBe('localhost');
-  expect(back.pathname).toBe('/auth/callback');
-});
-
 it('the code is exchanged with the verifier matching the challenge, and the file is owner-only', async () => {
   const { result, asked, tokenFile } = await signedIn(
-    (url) => `code=c1&state=${url.searchParams.get('state') ?? ''}`,
+    (url) => `code=c1&state=${url.searchParams.get('state') ?? ''}&client_id=oaiapp_fake_client`,
   );
   expect(result).toEqual({ ok: true });
   expect(issuer.exchanges).toHaveLength(1);
@@ -118,7 +107,7 @@ it('the code is exchanged with the verifier matching the challenge, and the file
   expect(exchange?.get('redirect_uri')).toBe(asked?.searchParams.get('redirect_uri'));
   const held = JSON.parse(readFileSync(tokenFile, 'utf8')) as Record<string, unknown>;
   expect(held).toMatchObject({
-    clientId: 'app_fake_client',
+    clientId: 'oaiapp_fake_client',
     accessToken: ACCESS,
     refreshToken: REFRESH,
   });
@@ -126,7 +115,9 @@ it('the code is exchanged with the verifier matching the challenge, and the file
 });
 
 it('an answer with another state is refused, and nothing is exchanged or written', async () => {
-  const { result, tokenFile } = await signedIn(() => 'code=c1&state=not-the-one-asked-for');
+  const { result, tokenFile } = await signedIn(
+    () => 'code=c1&state=not-the-one-asked-for&client_id=oaiapp_fake_client',
+  );
   expect(result).toEqual({ ok: false, code: 'SIGN_IN_STATE_MISMATCH' });
   expect(issuer.exchanges).toHaveLength(0);
   expect(() => statSync(tokenFile)).toThrow();
@@ -134,14 +125,17 @@ it('an answer with another state is refused, and nothing is exchanged or written
 
 it('an answer that declines the sign-in is refused by name', async () => {
   const { result } = await signedIn(
-    (url) => `error=access_denied&state=${url.searchParams.get('state') ?? ''}`,
+    (url) =>
+      `error=access_denied&state=${url.searchParams.get('state') ?? ''}&client_id=oaiapp_fake_client`,
   );
   expect(result).toEqual({ ok: false, code: 'SIGN_IN_DECLINED' });
   expect(issuer.exchanges).toHaveLength(0);
 });
 
 it('nothing said during the sign-in holds a token, the code or the verifier', async () => {
-  const { said } = await signedIn((url) => `code=c1&state=${url.searchParams.get('state') ?? ''}`);
+  const { said } = await signedIn(
+    (url) => `code=c1&state=${url.searchParams.get('state') ?? ''}&client_id=oaiapp_fake_client`,
+  );
   const verifier = issuer.exchanges[0]?.get('code_verifier') ?? 'none';
   const text = said.join('\n');
   for (const secret of [ACCESS, REFRESH, verifier, 'code=c1']) expect(text).not.toContain(secret);

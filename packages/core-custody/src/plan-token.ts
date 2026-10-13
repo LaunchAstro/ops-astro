@@ -41,6 +41,17 @@ export const REFRESH_AHEAD_MS: number = 5 * 60_000;
 /** The longest a refresh may take before the call is refused. */
 const REFRESH_TIMEOUT_MS = 30_000;
 
+/**
+ * The token endpoint's path and the resource every plan token is for, as
+ * OpenAI's open-source token-sharing flow publishes them
+ * (https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+ * The page does not spell out the refresh request: it is sent as the code
+ * exchange is, form-encoded with the same resource, a best reading until the
+ * owner's one real refresh confirms it.
+ */
+export const PLAN_TOKEN_PATH = '/api/accounts/oauth/token';
+const PLAN_RESOURCE = 'https://api.openai.com/v1';
+
 /** The largest token answer read. */
 const TOKEN_ANSWER_BYTES = 64 * 1024;
 
@@ -173,6 +184,7 @@ async function refresh(held: Held, from: PlanTokens): Promise<Refreshed> {
         grant_type: 'refresh_token',
         refresh_token: from.refreshToken,
         client_id: from.clientId,
+        resource: PLAN_RESOURCE,
       }).toString(),
       redirect: 'error',
       signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),

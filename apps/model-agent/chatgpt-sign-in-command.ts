@@ -5,7 +5,10 @@
 // address, the browser opened with macOS `open`, and only the outcome's name
 // printed.
 //
-//   node apps/model-agent/chatgpt-sign-in-command.ts --client-id <id> --token-file <path>
+// No client id is needed beforehand: the first sign-in registers Ops Astro
+// and OpenAI issues one, which is saved with the tokens.
+//
+//   node apps/model-agent/chatgpt-sign-in-command.ts --token-file <whole path>
 
 import { spawn } from 'node:child_process';
 import { signIn } from './chatgpt-sign-in.ts';
@@ -18,15 +21,13 @@ function argument(argv: readonly string[], name: string): string | undefined {
 }
 
 if (import.meta.main) {
-  const clientId = argument(process.argv, '--client-id');
   const tokenFile = argument(process.argv, '--token-file');
-  if (clientId === undefined || tokenFile === undefined || !tokenFile.startsWith('/')) {
-    process.stderr.write('usage: chatgpt-sign-in --client-id <id> --token-file <whole path>\n');
+  if (tokenFile === undefined || !tokenFile.startsWith('/')) {
+    process.stderr.write('usage: chatgpt-sign-in-command --token-file <whole path>\n');
     process.exitCode = 2;
   } else {
     const result = await signIn({
       issuer: CHATGPT_SIGN_IN_ORIGIN,
-      clientId,
       tokenFile,
       open: (address) => void spawn('open', [address], { stdio: 'ignore' }).on('error', () => {}),
       say: (line) => void process.stdout.write(`${line}\n`),
