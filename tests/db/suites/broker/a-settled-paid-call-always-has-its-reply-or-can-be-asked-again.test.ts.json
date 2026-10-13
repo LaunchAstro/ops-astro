@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a failed reply insert or a process dying before the settle commits leaves no settled call and no reply; a twin is told it is answering; no settled paid call lacks its reply"
+}
