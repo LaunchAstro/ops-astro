@@ -43,6 +43,7 @@ const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'a signed-out session joins no carriage topic',
+  // eslint-disable-next-line max-lines-per-function -- one database, one business per ending
   () => {
     let db: FreshDatabase;
     let world: CarriageBusiness;
