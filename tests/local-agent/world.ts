@@ -30,6 +30,13 @@ export interface World {
   readonly env: Record<string, string | undefined>;
   knobs(knobs: Record<string, unknown>): void;
   calls(): readonly FakeCall[];
+  /** What the app-server stand-in got: its start (argv, environment, folder), then each message. */
+  appCalls(): readonly Record<string, unknown>[];
+  /**
+   * The prompts the model was given, on either path: an exec's stdin, or the
+   * input of an app-server `turn/start`. What a call that is refused must leave empty.
+   */
+  asked(): readonly string[];
   ledger(): readonly Record<string, unknown>[];
   /** A file in the runner's home: a string as it is, anything else as JSON. */
   write(name: string, value: unknown): void;
@@ -70,6 +77,16 @@ export function makeWorld({ absentHome = false }: { absentHome?: boolean } = {})
       writeFileSync(join(codexHome, 'fake.json'), JSON.stringify(knobs));
     },
     calls: () => readLines(calls) as FakeCall[],
+    appCalls: () => readLines(join(codexHome, 'app-calls.jsonl')) as Record<string, unknown>[],
+    asked: () => [
+      ...(readLines(calls) as FakeCall[]).map((call) => call.stdin),
+      ...readLines(join(codexHome, 'app-calls.jsonl')).flatMap((entry) => {
+        const message = (entry as { message?: { method?: string; params?: unknown } }).message;
+        if (message?.method !== 'turn/start') return [];
+        const input = (message.params as { input?: { text?: string }[] } | undefined)?.input;
+        return (input ?? []).map((part) => part.text ?? '');
+      }),
+    ],
     ledger: () => readLines(join(agentHome, 'ledger.jsonl')) as Record<string, unknown>[],
     write: (name, value) => {
       writeFileSync(

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "map.view judges the map grant again once its share lock is held: a grant ending during the lock wait gets not-found and no section, ticket or version is fetched after the wait"
+}

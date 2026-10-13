@@ -29,7 +29,22 @@ export const callNeed = (prompt: string): number =>
   UNKNOWN_CALL_TOKENS + Buffer.byteLength(prompt, 'utf8');
 
 export type CallRefusal =
-  'LOCAL_CAP_REACHED' | 'LOCAL_MODEL_NOT_APPROVED' | 'LOCAL_PLAN_LIMIT' | 'LOCAL_GPT_FAILED';
+  | 'LOCAL_CAP_REACHED'
+  | 'LOCAL_MODEL_NOT_APPROVED'
+  | 'LOCAL_PLAN_LIMIT'
+  | 'LOCAL_GPT_FAILED'
+  | 'GPT_SIGNED_OUT'
+  | 'GPT_WEEK_RESERVED'
+  | 'GPT_USAGE_UNKNOWN'
+  | 'MODEL_MACHINE_BUSY'
+  | 'SEND_LAPSED';
+
+/** A call refused before the model was asked anything: nothing ran, nothing is charged. */
+export interface Refused {
+  readonly refused: CallRefusal;
+  /** When the plan's week resets, in Unix seconds, for the runner's own log. */
+  readonly resetsAt?: number;
+}
 
 /** The plain words for each refusal, for the runner's output and the person who reads it. */
 export const REFUSAL_MESSAGES: Readonly<Record<CallRefusal, string>> = {
@@ -38,6 +53,11 @@ export const REFUSAL_MESSAGES: Readonly<Record<CallRefusal, string>> = {
   LOCAL_MODEL_NOT_APPROVED: `The local agent runs on ${DEFAULT_MODEL}. Another model needs the owner’s yes first.`,
   LOCAL_PLAN_LIMIT: 'The ChatGPT plan is at its usage limit. Wait for it to reset.',
   LOCAL_GPT_FAILED: 'The local codex call did not complete.',
+  GPT_SIGNED_OUT: 'Codex here is not signed in to the ChatGPT plan. Sign it in again.',
+  GPT_WEEK_RESERVED: 'The ChatGPT plan’s week is 95% used; what is left is kept. Nothing was sent.',
+  GPT_USAGE_UNKNOWN: 'The ChatGPT plan did not say its usage may go on. Nothing was sent.',
+  MODEL_MACHINE_BUSY: 'The runner is answering another call. Nothing was sent.',
+  SEND_LAPSED: 'The call was not sent by its deadline. Nothing was sent.',
 };
 
 export type GateSettings = Pick<RunnerSettings, 'home' | 'capTokens' | 'capConfigured'>;

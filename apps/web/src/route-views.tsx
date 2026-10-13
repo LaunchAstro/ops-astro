@@ -30,6 +30,7 @@ import { RecordState } from './views/record-state.tsx';
  */
 const SECTION_OF_ROUTE: Readonly<Record<string, string>> = {
   'agency:task-detail': 'agency:projects',
+  'agency:map': 'agency:projects',
 };
 
 const namespaceSections = (namespace: Section['namespace']): readonly Section[] =>
