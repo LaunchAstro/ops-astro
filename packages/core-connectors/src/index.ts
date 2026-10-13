@@ -112,8 +112,11 @@ export {
 } from './catalogue.ts';
 export {
   callConnector,
+  SLOT_SEGMENTS,
   type CallDependencies,
   type ConnectorResult,
+  type CredentialReference,
+  type CustodyAnswer,
   type ProviderResult,
   type ProviderValue,
 } from './call.ts';

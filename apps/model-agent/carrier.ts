@@ -158,9 +158,10 @@ async function run(
     pieces.push,
   );
   pieces.end();
-  if (outcome.kind === 'worker_lost') {
+  // A withheld outcome comes only from a site template route, never a model call's.
+  if (outcome.kind === 'worker_lost' || outcome.kind === 'withheld') {
     call.state = 'done';
-    agent.log('custody lost');
+    agent.log(outcome.kind === 'withheld' ? 'custody withheld' : 'custody lost');
     return;
   }
   if (outcome.kind === 'refused') {
