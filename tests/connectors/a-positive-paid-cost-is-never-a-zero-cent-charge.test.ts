@@ -5,7 +5,7 @@ import {
   readOpenRouterAnswer,
 } from '../../packages/core-connectors/src/openrouter.ts';
 
-it('Sol proof, criterion 1: a positive reported paid cost cannot become a zero-cent charge', () => {
+it('a positive reported paid cost cannot become a zero-cent charge', () => {
   const answer = readOpenRouterAnswer({
     model: 'anthropic/claude-haiku-5.5',
     content: 'A paid answer.',
@@ -18,7 +18,7 @@ it('Sol proof, criterion 1: a positive reported paid cost cannot become a zero-c
   expect(openrouterCostMinor(answer)).toBeGreaterThanOrEqual(1);
 });
 
-it('Sol proof, criterion 1: a reported cost above one AUD cent must round up to two', () => {
+it('a reported cost above one AUD cent rounds up to two', () => {
   const answer = readOpenRouterAnswer({
     model: 'anthropic/claude-haiku-5.5',
     content: 'A paid answer.',
