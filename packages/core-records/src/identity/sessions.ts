@@ -234,7 +234,7 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
 export type SessionRefusal = 'AUTH_SESSION_EXPIRED' | 'AUTH_SECOND_FACTOR_REQUIRED';
 
 /**
- * `ops.session_refusal` for a verified token (20261013010250): ended, as
+ * `ops.session_refusal` for a verified token (20261013044500): ended, as
  * `sessionEnded` reads it, or stopped at the password for a login with a
  * verified factor when `factorAsked`. The 12 hours are the verifier's, judged
  * before the database. A session refused while a reset is open is ended for

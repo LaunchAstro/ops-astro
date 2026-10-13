@@ -249,7 +249,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.take_lease',
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
-  // 20261013010250 (#1531): the one session rule, login resolution's and the
+  // 20261013044500 (#1531): the one session rule, login resolution's and the
   // carriage join's; security invoker, so each reads no more than its caller may.
   'ops.session_ended',
   'ops.login_verified_factors',
