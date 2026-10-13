@@ -6,7 +6,8 @@
 // another business's invitation is never listed or counted.
 //
 // A pending invitation whose lifetime has passed is answered `expired` before
-// the worker ends it (`invitation-expiry.ts`). `sentAt` is the last delivery
+// the worker ends it (`invitation-expiry.ts`), judged on the clock when the
+// list is read, not at its transaction's start, which may precede a wait. `sentAt` is the last delivery
 // the provider took. The enrolment tokens are never read: nothing here can
 // carry a token or its hash.
 
@@ -30,7 +31,7 @@ const iso = (time: Time): string => new Date(time).toISOString();
 export async function listInvitations(tx: TenantQuery): Promise<InvitationListResult> {
   const rows = await tx.query<Row>(
     `select i.id as "invitationId", p.display_name as name, i.address, i.role_key as role,
-            case when i.state = 'pending' and i.expires_at <= now() then 'expired'
+            case when i.state = 'pending' and i.expires_at <= clock_timestamp() then 'expired'
                  else i.state end as state,
             i.created_at as "createdAt", i.expires_at as "expiresAt",
             (select max(a.observed_at) from public.invitation_delivery_attempts a
