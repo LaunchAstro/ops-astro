@@ -6,8 +6,9 @@
 // the source from the conversation's rows, never the caller's claim.
 //
 // A conversation is the owner's own work when its person holds the business's
-// active owner role, every person turn in it is theirs, and it is on no task
-// or on a task that is the owner's own (`broker-sources.ts`). Only then do the
+// active owner role, every person turn in it is theirs and was written while
+// they held it (a turn typed as a client's contact stays one), and it is on no
+// task or on a task that is the owner's own (`broker-sources.ts`). Only then do the
 // owner's words, the earlier turns and the page pointer count as
 // business-internal free text, which the owner's subscription may carry, and
 // only when each value is bound to the conversation's rows. A conversation on
@@ -36,6 +37,16 @@ const READ_CONVERSATION = `select c.scope_record_id::text as page,
            select 1 from public.conversation_messages cm
             where cm.business_id = c.business_id and cm.conversation_id = c.id
               and cm.role = 'person' and cm.author_actor_id <> c.owner_actor_id) as own_turns,
+         not exists (
+           select 1 from public.conversation_messages cm
+             join public.actors a on a.business_id = cm.business_id and a.id = cm.author_actor_id
+            where cm.business_id = c.business_id and cm.conversation_id = c.id
+              and cm.role = 'person'
+              and not exists (
+                select 1 from public.memberships m
+                 where m.business_id = a.business_id and m.person_id = a.person_id
+                   and m.role_key = 'owner' and m.joined_at <= cm.created_at
+                   and (m.ended_at is null or m.ended_at > cm.created_at))) as written_as_owner,
          (select m.body from public.conversation_messages m
            where m.business_id = c.business_id and m.conversation_id = c.id and m.id = $3
              and m.role = 'person' and m.author_actor_id = c.owner_actor_id) as asked
@@ -53,30 +64,43 @@ interface Turn {
   readonly body: string;
 }
 
+/**
+ * The earlier turns, only when the value is exactly their canonical JSON: an
+ * array of `{ role, body }` and nothing else, so no byte rides along unbound
+ * (an extra property, a duplicated key, other spacing).
+ */
 function turnsOf(value: string): readonly Turn[] | undefined {
   try {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) return undefined;
-    const turns = parsed.filter(
-      (turn): turn is Turn =>
-        typeof turn === 'object' &&
-        turn !== null &&
-        typeof (turn as Turn).role === 'string' &&
-        typeof (turn as Turn).body === 'string',
+    const turns = parsed.map((turn: unknown) => {
+      const { role, body } = (typeof turn === 'object' && turn !== null ? turn : {}) as Turn;
+      return { role, body };
+    });
+    const typed = turns.every(
+      (turn) => typeof turn.role === 'string' && typeof turn.body === 'string',
     );
-    return turns.length === parsed.length ? turns : undefined;
+    return typed && JSON.stringify(turns) === value ? turns : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** The page pointer names the conversation's own task, and a prefix of its title. */
+/**
+ * The page pointer names the conversation's own task and a prefix of its
+ * title, and is exactly their canonical JSON, so no byte rides along unbound.
+ */
 function namesPage(value: string, pageId: string, title: string): boolean {
   try {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed !== 'object' || parsed === null) return false;
     const { task, title: named } = parsed as Record<string, unknown>;
-    return task === pageId && typeof named === 'string' && title.startsWith(named);
+    return (
+      task === pageId &&
+      typeof named === 'string' &&
+      title.startsWith(named) &&
+      JSON.stringify({ task, title: named }) === value
+    );
   } catch {
     return false;
   }
@@ -118,6 +142,7 @@ export async function conversationSource(
     readonly kept: boolean;
     readonly owner: boolean;
     readonly own_turns: boolean;
+    readonly written_as_owner: boolean;
     readonly asked: string | null;
   }>(READ_CONVERSATION, [tx.businessId, request.conversation.id, asked]);
   if (found === undefined) return NOBODYS;
@@ -145,7 +170,13 @@ export async function conversationSource(
   }
   const pageOwn = page === undefined || ownersOwn(page.source);
   const ownerWork =
-    found.kept && found.owner && found.own_turns && allBound && pageOwn && !clientWork;
+    found.kept &&
+    found.owner &&
+    found.own_turns &&
+    found.written_as_owner &&
+    allBound &&
+    pageOwn &&
+    !clientWork;
   return { ownerWork, clientWork };
 }
 

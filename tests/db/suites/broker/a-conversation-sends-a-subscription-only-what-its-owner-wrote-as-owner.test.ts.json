@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Owner line 72 on the conversation path: a turn written while its author held no owner role stays off the subscription after they become owner, and a page or earlier-turns value carrying bytes no row holds (an extra property, a duplicated key) is never sent."
+}
