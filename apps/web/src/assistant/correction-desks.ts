@@ -81,7 +81,8 @@ export function withTaskLocate<
   Host extends { client: OperationsClient; here: string; locate?: Locate | undefined },
 >(host: Host): Host {
   if (host.locate !== undefined) return host;
-  const page = matchRoute(host.here);
+  // The address without its query or fragment, as `App.tsx` routes the page.
+  const page = matchRoute(host.here.split(/[?#]/u)[0] ?? host.here);
   if (page?.id !== 'agency:task-detail') return host;
   return { ...host, locate: taskLocate(host.client, page.params.key) };
 }
