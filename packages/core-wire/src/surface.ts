@@ -268,7 +268,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
-  read('conversation.read', CONVERSATION_COLLECTION),
+  read('conversation.read', CONVERSATION_COLLECTION, {
+    authority: ['conversation:write', 'conversation:read'],
+  }),
   // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
   // The list is the caller's own conversations and nobody else's, whatever
   // read-any grant they hold; its rule is the read's own, like the read's.

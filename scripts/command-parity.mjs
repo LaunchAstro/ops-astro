@@ -208,7 +208,8 @@ async function askedBy(read) {
   const tx = {
     businessId: 'business',
     query: (sql, params) => {
-      if (sql.includes('from effective e')) asked.push(`${params[0]}:${params[1]}`);
+      // Only the grant check names a collection and action ($1, $2); a client list asks no key.
+      if (sql.includes('where e.collection = $1')) asked.push(`${params[0]}:${params[1]}`);
       return Promise.resolve(sql.includes('from record_types') ? spine : []);
     },
   };

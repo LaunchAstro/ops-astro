@@ -144,11 +144,11 @@ describe('a key two businesses hold resolves to neither', () => {
     expect(connection.asked).toHaveLength(2);
   });
 
-  it('still resolves and caches a key exactly one business holds', async () => {
+  it('still resolves a key exactly one business holds, asking afresh each time', async () => {
     const connection = admin([{ id: ALPHA }]);
     const resolve = createBusinessResolver(connection);
     expect(await resolve('acme')).toBe(ALPHA);
     expect(await resolve('acme')).toBe(ALPHA);
-    expect(connection.asked).toHaveLength(1);
+    expect(connection.asked).toHaveLength(2);
   });
 });

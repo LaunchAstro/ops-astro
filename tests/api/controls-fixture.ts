@@ -63,7 +63,8 @@ export interface Controls {
     body: Readonly<Record<string, unknown>>,
     credential?: string,
   ): Promise<Answer>;
-  createTask(title: string): Promise<{ id: string; revision: number }>;
+  /** A task with this title, on `client` when one is named (`task.set_party`). */
+  createTask(title: string, client?: string): Promise<{ id: string; revision: number }>;
   propose(taskId: string, revision: number, purpose?: string): Promise<Record<string, unknown>>;
   approve(proposal: Record<string, unknown>): Promise<string>;
   pickup(reservationId: string, leaseSeconds?: number): Promise<Record<string, unknown>>;
@@ -126,9 +127,19 @@ export async function createControls(part: string, keys?: Partial<RuntimeKeys>):
     readerGrantId,
     asPerson,
     asAgent,
-    async createTask(title) {
+    async createTask(title, client) {
       const body = must(await asPerson('task.create', { fields: { title } }), 'task.create');
-      return { id: String(body['recordId']), revision: Number(body['revision']) };
+      const made = { id: String(body['recordId']), revision: Number(body['revision']) };
+      if (client === undefined) return made;
+      const linked = must(
+        await asPerson('task.set_party', {
+          recordId: made.id,
+          expectedRevision: made.revision,
+          fields: { client },
+        }),
+        'task.set_party',
+      );
+      return { id: made.id, revision: Number(linked['revision']) };
     },
     async propose(taskId, revision, purpose = PROPOSAL.purpose) {
       const answer = await asPerson('task.propose', {

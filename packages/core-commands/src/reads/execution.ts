@@ -112,13 +112,15 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
     'currency', ver.currency,
     -- A pending gate past its deadline reads expired, derived as task.read
-    -- derives it (reads/proposals.ts): the stored row stays pending.
-    'gateState', case when gate.state = 'pending' and gate.expires_at <= now()
+    -- derives it (reads/proposals.ts): the stored row stays pending. Judged
+    -- on the statement's clock, after the read's sign-in row wait, not the
+    -- transaction's start.
+    'gateState', case when gate.state = 'pending' and gate.expires_at <= statement_timestamp()
                       then 'expired' else gate.state end,
     'lease', (select json_build_object(
         'state', l.state,
         'expiresAt', to_char(l.expires_at at time zone 'UTC', ${ISO}),
-        'lapsed', l.state = 'live' and l.expires_at <= now(),
+        'lapsed', l.state = 'live' and l.expires_at <= statement_timestamp(),
         'holderActorId', l.holder_actor_id,
         'agent', l.delegation_id is not null)
       from public.leases l where l.business_id = $1 and l.run_id = run.id

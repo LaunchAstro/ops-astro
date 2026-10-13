@@ -124,7 +124,9 @@ describe('RUNTIME.md on the 0030 trigger', () => {
 
   it('does not claim an expired gate is covered: it is stored pending', () => {
     const proposalsRead = read('packages/core-commands/src/reads/proposals.ts');
-    expect(proposalsRead).toContain("case when g.state = 'pending' and g.expires_at <= now()");
+    expect(proposalsRead).toContain(
+      "case when g.state = 'pending' and g.expires_at <= statement_timestamp()",
+    );
     const text = paragraph();
     expect(text).not.toMatch(/covers[^.]*expired/u);
     expect(text).toContain('An expired gate is stored as `pending`');

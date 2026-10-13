@@ -20,6 +20,7 @@ import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 import type { CommandRequest } from './requests.ts';
+import { isTimestamp } from './values.ts';
 
 type Request = CommandRequest & { readonly command: 'privacy.record_incident' };
 
@@ -58,8 +59,10 @@ function isCheckViolation(cause: unknown): boolean {
 }
 
 /**
- * An instant that names its offset, since `Date.parse` reads a time without
- * one in the host's zone, on or after the scheme's first day.
+ * A real calendar instant that names its offset, on or after the scheme's
+ * first day. `Date.parse` reads a time without an offset in the host's zone,
+ * and rolls 30 February into March and takes year zero, which the assessment
+ * clock would then start from or the column refuse (#522).
  */
 function foundAtOf(value: unknown, now: number): Date | undefined {
   if (
@@ -68,6 +71,7 @@ function foundAtOf(value: unknown, now: number): Date | undefined {
   ) {
     return undefined;
   }
+  if (!isTimestamp(value)) return undefined;
   const at = Date.parse(value);
   return Number.isFinite(at) && at >= FOUND_AT_EARLIEST_MS && at <= now + FOUND_AT_SKEW_MS
     ? new Date(at)

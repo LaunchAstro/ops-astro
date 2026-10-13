@@ -267,11 +267,18 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
   const closed = new Promise<void>((resolve) => {
     child.once('close', () => resolve());
   });
+  // Freeze the dump's backend, so its container cannot finish on its own and
+  // only the removal a failed run makes can end it.
+  const backend = sql(
+    "select pid from pg_stat_activity where application_name = 'pg_dump' order by backend_start desc limit 1",
+  );
+  expect(backend).toMatch(/^\d+$/u);
+  docker(['exec', server, 'kill', '-STOP', backend]);
   expect(child.kill('SIGKILL')).toBe(true);
   await closed;
   let settled = false;
   let failed: unknown;
-  void (async () => {
+  const drained = (async () => {
     for await (const _piece of dump) {
       /* drain printed bytes */
     }
@@ -285,13 +292,18 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
     },
   );
   try {
-    await delay(250);
+    // The dump fails once docker has removed the killed client's container,
+    // which took up to 0.45 s on a loaded machine (#1536), so a fixed 250 ms
+    // check failed a dump that does fail. Waiting for the drain, up to a bound
+    // no removal comes near, still fails a dump that would wait forever.
+    await Promise.race([drained, delay(5000)]);
     expect(settled, 'close(null, SIGKILL) was mistaken for a dump that is still running').toBe(
       true,
     );
     expect(failed).toBeInstanceOf(Error);
     expect(failed).toHaveProperty('message', 'pg_dump failed');
   } finally {
+    docker(['exec', server, 'kill', '-CONT', backend]);
     const name = captured.dumps.at(-1);
     if (name !== undefined) spawnSync('docker', ['rm', '-f', '-v', name], { stdio: 'ignore' });
   }

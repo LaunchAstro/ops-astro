@@ -7,8 +7,9 @@
 // cases hold four things at once.
 //
 // - **The projection.** `task.read` draws a gate whose stored state is
-//   `pending` and whose `expires_at <= now()` as `expired`. `now()` is the
-//   database's own clock, read inside the statement that reads the gate.
+//   `pending` and whose `expires_at <= statement_timestamp()` as `expired`.
+//   `statement_timestamp()` is the database's own clock at the start of the
+//   statement that reads the gate, after any lock wait before it.
 // - **The stored record.** `gates.state` stays `pending`. Nothing writes
 //   `expired`: no timer, no migration, and not the read.
 // - **Decided outcomes.** An approved, rejected or sent-back gate keeps its
@@ -26,7 +27,7 @@
 // A gate read at exactly its deadline reads expired, because a decide at
 // that instant would be refused. A clock cannot be stopped on a stored
 // microsecond, so the boundary case evaluates the read's own statement with
-// its `now()` bound to the stored `expires_at`, and to one microsecond
+// its `statement_timestamp()` bound to the stored `expires_at`, and to one microsecond
 // before it. That substitution only reads. Nothing is written.
 
 import { randomUUID } from 'node:crypto';
@@ -147,7 +148,7 @@ async function waitOutOnDatabaseClock(world: World, gateIds: readonly string[]):
 }
 
 /**
- * The read's own statement, with its `now()` bound to an instant the database
+ * The read's own statement, with its `statement_timestamp()` bound to an instant the database
  * computes from the stored row. Read-only: it changes what the statement is
  * asked about, never a row.
  */
@@ -156,7 +157,10 @@ function atInstant(tx: TenantQuery, instantSql: string): TenantQuery {
     get(target, property, receiver) {
       if (property !== 'query') return Reflect.get(target, property, receiver) as unknown;
       return async (sql: string, params?: readonly unknown[]) =>
-        await target.query(sql.replaceAll('now()', `(${instantSql})`), params as unknown[]);
+        await target.query(
+          sql.replaceAll('statement_timestamp()', `(${instantSql})`),
+          params as unknown[],
+        );
     },
   });
 }
@@ -278,7 +282,7 @@ describe.skipIf(serverUrl === undefined)('a gate past its deadline, on read', ()
         'utf8',
       );
       expect(decideSource).toContain('(g.expires_at <= $3::timestamptz) as expired');
-      expect(readSource).toContain("g.state = 'pending' and g.expires_at <= now()");
+      expect(readSource).toContain("g.state = 'pending' and g.expires_at <= statement_timestamp()");
     });
   });
 });
