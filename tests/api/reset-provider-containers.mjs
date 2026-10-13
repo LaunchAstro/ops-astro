@@ -119,7 +119,8 @@ try {
     GOTRUE_JWT_ISSUER: issuer,
     GOTRUE_JWT_DEFAULT_GROUP_NAME: 'authenticated',
     GOTRUE_JWT_ADMIN_ROLES: 'service_role',
-    GOTRUE_JWT_EXP: '3600',
+    // Short enough that a refreshed recovery session outlives its first token in a case.
+    GOTRUE_JWT_EXP: '330',
     GOTRUE_DISABLE_SIGNUP: 'false',
     GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true',
     GOTRUE_MAILER_AUTOCONFIRM: 'true',

@@ -20,11 +20,13 @@
 //    refused, and a login with a verified authenticator anywhere needs
 //    support. Last the window opens (`openResetWindow`, under the login's
 //    session-ending key) and is recorded against the session's digest, with
-//    the recovery token's expiry. From that commit every session of the
-//    login, in every business, is ended up to the window's bound, the
-//    recovery session's own included; and until that expiry, while the
-//    window is unsettled, a session signed in after the bound is asked about
-//    at the provider (`ops.reset_write_open`).
+//    the recovery token's expiry as a record. From that commit every session
+//    of the login, in every business, is ended up to the window's bound, the
+//    recovery session's own included; and while the window is unsettled and
+//    no later reset of the login has settled, a session signed in after the
+//    bound is asked about at the provider (`ops.reset_write_open`), since the
+//    recovery session, refreshed, can write for as long as the provider
+//    keeps it.
 // 3. Settle, once the route's own password write is acknowledged, made only
 //    while the window has `WRITE_ROOM_SECONDS` before its bound: in
 //    the database clock's next whole second, under the login's ending keys,
