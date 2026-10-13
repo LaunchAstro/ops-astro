@@ -28,9 +28,10 @@ export const LIVE_CORRECTION_READ_ROWS: { readonly [K in LiveCorrectionRead]: Re
   'live_correction.locate': {
     identifiers: ['recordId'],
     parse: parseCorrectionLocate,
-    spine: true,
+    spine: false,
     authority: 'holds-any-grant',
     outsiderNotFound: false,
+    disclosed: (answer) => ('target' in answer ? answer.target.taskId : undefined),
     serve: serveCorrectionLocate,
   },
 };

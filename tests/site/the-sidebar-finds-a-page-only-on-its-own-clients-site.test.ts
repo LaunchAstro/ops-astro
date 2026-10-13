@@ -128,6 +128,28 @@ describe.skipIf(serverUrl === undefined)('C80 sidebar locate, refused as nothing
   });
 });
 
+describe.skipIf(serverUrl === undefined)('C80 sidebar locate, its audit event', () => {
+  const locateEvents = async (member: Member) =>
+    await w.world.db.admin.execute<{ readonly outcome: string; readonly subject: string | null }>(
+      `select outcome, subject_record_id::text as subject from public.audit_events
+        where business_id = $1 and actor_id = $2 and command = 'live_correction.locate'
+        order by seq`,
+      [w.world.business, member.actorId],
+    );
+
+  it('names the task whose page a locate disclosed, and none on a refusal', async () => {
+    expect(await locate(w.ava, { recordId: w.taskA, pageUrl: PAGE })).toMatchObject({ ok: true });
+    expect((await locateEvents(w.ava)).at(-1)).toStrictEqual({
+      outcome: 'applied',
+      subject: w.taskA,
+    });
+    expect(JSON.stringify(await locate(w.dee, { recordId: w.taskA, pageUrl: PAGE }))).toContain(
+      'NOT_FOUND',
+    );
+    expect((await locateEvents(w.dee)).at(-1)).toStrictEqual({ outcome: 'refused', subject: null });
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('C80 page snapshots', () => {
   it('keeps no snapshot over 256 KB', async () => {
     const page = `https://agency.example/large-${randomUUID()}/`;

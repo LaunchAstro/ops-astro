@@ -31,8 +31,8 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
+import { readTaskSpine } from '../commands/context.ts';
 import { isInternalReader, resolveTaskId } from './tasks.ts';
-import type { Found } from './read-row.ts';
 
 type Operands = { readonly correctionId: string };
 
@@ -98,12 +98,12 @@ export async function serveCorrectionLocate(
   tx: TenantQuery,
   session: Session,
   operands: LocateOperands,
-  { spine }: Found,
 ): Promise<LiveCorrectionLocateResult | CommandRefusal> {
   const subjects = subjectsOf(session);
   const covering = { subjects, collection: RUN_COLLECTION, action: 'write' };
   if (!(await holdsAnywhere(tx, covering))) return NO_RUN_WRITE;
   if (!isInternalReader(session.roleKey)) return refuseNotFound();
+  const spine = await readTaskSpine(tx);
   const recordId = await resolveTaskId(tx, spine.taskTypeId, operands.recordId);
   if (recordId === undefined) return refuseNotFound();
   const task = {
