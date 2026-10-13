@@ -156,7 +156,7 @@ export async function signedIn(run: Run): Promise<VerifiedSubject> {
 
 async function actOnce<T>(
   run: Run,
-  subject: string | null,
+  subject: string | readonly string[] | null,
   body: (execute: Execute) => Promise<T>,
 ): Promise<T> {
   // On the owner login as the gate resolved it, before the transaction takes its one connection.
@@ -168,7 +168,10 @@ async function actOnce<T>(
       const tx = { businessId: run.businessId, query: execute };
       await execute(`select set_config('app.business_id', $1, true)`, [run.businessId]);
       await advisoryLock(tx, `agent-login:${run.businessId}:${run.make.agentId}`);
-      if (subject !== null) await lockLoginFactors(tx, subject);
+      const subjects = typeof subject === 'string' ? [subject] : (subject ?? []);
+      for (const one of subjects.toSorted((a, b) => a.localeCompare(b)))
+        // oxlint-disable-next-line no-await-in-loop -- each subject's lock, in sorted order
+        await lockLoginFactors(tx, one);
       // The bearer is judged after each wait, never carried across one: it may expire meanwhile.
       release = await holdOperator(run, await signedIn(run));
       await signedIn(run);
@@ -185,7 +188,7 @@ async function actOnce<T>(
 /** One acting transaction; a deadlock or a serialisation failure retries it once. */
 export async function acting<T>(
   run: Run,
-  subject: string | null,
+  subject: string | readonly string[] | null,
   body: (execute: Execute) => Promise<T>,
 ): Promise<T> {
   try {

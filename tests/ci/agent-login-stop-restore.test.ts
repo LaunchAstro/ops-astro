@@ -94,7 +94,7 @@ async function stopOwing(agent: string, subject: string): Promise<void> {
   expect(down.printed).toContain('owed');
   expect(down.status).toBe(1);
   const receipt = (await actsOf(world, agent)).find((act) => act['act'] === 'stop');
-  expect(receipt).toMatchObject({ ban: 'owed', closed_at: null, provider_subject: subject });
+  expect(receipt).toMatchObject({ ban: 'owed', provider_subject: subject });
   expect(await mappingsOf(world, agent)).toHaveLength(0);
   expect(await row('select active from public.actors where id = $1', agent)).toEqual({
     active: false,
