@@ -13,8 +13,7 @@
 // A route may instead be a catalogued call's fixed template, query included
 // (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
 // is one segment or query value, a `{name*}` slot one segment or more. A
-// request matches it whole or not at all, so no query is free. A destination
-// marked `echo: 'refuse'` has an answer carrying its credential withheld.
+// request matches it whole or not at all, so no query is free.
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -69,8 +68,6 @@ export interface Extras {
   readonly post?: false;
   /** A stream format custody decodes itself, so a presented key may stream (#1508). */
   readonly stream?: 'openai_sse';
-  /** `refuse`: an answer carrying the credential is withheld whole, not redacted. */
-  readonly echo?: 'refuse';
 }
 
 /** A template's path: literal segments (never `.` or `..`) and slots. */
@@ -140,12 +137,7 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
     routes?: Route[];
     post?: false;
     stream?: 'openai_sse';
-    echo?: 'refuse';
   } = {};
-  if (entry['echo'] !== undefined) {
-    if (entry['echo'] !== 'refuse') return undefined;
-    extras.echo = 'refuse';
-  }
   if (entry['stream'] !== undefined) {
     if (entry['stream'] !== 'openai_sse') return undefined;
     extras.stream = 'openai_sse';

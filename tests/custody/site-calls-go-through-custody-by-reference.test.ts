@@ -4,8 +4,8 @@
 // for each site entry come from the connector catalogue, every catalogued
 // call that uses the entry and nothing else, and a call the catalogue gains
 // later is admitted with no second list. The caller answers only a reference;
-// custody adds the token, and a provider echoing it leaves the call unreadable
-// with the token never back in the caller's process. A local stand-in answers
+// custody adds the token, and redacts a provider's echo of it, so the token is
+// never back in the caller's process. A local stand-in answers
 // in place of either provider.
 
 import { randomBytes } from 'node:crypto';
@@ -158,12 +158,7 @@ it('custody holds each site entry’s catalogued calls as fixed templates, and n
   expect(listed(source)).toContain(
     'GET /repos/{repository}/{repository}/contents/{path*}?ref={ref}',
   );
-  expect([hosting.post, hosting.echo, source.post, source.echo]).toEqual([
-    false,
-    'refuse',
-    false,
-    'refuse',
-  ]);
+  expect([hosting.post, source.post]).toEqual([false, false]);
   // Custody's own load takes them as they are.
   expect(parseDestinations([hosting, source])).toMatchObject({ ok: true });
 });
@@ -203,7 +198,7 @@ it('a site call by reference reaches the provider with the token custody adds, a
   expect(call.byCaller).toEqual([]);
 });
 
-it('a call off the catalogue is refused by custody before a socket, and an echoed token stays unreadable', async () => {
+it('a call off the catalogue is refused by custody before a socket, and an echoed token is never returned', async () => {
   seen.length = 0;
   const call = deps();
   // The later read's route is not on the source entry's list.
@@ -226,7 +221,6 @@ it('a call off the catalogue is refused by custody before a socket, and an echoe
       { project: 'prj_abc', sha: 'c0ffee' },
       call.deps,
     );
-    expect(echoed).toEqual({ kind: 'refused', code: 'PROVIDER_CREDENTIAL_ECHOED' });
     expect(JSON.stringify(echoed).includes(tokens.hosting)).toBe(false);
   } finally {
     echoing = false;

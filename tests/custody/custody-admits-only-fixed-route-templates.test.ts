@@ -3,9 +3,8 @@
 // Custody's fixed route templates: a destination may list a call's exact
 // shape, query included, and custody sends only a request that fills it. No
 // other path, no extra or missing query parameter, no free query string.
-// Custody adds the destination's credential itself, and a destination that
-// refuses echoes withholds an answer carrying the credential whole. A local
-// stand-in answers in place of any provider.
+// Custody adds the destination's credential itself. A local stand-in answers
+// in place of any provider.
 
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,7 +24,6 @@ const LOOKUP = '/v6/deployments?projectId={project}&sha={sha}&target=production&
 const READ = '/v13/deployments/{deployment}';
 const canary = `canary-${randomBytes(18).toString('hex')}`;
 const seen: { method: string; url: string; authorization: string | undefined }[] = [];
-let echoing = false;
 let server: Server;
 let custody: Custody;
 let folder: string;
@@ -39,9 +37,7 @@ beforeAll(async () => {
         url: request.url ?? '',
         authorization: request.headers.authorization,
       });
-      const token = (request.headers.authorization ?? '').replace('Bearer ', '');
-      // Line-broken base64, as a contents read answers it, so a plain scan misses it.
-      const content = echoing ? btoa(`key=${token};`).replaceAll(/(.{8})/gu, '$1\n') : 'PHA+';
+      const content = 'PHA+';
       response
         .writeHead(200, { 'content-type': 'application/json' })
         .end(JSON.stringify({ deployments: [{ uid: 'dpl_1' }], content }));
@@ -71,7 +67,6 @@ beforeAll(async () => {
     key: 'hosting',
     origin,
     post: false,
-    echo: 'refuse',
     routes: [
       { method: 'GET', template: LOOKUP },
       { method: 'GET', template: READ },
@@ -151,33 +146,14 @@ it('a path off the list, an extra, missing or altered query parameter, or a free
   expect(seen).toEqual([]);
 });
 
-it('an answer echoing the credential, even line-broken in base64, is withheld whole and marked', async () => {
-  echoing = true;
-  try {
-    const outcome = await dispatch('GET', FILLED);
-    expect(outcome).toMatchObject({
-      kind: 'answered',
-      echoed: true,
-      outbound: { ok: true, body: '' },
-    });
-    expect(JSON.stringify(outcome).includes(canary)).toBe(false);
-    expect(custody.stderr().includes(canary)).toBe(false);
-  } finally {
-    echoing = false;
-  }
-  // A clean answer is not marked (control).
-  expect(await dispatch('GET', FILLED)).not.toHaveProperty('echoed');
-});
-
-it('a malformed template or echo setting is refused at load', () => {
+it('a malformed template is refused at load', () => {
   const origin = 'https://api.example.com';
   const load = (extra: Record<string, unknown>) =>
     parseDestinations([{ key: 'hosting', origin, ...extra }]);
-  expect(load({ routes: [{ method: 'GET', template: LOOKUP }], echo: 'refuse' })).toMatchObject({
+  expect(load({ routes: [{ method: 'GET', template: LOOKUP }] })).toMatchObject({
     ok: true,
   });
   const refused: Record<string, unknown>[] = [
-    { echo: 'redact' },
     { routes: [{ method: 'GET', template: '/v6/deployments?{query}' }] },
     { routes: [{ method: 'GET', template: '/v6/deployments?projectId={project*}' }] },
     { routes: [{ method: 'GET', template: '/v6/{a}/../x' }] },

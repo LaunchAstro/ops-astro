@@ -3,7 +3,7 @@
 // The guarded call's token-free mode: when its credential port answers a
 // reference to a custody entry, no token is ever in the caller's process. The
 // request leaves with no Authorization header, through the custody port, named
-// by the entry; custody adds the credential and judges any echo. Stand-in
+// by the entry; custody adds the credential and redacts it from the answer. Stand-in
 // ports only: nothing here reaches a provider.
 
 import { expect, it } from 'vitest';
@@ -74,30 +74,6 @@ it('a site call whose credential port answers a reference leaves with no Authori
     kind: 'ok',
     value: { 'deployments.0.uid': 'dpl_1', 'deployments.0.meta.githubCommitSha': 'c0ffee' },
   });
-});
-
-it('an answer custody withheld as an echo is unreadable: a refused read, an unknown write', async () => {
-  const read = world({ kind: 'echoed' });
-  expect(await callConnector(op('site.deployment.lookup'), LOOKUP, read.deps)).toEqual({
-    kind: 'refused',
-    code: 'PROVIDER_CREDENTIAL_ECHOED',
-  });
-  const write = world({ kind: 'echoed' }, { ref: 'source_control' });
-  const published = await callConnector(
-    op('site.publish'),
-    {
-      repository: 'agency/site',
-      path: 'src/pages/about.astro',
-      message: 'm',
-      content: 'PHA+',
-      sha: 'abc',
-      branch: 'main',
-    },
-    write.deps,
-  );
-  expect(published).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
-  expect(write.byCaller).toEqual([]);
-  expect(write.recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
 });
 
 it('custody refusing a write before sending it is a refusal, not an unknown', async () => {

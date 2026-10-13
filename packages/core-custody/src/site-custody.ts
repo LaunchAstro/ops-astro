@@ -4,9 +4,9 @@
 // process never holds a site token. Custody's destination for each site entry
 // is derived from the connector catalogue: exactly the catalogued calls that
 // use that entry, each as its fixed template (`routeTemplate`), no POST beside
-// them, the headers the guarded call would send, and an answer echoing the
-// credential withheld. A call catalogued later is admitted with no second
-// list. The port hands each guarded call to custody by its entry's name, with
+// them, and the headers the guarded call would send; custody redacts its
+// answers as it does every destination's. A call catalogued later is admitted
+// with no second list. The port hands each guarded call to custody by its entry's name, with
 // no header of the caller's. This file runs in the caller's process, never in
 // custody's.
 
@@ -57,7 +57,6 @@ export function siteDestination(
     headers: { accept: 'application/json', 'user-agent': 'site-connector' },
     routes: [...routes.values()],
     post: false,
-    echo: 'refuse',
   };
 }
 
@@ -81,7 +80,6 @@ export function siteCustody(
     if (outcome.kind === 'refused') return { kind: 'refused', code: outcome.code };
     // Custody lost mid-call may have sent it: unreadable, so a write stays unknown.
     if (outcome.kind === 'worker_lost') return { kind: 'failed' };
-    if (outcome.echoed === true) return { kind: 'echoed' };
     const { outbound } = outcome;
     // Custody passes no response header; the guarded call's JSON parse is the check on the body.
     if (outbound.ok) {

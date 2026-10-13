@@ -34,8 +34,6 @@ export type CustodyOutcome =
       readonly outbound: Outbound;
       readonly credentialKind: StorableKind;
       readonly account: string | null;
-      /** Custody withheld the answer: it carried the credential, to a destination refusing echoes. */
-      readonly echoed?: true;
     }
   | { readonly kind: 'refused'; readonly started: false; readonly code: string }
   | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' };
@@ -187,7 +185,6 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
       outbound: reply['outcome'] as Outbound,
       credentialKind: reply['kind'] as StorableKind,
       account: (reply['account'] as string | null) ?? null,
-      ...(reply['echoed'] === true ? { echoed: true as const } : {}),
     };
   }
   return { kind: 'refused', started: false, code: String(reply['code']) };

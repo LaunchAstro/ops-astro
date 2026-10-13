@@ -7,7 +7,7 @@
 // be read is unknown, never a success and never a failure: the provider may
 // have acted. The credential goes to the provider and nowhere else; no result
 // or record carries a provider's words. A reference in place of a token sends
-// the call bare to custody, which adds the credential and judges any echo.
+// the call bare to custody, which adds the credential and redacts it from the answer.
 
 import type { OperationRegistration } from './catalogue.ts';
 import { connectorRelease, credentialHostMatches } from './catalogue.ts';
@@ -35,9 +35,8 @@ export interface CredentialReference {
   readonly ref: 'source_control' | 'hosting';
 }
 
-/** Custody's answer to a referenced call: the provider's, an echo it withheld, or a refusal before sending. */
-export type CustodyAnswer =
-  TransportAnswer | { kind: 'echoed' } | { kind: 'refused'; code: string };
+/** Custody's answer to a referenced call: the provider's, or a refusal before sending. */
+export type CustodyAnswer = TransportAnswer | { kind: 'refused'; code: string };
 
 type Send = (request: TransportRequest) => Promise<CustodyAnswer>;
 
@@ -279,7 +278,7 @@ export async function callConnector(
     deps.record(sent.code);
     return { kind: 'refused', code: sent.code };
   }
-  const answered = sent.kind === 'echoed' ? ECHOED : readAnswer(registration, sent);
+  const answered = readAnswer(registration, sent);
   const { secret } = prepared;
   // A field holding the borrowed credential is the provider echoing it: unreadable, never returned.
   const echoed =
