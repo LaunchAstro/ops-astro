@@ -19,7 +19,9 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { StorableKind } from './credentials.ts';
-import type { Destination, Outbound, OutboundRequest } from './egress.ts';
+import type { Destination, Outbound, OutboundRequest, SendGate } from './egress.ts';
+
+export type { SendGate } from './egress.ts';
 
 export type CustodyOutcome =
   | {
@@ -61,6 +63,16 @@ export interface Custody {
   raw(message: Record<string, unknown>): Promise<Record<string, unknown>>;
   kill(): void;
   stop(): Promise<void>;
+}
+
+/** Custody's own process, which can also send a request that must be written by a deadline. */
+export interface ProcessCustody extends Custody {
+  dispatchBefore(
+    credentialRef: string,
+    request: OutboundRequest,
+    gate: Required<Pick<SendGate, 'deadlineAt' | 'onWritten'>>,
+    onPiece?: (text: string) => void,
+  ): Promise<CustodyOutcome>;
 }
 
 function forkCustody(config: CustodyConfig): ChildProcess {
@@ -161,7 +173,7 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }
 
-export async function startCustody(config: CustodyConfig): Promise<Custody> {
+export async function startCustody(config: CustodyConfig): Promise<ProcessCustody> {
   const child = forkCustody(config);
   let errors = '';
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -169,8 +181,10 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
   });
   const exchange = exchangeWith(child);
   await ready(child);
-  return {
+  const custody: ProcessCustody = {
     pid: child.pid ?? -1,
+    dispatchBefore: async (credentialRef, request, _gate, onPiece) =>
+      await custody.dispatch(credentialRef, request, onPiece),
     dispatch: async (credentialRef, request, onPiece) => {
       let started = false;
       const markStarted = (): void => {
@@ -207,4 +221,5 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       });
     },
   };
+  return custody;
 }

@@ -111,6 +111,17 @@ export function parseDestinations(
   return { ok: true, destinations };
 }
 
+/**
+ * A send that must be written by `deadlineAt` (milliseconds, `now`'s clock):
+ * past it, nothing is written (live chat route B's send deadline).
+ */
+export interface SendGate {
+  readonly deadlineAt: number;
+  /** Once the request is written to the socket. */
+  readonly onWritten?: () => void;
+  readonly now?: () => number;
+}
+
 export interface OutboundRequest {
   readonly destination: string;
   readonly path: string;
@@ -217,6 +228,7 @@ export async function send(
   credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
   resolve: Resolve = resolveBySystem,
   onChunk?: OnChunk,
+  _gate?: SendGate,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
