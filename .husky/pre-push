@@ -48,6 +48,7 @@ trap 'rm -rf $scanner_dirs' EXIT
 # after its push's scans all pass, and every commit it reaches was scanned with
 # it or passed before it under the same fingerprint.
 passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-passed
+public_passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-public-passed
 hash_hex=40
 if [ "$(git rev-parse --show-object-format 2>/dev/null || true)" = sha256 ]; then
   hash_hex=64
@@ -250,7 +251,11 @@ scan() {
 
   # 3. The public-foundation policy also covers commit metadata and every
   #    historical blob/path. The test command override follows HUB_GATE_CMD.
-  if [ -n "$range" ]; then
+  if [ -n "${public_fingerprint:-}" ]; then
+    set -- --branch "$public_tip" --main "$public_main" --fingerprint "$public_fingerprint"
+  elif [ -n "${public_tip:-}" ]; then
+    set -- --range "$public_tip"
+  elif [ -n "$range" ]; then
     set -- --range "$range"
   else
     set -- --outgoing
@@ -344,10 +349,20 @@ if [ -n "$pushed" ]; then
     sha=${item%%:*}
     range=${item#*:}
     fingerprint=""
-    if [ "$range" = first ]; then
-      if [ "$pinned" -eq 1 ]; then
-        fingerprint=$(scan_fingerprint "$sha") || fingerprint=""
+    public_tip=""
+    public_main=""
+    public_fingerprint=""
+    if [ "$pinned" -eq 1 ]; then
+      fingerprint=$(scan_fingerprint "$sha") || fingerprint=""
+      public_tip=$sha
+      if [ -n "$fingerprint" ] &&
+        public_main=$(git rev-parse --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null); then
+        # Main is part of the receipt's fingerprint: a moved or rewritten main
+        # cannot inherit a pass that skipped a different baseline's history.
+        public_fingerprint=$(printf '%s %s\n' "$fingerprint" "$public_main" | git hash-object --stdin) || public_fingerprint=""
       fi
+    fi
+    if [ "$range" = first ]; then
       if [ -n "$fingerprint" ]; then
         range=$(first_push_range "$sha" "$fingerprint")
       else
@@ -364,7 +379,15 @@ if [ -n "$pushed" ]; then
     # does not name, so nothing is recorded.
     if [ -n "$fingerprint" ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
       if pinned_push && [ "$(scan_fingerprint "$sha" || true)" = "$fingerprint" ]; then
-        echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
+        if [ "${item#*:}" = first ]; then
+          echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
+        fi
+        if [ -n "$public_fingerprint" ] &&
+          [ "$(git rev-parse --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null || true)" = "$public_main" ] &&
+          [ ! -L "$public_passed_list" ] &&
+          { [ ! -e "$public_passed_list" ] || [ -f "$public_passed_list" ]; }; then
+          echo "$(git rev-parse "$sha") $public_fingerprint" >> "$public_passed_list"
+        fi
       else
         echo "pre-push: the scan's rules or inputs changed while it ran. Recording nothing."
       fi
