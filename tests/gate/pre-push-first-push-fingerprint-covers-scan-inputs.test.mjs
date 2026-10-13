@@ -5,7 +5,7 @@
 // reads it, and first-pushes a branch built on the commit to another remote.
 // The key must be refused.
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -139,6 +139,39 @@ test('python and node start-up settings during one push do not vouch for a later
   const first = f.push('elsewhere', 'wip', {
     env: { PYTHONPATH: startup, NODE_OPTIONS: `--require ${join(startup, 'exit.cjs')}` },
   });
+  assert.equal(first.status, 0, first.output);
+
+  f.commit('notes.txt', 'later\n', 'later');
+  refused(f, f.push('origin', 'wip'), 'wip');
+});
+
+test('a helper earlier on PATH during one push does not vouch for a later push without it', (t) => {
+  const f = firstPushFixture(t);
+  const shim = join(f.scratch, 'shim');
+  mkdirSync(shim);
+  // Unpacks the pushed commit's scanners, then swaps two of them for ones
+  // that pass everything.
+  writeFileSync(
+    join(shim, 'tar'),
+    [
+      '#!/bin/sh',
+      '/usr/bin/tar "$@" || exit',
+      'dest=""',
+      'prev=""',
+      'for a in "$@"; do',
+      '  [ "$prev" = "-C" ] && dest=$a',
+      '  prev=$a',
+      'done',
+      '[ -n "$dest" ] || exit 0',
+      'printf "import sys\\nsys.exit(0)\\n" > "$dest/scripts/gate/sweep.py"',
+      'printf "process.exit(0)\\n" > "$dest/scripts/public-content-check.mjs"',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(join(shim, 'tar'), 0o755);
+  f.git('checkout', '-q', '-b', 'wip');
+  f.commit('config.txt', `token = ${tokenShaped()}\n`, 'config');
+  const first = f.push('elsewhere', 'wip', { env: { PATH: `${shim}:${process.env.PATH}` } });
   assert.equal(first.status, 0, first.output);
 
   f.commit('notes.txt', 'later\n', 'later');
