@@ -16,6 +16,7 @@ does not do. Nine companion files describe the parts:
 - [LOCAL-AGENT.md](LOCAL-AGENT.md): the agent side panel on GPT through the owner's
   ChatGPT plan, on the laptop only (`local-gpt`).
 - [OLLAMA.md](OLLAMA.md): the agent side panel on Qwen or Gemma through Ollama
+- [OPENROUTER.md](OPENROUTER.md): the side panel on a paid model through OpenRouter, held against the AI chat budget
   on the same machine as the API (`ollama`).
 
 If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
