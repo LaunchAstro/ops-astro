@@ -28,6 +28,7 @@ export {
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export { routeTemplate, siteCustody, siteDestination } from './site-custody.ts';
 export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
+export { custodySenderSource, type DomainRead } from './email-sender-custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export { setLoginPassword, type LoginPasswordSet } from './broker-login-password.ts';
@@ -35,6 +36,7 @@ export {
   ENROL_PATH,
   INVITATION_SEND_ACTS,
   sendInvitation,
+  sendOwedInvitation,
   type InvitationSendRefusal,
   type InvitationSendResult,
 } from './broker-invitation.ts';
