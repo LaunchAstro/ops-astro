@@ -14,6 +14,7 @@ import { ollamaBroker, standInOllama } from './ollama-stand-in-fixture.ts';
 import { hold } from '../support/lock-wait-race.ts';
 import { waitingOn } from '../support/lock-waits.ts';
 
+// oxlint-disable-next-line max-lines-per-function -- two brokers, one stand-in and one held row
 it('a reply blocked for more than 30 seconds is not reported as ended', async () => {
   vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');
   const ollama = await standInOllama();
@@ -22,7 +23,7 @@ it('a reply blocked for more than 30 seconds is not reported as ended', async ()
   const fixture = await createApiFixture('slow_reply_keep');
   const world = await conversationWorld({
     fixture,
-    api: composedWith(fixture, async () => null),
+    api: composedWith(fixture, () => Promise.resolve(null)),
   });
   const reader = connect(fixture.db.appUrl, { source: 'runtime' });
   const started = detail(await world.as(world.owner, 'conversation.start', { body: 'Due today?' }));

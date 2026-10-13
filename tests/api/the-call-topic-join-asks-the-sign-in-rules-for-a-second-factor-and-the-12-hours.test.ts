@@ -17,6 +17,7 @@ import { createRealtimeDatabase } from '../support/realtime-database.ts';
 import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { carriageBusiness, callTopic, mayJoin } from './carriage-fixture.ts';
 
+// oxlint-disable-next-line max-lines-per-function -- one database, one login and its factor
 it('a login awaiting its second factor cannot join a call topic', async () => {
   const db = await createRealtimeDatabase('join_second_factor');
   try {

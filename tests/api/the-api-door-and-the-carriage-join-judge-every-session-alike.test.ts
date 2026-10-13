@@ -55,9 +55,9 @@ function claimsOf(
   };
 }
 
-// eslint-disable-next-line max-lines-per-function -- one database, one business per kind of ending
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'the door and the join judge a session alike',
+  // oxlint-disable-next-line max-lines-per-function -- one database, one business per kind of ending
   () => {
     let db: Database;
     const verify = createSupabaseVerifier(testSignIn(TEST_ISSUER));
