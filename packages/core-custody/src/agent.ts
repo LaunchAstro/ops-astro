@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The model agent's entry into custody (`apps/model-agent/`): the carriage,
-// its seals and custody's own process, and nothing of the broker. The agent
+// The model agent's entry into custody (`apps/model-agent/`): the carriage
+// and its Realtime transport, its seals and custody's own process, and
+// nothing of the broker. The agent
 // runs on the owner's machine beside Ollama and holds no database: this entry
 // reaches no records, runtime or command code and no Postgres driver, which
 // `tests/worker/model-agent-boundary.test.ts` walks. It is the one entry
@@ -28,6 +29,7 @@ export {
   type Line,
   type OfferBody,
 } from './carriage.ts';
+export { realtimeCarriage } from './realtime-carriage.ts';
 export { opened, parseCarryKeys, sealed, type CarryKeys, type Sealed } from './carry-seal.ts';
 export {
   startCustody,

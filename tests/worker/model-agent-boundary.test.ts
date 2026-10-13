@@ -50,16 +50,16 @@ describe('the model agent holds no database', () => {
   });
 });
 
-describe('the cruiser rules fire', () => {
-  const custody = {
-    // The cruise takes every configured target; the test tree needs a file.
-    'tests/support/declining-reporter.ts': 'export const R = { observe: () => null };\n',
-    [CUSTODY_ENTRY]: 'export const sealed = 1;\n',
-    'packages/core-custody/src/carriage.ts': 'export const carriage = 1;\n',
-    'packages/core-custody/src/index.ts': 'export const index = 1;\n',
-    'packages/core-records/src/index.ts': 'export const records = 1;\n',
-  };
+const custody = {
+  // The cruise takes every configured target; the test tree needs a file.
+  'tests/support/declining-reporter.ts': 'export const R = { observe: () => null };\n',
+  [CUSTODY_ENTRY]: 'export const sealed = 1;\n',
+  'packages/core-custody/src/carriage.ts': 'export const carriage = 1;\n',
+  'packages/core-custody/src/index.ts': 'export const index = 1;\n',
+  'packages/core-records/src/index.ts': 'export const records = 1;\n',
+};
 
+describe('the cruiser rules fire', () => {
   it('is green when the agent takes custody by its agent entry', () => {
     const answer = cruise({
       ...custody,
