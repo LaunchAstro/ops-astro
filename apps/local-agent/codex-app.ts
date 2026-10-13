@@ -27,7 +27,7 @@ import {
   spawnCodex,
   UNKNOWN,
 } from './codex.ts';
-import { readNotification, record, resultOf, type Turn } from './app-grammar.ts';
+import { freshTurn, readNotification, record, resultOf } from './app-grammar.ts';
 import { broken, nextStep, type AppResult, type Ending, type Plan } from './app-steps.ts';
 import type { RunnerSettings } from './settings.ts';
 
@@ -65,19 +65,10 @@ function conversation(
   plan: Plan,
   send: (message: Record<string, unknown>) => void,
   listener: Listener,
-): (line: string) => Ending | null {
-  const turn: Turn = {
-    streaming: undefined,
-    piecesStopped: false,
-    text: undefined,
-    usage: undefined,
-    failed: false,
-    limited: false,
-    unauthorized: false,
-    started: false,
-  };
+): { readonly read: (line: string) => Ending | null; readonly sent: () => boolean } {
+  const turn = freshTurn();
   let turnStarted = false;
-  return (line) => {
+  const read = (line: string): Ending | null => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
@@ -110,6 +101,7 @@ function conversation(
     }
     return null;
   };
+  return { read, sent: () => turnStarted };
 }
 
 /** A stdout reader that hands over each whole line while `onLine` says to go on. */
@@ -136,7 +128,7 @@ function spawnAppServer(
   readonly child: ReturnType<typeof spawnCodex>;
   readonly send: (message: Record<string, unknown>) => void;
 } {
-  const child = spawnCodex(settings, codexAppArgs(), cwd);
+  const child = spawnCodex(settings, codexAppArgs(), cwd, true);
   child.stdin.on('error', () => null);
   // Decoded as a stream, so a character split across two chunks is read whole.
   child.stdout.setEncoding('utf8');
@@ -180,39 +172,71 @@ export async function runCodexApp(
   if (HOME_FILES.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   const { child, send } = spawnAppServer(settings, cwd);
-  const read = conversation({ ...call, cwd, ...pinned(settings) }, send, listener);
+  const { read, sent } = conversation({ ...call, cwd, ...pinned(settings) }, send, listener);
+  // Stopped before its turn was sent, the model was never asked: nothing ran, nothing is charged.
+  const stopped = (): Ending => ({ result: sent() ? UNKNOWN : null, kill: true });
+  return await new Promise((resolve) => {
+    const { end, ended } = ender(child, resolve, () => clearTimeout(timer));
+    const stop = (): void => end(stopped());
+    const timer = setTimeout(stop, settings.timeoutMs);
+    signal?.addEventListener('abort', stop, { once: true });
+    let bytes = 0;
+    child.stdout.on('data', (chunk: string) => {
+      bytes += Buffer.byteLength(chunk);
+      if (bytes > MAX_STDOUT_BYTES) stop();
+    });
+    child.stdout.on(
+      'data',
+      lineReader((line) => {
+        const settled = ended() ? null : read(line);
+        if (settled !== null) end(settled);
+        return !ended();
+      }),
+    );
+    child.on('error', () => end({ result: null, kill: true }));
+    // A child that leaves before its turn completed did not finish its answer.
+    child.on('close', () => end(stopped()));
+  });
+}
+
+/**
+ * A call's one ending. Killed, the child's whole process group goes at once and
+ * the call resolves; let go, the child has the grace to leave, then its group is
+ * killed and the call resolves either way. It never waits on a pipe that a
+ * descendant of the child may hold open.
+ */
+function ender(
+  child: ReturnType<typeof spawnCodex>,
+  resolve: (result: AppResult) => void,
+  onEnd: () => void,
+): { readonly end: (settled: Ending) => void; readonly ended: () => boolean } {
   let ending: Ending | undefined;
-  // The outcome is settled once; the call resolves when the child has gone.
+  const killGroup = (): void => {
+    try {
+      if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      // The group has already gone.
+    }
+  };
   const end = (settled: Ending): void => {
     if (ending !== undefined) return;
     ending = settled;
-    clearTimeout(timer);
+    onEnd();
     child.stdin.end();
-    if (settled.kill) child.kill('SIGKILL');
-    else setTimeout(() => child.kill('SIGKILL'), STOP_GRACE_MS).unref();
-  };
-  const stop = (): void => end({ result: UNKNOWN, kill: true });
-  const timer = setTimeout(stop, settings.timeoutMs);
-  signal?.addEventListener('abort', stop, { once: true });
-  let bytes = 0;
-  child.stdout.on('data', (chunk: string) => {
-    bytes += Buffer.byteLength(chunk);
-    if (bytes > MAX_STDOUT_BYTES) stop();
-  });
-  child.stdout.on(
-    'data',
-    lineReader((line) => {
-      const settled = ending === undefined ? read(line) : null;
-      if (settled !== null) end(settled);
-      return ending === undefined;
-    }),
-  );
-  return await new Promise((resolve) => {
-    child.on('error', () => end({ result: null, kill: false }));
-    // A child that leaves before its turn completed did not finish its answer.
-    child.on('close', () => {
-      end({ result: UNKNOWN, kill: false });
-      resolve(ending?.result ?? null);
+    if (settled.kill) {
+      killGroup();
+      resolve(settled.result);
+      return;
+    }
+    const grace = setTimeout(() => {
+      killGroup();
+      resolve(settled.result);
+    }, STOP_GRACE_MS);
+    child.once('close', () => {
+      clearTimeout(grace);
+      killGroup();
+      resolve(settled.result);
     });
-  });
+  };
+  return { end, ended: () => ending !== undefined };
 }

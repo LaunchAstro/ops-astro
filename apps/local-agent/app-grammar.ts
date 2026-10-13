@@ -55,6 +55,18 @@ export interface Turn {
   started: boolean;
 }
 
+/** A turn before any message of it is read. */
+export const freshTurn = (): Turn => ({
+  streaming: undefined,
+  piecesStopped: false,
+  text: undefined,
+  usage: undefined,
+  failed: false,
+  limited: false,
+  unauthorized: false,
+  started: false,
+});
+
 /** A failure's own words and code: a plan at its limit is the owner's stop, not a fault. */
 function failure(turn: Turn, error: Record<string, unknown> | undefined): void {
   turn.failed = true;

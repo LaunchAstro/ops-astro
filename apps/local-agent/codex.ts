@@ -222,18 +222,22 @@ export function folders(settings: RunnerSettings): string {
 /**
  * The codex child a call runs, `exec` or `app-server` (codex-app.ts): no
  * shell, the runner's empty folder, its own Codex home and its minimal
- * environment, stdin and stdout piped, stderr dropped.
+ * environment, stdin and stdout piped, stderr dropped. With `group`, it leads
+ * a process group of its own, so the whole group, descendants holding its
+ * stdout included, can be stopped together.
  */
 export function spawnCodex(
   settings: RunnerSettings,
   args: readonly string[],
   cwd: string,
+  group = false,
 ): ChildProcessByStdio<Writable, Readable, null> {
   return spawn(settings.codexBin, args, {
     cwd,
     env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
     stdio: ['pipe', 'pipe', 'ignore'],
     shell: false,
+    detached: group,
   });
 }
 
