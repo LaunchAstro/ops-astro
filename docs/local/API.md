@@ -291,6 +291,11 @@ minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
 served.
 
+The only first factor is `password`. A session the provider opened from a
+mailed link (`amr` `otp`, or `magiclink`, `recovery`, `invite`,
+`email/signup`) has no first-sign-in time, so every route answers it
+`AUTH_SESSION_EXPIRED`: a link sets a password and signs nobody into content.
+
 A session is GoTrue's `session_id` claim, read by the verifier only when it is
 a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a

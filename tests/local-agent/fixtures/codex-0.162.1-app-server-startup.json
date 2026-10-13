@@ -1,0 +1,169 @@
+{
+  "captured": "codex-cli 0.162.1 `app-server --listen stdio://`, the runner's own flags, an empty throwaway CODEX_HOME and HOME (no sign-in, no auth file), requests initialize, initialized, account/read, account/rateLimits/read, thread/start; no turn/start, so no model call",
+  "scrubbed": "hostname, installation id, thread and session ids, every path (Codex home, cwd, workspace roots) and every time replaced; no account was signed in, so none is present",
+  "entries": [
+    {
+      "after": "initialize",
+      "line": {
+        "id": 1,
+        "result": {
+          "userAgent": "ops-astro-local-agent/0.162.1 (Mac OS 26.5.0; arm64) unknown (ops-astro-local-agent; 1)",
+          "codexHome": "@CODEX_HOME@",
+          "platformFamily": "unix",
+          "platformOs": "macos"
+        }
+      }
+    },
+    {
+      "after": "initialize",
+      "line": {
+        "method": "remoteControl/status/changed",
+        "params": {
+          "status": "disabled",
+          "serverName": "stand-in-host",
+          "installationId": "00000000-0000-4000-8000-000000000001",
+          "environmentId": null
+        },
+        "emittedAtMs": 1760000000000
+      }
+    },
+    {
+      "after": "account/read",
+      "line": {
+        "id": 2,
+        "result": {
+          "account": null,
+          "requiresOpenaiAuth": true,
+          "workspaceRouting": null
+        }
+      }
+    },
+    {
+      "after": "account/rateLimits/read",
+      "line": {
+        "error": {
+          "code": -32600,
+          "message": "codex account authentication required to read rate limits"
+        },
+        "id": 3
+      }
+    },
+    {
+      "after": "thread/start",
+      "line": {
+        "id": 4,
+        "result": {
+          "thread": {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "environments": [
+              {
+                "environmentId": "local",
+                "cwd": "@CWD@",
+                "runtimeWorkspaceRoots": ["@CWD@"]
+              }
+            ],
+            "extra": null,
+            "sessionId": "00000000-0000-4000-8000-000000000002",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "",
+            "ephemeral": true,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": null,
+            "createdAt": 1760000000,
+            "updatedAt": 1760000000,
+            "recencyAt": 1760000000,
+            "status": {
+              "type": "idle"
+            },
+            "path": null,
+            "cwd": "@CWD@",
+            "cliVersion": "0.162.1",
+            "originator": "ops-astro-local-agent",
+            "source": "vscode",
+            "canAcceptDirectInput": true,
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "daybreakEnabled": null,
+            "turns": []
+          },
+          "model": "gpt-6.1-sol",
+          "modelProvider": "openai",
+          "serviceTier": null,
+          "disabledPluginIds": [],
+          "cwd": "@CWD@",
+          "runtimeWorkspaceRoots": ["@CWD@"],
+          "instructionSources": [],
+          "approvalPolicy": "never",
+          "approvalsReviewer": "user",
+          "sandbox": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "activePermissionProfile": null,
+          "reasoningEffort": null,
+          "multiAgentMode": "explicitRequestOnly"
+        }
+      }
+    },
+    {
+      "after": "thread/start",
+      "line": {
+        "method": "thread/started",
+        "params": {
+          "thread": {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "environments": [
+              {
+                "environmentId": "local",
+                "cwd": "@CWD@",
+                "runtimeWorkspaceRoots": ["@CWD@"]
+              }
+            ],
+            "extra": null,
+            "sessionId": "00000000-0000-4000-8000-000000000002",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "",
+            "ephemeral": true,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": null,
+            "createdAt": 1760000000,
+            "updatedAt": 1760000000,
+            "recencyAt": 1760000000,
+            "status": {
+              "type": "idle"
+            },
+            "path": null,
+            "cwd": "@CWD@",
+            "cliVersion": "0.162.1",
+            "originator": "ops-astro-local-agent",
+            "source": "vscode",
+            "canAcceptDirectInput": true,
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "daybreakEnabled": null,
+            "turns": []
+          }
+        },
+        "emittedAtMs": 1760000000000
+      }
+    }
+  ]
+}

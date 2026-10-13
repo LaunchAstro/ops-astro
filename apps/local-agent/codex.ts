@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines -- the one file the egress allowlist lets spawn codex: its call and its login check */
+/* eslint-disable max-lines -- the one file the egress allowlist lets spawn codex: its calls and its login check */
 //
 // One `codex exec` call (LA-1, GPT in Claude's place, owner 7 October 2026):
 // the prompt on stdin, the answer read from `--json`'s events. The child is
@@ -15,15 +15,16 @@
 // reasoning (a command, a file change, a tool or web call) fails the call, so
 // a tool that a later Codex turns on by default is caught, not answered.
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import type { RunnerSettings } from './settings.ts';
 
-const MAX_STDOUT_BYTES = 1024 * 1024;
+export const MAX_STDOUT_BYTES: number = 1024 * 1024;
 
 /** A model name as the runner passes it on: never an option, never a path. */
-const MODEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+export const MODEL: RegExp = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
 /** Every Codex feature that gives the model a tool or reads the owner's own state. */
 export const DISABLED_FEATURES: readonly string[] = [
@@ -52,7 +53,7 @@ export const DISABLED_FEATURES: readonly string[] = [
 ];
 
 /** Instruction files Codex reads from its home on every call; the runner's home holds none. */
-const HOME_INSTRUCTIONS = ['AGENTS.md', 'AGENTS.override.md'];
+export const HOME_INSTRUCTIONS: readonly string[] = ['AGENTS.md', 'AGENTS.override.md'];
 
 export interface CodexResult {
   readonly text: string;
@@ -95,7 +96,7 @@ interface Reading {
 }
 
 /** Codex's own words for a plan at its limit; they only choose the refusal, never let a call through. */
-const USAGE_LIMIT = /usage limit/iu;
+export const USAGE_LIMIT: RegExp = /usage limit/iu;
 
 /** The message of an `error` or `turn.failed` event, if it has one. */
 function failureMessage(event: Record<string, unknown>): string {
@@ -209,13 +210,35 @@ export function codexArgs(model: string, cwd: string): string[] {
 }
 
 /** The runner's folders, private to it, and the child's empty working folder. */
-function folders(settings: RunnerSettings): string {
+export function folders(settings: RunnerSettings): string {
   const cwd = join(settings.home, 'cwd');
   mkdirSync(settings.home, { recursive: true, mode: 0o700 });
   mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
   mkdirSync(settings.childEnv.HOME, { recursive: true, mode: 0o700 });
   mkdirSync(cwd, { recursive: true });
   return cwd;
+}
+
+/**
+ * The codex child a call runs, `exec` or `app-server` (codex-app.ts): no
+ * shell, the runner's empty folder, its own Codex home and its minimal
+ * environment, stdin and stdout piped, stderr dropped. With `group`, it leads
+ * a process group of its own, so the whole group, descendants holding its
+ * stdout included, can be stopped together.
+ */
+export function spawnCodex(
+  settings: RunnerSettings,
+  args: readonly string[],
+  cwd: string,
+  group = false,
+): ChildProcessByStdio<Writable, Readable, null> {
+  return spawn(settings.codexBin, args, {
+    cwd,
+    env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
+    stdio: ['pipe', 'pipe', 'ignore'],
+    shell: false,
+    detached: group,
+  });
 }
 
 /** A call that ran but whose answer cannot be read: killed, or ended with no result. */
@@ -238,12 +261,7 @@ export async function runCodex(
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   return await new Promise((resolve) => {
-    const child = spawn(settings.codexBin, codexArgs(model, cwd), {
-      cwd,
-      env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
-      stdio: ['pipe', 'pipe', 'ignore'],
-      shell: false,
-    });
+    const child = spawnCodex(settings, codexArgs(model, cwd), cwd);
     const parts: Buffer[] = [];
     let bytes = 0;
     let done = false;

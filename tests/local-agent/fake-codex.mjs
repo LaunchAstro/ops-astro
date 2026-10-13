@@ -21,10 +21,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { appServer, until } from './fake-codex-app.mjs';
 
 const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
 const knobs = existsSync(knobsFile) ? JSON.parse(readFileSync(knobsFile, 'utf8')) : {};
+
+// `codex --version`: the version fake.json names (`version`), 0.162.1 unless it says otherwise.
+if (process.argv[2] === '--version') {
+  process.stdout.write(`codex-cli ${knobs.version ?? '0.162.1'}\n`);
+  process.exit(0);
+}
 
 // `codex login status`: the login fake.json names (ChatGPT unless it says otherwise).
 if (process.argv[2] === 'login') {
@@ -50,11 +57,18 @@ if (process.argv[2] === 'login') {
   if (login === 'loosen') chmodSync(dirname(home), 0o777);
   // `vanish`: signed in, but the runner's home is gone by the time it answers.
   if (login === 'vanish') rmSync(dirname(home), { recursive: true, force: true });
+  // Codex 0.162.1 writes its login status to stderr (`eprintln!`), not stdout.
   if (login === 'chatgpt' || login === 'loosen' || login === 'vanish')
-    process.stdout.write('Logged in using ChatGPT\n');
-  else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
-  else process.stdout.write('Not logged in\n');
+    process.stderr.write('Logged in using ChatGPT\n');
+  else if (login === 'apikey') process.stderr.write('Logged in using an API key - sk-proj-***\n');
+  else process.stderr.write('Not logged in\n');
   process.exit(login === 'none' ? 1 : 0);
+}
+
+// `codex app-server` over stdio: one JSON-RPC message per line each way (appServer below).
+if (process.argv[2] === 'app-server') {
+  await appServer(home, knobs);
+  process.exit(0);
 }
 
 let stdin = '';
@@ -105,6 +119,8 @@ process.stdin.on('end', () => {
     }
     process.exit(knobs.exit ?? 0);
   };
-  if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
+  // `gate` holds the whole answer as it holds the app-server's after its first piece.
+  if (knobs.gate) void until(knobs.gate).then(answer);
+  else if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
   else answer();
 });
