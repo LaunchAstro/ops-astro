@@ -211,13 +211,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
             'a day', 'deleted', true, id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
   // API-2: no journey issues an agent credential, so one is written here.
-  'public.agent_credentials': `insert into public.agent_credentials
+  // The credential's agent is planted with it: a person actor may not hold one.
+  'public.agent_credentials': `with agent as (
+       insert into public.actors (business_id, id, kind) values ($1, gen_random_uuid(), 'agent')
+       returning business_id, id)
+     insert into public.agent_credentials
        (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
         credential_hash, credential_scheme, credential_key_id, expires_at)
-     select business_id, gen_random_uuid(), id, person_id, id, 'restricted calls seed',
+     select p.business_id, gen_random_uuid(), a.id, p.person_id, p.id, 'restricted calls seed',
             array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
-       from public.actors where business_id = $1 and kind = 'person'
-      order by id limit 1 returning 1`,
+       from public.actors p join agent a on a.business_id = p.business_id
+      where p.kind = 'person'
+      order by p.id limit 1 returning 1`,
   // C32: no journey makes a client, so one is written here.
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
@@ -682,6 +687,7 @@ const DEFINERS: readonly string[] = [
   'map_summary_refresh(uuid)',
   'model_route_room(text,integer)',
   'ops.ended_subject_sessions_at_commit()',
+  'ops.expire_auth_hook_messages()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
   'password_reset_token_find(text)',
@@ -941,7 +947,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Thirteen, each for a named reason. The map read models' four (WF-1) and the
+  // Fourteen, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -949,8 +955,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // security. It answers one number and no id, and only the broker's role
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
-  // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it. The ending's commit time (20261004181806) is a
+  // codes expiry (20261002105957) and the hook claims expiry (20261012133600) each delete
+  // only rows past a fixed horizon, and only the upkeep identity runs them. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
   // The reset token lookup (20261005144947, C40B) is the reset's one read
   // across businesses, made with no business: two ids for a hash exactly one business holds,
@@ -965,7 +971,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly thirteen, each with its search path pinned', () => {
+    it('are exactly fourteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
