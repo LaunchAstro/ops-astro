@@ -43,11 +43,9 @@ export function presetOf(
   env: Readonly<Record<string, string | undefined>>,
 ): Preset | undefined {
   const flag = flags['env'];
-  const selector = given(flag)
-    ? '--env'
-    : given(env['OPS_ASTRO_ENV'])
-      ? 'OPS_ASTRO_ENV'
-      : undefined;
+  // A flag given empty (`--env=`) names no preset and is refused, never read as none.
+  const fromEnv = given(env['OPS_ASTRO_ENV']) ? 'OPS_ASTRO_ENV' : undefined;
+  const selector = flag === undefined ? fromEnv : '--env';
   if (selector === undefined) return undefined;
   const name = String(selector === '--env' ? flag : env['OPS_ASTRO_ENV']);
   const origin = Object.hasOwn(PRESETS, name) ? PRESETS[name] : undefined;

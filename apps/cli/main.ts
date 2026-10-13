@@ -331,7 +331,12 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     const name = argument.slice(2);
     if (argument === '--agent') connection['agent'] = true;
     else if (argument === '--business' || argument === '--api' || argument === '--env') {
-      connection[name] = argv[(at += 1)] ?? '';
+      const value = argv[(at += 1)];
+      if (value === undefined) {
+        io.err(`cli: ${argument} needs a value`);
+        return EXIT.usage;
+      }
+      connection[name] = value;
     } else rest.push(argument);
   }
   let reached: Connection;

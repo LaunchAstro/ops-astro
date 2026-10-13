@@ -34,7 +34,7 @@ it('a missing preset value refuses before sending a write', async () => {
       {
         out: (line) => printed.push(line),
         err: (line) => printed.push(line),
-        stdin: async () => '',
+        stdin: async () => await Promise.resolve(''),
       },
     );
     expect(code, JSON.stringify({ seen, printed })).toBe(2);
