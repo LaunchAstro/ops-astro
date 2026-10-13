@@ -153,7 +153,7 @@ describe.skipIf(serverUrl === undefined)(
       ).rest();
       expect(piecesOf(events)).toBe('');
       expect(outcomeOf(events)).toMatchObject({ reply: { answered: false } });
-      const replies = await w.count(
+      const replies = await presenting.count(
         `select count(*)::text as n from public.conversation_messages m
          join public.conversation_messages q on q.id = m.answers_message_id
         where q.body = 'Streamed anyway?'`,

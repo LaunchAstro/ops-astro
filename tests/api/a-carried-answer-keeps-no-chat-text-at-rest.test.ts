@@ -18,6 +18,7 @@ const serverUrl = databaseUrlFromEnvironment();
 const QUESTION = 'question-words-3f71 what is due?';
 const ANSWER = 'answer-words-8c20';
 
+// oxlint-disable-next-line max-lines-per-function -- one carried world per case
 describe.skipIf(serverUrl === undefined)('a carried answer at rest', () => {
   let world: CarriedWorld;
 

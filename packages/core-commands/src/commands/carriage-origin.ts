@@ -13,18 +13,20 @@
 // link, membership leave, deactivation, purge or session ending takes one of
 // those locks, so it commits before the judgement, which sees it, or waits.
 //
-// The send is recorded first, committed (runner, `request_at`, `send_by`,
-// `answer_by`), so the sweep never mistakes a send for none; the request goes
-// only once the send judgement passes after it, so a refused send has
-// `request_at` set and nothing sent. That judgement's transaction then holds
+// The send is recorded and committed first (runner, `request_at`, `send_by`,
+// `answer_by`), so the sweep never takes a send for none; the request goes only
+// once the send judgement passes after it. That judgement's transaction holds
 // its locks until the agent reports the write or a refusal, or W after the
-// accept was heard. The pool holds one connection: nothing needs a second.
+// accept was heard, on the pool's one connection: nothing needs a second.
 
 import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
 import { SEND_WINDOW_MS } from '../../../core-custody/src/index.ts';
 import {
+  advisoryLock,
   sessionEnded,
+  sessionKey,
   slotOf,
+  subjectKey,
   subjectsOf,
   TASK_SPINE,
   withSession,
@@ -34,8 +36,6 @@ import {
   type TenantQuery,
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { advisoryLock } from '../../../core-records/src/tenancy/database.ts';
-import { sessionKey, subjectKey } from '../../../core-records/src/identity/ending-keys.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
 import { holdsOwnConversations } from './conversations.ts';
