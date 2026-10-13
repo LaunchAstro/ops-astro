@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The local runner's door (LA-1, #859): a loopback HTTP server the broker's
+// The local runner (LA-1, #859): a loopback HTTP server the broker's
 // custody dispatches to like any provider destination. One route,
 // `POST /v1/local-gpt/complete`, behind the runner's own bearer key; custody
 // holds that key, and the ChatGPT login stays inside the runner's Codex home.
@@ -12,22 +12,23 @@
 // run one at a time: the ledger's total is read and the cap checked with no
 // other call in flight, so two calls never both start under the cap. One
 // runner holds a home at a time (home-lock.ts). A call whose caller has gone,
-// or whose turn comes as the runner closes, is never run.
+// or whose turn comes as the runner closes, is never run. What a request is
+// and how its reply goes out, whole or streamed, is the door's (door.ts).
 
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
-import { LOCAL_GPT_BODY_LIMIT, LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
+import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
+import { runCodexApp, type Listener } from './codex-app.ts';
+import type { AppResult } from './app-steps.ts';
 import { promptOf, runCodex, UNKNOWN, type CodexResult } from './codex.ts';
-import { callNeed, DEFAULT_MODEL, decide, REFUSAL_MESSAGES, type CallRefusal } from './gate.ts';
+import { authorised, readCall, send, streamed, type CallRequest } from './door.ts';
+import { callNeed, decide, REFUSAL_MESSAGES, type CallRefusal, type Refused } from './gate.ts';
 import { holdHome } from './home-lock.ts';
 import { appendLedger, type LedgerRow } from './ledger.ts';
 import type { RunnerSettings } from './settings.ts';
 
-/** A model name the runner passes on: no spaces, no flags, nothing to split. */
-const MODEL_NAME = /^[a-z0-9][a-z0-9.-]{0,63}$/u;
-const MAX_BODY_BYTES = LOCAL_GPT_BODY_LIMIT;
 /** A call whose turn comes with under this share of its time left (5 s of 100 s) is not started. */
 const MIN_RUN_SHARE = 1 / 20;
 
@@ -46,58 +47,12 @@ export interface Runner {
   close(): Promise<void>;
 }
 
-interface CallRequest {
-  readonly model: string;
-  readonly fields: Readonly<Record<string, string>>;
-}
-
-const digest = (text: string): Buffer => createHash('sha256').update(text).digest();
-
-function authorised(request: IncomingMessage, key: string): boolean {
-  const header = request.headers['authorization'] ?? '';
-  const presented = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-  return timingSafeEqual(digest(presented), digest(key));
-}
-
-/** The request body, or why not: too large, or not the one shape the route takes. */
-async function readCall(request: IncomingMessage): Promise<CallRequest | 400 | 413> {
-  const parts: Buffer[] = [];
-  let bytes = 0;
-  for await (const part of request) {
-    bytes += (part as Buffer).length;
-    if (bytes > MAX_BODY_BYTES) return 413;
-    parts.push(part as Buffer);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.concat(parts).toString('utf8'));
-  } catch {
-    return 400;
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return 400;
-  const shape = parsed as Record<string, unknown>;
-  const model = shape['model'] ?? DEFAULT_MODEL;
-  const fields = shape['fields'];
-  if (typeof model !== 'string' || !MODEL_NAME.test(model)) return 400;
-  if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) return 400;
-  const entries = Object.entries(fields as Record<string, unknown>);
-  if (entries.length === 0 || !entries.every(([, value]) => typeof value === 'string')) {
-    return 400;
-  }
-  return { model, fields: fields as Record<string, string> };
-}
-
 const refusal = (model: string, code: CallRefusal): LocalAnswer => ({
   text: '',
   model,
   usage: { input: 0, output: 0 },
   code,
 });
-
-function send(response: ServerResponse, status: number, body?: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json' });
-  response.end(body === undefined ? '' : JSON.stringify(body));
-}
 
 /** The runner's own state: a ledger row that could not be written stops every later call. */
 interface RunnerState {
@@ -108,16 +63,23 @@ interface RunnerState {
   readonly inFlight: Set<AbortController>;
   /** Calls run one at a time, in arrival order. */
   queue: Promise<unknown>;
+  /** Calls queued or in flight: a call with a send deadline finding any is refused, never queued. */
+  waiting: number;
 }
+
+/** Refused before the model was asked anything: nothing ran. */
+const isRefused = (result: AppResult): result is Refused =>
+  result !== null && typeof result === 'object' && 'refused' in result;
 
 /** The row a call leaves: its reported tokens, nothing when nothing ran, or its need when unknown. */
 function rowOf(
   id: string,
   call: CallRequest & { readonly need: number },
-  result: Awaited<ReturnType<typeof runCodex>>,
+  result: AppResult,
 ): LedgerRow {
   const at = new Date().toISOString();
-  if (result === null) return { id, at, model: call.model, inputTokens: 0, outputTokens: 0 };
+  if (result === null || isRefused(result))
+    return { id, at, model: call.model, inputTokens: 0, outputTokens: 0 };
   if (result === UNKNOWN) {
     return { id, at, model: call.model, inputTokens: call.need, outputTokens: 0 };
   }
@@ -142,7 +104,15 @@ async function complete(
   call: CallRequest,
   log: (line: string) => void,
   state: RunnerState,
-  { deadline, signal }: { readonly deadline: number; readonly signal: AbortSignal },
+  {
+    deadline,
+    signal,
+    listener,
+  }: {
+    readonly deadline: number;
+    readonly signal: AbortSignal;
+    readonly listener: Listener;
+  },
 ): Promise<LocalAnswer> {
   // Custody gives up on the call 120 s after it sent it, however long it queued here.
   const left = deadline - Date.now();
@@ -166,7 +136,9 @@ async function complete(
     return refusal(call.model, 'LOCAL_GPT_FAILED');
   }
   const run = { ...settings, timeoutMs: Math.min(settings.timeoutMs, left) };
-  const result = await runCodex(run, call.model, prompt, signal);
+  const result = call.stream
+    ? await runCodexApp(run, { model: call.model, prompt, sendBy: call.sendBy }, listener, signal)
+    : await runCodex(run, call.model, prompt, signal);
   if (
     !recorded(settings, state, rowOf(id, charged, result)) ||
     result === null ||
@@ -178,15 +150,24 @@ async function complete(
 }
 
 /**
- * A finished call's answer. Codex reports usage only at the end, so a call
- * that used more than the tokens left when it was let in is recorded, never answered.
+ * A finished call's answer, or its refusal before the model was asked (the
+ * week's reset time goes to the runner's log only). Codex reports usage only
+ * at the end, so a call that used more than the tokens left when it was let
+ * in is recorded, never answered.
  */
 function answerOf(
   call: CallRequest,
-  result: CodexResult,
+  result: CodexResult | Refused,
   tokensLeft: number,
   log: (line: string) => void,
 ): LocalAnswer {
+  if (isRefused(result)) {
+    const { refused, resetsAt } = result;
+    const resets =
+      resetsAt === undefined ? '' : ` It resets ${new Date(resetsAt * 1000).toISOString()}.`;
+    log(`${refused}: ${REFUSAL_MESSAGES[refused]}${resets}`);
+    return refusal(call.model, refused);
+  }
   if (result.inputTokens + result.outputTokens > tokensLeft) {
     log(`LOCAL_CAP_REACHED: ${REFUSAL_MESSAGES.LOCAL_CAP_REACHED}`);
     return refusal(call.model, 'LOCAL_CAP_REACHED');
@@ -227,16 +208,30 @@ function handler(
     const gone = goneWatch(response);
     const call = await readCall(request);
     if (typeof call === 'number') return send(response, call);
+    const reply = call.stream ? streamed(response) : undefined;
+    const answer = (body: LocalAnswer): void =>
+      reply === undefined ? send(response, 200, body) : reply.answer(body);
+    // Admission holds only until the send deadline: such a call never waits behind another.
+    if (call.sendBy !== null && state.waiting > 0) {
+      log(`MODEL_MACHINE_BUSY: ${REFUSAL_MESSAGES.MODEL_MACHINE_BUSY}`);
+      return answer(refusal(call.model, 'MODEL_MACHINE_BUSY'));
+    }
+    state.waiting += 1;
     const turn = state.queue.then(async () => {
       state.inFlight.add(gone);
       try {
-        return await complete(settings, call, log, state, { deadline, signal: gone.signal });
+        return await complete(settings, call, log, state, {
+          deadline,
+          signal: gone.signal,
+          listener: { onDelta: reply?.piece ?? (() => null), onSent: reply?.sent ?? (() => null) },
+        });
       } finally {
         state.inFlight.delete(gone);
+        state.waiting -= 1;
       }
     });
     state.queue = turn.catch(() => null);
-    send(response, 200, await turn.catch(() => refusal(call.model, 'LOCAL_GPT_FAILED')));
+    return answer(await turn.catch(() => refusal(call.model, 'LOCAL_GPT_FAILED')));
   };
 }
 
@@ -252,6 +247,7 @@ export async function createRunner(
     closing: false,
     inFlight: new Set(),
     queue: Promise.resolve(),
+    waiting: 0,
   };
   const handle = handler(settings, log, state);
   const server = createServer((request, response) => {
