@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { writeCarriers } from './broker-carriage.ts';
-import type { ConversationCallRequest } from './broker-conversation.ts';
+import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import { registerPromptCopy } from './broker-reserve.ts';
 import type { BrokerRoute, Carrier, ModelCallResult } from './broker-types.ts';
 
