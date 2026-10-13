@@ -20,7 +20,8 @@
 // straight after the start, then each later choice in turn, landing before the next question.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
-// on AW-01's conversation seam) and is drawn after its question, as text.
+// on AW-01's conversation seam) and is drawn after its question, as text, as it
+// is written (`assistant/writing.ts`), then settled.
 // Where the deployment answers nothing, or no model may take the question,
 // the tab says so in plain words: the server's own, for a refusal.
 //
@@ -56,6 +57,7 @@ import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.
 import { answersTo, type Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
+import { withPieces } from '../assistant/writing.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -112,14 +114,9 @@ async function startWith(
   // default. A title, page or model chosen while it waits follows it in turn.
   const { title, page, model } = chat;
   const chosen = model === null ? {} : { model };
+  const start = { body, title, subject: subject.label, scope, ...chosen };
   const settled = settle(
-    await client.mutate('conversation.start', {
-      body,
-      title,
-      subject: subject.label,
-      scope,
-      ...chosen,
-    }),
+    await withPieces(store, chat.key, (by) => client.mutate('conversation.start', start, by)),
   );
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
@@ -173,8 +170,9 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     starts.current.set(key, turn);
     const known = await turn;
     if (asked || known === null) return;
+    const message = { conversationId: known, body };
     const settled = settle(
-      await props.client.mutate('conversation.message', { conversationId: known, body }),
+      await withPieces(on, key, (by) => props.client.mutate('conversation.message', message, by)),
     );
     if (settled.kind === 'ok') replied(on, key, settled.value.reply);
     else on.line(key, 'failed', settled.because);
@@ -230,7 +228,8 @@ function useWrites(
 /** The tab's allowance line, read again as each of its answers settles. */
 function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactElement {
   // Every message but the person's own is a settled answer: a reply, a note or a failure.
-  const settled = chat?.messages.filter((message) => message.role !== 'user').length ?? 0;
+  const settled =
+    chat?.messages.filter((line) => line.role !== 'user' && line.writing !== true).length ?? 0;
   const conversationId = chat?.conversationId ?? null;
   return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
 }

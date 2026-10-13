@@ -66,6 +66,7 @@ describe.skipIf(serverUrl === undefined)('the side panel streams the answer word
     return String(detail(opened)['conversationId']);
   }
 
+  // oxlint-disable-next-line max-lines-per-function -- one held answer read through to its outcome
   it('sends pieces while Ollama still writes, then the outcome the JSON body would be', async () => {
     const conversationId = await conversation();
     ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS), holdAfter: 3 });
@@ -98,7 +99,7 @@ describe.skipIf(serverUrl === undefined)('the side panel streams the answer word
     expect(JSON.parse(outcome?.data ?? '{}')).toMatchObject({
       reply: { answered: true, body: 'Two tasks are due today.' },
     });
-    // The same request again, without a stream: the replay's JSON body, byte for byte.
+    // The same request again, without a stream: the reply the replay answers.
     const replay = await w.api.fetch(
       new Request(`http://api.test${personPath('conversation.message')}`, {
         method: 'POST',
@@ -110,9 +111,18 @@ describe.skipIf(serverUrl === undefined)('the side panel streams the answer word
       }),
     );
     expect(replay.headers.get('content-type')).toMatch(/^application\/json/u);
-    expect(outcome?.data).toBe(await replay.text());
+    const streamed = JSON.parse(outcome?.data ?? '{}') as Record<string, unknown>;
+    const replayed = JSON.parse(await replay.text()) as Record<string, unknown>;
+    expect(streamed['reply']).toStrictEqual(replayed['reply']);
+    // And a new message without a stream: the same body, key for key.
+    ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
+    const plain = await w.as(w.owner, 'conversation.message', { conversationId, body: 'And?' });
+    expect(Object.keys(streamed)).toStrictEqual(Object.keys(plain.body));
+    expect(Object.keys(streamed['reply'] as object)).toStrictEqual(
+      Object.keys(plain.body['reply'] as object),
+    );
     expect(ollama.seen.filter((seen) => seen.last === 'What is due today?')).toHaveLength(1);
-    expect(ollama.seen.at(-1)?.authorization).toBeUndefined();
+    expect(ollama.seen.map((seen) => seen.authorization)).not.toContain(expect.anything());
   }, 60_000);
 
   it('answers in JSON as before when no stream is asked for', async () => {

@@ -80,7 +80,13 @@ import type {
   admitReads,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
-import { executorFor, replyTo, type AgentAnswerOptions } from './agent-answers.ts';
+import {
+  asksForPieces,
+  executorFor,
+  replyTo,
+  streamedReply,
+  type AgentAnswerOptions,
+} from './agent-answers.ts';
 import { presentedBy } from './auth/agent-bearer.ts';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { LiveSignal, LiveTopics } from './live.ts';
@@ -457,6 +463,9 @@ export function createApi(options: ApiOptions): Hono {
     // commits, in transactions of their own after the act's
     // (`settle-after-commit.ts`); what fails stays owed for the retry.
     const settled = await settleAfterCommit(options, businessId, name, result);
+    if (asksForPieces(context, options, name)) {
+      return streamedReply(context, options, businessId, presented, settled);
+    }
     const reply = await replyTo(options, businessId, presented, settled);
     return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });

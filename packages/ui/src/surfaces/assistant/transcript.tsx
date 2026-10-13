@@ -52,8 +52,9 @@ export function Transcript(props: {
       {props.messages.map((message) => (
         <div
           key={message.id}
-          className={`aip__msg ${ROLE_CLASS[message.role]}`}
+          className={`aip__msg ${ROLE_CLASS[message.role]}${message.writing === true ? ' aip__msg--writing' : ''}`}
           data-message-role={message.role}
+          data-writing={message.writing === true ? '' : undefined}
         >
           {message.body}
           {message.plan === undefined ? null : (

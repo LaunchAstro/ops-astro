@@ -66,6 +66,13 @@ export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
   return 'unavailable' in result;
 }
 
+/** A parsed body that is the server's refusal: the flag and a code, checked before anything reads it. */
+export function isWireRefusal(value: unknown): value is WireRefusal {
+  if (typeof value !== 'object' || value === null) return false;
+  const body = value as Record<string, unknown>;
+  return body['refused'] === true && typeof body['code'] === 'string';
+}
+
 /** What `account/factor/verify` answers: only the access token is read, once, to trade it. */
 export interface FactorVerified {
   readonly accessToken?: unknown;

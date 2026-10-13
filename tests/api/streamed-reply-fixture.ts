@@ -126,9 +126,10 @@ export async function openedWhileWriting(
   ms = 5_000,
 ): Promise<Streaming | undefined> {
   const stop = new AbortController();
-  const late = sleep(ms, undefined, { signal: stop.signal }).catch(() => undefined);
+  const late = sleep(ms, 'late' as const, { signal: stop.signal }).catch(() => 'late' as const);
   try {
-    return await Promise.race([sending, late]);
+    const first = await Promise.race([sending, late]);
+    return first === 'late' ? undefined : first;
   } finally {
     stop.abort();
   }

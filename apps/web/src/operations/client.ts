@@ -55,6 +55,8 @@ import {
 import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 import { ACCESS_ENDED, BEFORE_LOGIN, SESSION_ENDED } from './session-endings.ts';
+import { isEventStream, outcomeOf, UNFINISHED, type Piece } from './streamed.ts';
+import { isWireRefusal } from './results.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -109,7 +111,8 @@ export interface MutationOptions {
   readonly operationId?: string;
   /** Required by the server on a write against an existing record. */
   readonly expectedRevision?: number;
-  readonly onPiece?: (piece: { readonly seq: number; readonly text: string }) => void;
+  /** Takes the answer's pieces as it is written: the reply comes as a stream (`streamed.ts`). */
+  readonly onPiece?: (piece: Piece) => void;
 }
 
 export class OperationsClient {
@@ -156,7 +159,7 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return await this.#post<CommandOutcome>(pathOf(name), payload);
+    return await this.#post<CommandOutcome>(pathOf(name), payload, options.onPiece);
   }
 
   /** The person's own account route (C58), always with an empty body: see `AccountRoute`. */
@@ -231,7 +234,11 @@ export class OperationsClient {
     }
   }
 
-  async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
+  async #post<T>(
+    path: string,
+    body: Readonly<Record<string, unknown>>,
+    onPiece?: (piece: Piece) => void,
+  ): Promise<CallResult<T>> {
     const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
     // The browser's cookie (S0-6c) is the only credential; no actor, business or forwarded
     // header for a tampered request to reach (N7).
@@ -240,6 +247,7 @@ export class OperationsClient {
       [CSRF_HEADER]: '1',
     };
     if (this.#options.sessionId !== undefined) headers[SESSION_HEADER] = this.#options.sessionId;
+    if (onPiece !== undefined) headers['accept'] = 'text/event-stream';
 
     let response: Response;
     try {
@@ -254,7 +262,11 @@ export class OperationsClient {
       return { unavailable: true, because: describe(error) };
     }
 
-    const parsed: unknown = await response.json().catch(() => {});
+    const streamed = onPiece !== undefined && response.ok && isEventStream(response);
+    const parsed: unknown = streamed
+      ? await outcomeOf(response.body, onPiece)
+      : await response.json().catch(() => {});
+    if (streamed && parsed === undefined) return { unavailable: true, because: UNFINISHED };
 
     if (isWireRefusal(parsed)) {
       this.#heard(response.status, parsed);
@@ -280,12 +292,6 @@ export class OperationsClient {
     if (ends && this.#options.signedIn) this.#options.onSessionEnded?.(refusal);
     if (status !== 401 && !BEFORE_LOGIN.has(refusal.code)) this.#answered = true;
   }
-}
-
-function isWireRefusal(value: unknown): value is WireRefusal {
-  if (typeof value !== 'object' || value === null) return false;
-  const body = value as Record<string, unknown>;
-  return body['refused'] === true && typeof body['code'] === 'string';
 }
 
 const describe = (error: unknown): string =>
