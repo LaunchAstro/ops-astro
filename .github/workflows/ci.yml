@@ -812,8 +812,15 @@ jobs:
     # live renderer, kernel release included, opens the step's log; the packet's
     # `ciRenderer` pins the rest. The page, control, token and theme are the
     # catalogue's `appDrift` (tests/visual/states.json).
+    #
+    # Not required, so not in the merge queue (RELAYROI1515 cut 6, 13 October
+    # 2026): no group waited on it, and it took 4 minutes of runners from each.
+    # It runs on a pull request and a push here, and each night on main in
+    # visual-drift-nightly.yml, whose steps are these
+    # (tests/ci/non-required-jobs-stay-out-of-merge-groups.test.ts).
     name: visual drift
     needs: [gate, full]
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 13.4 min.
     timeout-minutes: 25
@@ -830,8 +837,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
       # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
+      # proves, and the step says why when it does not; on any
+      # other event it always runs. No step here carries a condition.
       - name: Use the official HTTPS Ubuntu archive for browser dependencies
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
