@@ -132,23 +132,55 @@ export function localRoute(
 /**
  * The message's call, if one was made: a retry is answered from it, never a
  * second call (#1531). A kept reply is found before the broker is asked. A
- * call still with the model, or settled in the last 30 s (its reply is still
- * being kept), is on its way; any other ending kept nothing.
+ * call still with the model, or settled with its reply kept or being kept, is
+ * on its way; any other ending kept nothing.
  */
 async function messageCall(
   tx: TenantQuery,
   messageId: string | undefined,
 ): Promise<ModelCallResult | undefined> {
   if (messageId === undefined) return undefined;
-  const [call] = await tx.query<{ readonly id: string; readonly answering: boolean }>(
-    `select id, (state = 'dispatched' or state = 'settled'
-                 and ended_at > clock_timestamp() - interval '30 seconds') as answering
+  const [call] = await tx.query<{
+    readonly id: string;
+    readonly conversation_id: string;
+    readonly state: string;
+    readonly recent: boolean;
+  }>(
+    `select id, conversation_id, state,
+            ended_at > clock_timestamp() - interval '30 seconds' as recent
        from public.model_calls
       where business_id = $1 and conversation_message_id = $2`,
     [tx.businessId, messageId],
   );
   if (call === undefined) return undefined;
-  return { ok: false, code: call.answering ? 'STILL_ANSWERING' : 'ANSWER_ENDED', callId: call.id };
+  const answering =
+    call.state === 'dispatched' ||
+    (call.state === 'settled' &&
+      (call.recent || (await replyLanded(tx, call.conversation_id, messageId))));
+  return { ok: false, code: answering ? 'STILL_ANSWERING' : 'ANSWER_ENDED', callId: call.id };
+}
+
+/**
+ * A settled call's reply, kept now or by a keep queued on the conversation:
+ * its row is taken as the keep takes it, so a keep waiting there commits
+ * first, and the reply is read after the wait. A keep in its first 30 s may
+ * not have asked for the row yet; `messageCall` counts those as on their way.
+ */
+async function replyLanded(
+  tx: TenantQuery,
+  conversationId: string,
+  messageId: string,
+): Promise<boolean> {
+  await tx.query(
+    `select 1 from public.conversations where business_id = $1 and id = $2 for update`,
+    [tx.businessId, conversationId],
+  );
+  const kept = await tx.query(
+    `select 1 from public.conversation_messages
+      where business_id = $1 and conversation_id = $2 and answers_message_id = $3`,
+    [tx.businessId, conversationId, messageId],
+  );
+  return kept.length > 0;
 }
 
 /**
