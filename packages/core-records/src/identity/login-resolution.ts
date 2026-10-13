@@ -25,7 +25,8 @@ import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import { refuse, noMembership, NO_MEMBERSHIP_FIXES, type Refusal } from './access-ended.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { admitQuota, type QuotaRefusal } from './quota.ts';
-import { sessionEndedHeld, sessionRefusal } from './sessions.ts';
+import { sessionRefusal } from './session-refusal.ts';
+import { sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
