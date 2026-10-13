@@ -246,7 +246,7 @@ async function answerOnce(
   );
   await pieces?.drained();
   if (!result.ok) return await unanswered(result, reread);
-  if (paid !== undefined) return paid.replied(question.context.cites); // kept in the settle
+  if (paid !== undefined) return paid.replied(question.context.cites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');
   const kept = await withSession(

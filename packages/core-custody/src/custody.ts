@@ -194,8 +194,8 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
 function dispatchOn(exchange: Exchange): Custody['dispatch'] {
   return async (credentialRef, request, onPiece, admit) => {
     let started = false;
-    const admission = admit === undefined ? undefined : await admit().catch(() => undefined);
-    if (admit !== undefined && admission === undefined) {
+    const admission = admit === undefined ? undefined : await admit().catch(() => null);
+    if (admit !== undefined && (admission === undefined || admission === null)) {
       return { kind: 'refused', started: false, code: 'CUSTODY_NOT_ADMITTED' };
     }
     const markStarted = (): void => {
