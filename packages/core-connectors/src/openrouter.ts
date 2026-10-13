@@ -164,25 +164,38 @@ export function readOpenRouterAnswer(body: unknown): ModelAnswer | undefined {
 }
 
 /**
- * A float's whole millionths: the nearest where it is one within the float's
- * error, else rounded up; undefined past what counts exactly.
+ * A non-negative float as the exact fraction of its shortest decimal form
+ * (`String(amount)`, the number as the provider wrote it): digits / 10^places.
  */
-function microdollars(amount: number): bigint | undefined {
-  const scaled = amount * 1_000_000;
-  const nearest = Math.round(scaled);
-  const counted = Math.abs(scaled - nearest) < 1e-9 ? nearest : Math.ceil(scaled);
-  return Number.isSafeInteger(counted) ? BigInt(counted) : undefined;
+function exactDecimal(amount: number): { digits: bigint; places: number } | undefined {
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/u.exec(String(amount));
+  if (match === null) return undefined;
+  const fraction = match[2] ?? '';
+  return {
+    digits: BigInt(`${match[1] ?? '0'}${fraction}`),
+    places: fraction.length - Number(match[3] ?? '0'),
+  };
 }
 
-/** OpenRouter's reported cost in whole AUD cents at the fixed rate, never rounded down; NaN (held) without one. */
+/**
+ * OpenRouter's reported cost in whole AUD cents at the fixed rate, worked exactly
+ * and rounded up, so any positive cost is at least a cent; NaN (held) without one
+ * or past what counts in whole cents.
+ */
 export function openrouterCostMinor(answer: ModelAnswer): number {
   const cost = answer.reportedCost;
   if (cost?.currency !== 'USD' || !Number.isFinite(cost.amount) || cost.amount < 0)
     return Number.NaN;
-  const micro = microdollars(cost.amount);
-  if (micro === undefined) return Number.NaN;
-  const cents = micro * millionths(OPENROUTER_AUD_PER_USD) * 100n;
-  return Number(ceilDiv(cents, 1_000_000n * 1_000_000n));
+  const decimal = exactDecimal(cost.amount);
+  if (decimal === undefined) return Number.NaN;
+  // digits / 10^places dollars × rate (millionths) × 100 cents, out of 10^6 (rate).
+  const scaled = decimal.digits * millionths(OPENROUTER_AUD_PER_USD) * 100n;
+  const cents =
+    decimal.places >= 0
+      ? ceilDiv(scaled, 10n ** BigInt(decimal.places) * 1_000_000n)
+      : ceilDiv(scaled * 10n ** BigInt(-decimal.places), 1_000_000n);
+  const counted = Number(cents);
+  return Number.isSafeInteger(counted) ? counted : Number.NaN;
 }
 
 /** Custody's pieces are already decoded, redacted display text: passed on as they are. */
