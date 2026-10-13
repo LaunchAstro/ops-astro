@@ -11,7 +11,9 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +24,7 @@ const source = resolve(import.meta.dirname, '../..');
 const hook = process.env.SOL_REVIEW_HOOK || join(source, '.husky/pre-push');
 const realGate = `python3 ${join(source, 'scripts/gate/sweep.py')}`;
 const realPublicContent = `node ${join(source, 'scripts/public-content-check.mjs')}`;
+const real = { gate: realGate, publicContent: realPublicContent };
 
 // Made-up keys, built at run time so this file never holds one.
 const tokenShaped = () =>
@@ -59,14 +62,19 @@ const identity = [
 ];
 
 // gate and publicContent pick the scanners; the lockfile pass is always real.
+// No private list or receipt from this machine reaches the hook unless given.
 const pushFrom =
   (repo) =>
-  (ref, { gate = 'true', publicContent = 'true' } = {}) => {
+  (ref, { gate = 'true', publicContent = 'true', env = {} } = {}) => {
+    const inherited = { ...process.env };
+    delete inherited.HUB_GATE_TERMS;
+    delete inherited.HUB_GATE_LITERAL_HISTORY_RECEIPT;
     const result = run(repo, 'git', ['push', 'origin', `${ref}:refs/heads/${ref}`], {
-      ...process.env,
+      ...inherited,
       FIRST_PUSH_HOOK: hook,
       HUB_GATE_CMD: gate,
       HUB_PUBLIC_CONTENT_CMD: publicContent,
+      ...env,
     });
     return { ...result, output: result.stdout + result.stderr };
   };
@@ -121,11 +129,11 @@ test('a clean new branch scans only its own commits, not history the gate alread
 test('a key planted in a new commit on a new branch is refused', (t) => {
   const f = fixture(t);
   f.installHook();
-  assert.equal(f.push('main').status, 0);
+  assert.equal(f.push('main', real).status, 0);
 
   f.git('checkout', '-q', '-b', 'leaky');
   const tip = f.commit('config.txt', `token = ${tokenShaped()}\n`, 'add config');
-  const result = f.push('leaky', { gate: realGate, publicContent: realPublicContent });
+  const result = f.push('leaky', real);
   assert.equal(result.status, 1, result.output);
   assert.deepEqual(f.scanned(result.output), [`${f.base}..${tip}`]);
   assert.match(result.output, /contamination in the commits you are about to publish/u);
@@ -154,14 +162,14 @@ test('a key in the lockfile of a new commit is refused', (t) => {
 test('a branch stacked on a pushed branch is refused for a key in its own new commit', (t) => {
   const f = fixture(t);
   f.installHook();
-  assert.equal(f.push('main').status, 0);
+  assert.equal(f.push('main', real).status, 0);
   f.git('checkout', '-q', '-b', 'lower');
   const lower = f.commit('lower.txt', 'lower\n', 'lower');
-  assert.equal(f.push('lower').status, 0);
+  assert.equal(f.push('lower', real).status, 0);
 
   f.git('checkout', '-q', '-b', 'upper');
   const tip = f.commit('upper.txt', `token = ${tokenShaped()}\n`, 'upper');
-  const result = f.push('upper', { gate: realGate, publicContent: realPublicContent });
+  const result = f.push('upper', real);
   assert.equal(result.status, 1, result.output);
   assert.deepEqual(f.scanned(result.output), [`${lower}..${tip}`]);
   assert.equal(f.published('upper'), '');
@@ -170,14 +178,14 @@ test('a branch stacked on a pushed branch is refused for a key in its own new co
 test('a refused commit is not passed: a clean branch built on it is still scanned from below it', (t) => {
   const f = fixture(t);
   f.installHook();
-  assert.equal(f.push('main').status, 0);
+  assert.equal(f.push('main', real).status, 0);
   f.git('checkout', '-q', '-b', 'leaky');
   f.commit('config.txt', `token = ${tokenShaped()}\n`, 'add config');
-  assert.equal(f.push('leaky', { gate: realGate, publicContent: realPublicContent }).status, 1);
+  assert.equal(f.push('leaky', real).status, 1);
 
   f.git('checkout', '-q', '-b', 'built-on-it');
   const tip = f.commit('more.txt', 'clean\n', 'clean on top');
-  const result = f.push('built-on-it', { gate: realGate, publicContent: realPublicContent });
+  const result = f.push('built-on-it', real);
   assert.equal(result.status, 1, result.output);
   assert.deepEqual(f.scanned(result.output), [`${f.base}..${tip}`]);
   assert.equal(f.published('built-on-it'), '');
@@ -195,13 +203,13 @@ test('with nothing passed on this machine, a first push scans everything, even w
 
   f.git('checkout', '-q', '-b', 'fresh');
   const tip = f.commit('fresh.txt', 'clean\n', 'fresh');
-  const result = f.push('fresh', { gate: realGate, publicContent: realPublicContent });
+  const result = f.push('fresh', real);
   assert.equal(result.status, 1, result.output);
   assert.deepEqual(f.scanned(result.output), [tip]);
   assert.equal(f.published('fresh'), '');
 });
 
-test('a record with one line that is not a full sha is not trusted at all', (t) => {
+test('a record with one line not of its form is not trusted at all', (t) => {
   const f = fixture(t);
   f.installHook();
   assert.equal(f.push('main').status, 0);
@@ -228,6 +236,35 @@ test('a passed commit the pushed commit does not reach does not narrow its scan'
   f.git('checkout', '-q', '-b', 'other', f.base);
   const tip = f.commit('other.txt', 'other\n', 'other');
   const result = f.push('other');
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(f.scanned(result.output), [tip]);
+});
+
+test('a private list that arrives after a commit passed means a full scan', (t) => {
+  const f = fixture(t);
+  f.installHook();
+  assert.equal(f.push('main').status, 0);
+  const list = join(f.repo, '..', 'terms.txt');
+  writeFileSync(list, 'synthetic term\n');
+
+  f.git('checkout', '-q', '-b', 'with-list');
+  const tip = f.commit('list.txt', 'clean\n', 'with list');
+  const result = f.push('with-list', { env: { HUB_GATE_TERMS: list } });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(f.scanned(result.output), [tip]);
+});
+
+test('a record that is a symlink is not trusted', (t) => {
+  const f = fixture(t);
+  f.installHook();
+  assert.equal(f.push('main').status, 0);
+  const common = f.git('rev-parse', '--path-format=absolute', '--git-common-dir');
+  renameSync(join(common, 'gate-passed'), join(common, 'elsewhere'));
+  symlinkSync(join(common, 'elsewhere'), join(common, 'gate-passed'));
+
+  f.git('checkout', '-q', '-b', 'linked');
+  const tip = f.commit('linked.txt', 'clean\n', 'linked');
+  const result = f.push('linked');
   assert.equal(result.status, 0, result.output);
   assert.deepEqual(f.scanned(result.output), [tip]);
 });
