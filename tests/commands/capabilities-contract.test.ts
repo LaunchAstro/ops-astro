@@ -64,6 +64,12 @@ const asAgent = async (name: string, body: Record<string, unknown>, credential?:
     ...(credential === undefined ? {} : { [DELEGATION_HEADER]: credential }),
   });
 
+const BEFORE_PICKUP: ReadonlySet<string> = new Set([
+  'task.queue',
+  'task.pickup',
+  'task.take_launch',
+]);
+
 /** AW-11's two, well formed, so the answer before a pickup is the exclusion. */
 const AW_11_OPERANDS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'run.delegate_child': {
@@ -125,10 +131,11 @@ describe.skipIf(serverUrl === undefined)(
       }
     });
 
-    it('refuses every exported operation except the queue and a pickup, and decide as a decision', async () => {
+    it('refuses every exported operation but the queue, a pickup and a launch’s take, and decide as a decision', async () => {
       const answers = new Map<string, { status: number; code: unknown }>();
       for (const declaration of COMMAND_SURFACE) {
-        if (declaration.name === 'task.queue' || declaration.name === 'task.pickup') continue;
+        // The three an agent may call holding nothing yet (`agent: 'before-pickup'`).
+        if (BEFORE_PICKUP.has(declaration.name)) continue;
         // Sequential: one agent actor and one register.
         // eslint-disable-next-line no-await-in-loop
         const answer = await asAgent(declaration.name, {
@@ -167,7 +174,7 @@ describe.skipIf(serverUrl === undefined)(
         ]),
       );
       expect(Object.fromEntries(answers)).toStrictEqual(Object.fromEntries(expected));
-      expect(answers.size).toBe(COMMAND_SURFACE.length - 2);
+      expect(answers.size).toBe(COMMAND_SURFACE.length - BEFORE_PICKUP.size);
     });
 
     it('reads the queue, picks up, and then works under the live delegation as before', async () => {

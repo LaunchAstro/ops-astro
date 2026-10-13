@@ -138,6 +138,10 @@ export const DECLARED: Readonly<
   'task.decide': { carry: 'not carried', plant: 'needs a proposal' },
   'task.pickup': { carry: 'not carried', plant: 'needs an approved reservation' },
   'task.launch': { carry: 'not carried', plant: 'a run of its agent, not task content' },
+  'task.take_launch': {
+    carry: 'not carried',
+    plant: 'the launched agent’s take, not task content',
+  },
   'task.handback': { carry: 'not carried', plant: 'needs a lease' },
   'task.heartbeat': { carry: 'not carried', plant: 'needs a lease' },
   'task.dispatch': { carry: 'not carried', plant: 'needs a lease' },

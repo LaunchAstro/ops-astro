@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Under a launch taken to answer, the agent entry admits reading the task and refuses a comment, an update or a proposal DELEGATION_EXCLUDES_OPERATION writing nothing; a launch credential before any take keeps its minted actions"
+}

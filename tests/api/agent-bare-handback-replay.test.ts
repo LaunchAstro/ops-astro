@@ -23,7 +23,7 @@ const serverUrl = databaseUrlFromEnvironment();
 /** The fixes `NO_DELEGATION_FIXES` carries, word for word. */
 const NO_DELEGATION_FIXES = [
   'Present the credential the pickup handed you.',
-  'Before a pickup an agent login may only read task.queue and call task.pickup.',
+  'Before a pickup an agent login may only read task.queue, call task.pickup and take its own launch with task.take_launch.',
 ];
 
 describe.skipIf(serverUrl === undefined)('a bare task.handback replay over HTTP', () => {

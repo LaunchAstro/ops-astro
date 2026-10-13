@@ -135,6 +135,7 @@ const AGENT_ONLY: ReadonlySet<CommandName> = new Set([
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  'task.take_launch',
 ]);
 
 /** Every operation a person surface serves, by every classified key, by every surface. */
