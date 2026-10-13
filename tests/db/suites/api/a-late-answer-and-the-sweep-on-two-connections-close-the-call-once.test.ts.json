@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a late answer and the sweep on two connections close the call once"
+}

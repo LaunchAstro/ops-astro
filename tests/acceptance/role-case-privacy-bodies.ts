@@ -23,7 +23,11 @@ interface PrivacyContext {
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
 }
 
-/** Legal document versions drafted by the matrix, each under a label of its own. */
+/**
+ * Legal document versions drafted by the matrix, each under a label of its
+ * own. A version it publishes is labelled `<n>.0` by this count, so each is
+ * later than any published before it: an older one is refused (#653).
+ */
 let legalDrafts = 0;
 
 /** A fresh breach-runbook version drafted by the admin, `approved` or not (C81). */
@@ -34,7 +38,7 @@ async function legalVersion(
   legalDrafts += 1;
   const drafted = await context.asPerson('legal.draft_version', {
     document: 'breach-runbook',
-    version: `${String(Math.floor(legalDrafts / 1000) + 1)}.${String(legalDrafts % 1000)}`,
+    version: `${String(legalDrafts)}.0`,
     body: 'The matrix drafts a made-up runbook.',
   });
   if (drafted.code !== 'ok') throw new Error(`matrix: legal draft refused ${drafted.code}`);
@@ -64,7 +68,7 @@ async function drillBody(context: PrivacyContext): Promise<Record<string, unknow
   legalDrafts += 1;
   const drafted = await context.asPerson('legal.draft_version', {
     document: 'breach-runbook',
-    version: `${String(Math.floor(legalDrafts / 1000) + 50)}.${String(legalDrafts % 1000)}`,
+    version: `${String(legalDrafts)}.0`,
     body: DRILL_RUNBOOK,
   });
   if (drafted.code !== 'ok') throw new Error(`matrix: drill runbook refused ${drafted.code}`);

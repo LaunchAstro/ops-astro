@@ -24,6 +24,9 @@
 //
 // One registered with eleven does not register: `registerModelOperation`
 // answers which declarations are missing or malformed, and `catalogue` throws.
+// A streamed operation adds two more, each a function where present: `fold`,
+// the whole stream as the one body `answer` reads, and `pieces`, a reader of
+// the stream as it comes that gives display text only.
 
 import type { DataClass } from './data-class.ts';
 
@@ -73,9 +76,21 @@ export interface ModelOperationDeclaration {
   readonly nothingHappened: readonly string[] | 'not_reconcilable';
   readonly billed: boolean;
   readonly concurrency: number;
+  /** A streamed answer's whole body as the text `answer` reads; undefined when it cannot be read. */
+  readonly fold?: (body: string) => string | undefined;
+  /** A reader of the stream as it arrives, giving display text only. */
+  readonly pieces?: () => PieceReader;
 }
 
-export type Declaration = keyof ModelOperationDeclaration;
+/** Display texts from a complete, in-order stream, as its chunks arrive. */
+export interface PieceReader {
+  push(chunk: Uint8Array | string): readonly string[];
+}
+
+/** The two a streamed operation adds; absent, its answer is read whole. */
+const STREAMING = ['fold', 'pieces'] as const;
+
+export type Declaration = Exclude<keyof ModelOperationDeclaration, (typeof STREAMING)[number]>;
 
 /** In the order a reviewer reads them, and the order a refusal names them. */
 export const DECLARATIONS: readonly Declaration[] = [
@@ -98,7 +113,10 @@ export type ModelOperation = Readonly<ModelOperationDeclaration> & { readonly re
 
 export type Registration =
   | { readonly ok: true; readonly operation: ModelOperation }
-  | { readonly ok: false; readonly faults: readonly Declaration[] };
+  | {
+      readonly ok: false;
+      readonly faults: readonly (Declaration | (typeof STREAMING)[number])[];
+    };
 
 const NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/u;
 const DATA_CLASSES: ReadonlySet<string> = new Set([
@@ -140,9 +158,12 @@ export function registerModelOperation(declared: unknown): Registration {
     string,
     unknown
   >;
-  const faults = DECLARATIONS.filter(
-    (name) => !Object.hasOwn(shape, name) || !WELL_FORMED[name](shape[name]),
-  );
+  const faults = [
+    ...DECLARATIONS.filter(
+      (name) => !Object.hasOwn(shape, name) || !WELL_FORMED[name](shape[name]),
+    ),
+    ...STREAMING.filter((name) => shape[name] !== undefined && typeof shape[name] !== 'function'),
+  ];
   if (faults.length > 0) return { ok: false, faults };
   const operation = Object.freeze({
     ...(shape as unknown as ModelOperationDeclaration),

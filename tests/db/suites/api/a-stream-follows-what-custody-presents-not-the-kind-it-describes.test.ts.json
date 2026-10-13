@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an answer streams only where custody presents nothing, whatever kind it describes"
+}

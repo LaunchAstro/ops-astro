@@ -95,6 +95,69 @@ describe.skipIf(serverUrl === undefined)('preset.plan', () => {
     expect(await countFields()).toBe(before);
   });
 
+  // A plan promises only what `field_defs` will take: a searchable field is
+  // slotted text, a key and label have their shape, and an owning operation is
+  // an operation name. Each of these the database refuses on insert (23514).
+  it.each([
+    [
+      'a searchable boolean',
+      {
+        key: 'search_flag',
+        label: 'Flag',
+        valueType: 'boolean',
+        writeMode: 'generic',
+        searchable: true,
+      },
+    ],
+    [
+      'a searchable json field',
+      {
+        key: 'search_json',
+        label: 'JSON',
+        valueType: 'json',
+        writeMode: 'generic',
+        searchable: true,
+      },
+    ],
+    [
+      'a malformed owning operation',
+      {
+        key: 'owned_json',
+        label: 'Owned',
+        valueType: 'json',
+        writeMode: 'operation',
+        owningOperations: [''],
+      },
+    ],
+    [
+      'a blank label',
+      { key: 'blank_label', label: '   ', valueType: 'json', writeMode: 'generic' },
+    ],
+    [
+      'a key outside the field key shape',
+      { key: 'Bad Key', label: 'Bad', valueType: 'json', writeMode: 'generic' },
+    ],
+  ])('refuses %s, naming it, with no plan actions', async (_case, field) => {
+    const result = await plan([field]);
+    expect(result.ok ? result.value.actions : result.refusal).toMatchObject({
+      code: 'PRESET_FIELD_INVALID',
+      names: [field.key],
+    });
+  });
+
+  it('accepts a searchable text field', async () => {
+    const result = await plan([
+      {
+        key: 'search_text',
+        label: 'Search',
+        valueType: 'text',
+        writeMode: 'generic',
+        searchable: true,
+      },
+    ]);
+    expect(result.ok).toBe(true);
+  });
+
   it('refuses an unclassified field, naming it', async () => {
     const result = await plan([{ key: 'unclassified_note', label: 'Note', valueType: 'text' }]);
     expect(result.ok).toBe(false);

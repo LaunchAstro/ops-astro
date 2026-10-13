@@ -190,20 +190,19 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     });
     const api = apiWith({ watcher, errorSink, tracing: tracing() });
 
-    // Another business: bravo's holder sees the installation's services and
-    // no client's site; alpha's view shows no client's site either.
-    for (const [token, key] of [
-      [harness.world.bea.token, 'bravo'],
-      [harness.world.ada.token, 'alpha'],
-    ] as const) {
-      // oxlint-disable-next-line no-await-in-loop
-      const section = await healthOf(api, token, key);
-      expect(
-        section.services.map((row) => row.name),
-        key,
-      ).toEqual(['api', 'tracing']);
-      expect(JSON.stringify(section), key).not.toContain(CANARY);
-    }
+    // Alpha operates the installation: its view shows the installation's
+    // services and no client's site.
+    const section = await healthOf(api, harness.world.ada.token, 'alpha');
+    expect(section.services.map((row) => row.name)).toEqual(['api', 'tracing']);
+    expect(JSON.stringify(section)).not.toContain(CANARY);
+    // Another business: bravo's holder of operations:read is shown neither the
+    // installation's services nor its error sink, and no source is asked.
+    const [watcherBeforeBravo, heardBeforeBravo] = [watcher.calls, heard.length];
+    const bravo = await view(api, harness.world.bea.token, 'bravo');
+    expect(bravo.status).toBe(200);
+    expect(bravo.body).not.toHaveProperty('serviceHealth');
+    expect(bravo.body['errorSink']).toBeNull();
+    expect([watcher.calls - watcherBeforeBravo, heard.length - heardBeforeBravo]).toEqual([0, 0]);
     expect((await view(api, harness.world.bea.token, 'alpha')).code).toBe('AUTH_NO_MEMBERSHIP');
 
     // Another client in the same business, and a member without the key:

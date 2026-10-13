@@ -8,12 +8,15 @@
 // connector and no database code (`tests/custody/aw-01-custody.test.ts` reads
 // its import graph). Its one message is `dispatch`: a credential reference
 // and a request with no origin. It answers with the bounded, redacted answer
-// or a fault. No message returns a credential, and an unknown message is
+// or a fault. For a credential presented as nothing (`none`), it also passes
+// each chunk of a successful answer on as a `piece` note while it reads:
+// nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
 import { readFileSync } from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import { described, parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
 import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
@@ -263,9 +266,20 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
+  // Passed on as it comes only for a credential presented as nothing: no
+  // secret went out, so none can come back in a piece before redaction.
+  const none = credential.scheme === 'none';
+  const decoder = new StringDecoder('utf8');
+  const onChunk = none
+    ? (chunk: Buffer): void => {
+        const text = decoder.write(chunk);
+        if (text !== '') reply({ type: 'piece', text });
+      }
+    : undefined;
   void (async (): Promise<void> => {
-    const outcome = await send(loaded.destinations, request, credential);
-    const safe = outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
+    const outcome = await send(loaded.destinations, request, credential, undefined, onChunk);
+    const safe =
+      outcome.ok && !none ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
     reply({
       type: 'answer',
       outcome: safe,

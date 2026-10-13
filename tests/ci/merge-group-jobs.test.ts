@@ -29,6 +29,10 @@ const ALLOWED = new Set([
   "github.event_name != 'push'",
   "github.event_name != 'pull_request'",
 ]);
+// Cut 6 (13 October 2026): a job no required check names, kept out of merge groups on purpose.
+// It may skip a group with exactly this condition, and no job may wait on it.
+const NOT_IN_GROUPS = "github.event_name != 'merge_group'";
+const OUT_OF_GROUPS = new Set(['visual-drift']);
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string }[];
@@ -67,11 +71,13 @@ export function groupSkips(text: string, path: string): string[] {
     });
   }
   // `full checks` alone may carry its guard: the gate's scope is never light on a group.
-  const allowed = (key: string, cond: unknown) =>
+  const runs = (key: string, cond: unknown) =>
     ALLOWED.has(cond as string) || (key === 'full' && cond === FULL_GUARD);
+  const allowed = (key: string, cond: unknown) =>
+    runs(key, cond) || (OUT_OF_GROUPS.has(key) && cond === NOT_IN_GROUPS);
   const skips = (key: string) => {
     const job = table.get(key);
-    return job === undefined || !allowed(key, job.cond);
+    return job === undefined || !runs(key, job.cond);
   };
   for (const [key, { name, cond }] of table) {
     if (!allowed(key, cond)) problems.push(`${path}: ${name}: if: ${String(cond)}`);
@@ -143,6 +149,11 @@ const PLANTS: [string, [string, string][]][] = [
   ],
   ['a case variant of the job key', [licences('    needs: [gate, Database-Lookahead]\n')]],
   [
+    'a required job kept out of merge groups',
+    [licences(`    needs: [gate]\n    if: ${NOT_IN_GROUPS}\n`)],
+  ],
+  ['a wait on a job kept out of merge groups', [licences('    needs: [gate, visual-drift]\n')]],
+  [
     'a job ID repeated without case',
     [
       [
@@ -177,7 +188,11 @@ describe('merge group: no job skips a group', () => {
       ? 'job ID repeats without case'
       : conditioned
         ? `if: ${ONLY_PULL_REQUESTS}`
-        : 'waits on database-lookahead';
+        : _form.includes('kept out')
+          ? _form.includes('wait')
+            ? 'waits on visual-drift'
+            : `OSI licence allowlist: if: ${NOT_IN_GROUPS}`
+          : 'waits on database-lookahead';
     expect(groupSkips(planted(...swaps), CI).join('\n')).toContain(reason);
   });
 

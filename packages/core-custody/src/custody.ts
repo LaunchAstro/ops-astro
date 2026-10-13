@@ -35,6 +35,8 @@ export type CustodyOutcome =
 export interface Carrier {
   readonly credentialKind: StorableKind;
   readonly account: string | null;
+  /** Whether custody sends the credential: false only for one filed as `none`. */
+  readonly presents: boolean;
 }
 
 export interface CustodyConfig {
@@ -44,7 +46,11 @@ export interface CustodyConfig {
 
 export interface Custody {
   readonly pid: number;
-  dispatch(credentialRef: string, request: OutboundRequest): Promise<CustodyOutcome>;
+  dispatch(
+    credentialRef: string,
+    request: OutboundRequest,
+    onPiece?: (text: string) => void,
+  ): Promise<CustodyOutcome>;
   /**
    * The kind and account of the credential custody would present to
    * `destination` under `credentialRef`, or null when it holds none there:
@@ -90,9 +96,13 @@ async function ready(child: ChildProcess): Promise<void> {
 type Exchange = (
   body: Record<string, unknown>,
   onStarted?: () => void,
+  onPiece?: (text: string) => void,
 ) => Promise<Record<string, unknown> | 'lost'>;
 
-/** One message out and its answer back, or `lost` when custody goes first. A `started` note is passed on, never taken as the answer. */
+/**
+ * One message out and its answer back, or `lost` when custody goes first. A
+ * `started` note and each `piece` note are passed on, never taken as the answer.
+ */
 function exchangeWith(child: ChildProcess): Exchange {
   const waiting = new Map<string, (message: Record<string, unknown>) => void>();
   const lost = new Set<() => void>();
@@ -107,7 +117,7 @@ function exchangeWith(child: ChildProcess): Exchange {
   child.on('exit', loseAll);
   // A write to a custody that died before its exit was handled fails as EPIPE: lost, as on exit, not a crash.
   child.on('error', loseAll);
-  return async (body, onStarted) =>
+  return async (body, onStarted, onPiece) =>
     await new Promise((resolve) => {
       const id = randomUUID();
       const onLost = (): void => {
@@ -119,6 +129,10 @@ function exchangeWith(child: ChildProcess): Exchange {
       waiting.set(id, (message) => {
         if (message['type'] === 'started') {
           onStarted?.();
+          return;
+        }
+        if (message['type'] === 'piece') {
+          if (typeof message['text'] === 'string') onPiece?.(message['text']);
           return;
         }
         waiting.delete(id);
@@ -159,11 +173,16 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
   await ready(child);
   return {
     pid: child.pid ?? -1,
-    dispatch: async (credentialRef, request) => {
+    dispatch: async (credentialRef, request, onPiece) => {
       let started = false;
-      const reply = await exchange({ type: 'dispatch', credentialRef, request }, () => {
+      const markStarted = (): void => {
         started = true;
-      });
+      };
+      const reply = await exchange(
+        { type: 'dispatch', credentialRef, request },
+        markStarted,
+        onPiece,
+      );
       return outcomeOf(reply, started);
     },
     describe: async (credentialRef, destination) => {
@@ -172,6 +191,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
       return {
         credentialKind: reply['kind'] as StorableKind,
         account: (reply['account'] as string | null) ?? null,
+        presents: reply['presents'] !== false,
       };
     },
     stderr: () => errors,

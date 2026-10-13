@@ -46,7 +46,6 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE, declarationOf, profileOf } from '../../../core-wire/src/index.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
-import { runRead } from '../reads/dispatch.ts';
 import type { ReadRequest, ReadResult } from '../reads/requests.ts';
 import { enter, retryOnce, runCommand } from './envelope.ts';
 import {
@@ -56,7 +55,7 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
-import { credentialNotLive } from './credential-not-live.ts';
+import { credentialNotLive, lapsedSince, readWhileLive } from './credential-not-live.ts';
 import type { UncheckedRequest } from './requests.ts';
 
 /** Rows the rule below would admit that a credential still never reaches. */
@@ -238,8 +237,15 @@ async function attempt(
   }
   const ran =
     declarationOf(request.command).kind === 'read'
-      ? await runRead(tx, session, readOf(request))
-      : await runCommand(tx, session, 'api', request);
+      ? await readWhileLive(tx, session, readOf(request), standing.credentialId, call.credential)
+      : await runCommand(
+          tx,
+          session,
+          'api',
+          request,
+          undefined,
+          lapsedSince(standing.credentialId),
+        );
   // Counted here, before the commit: calls let in at once all saw room at the
   // door, and the one that would pass the limit rolls back.
   if (held.slot !== undefined && !isCommandRefusal(ran) && !held.slot.handOut(ran)) {

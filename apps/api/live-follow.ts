@@ -8,10 +8,17 @@
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { CONVERSATION_TOPIC, TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
+import {
+  UNANSWERED,
+  type LiveSignal,
+  type LiveTopics,
+  type Unanswered,
+  type Watch,
+} from './live.ts';
 import type { Seated, Sitter } from './live-presence.ts';
 import type { LiveStream } from './live-stream.ts';
 
+export { BOARD, topicsOf, TOPICS, type Watch } from './live.ts';
 export { seatFor, type Seated } from './live-presence.ts';
 export { endsWithRequest, type LiveStream } from './live-stream.ts';
 
@@ -22,45 +29,12 @@ export interface Watching {
   atDoor(
     ids: readonly string[],
     watches?: readonly Watch[],
-  ): Promise<readonly (string | CommandRefusal)[]>;
-  /** Before each delivery and on the recheck: a task's person admitted, a conversation's id, or the refusal; writes nothing. */
-  again(id: string, watch?: Watch): Promise<string | CommandRefusal>;
-}
-
-/** One followed task or conversation, and the name the stream gives it: the caller's own topic. */
-export interface Watch {
-  readonly label: string;
-  /** The record followed: a task's id, or a conversation's where `kind` says so. */
-  readonly taskId: string;
-  readonly kind?: 'conversation';
-}
-
-const MOST_TOPICS = 32;
-export const TOPICS: string = `Name each topic once, as task:<id>, conversation:<id> or board, from one to ${String(MOST_TOPICS)}.`;
-
-/** The board's stream (INB-1f) as one topic on the tab's stream: every frame it sends is labelled so. */
-export const BOARD = 'board';
-
-/** The topics a tab named, or undefined when any is malformed, repeated or too many. */
-export function topicsOf(
-  named: readonly string[],
-): { readonly watches: readonly Watch[]; readonly board: boolean } | undefined {
-  if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
-  if (new Set(named).size !== named.length) return undefined;
-  const topics = named.filter((label) => label !== BOARD);
-  const watches = topics.map((label) => watchOf(label));
-  if (!watches.every((watch) => watch !== undefined)) return undefined;
-  return { watches, board: topics.length < named.length };
-}
-
-/** A topic's kind and id, or undefined when it names neither a task nor a conversation. */
-function watchOf(label: string): Watch | undefined {
-  const task = TOPIC.exec(label)?.[1];
-  if (task !== undefined) return { label, taskId: task };
-  const conversation = CONVERSATION_TOPIC.exec(label)?.[1];
-  return conversation === undefined
-    ? undefined
-    : { label, taskId: conversation, kind: 'conversation' };
+  ): Promise<readonly (string | CommandRefusal | Unanswered)[]>;
+  /**
+   * Before each delivery and on the recheck: a task's person admitted, a
+   * conversation's id, the refusal, or no answer from the sign-in provider; writes nothing.
+   */
+  again(id: string, watch?: Watch): Promise<string | CommandRefusal | Unanswered>;
 }
 
 /**
@@ -169,6 +143,9 @@ class Follower {
   readonly #leaves = new Map<Watch, () => void>();
   readonly #pending = new Map<Watch, LiveSignal | 'check'>();
   readonly #presence = new Set<Watch>();
+  /** What a delivery the provider could not answer still owes, for the task's next check. */
+  readonly #owed = new Map<Watch, LiveSignal | 'check'>();
+  readonly #owedPresence = new Set<Watch>();
   readonly #stream: LiveStream;
   readonly #asks: Watching;
   readonly #seated: Seated | undefined;
@@ -215,9 +192,19 @@ class Follower {
   }
 
   want(watch: Watch, signal: LiveSignal | 'check'): void {
-    const was = this.#pending.get(watch);
+    const was = this.#pending.get(watch) ?? this.#owed.get(watch);
+    this.#owed.delete(watch);
     this.#queue(watch);
-    if (was === undefined || RANK[signal] > RANK[was]) this.#pending.set(watch, signal);
+    this.#pending.set(watch, was === undefined || RANK[signal] > RANK[was] ? signal : was);
+    if (this.#owedPresence.delete(watch)) this.#presence.add(watch);
+  }
+
+  /** The provider could not be asked: nothing is said or closed, and the next check carries it. */
+  #owe(watch: Watch, signal: LiveSignal | 'check' | undefined, shown: boolean): void {
+    const was = this.#owed.get(watch);
+    const now = signal ?? 'check';
+    this.#owed.set(watch, was === undefined || RANK[now] > RANK[was] ? now : was);
+    if (shown) this.#owedPresence.add(watch);
   }
 
   #sit(watch: Watch): void {
@@ -245,9 +232,13 @@ class Follower {
    * else, every seat left and every task asked again; `other` when the
    * recheck answered for someone who does not sit.
    */
-  async #reseat(watch: Watch, admitted: string): Promise<'sits' | 'moved' | 'other'> {
+  async #reseat(
+    watch: Watch,
+    admitted: string,
+  ): Promise<'sits' | 'moved' | 'other' | 'unanswered'> {
     if (this.#seated === undefined || watch.kind !== undefined) return 'sits';
     const now = await this.#seated.sitter();
+    if (now === UNANSWERED) return 'unanswered';
     const was = this.#sitter;
     if (now?.personId !== was?.personId || now?.name !== was?.name || now?.side !== was?.side) {
       for (const leave of this.#leaves.values()) leave();
@@ -275,7 +266,16 @@ class Follower {
     if ((signal === undefined && !shown) || this.#stream.aborted) return;
     if (!this.#stops.has(watch)) return;
     const admitted = await this.#asks.again(watch.taskId, watch);
-    const seat = typeof admitted === 'string' ? await this.#reseat(watch, admitted) : 'other';
+    const seat =
+      admitted === UNANSWERED
+        ? 'unanswered'
+        : typeof admitted === 'string'
+          ? await this.#reseat(watch, admitted)
+          : 'other';
+    if (seat === 'unanswered') {
+      this.#owe(watch, signal, shown);
+      return;
+    }
     if (seat === 'other') {
       await this.#close(watch);
       return;

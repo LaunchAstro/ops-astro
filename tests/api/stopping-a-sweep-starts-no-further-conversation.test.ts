@@ -43,6 +43,7 @@ it('the sweep finishes before server shutdown closes its database', async () => 
       database: database.close,
       admin: undefined,
       broker: undefined,
+      sweeper: undefined,
       tracer: undefined,
     }),
   );

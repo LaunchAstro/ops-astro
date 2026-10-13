@@ -234,7 +234,11 @@ export function expectedShape(
   // An applied model call spans a network send (AW-01): the envelope's
   // transaction holds the money, then the broker's start and settlement and
   // the answer's read of the ledger are each a tenant transaction of their own.
-  const transactions = declaration.name === 'model.call' && outcome === 'applied' ? 4 : 1;
+  // An applied operations.read then asks, in a tenant transaction of its own,
+  // whether the caller operates the installation (#637), before it adds the
+  // service health.
+  const applied: Readonly<Record<string, number>> = { 'model.call': 4, 'operations.read': 2 };
+  const transactions = outcome === 'applied' ? (applied[declaration.name] ?? 1) : 1;
   return {
     transactions,
     outside: [],
