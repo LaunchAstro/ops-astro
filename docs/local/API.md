@@ -2557,9 +2557,45 @@ signature over the raw body before parsing (401), refuses a stale timestamp
 evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
-Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
-here yet: the send mounted after the command, the hook wired in `main` and the
-enrolment page (C39-T P3).
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). The
+link a send mails is `/enrol/#<token>`: the token is in the fragment, which no
+request carries to a server.
+
+`POST /api/enrol` accepts an invitation on that link (C39-T): the page sends
+`{ token }` alone, with no sign-in and no password, and no cookie is read or
+set. The token's SHA-256 is found by `enrolment_token_find`, a security
+definer answering only for a hash exactly one business holds. In that
+business the accept takes the access lock shared, then the invitation's row,
+then the token's, and judges on the clock, after the last wait:
+
+- the token is unspent, in its own and its invitation's lifetime, and the
+  invitation's newest;
+- the invitation is pending;
+- its inviter still holds `access:share` (and `access:manage` for an
+  administrator's);
+- the first-client gate is open for the invitation class, failing closed.
+
+It then:
+
+- spends the token;
+- accepts the invitation;
+- writes the person's acting identity, their address confirmed, a `supabase`
+  login under a new id, its mapping and a membership in the invited role;
+- owes that login to the provider in `login_provisions`;
+- audits `invitation.accept` and `login.create` as the business's worker.
+
+It gives no grant: an administrator grants on the Access screen. The answers
+are:
+
+- 200 `{ accepted: true }`;
+- 401 `ENROLMENT_LINK_INVALID` for every link that is not live;
+- 409 `ENROLMENT_NOT_YET` while the gate is shut;
+- 400 `ENROLMENT_MALFORMED`;
+- 413 `ENROLMENT_TOO_LARGE`;
+- 503 `ENROLMENT_FAULT`.
+
+The provider's login is made later by the M5 unit, which alone holds the
+provider's key, under that id. The unit then mails a link to set the password.
 
 ## Tags
 

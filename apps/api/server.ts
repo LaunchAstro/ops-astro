@@ -99,6 +99,7 @@ import { mountPasswordReset } from './password-reset.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { carrierSettings } from './model-carrier.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountEnrolment } from './enrolment.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
 import { startOccurrenceSweeper } from './occurrence-sweeper.ts';
@@ -358,6 +359,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
     signIn: config.signIn,
     ...(key === '' ? {} : { providerKey: key }),
   });
+  // C39-T: an invitation accepted on its one-time link, which needs the database alone.
+  mountEnrolment(server, database);
 
   server.route(
     '/',
