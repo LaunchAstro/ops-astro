@@ -46,8 +46,8 @@ export async function writeCarriers(
 }
 
 /**
- * A carried call (#1531), by what its carriers row proves. The request goes to
- * the agent only after `request_at` commits, so one still null sent nothing:
+ * A carried call (#1531), by what its carriers row proves. Once offered, its
+ * request goes only after `request_at` commits, so one still null sent nothing:
  * released 60 s after its start. One that may have gone is held once
  * `answer_by` plus 60 s has passed, after any settlement could still take it.
  * The rows are locked first, skipping a call the send or the settlement holds,
@@ -62,7 +62,8 @@ export async function sweepCarried(
        from public.model_calls c
        join public.model_call_carriers k on k.business_id = c.business_id and k.call_id = c.id
       where c.business_id = $1 and c.state = 'dispatched'
-        and ((k.request_at is null and c.started_at <= clock_timestamp() - interval '60 seconds')
+        and ((k.offered_at is not null and k.request_at is null
+              and c.started_at <= clock_timestamp() - interval '60 seconds')
              or k.answer_by <= clock_timestamp() - interval '60 seconds')
       for update of c, k skip locked`,
     [tx.businessId],

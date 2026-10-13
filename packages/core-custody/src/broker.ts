@@ -259,8 +259,8 @@ export async function sweepModelCalls(
   );
   // A conversation call has no lease: started, it is dropped once it has
   // outlived five times the longest wait custody allows (120 s) and held,
-  // so a lost process never leaves it counting as in flight. A carried call
-  // is the next statement's.
+  // so a lost process never leaves it counting as in flight. A call the
+  // carriage has offered is the next statement's.
   const conversations = await tx.query(
     `update public.model_calls c
         set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
@@ -268,7 +268,8 @@ export async function sweepModelCalls(
       where c.business_id = $1 and c.conversation_id is not null and c.state = 'dispatched'
         and c.started_at <= clock_timestamp() - interval '10 minutes'
         and not exists (select 1 from public.model_call_carriers k
-                         where k.business_id = c.business_id and k.call_id = c.id)
+                         where k.business_id = c.business_id and k.call_id = c.id
+                           and k.offered_at is not null)
       returning c.id`,
     [tx.businessId],
   );
