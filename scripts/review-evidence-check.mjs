@@ -16,8 +16,9 @@
 //    BASE_SHA and HEAD_SHA (owner, 11 October), so main moving does not stale
 //    it. Checkpoints and every non-review check remain required.
 //
-// It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
-// runs in continuous integration and in its own tests. It reads no reviewer
+// It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES, AGENT_MODELS and
+// RANGE_COMMITS so the same code runs in continuous integration and in its
+// own tests. It reads no reviewer
 // identity: a green result proves the evidence is bound to this exact head,
 // not that any reviewer read anything.
 
@@ -106,12 +107,22 @@ const builders = (
     : git('log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`))
 ).split('\n');
 
+// The range's commits as `<sha> <subject>`, so a pasted checkpoint's commit
+// lines can be matched to the commits Git holds.
+const rangeCommits = nonEmptyLines(
+  process.env['RANGE_COMMITS'] ??
+    (base === '' ? '' : git('log', '--format=%H %s', `${base}..${head}`)),
+).map((line) => ({ sha: line.slice(0, 40).toLowerCase(), subject: line.slice(41) }));
+
 const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, owed, deferrals, buried, html, prose } = readBody(body);
+const { stated, record, owed, deferrals, buried, html, prose, claims } = readBody(body, {
+  paths: changed,
+  commits: rangeCommits,
+});
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
@@ -253,7 +264,7 @@ if (deferring) {
     owed.length > 0 ||
     Object.values(record).some((values) => values.length > 0) ||
     /\b(?:approve[ds]?|approval|accepted|reviewed|no\s+findings|all\s+closed|reviews?\s+(?:complete[ds]?|passed))\b/iu.test(
-      prose,
+      claims,
     )
   ) {
     failures.push('review deferral cannot carry review outcomes, records or approval claims.');
@@ -414,9 +425,13 @@ const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 if (deferring) {
   const labels = new Set(nonEmptyLines(process.env['PR_LABELS'] ?? ''));
-  const debtLabel = builtBy.has('OpenAI') ? 'needs-second-model' : 'needs-sol';
-  if (!labels.has('unreviewed') || !labels.has(debtLabel)) {
-    failures.push(`review deferral requires current labels unreviewed and ${debtLabel}.`);
+  // Each company that built part of the range owes the other's review.
+  const debts = [
+    ...(builtBy.has('OpenAI') ? ['needs-second-model'] : []),
+    ...(builtBy.has('OpenAI') && !builtBy.has('Anthropic') ? [] : ['needs-sol']),
+  ];
+  if (!labels.has('unreviewed') || debts.some((debt) => !labels.has(debt))) {
+    failures.push(`review deferral requires current labels unreviewed and ${debts.join(' and ')}.`);
   }
   if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
 }
