@@ -267,6 +267,13 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
   const closed = new Promise<void>((resolve) => {
     child.once('close', () => resolve());
   });
+  // Freeze the dump's backend, so its container cannot finish on its own and
+  // only the removal a failed run makes can end it.
+  const backend = sql(
+    "select pid from pg_stat_activity where application_name = 'pg_dump' order by backend_start desc limit 1",
+  );
+  expect(backend).toMatch(/^\d+$/u);
+  docker(['exec', server, 'kill', '-STOP', backend]);
   expect(child.kill('SIGKILL')).toBe(true);
   await closed;
   let settled = false;
@@ -296,6 +303,7 @@ it('a dump whose Docker client dies by a signal fails instead of waiting forever
     expect(failed).toBeInstanceOf(Error);
     expect(failed).toHaveProperty('message', 'pg_dump failed');
   } finally {
+    docker(['exec', server, 'kill', '-CONT', backend]);
     const name = captured.dumps.at(-1);
     if (name !== undefined) spawnSync('docker', ['rm', '-f', '-v', name], { stdio: 'ignore' });
   }
