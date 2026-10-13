@@ -74,6 +74,8 @@ export interface AssistantMessage {
   readonly plan?: AssistantPlan;
   /** On an `ai` message whose reply ended in a task block: the card. */
   readonly proposal?: AssistantProposal;
+  /** On an `ai` message still being written: provisional, until the settled reply replaces it. */
+  readonly writing?: boolean;
 }
 
 export interface AssistantPage {

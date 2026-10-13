@@ -115,7 +115,7 @@ export async function readCapabilities(
        from public.grants
       where business_id = $1
         and revoked_at is null
-        and (expires_at is null or expires_at > now())
+        and (expires_at is null or expires_at > statement_timestamp())
         and exists (select 1 from unnest($2::text[], $3::uuid[]) as s (kind, id)
                      where s.kind = subject_kind and s.id = subject_id)`,
     [tx.businessId, subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],

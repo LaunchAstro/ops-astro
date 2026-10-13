@@ -20,7 +20,11 @@
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off). It asks for the conversation's
 //    model (CS-7.30), the default when none is chosen; a chosen model no
-//    longer offered it (`offeredModels`) is refused first, nothing sent.
+//    longer offered it (`offeredModels`) is refused first, nothing sent. Where
+//    the caller takes pieces, the answer's display text goes to it as the
+//    model writes it, each batch only under the authority the reply is kept
+//    under (`conversation-pieces.ts`); it is provisional, and only the settled
+//    answer is kept.
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
@@ -44,12 +48,7 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import {
-  isUuid,
-  sessionEndedSince,
-  subjectsOf,
-  withSession,
-} from '../../../core-records/src/index.ts';
+import { isUuid, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -57,8 +56,8 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { contextOf, type Context } from './conversation-context.ts';
+import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
 import { askedModel } from './conversation-model.ts';
 import {
@@ -74,17 +73,15 @@ import { storableText } from './values.ts';
 
 export type { ConversationReply } from './conversation-replies.ts';
 
-/** The message a person just kept, from the applied command's detail. */
-export interface Asked {
-  readonly conversationId: string;
-  readonly messageId: string;
-}
+export type { Asked } from './conversation-pieces.ts';
 
 export type ConversationExchange = (
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   asked: Asked,
+  /** Where the answer's display text goes as it is written; only the settled reply is kept. */
+  onPiece?: (text: string) => void,
 ) => Promise<ConversationReply | null>;
 
 /** A reply's body is a message's (0092). */
@@ -152,27 +149,12 @@ async function keep(
   asked: Asked,
   body: string,
 ): Promise<Kept | undefined> {
-  const [conversation] = await tx.query<{ readonly body_purged_at: Date | null }>(
-    `select body_purged_at from conversations
-      where business_id = $1 and id = $2 and owner_actor_id = $3
-      for update`,
-    [tx.businessId, asked.conversationId, session.actorId],
-  );
-  if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
-  // An ended session keeps nothing, and an ending in flight waits for this; asked
-  // before the grants, so the grant is judged at the clock after this wait too.
-  if (await sessionEndedSince(tx, session)) return undefined;
-  // The caller's conversation grants are held for share once the row is
-  // locked, a grant issued while this waited included: a revocation that
-  // committed first is seen by the check below, and one that comes later waits
-  // for this reply to commit. `nowait`, because the trash purge locks grants
-  // before conversations: one being changed now rolls the reply back
-  // (`heldElsewhere`). The check is asked at the clock after the locks, so a
-  // grant that lapsed while this waited no longer counts, and must rest on a
-  // grant held here, so one issued after the hold does not.
-  const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
-  const at = await lockedInstant(tx);
-  if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
+  // The conversation's row locked, the session asked, then the grants held
+  // for share and judged at the clock after the locks (`hearingAt`): a
+  // revocation that committed first is seen, and one that comes later waits
+  // for this reply to commit.
+  const at = await hearingAt(tx, session, asked, 'update');
+  if (at === undefined) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The
@@ -203,12 +185,6 @@ async function activeAt(tx: TenantQuery, conversationId: string, at: string): Pr
   );
 }
 
-/** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */
-function heldElsewhere(cause: unknown): undefined {
-  if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-  return undefined;
-}
-
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
   database: Database,
@@ -217,8 +193,11 @@ async function answerOnce(
   asked: Asked,
   found: { readonly session: Session; readonly question: Question },
   broker: ModelBroker,
+  onPiece: ((text: string) => void) | undefined,
 ): Promise<ConversationReply | null> {
   const { session, question } = found;
+  // Pieces reach the caller only while they may hear the answer, judged as the reply is.
+  const pieces = onPiece && judgedPieces(database, businessId, presented, asked, onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
   const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
@@ -235,9 +214,11 @@ async function answerOnce(
         { name: 'message', source: 'outside', value: question.body },
       ],
       ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+      ...(pieces === undefined ? {} : { onPiece: pieces.push }),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );
+  await pieces?.drained();
   if (!result.ok) {
     return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
   }
@@ -263,7 +244,7 @@ async function answerOnce(
  */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   const asking = new Map<string, Promise<ConversationReply | null>>();
-  return async (database, businessId, presented, asked) => {
+  return async (database, businessId, presented, asked, onPiece) => {
     // The provider the deployment's broker runs the conversation on: what it can send.
     const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
@@ -288,6 +269,7 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       asked,
       { ...found, question },
       broker,
+      onPiece,
     ).finally(() => asking.delete(key));
     asking.set(key, answering);
     return await answering;

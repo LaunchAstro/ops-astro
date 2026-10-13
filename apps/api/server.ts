@@ -90,7 +90,7 @@ import {
   keySetUrlFor,
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
-import { startLiveTopics } from './live.ts';
+import { LIVE_CHANNEL, startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
@@ -154,30 +154,23 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
 export const LOOKUP_ROLE = 'ops_astro_lookup';
 
 /**
- * The business key to its identifier, cached after the first answer.
- *
- * The cache holds successes only. A key that is not there is asked again next
- * time, so a business created while the server is up is reachable without a
- * restart, and a wrong key cannot be turned into a cheap probe for one that
- * is.
+ * The business key to its identifier, read afresh on every call and never
+ * kept: a key handed from one business to another names the new holder on the
+ * next request, never the business that held it before, and a business created
+ * while the server is up is reachable without a restart.
  *
  * **A key two businesses hold names neither.** Since 0027
  * (`businesses_key_global_idx`) storage refuses a second business under a
  * held key. The lookup still reads up to two rows and answers the unresolved
- * refusal for more than one, rather than serving and caching whichever row
- * came back first, as the backstop for a database below 0027. That refusal is
- * not cached, so the key resolves again once only one business holds it.
+ * refusal for more than one, rather than serving whichever row came back
+ * first, as the backstop for a database below 0027. The key resolves again
+ * once only one business holds it.
  */
 export function createBusinessResolver(
   admin: AdminConnection,
 ): (businessKey: string) => Promise<string | undefined> {
-  const known = new Map<string, string>();
-
   return async function resolveBusiness(businessKey: string): Promise<string | undefined> {
     if (businessKey === '') return undefined;
-    const cached = known.get(businessKey);
-    if (cached !== undefined) return cached;
-
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
       await execute(`set local role ${LOOKUP_ROLE}`);
@@ -188,9 +181,7 @@ export function createBusinessResolver(
     });
     if (rows.length !== 1) return undefined;
     const id = rows[0]?.id;
-    if (id === undefined || !isBusinessId(id)) return undefined;
-    known.set(businessKey, id);
-    return id;
+    return id !== undefined && isBusinessId(id) ? id : undefined;
   };
 }
 
@@ -262,7 +253,7 @@ export interface ComposedApi {
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
-   * follow share one lookup and one cache.
+   * follow share one lookup.
    */
   readonly resolveBusiness: (businessKey: string) => Promise<string | undefined>;
 }
@@ -294,7 +285,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // Measured, not assumed. `reachable` is the result of a statement that ran
   // on the runtime login (G2): the lookup answering proves nothing about it.
-  // The nil id names no business, so the statement reads no row.
+  // The nil id names no business, so the statement reads no row. `live` is a
+  // probe sent on the runtime login and heard back on the listener.
+  const probe = async (payload: string): Promise<void> => {
+    await database.withBusiness(
+      NIL_BUSINESS,
+      async (tx) => await tx.query('select pg_notify($1, $2)', [LIVE_CHANNEL, payload]),
+    );
+  };
   server.get('/api/health', async (context) => {
     let reachable = false;
     let detail = '';
@@ -317,7 +315,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
         reads: 'mounted',
         ...(config.live === undefined
           ? {}
-          : { live: config.live.topics.listening ? 'listening' : 'down', notificationQueue }),
+          : {
+              live: (await config.live.topics.hears(probe)) ? 'listening' : 'down',
+              notificationQueue,
+            }),
         detail,
       },
       reachable ? 200 : 503,
@@ -433,7 +434,7 @@ type Stopping = (() => Promise<unknown>) | undefined;
 
 /**
  * The server's shutdown in two stages: the work that may be mid-pass first
- * (the live streams, the mail worker's running pass), then the pools and
+ * (the live streams, the running passes of every interval job), then the pools and
  * processes that work uses. The second stage starts only once every part of
  * the first has settled, so a question or a send ends before its pool does.
  */
@@ -453,22 +454,25 @@ export interface ServerParts {
   readonly conversations: Stopping;
   /** C33: the occurrence sweep's running pass (#1318). */
   readonly occurrences?: Stopping;
+  /** T3b: the reconciliation pass's running pass. */
+  readonly sweeper: Stopping;
+  /** AW-13: the trace jobs' running passes, then their custody. */
+  readonly tracer: Stopping;
   readonly database: Stopping;
   readonly admin: Stopping;
   readonly broker: Stopping;
-  readonly tracer: Stopping;
 }
 
 /**
- * The two stages `main` hands `shutDown`: the live streams, the mail worker's and the
- * conversation sweep's running passes first, then the pools and processes they use.
+ * The two stages `main` hands `shutDown`: the live streams and every interval
+ * job's running pass first, then the pools and processes they use.
  */
 export function shutdownStages(
   parts: ServerParts,
 ): readonly [readonly Stopping[], readonly Stopping[]] {
   return [
-    [parts.topics, parts.mail, parts.conversations, parts.occurrences],
-    [parts.database, parts.admin, parts.broker, parts.tracer],
+    [parts.topics, parts.mail, parts.conversations, parts.occurrences, parts.sweeper, parts.tracer],
+    [parts.database, parts.admin, parts.broker],
   ];
 }
 
@@ -705,16 +709,16 @@ async function main(): Promise<void> {
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
-    sweeper.stop();
     const stages = shutdownStages({
       topics: async () => await topics.close(),
       mail: mail?.stop,
       conversations: conversations.stop,
       occurrences: occurrences.stop,
+      sweeper: sweeper.stop,
+      tracer: tracer?.stop,
       database: async () => await database.close(),
       admin: async () => await admin.close(),
       broker: broker?.stop,
-      tracer: tracer?.stop,
     });
     void shutDown(...stages).then(() => process.exit(0));
   };

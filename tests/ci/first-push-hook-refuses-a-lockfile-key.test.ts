@@ -73,4 +73,6 @@ it('the first-push hook refuses a detectable credential appended to the lockfile
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
-});
+  // Ten git runs, gitleaks, and the pre-push hook twice (node scripts and
+  // gitleaks each time): 7.6 s on a loaded machine, past the 5 s default (#1536).
+}, 30_000);

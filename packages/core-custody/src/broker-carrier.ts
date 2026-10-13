@@ -19,6 +19,21 @@ export async function sendingAccount(
   route: BrokerRoute,
   destination: string,
 ): Promise<string | null> {
+  return (await sendingCarrier(broker, route, destination)).account;
+}
+
+/**
+ * The account, as `sendingAccount` names it, and whether custody presents
+ * nothing for the route's credential there: only then may the answer be
+ * streamed, since an answer to a presented credential may echo it across
+ * records custody redacts one at a time. Unknown to custody, it presents.
+ */
+export async function sendingCarrier(
+  broker: Broker,
+  route: BrokerRoute,
+  destination: string,
+): Promise<{ readonly account: string | null; readonly presentsNothing: boolean }> {
   const carrier = await broker.custody.describe(route.credentialRef, destination);
-  return carrier?.credentialKind === route.credentialKind ? carrier.account : null;
+  const same = carrier?.credentialKind === route.credentialKind;
+  return { account: same ? carrier.account : null, presentsNothing: carrier?.presents === false };
 }

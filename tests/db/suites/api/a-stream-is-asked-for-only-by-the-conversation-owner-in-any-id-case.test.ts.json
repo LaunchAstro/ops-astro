@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "only the conversation's owner gets a streamed answer, in any id case"
+}

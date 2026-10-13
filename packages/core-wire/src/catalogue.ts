@@ -116,9 +116,19 @@ function compare(surface: string, command: string, owned: Profile, asked: Profil
     ...owned.authority.flatMap((key) =>
       asked.authority.includes(key) ? [] : [`${at} skips the grant check ${key} the app makes`],
     ),
+    // Same on every surface means stricter fails too: a surface that asks more
+    // refuses callers its equivalents admit (#772).
+    ...asked.authority.flatMap((key) =>
+      owned.authority.includes(key)
+        ? []
+        : [`${at} adds the grant check ${key} the app does not make`],
+    ),
     ...(asked.authorisedOn === owned.authorisedOn ? [] : [scope]),
     ...(owned.personOnly && !asked.personOnly
       ? [`${at} drops the person-only marker and admits an agent`]
+      : []),
+    ...(!owned.personOnly && asked.personOnly
+      ? [`${at} adds the person-only marker and refuses an agent the app admits`]
       : []),
     ...(asked.rule === owned.rule
       ? []

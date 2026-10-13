@@ -256,3 +256,8 @@ select.aip__hmodel:hover:not(:disabled) {
 .aip__msg--failed {
   border-color: var(--danger);
 }
+/* An answer still being written: provisional, replaced by the settled reply. */
+.aip__msg--writing {
+  border-style: dashed;
+  color: var(--text-muted);
+}

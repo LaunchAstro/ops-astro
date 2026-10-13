@@ -27,6 +27,8 @@ export interface ProviderAdapter {
     operationId?: string,
     /** The exact model to ask for (CS-7.30); absent, the provider's default. */
     model?: string,
+    /** Ask for the answer as a stream: only where custody presents no credential. */
+    streamed?: boolean,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
   readonly lookup?: (operationId: string) => AdapterRequest;

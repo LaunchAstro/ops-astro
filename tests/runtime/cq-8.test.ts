@@ -152,6 +152,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // ending keys shared; a reset's window open takes the subject's alone, and a
   // provider sign-out its session's alone, as neither writes an audit event.
   'packages/core-records/src/identity/sessions.ts',
+  // C81 (#653): one publication of a legal document at a time, taken after the
+  // version's row lock and the register's, so the order checked is the order stamped.
+  'packages/core-records/src/operations/legal-documents.ts',
   // C81: the overseas-services register's one lock per business, taken
   // by a change and by a privacy policy's draft, approval and publication
   // before reading the register, inside the handler's transaction.

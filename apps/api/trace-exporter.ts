@@ -44,7 +44,7 @@ import {
   type TraceDatabase,
 } from '../../packages/core-runtime/src/index.ts';
 import type { CustodyOutcome } from '../../packages/core-custody/src/index.ts';
-import { faultCode } from './alerts/sink.ts';
+import { every } from './every.ts';
 
 export const TRACE_EXPORT_SWITCH = 'TRACE_EXPORT';
 export const TRACE_EXPORT_SETTINGS = [
@@ -215,6 +215,26 @@ export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts 
   };
 }
 
+/**
+ * `turn` for every business, one after another. A business that fails ends its
+ * own turn and the next still has its own; the pass then fails with the first.
+ */
+async function eachTurn(
+  businesses: () => Promise<readonly string[]>,
+  turn: (businessId: string) => Promise<void>,
+): Promise<void> {
+  let failed: { readonly cause: unknown } | undefined;
+  for (const businessId of await businesses()) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- one business after another
+      await turn(businessId);
+    } catch (cause) {
+      failed ??= { cause };
+    }
+  }
+  if (failed !== undefined) throw failed.cause;
+}
+
 /** One tick: every business until caught up, a gap, or its batch allowance. */
 export async function exportDeployment(
   database: TraceDatabase,
@@ -222,52 +242,25 @@ export async function exportDeployment(
   key: Buffer,
   deliver: Deliver,
 ): Promise<void> {
-  for (const businessId of await businesses()) {
+  await eachTurn(businesses, async (businessId) => {
     for (let batch = 0; batch < BATCHES_PER_TICK; batch += 1) {
       // eslint-disable-next-line no-await-in-loop -- one batch after another, in order
       const outcome = await exportOnce(database, businessId, key, deliver);
       if (outcome.kind !== 'delivered') break;
     }
-  }
+  });
 }
 
-/** One retention pass over every business; one business's failure does not stop the next. */
+/** One retention pass over every business. */
 export async function retainDeployment(
   database: TraceDatabase,
   businesses: () => Promise<readonly string[]>,
   key: Buffer,
   ports: ExpiryPorts,
 ): Promise<void> {
-  let failed: { readonly cause: unknown } | undefined;
-  for (const businessId of await businesses()) {
-    try {
-      // eslint-disable-next-line no-await-in-loop -- one business after another
-      await expireOnce(database, businessId, key, ports);
-    } catch (cause) {
-      failed ??= { cause };
-    }
-  }
-  // The pass still fails, after every business has had its turn.
-  if (failed !== undefined) throw failed.cause;
-}
-
-/** A job on an interval that never overlaps itself and logs a failure by its kind only. */
-function every(ms: number, what: string, job: () => Promise<void>): NodeJS.Timeout {
-  let running = false;
-  const timer = setInterval(() => {
-    if (running) return;
-    running = true;
-    void job()
-      .catch((cause: unknown) => {
-        // A listed code only: a database error's text, or a custom name, can carry a value.
-        console.error(`api: ${what} failed: ${faultCode(cause)}`);
-      })
-      .finally(() => {
-        running = false;
-      });
-  }, ms);
-  timer.unref();
-  return timer;
+  await eachTurn(businesses, async (businessId) => {
+    await expireOnce(database, businessId, key, ports);
+  });
 }
 
 /** Custody's own process for the target, started, and the export and retention intervals over it. */
@@ -283,7 +276,7 @@ export async function startTraceExporter(
   });
   const deliver = deliverThrough(custody);
   const ports = expiryThrough(custody);
-  const timers = [
+  const jobs = [
     every(everyMs, 'trace export', async () => {
       await exportDeployment(database, businesses, settings.key, deliver);
     }),
@@ -292,8 +285,9 @@ export async function startTraceExporter(
     }),
   ];
   return {
+    // Custody stops only once no job is between reading a batch and dispatching it.
     stop: async () => {
-      for (const timer of timers) clearInterval(timer);
+      await Promise.allSettled(jobs.map(async (stop) => await stop()));
       await custody.stop();
     },
   };

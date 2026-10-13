@@ -50,7 +50,9 @@ with no edit to the API, and a command with no declaration has no route.
 `GET /api/health` is the one exception. It runs a statement and answers from
 the result: `200` with `database: "reachable"`, or `503` with
 `database: "unreachable"` and the reason. It also reports whether the read half
-of the surface is mounted.
+of the surface is mounted. Where the live channel is mounted, `live` is
+`listening` only when a probe sent on the runtime login is heard back on the
+listener within a second, and `down` otherwise.
 
 | Body               | Meaning                                                            |
 | ------------------ | ------------------------------------------------------------------ |
@@ -715,7 +717,7 @@ no route written by hand.
 | ------------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.comment`                             | `/task/comment`                              | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `parentId?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`; naming `parentId` for a parent that is not a live top-level message on this task, or `audience` for a reply outside its message's audience), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (per unreadable mention, named only where its author sees it; none saved), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `task.edit_comment`, `task.delete_comment` | `/task/edit_comment`, `/task/delete_comment` | `operationId`, `recordId`, `expectedRevision`, `commentId`, `body` (edit only)                              | `SCOPE_NOT_GRANTED` 403 without `task:comment` on the task, or naming `commentId` when the caller did not write it; `NOT_FOUND` 404 for a comment not live on this task; `FIELD_VALUE_INVALID` 422 naming `body` (edit only) (MP-4-5)                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `preset.plan`                              | `/preset/plan`                               | `recordTypeKey`, `presetKey`, `fields[]`                                                                    | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `preset.plan`                              | `/preset/plan`                               | `recordTypeKey`, `presetKey`, `fields[]`                                                                    | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422, `PRESET_FIELD_INVALID` 422                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `settings.set_four_eyes_threshold`         | `/settings/set_four_eyes_threshold`          | `operationId`, `value` (number or `null`), `expectedRevision?`                                              | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `settings.set_client_sign_off`             | `/settings/set_client_sign_off`              | `operationId`, `value` (boolean), `expectedRevision?`                                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `settings.set_money_step_up`               | `/settings/set_money_step_up`                | `operationId`, `value` (boolean), `expectedRevision?`                                                       | `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403 (switching it off), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -756,6 +758,11 @@ A preset that names one new field key twice is refused `PRESET_FIELD_DUPLICATE`
 claiming one key cannot both be created, and a plan promising something the
 apply cannot do would be worse than a refusal. Nothing is written, as with
 every other refusal here and with every success.
+
+A field the definitions table would refuse is `PRESET_FIELD_INVALID` 422
+naming its keys: a key outside lowercase letters, digits and underscores, a
+blank label, a searchable field that is not text, or an owning operation not
+named as `collection.action`.
 
 The two settings commands take an optional `expectedRevision`, which migration
 `0020_business_settings_revision.sql` made possible. `business_settings` now
@@ -3249,7 +3256,10 @@ containment and steps, is `BREACH_TEMPLATE_UNFILLED` 409.
 sink and, where switched on, tracing: `{ checkedAt, sources, services }`. It is
 read by the API only after the grant check lets the caller in, and outside the
 serving transaction, so a refused caller asks no source; a read made in-process
-(`executeRead`) carries none. Each source (`watcher`, `error-sink`, `tracing`)
+(`executeRead`) carries none. Like the security alerts, it is the
+installation's: only the business that operates it
+(`ops.installation.operator_business_id`) is shown it, and any other business
+is answered with no `serviceHealth`, `errorSink: null`, and no source asked. Each source (`watcher`, `error-sink`, `tracing`)
 is `read`, `read-failure` with its fault by kind (`unconfigured`, `refused`,
 `malformed`, `oversized`, `slow`, `unreachable`), or `off`: tracing unset is
 off, never a failure; the watcher and the error sink are not optional, so unset
@@ -3300,7 +3310,8 @@ actions, each under `privacy:manage` and never an agent's:
 - `legal.publish_version` (`legal document published`) takes
   `{ operationId, versionId }` and publishes only an approved version:
   otherwise `LEGAL_NOT_APPROVED` 409, and a second time
-  `LEGAL_ALREADY_PUBLISHED` 409.
+  `LEGAL_ALREADY_PUBLISHED` 409. A version older, by its major.minor label,
+  than one already published is `LEGAL_VERSION_SUPERSEDED` 409.
 
 A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A version of
 another business and a made-up one are both `NOT_FOUND` 404.

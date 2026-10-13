@@ -44,10 +44,16 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
   'the remapped-board case goes red when its inbox digest follows the previous person',
   () => {
-    // The board's questions live in C4's followBoardOn (family B's app.ts since main's merge).
-    const result = runMutated('apps/api/app.ts',
-      'shown: async (personId) => await mayShowInbox(options, context, businessId, personId),',
-      'shown: async () => await mayShowInbox(options, context, businessId, joined.personId),');
+    // The board's questions live in boardQuestions (live-watching.ts): its inbox
+    // digest is mutated to keep asking about the first person the stream asked.
+    const result = runMutated('apps/api/live-watching.ts',
+      'const asked = async (personId: string): Promise<Run> => {\n' +
+        '    const tasks = await mayReach(door, context, businessId, personId);\n' +
+        '    const inbox = await mayShowInbox(door, context, businessId, personId);',
+      'let first: string | undefined;\n' +
+        '  const asked = async (personId: string): Promise<Run> => {\n' +
+        '    const tasks = await mayReach(door, context, businessId, personId);\n' +
+        '    const inbox = await mayShowInbox(door, context, businessId, (first ??= personId));');
     expect(result).not.toBe(0);
   }, 40_000,
 );

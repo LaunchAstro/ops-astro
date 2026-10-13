@@ -6,7 +6,8 @@
 // and a path; the origin comes from custody's own list, never from the
 // caller. No redirect is followed, to a listed host or any other. Every answer
 // is bounded by a timeout and a byte limit counted off the stream, and the
-// read stops at the limit rather than after it.
+// read stops at the limit rather than after it. A caller may take each chunk
+// of a successful answer as it is read, within that limit (`OnChunk`).
 //
 // A listed name is resolved once, before any socket exists, and the call is
 // refused when any address is a metadata, link-local or unspecified one. The
@@ -15,11 +16,14 @@
 
 import { lookup as systemLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
-import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
+import { request as httpRequest, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { presented, type StoredCredential } from './credentials.ts';
+import { answerOf, type OnChunk, type Outbound } from './egress-answer.ts';
 import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
+
+export type { OnChunk, Outbound, OutboundFault } from './egress-answer.ts';
 
 /** A listed origin, with any fixed headers and non-POST routes of its own (AW-13). */
 export interface Destination extends Extras {
@@ -116,39 +120,6 @@ export interface OutboundRequest {
   readonly maxResponseBytes: number;
 }
 
-export type OutboundFault =
-  | 'unlisted'
-  | 'bad_path'
-  | 'forbidden'
-  | 'redirect'
-  | 'timeout'
-  | 'too_large'
-  | 'status'
-  | 'network';
-
-export type Outbound =
-  | { readonly ok: true; readonly status: number; readonly body: string }
-  | { readonly ok: false; readonly fault: OutboundFault; readonly status: number | null };
-
-async function readBounded(
-  response: IncomingMessage,
-  limit: number,
-): Promise<{ readonly ok: true; readonly text: string } | { readonly ok: false }> {
-  const parts: Buffer[] = [];
-  let size = 0;
-  // One chunk at a time: the count must stop the read, not follow it.
-  for await (const chunk of response) {
-    const part = chunk as Buffer;
-    size += part.byteLength;
-    if (size > limit) {
-      response.destroy();
-      return { ok: false };
-    }
-    parts.push(part);
-  }
-  return { ok: true, text: Buffer.concat(parts).toString('utf8') };
-}
-
 /** How a listed name becomes addresses. The system lookup unless a test supplies one. */
 export type Resolve = (
   hostname: string,
@@ -209,34 +180,13 @@ const pinnedTo =
     else if (first !== undefined) callback(null, first.address, first.family);
   };
 
-/** A response read within its limit. A redirect is answered, never followed. */
-async function answerOf(
-  response: IncomingMessage,
-  limit: number,
-  failed: (status: number | null) => Outbound,
-): Promise<Outbound> {
-  const status = response.statusCode ?? 0;
-  if (status >= 300 && status < 400) {
-    response.destroy();
-    return { ok: false, fault: 'redirect', status };
-  }
-  let read: Awaited<ReturnType<typeof readBounded>>;
-  try {
-    read = await readBounded(response, limit);
-  } catch {
-    return failed(status);
-  }
-  if (!read.ok) return { ok: false, fault: 'too_large', status };
-  if (status < 200 || status >= 300) return { ok: false, fault: 'status', status };
-  return { ok: true, status, body: read.text };
-}
-
 /** One request and its bounded answer. */
 async function exchange(
   url: URL,
   options: RequestOptions,
   body: string,
   limit: number,
+  onChunk?: OnChunk,
 ): Promise<Outbound> {
   const signal = options.signal;
   return await new Promise<Outbound>((settle) => {
@@ -247,7 +197,7 @@ async function exchange(
     });
     const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options);
     outgoing.on('response', (response) => {
-      void answerOf(response, limit, failed).then(settle);
+      void answerOf(response, limit, failed, onChunk).then(settle);
     });
     outgoing.on('error', () => {
       settle(failed(null));
@@ -266,6 +216,7 @@ export async function send(
   request: OutboundRequest,
   credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
   resolve: Resolve = resolveBySystem,
+  onChunk?: OnChunk,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
@@ -285,7 +236,9 @@ export async function send(
     'content-type': 'application/json',
     'content-length': String(Buffer.byteLength(request.body)),
   };
-  if (credential !== null) headers[credential.header] = presented(credential);
+  if (credential !== null && credential.scheme !== 'none') {
+    headers[credential.header] = presented(credential);
+  }
   return await exchange(
     url,
     {
@@ -296,5 +249,6 @@ export async function send(
     },
     request.body,
     request.maxResponseBytes,
+    onChunk,
   );
 }
