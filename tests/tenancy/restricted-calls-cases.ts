@@ -109,6 +109,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'inbox_items'],
   // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
   ['si', 'enrolment_tokens invitation_delivery_attempts'],
+  // An accepted invitation's login, owed to the provider: the accept writes it once.
+  ['si', 'login_provisions'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
@@ -243,6 +245,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // C39-T: the accept's token lookup, three ids for one hash.
+  'public.enrolment_token_find',
   // 20261005144947 (C40B): the reset's token lookup, two ids for one hash.
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.

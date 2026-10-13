@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T accept on the one-time link: a live token seats the invited person with no grant and owes the login, every dead link is one answer writing nothing, a lapsed inviter or an open first-client gate refuses, another business's invitation is accepted in that business alone, no token is stored, and concurrent accepts, revokes, resends and a lifetime ending during the lock wait end in one consistent state"
+}

@@ -570,6 +570,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, invitation_id, token_id, state)
      select business_id, gen_random_uuid(), invitation_id, id, 'asked'
        from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
+  // The login that invitation's accept owes the provider.
+  'public.login_provisions': `insert into public.login_provisions
+       (business_id, id, invitation_id, login_id)
+     select $1, gen_random_uuid(),
+            (select id from public.invitations where business_id = $1 order by id limit 1),
+            (select id from public.logins where business_id = $1 order by id limit 1)
+     returning 1`,
 };
 
 /**
@@ -674,6 +681,7 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'enrolment_token_find(text)',
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
@@ -1035,6 +1043,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
+  });
+
+  it('the enrolment token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'enrolment_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
   });
 
   it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {

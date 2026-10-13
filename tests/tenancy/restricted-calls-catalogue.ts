@@ -21,6 +21,8 @@ const COLUMN_UPDATES: readonly {
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
   // C40B: a reset token is spent by `spent_at` alone.
   { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
+  // C39-T: an enrolment token is spent by `spent_at` alone, on its accept.
+  { table: 'public.enrolment_tokens', from: '20261013053949', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
   {
     table: 'public.activations',
