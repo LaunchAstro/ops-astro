@@ -17,6 +17,10 @@
 // the stop raised its ask (a person's `happened` that waited on the run's lock
 // while the worker's call stopped the run), so its start time comes first.
 //
+// A step written off with its effect unknown is not finished either way: a
+// top-up would run it again, so it is refused the same way until a person
+// records what happened, and the end still answers the stop.
+//
 // A worker's report that the step failed, with no effect applied, keeps the
 // hold whole the same way when its priced cost runs above the hold: the end is
 // refused alike, and the person's outcome still answers the hold.
@@ -146,6 +150,36 @@ it('a top-up after the stopped step was recorded as happened is refused, and the
   const topUp = { command: 'run.top_up', ...ask, amountMinor: 1_000, currency: 'AUD' };
   expect(await answer(people.approver, topUp)).toBe('TRANSITION_NOT_PERMITTED');
   // Nothing written: no answer, no approval, no fresh hold for the finished step, the run waiting.
+  expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
+
+  expect(await answer(people.second, { command: 'run.end_at_budget_stop', ...ask })).toBe(
+    'applied',
+  );
+  expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
+});
+
+it('a top-up after the stopped step was written off with its effect unknown is refused, and the end still applies', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  // A person accepts the cost without knowing whether the step's effect happened.
+  const written = await asPerson(s, {
+    command: 'budget.write_off',
+    operationId: randomUUID(),
+    recordId: w.taskId,
+    attemptId: w.attemptId,
+    // Any amount above nothing settles the step at an unknown outcome.
+    amountMinor: 1,
+    reason: 'The provider billed the call; nobody can say whether the step ran.',
+  });
+  expect(codeOf(written)).toBe('applied');
+  const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
+  expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'actual', answers: 0 });
+
+  const ask = { recordId: w.taskId, runId, askId };
+  const topUp = { command: 'run.top_up', ...ask, amountMinor: 1_000, currency: 'AUD' };
+  expect(await answer(people.approver, topUp)).toBe('TRANSITION_NOT_PERMITTED');
+  // Nothing written: no fresh hold for a step whose effect is unknown, the run still waiting.
   expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
 
   expect(await answer(people.second, { command: 'run.end_at_budget_stop', ...ask })).toBe(
