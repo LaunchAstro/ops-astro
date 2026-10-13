@@ -34,6 +34,7 @@ owner alone (`chmod 600`):
   "OPS_LOCAL_AGENT_CODEX_VERSION": "0.162.1",
   "OPS_LOCAL_AGENT_HOME": "/Users/<m5 user>/.config/ops-astro-gpt-runner",
   "OPS_LOCAL_AGENT_PORT": "<port>",
+  "OPS_LOCAL_AGENT_CODEX_BIN": "<the pinned codex's absolute path>",
   "OPS_LOCAL_AGENT_KEY": "<the runner's key>"
 }
 ```
@@ -48,23 +49,29 @@ and in the environment. A refusal names a setting, never a value.
 1. Make the runner's home and Codex home, both 0700:
    `mkdir -p -m 700 ~/.config/ops-astro-gpt-runner/codex`.
 2. **The owner signs it in, once** (about 2 minutes). Run
-   `CODEX_HOME=~/.config/ops-astro-gpt-runner/codex codex login --device-auth`
-   on the M5, then approve the code it shows in a browser signed in to
+   `CODEX_HOME=~/.config/ops-astro-gpt-runner/codex <codex> login --device-auth`
+   on the M5, where `<codex>` is the binary the settings name, then approve the code it shows in a browser signed in to
    ChatGPT. This is never a copy of another Codex home's login: two copies of
    one sign-in sign each other out.
 3. Write the settings file, and file the same key in custody's credential file
    for destination `local_gpt` (both 0600).
-4. Run `scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>`.
-   It passes only when:
-   - both files are 0600 and the user's own;
-   - the settings are the M5 site's, with the Codex version pinned;
-   - both homes are private and hold no `AGENTS.md`, `AGENTS.override.md` or
-     `config.toml`;
-   - Codex is the pinned version and signed in to the ChatGPT plan;
+4. Run `scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>`
+   on the files the plist and custody will name. It passes only when:
+   - the runner's own loader takes the settings file as it stands, alone;
+   - the settings are the M5 site's, with the Codex version pinned, and name
+     the runner home and the Codex binary by plain absolute paths;
+   - both homes are private; neither they nor the child's working folder hold
+     `AGENTS.md`, `AGENTS.override.md` or `config.toml`, before Codex runs or
+     after; and no git checkout holds the runner home;
+   - that binary says it is the pinned version and is signed in to the
+     ChatGPT plan;
+   - the credential file is a regular 0600 file of this user;
    - custody itself would load the credential file (its own parser), and it
      holds the runner's key, and only it, for the door;
    - a runner already listening listens on loopback alone. When `lsof` is
      missing or fails, the check fails: it never reads that as no listener.
+     When it sees none, the check binds the port on loopback as the runner
+     will, since `lsof` cannot see another user's listener.
 
    It prints a kind, never a value. `signed_out` means step 2 is owed.
 
