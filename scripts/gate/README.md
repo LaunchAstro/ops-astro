@@ -31,13 +31,19 @@ the record is of scans, not of remotes: `gate-passed` in the repository's
 common Git directory, shared by every worktree and never fetched or pushed.
 Each line is a commit and the fingerprint of what judged it: the pushed
 commit's scanners and canaries, the hook, the checkout's gitleaks rules and
-build, any scanner override, and the private list and receipt. The hook adds a
-first push's commit only after every scan of it passes. A listed commit counts
-only under the fingerprint the new push would be judged by, and only if the
-pushed commit reaches it, so weaker scanners, an override or a changed rule
-never vouch for history; a change of rules costs one full scan. A missing,
-unreadable, symlinked or malformed record means the full scan, as does a fresh
-clone. The hook reads no local grafts or replacements. The range stays one
+ignore file, the paths and versions of the tools that run the scans, and the
+private list and receipt. Only a pinned push narrows its range or adds to the
+record: no scanner override, no interpreter or Git start-up setting in the
+environment (`PYTHONPATH`, `NODE_OPTIONS`, `GIT_CONFIG_*` and the like), and a
+`.gitleaks.toml` that extends no other file. Any other push scans everything
+reachable and records nothing. The hook adds a first push's commit only after
+every scan of it passes. A listed commit counts only under the fingerprint the
+new push would be judged by, and only if the pushed commit reaches it, so
+weaker scanners or a changed rule never vouch for history; a change of rules
+costs one full scan. A missing, unreadable, symlinked or malformed record
+means the full scan, as does a fresh clone. The hook reads no local grafts or
+replacements. The machine's own interpreters and their site files are
+trusted as the hook itself is. The range stays one
 `BASE..HEAD`, so scanners in a commit from before this rule still read it.
 
 These rules apply to all four:
