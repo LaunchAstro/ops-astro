@@ -2,8 +2,8 @@
 // The census of the database run's splits: that the shards lose nothing.
 //
 // CI-SPEED (the owner, 4 October 2026, NATHAN-CF-RECORD item 1) took the
-// `database conformance` run from 8 shards to 16, and CIITEM3 (12 October
-// 2026) from 16 to 30, on the condition that no suite, check or test is lost. Splitting a gate is how a suite drops out
+// `database conformance` run from 8 shards to 16, CIITEM3 (12 October 2026)
+// from 16 to 30 and RELAYSHARD1830 (13 October 2026) from 30 to 12, on the condition that no suite, check or test is lost. Splitting a gate is how a suite drops out
 // quietly, so this counts, on one tree, what each split holds: every run item
 // placed once, none twice, none that is not an item, and the number of tests
 // the placed items hold. The test counts are vitest's own: `vitest list` over
@@ -12,7 +12,7 @@
 // a static parse finds no test behind `const withDatabase = it.skipIf(...)`
 // and cannot know which cases a SUITE_PART registers.
 //
-// Usage: node scripts/db-census.ts [16 30 ...]
+// Usage: node scripts/db-census.ts [12 30 ...]
 //   Prints one line per split and exits 1 unless every split holds every item
 //   once, nothing else, and the same test total. Run it where the database
 //   suites are collected as CI collects them: with DATABASE_URL set, since
@@ -125,7 +125,7 @@ if (import.meta.main) {
     `db-census: ${String(new Set(named).size)} named suite(s), ${String(items.length)} run item(s), ` +
       `${String(Object.values(counts).reduce((sum, n) => sum + n, 0))} test(s) listed`,
   );
-  const results = (splits.length > 0 ? splits : [16, 30]).map((n) => {
+  const results = (splits.length > 0 ? splits : [12, 30]).map((n) => {
     const census = censusOf(items, assignShards(items, plan.seconds, n), counts);
     console.log(
       `db-census: ${String(n)} shards hold ${String(census.placed)} of ${String(census.items)} ` +

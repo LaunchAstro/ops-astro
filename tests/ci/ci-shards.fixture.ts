@@ -29,7 +29,7 @@ export const ci = parseDocument(read('.github/workflows/ci.yml'), { uniqueKeys: 
 };
 
 // The shard counts ci.yml runs, read from its matrices, so every partition, sequencer, runner and
-// wrapper proof exercises the split CI runs (6 and 6 since CIITEM3, 12 October 2026).
+// wrapper proof exercises the split CI runs (3 and 3 since RELAYSHARD1830, 13 October 2026).
 export const LOCAL_COUNT: number = ci.jobs['check']?.strategy?.matrix?.shard?.length ?? 0;
 export const ISOLATION_COUNT: number = ci.jobs['isolation']?.strategy?.matrix?.shard?.length ?? 0;
 export const plan: ShardPlan = readShardPlan(ROOT);
