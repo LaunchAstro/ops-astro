@@ -1017,7 +1017,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The password reset's three (20261013060059) reach rows that name no business, made with
+  // The password reset's three (20261013223000) reach rows that name no business, made with
   // no business, and only the application group runs them: a request counted and recorded
   // under its limits, a minted recovery link consumed, and the first business a login is
   // mapped in, one id. The pickup path (SL11-30,
@@ -1112,7 +1112,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(lookup?.firedBy).toStrictEqual([]);
   });
 
-  // 20261013060059: the password reset's three definers, each fired by nothing.
+  // 20261013223000: the password reset's three definers, each fired by nothing.
   it.each([
     ['ops.password_reset_request(text,text)', ['search_path=pg_catalog']],
     [
