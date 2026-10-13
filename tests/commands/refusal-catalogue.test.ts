@@ -199,6 +199,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
   ['SELF_APPROVAL_REFUSED', 403, 'caller'],
   ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
+  ['PAGE_OUTSIDE_PARTY_SITE', 409, 'caller'],
 ];
 
 /**
