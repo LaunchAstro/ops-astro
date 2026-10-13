@@ -3176,7 +3176,7 @@ code alone, and nothing is logged.
 sign-in. It is 202 `{}` for every body: any address, known or unknown, inside
 its limits or over them, a body too large or not an address at all. Every
 request runs the same statement, `ops.password_reset_request(address,
-caller)` (20261013060059), a security definer function that takes advisory
+caller)` (20261013223000), a security definer function that takes advisory
 locks on the address's SHA-256 and then the caller's, held to commit, counts
 the hour's requests for each and records one only with room: 3 per address
 and 10 per caller. The caller is the first `x-forwarded-for` address, kept

@@ -57,7 +57,7 @@ export const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/health/tracing.ts': "reads the tracing service's public health route (C34)",
   'apps/web/src/screen-registry.tsx':
     "threads the page's fetch to the public legal page's reader, same origin (C81)",
-  // Password reset on the sign-in provider's recovery session (20261013060059):
+  // Password reset on the sign-in provider's recovery session (20261013223000):
   'apps/api/auth/provider-user.ts':
     "the sign-in provider's `/user` on a person's own bearer (the reset's read and password write, the door's session probe), at its issuer's origin, no redirect",
   'apps/api/password-reset.ts':

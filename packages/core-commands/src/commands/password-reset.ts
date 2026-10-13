@@ -7,7 +7,7 @@
 // route's write, name whom the write is audited as, and settle it after.
 //
 // 1. Request. Every address takes the same statement
-//    (`ops.password_reset_request`, 20261013060059), which counts and inserts
+//    (`ops.password_reset_request`, 20261013223000), which counts and inserts
 //    under advisory locks on the address's digest and then the caller's: 3
 //    an hour per address, 10 per caller, nothing recorded over either.
 // 2. Begin, in one transaction: the login's factor lock first (C59's, which
