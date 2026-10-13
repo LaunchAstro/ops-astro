@@ -68,7 +68,7 @@ import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent
 import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
-import { carrierOption } from './model-carrier.ts';
+import { carriedOption } from './model-carriage.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -125,7 +125,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
-    ...carrierOption(settings),
+    ...carriedOption(settings),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);
 

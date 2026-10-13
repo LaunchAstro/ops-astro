@@ -68,7 +68,14 @@ export async function firstClientGate(
   tx: TenantQuery,
   name: CommandName,
 ): Promise<CommandRefusal | undefined> {
-  const effects = COMMAND_EFFECTS[name];
+  return await effectsGate(tx, COMMAND_EFFECTS[name]);
+}
+
+/** The same refusal for an act that is no command, judged on the effects it has. */
+export async function effectsGate(
+  tx: TenantQuery,
+  effects: DataEffects,
+): Promise<CommandRefusal | undefined> {
   if (classOf(effects) === 'made-up-safe') return undefined;
   // A database from before 0058 has neither the function nor the table, and
   // 0058 provisions it made-up. Either one alone is not that: the call below

@@ -107,8 +107,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
-  // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
-  ['si', 'enrolment_tokens invitation_delivery_attempts'],
+  // C39-T (20261005154858, 20261013053949): attempt, token and owed login, written once.
+  ['si', 'enrolment_tokens invitation_delivery_attempts login_provisions'],
   ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions task_launches'],
@@ -124,8 +124,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0051 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0052 (C81): a row of the overseas-services register is set by insert or
-  // update; never deleted.
+  // 0052 (C81): an overseas-services register row is set by insert or update; never deleted.
   ['siu', 'overseas_services'],
   // 0053 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
@@ -243,7 +242,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 20261005144947 (C40B): the reset's token lookup, two ids for one hash.
+  // C39-T (20261013053949) and C40B (20261005144947): an accept's, a reset's token lookup.
+  'public.enrolment_token_find',
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
