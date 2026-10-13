@@ -168,7 +168,7 @@ export async function openRaceWorld(): Promise<RaceWorld> {
           };
         },
       };
-      return await custody.dispatch('ollama_key', chatRequest(), undefined, handoff);
+      return await custody.dispatch('ollama_key', chatRequest(), undefined, undefined, handoff);
     },
     close: async () => {
       for (const agent of agents) await agent.stop(); // oxlint-disable-line no-await-in-loop

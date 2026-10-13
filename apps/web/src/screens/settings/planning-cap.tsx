@@ -70,11 +70,11 @@ function CapNotes(props: {
   return (
     <>
       <div className="sb__sh">
-        <span className="sb__k">AI planning budget</span>
+        <span className="sb__k">AI chat budget</span>
       </div>
       <p className="card__sub">
-        What the agent&apos;s planning chat may spend for this business before a plan is accepted. A
-        reply that would go past it is refused.
+        What paid AI replies in chat may spend for this business. Each reply sets aside its most
+        first and keeps only what it cost. A reply that would go past the budget is refused.
       </p>
       {cap === null ? null : (
         <p className="card__sub" data-settings="planning-cap-known">
@@ -84,7 +84,7 @@ function CapNotes(props: {
       )}
       {may ? null : (
         <p className="card__sub" data-settings="planning-cap-closed">
-          Only an owner or an administrator (billing decide) changes the planning budget.
+          Only an owner or an administrator (billing decide) changes the AI chat budget.
         </p>
       )}
       {because === null ? null : (

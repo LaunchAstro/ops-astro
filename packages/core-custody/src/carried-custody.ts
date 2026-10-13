@@ -204,7 +204,9 @@ export function carriedCustody(options: CarriedCustodyOptions): Custody & {
   const carrying: Carrying = { options, now: options.now ?? Date.now, runners: new Map() };
   return {
     pid: -1,
-    dispatch: async (_credentialRef, request, onPiece, handoff) => {
+    dispatch: async (_credentialRef, request, onPiece, admit, handoff) => {
+      // A paid send's admission at the handoff is process custody's; a carried call has none to hold.
+      if (admit !== undefined) return refused('CUSTODY_NOT_ADMITTED');
       if (handoff === undefined) return refused('CARRIAGE_UNAVAILABLE');
       const topic = callTopic(handoff.businessId, handoff.callId);
       const joined = await options.carriage.join(topic, handoff.accessToken);

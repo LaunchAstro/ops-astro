@@ -12,6 +12,7 @@ import type { Handoff } from '../../packages/core-custody/src/carriage.ts';
 import { carriedCustody } from '../../packages/core-custody/src/carried-custody.ts';
 import { openAgentWorld, chatRequest } from './model-agent-world.ts';
 
+// oxlint-disable-next-line max-lines-per-function -- one world, a control call and the waiting call
 it('an offer judgement wait does not expire fresh answers on identical clocks', async () => {
   const now = Date.now;
   const world = await openAgentWorld({ now });
@@ -42,9 +43,21 @@ it('an offer judgement wait does not expire fresh answers on identical clocks', 
     };
   };
   try {
-    const control = await custody.dispatch('ollama_key', chatRequest(), undefined, handoff(0));
+    const control = await custody.dispatch(
+      'ollama_key',
+      chatRequest(),
+      undefined,
+      undefined,
+      handoff(0),
+    );
     expect(control.kind).toBe('answered');
-    const delayed = await custody.dispatch('ollama_key', chatRequest(), undefined, handoff(31_000));
+    const delayed = await custody.dispatch(
+      'ollama_key',
+      chatRequest(),
+      undefined,
+      undefined,
+      handoff(31_000),
+    );
     expect(world.ollama.seen).toHaveLength(2);
     expect(
       delayed.kind,

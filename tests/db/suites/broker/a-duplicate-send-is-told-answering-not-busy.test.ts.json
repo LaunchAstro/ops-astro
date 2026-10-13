@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "with the paid route's ceiling full, the same message is told it is answering and another message busy, nothing written or sent"
+}
