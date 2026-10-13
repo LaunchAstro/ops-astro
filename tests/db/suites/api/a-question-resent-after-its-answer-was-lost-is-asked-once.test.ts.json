@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a question resent after a lost answer replays the register's first attempt: one conversation and one durable question, no second model call"
+}
