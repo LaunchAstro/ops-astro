@@ -102,6 +102,8 @@ interface Given {
   readonly approved?: SiteBinding['change'];
   /** Bytes the binding holds in place of the approved ones. */
   readonly change?: SiteBinding['change'];
+  /** What the providers do while the page is being captured. */
+  readonly onCapture?: (site: Provider) => void;
 }
 
 /** The providers holding this correction's proposal, its page served from the site file. */
@@ -124,6 +126,7 @@ export async function bound(id: string, given: Given = {}): Promise<Bound> {
   let clock = 5_000;
   const served: Transport = (request) => {
     captured.push(request.url.href);
+    given.onCapture?.(site);
     return Promise.resolve({
       kind: 'answer',
       status,

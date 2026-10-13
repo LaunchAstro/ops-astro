@@ -7,11 +7,13 @@
 // with its carriers row (still dispatched; at the offer not yet offered, at
 // the send recorded for this runner), the conversation (the person's own, not
 // purged), its page task (no client's), the agent's open membership, the
-// agent's actor (active, the carrier), the person's conversation grants
-// (`nowait`: contention refuses, nothing sent), then their ending keys,
-// shared. It judges at the instant read after them. A revocation, client
-// link, membership leave, deactivation, purge or session ending takes one of
-// those locks, so it commits before the judgement, which sees it, or waits.
+// agent's actor (active, the carrier), the person's conversation grants and,
+// for a page, their task grants (`nowait`: contention refuses, nothing sent),
+// then their ending keys, shared. It judges at the instant read after them,
+// the page's task read and a paid call's outside standing with the rest
+// (`standsOutside`). A revocation, client link, membership leave,
+// deactivation, purge or session ending takes one of those locks, so it
+// commits before the judgement, which sees it, or waits.
 //
 // The send is recorded and committed first (runner, `request_at`, `send_by`,
 // `answer_by`), so the sweep never takes a send for none; the request goes only
@@ -20,14 +22,13 @@
 // accept was heard, on the pool's one connection: nothing needs a second.
 
 import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
-import { SEND_WINDOW_MS } from '../../../core-custody/src/index.ts';
+import { SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
 import {
   advisoryLock,
   sessionEnded,
   sessionKey,
   slotOf,
   subjectKey,
-  subjectsOf,
   TASK_SPINE,
   withSession,
   type BusinessId,
@@ -36,10 +37,9 @@ import {
   type TenantQuery,
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
-import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
+import { lockedInstant } from '../../../core-runtime/src/index.ts';
+import { holdGrants, readsPage } from './carriage-grants.ts';
 import { holdsOwnConversations } from './conversations.ts';
-import type { ModelBroker } from './model-call.ts';
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
 
@@ -55,15 +55,21 @@ interface Asked {
   readonly accessToken: string;
   readonly callId: string;
   readonly carrier: Carrier;
+  /** What a paid call's outside standing is judged against: the broker's live settings, the model asked. */
+  readonly outside: {
+    readonly broker: Parameters<typeof standsOutside>[0];
+    readonly model: string | null | undefined;
+  };
 }
 
-interface Called {
+type Called = Parameters<typeof standsOutside>[1] & {
   readonly state: string;
   readonly conversation_id: string;
   readonly agent: string;
   readonly offered: boolean;
   readonly runner: string | null;
-}
+  readonly page: string | null;
+};
 
 /** The token's `exp`, in milliseconds; the door verified the token, this reads it. */
 function expiresAt(token: string): number {
@@ -84,9 +90,10 @@ async function heldCall(
   callId: string,
   mode: 'offer' | { readonly runner: string },
 ): Promise<Called | Judged> {
-  const [call] = await tx.query<Called>(
-    `select c.state, c.conversation_id, k.agent_actor_id as agent,
-            k.offered_at is not null as offered, k.runner::text as runner
+  const [call] = await tx.query<Omit<Called, 'model' | 'page'>>(
+    `select c.state, c.conversation_id, k.agent_actor_id as agent, c.operation_key as operation,
+            c.provider, c.route_key as route, k.offered_at is not null as offered,
+            k.runner::text as runner
        from public.model_calls c
        join public.model_call_carriers k on k.business_id = c.business_id and k.call_id = c.id
       where c.business_id = $1 and c.id = $2
@@ -99,20 +106,22 @@ async function heldCall(
     readonly own: boolean;
     readonly purged: boolean;
     readonly page: string | null;
+    readonly model: string | null;
   }>(
     `select owner_actor_id = $3 as own, body_purged_at is not null as purged,
-            scope_record_id as page
+            scope_record_id as page, model_id as model
        from public.conversations where business_id = $1 and id = $2 for share`,
     [tx.businessId, call.conversation_id, session.actorId],
   );
   if (conversation === undefined || !conversation.own || conversation.purged) return LOST;
-  if (conversation.page === null) return call;
+  const held = { ...call, model: conversation.model, page: conversation.page };
+  if (conversation.page === null) return held;
   const [page] = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT} as client from public.records where business_id = $1 and id = $2 for share`,
     [tx.businessId, conversation.page],
   );
   if (page === undefined) return LOST;
-  return page.client === null ? call : { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
+  return page.client === null ? held : { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
 }
 
 /** Locks 4 and 5: whether the agent is still an open member, active, and the carrier. */
@@ -140,16 +149,20 @@ async function judgeCarriage(
   const call = await heldCall(tx, session, asked.callId, mode);
   if ('ok' in call) return call;
   const carried = await heldAgent(tx, call, asked.carrier);
-  const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
+  const grants = await holdGrants(tx, session, call.page);
   await advisoryLock(tx, subjectKey(asked.presented.subject), 'shared');
   if (asked.presented.sessionId !== undefined) {
     await advisoryLock(tx, sessionKey(asked.presented.sessionId), 'shared');
   }
   const at = await lockedInstant(tx);
-  const listed = session.personId !== null && asked.carrier.people.includes(session.personId);
+  const listed =
+    asked.carrier.people.includes(session.personId) &&
+    standsOutside(asked.outside.broker, call, { ...session, model: asked.outside.model });
   if (!carried || !listed || (await sessionEnded(tx, asked.presented))) return LOST;
   if (expiresAt(asked.accessToken) <= Date.parse(at)) return LOST;
-  return (await holdsOwnConversations(tx, session, { at, held })) ? { ok: true } : LOST;
+  if (!(await readsPage(tx, session, call.page, { at, held: grants.task }))) return LOST;
+  const own = await holdsOwnConversations(tx, session, { at, held: grants.conversation });
+  return own ? { ok: true } : LOST;
 }
 
 /** Grant contention under the `nowait` hold: nothing was sent, so the call is released. */
@@ -262,11 +275,11 @@ export function carriageHandoff(
   businessId: BusinessId,
   presented: VerifiedSubject,
   accessToken: string,
-  carrier: Carrier,
-  timeoutMs: number,
+  carried: Pick<Asked, 'carrier' | 'outside'> & { readonly timeoutMs: number },
 ): (callId: string) => Handoff {
+  const { carrier, timeoutMs, outside } = carried;
   return (callId) => {
-    const asked: Asked = { presented, accessToken, callId, carrier };
+    const asked: Asked = { presented, accessToken, callId, carrier, outside };
     return {
       businessId,
       callId,
@@ -280,21 +293,5 @@ export function carriageHandoff(
         return await holdSend(database, businessId, asked, { runner, heardAt });
       },
     };
-  };
-}
-
-/** A carried deployment's handoff for the call, made with the person's own token; none elsewhere. */
-export function carriedBy(
-  database: Database,
-  businessId: BusinessId,
-  presented: VerifiedSubject,
-  accessToken: string | undefined,
-  broker: Pick<ModelBroker, 'carrier' | 'operations'>,
-): { readonly carry?: (callId: string) => Handoff } {
-  const { carrier } = broker;
-  const timeoutMs = broker.operations.get(CONVERSATION_ANSWER.key)?.timeoutMs ?? 0;
-  if (carrier === undefined || accessToken === undefined) return {};
-  return {
-    carry: carriageHandoff(database, businessId, presented, accessToken, carrier, timeoutMs),
   };
 }

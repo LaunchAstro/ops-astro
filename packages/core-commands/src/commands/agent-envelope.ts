@@ -71,7 +71,8 @@ import { firstClientGate } from './first-client-gate.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
-import { inSavepoint, recordApplied } from './agent-applied.ts';
+import { recordApplied } from './agent-applied.ts';
+import { workJudged } from './agent-standing.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
@@ -165,7 +166,7 @@ export async function executeAgentOperation(
           person: session.actorId,
         });
         if (overQuota !== undefined) return overQuota;
-        return await runAgentCommand(tx, { session, credential, request }, operation);
+        return await runAgentCommand(tx, { session, credential, request }, operation, presented);
       }),
   );
   // Committed: the lost-response gap before the worker reads this (T2c1).
@@ -222,6 +223,7 @@ async function runAgentCommand(
     readonly request: AgentRequest;
   },
   operation: AgentOperation | undefined,
+  verified: VerifiedSubject,
 ): Promise<CommandResult> {
   const { session, credential, request } = presented;
   if (operation === undefined) {
@@ -243,7 +245,7 @@ async function runAgentCommand(
       await releaseReplay(tx, callOf(identified), operation, stored),
     attempt: async (identified, digest) =>
       await operation.open(
-        async (row) => await runRow(tx, callOf(identified), identified, row, digest),
+        async (row) => await runRow(tx, callOf(identified), verified, identified, row, digest),
       ),
   });
 }
@@ -252,6 +254,7 @@ async function runAgentCommand(
 async function runRow<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
+  verified: VerifiedSubject,
   request: IdentifiedRequest,
   operation: TypedOperation<O>,
   digest: string,
@@ -283,7 +286,10 @@ async function runRow<O extends object>(
   const shut = await firstClientGate(tx, call.declaration.name);
   if (shut !== undefined) return await settle(tx, session, request, digest, shut);
 
-  const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
+  // Judged again after the handler's last wait, holding no operation id.
+  const judged = { call, presented: verified, authority: operation.authority };
+  const outcome = await workJudged(tx, judged, async () => await authorised.run(operands));
+  if ('ended' in outcome) return await settle(tx, session, request, digest, outcome.ended, 'none');
   if (isRefused(outcome)) {
     const { refusal, attempted, kept } = outcome;
     return await settle(tx, session, request, digest, refusal, 'register', attempted, kept);

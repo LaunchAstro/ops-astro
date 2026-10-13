@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the restore drill's sign-in: once the operator's login has a verified authenticator the operator gate refuses a password-only token and admits the stepped-up token cli login --second-factor saved"
+}

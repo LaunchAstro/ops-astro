@@ -1,20 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What the model agent shows while Ollama writes: display words only, read
-// from the whole local stream by the Ollama adapter (`ollamaPieces`: whole
-// lines, a leading thinking block never shown), sent as numbered pieces from
-// 0 at most every PIECE_EVERY_MS, and `working` every WORKING_EVERY_MS while
-// no words come (a cold model load).
+// What the model agent shows while a model writes: display words only, sent
+// as numbered pieces from 0 at most every PIECE_EVERY_MS, and `working` every
+// WORKING_EVERY_MS while no words come (a cold model load). Ollama's are read
+// from the whole local stream by its adapter (`ollamaPieces`: whole lines, a
+// leading thinking block never shown). OpenRouter's come from custody already
+// decoded and redacted (`stream-decode.ts`), and pass as they are.
 
-import { ollamaPieces } from '../../packages/core-connectors/src/index.ts';
+import {
+  ollamaPieces,
+  OPENROUTER_CONVERSATION,
+  openrouterPieces,
+} from '../../packages/core-connectors/src/index.ts';
 import { PIECE_EVERY_MS, WORKING_EVERY_MS } from '../../packages/core-custody/src/agent.ts';
 
-/** Pieces of display words, at most every PIECE_EVERY_MS, and `working` while none come. */
+/** Pieces of display words for a request to `destination`, at most every PIECE_EVERY_MS, and `working` while none come. */
 export function piecesFor(
+  destination: string,
   now: () => number,
   say: (event: 'piece' | 'working', body: unknown, seq?: number) => void,
 ): { push(chunk: string): void; end(): void } {
-  const reader = ollamaPieces();
+  const reader =
+    destination === OPENROUTER_CONVERSATION.destination ? openrouterPieces() : ollamaPieces();
   let waiting = '';
   let seq = 0;
   let said = now();

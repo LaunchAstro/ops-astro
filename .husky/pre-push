@@ -12,7 +12,8 @@
 # Exit codes from the scanner:
 #   0  clean
 #   1  contamination found          -> refuse the push
-#   2  the private list is absent   -> only acceptable for the literal sweep
+#   2  the private list is absent   -> refuse the push (only the literal
+#                                      sweep exits 2; any other step is broken)
 #   3  the gate is broken           -> refuse the push, always
 #
 # HUB_GATE_CMD exists so tests/gate/hook-exit-cases.sh can substitute a stub
@@ -275,15 +276,15 @@ scan() {
     done
   fi
 
-  # 4. The maintainer-only literal sweep. It needs the clear-text list, which
-  #    lives outside git on a maintainer machine. Exit 2 there means it did
-  #    not run, and that is allowed to pass: the hashed gate and the shape
-  #    rules have already run above, and gitleaks runs in continuous
-  #    integration. It reads the same revisions, not a different selection:
-  #    giving --literal nothing sent it to every outgoing branch, so a
-  #    contaminated backup branch could block a clean push of main and the
-  #    two scanners could disagree about what was being published. Round
-  #    four found it.
+  # 4. The literal sweep. It needs the clear-text list, which lives outside
+  #    git, named by HUB_GATE_TERMS. Exit 2 there means it did not run, and a
+  #    push is refused rather than published with that step skipped: the
+  #    message names the setting, never the list or its path. HUSKY=0 still
+  #    skips every hook, deliberately. It reads the same revisions, not a
+  #    different selection: giving --literal nothing sent it to every
+  #    outgoing branch, so a contaminated backup branch could block a clean
+  #    push of main and the two scanners could disagree about what was being
+  #    published. Round four found it.
   # shellcheck disable=SC2086
   run_gate --literal $range
   case "$status" in
@@ -293,9 +294,10 @@ scan() {
       exit 1
       ;;
     2)
-      echo "pre-push: the literal sweep did not run on this machine: the private"
-      echo "pre-push: list is not here. Continuing. The hashed gate and the shape"
-      echo "pre-push: rules have already run, and gitleaks runs in CI."
+      echo "pre-push: the literal sweep did not run: HUB_GATE_TERMS does not name"
+      echo "pre-push: a readable private list on this machine. Set it to the list's"
+      echo "pre-push: path and push again. Refusing the push."
+      exit 1
       ;;
     *)
       echo "pre-push: the literal sweep reported the gate is broken (exit $status)."
