@@ -52,3 +52,23 @@ export async function bindSites(
     await bindPartySite(tx, site(beta.betaParty, 'beta', about), beta.eve.actorId);
   });
 }
+
+/**
+ * Each business's live-correction approver, set as the owner: a request is
+ * refused while none is set. Alpha's is ben; beta's is eve, its one member,
+ * so her request is stored and nobody there approves. A case about an unset
+ * approver unsets it itself.
+ */
+export async function nameApprovers(
+  world: AgentWorld,
+  ...named: readonly (readonly [string, Member])[]
+): Promise<void> {
+  for (const [business, member] of named) {
+    // oxlint-disable-next-line no-await-in-loop -- setup, one business after another
+    await world.db.admin.execute(
+      `update public.business_settings set value = to_jsonb($2::text)
+        where business_id = $1 and key = 'live_correction_approver'`,
+      [business, member.personId],
+    );
+  }
+}
