@@ -7,6 +7,7 @@
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { MANDATE_GRANTS, OCCURRENCE_ROLE, PART_UPDATES } from './restricted-calls-cases.ts';
+import { RESET_GRANTS, RESET_UPDATES } from './restricted-calls-reset.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
@@ -21,15 +22,9 @@ const COLUMN_UPDATES: readonly {
   readonly columns: readonly string[];
 }[] = [
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
-  // C40B: a reset token is spent by `spent_at` alone, until the table is dropped.
-  {
-    table: 'public.password_reset_tokens',
-    from: '20261005144947',
-    until: '20261013060059',
-    columns: ['spent_at'],
-  },
   // C39-T: an enrolment token is spent by `spent_at` alone.
   { table: 'public.enrolment_tokens', from: '20261013053949', columns: ['spent_at'] },
+  ...RESET_UPDATES,
   // C33: an activation's setting, pin and switch, each change by a person.
   {
     table: 'public.activations',
@@ -147,32 +142,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
-  // C40 (20261005144947): a reset in flight; the application opens one and settles it.
-  ...[
-    ['INSERT', 'id'],
-    ['INSERT', 'subject_digest'],
-    ['SELECT', 'id'],
-    ['SELECT', 'open_until'],
-    ['SELECT', 'settled_at'],
-    ['SELECT', 'subject_digest'],
-    ['UPDATE', 'settled_at'],
-  ].map(([act, column]) => ({
-    from: '20261005144947',
-    line: `ops_astro_app ${act} ops.subject_resets.${column}`,
-  })),
-  // 20261013060059: a recovery session's window; the application opens one and settles it.
-  ...[
-    ['INSERT', 'reset_id'],
-    ['INSERT', 'session_digest'],
-    ['SELECT', 'opened_at'],
-    ['SELECT', 'reset_id'],
-    ['SELECT', 'session_digest'],
-    ['SELECT', 'settled_at'],
-    ['UPDATE', 'settled_at'],
-  ].map(([act, column]) => ({
-    from: '20261013060059',
-    line: `ops_astro_app ${act} ops.recovery_resets.${column}`,
-  })),
+  ...RESET_GRANTS,
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).

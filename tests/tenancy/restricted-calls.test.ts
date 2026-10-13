@@ -29,7 +29,6 @@ import {
   BROKER_ROLE,
   OCCURRENCE_ROLE,
   APPLICATION_GRANTS,
-  FULL_SCHEMA_TABLES,
   classify,
   describeOutcome,
   type Outcome,
@@ -58,6 +57,7 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { DROPPED_TABLES } from './restricted-calls-reset.ts';
 import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
 import { describeLiveCorrectionLowsRoundTwo } from '../site/live-correction-lows-2.ts';
 import { describeLiveCorrectionSolRoundOne } from '../site/live-correction-lows-sol.ts';
@@ -812,7 +812,12 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         .filter((name) => name.endsWith('.sql'))
         .toSorted(),
     );
-    expect(tables.map((table) => table.qualified)).toStrictEqual(FULL_SCHEMA_TABLES);
+    // Every table the contract names, less those a later migration dropped.
+    expect(tables.map((table) => table.qualified)).toStrictEqual(
+      Object.keys(APPLICATION_GRANTS)
+        .filter((table) => DROPPED_TABLES[table] === undefined)
+        .toSorted(),
+    );
     expect(tables.filter((table) => table.kind !== 'r')).toStrictEqual([]);
     for (const table of tables.filter((each) => each.tenant)) {
       expect({ table: table.qualified, forced: table.forced }).toStrictEqual({
