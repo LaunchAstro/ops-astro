@@ -110,7 +110,8 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, a s
     expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'accepted' });
     served = true;
     expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect([ports.seen.dispatched.length, asked]).toEqual([1, ['dep-2', 'dep-2']]);
+    // Not served yet on the first run; read before and after the capture on the second.
+    expect([ports.seen.dispatched.length, asked]).toEqual([1, ['dep-2', 'dep-2', 'dep-2']]);
     expect((await entries(id)).length).toBe(1);
   });
 });

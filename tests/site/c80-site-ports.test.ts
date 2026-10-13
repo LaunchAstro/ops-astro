@@ -61,6 +61,11 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
       WRITE,
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee02&target=production&limit=1',
       'GET /v13/deployments/dpl_merged',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
+      'GET /v13/deployments/dpl_merged',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
     ]);
     expect(site.state.content).toBe(AFTER);
     site.sent.length = 0;
@@ -71,6 +76,11 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
       'PUT /repos/agency/site/contents/src/pages/about.md',
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee03&target=production&limit=1',
       'GET /v13/deployments/dpl_reverted',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
+      'GET /v13/deployments/dpl_reverted',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
     ]);
     expect(site.state.content).toBe(BEFORE);
   });
