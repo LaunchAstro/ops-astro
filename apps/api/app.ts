@@ -405,7 +405,11 @@ export function createApi(options: ApiOptions): Hono {
         const admitted = await admit(options, context, entry, true, quota);
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
-        const outcome = outcomeOf(context, declaration);
+        const sent = admitted instanceof Response ? undefined : admitted.body['operationId'];
+        const outcome = {
+          ...outcomeOf(context, declaration),
+          ...(typeof sent === 'string' ? { operationId: sent } : {}),
+        };
         const tried = (context as Context).get(NO_CREDENTIAL) !== true;
         const signal = options.observe && tried && signalOf(outcome);
         if (signal) options.observe?.(signal);

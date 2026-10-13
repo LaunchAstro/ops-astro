@@ -341,10 +341,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // AW-07b: the provider's delivery and bounce events, verified by signature,
   // as system work with no sign-in (`mail-hook.ts`).
-  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // A refused signature on either hook feeds the security detections, as an API answer does.
+  const observe = config.alerts === undefined ? {} : { observe: config.alerts.observe };
+  if (config.mailHook !== undefined) {
+    mountMailHook(server, database, { ...config.mailHook, ...observe });
+  }
   // C39-T: the login provider's Auth mail, handed to the broker's send (`auth-email-hook.ts`).
   if (config.authEmailHook !== undefined) {
-    mountAuthEmailHook(server, database, config.authEmailHook);
+    mountAuthEmailHook(server, database, { ...config.authEmailHook, ...observe });
   }
   // C40: a reset token's password set, mounted when given; `main()` does not yet.
   if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
