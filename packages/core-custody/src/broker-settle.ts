@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Step 4 of a model call (AW-01): what custody's outcome means, and the
-// settlement under the six facts' locks with its audit event. A call closes
-// once: settled or released, by a provider's proof, a person or its own
-// answer, it ignores a later answer and gives nothing back again. A hold moves
-// it only out of an open state (`reserved`, `dispatched`); an answer may also
-// settle or release one the sweep held, since the answer is what happened, and
-// gives back what a top-up or a stop counted of it, as an open call's does.
+// Step 4 of a model call (AW-01): what custody's outcome means, and the settlement under the six
+// facts' locks with its audit event. A call closes once: settled or released, by a provider's
+// proof, a person or its own answer, it ignores a later answer and gives nothing back again. A
+// hold moves it only out of an open state (`reserved`, `dispatched`); an answer may also settle
+// or release one the sweep held, since the answer is what happened, and gives back what a top-up
+// or a stop counted of it, as an open call's does.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import {
@@ -63,7 +62,6 @@ export function settlementOf(
 ): Settlement {
   if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
   if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
-  // A withheld outcome comes only from a site template route.
   if (outcome.kind === 'withheld') return { kind: 'unknown', ...MALFORMED };
   if (!outcome.outbound.ok) {
     const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
