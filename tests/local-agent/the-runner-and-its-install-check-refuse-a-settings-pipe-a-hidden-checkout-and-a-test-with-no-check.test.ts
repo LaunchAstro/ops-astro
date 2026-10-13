@@ -51,6 +51,7 @@ test('a settings FIFO is refused without blocking runner startup', () => {
   }
 });
 
+// eslint-disable-next-line max-lines-per-function -- one case, kept whole as first written
 test('an ancestor symlink cannot hide the git checkout containing the runner home', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'linked-home-')));
   try {
@@ -114,6 +115,7 @@ test('an ancestor symlink cannot hide the git checkout containing the runner hom
 test(
   'the custody refusal test fails when the install checker never runs',
   { timeout: 30_000 },
+  // eslint-disable-next-line max-lines-per-function -- one case, kept whole as first written
   () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'no-check-')));
     try {
