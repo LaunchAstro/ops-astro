@@ -2,14 +2,11 @@
 //
 // A model's reply that fails part way through being kept, its transaction
 // rolled back or the process serving it dead with its connection, keeps
-// nothing. The message keeps its one model call, so a retry is told the
-// answer is still on its way and the model is not asked a second time.
-//
-// The gap this leaves, held on purpose: the lost reply is not recovered. The
-// retry gets no reply, and none is kept, until the person sends the message
-// again. Recovering it safely needs the retry to tell a failed keep from one
-// still in progress, which is open work. A conversation whose task was purged
-// sends nothing from before the purge.
+// nothing. The message has its one call: asked again, it is answered from that
+// call's ending, the model not asked again and nothing kept. Sent again, a new
+// message, the reply is kept once, in the epoch of the conversation's row it
+// held, and asked once more it is answered from what was kept. A conversation
+// whose task was purged sends that reply later, and nothing from before the purge.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -102,7 +99,7 @@ describe.skipIf(serverUrl === undefined)('a reply that fails part way', () => {
   it.each(
     STEPS.flatMap(([step, marker]) => FAILURES.map((failure) => [step, failure, marker] as const)),
   )(
-    'a reply failing after %s, %s, keeps nothing, and its retry asks the model no second time and does not recover the lost reply',
+    'a reply failing after %s, %s, keeps nothing; asked again it asks nothing, and sent again it is kept once in the current epoch',
     async (_step, failure, marker) => {
       const { o, messageId } = await questionAfterPurge();
       const asked = { conversationId: o.conversationId, messageId };
@@ -110,13 +107,32 @@ describe.skipIf(serverUrl === undefined)('a reply that fails part way', () => {
       const before = await epochsOf(c.fixture, o.conversationId);
       expect(before.epoch).toBe(1);
       expect(before.messages.filter((m) => m.answers === messageId)).toEqual([]);
-      const seen = c.model.provider.seen.length;
+      const asking = c.model.provider.seen.length;
       const retried = await exchanged(asked);
       expect(retried).toMatchObject({ answered: false, code: 'STILL_ANSWERING' });
+      expect(c.model.provider.seen).toHaveLength(asking);
+      const resent = await ownerOn(c, c.unanswered, 'conversation.message', {
+        operationId: randomUUID(),
+        conversationId: o.conversationId,
+        body: `again-${randomUUID()}`,
+      });
+      const again = {
+        conversationId: o.conversationId,
+        messageId: String(detail(resent)['messageId']),
+      };
+      const first = await exchanged(again);
+      expect(first).toMatchObject({ answered: true });
+      const seen = c.model.provider.seen.length;
+      expect(await exchanged(again)).toEqual(first);
       expect(c.model.provider.seen).toHaveLength(seen);
       const after = await epochsOf(c.fixture, o.conversationId);
       expect(after.messages.filter((m) => m.answers === messageId)).toEqual([]);
-      expect(await sentForNext(c, o.conversationId)).not.toContain(o.canary);
+      const replies = after.messages.filter((m) => m.answers === again.messageId);
+      expect(replies).toHaveLength(1);
+      expect(replies[0]?.epoch).toBe(1);
+      const sent = await sentForNext(c, o.conversationId);
+      expect(sent).toContain(replies[0]?.body);
+      expect(sent).not.toContain(o.canary);
     },
   );
 });
