@@ -151,46 +151,37 @@ export const taskBodyContext = (
     BodyContext,
     'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
   >
-> => ({
-  alphaTaskId: taskId,
-  adminPersonId: world.ada.personId as string,
+> => {
   // Asked for by a member of its own, holding the run:write the request rests on,
   // so the matrix's callers keep exactly their declared grants.
-  seedCorrection: async () =>
+  const asked = async () =>
     await seedLiveCorrection(
       world.db.app,
       world.alpha,
       taskId,
       await enrol(world.db.app, world.alpha, 'asker'),
       world.ada,
-    ),
-  seedLiveCorrection: async () => {
-    const seeded = await seedLiveCorrection(
-      world.db.app,
-      world.alpha,
-      taskId,
-      await enrol(world.db.app, world.alpha, 'asker'),
-      world.ada,
     );
-    await recordLive(world.db.admin, seeded.correctionId, world.ada);
-    return seeded;
-  },
-  bindClientSite: async (partyId) =>
-    await world.db.app.withBusiness(
-      world.alpha,
-      async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
-    ),
-});
+  return {
+    alphaTaskId: taskId,
+    adminPersonId: world.ada.personId as string,
+    seedCorrection: asked,
+    seedLiveCorrection: async () => {
+      const seeded = await asked();
+      await recordLive(world, seeded.correctionId);
+      return seeded;
+    },
+    bindClientSite: async (partyId) =>
+      await world.db.app.withBusiness(
+        world.alpha,
+        async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
+      ),
+  };
+};
 
-/**
- * A requested correction decided by `decider` and recorded live, as the owner: the runner's
- * observed publish, which no command writes.
- */
-async function recordLive(
-  admin: Pick<World['db']['admin'], 'execute'>,
-  correctionId: string,
-  decider: Seeder,
-): Promise<void> {
+/** A requested correction decided by `ada` and recorded live: the runner's publish, no command's. */
+async function recordLive(world: Pick<World, 'db' | 'ada'>, correctionId: string): Promise<void> {
+  const [admin, decider] = [world.db.admin, world.ada];
   await admin.execute(
     `update public.live_corrections
         set state = 'approved', decided_by_actor_id = $2, decided_by_person_id = $3,
