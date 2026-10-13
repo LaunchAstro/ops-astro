@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "one paid message on two API instances makes one call and one charge; a twin is told it is answering, an insert meeting the unique index holds nothing"
+}

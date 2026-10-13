@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an offer judgement that waits past a seal's life still hears, settles and keeps the carried answer"
+}

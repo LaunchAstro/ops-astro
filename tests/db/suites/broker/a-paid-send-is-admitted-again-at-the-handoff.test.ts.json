@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a grant revoked, session ended or conversation moved before the handoff admits nothing and frees the hold; a revocation after admission waits for custody; a held grant admits nothing"
+}

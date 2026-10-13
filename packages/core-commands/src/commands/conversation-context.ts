@@ -59,6 +59,8 @@ export interface Context {
   /** The extra prompt fields, in the order the model reads them; empty ones are left out. */
   readonly fields: readonly { readonly name: 'page' | 'earlier'; readonly value: string }[];
   readonly cites: readonly Cite[];
+  /** Who wrote each earlier person turn read: a paid call carries only the caller's own. */
+  readonly authors: readonly string[];
 }
 
 export const EARLIER_COUNT = 10;
@@ -93,11 +95,12 @@ const PAGE_REFUSALS: readonly PageRefusal[] = [
   'NOT_FOUND',
 ];
 
-/** The page task, held for share, if the caller may read it and it is no client's. */
-async function pageOf(
+/** The page task, held for share (no wait at a paid handoff), if readable and no client's. */
+export async function pageOf(
   tx: TenantQuery,
   session: Session,
   taskId: string,
+  lock: 'share' | 'share nowait' = 'share',
 ): Promise<PageRow | PageRefusal> {
   // Before the task is touched: a caller who may not read it neither waits on its writer nor reads it.
   if (!(await reads(tx, session, taskId))) return 'SCOPE_NOT_GRANTED';
@@ -106,7 +109,7 @@ async function pageOf(
     `select id, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
        from records
       where business_id = $1 and id = $2 and deleted_at is null
-      for share`,
+      for ${lock === 'share' ? 'share' : 'share nowait'}`,
     [tx.businessId, taskId],
   );
   if (task === undefined) return 'NOT_FOUND';
@@ -135,18 +138,19 @@ function earlierOf(
 
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
-const REFUSED: Context = { refused: true, fields: [], cites: [] };
+const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [] };
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
 
-/** Whether this message was ever refused for its page. */
+/** Whether this message was ever refused for its page, its ids in any case. */
 async function markedRefused(tx: TenantQuery, asked: Asked): Promise<boolean> {
   const [row] = await tx.query<{ readonly marked: boolean }>(
     `select exists (
        select 1 from audit_events
         where business_id = $1 and command = $2 and refusal_code = any($3::text[])
           and attempted ->> 'operation' = $4
-          and attempted ->> 'conversationId' = $5 and attempted ->> 'messageId' = $6) as marked`,
+          and lower(attempted ->> 'conversationId') = lower($5)
+          and lower(attempted ->> 'messageId') = lower($6)) as marked`,
     [
       tx.businessId,
       REFUSED_CALL,
@@ -226,13 +230,16 @@ export async function waitsFirst(
  * every message write takes. A reply counts only when its question does too,
  * so one kept after the purge to a question from before it is cut with it.
  */
-async function earlierRows(
-  tx: TenantQuery,
-  asked: Asked,
-): Promise<readonly { readonly role: string; readonly body: string }[]> {
-  return await tx.query<{ readonly role: string; readonly body: string }>(
-    `select role, body from (
-       select m.role, m.body, m.created_at, m.id
+interface EarlierRow {
+  readonly role: string;
+  readonly body: string;
+  readonly author: string;
+}
+
+async function earlierRows(tx: TenantQuery, asked: Asked): Promise<readonly EarlierRow[]> {
+  return await tx.query<EarlierRow>(
+    `select role, body, author from (
+       select m.role, m.body, m.created_at, m.id, m.author_actor_id::text as author
          from conversation_messages m
          join conversation_messages a
            on a.business_id = m.business_id and a.conversation_id = m.conversation_id
@@ -287,5 +294,6 @@ export async function contextOf(
   ]);
   const earlier = earlierOf(rows, around);
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
-  return { refused: false, fields, cites };
+  const authors = rows.filter((row) => row.role === 'person').map((row) => row.author);
+  return { refused: false, fields, cites, authors };
 }

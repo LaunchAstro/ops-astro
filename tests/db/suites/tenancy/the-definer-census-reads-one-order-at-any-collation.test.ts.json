@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the definer census reads the catalogue in one order whatever the collation"
+}

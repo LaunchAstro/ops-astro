@@ -125,4 +125,38 @@ export const EFFECT_ROWS = [
     meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
     source: 'AW-01, O6, O9',
   },
+  // #1531: one call per message, and calls carried to the model agent.
+  {
+    code: 'STILL_ANSWERING',
+    status: 409,
+    meaning: "The message's one model call is still with the model; its answer is on its way",
+    source: '#1531',
+  },
+  {
+    code: 'ANSWER_ENDED',
+    status: 409,
+    meaning: "The message's one model call ended with nothing kept; send the message again",
+    source: '#1531',
+  },
+  {
+    code: 'CARRIAGE_UNAVAILABLE',
+    status: 409,
+    meaning:
+      "The deployment's model agent is not a member of this conversation, so nothing was sent",
+    source: '#1531',
+  },
+  // #1508: the paid chat's held path.
+  {
+    code: 'PROMPT_TOO_LARGE',
+    status: 422,
+    meaning: "The paid model's request would be past its size limit, so nothing was held or sent",
+    source: '#1508',
+  },
+  {
+    code: 'CUSTODY_NOT_ADMITTED',
+    status: 409,
+    meaning:
+      'The paid send was no longer admitted at the handoff, so nothing was sent and the hold was freed',
+    source: '#1508',
+  },
 ] as const;

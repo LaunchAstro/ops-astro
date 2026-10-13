@@ -126,7 +126,7 @@ async function taskOnClient(key: string, title: string): Promise<string> {
 /** The canary in two records by the operator, every other item done, real, one item reopened. */
 async function shutTheGate(): Promise<void> {
   const lines = [
-    { item: 'tested-backups', evidence: `https://evidence.example/${CANARY}` },
+    { item: 'security-pass', evidence: `https://evidence.example/${CANARY}` },
     { ...gateRecordBody('training-line'), statement: `Training off, 2026-09-28, ${CANARY}.` },
   ];
   const answers = await Promise.all(lines.map(async (body) => await send(gate, RECORD, body)));

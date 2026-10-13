@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried answer keeps no chat text at rest, and the stored doorbells hold ids only"
+}

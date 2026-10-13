@@ -23,6 +23,32 @@ naming the repository to read. The hook sets `GIT_NO_REPLACE_OBJECTS`, so neithe
 pass what the pushed rules refuse, and a branch that changes a scanner is
 judged by its own version.
 
+A later push of a branch scans what the remote said it did not hold. A
+branch's first push scans every commit this machine's gate has not already
+passed. Nothing local proves what a receiver holds (a remote-tracking ref can
+be stale, and a rewritten URL or SSH command can reach another receiver), so
+the record is of scans, not of remotes: `gate-passed` in the repository's
+common Git directory, shared by every worktree and never fetched or pushed.
+Each line is a commit and the fingerprint of what judged it: the pushed
+commit's scanners and canaries, the hook, the checkout's gitleaks rules and
+ignore file, the paths and versions of the tools that run the scans, the
+`PATH` that finds every helper they call, and the private list and receipt. Only a pinned push narrows its range or adds to the
+record: no scanner override, no interpreter or Git start-up setting in the
+environment (`PYTHONPATH`, `NODE_OPTIONS`, `GIT_CONFIG_*` and the like), and a
+`.gitleaks.toml` that extends no other file, read by a TOML parser with keys
+matched as gitleaks matches them (any case, dots split), so no spelling of an
+extend path passes; a file the parser refuses is not pinned. Any other push
+scans everything reachable and records nothing. The hook adds a first push's commit only after
+every scan of it passes, and only if the fingerprint, read again then, is
+unchanged: a rule edited while the scans ran records nothing. A listed commit counts only under the fingerprint the
+new push would be judged by, and only if the pushed commit reaches it, so
+weaker scanners or a changed rule never vouch for history; a change of rules
+costs one full scan. A missing, unreadable, symlinked or malformed record
+means the full scan, as does a fresh clone. The hook reads no local grafts or
+replacements. The machine's own interpreters and their site files are
+trusted as the hook itself is. The range stays one
+`BASE..HEAD`, so scanners in a commit from before this rule still read it.
+
 These rules apply to all four:
 
 - **Path rules run first, on every path, with no exclusions.** A directory the
@@ -66,6 +92,9 @@ covered. Categories are `pii`, `provenance` and `infra`.
 **The maintainer layer is literal.** A maintainer may supply an external
 clear-text list through `HUB_GATE_TERMS`. Keep it outside the repository.
 It drives `--literal` at pre-push. When the file is absent the script says so and exits 2. It never pretends to have run.
+The pre-push hook refuses a push when that happens: its message names
+`HUB_GATE_TERMS`, never the list or its path. Every machine that pushes needs
+the list; `HUSKY=0` still skips every hook, deliberately.
 
 The historical approval checks give each Git read 120 seconds (`HUB_GATE_GIT_TIMEOUT` sets another bound). A read that runs over stops the sweep with exit 3 and says it timed out; it never passes.
 
@@ -182,7 +211,7 @@ blob. Approved selections require explicit commits or two-dot ranges, whose
 endpoints resolve to commits. Implicit or ambiguous selections fail closed. A tuple applies only when every inspected occurrence commit is an ancestor of the
 approved anchor. Later reuse of identical bytes, a new path, changed bytes or
 another term still fails. Path rules, unreadable content refusal, hashed/shape
-checks and full first-push history inspection remain unchanged. Invalid supplied
+checks and first-push inspection of every commit this machine has not passed remain unchanged. Invalid supplied
 approval data exits 3. An absent receipt enables no exception. Diagnostics count
 approved historical matches without printing the private receipt or term.
 

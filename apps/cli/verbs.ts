@@ -142,8 +142,9 @@ export const VERB_TABLE: readonly VerbRow[] = [
 /** The whole help, as an agent loads it: one line per verb. */
 export function verbHelp(): string {
   return [
-    'pnpm cli <verb> [args]. Writes print "ok <command> <id> r<revision>"; pass that revision',
-    'to the next write. Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
+    'ops-astro <verb> [args] (pnpm cli from a checkout). Writes print "ok <command> <id> r<revision>";',
+    'pass that revision to the next write.',
+    'Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
     'No answer or a fault prints the operationId; send the same line with --operation <id> to replay.',
     ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');

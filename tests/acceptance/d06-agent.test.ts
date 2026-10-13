@@ -135,11 +135,11 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       // A correction names its task's client (P26 low 4), so the agent picks
       // up a task the admin put under one, and names that client.
       await hold.release();
-      const { pickup, partyId } = await c80AgentPickup(harness);
+      const { pickup, partyId, pageUrl } = await c80AgentPickup(harness);
       expect(pickup.code, 'the pickup a correction is asked under').toBe('ok');
       hold.track(pickup);
       planOnly = true;
-      return c80AgentBody(operationId, await hold.ensureLive(), partyId);
+      return c80AgentBody(operationId, await hold.ensureLive(), { partyId, pageUrl });
     }
     // Every other cell holds a launched lease, so C80's pickup is given back first.
     if (planOnly) await hold.release();

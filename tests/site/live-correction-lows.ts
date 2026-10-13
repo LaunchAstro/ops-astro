@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { bindAboutPage } from './party-site-fixture.ts';
 import { addClient, enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -106,6 +107,7 @@ export async function file(taskId: string, partyId: string): Promise<unknown> {
   return await inBusiness(
     async (tx) =>
       await insertLiveCorrection(tx, {
+        pageUrl: await bindAboutPage(tx, partyId, requester.actorId),
         partyId,
         taskId,
         requestedByActorId: requester.actorId,
@@ -114,7 +116,6 @@ export async function file(taskId: string, partyId: string): Promise<unknown> {
         targetPath: 'src/pages/about.md',
         word: 'friendly',
         replacement: 'welcoming',
-        pageUrl: 'https://agency.example/about/',
         preImageDigest: 'sha256:pre',
         baseRevision: 'rev-1',
         seam: 'seam-p26',

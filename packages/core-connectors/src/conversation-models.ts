@@ -11,7 +11,10 @@
 // Only a model the server can vouch for is listed: the replay stand-in's one
 // model, the laptop runner's default, and the models Ollama runs on the M5. A
 // model the owner approves on the laptop is the runner's own business
-// (`apps/local-agent/gate.ts`), so it is never offered here.
+// (`apps/local-agent/gate.ts`), so it is never offered here. OpenRouter's paid
+// models (#1508) are listed for their provider, and offered only to a person
+// on the outside people list in a conversation with no client page; never the
+// default.
 
 import {
   LOCAL_GPT_CONVERSATION,
@@ -19,6 +22,12 @@ import {
   LOCAL_GPT_PROVIDER,
 } from './local-gpt.ts';
 import { OLLAMA_CONVERSATION, OLLAMA_MODELS, OLLAMA_PROVIDER } from './ollama.ts';
+import {
+  OPENROUTER_CONVERSATION_KEY,
+  OPENROUTER_MODELS,
+  OPENROUTER_PROVIDER,
+  openrouterHoldMinor,
+} from './openrouter.ts';
 import { CONVERSATION_ANSWER, REPLAY_MODEL_WINDOW } from './replay.ts';
 
 export interface ConversationModel {
@@ -32,6 +41,8 @@ export interface ConversationModel {
   readonly egressName: 'replay' | 'chatgpt' | null;
   /** The price-book entry: the most one call may cost, in AUD minor units. */
   readonly ceilingMinor: number;
+  /** The picker's words, where they are not the id. */
+  readonly label?: string;
 }
 
 export const CONVERSATION_MODELS: readonly ConversationModel[] = [
@@ -57,7 +68,34 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     egressName: null,
     ceilingMinor: OLLAMA_CONVERSATION.maximumMinor,
   })),
+  ...OPENROUTER_MODELS.map((model): ConversationModel => ({
+    id: model.id,
+    provider: OPENROUTER_PROVIDER,
+    reach: 'cloud',
+    egressName: null,
+    ceilingMinor: openrouterHoldMinor(model),
+    label: model.label,
+  })),
 ];
+
+/** The conversation operation a provider's models answer on: OpenRouter's own, else the install's. */
+export const conversationOperationOf = (provider: string): string =>
+  provider === OPENROUTER_PROVIDER ? OPENROUTER_CONVERSATION_KEY : CONVERSATION_ANSWER.key;
+
+/**
+ * `OPS_OUTSIDE_MODEL_PEOPLE` as `businessId:personId` pairs, lower case, when
+ * `OPS_OUTSIDE_PROVIDER` is `openrouter`; otherwise nobody. The API's
+ * composition root refuses to start on a malformed list, so this never sees one.
+ */
+export function outsidePeopleOf(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  if (environment['OPS_OUTSIDE_PROVIDER'] !== OPENROUTER_PROVIDER) return [];
+  return (environment['OPS_OUTSIDE_MODEL_PEOPLE'] ?? '')
+    .split(',')
+    .map((pair) => pair.trim().toLowerCase())
+    .filter((pair) => pair !== '');
+}
 
 /** The models one provider's conversation operation runs, its default first. */
 export const conversationModelsOf = (provider: string): readonly ConversationModel[] =>

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent, a delegated session, unattended work, another person or another actor's words never send a paid call; refused before any row"
+}

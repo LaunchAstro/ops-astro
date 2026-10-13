@@ -1,7 +1,9 @@
+#!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable max-lines -- one process entry, read top to bottom */
 //
-// The runnable command line: `pnpm cli <operation> [flags]`.
+// The runnable command line: `pnpm cli <operation> [flags]`, or `ops-astro`
+// through a link on PATH (docs/local/CLI.md, "Installing").
 //
 // A process around `client.ts` and nothing more. It reads its configuration
 // from flags and the environment, posts one operation to the API over HTTP and
@@ -17,17 +19,7 @@
 // saved, so a terminal log or a shell history never holds it.
 
 import { randomUUID } from 'node:crypto';
-import {
-  accessSync,
-  chmodSync,
-  constants,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
 import { withProviderKey } from '../web/src/session/provider-key.ts';
@@ -39,6 +31,7 @@ import {
   isRefusal,
   isWrite,
   shownAddress,
+  statusWatched,
   unknownVerb,
   unredirected,
   usage,
@@ -47,6 +40,16 @@ import {
 import { handoffOf } from '../../packages/core-wire/src/index.ts';
 import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
 import { createVerbCli, VERB_TABLE } from './verbs.ts';
+import { stepUp } from './second-factor.ts';
+import {
+  beginSave,
+  CredentialsBusy,
+  readOptional,
+  removeIfHolds,
+  saveUnlessSignedOut,
+  signOut,
+} from './credentials.ts';
+import { presetOf, signInAddress, type Preset } from './presets.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -72,8 +75,8 @@ interface Parsed {
 }
 
 /** Flags that take a value; every other `--name` is a switch. */
-const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web']);
-const SWITCHES = new Set(['help', 'agent']);
+const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web', 'env']);
+const SWITCHES = new Set(['help', 'agent', 'second-factor']);
 
 class UsageError extends Error {}
 
@@ -108,20 +111,36 @@ function text(flags: Parsed['flags'], name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function readOptional(file: string): string | undefined {
-  try {
-    const value = readFileSync(file, 'utf8').trim();
-    return value === '' ? undefined : value;
-  } catch {
-    return undefined;
-  }
+/** Where one run talks to and keeps its credentials: a preset's, or the hand-set and default ones. */
+interface Connection {
+  readonly preset: Preset | undefined;
+  readonly api: string;
+  readonly web: string;
+  readonly tokenFile: string;
+  readonly delegationFile: string;
 }
 
-/** Written readable by the owner only, as a credential file should be. */
-function writeSecret(file: string, value: string): void {
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${value}\n`, { mode: 0o600 });
-  chmodSync(file, 0o600);
+/**
+ * The run's connection. Under a preset each credential file name gets the
+ * preset's name appended, so a bearer signed in for one origin is never read
+ * for another's (`designs/on-cli-rules.md`).
+ */
+function connectionOf(flags: Parsed['flags'], env: Environment): Connection {
+  let preset: Preset | undefined;
+  try {
+    preset = presetOf(flags, env);
+  } catch (cause) {
+    throw new UsageError((cause as Error).message);
+  }
+  const suffix = preset === undefined ? '' : `.${preset.name}`;
+  const api = preset?.origin ?? text(flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api;
+  return {
+    preset,
+    api: api.replace(/\/$/u, ''),
+    web: preset?.origin ?? text(flags, 'web') ?? env['OPS_ASTRO_WEB_URL'] ?? DEFAULT_WEB,
+    tokenFile: `${env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile}${suffix}`,
+    delegationFile: `${env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile}${suffix}`,
+  };
 }
 
 /**
@@ -174,15 +193,20 @@ function body(flags: Parsed['flags']): Record<string, unknown> {
 }
 
 const HELP = [
-  'usage: pnpm cli <operation> [--json <object> | --body-file <path>] [--business <key>]',
-  '                               [--api <url>] [--agent]',
-  '       pnpm cli <visual operation> [--json <object>] [--web <app origin>]',
-  '       pnpm cli login --email <address> [--gotrue <url>]   (password from',
-  '                               OPS_ASTRO_PASSWORD, the first line of piped stdin,',
-  '                               or a prompt with echo off at a terminal)',
-  '       pnpm cli logout',
+  'usage: ops-astro <operation> [--json <object> | --body-file <path>] [--business <key>]',
+  '         [--api <url>] [--agent]',
+  '       ops-astro <visual operation> [--json <object>] [--web <app origin>]',
+  '       ops-astro <operation> --env sandbox|production   (the hosted app: its API,',
+  '         pages and sign-in, in place of --api, --gotrue and --web; also login and logout)',
+  '       ops-astro login --email <address> [--gotrue <url>]   (password from',
+  '         OPS_ASTRO_PASSWORD, the first line of piped stdin,',
+  '         or a prompt with echo off at a terminal)',
+  '       ops-astro login --email <address> --second-factor   (then the authenticator',
+  '         code: the next stdin line, or a hidden prompt)',
+  '       ops-astro logout',
+  '       (from a checkout without the link, pnpm cli in place of ops-astro)',
   '',
-  'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
+  'environment: OPS_ASTRO_ENV, OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
   '             OPS_ASTRO_GOTRUE_URL, SUPABASE_PUBLISHABLE_KEY, OPS_ASTRO_AGENT=1,',
   '             OPS_ASTRO_DELEGATION, OPS_ASTRO_DELEGATION_FILE, OPS_ASTRO_WEB_URL',
   'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure,',
@@ -221,28 +245,109 @@ function redact(answer: CliAnswer, where: string): unknown {
 interface Io {
   readonly out: (line: string) => void;
   readonly err: (line: string) => void;
-  readonly stdin: () => Promise<string>;
+  /** Piped stdin whole, or at a terminal one answer typed after `label` with echo off. */
+  readonly stdin: (label?: string) => Promise<string>;
 }
 
-async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string) {
+/**
+ * The password, and with `--second-factor` the authenticator code, both read
+ * before anything is sent: from piped stdin's lines in that order (the code
+ * first when OPS_ASTRO_PASSWORD gives the password), or from two hidden
+ * prompts. The code never comes from a flag or the environment.
+ */
+async function secretsOf(env: Environment, io: Io, withCode: boolean) {
+  const given = env['OPS_ASTRO_PASSWORD'];
+  const typed = given === undefined || given === '' ? (await io.stdin('password')).split('\n') : [];
+  const password = (given === undefined || given === '' ? typed[0] : given) ?? '';
+  if (password === '') throw new UsageError('login needs a password on stdin');
+  if (!withCode) return { password, code: undefined };
+  const code =
+    (typed[1] ?? '').trim() || ((await io.stdin('authenticator code')).split('\n')[0] ?? '').trim();
+  if (code === '')
+    throw new UsageError('login --second-factor needs the authenticator code on stdin');
+  return { password, code };
+}
+
+/**
+ * A refused sign-in in the command line's own words. The service's own text
+ * can echo what was sent, the password or the key, so it is never printed.
+ */
+function loginFailure(status: number | undefined, service: string, keyless: boolean): string {
+  const at = `the sign-in service at ${service}`;
+  if (status === undefined) return `${at} did not answer`;
+  if (keyless && status === 401) return `${at} needs SUPABASE_PUBLISHABLE_KEY`;
+  if (status === 400 || status === 401) return 'the email or password was not accepted';
+  if (status >= 200 && status < 300) return `${at} gave no token`;
+  return `${at} refused (HTTP ${String(status)})`;
+}
+
+/** The sign-in service and its key: the preset's app names them, as it does for the web. */
+async function signInOf(
+  parsed: Parsed,
+  env: Environment,
+  preset: Preset | undefined,
+): Promise<{ readonly issuer: string; readonly key: string | undefined } | undefined> {
+  if (preset !== undefined) return await signInAddress(preset.origin);
+  return {
+    issuer: text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue,
+    key: env['SUPABASE_PUBLISHABLE_KEY'],
+  };
+}
+
+/** Where `--second-factor` sends its code: the run's own API, under the business named. */
+function stepUpRoute(
+  parsed: Parsed,
+  env: Environment,
+  connection: Connection,
+  code: string | undefined,
+): { readonly businessKey: string; readonly transport: ReturnType<typeof httpTransport> } {
+  const businessKey = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '';
+  if (code !== undefined && businessKey === '') {
+    throw new UsageError(
+      'login --second-factor needs the business: --business or OPS_ASTRO_BUSINESS',
+    );
+  }
+  return { businessKey, transport: httpTransport(connection.api) };
+}
+
+async function login(parsed: Parsed, env: Environment, io: Io, connection: Connection) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
-  const password = env['OPS_ASTRO_PASSWORD'] ?? (await io.stdin()).split('\n')[0] ?? '';
-  if (password === '') throw new UsageError('login needs a password on stdin');
-  const gotrueUrl = text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue;
+  const { password, code } = await secretsOf(env, io, parsed.flags['second-factor'] === true);
+  const { preset, tokenFile } = connection;
+  const route = stepUpRoute(parsed, env, connection, code);
   assertWritable(tokenFile, 'the login token');
-  // The web sign-in's own function: the same password grant, the same endpoint,
-  // and the hosted service's publishable key, added to calls under it only.
-  const key = env['SUPABASE_PUBLISHABLE_KEY'];
-  const fetch = withProviderKey(unredirected, gotrueUrl, key);
-  const result = await signIn({ gotrueUrl, email, password, fetch });
-  if (!result.ok) {
-    const hint = key ? '' : ' (a hosted sign-in service needs SUPABASE_PUBLISHABLE_KEY set)';
-    io.err(`login: ${result.because}${hint}`);
+  const epoch = beginSave(tokenFile);
+  const address = await signInOf(parsed, env, preset);
+  if (address === undefined) {
+    io.err(`login: could not read the sign-in address from ${preset?.origin ?? ''}`);
     return EXIT.refused;
   }
+  const { issuer: gotrueUrl, key } = address;
+  // The web sign-in's own function: the same password grant, the same endpoint,
+  // and the hosted service's publishable key, added to calls under it only.
+  const watched = statusWatched(withProviderKey(unredirected, gotrueUrl, key));
+  const result = await signIn({ gotrueUrl, email, password, fetch: watched.send });
+  if (!result.ok) {
+    const keyless = preset === undefined && key === undefined;
+    io.err(`login: ${loginFailure(watched.status(), shownAddress(gotrueUrl), keyless)}`);
+    return EXIT.refused;
+  }
+  let token = result.token;
+  if (code !== undefined) {
+    // The password-only token goes no further than this step: never saved or printed.
+    const stepped = await stepUp(route, token, code);
+    if (!stepped.ok) {
+      io.err(`login: the authenticator code was not accepted: ${stepped.because}`);
+      return EXIT.refused;
+    }
+    token = stepped.token;
+  }
   try {
-    writeSecret(tokenFile, result.token);
+    if (!saveUnlessSignedOut(tokenFile, epoch, tokenFile, token)) {
+      io.err('login: signed out while signing in; nothing saved');
+      return EXIT.refused;
+    }
   } catch (cause) {
     // The token is never printed; signing in again issues another.
     io.err(
@@ -319,30 +424,28 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     }
     return EXIT.ok;
   }
-  const tokenFile = env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile;
-  const delegationFile = env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile;
 
   try {
     if (extra.length > 0) throw new UsageError(`unexpected argument ${extra[0] as string}`);
-    if (verb === 'login') return await login(parsed, env, io, tokenFile);
+    if (verb === 'login') return await login(parsed, env, io, connectionOf(parsed.flags, env));
     if (verb === 'logout') {
-      let removed = true;
-      for (const file of [tokenFile, delegationFile]) {
-        try {
-          rmSync(file, { force: true });
-        } catch (cause) {
-          io.err(`cli: logout could not remove ${file}: ${(cause as Error).message}`);
-          removed = false;
-        }
+      const { tokenFile, delegationFile } = connectionOf(parsed.flags, env);
+      let failed: readonly string[];
+      try {
+        failed = signOut(tokenFile, [tokenFile, delegationFile]);
+      } catch (cause) {
+        if (cause instanceof CredentialsBusy) throw cause;
+        failed = [`${tokenFile}: ${(cause as Error).message}`];
       }
-      if (!removed) return EXIT.fault;
+      for (const one of failed) io.err(`cli: logout could not remove ${one}`);
+      if (failed.length > 0) return EXIT.fault;
       io.out(JSON.stringify({ ok: true }));
       return EXIT.ok;
     }
     // AW-09: a visual operation's answer is the app's page, and nothing is sent.
     const handoff = handoffOf(verb);
     if (handoff !== undefined) {
-      const web = text(parsed.flags, 'web') ?? env['OPS_ASTRO_WEB_URL'] ?? DEFAULT_WEB;
+      const { web } = connectionOf(parsed.flags, env);
       const handed = handOff(handoff, body(parsed.flags), web);
       io.out(handed.line);
       return handed.exit;
@@ -354,6 +457,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     }
 
     const payload = body(parsed.flags);
+    const { api, tokenFile, delegationFile } = connectionOf(parsed.flags, env);
     const businessKey = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
     if (businessKey === undefined || businessKey === '') {
       throw new UsageError('name the business with --business or OPS_ASTRO_BUSINESS');
@@ -366,13 +470,10 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const delegation = agent
       ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
       : undefined;
-    if (agent && (verb === 'task.pickup' || verb === 'run.delegate_child')) {
-      assertWritable(delegationFile, `${verb}'s credential`);
-    }
-    const api = (text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
-      /\/$/u,
-      '',
-    );
+    const saves = agent && (verb === 'task.pickup' || verb === 'run.delegate_child');
+    if (saves) assertWritable(delegationFile, `${verb}'s credential`);
+    // A logout that completes while this waits for its answer wins (`credentials.ts`).
+    const epoch = saves ? beginSave(tokenFile) : '';
     // A write replays by its operation id. One is supplied when the caller did
     // not bring one; a caller retrying a write passes its own to get the replay.
     // A person's read carries none: it has nothing to replay, and the registry's
@@ -411,7 +512,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const picked = agent && verb === 'task.pickup' && ok ? pickedUpCredential(answer) : undefined;
     if (picked !== undefined) {
       try {
-        writeSecret(delegationFile, picked);
+        if (!saveUnlessSignedOut(tokenFile, epoch, delegationFile, picked)) {
+          io.err('cli: signed out while picking up; nothing saved');
+          io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+          return EXIT.fault;
+        }
       } catch (cause) {
         // The claim committed and only this machine failed, so this is not a
         // refusal. The credential is never printed; a replay returns it.
@@ -431,7 +536,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     if (handed !== undefined) {
       const file = `${delegationFile}.child-${handed.child}`;
       try {
-        writeSecret(file, handed.credential);
+        if (!saveUnlessSignedOut(tokenFile, epoch, file, handed.credential)) {
+          io.err('cli: signed out while handing over; nothing saved');
+          io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+          return EXIT.fault;
+        }
       } catch (cause) {
         io.err(
           `cli: hand-over applied but its helper's credential could not be saved to ${file}: ` +
@@ -447,9 +556,10 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     // replayed from the environment leaves a newer saved credential alone.
     const spent = agent && verb === 'task.handback' && ok ? delegation : undefined;
     io.out(answer.body === undefined ? (answer.text ?? '') : JSON.stringify(answer.body));
-    if (spent !== undefined && readOptional(delegationFile) === spent) {
+    if (spent !== undefined) {
       try {
-        rmSync(delegationFile, { force: true });
+        // Compared and removed under the lock a pickup saves under.
+        removeIfHolds(tokenFile, delegationFile, spent);
       } catch (cause) {
         // The handback committed; a replay with its id removes the file.
         io.err(
@@ -465,7 +575,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     replayHint();
     return EXIT.fault;
   } catch (cause) {
-    if (!(cause instanceof UsageError)) throw cause;
+    if (!(cause instanceof UsageError || cause instanceof CredentialsBusy)) throw cause;
     io.err(`cli: ${cause.message}`);
     return EXIT.usage;
   }
@@ -476,11 +586,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
  * screen; the answer ends at Enter. Ctrl-C or Ctrl-D before Enter gives
  * nothing, and `login` then refuses with exit 2.
  */
-async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
+async function promptHidden(input: NodeJS.ReadStream, label: string): Promise<string> {
   // Echo goes off before the prompt shows, so nothing typed after it is echoed.
   input.setRawMode(true);
   input.setEncoding('utf8');
-  process.stderr.write('password: ');
+  process.stderr.write(`${label}: `);
   try {
     return await new Promise<string>((resolve) => {
       let typed = '';
@@ -496,6 +606,8 @@ async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
       };
       input.on('data', onData);
       input.once('end', () => resolve(''));
+      // An earlier prompt left the terminal paused; a new listener alone does not take it up again.
+      input.resume();
     });
   } finally {
     input.setRawMode(false);
@@ -504,8 +616,8 @@ async function promptHidden(input: NodeJS.ReadStream): Promise<string> {
   }
 }
 
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return await promptHidden(process.stdin);
+async function readStdin(label = 'password'): Promise<string> {
+  if (process.stdin.isTTY) return await promptHidden(process.stdin, label);
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');

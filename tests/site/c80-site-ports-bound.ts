@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { ABOUT, AFTER, BEFORE, PAGE } from './c80-world.ts';
+import { B_FILE, B_PAGE } from './c80-sites.ts';
 import { doubles } from './c80-runner-doubles.ts';
 import { HEAD, PROJECT, REPOSITORY, provider, type Provider } from './c80-site-provider.ts';
 import { siteRunnerPorts, type RunnerPorts } from '../../packages/core-commands/src/index.ts';
@@ -12,10 +13,9 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import { w } from './c80-register-world.ts';
 
+export { B_FILE, B_PAGE };
+
 export const OTHER_SEAM = 'seam-00000000-0000-4000-8000-000000000000';
-/** Party B's catalogued page and its source file: on B's site, never A's. */
-export const B_PAGE = 'https://client-b.example/team/';
-export const B_FILE = 'src/pages/team.md';
 
 /** Party A's site: the About page and its file, on the double's providers. */
 const siteOf = (partyId: string): PartySite => ({
@@ -102,6 +102,8 @@ interface Given {
   readonly approved?: SiteBinding['change'];
   /** Bytes the binding holds in place of the approved ones. */
   readonly change?: SiteBinding['change'];
+  /** What the providers do while the page is being captured. */
+  readonly onCapture?: (site: Provider) => void;
 }
 
 /** The providers holding this correction's proposal, its page served from the site file. */
@@ -124,6 +126,7 @@ export async function bound(id: string, given: Given = {}): Promise<Bound> {
   let clock = 5_000;
   const served: Transport = (request) => {
     captured.push(request.url.href);
+    given.onCapture?.(site);
     return Promise.resolve({
       kind: 'answer',
       status,

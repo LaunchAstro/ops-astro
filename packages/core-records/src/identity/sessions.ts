@@ -38,7 +38,7 @@ export interface SeenSession {
  * token whose session is named there, in every business. Asking again changes
  * nothing.
  */
-const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
+export const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
   select ids.id from unnest($1::uuid[]) as ids (id) order by ids.id
   on conflict (session_id) do nothing`;
 
@@ -218,20 +218,7 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
   // shares the settle's second; a failed one ends the login to the instant
   // plus the skew minute, as every ending does.
   const [row] = await tx.query<{ readonly ended: boolean; readonly open: boolean }>(
-    `with reset as (
-       select (to_timestamp($3::bigint) <= r.open_until and r.settled_at is null) as open,
-              to_timestamp($3::bigint + 1) <= r.settled_at as settled
-         from ops.subject_resets r
-        where r.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex'))
-     select exists (
-       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
-     ) or exists (
-       select 1 from ops.ended_subject_sessions s
-        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
-          and s.kept_session is distinct from $1::uuid
-          and to_timestamp($3::bigint) <= s.ended_before + make_interval(secs => $4)
-     ) or exists (select 1 from reset where open or settled) as ended,
-     exists (select 1 from reset where open) as open`,
+    `select ended, open from ops.session_ended($1::uuid, $2, $3, $4)`,
     [
       presented.sessionId,
       presented.subject,

@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import type { C80Seeds } from './c80-seeds.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -80,15 +81,13 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext {
+export interface BodyContext extends C80Seeds {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   /** The admin the positive calls run as: C80's configured approver, where a harness has one. */
   readonly adminPersonId?: string;
-  /** A live correction another member requested, for C80's approval (never the admin's own). */
-  seedCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
   asAgent?(
@@ -118,7 +117,7 @@ export interface BodyContext {
   clearGateItem?(item: string): Promise<void>;
   /** S0-5: the installation back on made-up data, so each change to real is a real change. */
   madeUpInstallation?(): Promise<void>;
-  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  /** S0-5, C81: every gate item's evidence, items 3 to 6's links answered (`gateEvidence`). */
   legalEvidence?(): Promise<Readonly<Record<string, string>>>;
   /** MP-14-7a: a broken connection to repair, owner-written. */
   brokenConnection?(): Promise<string>;

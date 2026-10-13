@@ -19,13 +19,15 @@ import { ci, ISOLATION_COUNT, LOCAL_COUNT } from './ci-shards.fixture.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-// Each collection case spawns `vitest list` once whole and once per part, each spawn capped at
-// LIST_CAP_MS, so the case's own limit covers every spawn of the most-split suite: a busy shard
-// slows each spawn, and one limit for all of them timed out first (run 38254689100).
-const LIST_CAP_MS = 60_000;
-const MOST_PARTS = Math.max(
-  ...Object.values(readPlan(join(root, 'tests/db/shard-plan.json')).parts),
-);
+// Each collection case runs one `vitest list` that collects the suite whole and once per
+// configured part, each as a project of its own with that part's SUITE_PART. A spawn per part
+// started vitest and collected the suite cold 19 times in a row for d06-generated: 99 s of a
+// local checks shard (run 38339066032), past 120 s on a busy one (run 38254689100). The one
+// spawn takes about 4 s alone and 45 s beside 8 other runs and 4 busy cores; its limit is
+// about five times that.
+const LIST_CAP_MS = 240_000;
+/** The database shards CI runs: the matrix, not a number written here. */
+const DB_COUNT: number = ci.jobs['database-shard']?.strategy?.matrix?.shard?.length ?? 0;
 
 it('partition proofs exercise the shard counts CI actually runs', () => {
   expect(
@@ -74,7 +76,8 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
     const manifest = readNamedSuites(dir);
     const items = planItems([...manifest.invariant, ...manifest.conformance], plan.parts);
     const weight = shardWeight(seconds);
-    const loads = assignShards(items, seconds, 30).map((shard) =>
+    expect(DB_COUNT).toBeGreaterThan(1);
+    const loads = assignShards(items, seconds, DB_COUNT).map((shard) =>
       shard.reduce((sum, item) => sum + weight(item), 0),
     );
     expect(Math.min(...loads)).toBeGreaterThan(35 * 60);
@@ -93,7 +96,9 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
     );
     const output = `${run.stdout}\n${run.stderr}`;
     expect(run.error, output).toBeUndefined();
-    expect(output).toContain('the run is split 30 ways, each shard near its share');
+    expect(output).toContain(
+      `the run is split ${String(DB_COUNT)} ways, each shard near its share`,
+    );
     expect(
       run.status,
       `Every database shard weighs ${Math.min(...loads).toFixed(1)} to ${Math.max(...loads).toFixed(1)} seconds, but the PR's completion proof reported:\n${output}`,
@@ -105,73 +110,78 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
 
 it.each(['tests/acceptance/d06-agent.test.ts', 'tests/acceptance/d06-generated.test.ts'])(
   '%s registers every injection case once across its configured parts',
-  // eslint-disable-next-line max-lines-per-function -- a review proof, kept as written
+  // eslint-disable-next-line max-lines-per-function -- one spawn's config, run and check together
   (suite) => {
     const dir = mkdtempSync(join(tmpdir(), 'shard-times-collection-'));
     try {
+      const count = readPlan(join(root, 'tests/db/shard-plan.json')).parts[suite];
+      if (count === undefined) throw new Error(`${suite} has no configured parts`);
+      const parts = ['', ...Array.from({ length: count }, (_, i) => `${i + 1}/${count}`)];
       const config = join(dir, 'collection.config.mts');
       writeFileSync(
         config,
         `import base from ${JSON.stringify(join(root, 'vitest.config.ts'))};\n` +
-          'export default { ...base, test: { ...base.test, globalSetup: [] } };\n',
+          `const parts = ${JSON.stringify(parts)};\n` +
+          'export default { ...base, test: { ...base.test, globalSetup: [], projects: parts.map(' +
+          "(part) => ({ extends: true, test: { name: `part ${part || 'whole'}`, " +
+          'env: { SUITE_PART: part } } })) } };\n',
       );
-      const list = (part: string): string[] => {
-        const output = join(dir, 'list.json');
-        rmSync(output, { force: true });
-        const run = spawnSync(
-          process.execPath,
-          [
-            join(root, 'node_modules/vitest/vitest.mjs'),
-            'list',
-            '--config',
-            config,
-            '--no-staticParse',
-            `--json=${output}`,
-            suite,
-          ],
-          {
-            cwd: root,
-            encoding: 'utf8',
-            timeout: LIST_CAP_MS,
-            env: {
-              ...process.env,
-              DATABASE_URL: 'postgres://unused@127.0.0.1:1/collection_only',
-              DATABASE_ADMIN_URL: 'postgres://unused@127.0.0.1:1/collection_only',
-              SUITE_PART: part,
-              TMPDIR: dir,
-              TMP: dir,
-              TEMP: dir,
-            },
+      const output = join(dir, 'list.json');
+      const run = spawnSync(
+        process.execPath,
+        [
+          join(root, 'node_modules/vitest/vitest.mjs'),
+          'list',
+          '--config',
+          config,
+          '--no-staticParse',
+          `--json=${output}`,
+          suite,
+        ],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: LIST_CAP_MS,
+          maxBuffer: 256 * 1024 * 1024,
+          env: {
+            ...process.env,
+            DATABASE_URL: 'postgres://unused@127.0.0.1:1/collection_only',
+            DATABASE_ADMIN_URL: 'postgres://unused@127.0.0.1:1/collection_only',
+            SUITE_PART: '',
+            TMPDIR: dir,
+            TMP: dir,
+            TEMP: dir,
           },
-        );
-        expect(run.error, run.stderr).toBeUndefined();
-        expect(run.status, run.stderr).toBe(0);
-        const parsed: unknown = JSON.parse(readFileSync(output, 'utf8'));
-        if (!Array.isArray(parsed)) throw new Error('vitest list did not return an array');
-        return parsed
-          .map((row: unknown) => {
-            if (
-              typeof row !== 'object' ||
-              row === null ||
-              !('name' in row) ||
-              typeof row.name !== 'string'
-            ) {
-              throw new Error('vitest list did not return a test name');
-            }
-            return row.name;
-          })
-          .filter((name) => name.includes('refuses '));
-      };
-      const whole = list('');
+        },
+      );
+      expect(run.error, run.stderr).toBeUndefined();
+      expect(run.status, run.stderr).toBe(0);
+      const parsed: unknown = JSON.parse(readFileSync(output, 'utf8'));
+      if (!Array.isArray(parsed)) throw new Error('vitest list did not return an array');
+      const byPart = new Map(parts.map((part) => [`part ${part || 'whole'}`, [] as string[]]));
+      for (const row of parsed as unknown[]) {
+        if (
+          typeof row !== 'object' ||
+          row === null ||
+          !('name' in row) ||
+          typeof row.name !== 'string' ||
+          !('projectName' in row) ||
+          typeof row.projectName !== 'string'
+        ) {
+          throw new Error('vitest list did not return a test name and project');
+        }
+        const listed = byPart.get(row.projectName);
+        if (listed === undefined) throw new Error(`vitest list named ${row.projectName}`);
+        if (row.name.includes('refuses ')) listed.push(row.name);
+      }
+      const whole = byPart.get('part whole') ?? [];
       expect(whole.length).toBeGreaterThan(0);
-      const count = readPlan(join(root, 'tests/db/shard-plan.json')).parts[suite];
-      if (count === undefined) throw new Error(`${suite} has no configured parts`);
-      const split = Array.from({ length: count }, (_, i) => list(`${i + 1}/${count}`)).flat();
+      const split = parts.slice(1).flatMap((part) => byPart.get(`part ${part}`) ?? []);
       expect(split.toSorted()).toStrictEqual(whole.toSorted());
       expect(new Set(split).size).toBe(split.length);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   },
-  (MOST_PARTS + 1) * LIST_CAP_MS,
+  LIST_CAP_MS + 30_000,
 );

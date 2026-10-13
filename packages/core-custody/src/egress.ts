@@ -13,6 +13,12 @@
 // refused when any address is a metadata, link-local or unspecified one. The
 // socket then takes exactly the addresses that were checked, so a second
 // lookup answering differently (DNS rebinding) is never asked.
+//
+// A gated send (`SendGate`) has a deadline: it opens a socket of its own,
+// writes nothing until that socket is connected, and writes the request then
+// only if its clock is before the deadline; at or past it, the socket goes and
+// the answer is `lapsed`. A write not on the socket by the deadline is cut the
+// same way, so the provider never holds the whole request after it.
 
 import { lookup as systemLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
@@ -111,6 +117,17 @@ export function parseDestinations(
   return { ok: true, destinations };
 }
 
+/**
+ * A send that must be written by `deadlineAt` (milliseconds, `now`'s clock):
+ * past it, nothing is written (live chat route B's send deadline).
+ */
+export interface SendGate {
+  readonly deadlineAt: number;
+  /** Once the request is written to the socket; never for a send answered `lapsed`. */
+  readonly onWritten?: () => void;
+  readonly now?: () => number;
+}
+
 export interface OutboundRequest {
   readonly destination: string;
   readonly path: string;
@@ -180,13 +197,19 @@ const pinnedTo =
     else if (first !== undefined) callback(null, first.address, first.family);
   };
 
-/** One request and its bounded answer. */
+/** Time left before the gate's deadline on its own clock; none at the deadline itself. */
+const left = (gate: SendGate): number => gate.deadlineAt - (gate.now ?? Date.now)();
+
+const LAPSED: Outbound = { ok: false, fault: 'lapsed', status: null };
+
+/** One request and its bounded answer; a gated one written only once connected, and by its deadline. */
 async function exchange(
   url: URL,
   options: RequestOptions,
   body: string,
   limit: number,
   onChunk?: OnChunk,
+  gate?: SendGate,
 ): Promise<Outbound> {
   const signal = options.signal;
   return await new Promise<Outbound>((settle) => {
@@ -195,14 +218,34 @@ async function exchange(
       fault: signal?.aborted === true ? 'timeout' : 'network',
       status,
     });
-    const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options);
+    // A gated send never takes a pooled socket: one already connected would write at once.
+    const opened = gate === undefined ? options : { ...options, agent: false };
+    const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, opened);
     outgoing.on('response', (response) => {
       void answerOf(response, limit, failed, onChunk).then(settle);
     });
     outgoing.on('error', () => {
       settle(failed(null));
     });
-    outgoing.end(body);
+    if (gate === undefined) {
+      outgoing.end(body);
+      return;
+    }
+    outgoing.once('socket', (socket) => {
+      socket.once(url.protocol === 'https:' ? 'secureConnect' : 'connect', () => {
+        const cut = (): void => {
+          settle(LAPSED);
+          outgoing.destroy();
+        };
+        if (left(gate) <= 0) return cut();
+        const timer = setTimeout(cut, left(gate));
+        outgoing.end(body, () => {
+          clearTimeout(timer);
+          // A cut or failed write's callback still runs, with no error, once the request is destroyed.
+          if (!outgoing.destroyed) gate.onWritten?.();
+        });
+      });
+    });
   });
 }
 
@@ -217,6 +260,7 @@ export async function send(
   credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
   resolve: Resolve = resolveBySystem,
   onChunk?: OnChunk,
+  gate?: SendGate,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
@@ -230,6 +274,7 @@ export async function send(
   const addresses = await checkedAddresses(url, resolve, signal);
   if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
+  if (gate !== undefined && left(gate) <= 0) return LAPSED;
   // The destination's fixed headers first; their names never overlap these.
   const headers: Record<string, string> = {
     ...destination.headers,
@@ -250,5 +295,6 @@ export async function send(
     request.body,
     request.maxResponseBytes,
     onChunk,
+    gate,
   );
 }
