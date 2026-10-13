@@ -89,6 +89,8 @@ export interface BodyContext {
   readonly adminPersonId?: string;
   /** A live correction another member requested, for C80's approval (never the admin's own). */
   seedCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
+  /** Bind a client's own about page, for C80's request; the page's address. */
+  bindClientSite?(partyId: string): Promise<string>;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
   asAgent?(

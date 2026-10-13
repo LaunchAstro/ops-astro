@@ -133,11 +133,16 @@ const C80_REQUEST_ROW = {
 export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
   taskId: string,
-): Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection'> => ({
+): Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'> => ({
   alphaTaskId: taskId,
   adminPersonId: world.ada.personId as string,
   seedCorrection: async () =>
     await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia, world.ada),
+  bindClientSite: async (partyId) =>
+    await world.db.app.withBusiness(
+      world.alpha,
+      async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
+    ),
 });
 
 /** C80's four operations, whose positive bodies are the matrix's from here. */
@@ -163,7 +168,12 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
       fields: { client: partyId },
     });
     if (set.code !== 'ok') throw new Error(`matrix: task.set_party refused ${set.code}`);
-    return { body: { ...C80_REQUEST, partyId, taskId: task.id } };
+    // The client's own page, bound on its site: a request stores only for such a page.
+    if (context.bindClientSite === undefined) {
+      return { exception: 'this harness binds no client site (C80)' };
+    }
+    const pageUrl = await context.bindClientSite(partyId);
+    return { body: { ...C80_REQUEST, partyId, taskId: task.id, pageUrl } };
   }
   // Another member's request, and the admin named as the approver just
   // before: the requester never approves, and only the configured one does.
