@@ -100,7 +100,6 @@ import { carrierSettings } from './model-carrier.ts';
 import { carriedAnswers } from './model-carriage.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountEnrolment } from './enrolment.ts';
-import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
 import { startOccurrenceSweeper } from './occurrence-sweeper.ts';
@@ -231,8 +230,6 @@ export interface ApiConfig {
   readonly mailHook?: MailHookOptions;
   /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
   readonly authEmailHook?: AuthEmailHookOptions;
-  /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
-  readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -358,8 +355,6 @@ export function composeApi(config: ApiConfig): ComposedApi {
   }
   // C39-T: an invitation accepted on its one-time link, which needs the database alone.
   mountEnrolment(server, database);
-  // C40: a reset token's password set, mounted when given; `main()` does not yet.
-  if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
   server.route(
     '/',

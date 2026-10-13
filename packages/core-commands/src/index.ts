@@ -136,16 +136,6 @@ export {
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
 export {
-  PASSWORD_BYTES,
-  RESET_COMMAND,
-  RESET_TOKEN_MINUTES,
-  setPasswordByToken,
-  type PasswordReset,
-  type PasswordResetCode,
-  type PasswordResetResult,
-  type ResetDependencies,
-} from './commands/account-password.ts';
-export {
   ACCEPT_OPERATION,
   acceptInvitation,
   LOGIN_CREATE_OPERATION,
