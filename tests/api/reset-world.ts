@@ -127,25 +127,42 @@ export async function factorVerified(person: Person, business: BusinessId): Prom
   });
 }
 
-/** A recovery link the service minted and mailed for the login, recorded as it records one. */
+/** Each login's minted link, its hash as the mail carries it, until a session opens it. */
+const mailed = new Map<string, string>();
+
+/**
+ * A recovery link the service minted at the provider and mailed for the
+ * login, recorded as it records one: its row, with the provider's
+ * `recovery_sent_at` for the mint, stamped `secondsAgo` on our clock.
+ */
 export async function linkMinted(person: Person, secondsAgo = 5): Promise<void> {
+  const link = await admin('/admin/generate_link', { type: 'recovery', email: person.email });
   await db.admin.execute(
-    `insert into ops.recovery_links (id, subject_digest, minted_at)
-     values (gen_random_uuid(), $1, clock_timestamp() - make_interval(secs => $2))`,
-    [digest(person.subject), secondsAgo],
+    `insert into ops.recovery_links (id, subject_digest, minted_at, provider_sent_at)
+     values (gen_random_uuid(), $1, clock_timestamp() - make_interval(secs => $2), $3::timestamptz)`,
+    [digest(person.subject), secondsAgo, field(link.body, 'recovery_sent_at')],
   );
+  mailed.set(person.subject, field(link.body, 'hashed_token'));
 }
 
-/** A session the provider opens on a mailed link: recovery, or a sign-in link. */
+/**
+ * A session the provider opens on a mailed link: the minted recovery link
+ * when there is one, another recovery link otherwise, or a sign-in link
+ * (minted now, so it replaces the recovery link at the provider).
+ */
 export async function linkSession(
   person: Person,
   type: 'recovery' | 'magiclink' = 'recovery',
 ): Promise<string> {
-  const link = await admin('/admin/generate_link', { type, email: person.email });
-  const verified = await provider('POST', '/verify', {
-    type,
-    token_hash: field(link.body, 'hashed_token'),
-  });
+  const minted = type === 'recovery' ? mailed.get(person.subject) : undefined;
+  mailed.delete(person.subject);
+  const hash =
+    minted ??
+    field(
+      (await admin('/admin/generate_link', { type, email: person.email })).body,
+      'hashed_token',
+    );
+  const verified = await provider('POST', '/verify', { type, token_hash: hash });
   return field(verified.body, 'access_token');
 }
 
@@ -158,7 +175,7 @@ export async function signIn(person: Person, password: string = person.password)
   return field(answer.body, 'access_token');
 }
 
-/** The page's password write, straight to the provider on the recovery session. */
+/** A password write straight to the provider on the recovery session, as no page of ours sends one. */
 export const writePassword = async (
   token: string,
   password: string,
@@ -167,8 +184,14 @@ export const writePassword = async (
 export const begin = async (token: string): Promise<Answer> =>
   await post(api, '/api/password/begin', {}, authorised(token));
 
-export const changed = async (token: string): Promise<Answer> =>
-  await post(api, '/api/password/changed', {}, authorised(token));
+/** `changed`, with the new password for the API to write, or with none. */
+export const changed = async (token: string, password?: string): Promise<Answer> =>
+  await post(
+    api,
+    '/api/password/changed',
+    password === undefined ? {} : { password },
+    authorised(token),
+  );
 
 /** What the door answers a bearer in a business: `served`, or its sign-in refusal's code. */
 export async function door(token: string, key: 'alpha' | 'bravo'): Promise<string> {

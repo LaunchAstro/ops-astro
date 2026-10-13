@@ -2,9 +2,10 @@
 //
 // Password reset on the login provider's one-time recovery session. Three
 // routes outside the business prefix, with no person grant and no cookie
-// read or set. The password goes only from the person's browser to the
-// provider; nothing here sees one. Answers carry a code and nothing else,
-// and nothing is logged.
+// read or set. The new password passes through `changed` on its way to the
+// provider, written on the person's own recovery session, never with an admin
+// key, and is kept, logged or answered nowhere. Answers carry a code and
+// nothing else, and nothing is logged.
 //
 // - `POST /api/password/reset` `{ email }` asks for a link. It is 202 `{}`
 //   for every body, every address known or unknown, inside its limits or
@@ -12,30 +13,35 @@
 //   (`requestPasswordReset`). The caller is the first `x-forwarded-for`
 //   address, Vercel's own, kept only as its digest; none is the empty one.
 // - `POST /api/password/begin`, with the recovery session's bearer
-//   (`recoveryBearer`, below), opens the reset's window before the
-//   browser's write (`beginPasswordReset`):
+//   (`recoveryBearer`, below), opens the reset's window before the write
+//   (`beginPasswordReset`). The provider's `GET /user` on the bearer names
+//   the login and its latest mailed link's `recovery_sent_at`, which must be
+//   the minted link's own: a sign-in link minted since replaces it there.
 //   200 `{}`, the same for a repeat on the session; 401 `RESET_LINK_INVALID`
 //   for any other bearer, a session no minted link opened, a login mapped
 //   nowhere, or a window already settled; 403 `RESET_NEEDS_SUPPORT` for a
 //   login with a verified authenticator.
-// - `POST /api/password/changed`, with the same bearer, after the browser's
-//   write. The session's open window, or 401 `RESET_LINK_INVALID`. Then the
-//   provider is asked `GET /user` on the same bearer, from its own origin,
-//   following no redirect: unless it names the login and shows it updated
-//   after the window opened, 409 `RESET_NOT_CONFIRMED`, and the window is
+// - `POST /api/password/changed` `{ password }`, with the same bearer. The
+//   session's open window, with room before its bound for the write, or 401
+//   `RESET_LINK_INVALID`. Then the password is written: the provider's
+//   `PUT /user` on the same bearer, from its own origin, following no
+//   redirect. Its 200 naming the login is the one confirmation, so a write of
+//   anything else (the login's metadata) confirms nothing. 422
+//   `RESET_PASSWORD_REFUSED` when the provider refuses the password itself;
+//   409 `RESET_NOT_CONFIRMED` for no password or any other answer, the window
 //   left to its bound. Otherwise the window settles and the reset is audited
 //   once (`settlePasswordReset`): 200 `{}`.
 //
-// 503 `RESET_UNAVAILABLE` when the provider's keys cannot be reached to check
-// the bearer, `RESET_FAULT` for anything else failing.
+// 503 `RESET_UNAVAILABLE` when the provider's keys or its user cannot be
+// reached to check the bearer, `RESET_FAULT` for anything else failing.
 
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
   beginPasswordReset,
-  openWindowOf,
   requestPasswordReset,
   settlePasswordReset,
+  writableWindowOf,
   type BeginCode,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -43,17 +49,16 @@ import {
   type Database,
 } from '../../packages/core-records/src/index.ts';
 import { PASSWORD_RESET_PATHS } from '../../packages/core-wire/src/index.ts';
-import { readBounded } from './auth/factors.ts';
+import { askUser } from './auth/provider-user.ts';
 import { bearerOf } from './auth/session.ts';
 import { createTokenCheck, sessionIdOf, type SupabaseVerifierOptions } from './auth/supabase.ts';
 
 /** An address and room for its JSON, no more. */
 const REQUEST_MAX_BYTES = 1024;
-/** `begin` and `changed` read no body. */
+/** `begin` reads no body. */
 const EMPTY_MAX_BYTES = 64;
-const PROVIDER_TIMEOUT_MS = 5000;
-/** GoTrue's user carries the login's metadata, the person's own; as `factors.ts` reads it. */
-const USER_MAX_BYTES = 1024 * 1024;
+/** A password and room for its JSON, no more. */
+const PASSWORD_MAX_BYTES = 1024;
 
 export interface PasswordResetOptions {
   /** The provider's issuer and published keys, as the ordinary verifier has them. */
@@ -76,6 +81,8 @@ export interface RecoveryBearer {
   readonly sessionId: string;
   /** The session's one sign-in, its `otp` stamp, in whole seconds. */
   readonly signedInAt: number;
+  /** The token's `exp`: past it, it can write nothing at the provider. */
+  readonly expiresAt: number;
 }
 
 export type RecoveryVerifier = (
@@ -117,11 +124,13 @@ export function createRecoveryVerifier(options: SupabaseVerifierOptions): Recove
     const subject = claims['sub'];
     const sessionId = sessionIdOf(claims);
     const signedInAt = otpStampOf(claims);
+    const expiresAt = claims['exp'];
     if (typeof subject !== 'string' || subject === '') return undefined;
     if (sessionId === undefined || signedInAt === undefined) return undefined;
+    if (!Number.isSafeInteger(expiresAt)) return undefined;
     const age = now() - signedInAt;
     if (age > RECOVERY_SESSION_SECONDS || age < -SIGN_IN_CLOCK_SKEW_SECONDS) return undefined;
-    return { token, subject, sessionId, signedInAt };
+    return { token, subject, sessionId, signedInAt, expiresAt: expiresAt as number };
   };
 }
 
@@ -141,55 +150,15 @@ async function addressOf(request: Request): Promise<string> {
 const callerOf = (forwarded: string | undefined): string =>
   (forwarded ?? '').split(',', 1)[0]?.trim() ?? '';
 
-/**
- * Whether the provider shows the login written after `openedAt`: `GET /user`
- * on the recovery session's own bearer, from the provider's own origin, no
- * redirect followed, bounded in time and size. Any other answer is no.
- */
-async function writtenSince(
-  options: PasswordResetOptions,
-  bearer: RecoveryBearer,
-  openedAt: Date,
-): Promise<boolean> {
-  const base = new URL(options.signIn.issuer);
-  const url = new URL(`${base.pathname.replace(/\/+$/u, '')}/user`, base);
-  if (url.origin !== base.origin) return false;
-  let response: Response;
+/** The password the body holds, or none. */
+async function passwordOf(request: Request): Promise<string | undefined> {
   try {
-    response = await (options.fetch ?? fetch)(url, {
-      method: 'GET',
-      redirect: 'error',
-      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-      headers: {
-        authorization: `Bearer ${bearer.token}`,
-        accept: 'application/json',
-        ...(options.providerKey === undefined || options.providerKey === ''
-          ? {}
-          : { apikey: options.providerKey }),
-      },
-    });
+    const body: unknown = await request.json();
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
+    const { password } = body as Record<string, unknown>;
+    return typeof password === 'string' && password !== '' ? password : undefined;
   } catch {
-    return false;
-  }
-  if (
-    response.status !== 200 ||
-    !URL.canParse(response.url) ||
-    new URL(response.url).origin !== base.origin
-  ) {
-    await response.body?.cancel();
-    return false;
-  }
-  const read = await readBounded(response, USER_MAX_BYTES, PROVIDER_TIMEOUT_MS);
-  if ('fault' in read) return false;
-  try {
-    const user: unknown = JSON.parse(read.text);
-    if (typeof user !== 'object' || user === null) return false;
-    const { id, updated_at: updatedAt } = user as Record<string, unknown>;
-    if (id !== bearer.subject || typeof updatedAt !== 'string') return false;
-    const updated = Date.parse(updatedAt);
-    return Number.isFinite(updated) && updated > openedAt.getTime();
-  } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -205,15 +174,32 @@ async function sessionOf(context: Context, verify: RecoveryVerifier): Promise<Ve
 const fault = (context: Context): Response => context.json({ code: 'RESET_FAULT' }, 503);
 
 /** `begin`: the session's one window opened, or the refusal. */
-async function begin(context: Context, database: Database, verify: RecoveryVerifier) {
+async function begin(
+  context: Context,
+  database: Database,
+  verify: RecoveryVerifier,
+  options: PasswordResetOptions,
+) {
   const bearer = await sessionOf(context, verify);
   if (bearer instanceof Response) return bearer;
-  const begun = await beginPasswordReset(database, bearer);
+  const user = await askUser(providerOf(options), bearer.token);
+  if (user === 'unreachable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
+  const sentAt = user.body['recovery_sent_at'];
+  if (user.status !== 200 || user.body['id'] !== bearer.subject || typeof sentAt !== 'string') {
+    return context.json({ code: 'RESET_LINK_INVALID' }, 401);
+  }
+  const begun = await beginPasswordReset(database, { ...bearer, providerSentAt: sentAt });
   if (begun.ok) return context.json({}, 200);
   return context.json({ code: begun.code }, BEGIN_STATUS[begun.code]);
 }
 
-/** `changed`: the session's open window settled once the provider shows the write. */
+const providerOf = (options: PasswordResetOptions) => ({
+  issuer: options.signIn.issuer,
+  ...(options.providerKey === undefined ? {} : { providerKey: options.providerKey }),
+  ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+});
+
+/** `changed`: the password written on the session, then its window settled. */
 async function changed(
   context: Context,
   database: Database,
@@ -222,9 +208,20 @@ async function changed(
 ) {
   const bearer = await sessionOf(context, verify);
   if (bearer instanceof Response) return bearer;
-  const openedAt = await openWindowOf(database, bearer);
-  if (openedAt === undefined) return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-  if (!(await writtenSince(options, bearer, openedAt))) {
+  const password = await passwordOf(context.req.raw);
+  if (!(await writableWindowOf(database, bearer))) {
+    return context.json({ code: 'RESET_LINK_INVALID' }, 401);
+  }
+  if (password === undefined) return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
+  const written = await askUser(providerOf(options), bearer.token, { password });
+  if (written !== 'unreachable' && written.status === 422) {
+    return context.json({ code: 'RESET_PASSWORD_REFUSED' }, 422);
+  }
+  if (
+    written === 'unreachable' ||
+    written.status !== 200 ||
+    written.body['id'] !== bearer.subject
+  ) {
     return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
   }
   await settlePasswordReset(database, bearer);
@@ -250,6 +247,10 @@ export function mountPasswordReset(
     maxSize: EMPTY_MAX_BYTES,
     onError: (context) => context.json({ code: 'RESET_LINK_INVALID' }, 401),
   });
+  const withPassword = bodyLimit({
+    maxSize: PASSWORD_MAX_BYTES,
+    onError: (context) => context.json({ code: 'RESET_PASSWORD_REFUSED' }, 422),
+  });
 
   server.post(PASSWORD_RESET_PATHS.reset, request, async (context) => {
     try {
@@ -267,11 +268,11 @@ export function mountPasswordReset(
   server.post(
     PASSWORD_RESET_PATHS.begin,
     empty,
-    async (context) => await begin(context, database, verify).catch(() => fault(context)),
+    async (context) => await begin(context, database, verify, options).catch(() => fault(context)),
   );
   server.post(
     PASSWORD_RESET_PATHS.changed,
-    empty,
+    withPassword,
     async (context) =>
       await changed(context, database, verify, options).catch(() => fault(context)),
   );

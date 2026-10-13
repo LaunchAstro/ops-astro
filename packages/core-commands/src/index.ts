@@ -144,7 +144,7 @@ export {
 } from './commands/invitation-accept.ts';
 export {
   beginPasswordReset,
-  openWindowOf,
+  writableWindowOf,
   requestPasswordReset,
   RESET_AUDIT_COMMAND,
   settlePasswordReset,

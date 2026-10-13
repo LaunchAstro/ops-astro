@@ -3185,10 +3185,10 @@ reads the fragment once and clears it before any request, then opens the
 provider's recovery session (`POST /verify`) and calls, with that session's
 bearer:
 
-| Route                        | Answer   | Refusals                                            |
-| ---------------------------- | -------- | --------------------------------------------------- |
-| `POST /api/password/begin`   | 200 `{}` | 401 `RESET_LINK_INVALID`, 403 `RESET_NEEDS_SUPPORT` |
-| `POST /api/password/changed` | 200 `{}` | 401 `RESET_LINK_INVALID`, 409 `RESET_NOT_CONFIRMED` |
+| Route                                     | Answer   | Refusals                                                                          |
+| ----------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `POST /api/password/begin`                | 200 `{}` | 401 `RESET_LINK_INVALID`, 403 `RESET_NEEDS_SUPPORT`                               |
+| `POST /api/password/changed` `{password}` | 200 `{}` | 401 `RESET_LINK_INVALID`, 409 `RESET_NOT_CONFIRMED`, 422 `RESET_PASSWORD_REFUSED` |
 
 Both take only a recovery session (`recoveryBearer`, with the ordinary
 verifier's signature and issuer checks): `aal1`, an `amr` of exactly one
@@ -3197,22 +3197,36 @@ Anything else is 401 `RESET_LINK_INVALID`.
 
 `begin`, in one transaction under the login's factor lock, answers a session
 that already has a window with that window (200 while open, 401 once
-settled). Otherwise it consumes one recovery link the unit recorded for the
-login (`ops.recovery_link_consume`), minted inside the link's life and no
-later than the session's sign-in, so a sign-in link's session is 401. A login
+settled). Otherwise it reads the provider's `GET /user` on the bearer and
+consumes one recovery link the unit recorded for the login
+(`ops.recovery_link_consume`): minted inside the link's life, no later than
+the session's sign-in, and still the provider's latest mailed link, its
+`recovery_sent_at` the one the unit recorded at the mint. The provider keeps
+one such link a login and tells a recovery session from a sign-in link's in
+nothing else, so a sign-in link minted since, and its session, is 401. A login
 mapped live in no business is 401; one with a verified authenticator in any
 business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
 (`ops.subject_resets`) and records it against the session's digest
-(`ops.recovery_resets`). From that commit every session of the login, in
-every business, is refused up to the window's bound (five minutes), the
-reset's own session included, so a page that fails after the password
-write leaves no old session usable.
+(`ops.recovery_resets`) with the bearer's expiry. From that commit every
+session of the login, in every business, is refused up to the window's bound
+(five minutes), the reset's own session included, so a page that fails after
+the password write leaves no old session usable. Until that expiry, while the
+window is unsettled, the bearer can still write a password at the provider,
+which deletes the login's other sessions there: so the door asks the provider
+`GET /user` on the bearer of any session first signed in after the bound
+(`ops.reset_write_open`). Deleted is ended for good (GoTrue's 403
+`session_not_found`); no answer is refused that once. The carriage join, with
+no provider to ask, refuses such a session.
 
-`changed` finds the session's open window (none, or settled: 401), then asks
-the provider `GET /user` on the same bearer, from its own origin, following no
-redirect. Unless the answer names the login and shows it updated after the
-window opened, it is 409 `RESET_NOT_CONFIRMED` and the window is left to its
-bound. Otherwise, in the database clock's next whole second, the window
+`changed` takes the new password and finds the session's open window with at
+least 30 seconds before its bound (otherwise 401). It writes the password
+itself on the same bearer, the provider's `PUT /user`, from its own origin,
+following no redirect; no admin key, and the password is kept, logged and
+answered nowhere. That write's own 200 naming the login is the one
+confirmation: with no password, or any other answer, it is 409
+`RESET_NOT_CONFIRMED` and the window is left to its bound, and a password the
+provider refuses is 422 `RESET_PASSWORD_REFUSED`, the window kept for another
+try. Otherwise, in the database clock's next whole second, the window
 settles once and `account.password_reset` is audited once, in the first
 business the login is mapped in, as the person mapped there, with a digest
 alone. A retry settles nothing and audits nothing. A sign-in after the settle
@@ -3222,8 +3236,8 @@ The page then signs out everywhere at the provider (`POST /logout?scope=global`,
 204 only, tried again three times) and sends the person to sign in. Every
 browser call uses `redirect: 'error'`, and a provider answer counts only from
 the provider's origin (`apps/web/src/session/recovery.ts`). 503
-`RESET_UNAVAILABLE` is the provider's keys out of reach; `RESET_FAULT` is
-anything else failing.
+`RESET_UNAVAILABLE` is the provider's keys or its user out of reach;
+`RESET_FAULT` is anything else failing.
 
 ## The operations view and privacy incidents (C55)
 

@@ -34,10 +34,12 @@ import type { Context } from 'hono';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
+  attachSessionProbe,
   type Assurance,
   type VerifiedSubject,
 } from '../../../packages/core-records/src/index.ts';
 import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
+import { sessionLive } from './provider-user.ts';
 import { bearerOf, presentsCredential, sessionCookieOf } from './session.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
@@ -56,6 +58,8 @@ export interface SupabaseVerifierOptions {
   readonly onRefusal?: (refusal: KeySetRefusal) => void;
   /** The time in whole seconds, injected for tests; the clock otherwise. */
   readonly now?: () => number;
+  /** The hosted provider's publishable key, for the session probe's `apikey`: public. */
+  readonly providerKey?: string;
 }
 
 /**
@@ -165,9 +169,14 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const assurance = assuranceOf(claims);
     if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
     const sessionId = sessionIdOf(claims);
-    return sessionId === undefined
-      ? { provider: SUPABASE_PROVIDER, subject, assurance }
-      : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
+    if (sessionId === undefined) return { provider: SUPABASE_PROVIDER, subject, assurance };
+    // Asked by the door only while a reset's late password write could
+    // delete this session at the provider (`sessionRefusal`).
+    const probe = { issuer: options.issuer, providerKey: options.providerKey ?? '' };
+    return attachSessionProbe(
+      { provider: SUPABASE_PROVIDER, subject, assurance, sessionId },
+      async () => await sessionLive(probe, token, subject),
+    );
   };
 }
 

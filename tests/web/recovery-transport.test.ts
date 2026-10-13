@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The reset page's calls to the login provider (`session/recovery.ts`), over
-// two real HTTP servers: the provider, and another origin it might send the
-// browser to. No redirect is followed, so a password never reaches another
-// origin, and only the provider's exact acknowledgement counts: a password
-// write is set only when the answer names the session's own login, and a
-// sign-out everywhere only on 204, tried again three times otherwise.
+// The reset page's calls (`session/recovery.ts`), over two real HTTP servers:
+// the provider (here the API's origin too), and another origin it might send
+// the browser to. No redirect is followed, so a password never reaches
+// another origin, and only the exact acknowledgement counts: the password,
+// handed to the API's `changed`, is set only on its 200, and a sign-out
+// everywhere only on 204, tried again three times otherwise.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import {
   LOGOUT_RETRIES,
-  setNewPassword,
   signOutEverywhere,
   verifyRecovery,
+  writePassword,
 } from '../../apps/web/src/session/recovery.ts';
 
 interface Heard {
@@ -89,26 +89,33 @@ const SUBJECT = '0b9f6c1e-6a1d-4c39-9b1e-1f0c3a2d4e5f';
 const PASSWORD = 'never-to-another-origin';
 const route = () => ({ gotrueUrl: origins.provider, apiOrigin: '', fetch: globalThis.fetch });
 
+const toApi = () => ({ ...route(), apiOrigin: origins.provider });
+
 it('sends no password to another origin when the write is answered with a redirect there', async () => {
   answer = (_, response, at) => {
-    response.writeHead(307, { location: `${at.elsewhere}/user` }).end();
+    response.writeHead(307, { location: `${at.elsewhere}/api/password/changed` }).end();
   };
-  const outcome = await setNewPassword(route(), 'a-token', SUBJECT, PASSWORD);
-  expect(outcome).not.toBe('set');
-  expect(heard.provider.map((one) => one.route)).toStrictEqual(['PUT /user']);
+  expect(await writePassword(toApi(), 'a-token', PASSWORD)).not.toBe('set');
+  expect(heard.provider.map((one) => one.route)).toStrictEqual(['POST /api/password/changed']);
   expect(heard.elsewhere).toStrictEqual([]);
 });
 
-it('takes a 200 write naming another login as not set', async () => {
-  answer = json(200, { id: '7c1d2e3f-0000-4000-8000-000000000000' });
-  expect(await setNewPassword(route(), 'a-token', SUBJECT, PASSWORD)).not.toBe('set');
-  answer = json(200, { id: SUBJECT });
-  expect(await setNewPassword(route(), 'a-token', SUBJECT, PASSWORD)).toBe('set');
+it("hands the password to the API's changed alone, set only on its 200", async () => {
+  answer = json(200, {});
+  expect(await writePassword(toApi(), 'a-token', PASSWORD)).toBe('set');
+  expect(heard.provider).toStrictEqual([
+    { route: 'POST /api/password/changed', body: JSON.stringify({ password: PASSWORD }) },
+  ]);
 });
 
-it('takes a 422 write as a password to choose again', async () => {
-  answer = json(422, { error_code: 'weak_password' });
-  expect(await setNewPassword(route(), 'a-token', SUBJECT, PASSWORD)).toBe('refused');
+it.each([
+  [422, 'RESET_PASSWORD_REFUSED', 'refused'],
+  [401, 'RESET_LINK_INVALID', 'invalid'],
+  [409, 'RESET_NOT_CONFIRMED', 'failed'],
+  [503, 'RESET_UNAVAILABLE', 'failed'],
+])('takes a %i %s from changed as %s', async (status, code, outcome) => {
+  answer = json(status, { code });
+  expect(await writePassword(toApi(), 'a-token', PASSWORD)).toBe(outcome);
 });
 
 it.each([

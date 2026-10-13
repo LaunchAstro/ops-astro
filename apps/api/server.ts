@@ -372,6 +372,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         : { agentCredentials: { limits: config.agentLimits } }),
       verify: createSupabaseVerifier({
         ...config.signIn,
+        ...(key === '' ? {} : { providerKey: key }),
         // The reason alone: an answer the provider sent is never repeated.
         onRefusal: ({ reason }) => {
           console.error(`api: the sign-in key set answer was refused (${reason})`);
