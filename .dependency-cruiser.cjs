@@ -116,11 +116,18 @@ module.exports = {
       severity: 'error',
       comment:
         "An app or package enters another package only through that package's index.ts, " +
-        'stylesheets included, with no exception. Tests and scripts prove modules, not the interface, and may reach in.',
+        'stylesheets included, with one exception: custody also has agent.ts, its carriage, ' +
+        "seals and custody's process alone, because the model agent must hold no database and " +
+        "custody's index reaches it through the broker. Tests and scripts prove modules, not " +
+        'the interface, and may reach in.',
       from: { path: '^((?:apps|packages)/[^/]+)/' },
       to: {
         path: '^packages/[^/]+/src/',
-        pathNot: ['^$1/', '^packages/[^/]+/src/index\\.ts$'],
+        pathNot: [
+          '^$1/',
+          '^packages/[^/]+/src/index\\.ts$',
+          '^packages/core-custody/src/agent\\.ts$',
+        ],
       },
     },
     {
@@ -129,8 +136,12 @@ module.exports = {
       comment:
         'The worker is a client of the API and never connects (T2b, spike RN-04): neither it ' +
         'nor the command-line client it posts through imports a database package, the API or ' +
-        'a Postgres driver. tests/worker/worker-boundary.test.ts walks the whole graph.',
-      from: { path: '^apps/(worker/|cli/client\\.ts$)' },
+        'a Postgres driver. tests/worker/worker-boundary.test.ts walks the whole graph. The ' +
+        "model agent and custody's agent entry hold the same line " +
+        '(tests/worker/model-agent-boundary.test.ts).',
+      from: {
+        path: '^(apps/(worker/|model-agent/|cli/client\\.ts$)|packages/core-custody/src/agent\\.ts$)',
+      },
       to: {
         path: ['^packages/core-(records|runtime|commands)/', '^apps/api/', '(^|/)(postgres|pg)/'],
       },

@@ -94,6 +94,8 @@ describe('the cruiser rules fire', () => {
     const answer = cruise({
       ...custody,
       [CUSTODY_ENTRY]: "export { records } from '../../core-records/src/index.ts';\n",
+      [AGENT_ENTRY]:
+        "import { records } from '../../packages/core-custody/src/agent.ts';\nrecords;\n",
     });
     expect(answer.status).toBe(1);
     expect(answer.output).toContain('worker-holds-no-database');
