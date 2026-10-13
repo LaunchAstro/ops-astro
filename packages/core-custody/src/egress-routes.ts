@@ -77,8 +77,11 @@ export interface Extras {
   readonly stream?: 'openai_sse';
 }
 
-/** A template's path: literal segments (never `.` or `..`) and slots. */
-const TEMPLATE_PATH = /^(?:\/(?:\{[a-z]+\*?\}|(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]+))+$/u;
+/**
+ * A template's path: literal segments (never `.` or `..`, and no longer than
+ * a slot's segment, so every literal is a segment `PATH_SLOT` admits) and slots.
+ */
+const TEMPLATE_PATH = /^(?:\/(?:\{[a-z]+\*?\}|(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]{1,256}))+$/u;
 /** A template's query: each parameter a literal value or one slot. */
 const TEMPLATE_QUERY =
   /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
@@ -109,21 +112,44 @@ function split(text: string): readonly [string, string | undefined] {
   return at === -1 ? [text, undefined] : [text.slice(0, at), text.slice(at + 1)];
 }
 
-/** Whether path segments fill template segments: a literal as written, a slot by `PATH_SLOT`. */
+/** Whether a template segment that is no many-segment slot takes this path segment. */
+const takes = (want: string, given: string | undefined): boolean =>
+  given !== undefined && (want === given || SLOT.exec(want)?.[1] === '');
+
+/** Whether `block` takes the path's segments from `at` on. */
+const blockAt = (block: readonly string[], path: readonly string[], at: number): boolean =>
+  block.every((want, offset) => takes(want, path[at + offset]));
+
+/**
+ * Whether path segments fill template segments: a literal as written, a slot
+ * by `PATH_SLOT`, a many-segment slot one segment or more. Every segment is
+ * checked once, and the template's many-segment slots split it into blocks:
+ * the first is matched from the left, the last from the right, and each other
+ * at its first place after one segment or more. No literal is a segment
+ * `PATH_SLOT` refuses, so a path with one fills nothing, and a slot never
+ * needs a later place than the first; the time is the path's length times
+ * the template's, and nothing recurses.
+ */
 function segmentsFill(template: readonly string[], path: readonly string[]): boolean {
-  const [want, ...rest] = template;
-  if (want === undefined) return path.length === 0;
-  const slot = SLOT.exec(want);
-  if (slot === null) return path[0] === want && segmentsFill(rest, path.slice(1));
-  if (slot[1] !== '*') {
-    return path[0] !== undefined && PATH_SLOT.test(path[0]) && segmentsFill(rest, path.slice(1));
+  if (!path.every((segment) => PATH_SLOT.test(segment))) return false;
+  const blocks: string[][] = [[]];
+  for (const want of template) {
+    if (SLOT.exec(want)?.[1] === '*') blocks.push([]);
+    else blocks.at(-1)?.push(want);
   }
-  // A many-segment slot takes one segment or more, then the rest of the template.
-  for (let taken = 1; taken <= path.length; taken += 1) {
-    if (!path.slice(0, taken).every((segment) => PATH_SLOT.test(segment))) return false;
-    if (segmentsFill(rest, path.slice(taken))) return true;
+  const [first = [], ...others] = blocks;
+  const last = others.pop();
+  if (last === undefined) return path.length === first.length && blockAt(first, path, 0);
+  const end = path.length - last.length;
+  if (end < first.length || !blockAt(first, path, 0) || !blockAt(last, path, end)) return false;
+  let at = first.length;
+  for (const block of others) {
+    let place = at + 1;
+    while (place + block.length < end && !blockAt(block, path, place)) place += 1;
+    if (place + block.length >= end) return false;
+    at = place + block.length;
   }
-  return false;
+  return end - at >= 1;
 }
 
 /** Whether query parameters fill the template's, in order: a literal value as written, a slot by `QUERY_SLOT`. */
@@ -145,7 +171,8 @@ function fills(template: string, path: string): boolean {
   const [wantPath, wantQuery] = split(template);
   const [givenPath, givenQuery] = split(path);
   if ((wantQuery === undefined) !== (givenQuery === undefined)) return false;
-  if (!segmentsFill(wantPath.split('/'), givenPath.split('/'))) return false;
+  if (!givenPath.startsWith('/')) return false;
+  if (!segmentsFill(wantPath.slice(1).split('/'), givenPath.slice(1).split('/'))) return false;
   return wantQuery === undefined || queryFills(wantQuery.split('&'), (givenQuery ?? '').split('&'));
 }
 
@@ -223,6 +250,9 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
   return extras;
 }
 
+/** The longest path, query included, a request may name: no route needs more. */
+const MOST_PATH = 8_192;
+
 /** A path under the origin: starts with one slash, no scheme, no authority, no traversal, no control bytes. */
 const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
@@ -232,6 +262,7 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
  * route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
+  if (path.length > MOST_PATH) return false;
   const routes = extras.routes ?? [];
   if (templateFilled(extras, method, path) !== undefined) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
