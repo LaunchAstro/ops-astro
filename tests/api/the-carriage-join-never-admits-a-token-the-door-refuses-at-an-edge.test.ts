@@ -204,6 +204,27 @@ describe.skipIf(serverUrl === undefined)(
       neverLooser(answers, 'a first sign-in method as a list');
     });
 
+    it('a sign-in whose method reads as no first factor (a number, an object, a two-item list) begins no session at either', async () => {
+      const now = nowSeconds();
+      for (const method of ['5', '{"name":"password"}', '["password","otp"]', '[]', 'null']) {
+        const amr = `[${entry(method, now)}]`;
+        // oxlint-disable-next-line no-await-in-loop -- one token at a time
+        const answers = await ask(plain, claimsText(plain.owner.sub, randomUUID(), '"aal1"', amr));
+        expect(answers.door, `the door finds no first sign-in in ${method}`).toBe(false);
+        neverLooser(answers, `a sign-in method ${method}`);
+      }
+    });
+
+    it('a sign-in time too small or too large to read, beside a fresh sign-in, reads alike at both', async () => {
+      const now = nowSeconds();
+      for (const stamp of ['1e-400', '0.4', '1e400', '-1']) {
+        const amr = `[${entry('"password"', stamp)},${entry('"password"', now)}]`;
+        // oxlint-disable-next-line no-await-in-loop -- one token at a time
+        const answers = await ask(plain, claimsText(plain.owner.sub, randomUUID(), '"aal1"', amr));
+        expect(answers, `a sign-in time ${stamp}`).toEqual({ door: true, join: true });
+      }
+    });
+
     it('scale written on a sign-in time (.0, e-1) reads alike at both', async () => {
       const now = nowSeconds();
       for (const [label, written] of [
