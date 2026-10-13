@@ -76,7 +76,9 @@ it('the install check refuses a credential file custody cannot load', () => {
 
 it('a failed listener inspection cannot certify a public listener as loopback', async () => {
   const server = createServer();
-  await new Promise<void>((done) => server.listen(0, '0.0.0.0', done));
+  await new Promise<void>((done) => {
+    server.listen(0, '0.0.0.0', done);
+  });
   try {
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('no TCP listener');
@@ -103,7 +105,9 @@ it('a failed listener inspection cannot certify a public listener as loopback', 
     expect(result.error).toBeUndefined();
     expect(result.status, 'the check could not inspect a real public listener').not.toBe(0);
   } finally {
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -140,7 +144,9 @@ it('the install check names the kind custody refuses, never a value', () => {
 
 it('the install check passes a runner listening on loopback alone, and a port nothing listens on', async () => {
   const server = createServer();
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  await new Promise<void>((done) => {
+    server.listen(0, '127.0.0.1', done);
+  });
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('no TCP listener');
   try {
@@ -148,7 +154,9 @@ it('the install check passes a runner listening on loopback alone, and a port no
     expect(listening.stdout).toContain('gpt runner install check: passed');
     expect(listening.status).toBe(0);
   } finally {
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
   world?.remove();
   // lsof finds nothing on the closed port: a read that completed, not a failed one.

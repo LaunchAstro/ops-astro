@@ -197,13 +197,17 @@ it('refuses a credential file that is a pipe, not a regular file', async () => {
     refused(checked(files));
   } finally {
     writer.kill();
-    await new Promise((done) => setTimeout(done, 50));
+    await new Promise((done) => {
+      setTimeout(done, 50);
+    });
   }
 });
 
 it('refuses a port held by a listener lsof cannot see', async () => {
   const server = createServer();
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  await new Promise<void>((done) => {
+    server.listen(0, '127.0.0.1', done);
+  });
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('no TCP listener');
   try {
@@ -211,7 +215,9 @@ it('refuses a port held by a listener lsof cannot see', async () => {
     // lsof without root reads nothing of another user's listener: no output, exit 1.
     refused(checked(files, binWith(files, { lsof: '#!/bin/sh\nexit 1\n' })));
   } finally {
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
