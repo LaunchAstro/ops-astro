@@ -63,7 +63,8 @@ sends it to Ollama on loopback. Neither side listens on a port: both connect
 out to Supabase.
 
 1. The model agent ("M5 models") is an agent actor of the business with its
-   own login, made by the operator scripts as the M5 worker's is.
+   own login, made by the operator scripts as the M5 worker's is. Its
+   process on the M5 is installed as [model-agent.md](model-agent.md) says.
 2. Start the hosted API with these settings, and without
    `MODEL_BROKER_CREDENTIALS_FILE` or `MODEL_BROKER_DESTINATIONS` (either one
    stops it):

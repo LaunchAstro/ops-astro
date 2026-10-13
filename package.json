@@ -88,6 +88,7 @@
     "verify:runtime-proofs": "bash scripts/local/runtime-proofs.sh",
     "cli": "node apps/cli/main.ts",
     "worker": "node apps/worker/main.ts",
+    "model-agent": "node apps/model-agent/main.ts",
     "forwarder": "node scripts/ops/forwarder.mjs",
     "endings": "node apps/endings/main.ts",
     "verify:identity": "node scripts/local/identity-check.mjs"

@@ -28,6 +28,7 @@ import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-r
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView, TaskClientFacts } from './views-client.ts';
 import type { RankView, TaskScoreFacts } from './views-rank.ts';
+import type { TaskMapLink } from './views-map.ts';
 import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
 
 export type { RankView, TaskScores } from './views-rank.ts';
@@ -197,6 +198,12 @@ export interface TaskDetail extends TaskSummary {
   readonly ledger: TaskLedgerView | null;
   /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
   readonly rank: RankView;
+  /**
+   * The map this ticket belongs to, for the link back to it: sent to a member
+   * alone, and null unless their grants reach that map. Never sent to an
+   * agent credential, nor in the shared view.
+   */
+  readonly map?: TaskMapLink | null;
   /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
   readonly adHoc: boolean;
   /**

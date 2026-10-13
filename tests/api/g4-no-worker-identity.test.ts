@@ -44,6 +44,8 @@ const OTHERS = [
   'POST /api/b/:businessKey/account/sessions/end-others',
   'POST /api/b/:businessKey/account/sessions/list',
   'POST /api/b/:businessKey/account/sessions/sign-out',
+  // C39-T: an invitation accepted, signed out, on its one-time link's token alone.
+  'POST /api/enrol',
   'POST /api/session',
   'POST /api/session/end',
 ];

@@ -13,6 +13,7 @@
 // nothing secret went out, so nothing secret can come back unredacted. No message returns a credential, and an unknown message is
 // refused, so there is no borrow path. A dispatch marked `gated` waits after
 // `started` for its admission's `go` (sent) or `stop` (refused, nothing sent).
+// A `deadlineAt` gates the write itself (`egress.ts`).
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -89,6 +90,13 @@ function isRequest(value: unknown): value is OutboundRequest {
 }
 
 type Message = Record<string, unknown>;
+
+/** A dispatch's deadline as its send gate, noting `written`: none when absent, null when malformed. */
+function sendGateOf(at: unknown, reply: (body: Message) => void) {
+  if (at === undefined) return;
+  if (typeof at !== 'number' || !Number.isSafeInteger(at)) return null;
+  return { deadlineAt: at, onWritten: () => reply({ type: 'written' }) };
+}
 
 const loaded = load();
 
@@ -173,6 +181,7 @@ async function answer(
   credential: StoredCredential,
   gated: boolean,
   reply: (body: Message) => void,
+  sendGate?: ReturnType<typeof sendGateOf>,
 ): Promise<void> {
   if (gated && !(await gateOf(id, request.timeoutMs))) {
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
@@ -187,6 +196,7 @@ async function answer(
     credential,
     undefined,
     streaming.onChunk,
+    sendGate ?? undefined,
   );
   reply({
     type: 'answer',
@@ -218,7 +228,8 @@ process.on('message', (message: unknown) => {
     return;
   }
   const request = shape['request'];
-  if (!isRequest(request) || unrouted(request)) {
+  const sendGate = sendGateOf(shape['deadlineAt'], reply);
+  if (!isRequest(request) || unrouted(request) || sendGate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
@@ -227,7 +238,7 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply);
+  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
 });
 
 process.send?.({ type: 'ready' });
