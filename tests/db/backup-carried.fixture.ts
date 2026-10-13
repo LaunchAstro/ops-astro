@@ -59,6 +59,8 @@ export const gateOf = (personId: string): Receipt => ({
   records: mkdtempSync(join(scratch, 'records-')),
   recordSignIn: () => Promise.resolve(),
   recordTestedRestore: () => Promise.resolve(new Date().toISOString()),
+  stillOperator: () => Promise.resolve(),
+  holdingGrant: <T>(during: (release: () => void) => Promise<T>): Promise<T> => during(() => {}),
 });
 
 export const drills = async (): Promise<{ outcome: string; ran_on: string }[]> => [
