@@ -26,7 +26,7 @@ export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
  * lines of the migrations, not from the catalogue this suite then checks.
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
-  ['', 'ops.schema_migrations'],
+  ['', 'ops.schema_migrations ops.agent_login_acts'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
   // 0070 (C55): the date of the last tested restore; the application reads it
