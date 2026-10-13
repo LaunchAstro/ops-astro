@@ -14,13 +14,13 @@ import {
   send,
   type Destination,
 } from '../../packages/core-custody/src/egress.ts';
-import { standInOllama, streamedLines, type StandIn } from '../api/ollama-stand-in-fixture.ts';
+import { ollamaOnLoopback, streamedLines, type LoopbackOllama } from './ollama-on-loopback.ts';
 import { chatRequest, openAgentWorld, WORDS, type AgentWorld } from './model-agent-world.ts';
 
 const WAIT = 15_000;
 
 let world: AgentWorld | undefined;
-let ollama: StandIn | undefined;
+let ollama: LoopbackOllama | undefined;
 
 afterEach(async () => {
   await world?.close();
@@ -132,7 +132,7 @@ async function slowLookup(): Promise<readonly { address: string; family: number 
 
 describe('egress', () => {
   it('a lookup that ends past the deadline connects to nothing', async () => {
-    ollama = await standInOllama();
+    ollama = await ollamaOnLoopback();
     const port = new URL(ollama.origin).port;
     const outcome = await send(
       listed(`http://localhost:${port}`),
@@ -147,7 +147,7 @@ describe('egress', () => {
   });
 
   it('a clock past the deadline at the connect writes nothing', async () => {
-    ollama = await standInOllama();
+    ollama = await ollamaOnLoopback();
     const deadlineAt = Date.now() + 3_000;
     const written: string[] = [];
     const outcome = await send(listed(ollama.origin), chatRequest(), null, undefined, undefined, {
@@ -162,7 +162,7 @@ describe('egress', () => {
   });
 
   it('control: at the deadline itself the request is written once', async () => {
-    ollama = await standInOllama();
+    ollama = await ollamaOnLoopback();
     ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
     const deadlineAt = Date.now() + 3_000;
     const written: string[] = [];

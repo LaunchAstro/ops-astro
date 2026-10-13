@@ -13,7 +13,7 @@ import {
   foldOllamaStream,
   OLLAMA_DEFAULT_MODEL,
 } from '../../packages/core-connectors/src/index.ts';
-import { streamedLines } from '../api/ollama-stand-in-fixture.ts';
+import { streamedLines } from './ollama-on-loopback.ts';
 import { openAgentWorld, PROMPT, WORDS, type AgentWorld, type Call } from './model-agent-world.ts';
 
 const WAIT = 20_000;

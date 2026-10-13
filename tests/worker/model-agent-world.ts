@@ -31,7 +31,7 @@ import {
   type ModelAgent,
   type ModelAgentOptions,
 } from '../../apps/model-agent/carrier.ts';
-import { standInOllama, streamedLines, type StandIn } from '../api/ollama-stand-in-fixture.ts';
+import { ollamaOnLoopback, streamedLines, type LoopbackOllama } from './ollama-on-loopback.ts';
 import { memoryCarriage, type MemoryCarriage } from '../support/memory-carriage.ts';
 
 export const carryKey = (): string => randomBytes(32).toString('base64url');
@@ -95,7 +95,7 @@ export interface Call {
 }
 
 export interface AgentWorld {
-  readonly ollama: StandIn;
+  readonly ollama: LoopbackOllama;
   readonly carriage: MemoryCarriage;
   readonly custody: ProcessCustody;
   readonly agent: ModelAgent;
@@ -162,7 +162,7 @@ function writeNoneCredential(folder: string): string {
 // oxlint-disable-next-line max-lines-per-function -- the world and its broker side
 export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentWorld> {
   const folder = mkdtempSync(join(tmpdir(), 'model-agent-'));
-  const ollama = await standInOllama();
+  const ollama = await ollamaOnLoopback();
   ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
   const custody = await startCustody({
     credentialsFile: writeNoneCredential(folder),
