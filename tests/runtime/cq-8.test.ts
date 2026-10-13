@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseSync } from 'vite';
 import { describe, expect, it } from 'vitest';
+import { classifyAll } from './cq-8-support.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const RUNTIME = join(ROOT, 'packages', 'core-runtime', 'src');
@@ -200,5 +201,37 @@ describe('CQ-8 runtime structure', () => {
     const text = readFileSync(join(RUNTIME, 'locks.ts'), 'utf8');
     expect(text).toMatch(/command-layer locks/iu);
     expect(text).toMatch(/before any lock `acquire` takes/iu);
+  });
+});
+
+/** One advisory lock statement as the helper sends it. */
+const lock = (key: string, shared = false) => ({
+  text: `select pg_advisory_xact_lock${shared ? '_shared' : ''}(hashtextextended($1, 0))`,
+  parameters: [key],
+});
+
+describe('CQ-8 lock classes', () => {
+  const business = '0e928700-ac2b-4f6e-9a51-6b1d2c3e4f50';
+
+  it('CQ-8 lock classes: the audit chain key and the ending keys after it are the tail of the order, not command-layer locks', () => {
+    expect(
+      classifyAll([
+        lock(`operation:${business}:actor:digest`),
+        lock(`${business}:decision`),
+        lock(business),
+        lock('session-ending:subject:someone', true),
+        lock('session-ending:session:a-session', true),
+      ]),
+    ).toEqual(['command', 'ordered', 'tail', 'tail', 'tail']);
+  });
+
+  it('CQ-8 lock classes: an ending key before the audit chain key stays a command-layer lock', () => {
+    expect(
+      classifyAll([
+        lock('session-ending:subject:someone', true),
+        lock(`task.siblings:${business}:set`),
+        lock(business),
+      ]),
+    ).toEqual(['command', 'command', 'tail']);
   });
 });
