@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a destination adds to, and allows beyond, a POST (AW-13): fixed
-// headers custody sets on every request to it, and the few DELETE, GET and
-// PUT routes it answers (the trace store's expiry and the read that confirms
-// it; the login provider's update of one user, C40). Both are custody's own
-// list, read once at start; a caller names neither. A destination marked
-// `post: false` takes no POST at all, only its listed routes: the login
-// provider's, whose service key could otherwise mint sign-in links or users
-// (C40 security review M1). A destination may declare the stream format
-// custody decodes for it (`stream: 'openai_sse'`, #1508), or folds whole
-// (`stream: 'responses_sse'`, #1620).
+// What a destination adds to, and allows beyond, a POST (AW-13): fixed headers custody sets on
+// every request to it, and the few DELETE, GET and PUT routes it answers (the trace store's expiry
+// and the read that confirms it; the login provider's update of one user, C40). Both are custody's
+// own list, read once at start; a caller names neither. A destination marked `post: false` takes no
+// POST at all, only its listed routes: the login provider's, whose service key could otherwise mint
+// sign-in links or users (C40 security review M1). A destination with `posts` takes a POST to those
+// exact paths only: the mail provider's, whose key could otherwise create keys or read contacts.
+// A `stream` names a format custody decodes (`openai_sse`, #1508) or folds whole (`responses_sse`).
 //
 // A route may instead be a catalogued call's fixed template, query included
-// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
-// is one segment or query value, a `{name*}` slot one segment or more. A
-// request matches it whole or not at all, so no query is free. A query value
-// is what `URLSearchParams` writes for one value: unreserved characters, `+`
-// and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw
-// `&`, `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields its answer is cut to
-// (`fields`, the catalogued response schema, at most four).
+// (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot is one segment or
+// query value, a `{name*}` slot one segment or more. A request matches it whole or not at all, so
+// no query is free. A query value is what `URLSearchParams` writes for one value: unreserved
+// characters, `+` and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw `&`,
+// `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields
+// its answer is cut to (`fields`, the catalogued response schema, at most four).
 
 import type { Fields } from './egress-answer.ts';
 
@@ -74,11 +71,9 @@ export interface Extras {
   readonly routes?: readonly Route[];
   /** `false`: no POST to any path, only the listed routes. */
   readonly post?: false;
-  /**
-   * A stream format custody decodes itself, so a presented key may stream
-   * (#1508); or `responses_sse`, a stream custody reads whole and folds to
-   * its completed response before redacting it (#1620).
-   */
+  /** The only paths a POST may name; absent, any plain path. */
+  readonly posts?: readonly string[];
+  /** A stream custody decodes (#1508), or reads whole, folds and then redacts (`responses_sse`, #1620). */
   readonly stream?: 'openai_sse' | 'responses_sse';
 }
 
@@ -231,6 +226,7 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
     headers?: Record<string, string>;
     routes?: Route[];
     post?: false;
+    posts?: string[];
     stream?: 'openai_sse' | 'responses_sse';
   } = {};
   if (entry['stream'] !== undefined) {
@@ -240,6 +236,15 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
   if (entry['post'] !== undefined) {
     if (entry['post'] !== false) return undefined;
     extras.post = false;
+  }
+  if (entry['posts'] !== undefined) {
+    const posts = entry['posts'];
+    // A list that names no path, or one beside `post: false`, says two things at once.
+    if (!Array.isArray(posts) || posts.length === 0 || extras.post === false) return undefined;
+    if (!posts.every((path) => typeof path === 'string' && ROUTE_PATH.test(path))) {
+      return undefined;
+    }
+    extras.posts = posts as string[];
   }
   if (entry['headers'] !== undefined) {
     const headers = headersOf(entry['headers']);
@@ -263,15 +268,17 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
 /**
  * A path a request may name: a plain path under the origin for a POST, as
- * before, unless the destination takes none; for any other method, only a
- * route the destination lists.
+ * before, unless the destination takes none or lists the only ones it takes;
+ * for any other method, only a route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
   if (path.length > MOST_PATH) return false;
   const routes = extras.routes ?? [];
   if (templateFilled(extras, method, path) !== undefined) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
-  if (method === 'POST') return extras.post !== false;
+  if (method === 'POST') {
+    return extras.post !== false && (extras.posts === undefined || extras.posts.includes(path));
+  }
   return routes.some((route) => {
     if (!('path' in route) || route.method !== method) return false;
     if (!route.path.endsWith('/*')) return route.path === path;

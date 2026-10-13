@@ -32,6 +32,15 @@ export {
   type ReceiptOutcome,
   type UnderLease,
 } from './correction-receipts.ts';
+export {
+  claimProposal,
+  readProposal,
+  settleProposal,
+  type Claimed,
+  type CorrectionProposal,
+  type ProposalState,
+  type Settlement,
+} from './correction-proposals.ts';
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
 export {
   bindPartySite,

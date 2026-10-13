@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C39-T and AW-07b: a revoke or an expiry that lands between an invitation send's reservation and its dispatch is caught by the read just before dispatch: the provider hears nothing and the attempt ends failed, not_pending"
+}
