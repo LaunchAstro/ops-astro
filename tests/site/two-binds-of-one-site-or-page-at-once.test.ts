@@ -9,10 +9,9 @@
 // bind of the same address waits for nothing. The same bind twice at once
 // leaves the site bound once, and refuses neither.
 //
-// A bind adding a page and a request on that page: the request sees no page
-// until the bind commits, so it is refused at once, storing nothing, and stored
-// after. A bind in flight holds the site row, so a request on a page already
-// bound waits for it and is stored once it commits.
+// A bind in flight holds the site row, and a request takes that row before
+// its page, so a request waits for the bind: on a page the bind is adding, it
+// is stored once the bind commits, as it is on a page already bound.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -178,17 +177,17 @@ describe.skipIf(serverUrl === undefined)('one page bound twice at once', () => {
 });
 
 describe.skipIf(serverUrl === undefined)('a bind racing a request', () => {
-  it('refuses a request on a page the bind has not committed, then stores the next', async () => {
+  it('makes a request on a page the bind has not committed wait for it, then stores it', async () => {
     const client = await freshClient(w);
     const page = { pageUrl: `https://${randomUUID().slice(0, 8)}.example/`, path: 'src/y.md' };
     const bindAdding = async (site: FreshClient['site'], tx: Parameters<typeof bindPartySite>[0]) =>
       await bindPartySite(tx, { ...site, pages: [page] }, w.admin.actorId);
     const holding = held(w, async (tx) => await bindAdding(client.site, tx));
     await holding.ready;
-    const early = await onOwn(w, insertOn(w, client, page)).finally(() => holding.release());
-    expect(early).toEqual({ ok: false, code: 'PAGE_OUTSIDE_PARTY_SITE' });
+    const requesting = onOwn(w, insertOn(w, client, page));
+    await waitSeen(w, REQUEST).finally(() => holding.release());
     expect(await holding.done).toEqual({ ok: true });
-    expect(isStored(await onOwn(w, insertOn(w, client, page)))).toBe(true);
+    expect(isStored(await requesting)).toBe(true);
     expect(await correctionsOf(w, client.partyId)).toBe(1);
   });
 

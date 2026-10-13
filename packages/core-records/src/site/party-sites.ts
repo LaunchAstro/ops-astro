@@ -184,6 +184,19 @@ export async function readPartySite(
   };
 }
 
+/**
+ * The client's site row, share-locked on its own before a request locks its
+ * page: an unbind takes the site before the page, so a request does too.
+ */
+export async function shareClientSite(tx: TenantQuery, partyId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.party_sites
+      where business_id = $1 and party_id = $2::uuid
+        for share`,
+    [tx.businessId, partyId],
+  );
+}
+
 /** Whether the task is a live task of the named party: asked only of the operand party. */
 export async function isPartysTask(
   tx: TenantQuery,
