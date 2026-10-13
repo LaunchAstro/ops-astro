@@ -71,6 +71,8 @@ const JSON_BODY = { 'content-type': 'application/json' };
 export interface RecoverySession {
   readonly accessToken: string;
   readonly subject: string;
+  /** The login's address as the provider holds it; empty when it names none. */
+  readonly email: string;
 }
 
 /** The provider's recovery session for the mailed link's hash, or nothing. */
@@ -87,10 +89,12 @@ export async function verifyRecovery(
   const body = await objectOf(answer);
   const accessToken = body?.['access_token'];
   const user = body?.['user'];
-  const subject = typeof user === 'object' && user !== null ? (user as Json)['id'] : undefined;
+  const login = typeof user === 'object' && user !== null ? (user as Json) : {};
+  const subject = login['id'];
+  const email = login['email'];
   if (typeof accessToken !== 'string' || accessToken === '') return undefined;
   if (typeof subject !== 'string' || subject === '') return undefined;
-  return { accessToken, subject };
+  return { accessToken, subject, email: typeof email === 'string' ? email : '' };
 }
 
 /** Every session of the login signed out at the provider: true only on its 204. */
@@ -159,7 +163,7 @@ export async function writePassword(
 export type ChangeOutcome =
   | { readonly stage: 'invalid' | 'needs-support' | 'failed' }
   | { readonly refusal: 'refused' | 'failed' }
-  | { readonly stage: 'changed'; readonly signedOut: boolean };
+  | { readonly stage: 'changed'; readonly signedOut: boolean; readonly email: string };
 
 /**
  * "Change password", in its fixed order: open the provider's recovery session
@@ -179,7 +183,7 @@ export async function changePassword(
     if (session === undefined) return { stage: 'invalid' };
     opened.current = session;
   }
-  const { accessToken } = opened.current;
+  const { accessToken, email } = opened.current;
   const begun = await beginReset(route, accessToken);
   if (begun !== 'begun') return { stage: begun };
   // Refused or lost, the window stays open to its bound, five minutes on.
@@ -187,5 +191,5 @@ export async function changePassword(
   if (written === 'invalid') return { stage: 'invalid' };
   if (written !== 'set') return { refusal: written };
   opened.current = null;
-  return { stage: 'changed', signedOut: await signOutEverywhere(route, accessToken) };
+  return { stage: 'changed', signedOut: await signOutEverywhere(route, accessToken), email };
 }

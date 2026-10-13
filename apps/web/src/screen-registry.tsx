@@ -45,6 +45,7 @@ import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
 import type { TaskPanelHost } from './screens/task/panel-host.ts';
 import type { PageContext } from './screens/task/task-prefill.ts';
+import type { SessionStore } from './session/token.ts';
 
 export type { TaskPanelHost };
 
@@ -244,14 +245,17 @@ export interface OpenContext {
   readonly fetch: typeof globalThis.fetch;
   /** The whole address, its query included: an evidence link pins a version there. */
   readonly path: string;
+  /** The tab's session, which a reset of its own login ends. */
+  readonly sessions: Pick<SessionStore, 'session' | 'clear'>;
 }
 
 /** The screen each open route draws, with or without a session; keyed so none is missed. */
 const OPEN_SCREENS: {
   readonly [Id in OpenRouteId]: (params: ParamsOf<Id>, context: OpenContext) => ReactElement;
 } = {
-  // Keyed by the whole address: a new link arriving in the same document is a
-  // new page, which takes its own token and clears its own fragment.
+  // Keyed by the whole address, as the reset page is: a new link arriving in
+  // the same document is a new page, which takes its own token and clears its
+  // own fragment.
   'agency:enrol': (_, context) => (
     <EnrolScreen
       key={context.path}
@@ -273,11 +277,13 @@ const OPEN_SCREENS: {
   ),
   'agency:reset': (_, context) => (
     <ResetScreen
+      key={context.path}
       path={context.path}
       gotrueUrl={context.gotrueUrl}
       apiOrigin={context.apiOrigin}
       fetch={context.fetch}
       tab={globalThis.window}
+      sessions={context.sessions}
     />
   ),
 };

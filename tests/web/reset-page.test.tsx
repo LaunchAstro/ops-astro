@@ -12,11 +12,15 @@ import { act } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { ResetScreen } from '../../apps/web/src/screens/Reset.tsx';
 import { SignIn } from '../../apps/web/src/screens/SignIn.tsx';
+import { drawOpenScreen } from '../../apps/web/src/screen-registry.tsx';
+import { matchRoute, type OpenRouteId, type RouteMatch } from '../../apps/web/src/routes.ts';
+import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount, settle } from '../surfaces/mount.tsx';
 
 const PROVIDER = 'http://provider.test';
 const SUBJECT = '0b9f6c1e-6a1d-4c39-9b1e-1f0c3a2d4e5f';
 const HASH = 'pkce_0123456789abcdef0123456789abcdef0123456789abcdef';
+const EMAIL = 'person@example.test';
 const ACCESS = `e30.${Buffer.from(JSON.stringify({ sub: SUBJECT })).toString('base64url')}.sig`;
 
 interface Asked {
@@ -27,8 +31,13 @@ interface Asked {
   readonly body: string;
 }
 
+/** How the fake answers `changed`, when not with its 200. */
+interface Answers {
+  readonly changed?: { readonly status: number; readonly code: string };
+}
+
 /** A fetch that answers as the provider and the API would, noting each call. */
-function fakeNetwork(asked: Asked[]): typeof globalThis.fetch {
+function fakeNetwork(asked: Asked[], answers: Answers = {}): typeof globalThis.fetch {
   return async (input, init) => {
     await Promise.resolve();
     const url = String(input instanceof Request ? input.url : input);
@@ -46,9 +55,12 @@ function fakeNetwork(asked: Asked[]): typeof globalThis.fetch {
       return response;
     };
     if (url === `${PROVIDER}/verify`) {
-      return reply(200, { access_token: ACCESS, user: { id: SUBJECT } });
+      return reply(200, { access_token: ACCESS, user: { id: SUBJECT, email: EMAIL } });
     }
     if (url.startsWith(`${PROVIDER}/logout`)) return reply(204);
+    if (url.endsWith('/api/password/changed') && answers.changed !== undefined) {
+      return reply(answers.changed.status, { code: answers.changed.code });
+    }
     if (url.endsWith('/api/password/reset')) return reply(202, {});
     return reply(200, {});
   };
@@ -70,6 +82,7 @@ it('clears the link from the address before its first request, and signs nobody 
       apiOrigin=""
       fetch={fakeNetwork(asked)}
       tab={window}
+      sessions={new SessionStore(window.sessionStorage)}
     />,
   );
   // Cleared before anything was asked, the history entry's own state kept.
@@ -119,6 +132,7 @@ it('asks for an address when it arrives with no link, and answers every address 
       apiOrigin=""
       fetch={fakeNetwork(asked)}
       tab={window}
+      sessions={new SessionStore(window.sessionStorage)}
     />,
   );
   expect(page.find('#reset-password')).toBeNull();
@@ -132,6 +146,76 @@ it('asks for an address when it arrives with no link, and answers every address 
   ]);
   expect(JSON.parse(asked[0]?.body ?? '{}')).toStrictEqual({ email: 'someone@example.test' });
   expect(page.find('[data-outcome="asked"]')).not.toBeNull();
+});
+
+/** Choose the password twice, submit, and let every call answer. */
+async function changeTo(page: Awaited<ReturnType<typeof mount>>, password: string) {
+  await page.type('#reset-password', password);
+  await page.type('#reset-confirm', password);
+  await page.click('button[type="submit"]');
+  for (let i = 0; i < 10; i += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- each call answers after the one before
+    await settle();
+  }
+}
+
+/** The reset page as the application draws it, at `path`. */
+function resetAt(path: string, fetch: typeof globalThis.fetch, sessions: SessionStore) {
+  const match = matchRoute('/reset') as RouteMatch<OpenRouteId>;
+  return drawOpenScreen(match, { path, gotrueUrl: PROVIDER, apiOrigin: '', fetch, sessions });
+}
+
+it('takes a second link arriving in the same tab as its own, not the first', async () => {
+  const second = 'pkce_fedcba9876543210fedcba9876543210fedcba9876543210';
+  const asked: Asked[] = [];
+  const sessions = new SessionStore(window.sessionStorage);
+  window.history.replaceState(null, '', `/reset#token_hash=${HASH}`);
+  const page = await mount(resetAt(`/reset#token_hash=${HASH}`, fakeNetwork(asked), sessions));
+  window.history.replaceState(null, '', `/reset#token_hash=${second}`);
+  await page.render(resetAt(`/reset#token_hash=${second}`, fakeNetwork(asked), sessions));
+
+  expect(window.location.hash).toBe('');
+  await changeTo(page, 'a-new-password-for-reset');
+  const verified = asked.filter((one) => one.url === `${PROVIDER}/verify`);
+  expect(verified.map((one) => JSON.parse(one.body).token_hash)).toStrictEqual([second]);
+});
+
+it("ends the tab's session of the login it reset, so sign-in asks again", async () => {
+  const sessions = new SessionStore(window.sessionStorage);
+  sessions.set({ businessKey: 'alpha', email: 'Person@Example.test', sessionId: 'tab-session' });
+  window.history.replaceState(null, '', `/reset#token_hash=${HASH}`);
+  const page = await mount(resetAt(`/reset#token_hash=${HASH}`, fakeNetwork([]), sessions));
+  await changeTo(page, 'a-new-password-for-reset');
+
+  expect(page.find('[data-outcome="changed"]')).not.toBeNull();
+  // The next document, the sign-in link's, reads the tab afresh.
+  expect(new SessionStore(window.sessionStorage).session).toBeNull();
+});
+
+it("leaves another person's session in the tab alone", async () => {
+  const sessions = new SessionStore(window.sessionStorage);
+  const theirs = { businessKey: 'bravo', email: 'someone-else@example.test', sessionId: 'theirs' };
+  sessions.set(theirs);
+  window.history.replaceState(null, '', `/reset#token_hash=${HASH}`);
+  const page = await mount(resetAt(`/reset#token_hash=${HASH}`, fakeNetwork([]), sessions));
+  await changeTo(page, 'a-new-password-for-reset');
+
+  expect(page.find('[data-outcome="changed"]')).not.toBeNull();
+  expect(new SessionStore(window.sessionStorage).session).toStrictEqual(theirs);
+});
+
+it('says an unconfirmed change is unconfirmed, never that the password is unchanged', async () => {
+  window.history.replaceState(null, '', `/reset#token_hash=${HASH}`);
+  const network = fakeNetwork([], { changed: { status: 409, code: 'RESET_NOT_CONFIRMED' } });
+  const page = await mount(
+    resetAt(`/reset#token_hash=${HASH}`, network, new SessionStore(window.sessionStorage)),
+  );
+  await changeTo(page, 'a-new-password-for-reset');
+
+  const alert = page.find('[role="alert"]')?.textContent ?? '';
+  expect(alert).toContain('could not confirm');
+  expect(alert).not.toContain('not changed');
+  expect(page.find('#reset-password')).not.toBeNull();
 });
 
 it('offers sign-in a way to reset a forgotten password', async () => {
