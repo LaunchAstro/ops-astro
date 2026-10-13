@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's sidebar door: a task:read revoked after the site read's first check and before the statement that reads the file discloses no source text; the read decides on grants as they stand after the file is read."
+}
