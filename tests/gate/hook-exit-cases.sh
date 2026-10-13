@@ -199,6 +199,8 @@ proof_case pre-push-ignores-uncommitted-canary-bytes \
   "uncommitted canary bytes in the checkout cannot refuse a clean pushed commit"
 proof_case pre-push-refuses-without-private-list \
   "a push without the private list is refused, and one with it runs the literal sweep"
+proof_case hooks-refuse-when-not-installed \
+  "a checkout without installed hooks refuses to push, whatever commit it is on"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \
