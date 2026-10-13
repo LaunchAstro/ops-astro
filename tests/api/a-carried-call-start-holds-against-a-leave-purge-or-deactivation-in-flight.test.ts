@@ -330,7 +330,7 @@ describe.skipIf(serverUrl === undefined)('a carried call start against a closer 
     const c = await carried();
     const asked = await question(c, 'Pick and ask at once?');
     // The conversation row, held as any command on it holds it, so the pick queues on it
-    // first and the call (past `carriedIn`) queues behind on its key check.
+    // first and the call queues behind, at the conversation it takes before the membership.
     const row = await hold(db, async (execute) => {
       await execute('select 1 from public.conversations where id = $1 for update', [
         asked.conversationId,
@@ -346,8 +346,8 @@ describe.skipIf(serverUrl === undefined)('a carried call start against a closer 
       });
       await waitersOf(db.admin, row.pid, 1);
       asking = ask(c, asked);
-      // The call, past `carriedIn` (its membership held for share), queues on the row's key check.
-      await blockedIn(db.admin, 'insert into public.model_calls');
+      // The call queues on the conversation's row before it holds the membership.
+      await blockedIn(db.admin, 'for key share');
       await row.letGo();
       const outcomes = await Promise.allSettled([
         within(20_000, picking),
@@ -363,7 +363,13 @@ describe.skipIf(serverUrl === undefined)('a carried call start against a closer 
         one.status === 'fulfilled' ? one.value : undefined,
       );
       expect(picked).toMatchObject({ status: 200 });
-      expect(replied).toMatchObject({ answered: true, body: says(QWEN) });
+      // The pick queued first and left first, so the call finds no member and sends nothing.
+      expect(replied).toMatchObject({ answered: false, code: 'CARRIAGE_UNAVAILABLE' });
+      expect(
+        await db.admin.execute(`select 1 from public.model_calls where conversation_id = $1`, [
+          asked.conversationId,
+        ]),
+      ).toHaveLength(0);
       expect(await openCount(asked.conversationId)).toBe(0);
     } finally {
       vi.stubEnv('OPS_AGENT_PROVIDER', 'ollama');

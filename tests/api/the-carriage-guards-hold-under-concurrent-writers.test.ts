@@ -298,13 +298,14 @@ describe.skipIf(serverUrl === undefined)('the carriage guards under concurrent w
         );
       }).then(
         async (held) => {
-          // Committed only once the release has committed, so the guard could have seen it.
-          await release.letGo();
           await held.letGo();
           return null;
         },
         (error: unknown) => String((error as Error).message),
       );
+      // The guard's read of the call queues behind the release, which then commits.
+      await waitersOf(db.admin, release.pid);
+      await release.letGo();
       const outcome = await writing;
       const [row] = await db.admin.execute<{ readonly state: string; readonly carried: boolean }>(
         `select c.state, exists (select 1 from public.model_call_carriers k where k.call_id = c.id) as carried
@@ -313,7 +314,7 @@ describe.skipIf(serverUrl === undefined)('the carriage guards under concurrent w
       );
       expect(
         { outcome: outcome === null ? 'written' : 'refused', ...row },
-        'a carriers row for a call no longer dispatched: the guard read the call without a lock',
+        'a carriers row for a call no longer dispatched: the guard did not wait for the release',
       ).toEqual({ outcome: 'refused', state: 'released', carried: false });
     } finally {
       await release.letGo();

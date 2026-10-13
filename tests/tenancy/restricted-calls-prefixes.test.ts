@@ -213,6 +213,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     conversation_id: randomUUID(),
     agent_actor_id: randomUUID(),
     added_by_actor_id: randomUUID(),
+    joined_at: new Date(0),
+    left_at: new Date(0),
   },
   'public.model_call_carriers': { call_id: randomUUID(), agent_actor_id: randomUUID() },
   'public.conversation_messages': {

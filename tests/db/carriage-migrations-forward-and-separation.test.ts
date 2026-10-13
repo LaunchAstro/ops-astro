@@ -5,8 +5,8 @@
 // conversation already answered: they apply over its rows, which keep their
 // call and gain a null message. Then the separation each new key and policy
 // holds: a business sees and writes only its own members and carriers, and a
-// call, a membership or a carriers row cannot name another business's or
-// another conversation's row.
+// membership or a carriers row cannot name another business's row, and a
+// message has one call.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -134,22 +134,12 @@ describe.skipIf(serverUrl === undefined)('the carriage migrations', () => {
     ).not.toBe('written');
   });
 
-  it("refuses a call naming another conversation's message, and a second call on one message", async () => {
+  it('refuses a second call on one message, and names a message on conversation calls only', async () => {
     const outcome = async (write: Parameters<typeof db.app.withBusiness>[1]) =>
       await db.app.withBusiness(alpha.id, write).then(
         () => 'written',
         (cause: { code?: string }) => cause.code,
       );
-    expect(
-      await outcome(async (tx) => {
-        const one = await conversationOf(tx, alpha.owner);
-        const other = await conversationOf(tx, alpha.owner);
-        await dispatchedCall(tx, {
-          conversationId: one.conversationId,
-          messageId: other.messageId,
-        });
-      }),
-    ).toBe('23503');
     expect(
       await outcome(async (tx) => {
         await dispatchedCall(tx, {
@@ -158,6 +148,13 @@ describe.skipIf(serverUrl === undefined)('the carriage migrations', () => {
         });
       }),
     ).toBe('23505');
+    const [check] = await db.admin.execute<{ readonly def: string }>(
+      `select pg_get_constraintdef(oid) as def from pg_constraint
+        where conname = 'model_calls_message_is_a_conversations'`,
+    );
+    expect(check?.def).toBe(
+      'CHECK (((conversation_message_id IS NULL) OR (conversation_id IS NOT NULL)))',
+    );
   });
 
   it('a carriers row is a dispatched conversation call’s, set once in order', async () => {

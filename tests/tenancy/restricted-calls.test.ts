@@ -93,13 +93,34 @@ const UNREACHED: Readonly<Record<string, string>> = {
          select id, person_id from public.actors
           where business_id = $1 and person_id is not null order by id limit 1) a on true
      returning 1`,
-  // #1531: no journey step carries a call, so a member and a carriers row naming made-up ids.
+  // #1531: no journey step carries a call. A closed membership on the seeded
+  // conversation, and a carriers row on a dispatched call of it, by an actor of
+  // the business; bravo's name ids that key nothing.
   'public.conversation_agent_members': `insert into public.conversation_agent_members
-       (business_id, conversation_id, agent_actor_id, added_by_actor_id)
-     values ($1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid()) returning 1`,
-  'public.model_call_carriers': `insert into public.model_call_carriers
-       (business_id, call_id, agent_actor_id)
-     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+       (business_id, conversation_id, agent_actor_id, added_by_actor_id, joined_at, left_at)
+     select $1, coalesce(c.id, gen_random_uuid()), coalesce(c.owner_actor_id, gen_random_uuid()),
+            coalesce(c.owner_actor_id, gen_random_uuid()), now(), now()
+       from (select 1) one
+       left join lateral (
+         select id, owner_actor_id from public.conversations
+          where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  'public.model_call_carriers': `with call as (
+       insert into public.model_calls
+         (business_id, id, conversation_id, operation_key, state, reserved_minor, route_key,
+          route_reach, credential_kind, started_at)
+       select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'conversation.answer',
+              'dispatched', 0, 'm5_ollama', 'local', 'api_key', now()
+         from (select 1) one
+         left join lateral (
+           select id from public.conversations where business_id = $1 order by id limit 1) c on true
+       returning business_id, id)
+     insert into public.model_call_carriers (business_id, call_id, agent_actor_id)
+     select call.business_id, call.id, coalesce(a.id, gen_random_uuid())
+       from call
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.conversation_messages': `insert into public.conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
      select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',

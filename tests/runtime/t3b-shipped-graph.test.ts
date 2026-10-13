@@ -80,6 +80,7 @@ describe('T3 shipped graph: the sweeper side', () => {
     expect(writers.toSorted()).toStrictEqual([
       // AW-01: the broker writes a model call's own ledger state (O6, O9) when
       // the provider may have acted, never an attempt's; it reads no setting either.
+      'packages/core-custody/src/broker-carriage.ts',
       'packages/core-custody/src/broker-settle.ts',
       'packages/core-custody/src/broker.ts',
       'packages/core-runtime/src/budget.ts',

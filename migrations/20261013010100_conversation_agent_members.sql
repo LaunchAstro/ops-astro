@@ -50,7 +50,7 @@ begin
     if (new.business_id, new.id, new.conversation_id, new.agent_actor_id, new.added_by_actor_id,
         new.joined_at) is distinct from (old.business_id, old.id, old.conversation_id,
         old.agent_actor_id, old.added_by_actor_id, old.joined_at)
-       or old.left_at is not null or new.left_at is null then
+       or old.left_at is not null and new.left_at is distinct from old.left_at then
       raise exception 'conversation_agent_members: a membership only closes, once'
         using errcode = 'check_violation';
     end if;
@@ -119,9 +119,10 @@ create trigger conversation_agent_members_close_on_purge
   for each row when (old.body_purged_at is null and new.body_purged_at is not null)
   execute function public.conversation_agent_members_close();
 
--- A task's client link is `records.uuid_7` (0055); a conversation on it is a client's.
+-- A task's client link is `records.uuid_7` (0055), written through `data`, so the
+-- trigger watches every update and compares the column.
 create trigger conversation_agent_members_close_on_client_link
-  after update of uuid_7 on public.records
+  after update on public.records
   for each row when (new.uuid_7 is not null and old.uuid_7 is distinct from new.uuid_7)
   execute function public.conversation_agent_members_close();
 
