@@ -127,5 +127,5 @@ describe('credential files are published whole and owner-only', () => {
     expect(err).toContain(`${tokenFile}.lock`);
     expect(Date.now() - started).toBeGreaterThanOrEqual(2_500);
     expect(sent).toBe(0);
-  });
+  }, 15_000);
 });

@@ -145,6 +145,7 @@ export function verbHelp(command = 'pnpm cli'): string {
     `${command} <verb> [args]. Writes print "ok <command> <id> r<revision>"; pass that revision`,
     'to the next write. Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
     'No answer or a fault prints the operationId; send the same line with --operation <id> to replay.',
+    'Connection: --business <key>, --env sandbox|production (or --api <url>), --agent for an agent.',
     ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');
 }
