@@ -1,18 +1,11 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- An agent is a member of a person's conversation (#1531, live chat route B),
--- as a person is of a team conversation. The model agent hears a call only
--- from a conversation it is an open member of. The owner adds it by choosing
--- a model it carries (`conversation-agents.ts`); another model, a purge and
--- the agent's deactivation close the row. Closing marks it, nothing deletes
--- it, and joining again is a new row.
---
--- Storage holds, whoever writes: an open row is an active agent's, on a
--- conversation not purged, both read for share so a deactivation or purge
--- running now orders against it; one open row per conversation and agent; a
--- row only closes, once; and a deactivation, a purge, or a client linked to
--- the conversation's task closes the open rows, stamped after their locks.
--- Team conversations take no agent: `team_conversation_members` names people.
+-- An agent is a member of a person's conversation (#1531, live chat route B):
+-- the model agent hears a call only from a conversation it is an open member
+-- of (`conversation-agents.ts` adds it). Storage holds: an open row is an
+-- active agent's on an unpurged conversation, both read for share; one open
+-- row per conversation and agent; a row only closes, once; a deactivation, a
+-- purge or a client linked to the conversation's task closes the open rows.
 
 create table public.conversation_agent_members (
   business_id       uuid        not null,
@@ -76,33 +69,29 @@ create trigger conversation_agent_members_guard
   before insert or update on public.conversation_agent_members
   for each row execute function public.conversation_agent_members_guard();
 
--- Definer and row security off, so the close reaches the rows whichever role
--- made the change; it touches only the changed agent's, conversation's or
--- task's own. The rows are locked first, so `left_at` is read after any wait.
+-- Definer, row security off: it reaches only the changed row's own memberships.
 create function public.conversation_agent_members_close() returns trigger
   language plpgsql
   security definer
   set search_path = pg_catalog, public
   set row_security = off
   as $$
-declare
-  closing uuid[];
 begin
-  select array_agg(m.id) into closing
-    from (select m.id from public.conversation_agent_members m
-           where m.business_id = new.business_id and m.left_at is null
-             and case tg_table_name
-                   when 'actors' then m.agent_actor_id = new.id
-                   when 'conversations' then m.conversation_id = new.id
-                   else m.conversation_id in (
-                     select c.id from public.conversations c
-                      where c.business_id = new.business_id and c.scope_record_id = new.id)
-                 end
-           order by m.id
-           for update) m;
-  update public.conversation_agent_members
-     set left_at = greatest(clock_timestamp(), joined_at)
-   where id = any(closing) and left_at is null;
+  -- Locked first, so `left_at` is read after any wait on them.
+  with closing as (
+    select m.id from public.conversation_agent_members m
+     where m.business_id = new.business_id and m.left_at is null
+       and case tg_table_name
+             when 'actors' then m.agent_actor_id = new.id
+             when 'conversations' then m.conversation_id = new.id
+             else m.conversation_id in (
+               select c.id from public.conversations c
+                where c.business_id = new.business_id and c.scope_record_id = new.id)
+           end
+     for update)
+  update public.conversation_agent_members m
+     set left_at = greatest(clock_timestamp(), m.joined_at)
+    from closing where m.id = closing.id;
   return null;
 end;
 $$;

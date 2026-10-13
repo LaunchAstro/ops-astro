@@ -125,8 +125,7 @@ export const EFFECT_ROWS = [
     meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
     source: 'AW-01, O6, O9',
   },
-  // #1531: one model call per conversation message, and calls carried to the
-  // model agent on the owner's machine.
+  // #1531: one call per message, and calls carried to the model agent.
   {
     code: 'STILL_ANSWERING',
     status: 409,

@@ -1,17 +1,11 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- A conversation call carried to the model agent on the owner's machine
--- (#1531, live chat route B). One row per carried call, written with the call,
--- naming the agent. Ids and times only, never a word of the conversation, each
--- time set once and in order: `offered_at` (the offer; the doorbell rings),
--- then together `runner` (the agent process sent to), `request_at` (the send
--- decided; only then is the request sent), `send_by` (the write deadline) and
--- `answer_by` (the latest an answer may settle). The sweep reads `request_at`:
--- null proves nothing was sent.
---
--- The doorbell is rung by the database in the transaction that sets
--- `offered_at`, with the conversation and call ids, on the agent's own topic
--- (`ops_carry_ring`). Where Realtime is not installed it does nothing.
+-- A conversation call carried to the model agent (#1531), one row per call,
+-- written with it: ids and times only, each set once and in order. `offered_at`
+-- rings the agent's doorbell from the database (`ops_carry_ring`; nothing where
+-- Realtime is absent); `runner`, `request_at`, `send_by` and `answer_by` are the
+-- send, set together before the request goes. A null `request_at` proves nothing
+-- was sent, which the sweep reads.
 
 create table public.model_call_carriers (
   business_id    uuid        not null,

@@ -12,8 +12,8 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
-export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
+import { MANDATE_EXECUTES, PART_GROUPS } from './restricted-calls-mandates.ts';
+export { MANDATE_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -163,9 +163,6 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'task_tags'],
   // 20261006074341: a conversation member's row; a member leaves by a mark, never a delete.
   ['siu', 'team_conversation_members'],
-  // 20261013010100 and 20261013010200 (#1531): an agent member closes, and a carried call's
-  // times are set, by the column grants in COLUMN_UPDATES; nothing deletes either.
-  ['si', 'conversation_agent_members model_call_carriers'],
   // C80: a live correction takes updates (a decision is one); its receipts
   // are append only.
   ['siu', 'live_corrections'],
@@ -193,7 +190,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  ...MANDATE_GROUPS,
+  ...PART_GROUPS,
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

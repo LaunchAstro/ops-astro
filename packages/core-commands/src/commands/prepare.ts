@@ -826,15 +826,8 @@ export async function prepareCommand(
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);
-  return {
-    session,
-    declaration,
-    entryPoint,
-    spine,
-    target,
-    carrier: deploymentCarrier(),
-    request: parsed.request,
-  };
+  const carrier = deploymentCarrier();
+  return { session, declaration, entryPoint, spine, target, carrier, request: parsed.request };
 }
 
 /**

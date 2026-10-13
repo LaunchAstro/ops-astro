@@ -91,12 +91,7 @@ export interface Broker {
    * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
    */
   readonly localOwnerTesting?: boolean;
-  /**
-   * The model agent that carries this deployment's conversation calls (#1531),
-   * set only where it accepted `MODEL_BROKER_CARRIER`: each call is written
-   * with a carriers row naming the agent, and only for a conversation the
-   * agent is an open member of.
-   */
+  /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
   readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
@@ -159,10 +154,9 @@ export type BrokerRefusal =
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
   | 'LIABILITY_UNKNOWN'
-  // One call per message (#1531): the message's call is still with the model, or ended without a reply.
+  // #1531: the message's one call is on its way or ended; the carrier is no member.
   | 'STILL_ANSWERING'
   | 'ANSWER_ENDED'
-  // A carried deployment, and the agent is not a member of the conversation.
   | 'CARRIAGE_UNAVAILABLE'
   | CarryRefusal;
 

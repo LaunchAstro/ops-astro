@@ -73,18 +73,16 @@ async function leave(
   conversationId: string,
 ): Promise<void> {
   if (context.carrier === undefined) return;
-  const open = [tx.businessId, conversationId, context.carrier.agent];
   // Locked first, so the close is stamped after any wait on a call holding it.
   await tx.query(
-    `select 1 from conversation_agent_members
-      where business_id = $1 and conversation_id = $2 and agent_actor_id = $3 and left_at is null
-      for update`,
-    open,
-  );
-  await tx.query(
-    `update conversation_agent_members set left_at = greatest(clock_timestamp(), joined_at)
-      where business_id = $1 and conversation_id = $2 and agent_actor_id = $3 and left_at is null`,
-    open,
+    `with closing as (
+       select id from conversation_agent_members
+        where business_id = $1 and conversation_id = $2 and agent_actor_id = $3
+          and left_at is null
+        for update)
+     update conversation_agent_members m set left_at = greatest(clock_timestamp(), m.joined_at)
+       from closing where m.id = closing.id`,
+    [tx.businessId, conversationId, context.carrier.agent],
   );
 }
 

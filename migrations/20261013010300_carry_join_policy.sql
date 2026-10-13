@@ -1,18 +1,13 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Who may join a carriage topic on Supabase Realtime (#1531, live chat route B).
---   carry:<business>:agent:<agent>  an agent's doorbell: that agent alone
---   carry:<business>:call:<call>    one carried call, while dispatched: the owner
---                                   of its conversation, and the agent on its
---                                   carriers row while an open member there
--- `ops_carry_may_join(topic)` is the one judgement. It resolves the JWT's
--- `sub` through this product's logins in the topic's business only, as
--- `standingOf` (a person: active login, membership and actor) and
--- `resolveAgentLogin` (an agent: active login and agent actor) do; a login
--- whose access here was ended is no one, and a topic not in this exact shape,
--- capitals included, is refused. Where Realtime is installed, policies on
--- `realtime.messages` ask it: receive on either shape, send on a call topic
--- only (nobody sends on a doorbell; the database rings it).
+-- Who may join a carriage topic (#1531): `carry:<business>:agent:<agent>`, that
+-- agent alone; `carry:<business>:call:<call>`, while dispatched, the owner of
+-- its conversation and the agent on its carriers row while a member there.
+-- `ops_carry_may_join` resolves the JWT `sub` through this product's logins in
+-- the topic's business only, as `standingOf` and `resolveAgentLogin` do; an
+-- ended login, or any other shape (capitals included), is refused. Where
+-- Realtime is installed, policies on `realtime.messages` ask it: receive on
+-- either shape, send on a call topic only.
 
 create function public.ops_carry_may_join(topic text)
   returns boolean

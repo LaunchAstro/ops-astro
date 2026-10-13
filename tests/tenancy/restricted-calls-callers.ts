@@ -25,6 +25,7 @@ import {
   asRole,
 } from './restricted-calls-cases.ts';
 import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import { CARRIAGE_BARE_FROM, CARRIAGE_BEFORE_ROW } from './restricted-calls-carriage.ts';
 import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
 
 /**
@@ -210,8 +211,7 @@ export function expectedOutcome(
  */
 export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
   'public.delegations': 'constraint',
-  // 20261013010200 (#1531): the guard reads the call as the caller, hidden for a foreign business.
-  'public.model_call_carriers': 'constraint',
+  ...CARRIAGE_BEFORE_ROW,
 };
 
 /**
@@ -225,9 +225,7 @@ const BARE_INSERT_REFUSALS_FROM: Readonly<
   Record<string, { readonly from: string; readonly outcome: string }>
 > = {
   'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
-  // 20261013010100 (#1531): a bare row is open, and its agent is no active agent; a
-  // copy of the closed seed row meets the tenancy check.
-  'public.conversation_agent_members': { from: '20261013010100', outcome: 'constraint' },
+  ...CARRIAGE_BARE_FROM,
 };
 
 function beforeRowRefusal(qualified: string, at: string | undefined, copy: boolean) {
