@@ -53,8 +53,10 @@ and in the environment. A refusal names a setting, never a value.
    on the M5, where `<codex>` is the binary the settings name, then approve the code it shows in a browser signed in to
    ChatGPT. This is never a copy of another Codex home's login: two copies of
    one sign-in sign each other out.
-3. Write the settings file, and file the same key in custody's credential file
-   for destination `local_gpt` (both 0600).
+3. Make the runner's key, a random token (`openssl rand -hex 24`, as the
+   laptop's stack makes one), never a chosen word. Write the settings file, and
+   file the same key in custody's credential file for destination `local_gpt`
+   (both 0600).
 4. Run `scripts/m5/gpt-runner-install-check.sh <settings file> <credential file>`
    on the files the plist and custody will name. It passes only when:
    - the runner's own loader takes the settings file as it stands, alone;
