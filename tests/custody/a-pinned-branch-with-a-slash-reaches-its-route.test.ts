@@ -119,11 +119,20 @@ it('a source read accepts a pinned branch containing a slash', async () => {
   expect(seen).toEqual(['/repos/agency/site/contents/src/pages/about.astro?ref=approved%2Fbranch']);
 });
 
-it('custody sends a query slot holding %2F, and refuses any other escape before a socket', async () => {
+it('custody sends a query value as URLSearchParams writes it', async () => {
   contentType = 'application/json';
   body = JSON.stringify({ sha: 'abc', content: 'PHA+', encoding: 'base64' });
   seen.length = 0;
-  for (const ref of ['approved%2Fbranch', 'a%2Fb%2Fc', '%2F']) {
+  for (const ref of [
+    'approved%2Fbranch',
+    'a%2Fb%2Fc',
+    '%2F',
+    'a%2Bb',
+    'a+b',
+    '%2E%2E',
+    '..',
+    'x*y',
+  ]) {
     // oxlint-disable-next-line no-await-in-loop
     expect(await dispatch(`${CONTENTS}?ref=${ref}`), ref).toMatchObject({
       kind: 'answered',
@@ -134,17 +143,28 @@ it('custody sends a query slot holding %2F, and refuses any other escape before 
     `${CONTENTS}?ref=approved%2Fbranch`,
     `${CONTENTS}?ref=a%2Fb%2Fc`,
     `${CONTENTS}?ref=%2F`,
+    `${CONTENTS}?ref=a%2Bb`,
+    `${CONTENTS}?ref=a+b`,
+    `${CONTENTS}?ref=%2E%2E`,
+    `${CONTENTS}?ref=..`,
+    `${CONTENTS}?ref=x*y`,
   ]);
+});
+
+it('custody refuses a query value URLSearchParams would not write, before a socket', async () => {
+  contentType = 'application/json';
+  body = JSON.stringify({ sha: 'abc', content: 'PHA+', encoding: 'base64' });
   seen.length = 0;
   const refused = [
-    `${CONTENTS}?ref=%2E%2E`,
     `${CONTENTS}?ref=%2f%2e`,
     `${CONTENTS}?ref=%2f`,
-    `${CONTENTS}?ref=%252F`,
-    `${CONTENTS}?ref=a%26b`,
-    `${CONTENTS}?ref=..`,
-    `${CONTENTS}?ref=.`,
-    `${CONTENTS}?ref=%2`,
+    `${CONTENTS}?ref=a&b`,
+    `${CONTENTS}?ref=a=b`,
+    `${CONTENTS}?ref=a%2`,
+    `${CONTENTS}?ref=%`,
+    `${CONTENTS}?ref=a#b`,
+    `${CONTENTS}?ref=a/b`,
+    `${CONTENTS}?ref=a b`,
     `${CONTENTS}?ref=`,
     '/repos/agency%2Fsite/x/contents/about.astro?ref=main',
     '/repos/agency/site/contents/src%2Fpages/about.astro?ref=main',

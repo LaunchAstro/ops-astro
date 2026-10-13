@@ -14,8 +14,9 @@
 // (`/v6/deployments?projectId={project}&target=production`): a `{name}` slot
 // is one segment or query value, a `{name*}` slot one segment or more. A
 // request matches it whole or not at all, so no query is free. A query value
-// may hold `%2F`, the guarded call's spelling of `/` (a branch name), and no
-// other escape. Each template route names the fields its answer is cut to
+// is what `URLSearchParams` writes for one value: unreserved characters, `+`
+// and upper-case `%XX` escapes (a branch named `a/b` or `a+b`), never a raw
+// `&`, `=`, `?`, `#` or a lone `%`, so it cannot add a parameter. Each template route names the fields its answer is cut to
 // (`fields`, the catalogued response schema, at most four).
 
 import type { Fields } from './egress-answer.ts';
@@ -83,8 +84,8 @@ const TEMPLATE_QUERY =
   /^[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+)(?:&[A-Za-z]+=(?:\{[a-z]+\}|[A-Za-z0-9._~-]+))*$/u;
 /** What a slot stands for: one segment, never `.` or `..`, and no escape. */
 const SLOT_VALUE = String.raw`(?!\.\.?(?:/|\?|&|$))[A-Za-z0-9._~-]{1,256}`;
-/** What a query slot stands for: the same, or `%2F` in place of any character. */
-const QUERY_VALUE = String.raw`(?!\.\.?(?:&|$))(?:[A-Za-z0-9._~-]|%2F){1,256}`;
+/** What a query slot stands for: one value as `URLSearchParams` writes it. */
+const QUERY_VALUE = String.raw`(?:[A-Za-z0-9*._~+-]|%[0-9A-F]{2}){1,768}`;
 /** A declared field: dotted names, as the catalogue writes them. */
 const FIELD = /^[A-Za-z0-9_$]{1,64}(?:\.[A-Za-z0-9_$]{1,64}){0,7}$/u;
 const KINDS: ReadonlySet<unknown> = new Set(['string', 'number', 'boolean']);

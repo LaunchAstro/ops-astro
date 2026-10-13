@@ -78,14 +78,15 @@ afterAll(async () => {
 
 function dependencies(reference: boolean): CallDependencies {
   return {
-    resolve: async () => ['140.82.112.6'],
-    transport: async () => ({
-      kind: 'answer',
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      body,
-    }),
-    credential: async () => (reference ? { ref: 'source_control' } : canary),
+    resolve: () => Promise.resolve(['140.82.112.6']),
+    transport: () =>
+      Promise.resolve({
+        kind: 'answer' as const,
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+    credential: () => Promise.resolve(reference ? { ref: 'source_control' as const } : canary),
     ...(custody === undefined ? {} : { custody: custodyExports.siteCustody(custody) }),
     record: () => {},
   };

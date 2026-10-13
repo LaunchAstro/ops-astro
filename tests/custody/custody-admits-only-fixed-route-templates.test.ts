@@ -132,7 +132,7 @@ it('a path off the list, an extra, missing or altered query parameter, or a free
     '/v6/deployments?sha=c0ffee&projectId=prj_abc&target=production&limit=1',
     '/v6/deployments?projectId=prj_abc&sha=c0ffee&target=preview&limit=1',
     '/v6/deployments?projectId=prj_abc&sha=c0ffee&target=production&limit=100',
-    '/v6/deployments?projectId=prj_abc%26limit%3D100&sha=c0ffee&target=production&limit=1',
+    '/v6/deployments?projectId=prj%2fabc&sha=c0ffee&target=production&limit=1',
     '/v6/deployments?projectId=a&b=c&sha=c0ffee&target=production&limit=1',
     '/v6/deployments?projectId=&sha=c0ffee&target=production&limit=1',
     '/v6/deployments?q',

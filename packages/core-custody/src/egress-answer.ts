@@ -8,6 +8,8 @@
 // keeps its media type, and a site answer is cut to its route's declared
 // fields here (`keptOf`), read as the guarded call reads them.
 
+import { isUtf8 } from 'node:buffer';
+
 /** What is read of a response: its status, its body as it streams, and a way to stop it. */
 export interface Answering extends AsyncIterable<unknown> {
   readonly statusCode?: number | undefined;
@@ -32,6 +34,8 @@ export type Outbound =
       readonly body: string;
       /** The answer's `content-type`, lower-cased, with no parameters. */
       readonly mediaType?: string;
+      /** Set when the body's bytes were not valid UTF-8, so `body` holds replacements. */
+      readonly notUtf8?: true;
     }
   | { readonly ok: false; readonly fault: OutboundFault; readonly status: number | null };
 
@@ -42,7 +46,9 @@ async function readBounded(
   response: Answering,
   limit: number,
   onChunk?: OnChunk,
-): Promise<{ readonly ok: true; readonly text: string } | { readonly ok: false }> {
+): Promise<
+  { readonly ok: true; readonly text: string; readonly utf8: boolean } | { readonly ok: false }
+> {
   const parts: Buffer[] = [];
   let size = 0;
   // One chunk at a time: the count must stop the read, not follow it.
@@ -56,7 +62,8 @@ async function readBounded(
     parts.push(part);
     onChunk?.(part);
   }
-  return { ok: true, text: Buffer.concat(parts).toString('utf8') };
+  const bytes = Buffer.concat(parts);
+  return { ok: true, text: bytes.toString('utf8'), utf8: isUtf8(bytes) };
 }
 
 /** A response read within its limit. A redirect is answered, never followed. */
@@ -82,7 +89,13 @@ export async function answerOf(
   if (status < 200 || status >= 300) return { ok: false, fault: 'status', status };
   const type = response.headers?.['content-type'];
   const mediaType = typeof type === 'string' ? type.split(';')[0]?.trim().toLowerCase() : '';
-  return { ok: true, status, body: read.text, ...(mediaType ? { mediaType } : {}) };
+  return {
+    ok: true,
+    status,
+    body: read.text,
+    ...(mediaType ? { mediaType } : {}),
+    ...(read.utf8 ? {} : { notUtf8: true as const }),
+  };
 }
 
 /** A declared field's type, as the connector catalogue names it. */
@@ -124,7 +137,7 @@ export function keptOf(
   outcome: Extract<Outbound, { ok: true }>,
   fields: Fields,
 ): { readonly body: string; readonly values: readonly string[] } | undefined {
-  if (outcome.mediaType !== 'application/json') return undefined;
+  if (outcome.mediaType !== 'application/json' || outcome.notUtf8 === true) return undefined;
   let parsed: unknown;
   try {
     parsed = JSON.parse(outcome.body);
