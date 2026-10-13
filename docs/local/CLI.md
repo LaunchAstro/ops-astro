@@ -81,6 +81,25 @@ ops-astro logout --env sandbox
 - The hosted token lasts an hour. After that the API refuses the bearer; run
   `login` again.
 
+## Checking a machine against a hosted app
+
+Run these after "Installing", once per machine and preset. Steps 1 to 3 sign in
+to nothing, so they are safe to run before anyone has agreed to a sign-in.
+
+1. `ops-astro help` prints the verbs.
+2. `curl -s -o /dev/null -w '%{http_code}\n' <origin>/api/health` prints `200`.
+3. `ops-astro task.board --env <preset> --business <key> --json '{"board":null}'`
+   exits 2 with `no bearer`, sends nothing, and writes nothing. This shows the
+   preset has no saved credential, and no other preset's is used.
+4. `ops-astro login --env <preset> --email <address>` prompts for the password
+   with echo off. It prints `{"ok":true,"saved":".../cli-token.<preset>"}`, and
+   that file is mode 600.
+5. Step 3's command now exits 0 with `"ok":true`: a read only.
+6. `ops-astro logout --env <preset>`, unless the machine should stay signed in.
+
+A refused step 4 prints one line of the command line's own (exit 1) and
+saves nothing. After an hour the bearer expires; run step 4 again.
+
 ## Credential files
 
 The bearer file, its delegation file and a helper's beside it change only
