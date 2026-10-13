@@ -621,6 +621,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
             (select id from public.invitations where business_id = $1 order by id limit 1),
             (select id from public.logins where business_id = $1 order by id limit 1)
      returning 1`,
+  // AW-08: only the agent login tool writes an act, and the journey never runs it.
+  // One reserved make per business, on its first actor and person; the address is
+  // unique in every business, so it names the business.
+  'ops.agent_login_acts': `insert into ops.agent_login_acts
+       (business_id, id, agent_actor_id, act, generation, email, custody_item, phase,
+        operator_person_id)
+     select $1, gen_random_uuid(),
+            (select id from public.actors where business_id = $1 order by id limit 1),
+            'make', 1, 'agent-' || $1::text || '+g1@example.test', 'restricted calls seed',
+            'reserved',
+            (select id from public.people where business_id = $1 order by id limit 1)
+     returning 1`,
 };
 
 /**
