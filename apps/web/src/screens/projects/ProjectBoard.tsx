@@ -6,14 +6,9 @@ import { useAssignments } from '../task/assignment-context.tsx';
 import { AssignmentRecoveries } from '../task/AssignmentRecovery.tsx';
 import { useTimerState } from '../task/task-timer-context.tsx';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { ProjectsBoard, clientFiltersIn } from '@launchastro/ui';
+import { ProjectsBoard } from '@launchastro/ui';
 import { rowOf, rowActions, STAGES, type BoardPanelHost, type RowOpened } from '../projects-row.ts';
-import type {
-  ClientListResult,
-  ClientView,
-  PersonListResult,
-  TaskBoardResult,
-} from '../../../../../packages/core-wire/src/index.ts';
+import type { ClientView, TaskBoardResult } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { useBoardProjectionRead } from '../../data/board-live.ts';
 import { opensRead } from '../../data/use-read.ts';
@@ -37,8 +32,9 @@ import {
 import { BoardCustody } from './board-custody.tsx';
 import { useBoardTarget } from './scoped-board-read.ts';
 import { todayOn } from '../task/due-dates.ts';
-import { NO_CLIENTS, clientNamesOf, doorClients, readClients } from './client-names.ts';
+import { NO_CLIENTS, clientNamesOf, doorClients } from './client-names.ts';
 import { useBoardWidths, type BoardWidths } from './board-widths.ts';
+import { useBoardVocabulary } from './board-vocabulary.ts';
 import { useProjectClient } from './project-client.ts';
 import { ProjectsToolbar } from './ProjectsToolbar.tsx';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -110,12 +106,13 @@ function ProjectBoardRead(
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
 
-  const { state, reload, refresh } = useBoardProjectionRead<TaskBoardResult>(client, {
+  const read = useBoardProjectionRead<TaskBoardResult>(client, {
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', boardBody(props.scope)),
     isEmpty: (value) => value.tasks.length === 0,
     deps: [client],
   });
+  const { state, reload, refresh } = read;
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
   useRereadOn(timerState.changed, reload);
@@ -133,37 +130,14 @@ function ProjectBoardRead(
   const [refused, setRefused] = useState<string | null>(null);
   const said = refused ?? edits.said ?? props.widths.because;
 
-  // The people the assignee editor offers (MP-5-10); until they answer, the
-  // assignee cell draws no editor.
-  const people = useBoardProjectionRead<PersonListResult>(client, {
-    grantKey: props.grantKey,
-    run: () => client.read<PersonListResult>('person.list', {}),
-    // An answer without its list offers nobody, rather than breaking the board.
-    isEmpty: (value) => !Array.isArray(value.persons) || value.persons.length === 0,
-    deps: [client],
-  });
-  const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
-  // At a client filter (a Clients row door) every client the reader reaches (C32)
-  // is a Client filter even with no row, and the board waits for them (and past
-  // the last address's answer), so a door to a quiet client keeps its filter. A
-  // failed read keeps the filters the address asks for, and says it failed.
   const query = props.place.query;
-  const named =
-    clientFiltersIn(query) > 0 ||
-    props.scope.kind === 'aggregate' ||
-    props.scope.client !== undefined;
-  const reached = useBoardProjectionRead<ClientListResult>(client, {
-    grantKey: props.grantKey,
-    run: () => readClients(client, named),
-    deps: [client, named],
-  });
+  const vocabulary = useBoardVocabulary(client, grantKey, props.scope, query, panel?.changes ?? 0);
+  const { people, reached, named } = vocabulary;
+  const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   const clients = useMemo(
     () => (reached.own ? clientNamesOf(reached.state, query) : null),
     [reached.own, reached.state, query],
   );
-  // INB-1f: one stream for the tab, shared by the board and the inbox panels.
-  useRereadOn(panel?.changes ?? 0, people.reload);
-  useRereadOn(panel?.changes ?? 0, reached.reload);
   const { scopedView, personRequired, chips, answer, denied, admitted } = boardAdmission(
     props.scope,
     state,
@@ -184,7 +158,15 @@ function ProjectBoardRead(
     () => (admitted ? doorClients(reached.state, answer?.tasks ?? []) : NONE),
     [reached.state, admitted, answer],
   );
-  const admission = { admitted, denied, answered: answer !== null, opening: opensRead(state) };
+  // Every break the admission took, counted as it landed: the board's, and a scoped view's vocabulary's.
+  const breaks = read.breaks + (scopedView ? people.breaks + reached.breaks : 0);
+  const admission = {
+    admitted,
+    denied,
+    answered: answer !== null,
+    opening: opensRead(state),
+    breaks,
+  };
   const project = useProjectClient(client, grantKey, query, admission, panel?.changes ?? 0);
   const door = {
     address: props.place.view,

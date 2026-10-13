@@ -12,7 +12,7 @@ import { matchRoute, pathTo } from '../routes.ts';
 import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
 import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
-import type { Session, StorageLike } from '../session/token.ts';
+import { grantKeyOf, type Session, type StorageLike } from '../session/token.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useOwedCount, useTeamUnread } from '../data/dock-counts.ts';
 import { useLayoutStore } from '../shell/layout-store.ts';
@@ -59,9 +59,10 @@ export function useDockShell(
   const nav = useRail(
     railFrom({ collapsed: kept['rail.collapsed'], width: kept['rail.width'] }),
     store.save,
+    grantKeyOf(session),
   );
-  const layout = useDockLayout(dock, registry, nav.drawn, store);
-  useTaskDock(dock, task);
+  const layout = useDockLayout(dock, registry, nav.drawn, store, task?.close);
+  useTaskDock(dock, task, agency);
   // The bell's and the Team tab's figures with the first frame, on the agency face only.
   const owed = useOwedCount(client, session, agency);
   const unread = useTeamUnread(client, session, agency);
@@ -78,6 +79,7 @@ type ShellDock = Pick<
   | 'dock'
   | 'railCollapsed'
   | 'railWidth'
+  | 'railOwner'
   | 'onRailFold'
   | 'onRailResize'
   | 'onRailResizeEnd'
@@ -99,6 +101,7 @@ export const shellDock = (
   dock: screen === null ? null : dockProps({ registry, dock, layout, screen, task, counts, agent }),
   railCollapsed: nav.collapsed,
   railWidth: nav.width,
+  railOwner: nav.owner,
   onRailFold: nav.fold,
   onRailResize: nav.resize,
   onRailResizeEnd: nav.keep,

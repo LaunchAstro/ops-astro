@@ -70,7 +70,7 @@ export const readScopeMap = (path: string): ScopeMap => {
 /**
  * Which areas depend on a path, from every named suite's import closure. A suite
  * depends on itself, on each file it reaches and on each path it names; a named
- * directory covers every path under it.
+ * directory, or a named path the head no longer has, covers every path under it.
  */
 export const dependentsOf = (root: string, suites: readonly string[]): Dependents => {
   const files = new Map<string, Set<string>>();
@@ -78,11 +78,12 @@ export const dependentsOf = (root: string, suites: readonly string[]): Dependent
   for (const suite of new Set(suites.map((s) => s.split('#')[0] ?? s))) {
     const area = areaOf(suite);
     for (const dep of [suite, ...dependenciesOf(root, suite)]) {
-      if (existsSync(join(root, dep)) && statSync(join(root, dep)).isDirectory()) {
-        directories.push([`${dep.replace(/\/+$/u, '')}/`, area]);
-      } else {
-        files.set(dep, (files.get(dep) ?? new Set()).add(area));
-      }
+      // A named path the head no longer has may have been a file or a directory, so it covers
+      // both: a deleted fixture directory still reaches the deleted files under it.
+      const gone = !existsSync(join(root, dep));
+      const directory = gone || statSync(join(root, dep)).isDirectory();
+      if (directory) directories.push([`${dep.replace(/\/+$/u, '')}/`, area]);
+      if (gone || !directory) files.set(dep, (files.get(dep) ?? new Set()).add(area));
     }
   }
   return (path) => [

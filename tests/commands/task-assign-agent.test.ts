@@ -117,6 +117,39 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 an agent’s assign keeps one k
   });
 });
 
+describe.skipIf(serverUrl === undefined)('MP-4-8 a person’s agent assign names no person', () => {
+  it('an own agent with an assignee that is not a person id is refused, and nothing is written', async () => {
+    const decider = await world.decider('agent-odd-assignee');
+    const taskId = await created(decider, 'odd assignee');
+    await world.db.app.withBusiness(world.business, async (tx) => {
+      await grantTo(tx, decider, 'assign');
+    });
+    const agent = await agentOwnedBy(world.db.app, world.business, decider.personId);
+    const before = await revision(taskId);
+    const answers = [];
+    for (const assignee of [true, 7, [decider.personId], { id: decider.personId }]) {
+      // eslint-disable-next-line no-await-in-loop -- each body against the same revision
+      const answer = await world.asPerson(decider, {
+        command: 'task.assign',
+        operationId: randomUUID(),
+        recordId: taskId,
+        expectedRevision: before,
+        fields: { agent, assignee },
+      });
+      answers.push(isCommandRefusal(answer) ? [answer.code, answer.names] : 'applied');
+    }
+    expect(answers).toStrictEqual(
+      Array.from({ length: 4 }, () => ['FIELD_VALUE_INVALID', ['agent', 'assignee']]),
+    );
+    expect(await revision(taskId)).toBe(before);
+    const held = await world.db.admin.execute<{ readonly agent: string | null }>(
+      `select data ->> 'agent' as agent from public.records where id = $1`,
+      [taskId],
+    );
+    expect(held[0]?.agent ?? null).toBeNull();
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('MP-4-8 agent assigns inside its delegation', () => {
   it('a delegation holding assign sets its own task’s assignee, and it reads back', async () => {
     const decider = await world.decider('decider-assign');

@@ -62,7 +62,10 @@ const taskLock = (declaration: CommandDeclaration): RegExp =>
 
 /** The envelope's steps before the lock, each with why it may come first. */
 const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
-  [/^(begin|savepoint command_(attempt|work))$/u, "the transaction and the envelope's savepoints"],
+  [
+    /^(begin( isolation level read committed)?|savepoint command_(attempt|work))$/u,
+    "the transaction and the envelope's savepoints",
+  ],
   [/^select set_config\('app\.business_id', \$1, true\)$/u, 'the business, set locally'],
   [/^select l\.id as login_id, pl\.person_id, /u, 'the sign-in resolved (held: runtime half)'],
   [/^insert into public\.authentication_attempts /u, 'sign-in bookkeeping, never task content'],

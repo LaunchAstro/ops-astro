@@ -62,10 +62,9 @@ import { expectedShape, shapeOf, type Shape } from './statement-capture-cases.ts
 type Wrapper = typeof shipped;
 
 const DATABASE_TS = 'packages/core-records/src/tenancy/database.ts';
-const LOCAL_LINE =
-  "await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);";
+const LOCAL_LINE = "await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);";
 const BEGIN_THEN_SETTING = [
-  '    return (await sql.begin(async (tx) => {',
+  "    return (await sql.begin('isolation level read committed', async (tx) => {",
   '      // Inside the transaction, and nowhere else. `true` is the is_local',
   '      // argument, which is what makes this SET LOCAL rather than SET.',
   `      ${LOCAL_LINE}`,
@@ -86,7 +85,7 @@ const COPIES = {
     from: BEGIN_THEN_SETTING,
     to: [
       `    ${LOCAL_LINE.replace('tx.unsafe', 'sql.unsafe')}`,
-      '    return (await sql.begin(async (tx) => {',
+      "    return (await sql.begin('isolation level read committed', async (tx) => {",
     ].join('\n'),
   },
 } as const;

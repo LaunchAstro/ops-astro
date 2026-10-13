@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A question and a purge of its conversation's task at once, on two connections, in both orders: the question lands in the epoch on its side of the purge, the old one with its task and cut from later context, or the new one with no task; a start citing a task the purge holds is refused. Judged on a real migrated database through the API, each side on its own connection, stopped at a named statement and ordered by what pg_stat_activity reports."
+}

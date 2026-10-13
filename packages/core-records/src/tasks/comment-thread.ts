@@ -82,7 +82,8 @@ export async function readTaskComments(
         and r.data ->> 'task' = $3
         and ($4::text[] is null or r.data ->> 'audience' = 'client')
       order by r.data ->> 'posted_at', r.id`,
-    [tx.businessId, commentTypeId, taskId, shared ?? null],
+    // A comment names its task as lowercase text, so the id is compared as one.
+    [tx.businessId, commentTypeId, taskId.toLowerCase(), shared ?? null],
   );
   return rows.map((row) => storedFrom(row));
 }

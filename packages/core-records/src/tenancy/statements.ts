@@ -358,15 +358,26 @@ export function classify(sql: string): readonly Statement[] {
   return splitStatements(sql).map((text) => ({ text, kind: classifyStatement(text) }));
 }
 
-export function createStatementLog(): StatementLog {
+/**
+ * A log of every statement, or, given `keep`, of at least the newest `keep`
+ * and at most twice that many: a connection that runs for the life of a
+ * server keeps a bounded history, and a proof asks for the whole one.
+ */
+export function createStatementLog(options: { readonly keep?: number } = {}): StatementLog {
   const entries: RecordedStatement[] = [];
+  const add = (entry: RecordedStatement): void => {
+    entries.push(entry);
+    if (options.keep !== undefined && entries.length > 2 * options.keep) {
+      entries.splice(0, entries.length - options.keep);
+    }
+  };
   return {
     record(source: string, sql: string): void {
       const at = Date.now();
-      for (const statement of classify(sql)) entries.push({ ...statement, source, at });
+      for (const statement of classify(sql)) add({ ...statement, source, at });
     },
     unreadable(source: string, reason: string): void {
-      entries.push({ text: reason, kind: 'opaque', source, at: Date.now() });
+      add({ text: reason, kind: 'opaque', source, at: Date.now() });
     },
     entries,
     schemaChanging(): readonly RecordedStatement[] {

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Once a client task a conversation was opened on is purged, a later question in that conversation sends the model no earlier message from before the purge, so a question answered before the task had a client is not sent again. It must be judged on a real migrated database, through the API with the conversation's exchange."
+}

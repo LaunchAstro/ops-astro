@@ -31,9 +31,12 @@ export async function runTestSide(side: TestSide): Promise<number | null> {
     detached: true,
   });
   appendFileSync(side.pidfile, `-${String(child.pid)} ${side.file} (process group)\n`);
+  // Decoded as streams, so a character split across two writes arrives whole.
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
   let buffer = '';
-  child.stdout.on('data', (chunk: Buffer) => {
-    buffer += chunk.toString('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    buffer += chunk;
     const complete = buffer.split('\n');
     buffer = complete.pop() ?? '';
     for (const line of complete) side.take(line);
@@ -41,8 +44,8 @@ export async function runTestSide(side: TestSide): Promise<number | null> {
   // Whole lines, so the password cannot be split across two writes and pass the scrub.
   let errors = '';
   const scrubbed = (text: string): string => text.replaceAll(side.password, '<password>');
-  child.stderr.on('data', (chunk: Buffer) => {
-    errors += chunk.toString('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    errors += chunk;
     const cut = errors.lastIndexOf('\n') + 1;
     appendFileSync(side.stderr, scrubbed(errors.slice(0, cut)));
     errors = errors.slice(cut);

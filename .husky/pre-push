@@ -116,6 +116,20 @@ scan() {
     echo "pre-push: public-content history check failed. Refusing the push."
     exit 1
   fi
+  # 3b. gitleaks' own default allowlist skips pnpm-lock.yaml by path, and
+  #    .gitleaks.toml cannot narrow it, so every version of the lockfile this
+  #    range publishes is read through stdin, where no path is matched.
+  if [ -n "$range" ]; then
+    for lock_commit in $(git log --format=%H "$range" -- pnpm-lock.yaml); do
+      if git show "$lock_commit:pnpm-lock.yaml" |
+        gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml; then
+        :
+      else
+        echo "pre-push: pnpm-lock.yaml at $lock_commit carries a secret. Refusing the push."
+        exit 1
+      fi
+    done
+  fi
 
   # 4. The maintainer-only literal sweep. It needs the clear-text list, which
   #    lives outside git on a maintainer machine. Exit 2 there means it did

@@ -40,7 +40,7 @@
 //   DEPS_CRUISE_CONFIG  the configuration (default: <root>/.dependency-cruiser.cjs)
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -79,6 +79,7 @@ if (!existsSync(binary)) {
 /** Every source file under a target that the cruise is expected to read. */
 const CRUISABLE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u;
 const sourcesUnder = (dir, found = []) => {
+  if (!statSync(dir).isDirectory()) return CRUISABLE.test(dir) ? [relative(root, dir)] : [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name === '.git') continue;
     const full = join(dir, entry.name);

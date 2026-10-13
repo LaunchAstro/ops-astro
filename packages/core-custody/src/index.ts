@@ -89,6 +89,7 @@ export {
   type Broker,
   type BrokerRefusal,
   type BrokerRoute,
+  type Carrier,
   type ClaimedField,
   type ModelCaller,
   type ModelCallField,

@@ -94,6 +94,14 @@ test('a supported tree with no violation passes, and says what it read', () => {
   });
 });
 
+test('a clean source file as the one target passes, and is counted as read', () => {
+  fixture({ 'src/b.mjs': 'export const b = 1;\n' }, (root) => {
+    const run = cruise(root, 'src/b.mjs');
+    assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+    assert.match(run.stdout, /1 module\(s\) cruised/u);
+  });
+});
+
 test('an import that does not resolve fails', () => {
   fixture(
     { 'src/a.mjs': "import { gone } from './nowhere.mjs';\nexport const a = gone;\n" },

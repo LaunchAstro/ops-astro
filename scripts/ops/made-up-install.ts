@@ -7,6 +7,13 @@
 
 export const GUARD: string = 'ops_astro_made_up_guard';
 export const LEDGER: string = 'ops_astro_made_up.untrusted';
+/**
+ * Each admitted session's tag digest, by its backend, so a later run's
+ * admission leaves an earlier one's tag good, and a tag ends with its session.
+ */
+const SEEDS = 'ops_astro_made_up.seeds';
+/** This backend, by pid and start, so a reused pid is another backend. */
+const THIS_BACKEND = `select pid, backend_start from pg_stat_activity where pid = pg_backend_pid()`;
 
 /** Tenant tables and the sign-in table, from the catalogue: names, never rows. */
 export const GUARDED: string = `select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -39,11 +46,13 @@ export const STANDS: string = `(t.tgfoid = to_regprocedure('ops_astro_made_up.gu
         and not pg_has_role(current_user, (select relowner from pg_class where oid = t.tgrelid),
           'USAGE'))))`;
 
-/** Before the guard function: the schema, the ledger and note(). */
+/** Before the guard function: the schema, the ledger, the seed tags' digests and note(). */
 const LEDGER_AND_NOTE = [
   `create schema if not exists ops_astro_made_up`,
   `revoke all on schema ops_astro_made_up from public`,
   `create table if not exists ${LEDGER} (relation text primary key)`,
+  `create table if not exists ${SEEDS} (pid integer, started timestamptz, digest text not null,
+    primary key (pid, started))`,
   `
   create or replace function ops_astro_made_up.note(relation text) returns void
     language sql security definer set search_path = pg_catalog, pg_temp
@@ -51,11 +60,12 @@ const LEDGER_AND_NOTE = [
 ];
 
 // A write is the seed's when it tags its transaction on the session the seed
-// bound (`bindSeed`); it is a person's on staging when the role it runs as,
-// an owner's definer function included, is neither owner nor superuser. The
-// guard runs as the writer, so current_user is that role.
-const guardFunction = (seedDigest: string): string =>
-  `
+// bound (`bindSeed`) and admitted, which installed that tag's digest for this
+// backend; it is a person's on staging when the role it runs as, an owner's
+// definer function included, is neither owner nor superuser. The guard runs as
+// the writer, so current_user is that role, and only an owner or superuser
+// reads the digests.
+const GUARD_FUNCTION = `
     create or replace function ops_astro_made_up.guard() returns trigger
       language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
     begin
@@ -63,15 +73,18 @@ const guardFunction = (seedDigest: string): string =>
         if new.email is null or lower(new.email) not like '%.local' then
           perform ops_astro_made_up.note('auth.users');
         end if;
-      elsif encode(sha256(convert_to(coalesce(current_setting('ops_astro.writer', true), ''),
-          'UTF8')), 'hex') || encode(sha256(convert_to(coalesce(
-          current_setting('ops_astro.seeder', true), ''), 'UTF8')), 'hex')
-          is distinct from '${seedDigest}${seedDigest}'
-        and ((select rolsuper from pg_roles where rolname = current_user)
+      elsif (select rolsuper from pg_roles where rolname = current_user)
           or pg_has_role(current_user,
-               (select datdba from pg_database where datname = current_database()), 'member'))
+               (select datdba from pg_database where datname = current_database()), 'member')
       then
-        perform ops_astro_made_up.note(tg_table_schema || '.' || tg_table_name);
+        if current_setting('ops_astro.writer', true) is distinct from
+            current_setting('ops_astro.seeder', true)
+          or not exists (select from ${SEEDS} where (pid, started) in (${THIS_BACKEND})
+            and digest = encode(sha256(convert_to(
+              coalesce(current_setting('ops_astro.seeder', true), ''), 'UTF8')), 'hex'))
+        then
+          perform ops_astro_made_up.note(tg_table_schema || '.' || tg_table_name);
+        end if;
       end if;
       return null;
     end $$`;
@@ -126,8 +139,18 @@ const WATCH_AND_PROTECT = [
 
 /**
  * The guard and the watch, in order; each statement is safe to run again.
- * `seedDigest` is the digest of the seed's tag, the only form the guard holds.
+ * `seedDigest` is the digest of the seed's tag, the only form the guard holds,
+ * kept for this backend beside other live seed sessions' digests; the digests
+ * of sessions that have ended go.
  */
 export function installStatements(seedDigest: string): readonly string[] {
-  return [...LEDGER_AND_NOTE, guardFunction(seedDigest), ...WATCH_AND_PROTECT];
+  return [
+    ...LEDGER_AND_NOTE,
+    // A login sees every session's pid, though not always its start.
+    `delete from ${SEEDS} where pid not in (select pid from pg_stat_activity)`,
+    `insert into ${SEEDS} select pid, backend_start, '${seedDigest}' from (${THIS_BACKEND}) b
+      on conflict do nothing`,
+    GUARD_FUNCTION,
+    ...WATCH_AND_PROTECT,
+  ];
 }

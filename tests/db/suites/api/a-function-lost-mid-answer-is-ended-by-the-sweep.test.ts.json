@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the sweep releases a carried call that sent nothing after 60 s and holds one that may have sent after answer_by plus 60 s"
+}

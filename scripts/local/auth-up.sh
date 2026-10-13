@@ -126,12 +126,19 @@ docker exec "${PG_CONTAINER}" psql -U postgres -d "${PG_DATABASE}" -v ON_ERROR_S
 # GoTrue signs ES256 with a key generated once and kept: a new one would end
 # every session already issued. It is owner-only and never in auth.env, which
 # the API reads: the API fetches the public half from GoTrue instead (LF-4).
+# Each run writes its own temporary file and hard-links it into place, which
+# fails if the key is there: two first runs at once keep the first key.
 KEY_FILE="${LOCAL}/auth-signing-key.json"
 if [ ! -s "${KEY_FILE}" ]; then
-  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_FILE}.tmp")
-  [ -s "${KEY_FILE}.tmp" ] || { echo "BLOCKER: no signing key was generated" >&2; exit 1; }
-  mv "${KEY_FILE}.tmp" "${KEY_FILE}"
-  echo "auth-up: wrote ${KEY_FILE}"
+  KEY_NEW="${KEY_FILE}.$$"
+  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_NEW}")
+  [ -s "${KEY_NEW}" ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: no signing key was generated" >&2; exit 1; }
+  # An empty file left by an interrupted run holds no key, so it is replaced.
+  if ln "${KEY_NEW}" "${KEY_FILE}" 2>/dev/null ||
+    { [ ! -s "${KEY_FILE}" ] && mv -f "${KEY_NEW}" "${KEY_FILE}"; }; then
+    echo "auth-up: wrote ${KEY_FILE}"
+  fi
+  rm -f "${KEY_NEW}"
 fi
 GOTRUE_JWT_KEYS="$(cat "${KEY_FILE}")"
 KEY_LABEL="$(shasum -a 256 "${KEY_FILE}" | cut -c1-16)"

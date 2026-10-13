@@ -71,7 +71,9 @@ export async function assignTask(
   if (typeof agent !== 'string' || !UUID.test(agent)) {
     return await writeOwnedFields(tx, context, 'task.assign', oneKind(context, fields));
   }
-  if (typeof person === 'string') {
+  // Any assignee but a clear is refused: one that is not a person id would
+  // otherwise be overwritten below, before the field check could refuse it.
+  if (person !== undefined && person !== null) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',

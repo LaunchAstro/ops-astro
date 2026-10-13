@@ -22,6 +22,7 @@ import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
 import { cutWithEllipsis } from './ellipsis.ts';
+import { followModel } from './conversation-agents.ts';
 import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -204,10 +205,9 @@ export async function startConversation(
     ],
   );
   // CS-7.30: kept before the commit, so the first exchange asks for it; refused, nothing kept.
-  const chosen = fields.model ?? null;
-  const notKept =
-    chosen === null ? undefined : await keepModel(tx, session, conversationId, chosen);
+  const notKept = await keepModel(tx, session, conversationId, fields.model ?? null);
   if (notKept !== undefined) return refused(notKept);
+  await followModel(tx, context, conversationId, fields.model ?? null);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
@@ -281,8 +281,9 @@ export async function messageConversation(
   if (!still.ok) return refused(still.refusal);
   await tx.query(
     `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body, created_at)
-     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz)`,
+       (business_id, id, conversation_id, role, author_actor_id, body, created_at, context_epoch)
+     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz,
+             (select context_epoch from conversations where business_id = $1 and id = $3))`,
     [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body, at],
   );
   await tx.query(
@@ -292,9 +293,5 @@ export async function messageConversation(
   );
   const asked = { conversationId: fields.conversationId, messageId };
   if (pageRefused !== null) await markRefusedForPage(tx, context.session, asked, pageRefused);
-  return applied(null, null, {
-    conversationId: fields.conversationId,
-    messageId,
-    address: conversationAddress(fields.conversationId),
-  });
+  return applied(null, null, { ...asked, address: conversationAddress(fields.conversationId) });
 }

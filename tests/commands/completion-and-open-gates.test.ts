@@ -136,13 +136,19 @@ async function holdTaskRow(world: World, taskId: string) {
  * the gate's deadline: undefined until a backend is blocked by `holder`.
  */
 async function blockedStart(world: World, gateId: string, holder: number) {
-  const [blocked] = await world.db.admin.execute<{ readonly before: boolean }>(
-    `select a.xact_start < g.expires_at as before
+  const [blocked] = await world.db.admin.execute<{
+    readonly blocked: number;
+    readonly before: boolean | null;
+  }>(
+    `select count(*)::int as blocked, bool_and(a.xact_start < g.expires_at) as before
        from pg_stat_activity a, public.gates g
       where $3 = any(pg_blocking_pids(a.pid)) and g.business_id = $1 and g.id = $2`,
     [world.alpha, gateId, holder],
   );
-  return blocked?.before;
+  if ((blocked?.blocked ?? 0) > 0) {
+    expect(blocked?.blocked, 'only the completion waits on the held row').toBe(1);
+  }
+  return blocked?.before ?? null;
 }
 
 /**
@@ -154,21 +160,20 @@ async function blockedStart(world: World, gateId: string, holder: number) {
 async function completeAcrossTheDeadline(world: World, taskId: string, gateId: string) {
   const expectedRevision = await revisionOf(world, taskId);
   const row = await holdTaskRow(world, taskId);
+  let completing: ReturnType<typeof asAda> | undefined;
   try {
     await world.db.admin.execute(
       `update public.gates set expires_at = clock_timestamp() + interval '3 seconds'
         where business_id = $1 and id = $2`,
       [world.alpha, gateId],
     );
-    const completing = asAda(world, '/task/complete', {
+    completing = asAda(world, '/task/complete', {
       operationId: randomUUID(),
       recordId: taskId,
       expectedRevision,
     });
-    let before: boolean | undefined;
-    await waitUntil(
-      async () => (before = await blockedStart(world, gateId, row.pid)) !== undefined,
-    );
+    let before: boolean | null = null;
+    await waitUntil(async () => (before = await blockedStart(world, gateId, row.pid)) !== null);
     expect(before, 'the completion began before the deadline and waits on the row').toBe(true);
     await waitUntil(async () => {
       const [lapsed] = await world.db.admin.execute<{ readonly lapsed: boolean }>(
@@ -182,6 +187,7 @@ async function completeAcrossTheDeadline(world: World, taskId: string, gateId: s
     return (await completing).code;
   } finally {
     await row.release();
+    await completing?.catch(() => null);
   }
 }
 

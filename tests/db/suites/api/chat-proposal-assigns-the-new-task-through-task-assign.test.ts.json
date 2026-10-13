@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A chat card's new task is assigned by the existing task.assign at the revision its create returned, under the reply's operation id: the clicker team.list names holds it and the same click again is the same answer; a listed teammate can be given it; a person of another business and an id of nobody are one NOT_FOUND, the task left unassigned."
+}

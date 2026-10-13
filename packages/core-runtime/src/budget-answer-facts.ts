@@ -11,18 +11,18 @@
 // the second finds the ask answered.
 
 import {
-  checkAuthority,
   refuseCommand,
   type CommandRefusal,
   type DelegationRefusalCode,
   type Subject,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
+import { decidesOnTask } from './budget-answer-scope.ts';
 import { lockedInstant } from './clock.ts';
 import { fourEyesBandMinor, minorDigits } from './four-eyes.ts';
 import { acquire } from './locks.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
+import { holdCoveringGrants } from './recovery/classifier.ts';
 import { refuse, type RuntimeRefusalCode } from './refusals.ts';
 
 /** Who answers, and the subjects the grant model reads for them. */
@@ -63,6 +63,8 @@ interface Found {
   readonly reservation_id: string;
   readonly envelope_id: string;
   readonly cap_id: string;
+  /** The task's client (`records.uuid_7`), or null: read here unlocked, then again under the task lock. */
+  readonly client_id: string | null;
 }
 
 /** The facts an answer is decided on, read under the locks. */
@@ -127,8 +129,9 @@ export async function openAnswer(
       'Re-read the run you were asked about.',
     );
   }
-  const scope = decideOn(collection, found.task_id);
-  if (!(await checkAuthority(tx, request.subjects, scope)).ok) return notGranted(collection);
+  if (!(await decidesOnTask(tx, request.subjects, collection, found))) {
+    return notGranted(collection);
+  }
   await holdCoveringGrants(tx, request.subjects, collection);
 
   await acquire(tx, [
@@ -140,10 +143,10 @@ export async function openAnswer(
     { lockClass: 'reservation', id: found.reservation_id },
   ]);
   const lockedAt = await lockedInstant(tx, ['four_eyes_threshold']);
-  if (!(await checkAuthorityAt(tx, request.subjects, scope, lockedAt)).ok) {
+  const locked = await readLocked(tx, request, found);
+  if (!(await decidesOnTask(tx, request.subjects, collection, locked ?? found, lockedAt))) {
     return notGranted(collection);
   }
-  const locked = await readLocked(tx, request, found);
   if (locked === undefined || !waitsOn(locked, request.askId)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
@@ -167,7 +170,9 @@ function waitsOn(locked: Locked, askId: string | undefined): boolean {
  */
 async function discover(tx: TenantQuery, runId: string): Promise<Found | undefined> {
   const [found] = await tx.query<Found>(
-    `select run.task_id, run.lineage_id, k.reservation_id, res.envelope_id, e.cap_id
+    `select run.task_id, run.lineage_id, k.reservation_id, res.envelope_id, e.cap_id,
+            (select t.uuid_7 from public.records t
+              where t.business_id = run.business_id and t.id = run.task_id) as client_id
        from public.planned_runs run
        join lateral (select reservation_id from public.budget_asks
                       where business_id = run.business_id and run_id = run.id
@@ -191,8 +196,12 @@ async function readLocked(
   request: BudgetAnswerRequest,
   found: Found,
 ): Promise<Locked | undefined> {
-  const [row] = await tx.query<Omit<Locked, keyof Found> & { readonly ask_hold: string }>(
+  const [row] = await tx.query<
+    Omit<Locked, keyof Found> & { readonly ask_hold: string; readonly client_id: string | null }
+  >(
     `select run.state as run_state, k.id as ask_id, k.reservation_id as ask_hold,
+            (select t.uuid_7 from public.records t
+              where t.business_id = run.business_id and t.id = run.task_id) as client_id,
             exists (select 1 from public.budget_answers a
                      where a.business_id = k.business_id and a.ask_id = k.id) as answered,
             lin.state as lineage_state, (ver.superseded_at is not null) as superseded,
@@ -219,11 +228,6 @@ async function readLocked(
     throw new AffectedSetChanged('budget answer: the run stopped again since its hold was found');
   }
   return { ...found, ...locked };
-}
-
-/** `decide` on the collection, asked of the run's own task. */
-function decideOn(collection: 'billing' | 'gate', taskId: string) {
-  return { collection, action: 'decide' as const, scope: { kind: 'record' as const, id: taskId } };
 }
 
 function notGranted(collection: 'billing' | 'gate'): BudgetAnswerResult<never> {
@@ -270,7 +274,7 @@ export async function approvalsOf(tx: TenantQuery, askId: string): Promise<reado
 
 /**
  * The person who approved the plan, when they still hold `billing:decide` on
- * the task at the locked instant; null when they do not, and any holder
+ * the task or across its client at the locked instant; null when they do not, and any holder
  * answers.
  */
 export async function approverHolds(tx: TenantQuery, opened: Opened): Promise<string | null> {
@@ -282,18 +286,15 @@ export async function approverHolds(tx: TenantQuery, opened: Opened): Promise<st
     [tx.businessId, opened.locked.version_id],
   );
   if (decision === undefined) return null;
-  const holds = await checkAuthorityAt(
+  const holds = await decidesOnTask(
     tx,
     [
       { kind: 'person', id: decision.person_id },
       { kind: 'actor', id: decision.actor_id },
     ],
-    {
-      collection: 'billing',
-      action: 'decide',
-      scope: { kind: 'record', id: opened.locked.task_id },
-    },
+    'billing',
+    opened.locked,
     opened.lockedAt,
   );
-  return holds.ok ? decision.person_id : null;
+  return holds ? decision.person_id : null;
 }

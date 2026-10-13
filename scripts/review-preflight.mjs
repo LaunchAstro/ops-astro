@@ -50,9 +50,14 @@ if (status !== '') {
   );
 }
 
-// 2. The branch is not the base, nor main when the base is given as a sha.
-// A ticket has its own branch.
-if (branch === base || branch === 'main') {
+// 2. The branch is not the base, nor main when the base is given as a sha,
+// nor a detached head. A ticket has its own branch.
+if (branch === 'HEAD') {
+  problems.push(
+    'the head is detached. A ticket runs on its own branch in its own worktree;\n' +
+      '    check that branch out and run this again.',
+  );
+} else if (branch === base || branch === 'main') {
   problems.push(
     `you are on ${branch}. A ticket runs on its own branch in its own worktree;\n` +
       '    that is one of the three rules in AGENTS.md.',

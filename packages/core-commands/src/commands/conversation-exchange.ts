@@ -32,9 +32,12 @@
 //    with the grants held for share and judged at the clock after the locks;
 //    a grant being changed at that moment keeps nothing.
 //
-// A message has at most one reply. A repeat of the request finds the reply
-// kept and answers with it, and the model is not asked again; a repeat while
-// the answer is with the model, in the same process, waits for it. The model's words
+// A message has at most one reply, and at most one model call, whichever
+// process asks (#1531). A repeat of the request finds the reply kept and
+// answers with it, and the model is not asked again; a repeat while the answer
+// is with the model, in the same process, waits for it; in another process it
+// is told the answer is on its way, and after a call that kept no reply, that
+// the answer ended and the message is to be sent again. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
 // words, never the model's or the person's. Words the store cannot hold as
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
@@ -159,8 +162,9 @@ async function keep(
   const inserted = await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
-        created_at)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz)
+        created_at, context_epoch)
+     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz,
+             (select context_epoch from conversations where business_id = $1 and id = $3))
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
@@ -168,12 +172,17 @@ async function keep(
     [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
+  await activeAt(tx, asked.conversationId, at);
+  return { id, body };
+}
+
+/** The conversation's last activity moved up to `at`, never back. */
+async function activeAt(tx: TenantQuery, conversationId: string, at: string): Promise<void> {
   await tx.query(
     `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
-    [tx.businessId, asked.conversationId, at],
+    [tx.businessId, conversationId, at],
   );
-  return { id, body };
 }
 
 /** The model asked for one message, and the answer kept as its reply. */
@@ -198,6 +207,7 @@ async function answerOnce(
     { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
     {
       conversation: question.scope,
+      messageId: asked.messageId,
       operation: CONVERSATION_ANSWER.key,
       fields: [
         ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),

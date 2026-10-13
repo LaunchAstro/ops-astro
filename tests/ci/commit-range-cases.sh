@@ -228,6 +228,27 @@ for sha in eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8 0b096723fe68f3d3e1c6d893e943
   fi
 done
 
+# The exemption holds with commitlint absent too: the basic subject rule is a
+# floor under commitlint, not a second gate the closed list does not reach.
+BARE="$(mktemp -d "$SCRATCH/bare.XXXXXX")"
+mkdir -p "$BARE/scripts"
+cp "$CHECKER" "$BARE/scripts/commit-range-check.mjs"
+cp "$REPO_ROOT/scripts/commit-exemptions.mjs" "$REPO_ROOT/scripts/provenance.mjs" \
+  "$REPO_ROOT/scripts/commit-message-exemptions.json" "$BARE/scripts/"
+WIP=f58f43880e3f088aa6304b5b0e97d09fe459097f
+if git -C "$REPO_ROOT" cat-file -e "$WIP^{commit}" 2>/dev/null; then
+  status="$( cd "$REPO_ROOT" && env -u CI BASE_SHA="$WIP^" HEAD_SHA="$WIP" node "$BARE/scripts/commit-range-check.mjs" >/dev/null 2>&1; echo $? )"
+  [ "$status" = "0" ] && pass "the exempt WIP commit passes without commitlint installed (exit 0)" \
+    || fail "the exempt WIP commit passes without commitlint installed" "expected exit 0, got $status"
+else
+  fail "the exempt WIP commit passes without commitlint installed" "the commit is not in this clone; fetch with history"
+fi
+dir="$(new_repo)"
+commit "$dir" "wip: not on the closed list$AGENT_TRAILERS"
+status="$( cd "$dir" && env -u CI BASE_SHA="$(git rev-list --max-parents=0 HEAD)" HEAD_SHA="$(git rev-parse HEAD)" node "$BARE/scripts/commit-range-check.mjs" >/dev/null 2>&1; echo $? )"
+[ "$status" = "1" ] && pass "a WIP commit not on the list still fails without commitlint (exit 1)" \
+  || fail "a WIP commit not on the list still fails without commitlint" "expected exit 1, got $status"
+
 dir="$(new_repo)"
 commit "$dir" "test(inbox): the same long footer on another commit$LONG_FOOTER$AGENT_TRAILERS"
 status="$(run_checker "$dir")"

@@ -54,7 +54,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PanelAgent, type AgentSideProps } from './PanelAgent.tsx';
+import { PanelAgent, useDecisionNote, type AgentSideProps } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import { type PageContext } from './task-prefill.ts';
 import type { ClientSeams } from './client-seam.ts';
@@ -128,7 +128,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
   useRereadOn(timerRead.changed, reload);
   useRereadOn(assignments.state.changed, refresh);
   useTimerStop(props, state.outcome === 'ready' ? state.value : null);
-  const body = { ...props, fold, conversation };
+  const body = { ...props, fold, conversation, ...useDecisionNote(props, state.outcome) };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -231,11 +231,11 @@ function useTimerStop(props: TaskPanelProps, read: TaskReadResult | null): void 
       [binding.task.id, binding.task.key].includes(props.opening.taskKey))
       ? binding.task.id
       : null;
+  // The stop outlives the body: the dock hides a panel before closing it (a
+  // narrow window, a phone's one drawn panel), and that close still stops the
+  // timer. A stop from a past owner's timer sends nothing.
   useEffect(() => {
     props.onLeaving?.(taskId === null ? null : () => timer?.stop(taskId));
-    return () => {
-      props.onLeaving?.(null);
-    };
   }, [timer, taskId, props.onLeaving]);
 }
 

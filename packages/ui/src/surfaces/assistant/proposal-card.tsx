@@ -2,7 +2,8 @@
 //
 // The chat path's task proposal as a card in the chat (designs/chat-path-slice.md,
 // piece 2), in the plan card's look. It shows exactly what the click sends:
-// the title, the description, the due day and the estimate for a new task, or
+// the title, the description, the due day and the estimate for a new task,
+// which goes to whoever clicks, or
 // the changes to the task the chat is open on. The one click is "Create task" or "Apply to this task";
 // after it the card links the task, or quotes the server's refusal and offers
 // the click again; an edit whose task changed since says so and offers none.
@@ -61,6 +62,11 @@ function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement
       {proposal.estimate === undefined ? null : (
         <p className="aip__plan-meta" data-proposal="estimate">
           Estimate {timeWords(proposal.estimate)}
+        </p>
+      )}
+      {edit ? null : (
+        <p className="aip__plan-meta" data-proposal="assignee">
+          Assigned to you
         </p>
       )}
     </>

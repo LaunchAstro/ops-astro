@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A question sent again with its operation id after its task's purge committed between the attempts replays its stored message, and a later question carries nothing from before the purge, whether the answer was kept before it or after. Judged on a real migrated database through the API with the local model."
+}

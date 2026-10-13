@@ -41,4 +41,5 @@ export const STEPS: readonly (readonly [string, string] | readonly [string, stri
     ['deps:cruise', 'structural dependency rules'],
     ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
     ['local:cases', 'the local scripts never reuse a database on another major'],
+    ['node:cases', 'the node:test suites vitest does not read'],
   ];

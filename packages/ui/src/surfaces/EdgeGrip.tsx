@@ -6,7 +6,14 @@
 // its width on its right edge (MP-2-3). The arrows step it, shift steps it
 // further, Home resets it; a drag moves it live and is kept when let go.
 
-import { useRef, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactElement,
+  type RefObject,
+} from 'react';
 
 const STEP = 16;
 const BIG_STEP = 64;
@@ -57,6 +64,7 @@ const along = (edge: GripEdge, event: PointerEvent<HTMLDivElement>): number =>
 
 export function EdgeGrip(props: EdgeGripProps): ReactElement {
   const start = useRef<Drag | null>(null);
+  const drop = useDropped(start, props.onDragging);
   const { sign } = GROWS[props.edge];
   const at = (point: number): number => {
     const from = start.current ?? { at: point, value: props.value };
@@ -74,8 +82,7 @@ export function EdgeGrip(props: EdgeGripProps): ReactElement {
   const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
     if (!owns(start.current, event)) return;
     const value = at(along(props.edge, event));
-    start.current = null;
-    props.onDragging(false);
+    drop();
     props.onCommit?.(value);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -103,6 +110,20 @@ export function EdgeGrip(props: EdgeGripProps): ReactElement {
       onKeyDown={onKeyDown}
     />
   );
+}
+
+/**
+ * A grip removed mid-drag ends the drag, so its parent never stays in
+ * dragging mode. Returns that ending, which a release uses too.
+ */
+function useDropped(start: RefObject<Drag | null>, onDragging: (dragging: boolean) => void) {
+  const drop = (): void => {
+    if (start.current === null) return;
+    start.current = null;
+    onDragging(false);
+  };
+  useEffect(() => drop, [onDragging]);
+  return drop;
 }
 
 /** The value held to the grip's range, in whole pixels. */

@@ -6,7 +6,11 @@
 //
 // What is kept is the `rail.collapsed` and `rail.width` keys of MP-2-11's one
 // preference store (layout-store.ts), handed in before the first render so the
-// shell draws it before paint. Only the width under a moving grip is held here.
+// shell draws it before paint. Only the width under a moving grip is held here,
+// and only for the owner (business and person) the drag started under. A
+// switch drops it, and the shell keys the grip on `owner`, so a drag held
+// across the switch ends at the grip: its release saves nothing into the next
+// owner's preferences.
 
 import { useState } from 'react';
 import { RAIL_DEFAULT, RAIL_MAX, RAIL_MIN, RAIL_STRIP } from '@launchastro/ui';
@@ -18,6 +22,8 @@ export interface RailPreference {
 }
 
 export interface RailModel extends RailPreference {
+  /** The business and person the rail is drawn for. */
+  readonly owner: string;
   /** The width it is drawn at: the strip's while folded. */
   readonly drawn: number;
   readonly fold: () => void;
@@ -46,10 +52,13 @@ export function railFrom(stored: unknown): RailPreference {
 export function useRail(
   stored: RailPreference,
   save: (key: 'rail.collapsed' | 'rail.width', value: boolean | number) => void,
+  owner: string,
 ): RailModel {
-  const [moving, setMoving] = useState<number | null>(null);
-  const width = moving ?? stored.width;
+  const [held, setHeld] = useState<{ readonly owner: string; readonly width: number }>();
+  if (held !== undefined && held.owner !== owner) setHeld(undefined);
+  const width = held?.owner === owner ? held.width : stored.width;
   return {
+    owner,
     collapsed: stored.collapsed,
     width,
     drawn: stored.collapsed ? RAIL_STRIP : width,
@@ -57,10 +66,10 @@ export function useRail(
       save('rail.collapsed', !stored.collapsed);
     },
     resize: (next) => {
-      setMoving(clampRail(next));
+      setHeld({ owner, width: clampRail(next) });
     },
     keep: (next) => {
-      setMoving(null);
+      setHeld(undefined);
       save('rail.width', clampRail(next));
     },
   };

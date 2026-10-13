@@ -215,11 +215,11 @@ export async function recordCarried({
   if (typeof archiveFile !== 'string' || archiveFile === '') {
     throw new Error('--record needs the archive the drill restored: --archive <file>');
   }
-  const { archiveId, sha256: digest } = readCarried(archiveFile);
-  // The receipt names the store's own id for the archive its drill restored:
-  // another archive carried back in its place, even one taken at the same
-  // time, is refused before the store is reached.
-  if (carried.archiveId !== archiveId) {
+  const { archiveId, sha256: digest, takenAt } = readCarried(archiveFile);
+  // The receipt names the store's own id for the archive its drill restored,
+  // or none if it failed before reading one: another archive carried back in
+  // its place, even one taken at the same time, is refused before the store.
+  if (carried.archiveId !== null && carried.archiveId !== archiveId) {
     throw new Error(
       'the receipt is of another archive than the one carried back: bring back the archive its drill restored',
     );
@@ -234,7 +234,7 @@ export async function recordCarried({
     lastTestedRestore = await recordCarriedDrill(
       storeUrl,
       carried.operator,
-      { ...carried, outcome },
+      { ...carried, outcome, archiveTakenAt: carried.archiveTakenAt ?? takenAt },
       { archiveId, digest, business: gate.operator.business },
       reach,
     );

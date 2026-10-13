@@ -4,8 +4,11 @@
 // In the dock the task panel draws no Close of its own, so the dock's X, Close
 // all and Escape are the closes a person has. Leaving a task with this person's
 // timer running logs the time through time.stop once (MP-4-13, DP-07, D-33),
-// as the panel's own close does.
+// as the panel's own close does. So do the closes a person does not press:
+// the window narrowing past three panels, and Close all on a phone whose one
+// drawn panel is another.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
@@ -59,8 +62,8 @@ function world() {
   return { sent, fetch };
 }
 
-async function opened(sent: string[], fetch: typeof globalThis.fetch) {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
+async function opened(sent: string[], fetch: typeof globalThis.fetch, width = 1100) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1000 });
   const view = await mount(
     <App
@@ -116,6 +119,45 @@ describe('the dock closes a task with my timer running and logs it', () => {
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
+    expect(sent).toEqual(['time.stop']);
+  });
+});
+
+/** A Shift press on a dock tab: the panel opens beside the rest. */
+const besideTab = async (view: Awaited<ReturnType<typeof opened>>, id: string): Promise<void> => {
+  const tab = view.find(`.dock__tab[data-panel="${id}"]`);
+  await act(async () => {
+    tab?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }),
+    );
+    await Promise.resolve();
+  });
+};
+
+describe('the dock hides a task with my timer running and still logs it on close', () => {
+  it('narrowing the window past three panels closes the task and sends time.stop once', async () => {
+    const { sent, fetch } = world();
+    const view = await opened(sent, fetch, 1700);
+    await besideTab(view, 'team');
+    await besideTab(view, 'clients');
+    expect(view.find(`${TASK} [data-task-panel]`)).not.toBeNull();
+    await act(async () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+      window.dispatchEvent(new Event('resize'));
+      await Promise.resolve();
+    });
+    await tick();
+    expect(view.find('[data-task-panel]')).toBeNull();
+    expect(sent).toEqual(['time.stop']);
+  });
+
+  it('on a phone, Close all with another panel drawn over the task sends time.stop once', async () => {
+    const { sent, fetch } = world();
+    const view = await opened(sent, fetch, 390);
+    await besideTab(view, 'clients');
+    expect(view.find('[data-task-panel]')).toBeNull();
+    await view.click('.dock__closeall');
+    await tick();
     expect(sent).toEqual(['time.stop']);
   });
 });
