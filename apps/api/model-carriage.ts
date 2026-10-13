@@ -1,15 +1,81 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A carried deployment's answers (live chat route B): typed and inert until built.
+// A carried deployment's answers (live chat route B): its conversation calls
+// go to the model agent on the owner's machine over Supabase Realtime, through
+// the carried custody, and the function holds no provider credential. It
+// needs the carry key (and, during a rotation, the next one), the project's
+// secure Realtime address, and its publishable key; missing or malformed, the
+// deployment does not start, naming the setting and never its value.
 
-import type { ConversationExchange } from '../../packages/core-commands/src/index.ts';
-import type { CarriedSettings } from './model-carrier.ts';
+import {
+  catalogue,
+  OLLAMA_CONVERSATION,
+  OLLAMA_PROVIDER,
+  ollamaAdapter,
+  ollamaCostMinor,
+} from '../../packages/core-connectors/src/index.ts';
+import {
+  conversationExchange,
+  type ConversationExchange,
+} from '../../packages/core-commands/src/index.ts';
+import {
+  carriedCustody,
+  parseCarryKeys,
+  realtimeCarriage,
+} from '../../packages/core-custody/src/index.ts';
+import type { Carrier } from '../../packages/core-custody/src/index.ts';
+import { carrierSettings, type CarriedSettings } from './model-carrier.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
 
+export const CARRY_KEY_SETTING = 'MODEL_BROKER_CARRY_KEY';
+export const CARRY_KEY_NEXT_SETTING = 'MODEL_BROKER_CARRY_KEY_NEXT';
+export const REALTIME_URL_SETTING = 'SUPABASE_REALTIME_URL';
+
+/** The carried exchange, or a throw naming the setting that is missing or malformed. */
 export function carriedAnswers(
-  _environment: Settings,
-  _carried: CarriedSettings,
+  environment: Settings,
+  carried: CarriedSettings,
 ): { readonly answerConversation: ConversationExchange } {
-  throw new Error('carried answers are not built');
+  const keys = parseCarryKeys(environment[CARRY_KEY_SETTING], environment[CARRY_KEY_NEXT_SETTING]);
+  if (!keys.ok) {
+    throw new Error(
+      `${CARRY_KEY_SETTING} and ${CARRY_KEY_NEXT_SETTING} must be distinct base64url keys of 32 bytes or more`,
+    );
+  }
+  const url = environment[REALTIME_URL_SETTING] ?? '';
+  if (!/^wss:\/\/[^/\s]+\/realtime\/v1$/u.test(url)) {
+    throw new Error(`${REALTIME_URL_SETTING} must be the project's wss://…/realtime/v1 address`);
+  }
+  const apiKey = environment['SUPABASE_PUBLISHABLE_KEY'] ?? '';
+  if (apiKey === '') throw new Error('SUPABASE_PUBLISHABLE_KEY is needed to join Realtime');
+  const key = environment[CARRY_KEY_SETTING] ?? '';
+  const custody = carriedCustody({
+    carriage: realtimeCarriage({ url, apiKey }),
+    keys: keys.keys,
+    key,
+  });
+  const answerConversation = conversationExchange({
+    custody,
+    operations: catalogue([OLLAMA_CONVERSATION]),
+    providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
+    routes: carried.routes,
+    installation: carried.installation,
+    carrier: carried.carrier,
+  });
+  return { answerConversation };
+}
+
+/**
+ * The composition roots' option: a carried deployment's carrier and its
+ * carried answers, or nothing; a refused setting throws, naming it.
+ */
+export function carriedOption(environment: Settings): {
+  readonly carrier?: Carrier;
+  readonly answerConversation?: ConversationExchange;
+} {
+  const carried = carrierSettings(environment);
+  if (carried.kind === 'invalid') throw new Error(carried.problem);
+  if (carried.kind !== 'carried') return {};
+  return { carrier: carried.carrier, ...carriedAnswers(environment, carried) };
 }
