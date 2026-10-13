@@ -27,6 +27,8 @@ export type LiveCorrectionRequest =
       readonly versionId: string;
       readonly decision: string;
     } & Envelope)
+  // The configured approver's one ask that a live correction be reverted.
+  | ({ readonly command: 'live_correction.revert'; readonly correctionId: string } & Envelope)
   | ({
       readonly command: 'settings.set_live_correction_approver';
       /** A member's person id, or null to leave no one configured. */

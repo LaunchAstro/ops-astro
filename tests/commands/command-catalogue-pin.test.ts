@@ -368,6 +368,13 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
+vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-revert-ask.ts',
+  async (original) => ({
+    ...(await original<object>()),
+    askLiveRevert: recorder('askLiveRevert'),
+  }),
+);
 vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
   ...(await original<object>()),
   sendDirect: recorder('sendDirect'),
@@ -483,6 +490,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.publish_version': ['versionId'],
   'live_correction.decide': ['correctionId', 'versionId'],
   'live_correction.request': ['partyId', 'taskId'],
+  'live_correction.revert': ['correctionId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -609,6 +617,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'live_correction.decide',
   'live_correction.read',
   'live_correction.request',
+  'live_correction.revert',
   'mandate.file',
   'mandate.revoke',
   'map.chart',
@@ -959,6 +968,7 @@ const REQUESTS: readonly CommandRequest[] = [
     versionId: 'v',
     decision: 'approve',
   },
+  { command: 'live_correction.revert', operationId: 'op', correctionId: 'c' },
   { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
     command: 'budget.set_planning_cap',
@@ -1157,6 +1167,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.write_off': ['writeOffOnTask', 'request'],
   'live_correction.request': ['requestLiveCorrection', 'request'],
   'live_correction.decide': ['decideLiveCorrection', 'request'],
+  'live_correction.revert': ['askLiveRevert', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',

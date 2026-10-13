@@ -16,5 +16,6 @@ export const LIVE_CORRECTION_EFFECTS: {
   'settings.set_live_correction_approver': writing(business('business_settings')),
   'live_correction.request': writing(client('live_corrections')),
   'live_correction.decide': writing(client('live_corrections')),
+  'live_correction.revert': writing(client('live_correction_revert_asks')),
   'live_correction.read': writing([]),
 };

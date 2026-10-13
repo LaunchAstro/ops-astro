@@ -4,10 +4,14 @@
 // its pages, gathered with MP-14-10a's part in `restricted-calls-mandates.ts` and spread into the
 // main lists beside the rest. Apart from them to keep each under the line limit.
 
-/** Table grants: a site is moved by column grant, never deleted; a page is bound and unbound. */
+/**
+ * Table grants: a site is moved by column grant, never deleted; a page is bound and unbound; a
+ * revert ask (20261013110000) is written once and never changed or removed.
+ */
 export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'party_sites'],
   ['sid', 'party_site_pages'],
+  ['si', 'live_correction_revert_asks'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
