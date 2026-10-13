@@ -54,6 +54,10 @@
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
     {
+      "files": ["tests/broker/sol-1567-page-grant-handoff.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/surfaces/priority-draft-kept-until-reread-shows-save.test.tsx"],
       "rules": { "max-lines-per-function": "off" }
     },

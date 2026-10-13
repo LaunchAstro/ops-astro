@@ -31,6 +31,7 @@ import { readModelId } from '../../packages/core-connectors/src/operation.ts';
 
 const modelIn = (body: string): unknown => (JSON.parse(body) as Record<string, unknown>)['model'];
 
+// oxlint-disable-next-line max-lines-per-function -- the catalogue, the provider rule and the adapters
 describe('CS-7.30 the conversation model catalogue', () => {
   it('lists only the replay model, the laptop runner’s default, the M5’s Ollama models and OpenRouter’s paid ones, each priced', () => {
     expect(CONVERSATION_MODELS.map((model) => model.id)).toStrictEqual([
