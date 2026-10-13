@@ -26,6 +26,8 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 // spawn takes about 4 s alone and 45 s beside 8 other runs and 4 busy cores; its limit is
 // about five times that.
 const LIST_CAP_MS = 240_000;
+/** The database shards CI runs: the matrix, not a number written here. */
+const DB_COUNT: number = ci.jobs['database-shard']?.strategy?.matrix?.shard?.length ?? 0;
 
 it('partition proofs exercise the shard counts CI actually runs', () => {
   expect(
@@ -74,7 +76,8 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
     const manifest = readNamedSuites(dir);
     const items = planItems([...manifest.invariant, ...manifest.conformance], plan.parts);
     const weight = shardWeight(seconds);
-    const loads = assignShards(items, seconds, 30).map((shard) =>
+    expect(DB_COUNT).toBeGreaterThan(1);
+    const loads = assignShards(items, seconds, DB_COUNT).map((shard) =>
       shard.reduce((sum, item) => sum + weight(item), 0),
     );
     expect(Math.min(...loads)).toBeGreaterThan(35 * 60);
@@ -93,7 +96,9 @@ it('the completion proof rejects balanced database shards above 35 minutes', () 
     );
     const output = `${run.stdout}\n${run.stderr}`;
     expect(run.error, output).toBeUndefined();
-    expect(output).toContain('the run is split 30 ways, each shard near its share');
+    expect(output).toContain(
+      `the run is split ${String(DB_COUNT)} ways, each shard near its share`,
+    );
     expect(
       run.status,
       `Every database shard weighs ${Math.min(...loads).toFixed(1)} to ${Math.max(...loads).toFixed(1)} seconds, but the PR's completion proof reported:\n${output}`,
