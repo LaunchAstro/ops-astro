@@ -31,6 +31,7 @@ import {
   isRefusal,
   isWrite,
   shownAddress,
+  statusWatched,
   unknownVerb,
   unredirected,
   usage,
@@ -286,17 +287,11 @@ async function login(parsed: Parsed, env: Environment, io: Io, connection: Conne
   const { issuer: gotrueUrl, key } = address;
   // The web sign-in's own function: the same password grant, the same endpoint,
   // and the hosted service's publishable key, added to calls under it only.
-  const keyed = withProviderKey(unredirected, gotrueUrl, key);
-  let status: number | undefined;
-  const fetch: typeof globalThis.fetch = async (input, init) => {
-    const answer = await keyed(input, init);
-    status = answer.status;
-    return answer;
-  };
-  const result = await signIn({ gotrueUrl, email, password, fetch });
+  const watched = statusWatched(withProviderKey(unredirected, gotrueUrl, key));
+  const result = await signIn({ gotrueUrl, email, password, fetch: watched.send });
   if (!result.ok) {
     const keyless = preset === undefined && key === undefined;
-    io.err(`login: ${loginFailure(status, shownAddress(gotrueUrl), keyless)}`);
+    io.err(`login: ${loginFailure(watched.status(), shownAddress(gotrueUrl), keyless)}`);
     return EXIT.refused;
   }
   try {
