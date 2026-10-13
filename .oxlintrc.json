@@ -54,7 +54,9 @@
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
     {
-      "files": ["tests/broker/sol-1567-page-grant-handoff.test.ts"],
+      "files": [
+        "tests/broker/a-paid-page-send-holds-its-task-read-grant-until-custody-has-it.test.ts"
+      ],
       "rules": { "max-lines-per-function": "off" }
     },
     {
