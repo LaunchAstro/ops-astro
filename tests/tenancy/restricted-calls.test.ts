@@ -368,6 +368,22 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (select id, fence from public.leases
                            where business_id = c.business_id order by id limit 1) l on true
       where c.business_id = $1 order by c.id limit 1 returning 1`,
+  // C80's party sites: the journey binds no site. One per business on its first
+  // client, repository and project unique by a fresh id, and one page on it.
+  'public.party_sites': `insert into public.party_sites
+       (business_id, party_id, repository, default_branch, project, changed_by_actor_id)
+     select $1, coalesce(c.id, gen_random_uuid()), 'seed/' || s.id, 'main', 'prj_' || s.id,
+            coalesce(a.id, gen_random_uuid())
+       from (select gen_random_uuid()::text as id) s
+       left join lateral (
+         select id from public.clients where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  'public.party_site_pages': `insert into public.party_site_pages
+       (business_id, party_id, page_url, path)
+     select business_id, party_id, 'https://agency.example/about/', 'src/pages/about.md'
+       from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
