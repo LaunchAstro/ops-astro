@@ -233,6 +233,20 @@ async function main() {
   }
 
   let revision = created.body.revision;
+  // Read now, before anything moves the task: a later read would see the
+  // state a lifecycle move gave it, not the one creation did.
+  const fresh = await call(mia.token, 'alpha', '/task/read', { recordId });
+  /**
+   * The task as `task.read` answers it after a write, or null unless the write
+   * applied and a read that itself succeeded shows its revision: a write's HTTP
+   * 200 is only its claim, and a failed read's body proves nothing.
+   */
+  const readBack = async (write) => {
+    if (write.status !== 200) return null;
+    const read = await call(mia.token, 'alpha', '/task/read', { recordId });
+    const task = read.status === 200 ? read.body?.task : undefined;
+    return task?.revision === write.body.revision ? task : null;
+  };
 
   // ------------------------------------------------------------- B2 assign
   // `assignee` is a person link, so the value is a person identifier and the
@@ -261,35 +275,49 @@ async function main() {
       expectedRevision: revision,
       fields: { assignee: chosen.personId },
     });
+    const assignee = (await readBack(assigned))?.assignee;
     record('B2 assign noah', {
       status: assigned.status,
       code: codeOf(assigned) ?? 'applied',
-      ok: assigned.status === 200,
+      ok: assignee?.personId === chosen.personId,
       note: assigned.status === 200 ? `revision=${assigned.body.revision}` : '',
     });
     if (assigned.status === 200) revision = assigned.body.revision;
   }
 
   // ------------------------------------------------- B3 start, complete, reopen
-  for (const [name, path, extra] of [
-    ['B3 start', '/task/start', {}],
-    ['B3 complete', '/task/complete', {}],
-    ['B3 reopen', '/task/reopen', { reason: 'verify-slice reopens it' }],
+  for (const [name, path, extra, moved] of [
+    ['B3 start', '/task/start', {}, (task) => task?.state?.machineCategory === 'started'],
+    [
+      'B3 complete',
+      '/task/complete',
+      {},
+      (task) =>
+        task?.state?.machineCategory === 'completed' && typeof task.completedAt === 'string',
+    ],
+    [
+      'B3 reopen',
+      '/task/reopen',
+      { reason: 'verify-slice reopens it' },
+      (task) => task?.state?.machineCategory === 'unstarted' && task.completedAt === null,
+    ],
   ]) {
     // eslint-disable-next-line no-await-in-loop -- a lifecycle is sequential
-    const moved = await call(mia.token, 'alpha', path, {
+    const move = await call(mia.token, 'alpha', path, {
       operationId: id(),
       recordId,
       expectedRevision: revision,
       ...extra,
     });
+    // eslint-disable-next-line no-await-in-loop
+    const task = await readBack(move);
     record(name, {
-      status: moved.status,
-      code: codeOf(moved) ?? 'applied',
-      ok: moved.status === 200,
-      note: moved.status === 200 ? `revision=${moved.body.revision}` : '',
+      status: move.status,
+      code: codeOf(move) ?? 'applied',
+      ok: moved(task),
+      note: move.status === 200 ? `revision=${move.body.revision} state=${task?.state?.key}` : '',
     });
-    if (moved.status === 200) revision = moved.body.revision;
+    if (move.status === 200) revision = move.body.revision;
   }
 
   // -------------------------------------------------------------- B4 edit
@@ -300,10 +328,12 @@ async function main() {
     expectedRevision: revision,
     fields: { title: `${title} (edited)`, due },
   });
+  /** The edit as a task read answers it. */
+  const showsEdit = (task) => task?.title === `${title} (edited)` && task?.due === due;
   record('B4 update title and due', {
     status: edited.status,
     code: codeOf(edited) ?? 'applied',
-    ok: edited.status === 200,
+    ok: showsEdit(await readBack(edited)),
   });
   if (edited.status === 200) revision = edited.body.revision;
 
@@ -312,14 +342,18 @@ async function main() {
   record('read back', {
     status: read.status,
     code: codeOf(read) ?? 'ok',
-    ok: read.status === 404 ? undefined : read.status === 200,
+    ok: read.status === 404 ? undefined : read.status === 200 && showsEdit(read.body?.task),
     note: read.status === 404 ? 'task.read is not in the surface yet' : '',
   });
   const board = await call(mia.token, 'alpha', '/task/board', { board: null });
   record('board list', {
     status: board.status,
     code: codeOf(board) ?? 'ok',
-    ok: board.status === 404 ? undefined : board.status === 200,
+    ok:
+      board.status === 404
+        ? undefined
+        : board.status === 200 &&
+          showsEdit((board.body?.tasks ?? []).find((task) => task.id === recordId)),
     note: board.status === 404 ? 'task.board is not in the surface yet' : '',
   });
 
@@ -327,9 +361,9 @@ async function main() {
   // sends no `stateKey`, and until the server placed one every task the app
   // made arrived stateless -- which the read contract says cannot happen.
   record('B1 a created task has a state', {
-    status: read.status,
-    code: read.body?.task?.state?.key ?? 'null',
-    ok: read.status === 200 && read.body?.task?.state?.machineCategory === 'unstarted',
+    status: fresh.status,
+    code: fresh.body?.task?.state?.key ?? 'null',
+    ok: fresh.status === 200 && fresh.body?.task?.state?.machineCategory === 'unstarted',
     note: 'created without a stateKey; the server places the first unstarted state',
   });
 
@@ -948,15 +982,20 @@ async function theJourney() {
     },
     credential,
   );
+  // A queue that could not be read is not an empty one.
   const queueSettled = await call(ada.token, 'alpha', '/task/queue', {});
-  const stillThere = (queueSettled.body?.queue ?? []).some(
-    (entry) => entry.reservationId === reservationId,
-  );
+  const settled = queueSettled.status === 200 && Array.isArray(queueSettled.body?.queue);
+  const stillThere =
+    settled && queueSettled.body.queue.some((entry) => entry.reservationId === reservationId);
+  let settledNote = settled
+    ? 'the queue no longer shows it'
+    : `the queue read answered HTTP ${queueSettled.status}`;
+  if (stillThere) settledNote = 'the reservation is still on the queue';
   record(downstream[3], {
     status: handedBack.status,
     code: codeOf(handedBack) ?? 'applied',
-    ok: handedBack.status === 200 && !stillThere,
-    note: stillThere ? 'the reservation is still on the queue' : 'the queue no longer shows it',
+    ok: handedBack.status === 200 && settled && !stillThere,
+    note: settledNote,
   });
 
   // A decision made from a page that went stale. The live gate is the one the
@@ -992,12 +1031,28 @@ async function theJourney() {
     note: 'decided from a page that went stale',
   });
   const after = await call(ada.token, 'alpha', '/task/read', { recordId: sibling });
-  const held = canonical(before.body?.task?.proposals) === canonical(after.body?.task?.proposals);
+  // Two lineages that could not be read are not two unchanged ones: both
+  // proposals landed, and both reads show the lineage they made.
+  const seen = [before, after].every(
+    (read) =>
+      read.status === 200 &&
+      (read.body?.task?.proposals ?? []).some(
+        (proposal) => proposal.lineageId === detailOf(first).lineageId,
+      ),
+  );
+  const held =
+    seen && canonical(before.body.task.proposals) === canonical(after.body.task.proposals);
+  let heldNote = held ? 'nothing on the lineage moved' : 'THE LINEAGE MOVED';
+  if (!seen) heldNote = 'the lineage could not be read either side';
   record(downstream[4], {
     status: stale.status,
     code: codeOf(stale),
-    ok: codeOf(stale) === 'VERSION_SUPERSEDED' && held,
-    note: held ? 'nothing on the lineage moved' : 'THE LINEAGE MOVED',
+    ok:
+      first.status === 200 &&
+      second.status === 200 &&
+      codeOf(stale) === 'VERSION_SUPERSEDED' &&
+      held,
+    note: heldNote,
   });
 }
 

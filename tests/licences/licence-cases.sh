@@ -132,6 +132,7 @@ assets_case "a font with no source fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",
 assets_case "a font with no pinned digest fails" 1 "[{$FONT,$OK,\"sha256\":\"\"}]"
 assets_case "a font with no https address fails" 1 "[{$FONT,$OK,\"url\":\"http://example.invalid/font.ttf\"}]"
 assets_case "a font with no licence text beside it fails" 1 "[{$FONT,$OK,\"licenceFile\":\"missing.txt\"}]"
+assets_case "a licence file that is a folder, not a text, fails" 1 "[{$FONT,$OK,\"licenceFile\":\".\"}]"
 
 echo
 echo "licence cases: $PASSED passed, $FAILED failed"

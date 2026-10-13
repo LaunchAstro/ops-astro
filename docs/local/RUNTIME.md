@@ -433,8 +433,9 @@ re-sums and is refused `23514` (`check_violation`, `budget_caps_ceiling`). Under
 repeatable read or serializable, a transaction whose snapshot predates a
 competing commit is refused `40001` (`serialization_failure`) and must retry in
 a fresh snapshot, so at those levels two concurrent raises under one cap
-serialise even when they would fit together. The app runs at read committed and
-nothing in it retries `40001`. Only a write that can
+serialise even when they would fit together. The app runs at read committed
+(`withBusiness` begins every transaction at that level, whatever the login's
+default) and nothing in it retries `40001`. Only a write that can
 raise the total is checked: a nonzero insert, a growing total, a move to
 another cap, or a falling limit. The command refuses first with a reason, and
 storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
@@ -1464,7 +1465,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:877-888`). With neither setting present, the
+  rewrites it (`local-seed.mjs:891-902`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the

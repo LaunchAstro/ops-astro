@@ -74,7 +74,7 @@ const exempt = readExemptions();
 for (const sha of shas) {
   const short = sha.slice(0, 9);
   const subject = git(['show', '-s', '--format=%s', sha]).trim();
-  if (!commitlintAvailable && !SUBJECT.test(subject)) {
+  if (!commitlintAvailable && !exempt.has(sha) && !SUBJECT.test(subject)) {
     failures.push(
       `${short} subject is not a conventional commit: ${JSON.stringify(subject)}\n` +
         `         expected one of ${TYPES.join(', ')} followed by ": " and a summary`,

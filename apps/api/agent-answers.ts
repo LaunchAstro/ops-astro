@@ -7,6 +7,7 @@
 
 import type { Context } from 'hono';
 import { streamSSE, type SSEMessage } from 'hono/streaming';
+import { holdQuotaSlot } from '../../packages/core-records/src/index.ts';
 import type {
   ConversationExchange,
   ConversationReply,
@@ -52,13 +53,14 @@ export async function replyTo(
   presented: Parameters<ConversationExchange>[2],
   kept: Kept,
   onPiece?: (text: string) => void,
+  accessToken?: string,
 ): Promise<ConversationReply | null> {
   const exchange = options.answerConversation;
   if (exchange === undefined || !MESSAGE_KEEPERS.has(kept.command)) return null;
   const { conversationId, messageId } = kept.detail;
   if (typeof conversationId !== 'string' || typeof messageId !== 'string') return null;
   const asked = { conversationId, messageId };
-  return await exchange(options.database, businessId, presented, asked, onPiece);
+  return await exchange(options.database, businessId, presented, asked, onPiece, accessToken);
 }
 
 /** The panel asks for the answer as it is written, and an exchange will answer this command. */
@@ -77,7 +79,9 @@ export const asksForPieces = (
  * `outcome` event whose data is exactly the JSON body the request answers
  * without a stream. Pieces are provisional; only the outcome's reply is kept.
  * A browser that leaves stops only the writing: the answer still settles and
- * its reply is kept, read on the next `conversation.read`.
+ * its reply is kept, read on the next `conversation.read`. Like the JSON
+ * answer it replaces, it holds the caller's concurrent slot until the answer
+ * ends, not only until the response starts (API-3).
  */
 export function streamedReply(
   context: Context,
@@ -85,27 +89,35 @@ export function streamedReply(
   businessId: string,
   presented: Parameters<ConversationExchange>[2],
   settled: Kept,
+  /** The person's own token, for a carried call's line; a deployment that carries nothing ignores it. */
+  accessToken?: string,
 ): Response {
+  const release = holdQuotaSlot();
   return streamSSE(context, async (stream) => {
-    // One write at a time, in order; a write to a stream the browser left is dropped.
-    let written = Promise.resolve();
-    const after = async (previous: Promise<void>, message: SSEMessage): Promise<void> => {
-      await previous;
-      if (!stream.aborted) await stream.writeSSE(message).catch(() => {});
-    };
-    const write = (message: SSEMessage): void => {
-      written = after(written, message);
-    };
-    let seq = 0;
-    const reply = await replyTo(options, businessId, presented, settled, (data) => {
-      write({ event: 'piece', id: String(seq), data });
-      seq += 1;
-    });
-    write({
-      event: 'outcome',
-      data: JSON.stringify({ ...settled, ...(reply === null ? {} : { reply }) }),
-    });
-    await written;
+    try {
+      // One write at a time, in order; a write to a stream the browser left is dropped.
+      let written = Promise.resolve();
+      const after = async (previous: Promise<void>, message: SSEMessage): Promise<void> => {
+        await previous;
+        if (!stream.aborted) await stream.writeSSE(message).catch(() => {});
+      };
+      const write = (message: SSEMessage): void => {
+        written = after(written, message);
+      };
+      let seq = 0;
+      const piece = (data: string): void => {
+        write({ event: 'piece', id: String(seq), data });
+        seq += 1;
+      };
+      const reply = await replyTo(options, businessId, presented, settled, piece, accessToken);
+      write({
+        event: 'outcome',
+        data: JSON.stringify({ ...settled, ...(reply === null ? {} : { reply }) }),
+      });
+      await written;
+    } finally {
+      release();
+    }
   });
 }
 

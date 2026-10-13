@@ -5,8 +5,11 @@
 // person's one click is the only write.
 //
 // **Create** sends `task.create` with the title, the description and the
-// conversation as its origin (`tasks-write.ts` `originOf`), assigning nobody
-// and starting nothing.
+// conversation as its origin (`tasks-write.ts` `originOf`), starting nothing.
+// Once it answers, `task.assign` gives the new task to whoever clicked, at the
+// revision the create returned (`assignees.ts`), as the task draft assigns its
+// own (`draft-command.ts`): the existing command and its checks, no new
+// authority.
 //
 // **Edit** applies to the chat's own task at the revision its question was
 // asked at. A question in a chat on a task first reads that task, before it is
@@ -35,6 +38,7 @@ import { settle } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
+import { assignClicker } from './assignees.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
@@ -174,13 +178,12 @@ async function create(
     await view.client.mutate('task.create', write.body, { operationId: write.operationId }),
   );
   if (settled.kind !== 'ok') return unsettled(settled);
-  const { detail, recordId } = settled.value;
+  const { detail, recordId, revision } = settled.value;
   const key = detail?.['key'];
-  return {
-    state: 'made',
-    refusal: null,
-    task: taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId),
-  };
+  const task = taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId);
+  const assigning = await assignClicker(view.client, source, { recordId, revision });
+  if (assigning?.state === 'unknown') return { ...assigning, task: null };
+  return { state: 'made', refusal: null, task, ...assigning };
 }
 
 async function edit(

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two transactions for one business, its id spelt in lower and upper case on repeatable-read connections, take one limiter lock and admit one past a durable limit"
+}

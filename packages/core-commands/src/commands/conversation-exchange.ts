@@ -22,7 +22,9 @@
 //    model (CS-7.30), the default when none is chosen; a chosen model no
 //    longer offered it (`offeredModels`) is refused first, nothing sent. Where
 //    the caller takes pieces, the answer's display text goes to it as the
-//    model writes it; it is provisional, and only the settled answer is kept.
+//    model writes it, each batch only under the authority the reply is kept
+//    under (`conversation-pieces.ts`); it is provisional, and only the settled
+//    answer is kept.
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
@@ -30,9 +32,12 @@
 //    with the grants held for share and judged at the clock after the locks;
 //    a grant being changed at that moment keeps nothing.
 //
-// A message has at most one reply. A repeat of the request finds the reply
-// kept and answers with it, and the model is not asked again; a repeat while
-// the answer is with the model, in the same process, waits for it. The model's words
+// A message has at most one reply, and at most one model call, whichever
+// process asks (#1531). A repeat of the request finds the reply kept and
+// answers with it, and the model is not asked again; a repeat while the answer
+// is with the model, in the same process, waits for it; in another process it
+// is told the answer is on its way, and after a call that kept no reply, that
+// the answer ended and the message is to be sent again. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
 // words, never the model's or the person's. Words the store cannot hold as
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
@@ -41,14 +46,10 @@ import { randomUUID } from 'node:crypto';
 import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
 import {
   callModelInConversation,
+  type ConversationCallRequest,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import {
-  isUuid,
-  sessionEndedSince,
-  subjectsOf,
-  withSession,
-} from '../../../core-records/src/index.ts';
+import { isUuid, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -56,8 +57,9 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
+import { carriedBy } from './carriage-origin.ts';
 import { contextOf, type Context } from './conversation-context.ts';
+import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
 import { askedModel } from './conversation-model.ts';
 import {
@@ -73,11 +75,7 @@ import { storableText } from './values.ts';
 
 export type { ConversationReply } from './conversation-replies.ts';
 
-/** The message a person just kept, from the applied command's detail. */
-export interface Asked {
-  readonly conversationId: string;
-  readonly messageId: string;
-}
+export type { Asked } from './conversation-pieces.ts';
 
 export type ConversationExchange = (
   database: Database,
@@ -86,6 +84,8 @@ export type ConversationExchange = (
   asked: Asked,
   /** Where the answer's display text goes as it is written; only the settled reply is kept. */
   onPiece?: (text: string) => void,
+  /** The person's own access token, for a carried call's line (live chat route B); absent, none is carried. */
+  accessToken?: string,
 ) => Promise<ConversationReply | null>;
 
 /** A reply's body is a message's (0092). */
@@ -153,27 +153,12 @@ async function keep(
   asked: Asked,
   body: string,
 ): Promise<Kept | undefined> {
-  const [conversation] = await tx.query<{ readonly body_purged_at: Date | null }>(
-    `select body_purged_at from conversations
-      where business_id = $1 and id = $2 and owner_actor_id = $3
-      for update`,
-    [tx.businessId, asked.conversationId, session.actorId],
-  );
-  if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
-  // An ended session keeps nothing, and an ending in flight waits for this; asked
-  // before the grants, so the grant is judged at the clock after this wait too.
-  if (await sessionEndedSince(tx, session)) return undefined;
-  // The caller's conversation grants are held for share once the row is
-  // locked, a grant issued while this waited included: a revocation that
-  // committed first is seen by the check below, and one that comes later waits
-  // for this reply to commit. `nowait`, because the trash purge locks grants
-  // before conversations: one being changed now rolls the reply back
-  // (`heldElsewhere`). The check is asked at the clock after the locks, so a
-  // grant that lapsed while this waited no longer counts, and must rest on a
-  // grant held here, so one issued after the hold does not.
-  const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
-  const at = await lockedInstant(tx);
-  if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
+  // The conversation's row locked, the session asked, then the grants held
+  // for share and judged at the clock after the locks (`hearingAt`): a
+  // revocation that committed first is seen, and one that comes later waits
+  // for this reply to commit.
+  const at = await hearingAt(tx, session, asked, 'update');
+  if (at === undefined) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The
@@ -181,8 +166,9 @@ async function keep(
   const inserted = await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
-        created_at)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz)
+        created_at, context_epoch)
+     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz,
+             (select context_epoch from conversations where business_id = $1 and id = $3))
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
@@ -190,18 +176,36 @@ async function keep(
     [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
-  await tx.query(
-    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
-      where business_id = $1 and id = $2`,
-    [tx.businessId, asked.conversationId, at],
-  );
+  await activeAt(tx, asked.conversationId, at);
   return { id, body };
 }
 
-/** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */
-function heldElsewhere(cause: unknown): undefined {
-  if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-  return undefined;
+/** The conversation's last activity moved up to `at`, never back. */
+async function activeAt(tx: TenantQuery, conversationId: string, at: string): Promise<void> {
+  await tx.query(
+    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
+      where business_id = $1 and id = $2`,
+    [tx.businessId, conversationId, at],
+  );
+}
+
+/** The conversation seam's request for the question: its words and context, its model, and how it is heard. */
+function requestFor(
+  question: Question,
+  asked: Asked,
+  heard: Pick<ConversationCallRequest, 'onPiece' | 'carry'>,
+): ConversationCallRequest {
+  return {
+    conversation: question.scope,
+    messageId: asked.messageId,
+    operation: CONVERSATION_ANSWER.key,
+    fields: [
+      ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
+      { name: 'message', source: 'outside', value: question.body },
+    ],
+    ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
+    ...heard,
+  };
 }
 
 /** The model asked for one message, and the answer kept as its reply. */
@@ -212,9 +216,11 @@ async function answerOnce(
   asked: Asked,
   found: { readonly session: Session; readonly question: Question },
   broker: ModelBroker,
-  onPiece: ((text: string) => void) | undefined,
+  by: { readonly onPiece?: (text: string) => void; readonly accessToken?: string },
 ): Promise<ConversationReply | null> {
   const { session, question } = found;
+  // Pieces reach the caller only while they may hear the answer, judged as the reply is.
+  const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
   const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
@@ -222,18 +228,13 @@ async function answerOnce(
     database,
     businessId,
     { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
-    {
-      conversation: question.scope,
-      operation: CONVERSATION_ANSWER.key,
-      fields: [
-        ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
-        { name: 'message', source: 'outside', value: question.body },
-      ],
-      ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
-      ...(onPiece === undefined ? {} : { onPiece }),
-    },
+    requestFor(question, asked, {
+      ...(pieces === undefined ? {} : { onPiece: pieces.push }),
+      ...carriedBy(database, businessId, presented, by.accessToken, broker),
+    }),
     { ...broker, audit: auditAs(session.actorId) },
   );
+  await pieces?.drained();
   if (!result.ok) {
     return result.code === 'CALL_RELEASED' ? releasedWith(result.reason) : refusedWith(result.code);
   }
@@ -259,7 +260,7 @@ async function answerOnce(
  */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   const asking = new Map<string, Promise<ConversationReply | null>>();
-  return async (database, businessId, presented, asked, onPiece) => {
+  return async (database, businessId, presented, asked, onPiece, accessToken) => {
     // The provider the deployment's broker runs the conversation on: what it can send.
     const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
@@ -284,7 +285,10 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       asked,
       { ...found, question },
       broker,
-      onPiece,
+      {
+        ...(onPiece === undefined ? {} : { onPiece }),
+        ...(accessToken === undefined ? {} : { accessToken }),
+      },
     ).finally(() => asking.delete(key));
     asking.set(key, answering);
     return await answering;

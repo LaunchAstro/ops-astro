@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A reassignment reads who decides an escalated gate after its task-row wait, on separate connections: a recipient whose decide was revoked meanwhile keeps their item withdrawn."
+}

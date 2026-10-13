@@ -20,7 +20,7 @@
 // so, loudly, every time -- the rows are real and the subjects are not, so the
 // API path cannot be demonstrated against them.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomInt, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
@@ -595,12 +595,26 @@ function ensureGateKey() {
   if (heldId && heldSecret) return { id: heldId, secret: heldSecret, fresh: false };
   const id = 'local/gate-decisions@1';
   const secret = randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
+  // Written aside and hard-linked into place, which fails if the file exists:
+  // of two first seeds at once, the second reads back the first one's key.
+  const staging = `${gateFile}.${randomUUID()}`;
   writeFileSync(
-    gateFile,
+    staging,
     `# Written by scripts/local-seed.mjs. Local only, gitignored, not a secret store.\n` +
       `GATE_SIGNING_KEY_ID=${id}\nGATE_SIGNING_SECRET=${secret}\n`,
-    { mode: 0o600 },
+    { mode: 0o600, flag: 'wx' },
   );
+  try {
+    linkSync(staging, gateFile);
+  } catch (cause) {
+    if (cause.code !== 'EEXIST') throw cause;
+    const { GATE_SIGNING_KEY_ID: keptId, GATE_SIGNING_SECRET: kept } = readEnvFile(gateFile);
+    if (keptId && kept) return { id: keptId, secret: kept, fresh: false };
+    // A file there that holds no key is replaced, as it always was.
+    renameSync(staging, gateFile);
+  } finally {
+    rmSync(staging, { force: true });
+  }
   return { id, secret, fresh: true };
 }
 

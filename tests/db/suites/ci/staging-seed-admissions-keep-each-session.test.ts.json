@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a second staging seed admission leaves the first seed session's tagged writes vouched for, and an untagged owner write is still noted (#495)"
+}

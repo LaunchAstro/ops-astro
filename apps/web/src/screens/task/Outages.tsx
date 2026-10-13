@@ -21,7 +21,10 @@ export function Outages(props: {
   readonly state: ReadState<QueueResult>;
   readonly taskId: string;
 }): ReactElement | null {
-  const value = props.state.outcome === 'ready' ? props.state.value : null;
+  // The last answer stays drawn while the queue is asked again with the task.
+  const { state } = props;
+  const value =
+    state.outcome === 'ready' ? state.value : state.outcome === 'loading' ? state.previous : null;
   const mine = (value?.outages ?? []).filter((one) =>
     one.runs.some((run) => run.taskId === props.taskId),
   );

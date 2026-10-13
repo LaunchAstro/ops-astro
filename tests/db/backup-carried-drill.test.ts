@@ -108,6 +108,8 @@ function roundTripCases() {
   roundTripCases1();
 
   roundTripCases2();
+
+  roundTripCases3();
 }
 
 function concurrentCases() {
@@ -236,5 +238,18 @@ function roundTripCases2() {
         await client.end();
       }
     }
+  });
+}
+
+function roundTripCases3() {
+  it('a drill that failed at its scope, before reading an archive, is recorded once against the archive carried back', async () => {
+    const early = await carriedReceipt();
+    const change = { outcome: 'failed', stage: 'scope', archiveId: null, archiveTakenAt: null };
+    const before = (await drills()).length;
+    const recorded = await record(operator, carriedBack(early, change));
+    expect(recorded).toMatchObject({ outcome: 'failed', ranOn: 'carried archive', operator });
+    expect((await drills()).slice(before)).toStrictEqual([
+      { outcome: 'failed', ran_on: 'carried archive' },
+    ]);
   });
 }

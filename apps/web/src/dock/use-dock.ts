@@ -181,6 +181,8 @@ export function useDock(
   const onDoor = useCallback(
     (event: ReactMouseEvent<HTMLElement>): void => {
       if (event.defaultPrevented || event.button !== 0) return;
+      // Cmd, Ctrl and Alt ask the browser for a tab, a window or a download.
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
       const door =
         event.target instanceof Element
           ? event.target.closest<HTMLElement>('[data-dock-open], [data-ask]')

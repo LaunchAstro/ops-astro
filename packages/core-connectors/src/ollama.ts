@@ -6,9 +6,11 @@
 // `/api/chat` on loopback, and the API's composition root refuses an Ollama
 // route that is not local or whose destination is not this machine, so the
 // port is never reached over a network. Ollama asks for no key; its credential
-// is filed as `none` and custody presents nothing. The chat is streamed: the
-// answer settles from the whole stream folded (`foldOllamaStream`) and shows
-// as it comes through the piece reader (`ollamaPieces`).
+// is filed as `none` and custody presents nothing. Only then is the chat
+// streamed: the answer settles from the whole stream folded
+// (`foldOllamaStream`) and shows as it comes through the piece reader
+// (`ollamaPieces`). Under a credential custody sends, the answer comes whole,
+// so custody's redaction reads every word of it at once.
 //
 // The model runs on hardware already paid for, so every answer costs nothing
 // and the operation is unpriced, as the conversation seam requires (#1508, option B).
@@ -70,11 +72,15 @@ function pageTitle(page: string | undefined): string | null {
   }
 }
 
-/** The adapter: fields in, one chat for the model asked for (the default unless named). */
+/**
+ * The adapter: fields in, one chat for the model asked for (the default unless
+ * named), streamed only when the broker says custody presents no credential.
+ */
 export function ollamaAdapter(
   values: Readonly<Record<string, string>>,
   _operationId?: string,
   model: string = OLLAMA_DEFAULT_MODEL,
+  streamed = false,
 ): AdapterRequest {
   const messages: readonly Turn[] = [
     { role: 'system', content: conversationInstructions(pageTitle(values['page'])) },
@@ -84,7 +90,7 @@ export function ollamaAdapter(
   return {
     path: OLLAMA_PATH,
     method: 'POST',
-    body: JSON.stringify({ model, messages, stream: true, think: false }),
+    body: JSON.stringify({ model, messages, stream: streamed, think: false }),
   };
 }
 
@@ -157,7 +163,8 @@ const CLOSER = '</think>';
  * Display texts from a streamed chat as its bytes arrive, in order and
  * complete: whole lines only, each line's words, and a leading thinking block
  * held back until it closes and never shown. Leading white space is dropped,
- * as the settled answer drops it. A line that is not a reply piece shows nothing.
+ * as the settled answer drops it. A line that is not a reply piece shows
+ * nothing, and nothing after the `done` line is shown: the fold refuses it.
  */
 export function ollamaPieces(): PieceReader {
   const decoder = new TextDecoder();
@@ -166,6 +173,7 @@ export function ollamaPieces(): PieceReader {
   let phase: 'start' | 'thinking' | 'answer' = 'start';
   let held = '';
   let started = false;
+  let finished = false;
   const shown = (words: string): string => {
     if (phase === 'answer') return words;
     held += words;
@@ -190,7 +198,8 @@ export function ollamaPieces(): PieceReader {
       partial = lines.pop() ?? '';
       const texts: string[] = [];
       for (const text of lines) {
-        const line = lineOf(text);
+        const line = finished ? undefined : lineOf(text);
+        finished ||= line?.['done'] === true;
         const words = line === undefined ? undefined : contentOf(line);
         const out = words === undefined ? '' : shown(words);
         const trimmed = started ? out : out.trimStart();

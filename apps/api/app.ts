@@ -112,6 +112,7 @@ import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts'
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
   bearerOf,
+  sessionCookieOf,
   cookieMaxAge,
   cookieNameFor,
   CROSS_SITE_FIXES,
@@ -463,10 +464,12 @@ export function createApi(options: ApiOptions): Hono {
     // commits, in transactions of their own after the act's
     // (`settle-after-commit.ts`); what fails stays owed for the retry.
     const settled = await settleAfterCommit(options, businessId, name, result);
+    // The person's own token, as the door read it, joins a carried call's line.
+    const token = bearerOf(context.req) ?? sessionCookieOf(context.req);
     if (asksForPieces(context, options, name)) {
-      return streamedReply(context, options, businessId, presented, settled);
+      return streamedReply(context, options, businessId, presented, settled, token);
     }
-    const reply = await replyTo(options, businessId, presented, settled);
+    const reply = await replyTo(options, businessId, presented, settled, undefined, token);
     return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });
 

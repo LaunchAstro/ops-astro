@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a held grant stops the pieces without a throw or a wait, a repeat asks once, a client link keeps the pieces as the reply"
+}

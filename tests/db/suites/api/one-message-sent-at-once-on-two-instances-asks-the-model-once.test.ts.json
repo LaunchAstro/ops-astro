@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "one message sent at once on two API instances, or after a crashed or lost twin, makes one call and asks Ollama once; the other is told it is still answering, never that the answer ended while its reply is being kept"
+}

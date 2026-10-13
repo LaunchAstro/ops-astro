@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the carriage migrations apply over an earlier answered call, and members, carriers and a call's message key hold their business and conversation"
+}

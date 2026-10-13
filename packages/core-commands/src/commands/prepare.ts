@@ -55,7 +55,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
-import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
+import { deploymentCarrier, readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
   declarationOf,
@@ -579,6 +579,7 @@ async function askCovered(
 ): Promise<Refused | { readonly viaMap?: { readonly id: string; readonly refusal: Refused } }> {
   const authorised = await checkAuthority(tx, subjectsOf(session), asked);
   if (authorised.ok) return {};
+  if (await decidesAcrossTheClient(tx, session, declaration, asked)) return {};
   const map = await coveringMap(tx, request, declaration);
   const again =
     map === undefined
@@ -589,6 +590,33 @@ async function askCovered(
         });
   if (map === undefined || !again.ok) return refused(authorised.refusal);
   return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
+}
+
+/** The two answers to a budget stop, a person's alone (#796). */
+const PARTY_ANSWERED: ReadonlySet<string> = new Set(['run.top_up', 'run.end_at_budget_stop']);
+
+/**
+ * A budget answer refused on its task, asked again across the task's client:
+ * the party grant Access issues per client answers that client's stops. The
+ * client is read with no trash filter, so each command keeps its own trash
+ * rule (`run-answers.ts`). The runtime judges again under the run's locks.
+ */
+async function decidesAcrossTheClient(
+  tx: TenantQuery,
+  session: Session,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest,
+): Promise<boolean> {
+  if (!PARTY_ANSWERED.has(declaration.name) || asked.scope.kind !== 'record') return false;
+  const taskId = asked.scope.id;
+  if (taskId === null || !isUuid(taskId)) return false;
+  const [task] = await tx.query<{ readonly client: string | null }>(
+    'select uuid_7 as client from public.records where business_id = $1 and id = $2::uuid',
+    [tx.businessId, taskId],
+  );
+  if (task === undefined || task.client === null) return false;
+  const across = { ...asked, scope: { kind: 'party' as const, id: task.client } };
+  return (await checkAuthority(tx, subjectsOf(session), across)).ok;
 }
 
 /**
@@ -798,7 +826,8 @@ export async function prepareCommand(
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);
-  return { session, declaration, entryPoint, spine, target, request: parsed.request };
+  const carrier = deploymentCarrier();
+  return { session, declaration, entryPoint, spine, target, carrier, request: parsed.request };
 }
 
 /**

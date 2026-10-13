@@ -89,6 +89,7 @@ export {
   type Broker,
   type BrokerRefusal,
   type BrokerRoute,
+  type Carrier,
   type ClaimedField,
   type ModelCaller,
   type ModelCallField,
@@ -128,6 +129,8 @@ export {
   type Carriage,
   type CarryBodies,
   type CarryEvent,
+  type Handoff,
+  type Judged,
   type Line,
   type OfferBody,
   type Topic,
@@ -141,3 +144,5 @@ export {
   type SealRefusal,
   type Sealed,
 } from './carry-seal.ts';
+export { carriedCustody, type CarriedCustodyOptions } from './carried-custody.ts';
+export { realtimeCarriage, type RealtimeCarriageOptions } from './realtime-carriage.ts';

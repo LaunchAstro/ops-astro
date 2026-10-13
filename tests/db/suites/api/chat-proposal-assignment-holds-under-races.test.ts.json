@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A chat card's assignment at the create's revision, racing another writer at that revision on separate connections, is serialised on the task's row: one lands, the other is refused VERSION_STALE, nothing is lost. A lost answer replays the create's first revision and the assignment under its one id; the same id with another person is refused OPERATION_ID_REUSED and the first assignment stands."
+}

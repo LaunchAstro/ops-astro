@@ -17,7 +17,7 @@
 
 import { parseArgs } from 'node:util';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
-import { gitPush, requestPreview } from './preview.ts';
+import { gitHead, gitPush, requestPreview } from './preview.ts';
 
 const gate = await requireOperatingOperator();
 if (!gate.ok) {
@@ -39,7 +39,12 @@ if (values.version === undefined) {
 
 const outcome = await requestPreview(
   { version: values.version },
-  { env: process.env, push: (version) => gitPush(version, process.env), post: fetch },
+  {
+    env: process.env,
+    push: (version) => gitPush(version, process.env),
+    head: () => gitHead(process.env),
+    post: fetch,
+  },
 );
 if (outcome.kind !== 'requested') {
   console.error(`preview: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);

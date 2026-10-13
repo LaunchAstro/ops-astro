@@ -6,6 +6,7 @@ import type {
   TaskBoardResult,
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import { dropsAnswer } from '../../data/read-breaks.ts';
 import type { BoardAddress } from './scoped-board.ts';
 import type { Vocabulary } from '../todos/typed-scope.ts';
 import { readingOf, scoped, type Chip } from '../todos/todo-list.ts';
@@ -28,6 +29,24 @@ export function boardScopeChips(
   if (scope.route !== undefined) chips.push({ kind: 'route', value: scope.route });
   return chips;
 }
+
+/** A person list answer that breaks a person-scoped board's admission: refused, out, or without its person. */
+export const personBreaks =
+  (scope: BoardAddress) =>
+  (state: ReadState<PersonListResult>): boolean =>
+    dropsAnswer(state) ||
+    (scope.person !== undefined &&
+      (state.outcome === 'ready' || state.outcome === 'empty') &&
+      !(state.value.persons ?? []).some((one) => one.personId === scope.person));
+
+/** A client list answer that breaks a client-scoped board's admission: refused, out, or without its client. */
+export const clientBreaks =
+  (scope: BoardAddress) =>
+  (state: ReadState<ClientListResult>): boolean =>
+    dropsAnswer(state) ||
+    (scope.client !== undefined &&
+      state.outcome === 'ready' &&
+      !(state.value.clients ?? []).some((one) => one.clientId === scope.client));
 
 interface OwnedVocabulary<T> {
   readonly own: boolean;

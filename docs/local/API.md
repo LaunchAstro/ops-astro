@@ -412,6 +412,13 @@ operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
 eligible route itself, never another found by its key.
 
+A carried deployment (#1531) sets `MODEL_BROKER_CARRIER`,
+`{"agent":<agent actor id>,"people":[<person id>, ...]}` (`model-carrier.ts`),
+with `OPS_AGENT_PROVIDER=ollama`, an Ollama `local` route and
+`MODEL_BROKER_INSTALLATION`, and never beside a credentials file or destination
+list. Both entries hand it to `composeApi`; a listed person's internal
+conversation then gains its agent as a member (`conversation-agents.ts`).
+
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
 `TRACE_EXPORT_ORIGIN` (the target's bare origin, https unless it is
@@ -2970,12 +2977,14 @@ Named so they are not read as settled:
 ## Verifying it
 
 `node scripts/local/verify-slice.mjs` signs in through the local GoTrue with
-the seeded passwords and walks create, start, complete, reopen and edit, then
-the refusals: a foreign business writing a real and a fabricated id with their
-bodies and timings compared, a login with no membership, a replayed operation
-identity, a reused one, a stale revision, generic writes to protected fields, a
-spoofed system field, and a body and headers carrying an actor and a business
-that reach nothing. One line per case with the status and the code it observed;
+the seeded passwords and walks create, assign, start, complete, reopen and edit.
+Each write after the create passes only when a read straight after it shows
+the change at the revision the write answered, and the created task's state is
+read before anything moves it. Then it walks the refusals: a foreign business
+writing a real and a fabricated id with their bodies and timings compared, a
+login with no membership, a replayed operation identity, a reused one, a stale
+revision, generic writes to protected fields, a spoofed system field, and a
+body and headers carrying an actor and a business that reach nothing. One line per case with the status and the code it observed;
 a case that cannot run yet prints `unrun` with its reason.
 
 ## The second factor and the money step-up (C59)

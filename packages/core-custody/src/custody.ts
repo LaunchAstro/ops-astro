@@ -19,6 +19,8 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { StorableKind } from './credentials.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { Handoff } from './carriage.ts';
 import type { Destination, Outbound, OutboundRequest, SendGate } from './egress.ts';
 
 export type { SendGate } from './egress.ts';
@@ -37,6 +39,8 @@ export type CustodyOutcome =
 export interface Carrier {
   readonly credentialKind: StorableKind;
   readonly account: string | null;
+  /** Whether custody sends the credential: false only for one filed as `none`. */
+  readonly presents: boolean;
 }
 
 export interface CustodyConfig {
@@ -50,7 +54,14 @@ export interface Custody {
     credentialRef: string,
     request: OutboundRequest,
     onPiece?: (text: string) => void,
+    /** A carried call's handoff from the command layer (`carried-custody.ts`); process custody takes none. */
+    handoff?: Handoff,
   ): Promise<CustodyOutcome>;
+  /**
+   * A carried custody's settlement fence, in the settling transaction: whether
+   * the call may still settle on the answer heard. Process custody has none.
+   */
+  fenceIn?(tx: TenantQuery, callId: string): Promise<boolean>;
   /**
    * The kind and account of the credential custody would present to
    * `destination` under `credentialRef`, or null when it holds none there:
@@ -225,6 +236,7 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
       return {
         credentialKind: reply['kind'] as StorableKind,
         account: (reply['account'] as string | null) ?? null,
+        presents: reply['presents'] !== false,
       };
     },
     stderr: () => errors,
