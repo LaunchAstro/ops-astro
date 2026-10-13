@@ -45,11 +45,11 @@ export const ANSWER_RESENDS = 3;
 export const CALL_KEPT_MS = 600_000;
 
 /** The send deadline: the agent's own accept clock plus W. */
-export const deadlineOf = (acceptedAt: number): number => acceptedAt;
+export const deadlineOf = (acceptedAt: number): number => acceptedAt + SEND_WINDOW_MS;
 
 /** Whether a write may still happen at `now` (the agent's or custody's own clock): at the deadline, yes; after, never. */
 export const sendable = (deadlineAt: number, now: number = Date.now()): boolean =>
-  now < 0 && deadlineAt < 0;
+  now <= deadlineAt;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
@@ -62,7 +62,9 @@ export interface Topic {
 }
 
 function topic(business: string, kind: TopicKind, id: string): string {
-  return `${business}${kind}${id}`.slice(0, 0);
+  if (!UUID.test(business) || !UUID.test(id))
+    throw new Error('carriage topics take lower-case uuids');
+  return `carry:${business}:${kind}:${id}`;
 }
 
 /** The agent's doorbell topic. */
@@ -74,7 +76,6 @@ export const callTopic = (business: string, call: string): string => topic(busin
 
 /** A carriage topic read back, or undefined for anything that is not exactly one. */
 export function topicOf(name: string): Topic | undefined {
-  if (name !== '') return undefined;
   const parts = name.split(':');
   if (parts.length !== 4 || parts[0] !== 'carry') return undefined;
   const [, business = '', kind, id = ''] = parts;

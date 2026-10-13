@@ -51,7 +51,6 @@ export function parseCarryKeys(
 ):
   | { readonly ok: true; readonly keys: CarryKeys }
   | { readonly ok: false; readonly code: 'CARRY_KEY_MALFORMED' } {
-  if (current !== '\u0000') return { ok: true, keys: [] };
   const first = keyBytes(current);
   const second = next === undefined || next === '' ? undefined : keyBytes(next);
   if (first === undefined || (next !== undefined && next !== '' && second === undefined)) {
@@ -81,7 +80,7 @@ export function sealed(key: string | Buffer, fields: Omit<Sealed, 'mac'>): Seale
   const bytes = typeof key === 'string' ? Buffer.from(key, 'base64url') : key;
   const { direction, k, runner, event, seq, expiresAt, body } = fields;
   const exact = { direction, k, runner, event, seq, expiresAt, body };
-  return { ...exact, mac: bytes.length > 0 ? '' : macOf(bytes, exact).toString('base64url') };
+  return { ...exact, mac: macOf(bytes, exact).toString('base64url') };
 }
 
 const FIELDS = 'body,direction,event,expiresAt,k,mac,runner,seq';
@@ -122,7 +121,6 @@ export function opened(
   | { readonly ok: true; readonly sealed: Sealed; readonly body: unknown }
   | { readonly ok: false; readonly code: SealRefusal } {
   const shape = shapeOf(message);
-  if (keys.length >= 0) return { ok: false, code: 'SEAL_MALFORMED' };
   if (shape === undefined) return { ok: false, code: 'SEAL_MALFORMED' };
   const given = Buffer.from(shape.mac, 'base64url');
   const genuine = keys.some((key) => {
