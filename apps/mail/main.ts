@@ -18,14 +18,15 @@
 //
 // Under `mock` (staging) it starts the fake provider on this machine itself
 // and saves each accepted message's body, never its headers, to
-// `MAIL_MOCK_OUTBOX` (a file on the unit's own temporary storage). Under
+// `MAIL_MOCK_OUTBOX`, or by default to a file in a private folder it makes
+// on its own temporary storage, so no other account's file is written. Under
 // `resend` it reads the root's DMARC record through DNS: the one network
 // primitive here, and it carries no key.
 //
 // SIGTERM or SIGINT stops the passes, waits for a send in flight, then stops
 // custody and closes the logins. A problem names its setting, never a value.
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync } from 'node:fs';
 import { resolveTxt } from 'node:dns/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,7 +50,10 @@ const stopWith = (problem: string): never => {
 async function startMockOutbox(
   environment: Environment,
 ): Promise<Awaited<ReturnType<typeof startFakeEmailProvider>>> {
-  const outbox = environment['MAIL_MOCK_OUTBOX'] || join(tmpdir(), 'mail-outbox.jsonl');
+  const outbox =
+    environment['MAIL_MOCK_OUTBOX'] ||
+    join(mkdtempSync(join(tmpdir(), 'ops-astro-mail-outbox-')), 'outbox.jsonl');
+  console.log(`mail: mock outbox at ${outbox}`);
   return await startFakeEmailProvider({
     onAccept: (body) => {
       appendFileSync(outbox, `${body}\n`, { mode: 0o600 });
