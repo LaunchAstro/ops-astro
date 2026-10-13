@@ -92,12 +92,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
-/**
- * In `AGENT_SURFACE` and still not the pickup agent's: a person decides (case (j)
- * of the matrix), and a create is outside a one-task purpose (an agent
- * credential's to make, API-2).
- */
-const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
+// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the launch's take.
+const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
+  'task.decide',
+  'task.create',
+  'task.take_launch',
+]);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
