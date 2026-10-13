@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the carried sweep reads a request_at committed after its snapshot, skips a send in flight, and releases only a call whose request was never sent"
+}
