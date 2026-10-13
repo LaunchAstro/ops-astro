@@ -981,7 +981,8 @@ unique across the installation (`party_sites_repository_key`,
 and file as one pair, key-share locked: another client's page, or a page no
 client holds, stores nothing (`PAGE_OUTSIDE_PARTY_SITE`).
 
-While a correction of the client is open (`requested` to `live`), no page of
+While a correction of the client is open (`requested` to `live`, or
+`cancelled` after its decision), no page of
 its site is deleted and its providers do not change (`party_site_pages_held`,
 `party_sites_held`, each share-locking the corrections first); a page is
 never updated (`party_site_pages_fixed`). The application may select and

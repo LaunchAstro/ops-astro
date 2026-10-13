@@ -14,7 +14,8 @@
 -- business; several pages may be built from one file.
 --
 -- A client's site is frozen while any correction of that client is open
--- (requested, approved, accepted, unknown or live): no page is unbound and the
+-- (requested, approved, accepted, unknown or live, or cancelled after its
+-- decision): no page is unbound and the
 -- providers do not change, so a decision, a publish and a revert all act on
 -- the site the request named, and a live change keeps its revert. The guard
 -- share-locks those corrections, so one being written is waited for and judged
@@ -109,13 +110,12 @@ create trigger party_site_pages_fixed
   before update on public.party_site_pages
   for each row execute function public.party_site_pages_fixed();
 
--- Whether a correction on this page (or, with no page, anywhere on this
--- client's site) is open. Share-locks every correction it
--- reads, so a decision being written is waited for. Invoker: the caller's own
--- tenancy holds.
-create or replace function public.party_site_under_correction(
-  business uuid, party uuid, page text
-)
+-- Whether a correction of this client is open: requested, approved, accepted,
+-- unknown or live, or cancelled after its decision (its publish may have gone
+-- out, and its result can still move it to unknown). Share-locks every
+-- correction it reads, so one being written is waited for. Invoker: the
+-- caller's own tenancy holds.
+create or replace function public.party_site_under_correction(business uuid, party uuid)
   returns boolean
   language plpgsql
   security invoker
@@ -123,15 +123,15 @@ create or replace function public.party_site_under_correction(
 as $$
 declare
   open_one boolean := false;
-  each_state text;
+  each_one record;
 begin
-  for each_state in
-    select c.state from public.live_corrections c
+  for each_one in
+    select c.state, c.decided_at from public.live_corrections c
      where c.business_id = business and c.party_id = party
-       and (page is null or c.page_url = page)
      for share
   loop
-    if each_state in ('requested', 'approved', 'accepted', 'unknown', 'live') then
+    if each_one.state in ('requested', 'approved', 'accepted', 'unknown', 'live')
+       or (each_one.state = 'cancelled' and each_one.decided_at is not null) then
       open_one := true;
     end if;
   end loop;
@@ -139,9 +139,12 @@ begin
 end;
 $$;
 
-revoke all on function public.party_site_under_correction(uuid, uuid, text) from public;
-grant execute on function public.party_site_under_correction(uuid, uuid, text) to ops_astro_app;
+revoke all on function public.party_site_under_correction(uuid, uuid) from public;
+grant execute on function public.party_site_under_correction(uuid, uuid) to ops_astro_app;
 
+-- A page's delete takes its site row first, so a request in flight on any page
+-- of the client (which share-locks that row) is waited for, then refuses while
+-- a correction of the client is open.
 create or replace function public.party_site_pages_held()
   returns trigger
   language plpgsql
@@ -149,8 +152,11 @@ create or replace function public.party_site_pages_held()
   set search_path = pg_catalog, public
 as $$
 begin
-  if public.party_site_under_correction(old.business_id, old.party_id, old.page_url) then
-    raise exception 'party_site_pages_held: an open correction names this page'
+  perform 1 from public.party_sites s
+   where s.business_id = old.business_id and s.party_id = old.party_id
+   for no key update;
+  if public.party_site_under_correction(old.business_id, old.party_id) then
+    raise exception 'party_site_pages_held: an open correction names this client''s site'
       using errcode = 'P0001', constraint = 'party_site_pages_held';
   end if;
   return old;
@@ -175,7 +181,7 @@ begin
   end if;
   if (new.repository, new.default_branch, new.project)
        is distinct from (old.repository, old.default_branch, old.project)
-     and public.party_site_under_correction(old.business_id, old.party_id, null) then
+     and public.party_site_under_correction(old.business_id, old.party_id) then
     raise exception 'party_sites_held: an open correction names this site'
       using errcode = 'P0001', constraint = 'party_sites_held';
   end if;

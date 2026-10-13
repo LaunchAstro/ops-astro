@@ -7,11 +7,11 @@
 // holds the correction, so the unbind waits, seen in pg_stat_activity, and is
 // refused once the correction is unknown.
 //
-// The other order the lock order leaves open: the unbind lands while the
-// correction is cancelled, the store lets it through, and the reopening then
-// leaves an open correction naming a page its client's site no longer holds.
-// The rulings name cancelled among the closed states, so the store is right by
-// their letter; the proof records the red for the ruling it needs.
+// The other order: the unbind comes while the correction is cancelled. A
+// correction cancelled after its decision still counts as open, because its
+// publish may have gone out and its result can still move it to unknown, so
+// the unbind is refused and no open correction is left naming a page its
+// client's site no longer holds.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)(
 
     // An unbind while the correction is cancelled strands it once it reopens:
     // the hold needs a ruling on a decided cancelled correction.
-    it.fails('never leaves an open correction naming a page its site no longer holds', async () => {
+    it('never leaves an open correction naming a page its site no longer holds', async () => {
       const client = await freshClient(w);
       const id = await cancelledAfterApproval(client);
       const unbound = await onOwn(w, unbindOn(client));

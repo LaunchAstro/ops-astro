@@ -9,8 +9,7 @@
 //
 // A client's site is frozen while any correction of that client is open, so an
 // unbind of the client's other page waits for the decision too and is refused
-// after an approval. The store holds only the page the correction names, so
-// that proof records the red until the hold covers the whole client.
+// after an approval.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -128,18 +127,15 @@ describe.skipIf(serverUrl === undefined)('a decision racing an unbind of its pag
 
   // A client's site is frozen while any correction of it is open: the delete
   // trigger asks only about the page deleted, so the other page goes unwaited.
-  it.fails(
-    "makes an unbind of the client's other page wait for an approval, then refuses it",
-    async () => {
-      const client = await freshClient(w);
-      const asked = await requested(client, client.pages[0]);
-      const raced = await decidedWhile(asked, 'approve', unbindOf(client, client.pages[1]));
-      expect({ waited: raced.waited, changed: raced.changed }).toEqual({
-        waited: true,
-        changed: { ok: false, code: 'PAGE_UNDER_CORRECTION' },
-      });
-    },
-  );
+  it("makes an unbind of the client's other page wait for an approval, then refuses it", async () => {
+    const client = await freshClient(w);
+    const asked = await requested(client, client.pages[0]);
+    const raced = await decidedWhile(asked, 'approve', unbindOf(client, client.pages[1]));
+    expect({ waited: raced.waited, changed: raced.changed }).toEqual({
+      waited: true,
+      changed: { ok: false, code: 'PAGE_UNDER_CORRECTION' },
+    });
+  });
 });
 
 describe.skipIf(serverUrl === undefined)("a decision racing a move of its client's site", () => {
