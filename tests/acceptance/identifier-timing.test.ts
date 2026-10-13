@@ -350,24 +350,26 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID() }),
       },
     );
-    // The sidebar door's site read, under bravo's task and under a fabricated one.
-    out.push({
-      op: 'live_correction.locate',
-      operand: 'recordId',
-      by: ada,
-      code: 'NOT_FOUND',
-      foreign: () => ({ recordId: f.task.id, pageUrl: C80_REQUEST.pageUrl }),
-      fabricated: () => ({ recordId: randomUUID(), pageUrl: C80_REQUEST.pageUrl }),
-    });
     const request = { ...C80_REQUEST, partyId: randomUUID() };
-    out.push({
-      op: 'live_correction.request',
-      operand: 'taskId',
-      by: ada,
-      code: 'NOT_FOUND',
-      foreign: () => ({ ...request, taskId: f.task.id }),
-      fabricated: () => ({ ...request, taskId: randomUUID() }),
-    });
+    out.push(
+      // The sidebar door's site read, under bravo's task and under a fabricated one.
+      {
+        op: 'live_correction.locate',
+        operand: 'recordId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ recordId: f.task.id, pageUrl: C80_REQUEST.pageUrl }),
+        fabricated: () => ({ recordId: randomUUID(), pageUrl: C80_REQUEST.pageUrl }),
+      },
+      {
+        op: 'live_correction.request',
+        operand: 'taskId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ ...request, taskId: f.task.id }),
+        fabricated: () => ({ ...request, taskId: randomUUID() }),
+      },
+    );
     const accept = { ...ACCEPTED_PLAN, note: NOBODY };
     out.push({
       op: 'task.accept_plan',
