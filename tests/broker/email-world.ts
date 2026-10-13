@@ -52,6 +52,10 @@ export const VERIFIED_SENDER: MailSettings['sender'] = {
   records: { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' },
   dmarc: 'reject',
   mock: false,
+  // Checked just now, whenever it is read: the send's own cases start past the freshness gate.
+  get checkedAt() {
+    return performance.now();
+  },
 };
 
 export const MAIL: MailSettings = {

@@ -699,6 +699,7 @@ describe.skipIf(serverUrl === undefined)(
           records: { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' },
           dmarc: 'reject',
           mock: false,
+          checkedAt: performance.now(),
         },
       });
       const outcomes = Promise.allSettled([assigning, mailing]);
