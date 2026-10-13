@@ -251,6 +251,8 @@ describe.skipIf(serverUrl === undefined)('S0-5 isolation', () => {
 
   it('S0-5 isolation: only the gate commands and the readiness check name the gate tables, so no read, list, count or export reaches them', () => {
     expect(namingTheGate()).toStrictEqual([
+      // operations.read's service health reads only operator_business_id, as C55's alerts do (#637).
+      'apps/api/app.ts',
       'packages/core-commands/src/commands/first-client-gate.ts',
       'packages/core-commands/src/commands/gate-write.ts',
       // C55's alerts read only operator_business_id, to keep them to the operating business.

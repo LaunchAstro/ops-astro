@@ -50,7 +50,9 @@ with no edit to the API, and a command with no declaration has no route.
 `GET /api/health` is the one exception. It runs a statement and answers from
 the result: `200` with `database: "reachable"`, or `503` with
 `database: "unreachable"` and the reason. It also reports whether the read half
-of the surface is mounted.
+of the surface is mounted. Where the live channel is mounted, `live` is
+`listening` only when a probe sent on the runtime login is heard back on the
+listener within a second, and `down` otherwise.
 
 | Body               | Meaning                                                            |
 | ------------------ | ------------------------------------------------------------------ |
@@ -3247,7 +3249,10 @@ containment and steps, is `BREACH_TEMPLATE_UNFILLED` 409.
 sink and, where switched on, tracing: `{ checkedAt, sources, services }`. It is
 read by the API only after the grant check lets the caller in, and outside the
 serving transaction, so a refused caller asks no source; a read made in-process
-(`executeRead`) carries none. Each source (`watcher`, `error-sink`, `tracing`)
+(`executeRead`) carries none. Like the security alerts, it is the
+installation's: only the business that operates it
+(`ops.installation.operator_business_id`) is shown it, and any other business
+is answered with no `serviceHealth`, `errorSink: null`, and no source asked. Each source (`watcher`, `error-sink`, `tracing`)
 is `read`, `read-failure` with its fault by kind (`unconfigured`, `refused`,
 `malformed`, `oversized`, `slow`, `unreachable`), or `off`: tracing unset is
 off, never a failure; the watcher and the error sink are not optional, so unset

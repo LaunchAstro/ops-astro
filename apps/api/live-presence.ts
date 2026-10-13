@@ -16,7 +16,7 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import { TASK_SPINE } from '../../packages/core-records/src/index.ts';
 import { PresenceBook, type PresenceSession, type PresenceView } from './presence.ts';
-import { TOPIC } from './live.ts';
+import { TOPIC, UNANSWERED, type Unanswered } from './live.ts';
 
 export interface LivePresence {
   /** Seat `session` on a watched task and hear its changes; the returned function leaves, once. */
@@ -142,18 +142,20 @@ export interface Seated {
   readonly session: PresenceSession;
   readonly presence: LivePresence;
   /** Who the bearer resolves to now, asked before each delivery; undefined when no one. */
-  sitter(): Promise<Sitter | undefined>;
+  sitter(): Promise<Sitter | undefined | Unanswered>;
 }
 
 /** A stream's seat for whoever `viewer` resolves to now, under a new id; none when no one. */
 export async function seatFor(
   presence: LivePresence,
-  viewer: () => Promise<Viewer | undefined>,
+  viewer: () => Promise<Viewer | undefined | Unanswered>,
 ): Promise<Seated | undefined> {
-  const sitter = async (): Promise<Sitter | undefined> => {
+  const sitter = async (): Promise<Sitter | undefined | Unanswered> => {
     const now = await viewer();
+    if (now === UNANSWERED) return now;
     return now && { personId: now.personId, name: now.name, side: now.staff ? 'staff' : 'client' };
   };
   const now = await sitter();
+  if (now === UNANSWERED) return undefined;
   return now && { presence, session: { ...now, sessionId: randomUUID() }, sitter };
 }
