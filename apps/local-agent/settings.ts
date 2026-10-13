@@ -48,6 +48,8 @@ export interface RunnerSettings {
     readonly LOGNAME: string;
   };
   readonly timeoutMs: number;
+  /** The Codex version a streamed call must report; none pinned yet. */
+  readonly codexVersion: string | null;
 }
 
 export type StartRefusal =
@@ -162,6 +164,7 @@ export function readSettings(
       childEnv: childEnvOf(env, join(home, 'home')),
       // Under custody's 120 s for the call, so the runner gives up first.
       timeoutMs: 100_000,
+      codexVersion: null,
     },
   };
 }

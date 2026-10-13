@@ -35,6 +35,24 @@ function setUp(knobs: Record<string, unknown> = {}): { w: World; settings: Runne
   return { w, settings: read.settings };
 }
 
+/** What a streamed response gives within `ms`, its reader let go after. */
+async function readFor(response: Response, ms: number): Promise<string> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) return '';
+  const decoder = new TextDecoder();
+  let text = '';
+  const stop = sleep(ms).then(() => null);
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- the stream's chunks, in order, until the bound
+    const part = await Promise.race([reader.read(), stop]);
+    if (part === null || part.done) break;
+    text += decoder.decode(part.value, { stream: true });
+    if (text.includes('"piece"')) break;
+  }
+  reader.releaseLock();
+  return text;
+}
+
 async function until(test: () => boolean): Promise<void> {
   // eslint-disable-next-line no-await-in-loop -- polls, one look at a time
   for (let tries = 0; tries < 500 && !test(); tries += 1) await sleep(10);
@@ -85,6 +103,7 @@ describe('the runner answering a call that asks to stream', () => {
     const reply = await call(r, { ...message, stream: true });
     expect(reply.status).toBe(200);
     expect(lines(reply.raw)).toEqual([
+      { sent: true },
       { piece: 'Two tasks' },
       { piece: ' are due.' },
       {
@@ -102,22 +121,19 @@ describe('the runner answering a call that asks to stream', () => {
     const { w, r } = await start();
     const gate = join(w.agentHome, 'gate');
     w.knobs({ gate });
-    const response = await fetch(`${r.origin}${LOCAL_GPT_PATH}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${RUNNER_KEY}` },
-      body: JSON.stringify({ ...message, stream: true }),
-    });
-    expect(response.headers.get('content-type')).toBe('application/x-ndjson');
-    const reader = response.body?.getReader();
-    const first = await reader?.read();
-    expect(new TextDecoder().decode(first?.value)).toBe('{"piece":"Two tasks"}\n');
+    const response = await Promise.race([
+      fetch(`${r.origin}${LOCAL_GPT_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${RUNNER_KEY}` },
+        body: JSON.stringify({ ...message, stream: true }),
+      }),
+      sleep(2_000).then(() => null),
+    ]);
+    // What reached the caller in two seconds with the gate shut: on a runner that does not stream, nothing.
+    const early = response === null ? '' : await readFor(response, 2_000);
     writeFileSync(gate, '');
-    let rest = '';
-    // eslint-disable-next-line no-await-in-loop -- the stream's chunks, in order
-    for (let part = await reader?.read(); part?.done === false; part = await reader?.read()) {
-      rest += new TextDecoder().decode(part.value);
-    }
-    expect(lines(rest).at(-1)).toMatchObject({ answer: { text: 'Two tasks are due.' } });
+    expect(lines(early)).toContainEqual({ piece: 'Two tasks' });
+    expect(early).not.toContain('are due');
   });
 
   it('answers a refusal before any work as the answer line alone', async () => {

@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { appServer, until } from './fake-codex-app.mjs';
 
 const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
@@ -59,7 +60,7 @@ if (process.argv[2] === 'login') {
 
 // `codex app-server` over stdio: one JSON-RPC message per line each way (appServer below).
 if (process.argv[2] === 'app-server') {
-  await appServer();
+  await appServer(home, knobs);
   process.exit(0);
 }
 
@@ -111,151 +112,8 @@ process.stdin.on('end', () => {
     }
     process.exit(knobs.exit ?? 0);
   };
-  if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
+  // `gate` holds the whole answer as it holds the app-server's after its first piece.
+  if (knobs.gate) void until(knobs.gate).then(answer);
+  else if (knobs.waitMs) setTimeout(answer, knobs.waitMs);
   else answer();
 });
-
-// Hoisted declarations: the app-server branch runs from the top of this file.
-function sendLine(message) {
-  process.stdout.write(`${JSON.stringify(message)}\n`);
-}
-function notify(method, params) {
-  sendLine({ method, params });
-}
-async function pause(ms) {
-  await new Promise((done) => {
-    setTimeout(done, ms);
-  });
-}
-/** The one thread and turn the stand-in plays. */
-function ids() {
-  return { threadId: 'th-1', turnId: 'tu-1' };
-}
-
-/** A file's arrival, looked for every 10 ms. */
-async function until(file) {
-  // eslint-disable-next-line no-await-in-loop -- polls, one look at a time
-  while (!existsSync(file)) await pause(10);
-}
-
-/** One agent message: started, each delta (`afterFirst` awaited after the first), completed. */
-async function agentMessage(id, deltas, text, afterFirst) {
-  notify('item/started', {
-    ...ids(),
-    startedAtMs: 0,
-    item: { id, type: 'agentMessage', text: '' },
-  });
-  for (const [index, delta] of deltas.entries()) {
-    notify('item/agentMessage/delta', { ...ids(), itemId: id, delta });
-    // eslint-disable-next-line no-await-in-loop -- the gate holds the stream after its first piece
-    if (index === 0) await afterFirst();
-  }
-  notify('item/completed', { ...ids(), item: { id, type: 'agentMessage', text } });
-}
-
-/** The tokens and the turn's end, failed when `turnError` says so. */
-function endTurn() {
-  if (!knobs.noUsage) {
-    const used = knobs.usage ?? { input: 120, output: 7 };
-    const breakdown = {
-      inputTokens: used.input,
-      outputTokens: used.output,
-      cachedInputTokens: 0,
-      reasoningOutputTokens: 0,
-      totalTokens: used.input + used.output,
-    };
-    notify('thread/tokenUsage/updated', {
-      ...ids(),
-      tokenUsage: { last: breakdown, total: breakdown },
-    });
-  }
-  const failed = knobs.turnError !== undefined;
-  const turn = { id: ids().turnId, items: [], status: failed ? 'failed' : 'completed' };
-  notify('turn/completed', {
-    threadId: ids().threadId,
-    turn: { ...turn, error: failed ? knobs.turnError : null },
-  });
-}
-
-/** The turn fake.json describes; `ask` sends a request of the server's own and waits for its reply. */
-async function playTurn(ask) {
-  if (typeof knobs.raw === 'string') {
-    process.stdout.write(knobs.raw);
-    return;
-  }
-  notify('turn/started', {
-    threadId: ids().threadId,
-    turn: { id: ids().turnId, items: [], status: 'inProgress' },
-  });
-  for (const [method, params] of knobs.before ?? []) notify(method, { ...ids(), ...params });
-  // `deltas: null`: the turn gives no agent message at all.
-  const deltas = knobs.deltas === undefined ? ['Two tasks', ' are due.'] : knobs.deltas;
-  if (deltas !== null) {
-    await agentMessage('am-1', deltas, knobs.text ?? deltas.join(''), async () => {
-      if (knobs.serverRequest) await ask(knobs.serverRequest);
-      if (knobs.gate) await until(knobs.gate);
-    });
-  }
-  if (knobs.second) await agentMessage('am-2', knobs.second, knobs.second.join(''), async () => {});
-  endTurn();
-}
-
-/**
- * A stand-in for `codex app-server` on stdio. Every message it receives goes
- * to its CODEX_HOME's app-calls.jsonl, after one line naming its argv,
- * environment and working folder. It answers `initialize`, `thread/start` and
- * `turn/start`, then plays the turn fake.json describes: `deltas` of one agent
- * message (its `text` the joined deltas unless set), `before` notifications
- * ahead of it, `second` a second agent message, `serverRequest` a request of
- * its own after the first delta, `gate` a file it waits for after the first
- * delta, `turnError` a failed turn, `noUsage` no token report, `usage` the
- * tokens, `raw` lines written as they are.
- */
-async function appServer() {
-  const record = (entry) =>
-    appendFileSync(join(home, 'app-calls.jsonl'), `${JSON.stringify(entry)}\n`);
-  record({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd(), pid: process.pid });
-  const waiting = new Map();
-  const ask = async (method) => {
-    const answered = new Promise((done) => {
-      waiting.set('srv-1', done);
-    });
-    sendLine({ id: 'srv-1', method, params: { ...ids() } });
-    await answered;
-  };
-  const answer = async ({ id, method, params }) => {
-    if (method === 'initialize') {
-      const userAgent = knobs.userAgent ?? 'codex_cli_rs/0.162.1 (Mac OS 26.5.0; arm64)';
-      sendLine({
-        id,
-        result: { userAgent, codexHome: home, platformFamily: 'unix', platformOs: 'macos' },
-      });
-    } else if (method === 'thread/start') {
-      sendLine({
-        id,
-        result: { thread: { id: ids().threadId, ephemeral: true }, model: params?.model },
-      });
-    } else if (method === 'turn/start') {
-      sendLine({ id, result: { turn: { id: ids().turnId, items: [], status: 'inProgress' } } });
-      if (knobs.waitMs) await pause(knobs.waitMs);
-      await playTurn(ask);
-    } else if (id !== undefined && method === undefined) {
-      waiting.get(id)?.();
-    } else if (id !== undefined) {
-      sendLine({ id, error: { code: -32601, message: 'unknown method' } });
-    }
-  };
-  let buffered = '';
-  process.stdin.setEncoding('utf8');
-  for await (const chunk of process.stdin) {
-    buffered += chunk;
-    for (let end = buffered.indexOf('\n'); end !== -1; end = buffered.indexOf('\n')) {
-      const line = buffered.slice(0, end);
-      buffered = buffered.slice(end + 1);
-      if (line.trim() === '') continue;
-      const message = JSON.parse(line);
-      record({ message });
-      void answer(message);
-    }
-  }
-}
