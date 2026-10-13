@@ -46,7 +46,9 @@ It keeps its credential files in that checkout's `.local/`, as below.
 
 ## Hosted presets
 
-`--env <name>`, or `OPS_ASTRO_ENV=<name>`, points every call at a hosted app:
+`--env <name>`, or `OPS_ASTRO_ENV=<name>`, points `login`, `logout`, the operations
+(`task.board`, `person.list` and the rest) and the visual operations at a
+hosted app:
 
 | Preset       | App origin                    |
 | ------------ | ----------------------------- |
@@ -55,7 +57,7 @@ It keeps its credential files in that checkout's `.local/`, as below.
 
 ```sh
 ops-astro login --env sandbox --email ada@alpha.local    # prompts for the password
-ops-astro task list --env sandbox --business alpha
+ops-astro task.board --env sandbox --business alpha --json '{"board":null}'
 ops-astro logout --env sandbox
 ```
 
@@ -73,6 +75,9 @@ ops-astro logout --env sandbox
   `OPS_ASTRO_WEB_URL` or `SUPABASE_PUBLISHABLE_KEY` is refused with exit 2,
   naming both, before anything is read or sent. So is a name that is not a
   preset.
+- The agent verbs (`task get`, `task list` and the others below) do not take
+  a preset yet; they read `--api` and `OPS_ASTRO_API_URL` and the default
+  credential files, as before. Use the operation form against a hosted app.
 - The hosted token lasts an hour. After that the API refuses the bearer; run
   `login` again.
 

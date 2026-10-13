@@ -70,13 +70,6 @@ describe('a preset beside a hand-set origin is refused', () => {
     });
   });
 
-  it('the verb form refuses the same way', async () => {
-    const refused = await run(['task', 'list', '--env', 'sandbox', '--api', 'https://e.test'], env);
-    expect(refused.code).toBe(2);
-    expect(refused.err).toContain('--api');
-    expect(seen).toStrictEqual([]);
-  });
-
   it('an empty --env is refused, not read as no preset', async () => {
     const refused = await run(['person.list', '--env='], {
       ...env,

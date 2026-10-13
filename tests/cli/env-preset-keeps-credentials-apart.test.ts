@@ -43,13 +43,16 @@ describe('each hosted preset keeps its own credentials', () => {
     expect(existsSync(join(folder, 'token'))).toBe(false);
 
     seen.length = 0;
-    const listed = await run(['task', 'list', '--env', 'sandbox'], env);
+    const listed = await run(['task.board', '--env', 'sandbox', '--json', '{"board":null}'], env);
     expect(listed.code, listed.err).toBe(0);
     expect(seen.map((one) => new URL(one.url).origin)).toStrictEqual([SANDBOX]);
     expect(bearerOf(seen[0] as Seen)).toBe(`Bearer ${sandboxToken}`);
 
     seen.length = 0;
-    const unsigned = await run(['task', 'list', '--env', 'production'], env);
+    const unsigned = await run(
+      ['task.board', '--env', 'production', '--json', '{"board":null}'],
+      env,
+    );
     expect(unsigned.code).toBe(2);
     expect(seen).toStrictEqual([]);
 
@@ -85,7 +88,7 @@ describe('each hosted preset keeps its own credentials', () => {
     const preset = { ...env, OPS_ASTRO_ENV: 'sandbox' };
     expect((await run(['login', '--email', 'ada@example.test'], preset)).code).toBe(0);
     seen.length = 0;
-    expect((await run(['task', 'list'], preset)).code).toBe(0);
+    expect((await run(['task.board', '--json', '{"board":null}'], preset)).code).toBe(0);
     expect(seen.map((one) => new URL(one.url).origin)).toStrictEqual([SANDBOX]);
   });
 

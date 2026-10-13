@@ -194,8 +194,8 @@ const HELP = [
   'usage: ops-astro <operation> [--json <object> | --body-file <path>] [--business <key>]',
   '         [--api <url>] [--agent]',
   '       ops-astro <visual operation> [--json <object>] [--web <app origin>]',
-  '       ops-astro <...> --env sandbox|production   (the hosted app: its API, pages',
-  '         and sign-in, in place of --api, --gotrue and --web)',
+  '       ops-astro <operation> --env sandbox|production   (the hosted app: its API,',
+  '         pages and sign-in, in place of --api, --gotrue and --web; also login and logout)',
   '       ops-astro login --email <address> [--gotrue <url>]   (password from',
   '         OPS_ASTRO_PASSWORD, the first line of piped stdin,',
   '         or a prompt with echo off at a terminal)',
@@ -330,35 +330,25 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     const argument = argv[at] as string;
     const name = argument.slice(2);
     if (argument === '--agent') connection['agent'] = true;
-    else if (argument === '--business' || argument === '--api' || argument === '--env') {
-      const value = argv[(at += 1)];
-      if (value === undefined) {
-        io.err(`cli: ${argument} needs a value`);
-        return EXIT.usage;
-      }
-      connection[name] = value;
+    else if (argument === '--business' || argument === '--api') {
+      connection[name] = argv[(at += 1)] ?? '';
     } else rest.push(argument);
   }
-  let reached: Connection;
-  try {
-    reached = connectionOf(connection, env);
-  } catch (cause) {
-    if (!(cause instanceof UsageError)) throw cause;
-    io.err(`cli: ${cause.message}`);
-    return EXIT.usage;
-  }
-  const { api, tokenFile, delegationFile } = reached;
   const help = rest[0] === 'help';
   const businessKey = text(connection, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '';
-  const credential = env['OPS_ASTRO_TOKEN'] ?? readOptional(tokenFile) ?? '';
+  const credential =
+    env['OPS_ASTRO_TOKEN'] ?? readOptional(env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile) ?? '';
   if (!help && (businessKey === '' || credential === '')) {
     io.err('cli: name the business (--business or OPS_ASTRO_BUSINESS) and sign in (`login`) first');
     return EXIT.usage;
   }
   const agent = connection['agent'] === true || env['OPS_ASTRO_AGENT'] === '1';
   const delegation = agent
-    ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
+    ? (env['OPS_ASTRO_DELEGATION'] ??
+      readOptional(env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile))
     : undefined;
+  const base = text(connection, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api;
+  const api = base.replace(/\/$/u, '');
   const cli = createVerbCli({
     transport: httpTransport(api),
     businessKey: encodeURIComponent(businessKey),
