@@ -19,6 +19,7 @@ import {
 
 const [haiku] = OPENROUTER_MODELS;
 
+// oxlint-disable-next-line max-lines-per-function -- the request, its hold and a refusal
 describe('the pinned request and its hold', () => {
   it('sends max_price per million as declared, and nothing to widen the charge', () => {
     if (haiku === undefined) throw new Error('no model');

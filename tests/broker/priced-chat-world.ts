@@ -201,11 +201,11 @@ export const noCaller: PaidSeams['asCaller'] = async () => await Promise.resolve
 export const listed = (businessId: string, member: Member): string =>
   `${businessId}:${member.personId}`;
 
-// oxlint-disable-next-line max-lines-per-function -- the stand-ins, custody, the broker and the reads
 /**
  * `real`: OpenRouter's own declaration and adapter, its destination declaring the
  * stream custody decodes, and a stand-in that streams server-sent events.
  */
+// oxlint-disable-next-line max-lines-per-function -- the stand-ins, custody, the broker and the reads
 export async function pricedWorld(
   label: string,
   people: (businessId: string, owner: Member) => readonly string[] = (b, o) => [listed(b, o)],

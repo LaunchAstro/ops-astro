@@ -58,6 +58,7 @@ const withRoute = (change: Record<string, unknown>) =>
 const withDestination = (change: Record<string, unknown>) =>
   JSON.stringify([DESTINATIONS[0], { ...DESTINATIONS[1], ...change }]);
 
+// oxlint-disable-next-line max-lines-per-function -- each loose setting, then set and unset
 describe('the outside provider setting', () => {
   it.each([
     ['a provider other than openrouter', { OPS_OUTSIDE_PROVIDER: 'anthropic' }],
