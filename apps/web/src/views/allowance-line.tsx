@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-04 (U10; U7-SCORE's fourth fork): the drawer's planning allowance line.
+// AW-04 (U10; U7-SCORE's fourth fork): the drawer's allowance line, named
+// the AI chat budget since paid chat replies hold against it (#1508).
 // From before the first message it says what is left of the business's
-// planning budget; once the tab's conversation has started, it adds that
+// budget; once the tab's conversation has started, it adds that
 // conversation's own spend and what is still held for it. It reads
 // `conversation.allowance`, the team's only, since the budget is the
 // business's. It is read again each time a reply settles in the tab, so the
@@ -37,7 +38,7 @@ const money = (minor: number, currency: string): string =>
 
 function words(allowance: PlanningAllowanceView, started: boolean): string {
   const { currency, conversation } = allowance;
-  const left = `Planning allowance: ${money(allowance.leftMinor, currency)} left of ${money(allowance.limitMinor, currency)}.`;
+  const left = `AI chat budget: ${money(allowance.leftMinor, currency)} left of ${money(allowance.limitMinor, currency)}.`;
   if (!started) return left;
   return `${left} This conversation: ${money(conversation.spentMinor, currency)} spent, ${money(conversation.heldMinor, currency)} held.`;
 }
