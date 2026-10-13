@@ -11,6 +11,23 @@
 // little above the market's so the budget runs out before the credit does:
 // every input token the body can hold (one per byte, plus the message frames)
 // and every output token `max_tokens` allows.
+//
+// The request is pinned: exactly the keys below, `max_price` per million
+// tokens as declared, no fallback provider, no data collection, so OpenRouter
+// cannot charge more than the hold. Custody decodes OpenRouter's stream itself
+// (`stream-decode.ts`) and hands the broker its pieces and one folded body;
+// the price is the cost OpenRouter reports in it, never an estimate.
+
+import { conversationInstructions } from './conversation-prompt.ts';
+import { earlierTurns, pageTitle, type Turn } from './ollama.ts';
+import {
+  readModelId,
+  type AdapterRequest,
+  type ModelAnswer,
+  type ModelOperationDeclaration,
+  type PieceReader,
+} from './operation.ts';
+import { CONVERSATION_ANSWER } from './replay.ts';
 
 export const OPENROUTER_PROVIDER: string = 'openrouter';
 export const OPENROUTER_CONVERSATION_KEY: string = 'model.conversation_answer_openrouter';
@@ -19,6 +36,7 @@ export const OPENROUTER_CONVERSATION_KEY: string = 'model.conversation_answer_op
 export const OPENROUTER_BODY_LIMIT: number = 48 * 1024;
 /** The answer's most, in tokens: pinned in the request and checked by the model agent. */
 export const OPENROUTER_MAX_TOKENS = 2_048;
+export const OPENROUTER_PATH = '/api/v1/chat/completions';
 /** Tokens beyond the body's bytes the message frames may add. */
 const FRAME_TOKENS = 256;
 /** AUD per US dollar, a reviewed constant: a change goes in a pull request with its reason. */
@@ -74,3 +92,116 @@ export function openrouterHoldMinor(model: OpenRouterModel): number {
 /** The registered model `id` names, if any. */
 export const openrouterModel = (id: string | undefined): OpenRouterModel | undefined =>
   OPENROUTER_MODELS.find((model) => model.id === id);
+
+/** The model asked for, or the first registered; a model not registered is no request. */
+function modelOf(id: string | undefined): OpenRouterModel {
+  const model = id === undefined ? OPENROUTER_MODELS[0] : openrouterModel(id);
+  if (model === undefined) throw new Error('not a registered OpenRouter model');
+  return model;
+}
+
+/** The pinned request: the instructions, the earlier turns and the message, and nothing to widen the charge. */
+export function openrouterRequest(
+  values: Readonly<Record<string, string>>,
+  _operationId?: string,
+  model?: string,
+): AdapterRequest {
+  const chosen = modelOf(model);
+  const messages: readonly Turn[] = [
+    { role: 'system', content: conversationInstructions(pageTitle(values['page'])) },
+    ...earlierTurns(values['earlier']),
+    { role: 'user', content: values['message'] ?? '' },
+  ];
+  return {
+    path: OPENROUTER_PATH,
+    method: 'POST',
+    body: JSON.stringify({
+      model: chosen.id,
+      messages,
+      stream: true,
+      max_tokens: OPENROUTER_MAX_TOKENS,
+      usage: { include: true },
+      provider: {
+        max_price: { prompt: chosen.promptPerMillion, completion: chosen.completionPerMillion },
+        data_collection: 'deny',
+        allow_fallbacks: false,
+      },
+    }),
+  };
+}
+
+const whole = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * Custody's folded body, `{ model, content, finish_reason, usage: { prompt_tokens,
+ * completion_tokens, cost }, error }`, as one answer; undefined (held) for an
+ * error, an error finish, no cost or a cost that is not a finite amount of at least nothing.
+ */
+export function readOpenRouterAnswer(body: unknown): ModelAnswer | undefined {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
+  const shape = body as Record<string, unknown>;
+  if (shape['error'] !== null && shape['error'] !== undefined) return undefined;
+  if (shape['finish_reason'] === 'error' || typeof shape['content'] !== 'string') return undefined;
+  const usage = shape['usage'];
+  if (typeof usage !== 'object' || usage === null) return undefined;
+  const {
+    prompt_tokens: input,
+    completion_tokens: output,
+    cost,
+  } = usage as Record<string, unknown>;
+  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) return undefined;
+  if (!whole(input) || !whole(output)) return undefined;
+  const model = readModelId(shape['model']);
+  if (model === undefined) return undefined;
+  return {
+    text: shape['content'],
+    model,
+    usage: { inputUnits: input, outputUnits: output },
+    providerCode: null,
+    reportedCost: { currency: 'USD', amount: cost },
+  };
+}
+
+/** A float's whole millionths: the nearest where it is one within the float's error, else rounded up. */
+function microdollars(amount: number): bigint {
+  const scaled = amount * 1_000_000;
+  const nearest = Math.round(scaled);
+  return BigInt(Math.abs(scaled - nearest) < 1e-6 ? nearest : Math.ceil(scaled));
+}
+
+/** OpenRouter's reported cost in whole AUD cents at the fixed rate, never rounded down; NaN (held) without one. */
+export function openrouterCostMinor(answer: ModelAnswer): number {
+  const cost = answer.reportedCost;
+  if (cost?.currency !== 'USD' || !Number.isFinite(cost.amount) || cost.amount < 0)
+    return Number.NaN;
+  const cents = microdollars(cost.amount) * millionths(OPENROUTER_AUD_PER_USD) * 100n;
+  return Number(ceilDiv(cents, 1_000_000n * 1_000_000n));
+}
+
+/** Custody's pieces are already decoded, redacted display text: passed on as they are. */
+export const openrouterPieces = (): PieceReader => ({
+  push: (chunk) => {
+    const text = typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk);
+    return text === '' ? [] : [text];
+  },
+});
+
+/** A person's question in their own conversation, answered by a paid OpenRouter model. */
+export const OPENROUTER_CONVERSATION: ModelOperationDeclaration = {
+  key: OPENROUTER_CONVERSATION_KEY,
+  provider: OPENROUTER_PROVIDER,
+  destination: 'openrouter',
+  fields: CONVERSATION_ANSWER.fields,
+  answer: readOpenRouterAnswer,
+  timeoutMs: 120_000,
+  // Raw stream bytes, counted by custody before it decodes them.
+  maxResponseBytes: 512 * 1024,
+  maximumMinor: Math.max(...OPENROUTER_MODELS.map((model) => openrouterHoldMinor(model))),
+  settlesAt: 'completed',
+  // OpenRouter's refusals before any work: a bad request, the key, the credit, a model it lacks.
+  nothingHappened: ['http_400', 'http_401', 'http_402', 'http_403', 'http_404'],
+  billed: true,
+  concurrency: 1,
+  pieces: openrouterPieces,
+};

@@ -140,7 +140,7 @@ async function heldCall(
       timeoutMs: operation.timeoutMs,
       maxResponseBytes: operation.maxResponseBytes,
     },
-    undefined,
+    piecesOf(operation, request.onPiece),
     admission(paid, callId),
   );
   const settlement = settlementOf(outcome, operation, adapter);
@@ -150,6 +150,22 @@ async function heldCall(
     (await paid.asCaller(async (tx, as) => await settleAndKeep(tx, asked, as.keep))) ??
     (await database.withBusiness(businessId, async (tx) => await settleAndKeep(tx, asked)))
   );
+}
+
+/**
+ * Custody's display texts for the person, as the operation reads them; none
+ * where the caller takes none or the operation streams nothing. Provisional:
+ * only the settled answer is kept.
+ */
+function piecesOf(
+  operation: ModelOperation,
+  onPiece: ((text: string) => void) | undefined,
+): ((chunk: string) => void) | undefined {
+  const reader = onPiece === undefined ? undefined : operation.pieces?.();
+  if (reader === undefined || onPiece === undefined) return undefined;
+  return (chunk) => {
+    for (const text of reader.push(chunk)) onPiece(text);
+  };
 }
 
 /**

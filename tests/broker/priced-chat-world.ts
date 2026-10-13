@@ -23,6 +23,10 @@ import {
   OLLAMA_CONVERSATION,
   ollamaAdapter,
   ollamaCostMinor,
+  OPENROUTER_BODY_LIMIT,
+  OPENROUTER_CONVERSATION,
+  openrouterCostMinor,
+  openrouterRequest,
   type ModelAnswer,
   type ModelOperationDeclaration,
 } from '../../packages/core-connectors/src/index.ts';
@@ -51,6 +55,7 @@ import { createApiFixture } from '../api/fixture.ts';
 import { standInOllama, type StandIn } from '../api/ollama-stand-in-fixture.ts';
 import {
   HAIKU,
+  sse,
   standInOpenRouter,
   type OpenRouterStandIn,
 } from '../api/openrouter-stand-in-fixture.ts';
@@ -124,6 +129,13 @@ export const paidAdapter: ProviderAdapter = {
   bodyLimit: 48 * 1024,
 };
 
+/** OpenRouter's own adapter, as the API's catalogue registers it. */
+export const OPENROUTER_ADAPTER: ProviderAdapter = {
+  build: openrouterRequest,
+  price: openrouterCostMinor,
+  bodyLimit: OPENROUTER_BODY_LIMIT,
+};
+
 export interface Asked {
   readonly conversationId: string;
   readonly messageId: string;
@@ -190,10 +202,15 @@ export const listed = (businessId: string, member: Member): string =>
   `${businessId}:${member.personId}`;
 
 // oxlint-disable-next-line max-lines-per-function -- the stand-ins, custody, the broker and the reads
+/**
+ * `real`: OpenRouter's own declaration and adapter, its destination declaring the
+ * stream custody decodes, and a stand-in that streams server-sent events.
+ */
 export async function pricedWorld(
   label: string,
   people: (businessId: string, owner: Member) => readonly string[] = (b, o) => [listed(b, o)],
   concurrency = 1,
+  real = false,
 ): Promise<PricedWorld> {
   const fixture = await createApiFixture(label);
   const w = await conversationWorld({
@@ -235,17 +252,28 @@ export async function pricedWorld(
     credentialsFile,
     destinations: [
       { key: 'ollama', origin: ollama.origin },
-      { key: 'openrouter', origin: openrouter.origin },
+      real
+        ? { key: 'openrouter', origin: openrouter.origin, stream: 'openai_sse' as const }
+        : { key: 'openrouter', origin: openrouter.origin },
     ],
   };
+  if (real) {
+    openrouter.answer = (request) => ({
+      status: 200,
+      chunks: sse(String(request.body['model']), ['Two tasks ', 'are due ', 'today.']),
+    });
+  }
   const custody = await startCustody(custodyConfig);
   const twins: { stop(): Promise<void> }[] = [];
   const broker: Omit<Broker, 'audit'> = {
     custody,
-    operations: catalogue([OLLAMA_CONVERSATION, { ...PAID, concurrency }]),
+    operations: catalogue([
+      OLLAMA_CONVERSATION,
+      { ...(real ? OPENROUTER_CONVERSATION : PAID), concurrency },
+    ]),
     providers: new Map<string, ProviderAdapter>([
       ['ollama', { build: ollamaAdapter, price: ollamaCostMinor }],
-      ['openrouter', paidAdapter],
+      ['openrouter', real ? OPENROUTER_ADAPTER : paidAdapter],
     ]),
     routes: [
       {
