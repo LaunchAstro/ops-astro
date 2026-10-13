@@ -15,7 +15,7 @@ import {
   localGptCostMinor,
 } from '../../packages/core-connectors/src/index.ts';
 import { callModelInConversation } from '../../packages/core-custody/src/index.ts';
-import { ownersPageQuestion } from './conversation-fixture.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import { broker, noDatabase, s, useBrokerWorld } from './broker-world.ts';
 import { LOCAL_REPLY, startStubRunner, type StubRunner } from './local-gpt-stub.ts';
 
@@ -38,17 +38,14 @@ it('LA-1 side panel: the page and the earlier messages go with the message under
   runner.mode('answer');
   const before = runner.seen.length;
   const message = `and this? ${randomUUID()}`;
-  const asked = await ownersPageQuestion(s, 'Quarterly plan', 'hello', message);
-  const { conversation, messageId } = asked;
-  const page = JSON.stringify({ task: asked.taskId, title: 'Quarterly plan' });
+  const page = JSON.stringify({ task: randomUUID(), title: 'Quarterly plan' });
   const earlier = JSON.stringify([{ role: 'person', body: 'hello' }]);
   const result = await callModelInConversation(
     s.db.app,
     s.business,
     { actorId: s.decider.actorId, delegationId: null, attendedByPersonId: s.decider.personId },
     {
-      conversation,
-      messageId,
+      conversation: await seedConversation(s),
       operation: LOCAL_GPT_CONVERSATION.key,
       fields: [
         { name: 'page', source: 'outside', value: page },

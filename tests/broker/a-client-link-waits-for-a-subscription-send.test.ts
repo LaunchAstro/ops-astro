@@ -16,7 +16,6 @@ import {
 } from '../../packages/core-custody/src/index.ts';
 import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { liveWork, type Work } from '../runtime/schedules-harness.ts';
-import { holding } from './conversation-fixture.ts';
 import {
   CLOUD,
   caller,
@@ -84,8 +83,22 @@ function around(
   return { ...withRoutes([SEAT]), custody };
 }
 
+/** The world's person holding `role` from now on: their membership ends and a new one starts. */
+async function holding(role: 'owner' | 'member'): Promise<void> {
+  await s.db.admin.execute(
+    `update public.memberships set active = false, ended_at = clock_timestamp()
+      where business_id = $1 and person_id = $2 and active`,
+    [s.business, s.decider.personId],
+  );
+  await s.db.admin.execute(
+    `insert into public.memberships (business_id, id, person_id, role_key, active, joined_at)
+     values ($1, $2, $3, $4, true, clock_timestamp())`,
+    [s.business, randomUUID(), s.decider.personId, role],
+  );
+}
+
 async function ownersWork(): Promise<Work> {
-  await holding(s, 'owner');
+  await holding('owner');
   const work = await liveWork(s, `handoff ${randomUUID()}`, 2_000);
   await stepOf(work);
   return work;

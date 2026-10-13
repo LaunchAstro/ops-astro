@@ -22,7 +22,7 @@ import {
   type ModelCaller,
 } from '../../packages/core-custody/src/index.ts';
 import { liveWork, type Work } from '../runtime/schedules-harness.ts';
-import { holding, ownersQuestion } from './conversation-fixture.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import {
   CLOUD,
   broker,
@@ -104,7 +104,7 @@ const owner = (): ModelCaller => ({
 });
 
 const ask = async (message: string) => ({
-  ...(await ownersQuestion(s, message)),
+  conversation: await seedConversation(s),
   operation: LOCAL_GPT_CONVERSATION.key,
   fields: [{ name: 'message', source: 'outside' as const, value: message }],
 });
@@ -149,7 +149,7 @@ it('LA-1 side panel: a conversation message is answered by the local session, se
   expect(row).toMatchObject({
     state: 'settled',
     route_key: 'local_gpt',
-    route_reach: 'cloud',
+    route_reach: 'local',
     provider: 'local_gpt',
     credential_kind: 'subscription',
     account: PLAN_ACCOUNT,
@@ -187,13 +187,13 @@ it('LA-1 task run: an unattended step is carried by the subscription under the l
     },
   ]);
 }, 120_000);
+
 it.each([
   ['a field from outside the business', INTERNAL_STEP.key, true],
-  ["the product's task step on a task staff started", LOCAL_GPT_COMPOSE.key, false],
+  ["the product's task step, which carries task text", LOCAL_GPT_COMPOSE.key, false],
 ])(
   'owner line 72: a task step on the GPT route with %s waits on a local model, nothing sent',
   async (_label, operation, outside) => {
-    await holding(s, 'member');
     const work = await liveWork(s, 'la1 waits local', 2_000);
     const before = runner.seen.length;
     await stepOf(work);

@@ -225,8 +225,11 @@ export interface CarryContext {
   readonly credentialInstallation: string;
   /** LA-1's local carve-out: true only on the laptop, on a `local_gpt` route. */
   readonly localOwnerTesting?: boolean;
-  /** The work is a client's: its task, or the conversation's task, has a client key. */
-  readonly clientWork: boolean;
+  /**
+   * The work is a client's: its task has a client key. The task path always says;
+   * the conversation seam does not, and its client refusal stays the command layer's (C60).
+   */
+  readonly clientWork?: boolean;
 }
 
 export type CarryRefusal =
@@ -256,7 +259,7 @@ export function mayCarry(
   context: CarryContext,
 ): { readonly ok: true } | { readonly ok: false; readonly code: CarryRefusal } {
   if (kind !== 'subscription') return { ok: true };
-  if (context.clientWork) return { ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' };
+  if (context.clientWork === true) return { ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' };
   if (context.tenantInstallation !== context.credentialInstallation) {
     return { ok: false, code: 'SUBSCRIPTION_OTHER_TENANT' };
   }

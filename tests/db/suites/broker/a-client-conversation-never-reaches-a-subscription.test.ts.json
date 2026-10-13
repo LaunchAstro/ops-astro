@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "Owner line 72 on the conversation path: the GPT session is a cloud subscription judged by source; a conversation on a client's task is refused by name with no row and no request; a staff person's conversation or one another person typed in waits on a local model."
-}

@@ -1528,9 +1528,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,
-  a local route, or the owner's subscription recorded as the cloud route it
-  is (`20261013220000_conversation_subscription_reach`), and nothing held
-  (`model_calls_one_scope`); the conversation's
+  a local route and nothing held (`model_calls_one_scope`); the conversation's
   foreign key joins with its table at the batch 3 join. The broker refuses
   before writing anything: another business's conversation, another person's,
   or any delegation (`AUTHORITY_LOST`); a cloud route (`LOCAL_MODEL_REQUIRED`,
@@ -1662,11 +1660,7 @@ route is a subscription, the owner's own seat, and the broker found the text
 the owner's own work: the task's creation applied by a person then holding
 the owner role, no client key, no applied write by an agent, a worker, or a
 person then holding no staff role (provenance is judged at each operation's
-time from membership intervals, never today's role). A conversation is the
-owner's own when its person holds the owner role, every person turn is
-theirs, its page task (if any) is the owner's own, and each value sent is
-bound to its rows: the message to its stored body, the page to the
-conversation's own task, each earlier turn to one of its own. A subscription
+time from membership intervals, never today's role). A subscription
 send is judged again at custody's handoff in a transaction held until custody
 has the request (`broker-admission.ts`), so a client link or a client's write
 landing after the start sends nothing or waits for the send.

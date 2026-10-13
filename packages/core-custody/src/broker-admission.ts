@@ -9,13 +9,11 @@
 //
 // Owner line 72 (ops-astro-roadmap `docs/decisions/execution.md`, 28 September
 // and 13 October 2026): a subscription send is judged again at the handoff, so
-// a client linked to its task, a client's write on it, or a turn by someone
-// else in its conversation, landing after the start, never reaches the seat.
+// a client linked to its task, or a client's write on it, landing after the
+// start, never reaches the seat.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
-import { conversationSource } from './broker-conversation-source.ts';
-import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import { resolveFields } from './broker-sources.ts';
 import { lockTask } from './broker-task.ts';
@@ -98,52 +96,4 @@ export function taskAdmission(
       return still.ok;
     },
   );
-}
-
-/**
- * A conversation's subscription send: its row, its page task and its owner's
- * membership held `for share`, then the conversation still the owner's own
- * work with no client, judged from the rows.
- */
-export function conversationAdmission(
-  database: Database,
-  businessId: BusinessId,
-  request: ConversationCallRequest,
-  callId: string,
-): Admit {
-  return admittedBy(
-    async (work) => await database.withBusiness(businessId, work),
-    async (tx) => {
-      if (!(await stillDispatched(tx, callId))) return false;
-      await tx.query(
-        'select 1 from public.conversations where business_id = $1 and id = $2 for share',
-        [tx.businessId, request.conversation.id],
-      );
-      await tx.query(
-        `select 1 from public.records t join public.conversations c
-            on c.business_id = t.business_id and c.scope_record_id = t.id
-          where c.business_id = $1 and c.id = $2 for share of t`,
-        [tx.businessId, request.conversation.id],
-      );
-      await tx.query(
-        `select 1 from public.memberships m join public.conversations c
-            on c.business_id = m.business_id and c.owner_person_id = m.person_id
-          where c.business_id = $1 and c.id = $2 and m.active for share of m`,
-        [tx.businessId, request.conversation.id],
-      );
-      const source = await conversationSource(tx, request);
-      return source.ownerWork && !source.clientWork;
-    },
-  );
-}
-
-/** A conversation send's judgement at the handoff: a subscription's only (owner line 72). */
-export function conversationAdmitFor(
-  database: Database,
-  businessId: BusinessId,
-  request: ConversationCallRequest,
-  route: { readonly credentialKind: string },
-): ((callId: string) => Admit) | undefined {
-  if (route.credentialKind !== 'subscription') return undefined;
-  return (callId) => conversationAdmission(database, businessId, request, callId);
 }

@@ -24,7 +24,6 @@ const OFF =
 const WORDS: Readonly<Record<string, string>> = {
   LOCAL_MODEL_REQUIRED: OFF,
   CLIENT_MODEL_USE_OFF: OFF,
-  SUBSCRIPTION_NOT_FOR_CLIENT_WORK: OFF,
   RATE_LIMITED: 'The model is busy, so nothing was sent. Your message is kept; ask again shortly.',
   MODEL_NOT_OFFERED:
     'The model chosen for this conversation is not offered for it now, so nothing was sent. ' +
