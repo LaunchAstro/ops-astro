@@ -106,6 +106,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C59: a login's one wrong-code lock, keyed by its subject's digest in
   // every business, taken first in a factor route's check transaction.
   'packages/core-commands/src/commands/account-factor-checks.ts',
+  // An agent write's last judgement takes the business's audit chain key
+  // before its session-ending keys, as the ending's own writer does.
+  'packages/core-commands/src/commands/agent-standing.ts',
   // C52-A: a change's last ask after its session takes the business's audit
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
