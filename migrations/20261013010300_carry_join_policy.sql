@@ -55,18 +55,23 @@ begin
   end if;
   -- The session, by the rules login resolution asks (`ops.session_refusal`),
   -- the 12 hours included: the token read as `assuranceOf` and `sessionIdOf`
-  -- read it, the first sign-in its earliest first-factor `amr` time.
+  -- read it, the first sign-in its earliest first-factor `amr` time. Each
+  -- entry as JSON.parse and `String(method)` read it: a time rounded to a
+  -- double, a method through any one-item lists.
   sid := case when claims::jsonb ->> 'session_id'
                    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
               then (claims::jsonb ->> 'session_id')::uuid end;
-  select min(t) filter (where e ->> 'method' in ('password', 'otp', 'magiclink', 'email/signup',
-                                                  'recovery', 'invite', 'oauth', 'sso/saml'))::bigint,
+  select min(t) filter (where m in ('password', 'otp', 'magiclink', 'email/signup',
+                                    'recovery', 'invite', 'oauth', 'sso/saml'))::bigint,
          claims::jsonb ->> 'aal' = 'aal2' and bool_or(e ->> 'method' = 'totp')
     into signed, strong
     from jsonb_array_elements(case jsonb_typeof(claims::jsonb -> 'amr')
                                 when 'array' then claims::jsonb -> 'amr' else '[]' end) e,
-         lateral (select case jsonb_typeof(e -> 'timestamp')
-                           when 'number' then (e -> 'timestamp')::numeric end as t) n
+         lateral (select case when jsonb_typeof(e -> 'timestamp') = 'number'
+                               and (e -> 'timestamp')::numeric > 0.5
+                               and (e -> 'timestamp')::numeric < 9007199254740993
+                          then (e -> 'timestamp')::numeric::float8 end as t,
+                         substring((e -> 'method')::text from '^\[*"([^"\\]*)"\]*$') as m) n
    where t between 1 and 9007199254740991 and t = trunc(t);
   if ops.session_refusal(sub, sid, signed, coalesce(strong, false), true, true) is not null then
     return false;
