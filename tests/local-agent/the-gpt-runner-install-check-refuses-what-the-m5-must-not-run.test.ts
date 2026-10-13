@@ -92,6 +92,7 @@ function check(install: Partial<Install> = {}): { code: number; output: string }
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- one case per thing the M5 must not run
 describe('the GPT runner install check', () => {
   it('passes an M5 set up as the runner needs', () => {
     const { code, output } = check();
@@ -110,6 +111,21 @@ describe('the GPT runner install check', () => {
     ['settings that are not the M5 site’s', { settings: { OPS_LOCAL_AGENT_SITE: '' } }],
     ['no Codex version pinned', { settings: { OPS_LOCAL_AGENT_CODEX_VERSION: '' } }],
     ['no credential for the runner’s door', { credentials: [] }],
+    [
+      'the runner’s key filed under the basic scheme, which the door answers 401',
+      {
+        credentials: [
+          {
+            ref: 'local_runner',
+            kind: 'api_key',
+            destination: 'local_gpt',
+            header: 'authorization',
+            scheme: 'basic',
+            value: RUNNER_KEY,
+          },
+        ],
+      },
+    ],
     [
       'a credential for the door that is not the runner’s key',
       {

@@ -6,7 +6,8 @@
 # else can open; the settings are the M5 site's, with the Codex version pinned;
 # the runner's home and its Codex home are private and hold no instructions or
 # config; Codex is the pinned version and signed in to the ChatGPT plan; custody's
-# credential file holds the runner's own key, and only it, for the runner's door;
+# credential file holds the runner's own key, and only it, for the runner's door,
+# presented as the door takes it (the authorization header, bearer);
 # and a runner already listening listens on loopback alone. Prints a kind, never
 # a value. The checks are a Node program, so file modes read the same on macOS
 # and Linux.
@@ -16,7 +17,7 @@
 set -eu
 
 node - "${1:?settings file}" "${2:?credential file}" <<'JS'
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { existsSync, lstatSync, readFileSync } = require('node:fs');
 const { isAbsolute, join } = require('node:path');
 
@@ -68,12 +69,10 @@ for (const name of ['AGENTS.md', 'AGENTS.override.md', 'config.toml']) {
 }
 const bin = text('OPS_LOCAL_AGENT_CODEX_BIN') || 'codex';
 const childEnv = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(home, 'home'), CODEX_HOME: codexHome };
+// Both streams are read: Codex 0.162.1 writes its login status to stderr.
 const run = (args) => {
-  try {
-    return { ok: true, out: execFileSync(bin, args, { env: childEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 }) };
-  } catch (error) {
-    return { ok: false, out: `${error.stdout ?? ''}` };
-  }
+  const ran = spawnSync(bin, args, { env: childEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 });
+  return { ok: ran.status === 0, out: `${ran.stdout ?? ''}${ran.stderr ?? ''}` };
 };
 const reported = /\b(\d+\.\d+\.\d+)\b/u.exec(run(['--version']).out)?.[1];
 if (reported !== version) fault('Codex is not the pinned version');
@@ -82,7 +81,10 @@ if (!login.ok || !login.out.split('\n').some((line) => line.trim() === 'Logged i
   fault('signed_out: Codex here is not signed in to the ChatGPT plan');
 }
 const door = Array.isArray(filed) ? filed.filter((entry) => entry?.destination === 'local_gpt') : [];
-if (door.length !== 1 || door[0].value !== key || door[0].scheme === 'none') {
+// The runner's door takes only `Authorization: Bearer <key>` (door.ts): another header or scheme is answered 401.
+const bearer = (entry) =>
+  entry.header === 'authorization' && (entry.scheme === undefined || entry.scheme === 'bearer');
+if (door.length !== 1 || door[0].value !== key || !bearer(door[0])) {
   fault('custody holds no credential, or another, for the runner’s door');
 }
 const port = text('OPS_LOCAL_AGENT_PORT');
