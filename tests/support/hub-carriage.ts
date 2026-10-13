@@ -24,6 +24,8 @@ export function hubCarriage(
   joined: string[] = [],
   /** Runs before each join is answered: for the function, after its command commits and before the offer. */
   beforeJoin?: { run: (topic: string) => Promise<void> },
+  /** Runs before each message is sent: for the function, a case's chance to stop it mid-call. */
+  beforeSend?: { run: (event: string) => Promise<void> },
 ): Carriage {
   return {
     join: async (topic, accessToken) => {
@@ -42,8 +44,10 @@ export function hubCarriage(
         return length;
       };
       const line: Line = {
-        send: async (event, message) =>
-          await Promise.resolve(subscription.send(event, message) === 'sent' ? 'sent' : 'failed'),
+        send: async (event, message) => {
+          await beforeSend?.run(event);
+          return subscription.send(event, message) === 'sent' ? 'sent' : 'failed';
+        },
         hear: (listener) => {
           listeners.add(listener);
           return () => listeners.delete(listener);

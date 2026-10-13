@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a client link mid-answer waits for the carried write or commits after it; no client material reaches a model"
+}

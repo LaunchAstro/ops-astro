@@ -57,6 +57,8 @@ export interface CarriedWorld {
   readonly joined: string[];
   /** Runs as the function joins a call's line: after the command commits, before the offer. */
   readonly beforeJoin: { run: (topic: string) => Promise<void> };
+  /** Runs before the function sends each message on a call's line. */
+  readonly beforeSend: { run: (event: string) => Promise<void> };
   close(): Promise<void>;
 }
 
@@ -77,9 +79,17 @@ async function withRealtime(admin: ConversationWorld['fixture']['db']['admin']):
   });
 }
 
-/** `timeoutMs`, where given, shortens Ollama's wait, and so each call's `answer_by`. */
+/**
+ * `timeoutMs`, where given, shortens Ollama's wait, and so each call's
+ * `answer_by`; `operation`, where given, prices the conversation operation or
+ * lets more than one of the business's answers run at once.
+ */
 // oxlint-disable-next-line max-lines-per-function -- the world's parts, each made once
-export async function carriedWorld(part: string, timeoutMs?: number): Promise<CarriedWorld> {
+export async function carriedWorld(
+  part: string,
+  timeoutMs?: number,
+  operation: { readonly maximumMinor?: number; readonly concurrency?: number } = {},
+): Promise<CarriedWorld> {
   const fixture = await createApiFixture(part);
   await withRealtime(fixture.db.admin);
   const hub = await realtimeHub(adminUrlOf(fixture.db.name));
@@ -89,8 +99,9 @@ export async function carriedWorld(part: string, timeoutMs?: number): Promise<Ca
   if (!parsed.ok) throw new Error('carry key refused');
   const joined: string[] = [];
   const beforeJoin = { run: async (_topic: string): Promise<void> => {} };
+  const beforeSend = { run: async (_event: string): Promise<void> => {} };
   const custody = carriedCustody({
-    carriage: hubCarriage(hub, joined, beforeJoin),
+    carriage: hubCarriage(hub, joined, beforeJoin, beforeSend),
     keys: parsed.keys,
     key,
   });
@@ -101,7 +112,11 @@ export async function carriedWorld(part: string, timeoutMs?: number): Promise<Ca
   const exchange = conversationExchange({
     custody,
     operations: catalogue([
-      timeoutMs === undefined ? OLLAMA_CONVERSATION : { ...OLLAMA_CONVERSATION, timeoutMs },
+      {
+        ...OLLAMA_CONVERSATION,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...operation,
+      },
     ]),
     providers: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
     routes: [
@@ -150,6 +165,7 @@ export async function carriedWorld(part: string, timeoutMs?: number): Promise<Ca
     key,
     joined,
     beforeJoin,
+    beforeSend,
     close: async () => {
       await agent.stop();
       await custody.stop();
