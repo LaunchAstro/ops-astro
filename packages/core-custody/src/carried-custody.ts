@@ -204,7 +204,7 @@ export function carriedCustody(options: CarriedCustodyOptions): Custody & {
   const carrying: Carrying = { options, now: options.now ?? Date.now, runners: new Map() };
   return {
     pid: -1,
-    dispatch: async (_credentialRef, request, onPiece, handoff) => {
+    dispatch: async (_credentialRef, request, onPiece, _admit, handoff) => {
       if (handoff === undefined) return refused('CARRIAGE_UNAVAILABLE');
       const topic = callTopic(handoff.businessId, handoff.callId);
       const joined = await options.carriage.join(topic, handoff.accessToken);

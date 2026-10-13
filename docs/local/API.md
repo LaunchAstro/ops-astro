@@ -1327,7 +1327,13 @@ person message in a conversation of this business whose body is kept, and
 sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
-nothing held). The answer is kept as an `agent` message whose
+nothing held). A conversation on a paid model (#1508) asks its provider's own
+operation (`model.conversation_answer_openrouter`) on the held path instead:
+offered only to a person on `OPS_OUTSIDE_MODEL_PEOPLE` in a conversation with
+no client page, it holds its most against the AI chat budget, is judged again
+at the handoff to custody, and settles with its reply kept in that one
+transaction (`BUDGET_UNAVAILABLE` with what is left, `PROMPT_TOO_LARGE`,
+`CUSTODY_NOT_ADMITTED`, or a held cost). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
 lock, which then holds the caller's conversation grants for share without
@@ -3709,7 +3715,13 @@ statement? }`: one of the eight items, three closing lines or the procedure
   where the runbook fits on one page (1,000 words). A link with a user name,
   password, port other than 443 or fragment is refused; the host is not
   checked, since commands are not told the served host. Any other link, or none
-  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
+  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`.
+  `tested-backups` takes only the operations page, `https://<host>/settings/operations/`,
+  with no query and the same link rules, while `ops.last_tested_restore` holds a
+  passed drill inside the restore window, else `evidence` is refused;
+  `second-factor` is refused naming `item` unless the person recording it has a
+  verified factor: on their row here, or on their own signed-in login through
+  any business, not since removed. Both are read after the installation's row lock. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

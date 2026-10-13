@@ -75,7 +75,7 @@ describe('AW-04 planning allowance read: the drawer', () => {
     expect(asked).toStrictEqual([{ name: 'conversation.allowance', body: {} }]);
     expect(page.all('[data-message-role]')).toHaveLength(0);
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00.',
     );
   });
 
@@ -95,7 +95,7 @@ describe('AW-04 planning allowance read: the drawer', () => {
       body: { conversationId: CONVERSATION },
     });
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 7.45 spent, AUD 5.00 held.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00. This conversation: AUD 7.45 spent, AUD 5.00 held.',
     );
   });
 
@@ -135,7 +135,7 @@ describe('AW-04 planning allowance read: the line follows the spend', () => {
     await settle();
     expect(reads).toBeGreaterThan(before);
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
     );
   });
 });

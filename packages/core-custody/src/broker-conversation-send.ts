@@ -52,6 +52,7 @@ export async function sendAndSettle(
       : (chunk) => {
           for (const text of reader.push(chunk)) onPiece(text);
         },
+    undefined,
     handoff,
   );
   const settlement = settlementOf(outcome, operation, adapter, streamed);

@@ -10,7 +10,7 @@ import { expect } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol } from '../commands/fixture.ts';
 import { childProbe, type BodyContext } from './role-case-bodies.ts';
-import { legalEvidence } from './role-case-gate-bodies.ts';
+import { gateEvidence } from './role-case-gate-bodies.ts';
 import { factorMember } from './role-case-access-bodies.ts';
 import type { Answer, Caller, World } from './world.ts';
 
@@ -25,7 +25,8 @@ type As = (who: Caller, name: CommandName, body: Record<string, unknown>) => Pro
 
 /**
  * The admin's hooks item 3's bodies need: a member to end (C58), one with a
- * factor to reset (C59), items 3 to 6's links (C81).
+ * factor to reset (C59), the gate items' evidence for the admin's records
+ * (`gateEvidence`).
  */
 export const adminHooks = (
   world: World,
@@ -33,7 +34,8 @@ export const adminHooks = (
   freshMember: async () =>
     (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
   freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
-  legalEvidence: async () => await legalEvidence(world.db.admin, world.alpha),
+  legalEvidence: async () =>
+    await gateEvidence(world.db.admin, world.alpha, world.ada.personId as string),
 });
 
 /** Writes the shared task, its two comments and the sibling, as the admin. */
