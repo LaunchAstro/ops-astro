@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import type { C80Seeds } from './c80-seeds.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -80,17 +81,13 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext {
+export interface BodyContext extends C80Seeds {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   /** The admin the positive calls run as: C80's configured approver, where a harness has one. */
   readonly adminPersonId?: string;
-  /** A live correction another member requested, for C80's approval (never the admin's own). */
-  seedCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
-  /** Bind a client's own about page, for C80's request; the page's address. */
-  bindClientSite?(partyId: string): Promise<string>;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
   asAgent?(
