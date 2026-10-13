@@ -39,7 +39,7 @@ export async function readServed(
 }
 
 /**
- * One run's deployment read for the bound page: served only while the deployment is also the
+ * Each observation's deployment read for the bound page: served only while the deployment is also the
  * project's production deployment now and the page's host is assigned to it; else unknown.
  */
 export function readServing(
@@ -48,13 +48,13 @@ export function readServing(
 ): ReadDeployment {
   const { project } = site;
   const host = URL.parse(site.pageUrl)?.hostname ?? '';
-  let assigned: ReturnType<typeof call> | undefined;
+  // Each observation reads the alias afresh: the ports outlive one run, and a host
+  // reassigned or a read that failed must not answer for a later observation.
   return async (deploymentId) => {
     const deployment = await readServed(deploymentId, deps);
     if (deployment.kind !== 'ok' || !deployment.value.served) return deployment;
     const current = await call('site.deployment.current', { project }, deps);
-    assigned ??= call('site.deployment.alias', { host, project }, deps);
-    const alias = await assigned;
+    const alias = await call('site.deployment.alias', { host, project }, deps);
     const serving =
       current.kind === 'ok' &&
       current.value['id'] === project &&
