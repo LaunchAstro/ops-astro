@@ -233,6 +233,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'invitation.create': writing(business('people', 'invitations', 'actors')),
   'invitation.resend': writing(business('invitations')),
   'invitation.revoke': writing(business('invitations')),
+  'invitation.list': READ,
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),

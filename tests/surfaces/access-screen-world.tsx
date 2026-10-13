@@ -76,18 +76,47 @@ export const json = (body: unknown, status = 200): Response =>
 export const refusal = (code: string, status: number): Response =>
   json({ refused: true, code, names: [], fixes: [] }, status);
 
+/** An answer the case gives when it chooses, so an act stays out until then. */
+export function heldAnswer() {
+  let give: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    give = resolve;
+  });
+  return { promise, resolve: (response: Response) => give?.(response) };
+}
+
 interface Call {
   readonly url: string;
   readonly body: Record<string, unknown>;
 }
 
-/** A stand-in API: `reads` answers `access.read` in turn (the last one repeats), `write` every command. */
+/** What Ada holds by default: `access:manage`, which Settings ▸ Access asks, and no `access:share`. */
+export const MANAGE_ONLY = [{ collection: 'access', action: 'manage' }];
+/** Ada holding `access:share` too, which an invitation asks (C39-T). */
+export const MANAGE_AND_SHARE = [...MANAGE_ONLY, { collection: 'access', action: 'share' }];
+/** `access:share` without `access:manage`: no administrator's invitation. */
+export const SHARE_ONLY = [{ collection: 'access', action: 'share' }];
+
+/** The key `access.read` asks on the server. */
+const manages = (grants: readonly { readonly collection: string; readonly action: string }[]) =>
+  grants.some((each) => each.collection === 'access' && each.action === 'manage');
+
+/**
+ * A stand-in API: `reads` answers `access.read` in turn (the last one repeats)
+ * and, as the server does, refuses it to grants without `access:manage`;
+ * `write` answers every command, and `session.capabilities` answers `grants`.
+ */
 export function server(
   reads: readonly Response[],
-  write: () => Response = () => json({ recordId: 'r', revision: 1 }),
+  write: () => Response | Promise<Response> = () => json({ recordId: 'r', revision: 1 }),
+  grants: readonly { readonly collection: string; readonly action: string }[] = MANAGE_ONLY,
+  invitations: readonly unknown[] = [],
 ) {
   const calls: Call[] = [];
+  /** Each `invitation.list` asked (C39-T), kept apart from the commands. */
+  const lists: string[] = [];
   let read = 0;
+  const answers = manages(grants) ? reads : [refusal('SCOPE_NOT_GRANTED', 403)];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The frame's person menu (C23) asks who is signed in, and the frame reads
@@ -101,12 +130,21 @@ export function server(
     if (at.endsWith('/chat/conversations'))
       return Promise.resolve(json({ ok: true, conversations: [] }));
     if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
+    if (at.endsWith('/invitation/list')) {
+      lists.push(at);
+      return Promise.resolve(json({ ok: true, invitations }));
+    }
+    if (at.endsWith('/session/capabilities')) {
+      return Promise.resolve(
+        json({ ok: true, personId: ADA.personId, businessKey: 'alpha', grants }),
+      );
+    }
     calls.push({
       url: at,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
     });
     if (at.endsWith('/access/read')) {
-      const answer = reads[Math.min(read, reads.length - 1)];
+      const answer = answers[Math.min(read, answers.length - 1)];
       read += 1;
       return Promise.resolve(answer?.clone() ?? refusal('NOT_FOUND', 404));
     }
@@ -115,6 +153,7 @@ export function server(
   return {
     fetch,
     calls,
+    lists,
     commands: () => calls.filter((call) => !call.url.endsWith('/access/read')),
   };
 }

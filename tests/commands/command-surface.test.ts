@@ -112,6 +112,7 @@ const DECLARED_READS = [
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'invitation.list',
   'live_correction.read',
   'map.frontier',
   'map.view',
@@ -138,7 +139,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the forty-three reads as reads, and everything else as a write', () => {
+  it('declares the forty-four reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

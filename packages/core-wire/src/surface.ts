@@ -891,6 +891,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
     }),
   ),
+  // C39-T: the business's invitations for Settings ▸ Access, under the key
+  // their acts take, `access:share`; never an agent's.
+  read('invitation.list', 'access', { action: 'share' }),
   // Settings ▸ Workflow triggers (C33). The registry is a business fact read
   // like `settings.read`; an activation is changed under `settings:manage` and
   // a version released under `automation:manage`, both business-wide and

@@ -280,6 +280,8 @@ export type CommandName =
   | 'invitation.create'
   | 'invitation.resend'
   | 'invitation.revoke'
+  // C39-T: the business's invitations for Settings ▸ Access, under the same key.
+  | 'invitation.list'
   // Settings ▸ Workflow triggers (C33): the registry is one read by
   // `settings:read`; changing an activation is `settings:manage` and releasing
   // a definition version `automation:manage`, neither an agent's.

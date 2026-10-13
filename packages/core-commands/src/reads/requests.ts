@@ -40,6 +40,7 @@ import type {
   InboxCountResult,
   InboxReadResult,
   LiveCorrectionReadResult,
+  InvitationListResult,
   PersonListResult,
   TagListResult,
   AgentMineResult,
@@ -225,6 +226,8 @@ export interface ReadOperands {
   readonly 'harness.read': { readonly runId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
+  /** The business's team invitations, under `access:share` (C39-T). */
+  readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
 }
@@ -283,6 +286,7 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | LiveCorrectionReadResult
+  | InvitationListResult
   | MapViewResult
   | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
