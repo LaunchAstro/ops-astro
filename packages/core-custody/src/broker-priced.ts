@@ -229,7 +229,7 @@ interface Asked {
   readonly broker: Broker;
 }
 
-/** The answer came from a model the asked one may be named as (#1508 F2). */
+/** The answer came from a model the asked one may be named as, so another model's answer is never kept. */
 const fromAsked = (model: string | undefined, answered: string | null): boolean =>
   answered !== null && (openrouterModel(model)?.acceptedIds.includes(answered) ?? false);
 

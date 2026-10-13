@@ -65,7 +65,7 @@ const alertView = ({ kind, at }: { kind: string; at: Date }): SecurityAlertView 
  * API's reach, so this is its one copy here, pinned to the store's row by
  * `C55 last tested restore`.
  */
-const RESTORE_FRESH_DAYS = 35;
+export const RESTORE_FRESH_DAYS = 35;
 
 /**
  * The date of the last tested restore (C55, carried from S0-3), from the row

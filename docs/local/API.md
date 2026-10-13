@@ -291,6 +291,11 @@ minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
 served.
 
+The only first factor is `password`. A session the provider opened from a
+mailed link (`amr` `otp`, or `magiclink`, `recovery`, `invite`,
+`email/signup`) has no first-sign-in time, so every route answers it
+`AUTH_SESSION_EXPIRED`: a link sets a password and signs nobody into content.
+
 A session is GoTrue's `session_id` claim, read by the verifier only when it is
 a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
@@ -2527,6 +2532,18 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 `{ invitationId, state }`. The business's worker expires lapsed invitations
 (`expireInvitations`, audited `invitation.expire`).
 
+The read `invitation.list` (`POST /api/b/<key>/invitation/list`, body `{}`)
+asks the same `access:share` for the whole business and no agent route serves
+it. It answers `{ ok: true, invitations }`, newest first, each
+`{ invitationId, name, address, role, state, createdAt, sentAt, expiresAt }`:
+`state` is `expired` once a pending invitation's lifetime has passed, before
+the worker ends it, and `sentAt` is the last attempt the provider accepted or
+delivered (`null` when none was). Only this business's invitations are listed,
+and no enrolment token or hash is part of the answer. Without the key it is
+`SCOPE_NOT_GRANTED` 403; a client-scoped grant does not count. Settings ▸
+Access draws the form and the list for a holder of `access:share`
+(`apps/web/src/screens/access/`).
+
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
@@ -2547,8 +2564,8 @@ evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
 Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
-here yet: the send mounted after the command, the hook wired in `main`, the
-enrolment page and the Access screen (C39-T P3).
+here yet: the send mounted after the command, the hook wired in `main` and the
+enrolment page (C39-T P3).
 
 ## Tags
 
@@ -2596,7 +2613,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,
-`trace.read`, `harness.read`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
+`trace.read`, `harness.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -3710,7 +3727,13 @@ statement? }`: one of the eight items, three closing lines or the procedure
   where the runbook fits on one page (1,000 words). A link with a user name,
   password, port other than 443 or fragment is refused; the host is not
   checked, since commands are not told the served host. Any other link, or none
-  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
+  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`.
+  `tested-backups` takes only the operations page, `https://<host>/settings/operations/`,
+  with no query and the same link rules, while `ops.last_tested_restore` holds a
+  passed drill inside the restore window, else `evidence` is refused;
+  `second-factor` is refused naming `item` unless the person recording it has a
+  verified factor: on their row here, or on their own signed-in login through
+  any business, not since removed. Both are read after the installation's row lock. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

@@ -76,6 +76,8 @@ export const gateOf = (personId: string = randomUUID()): Receipt & { records: st
   records: folder('records'),
   recordSignIn: () => Promise.resolve(),
   recordTestedRestore: () => Promise.resolve(new Date().toISOString()),
+  stillOperator: () => Promise.resolve(),
+  holdingGrant: <T>(during: (release: () => void) => Promise<T>): Promise<T> => during(() => {}),
 });
 
 /** A store route that must never be taken. */

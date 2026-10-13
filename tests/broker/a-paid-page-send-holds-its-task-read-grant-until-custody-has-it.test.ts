@@ -6,9 +6,9 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { pricedWorld } from './priced-chat-world.ts';
 
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'Sol proof, criterion 1: a paid page send holds its task read grant until custody receives it',
+  'a paid page send holds its task read grant until custody receives it',
   async () => {
-    const p = await pricedWorld('sol_1567_page_grant');
+    const p = await pricedWorld('page_grant_handoff');
     const observer = connect(p.w.fixture.db.appUrl);
     try {
       const { db, business } = p.w.fixture;

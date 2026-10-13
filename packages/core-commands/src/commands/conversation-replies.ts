@@ -40,6 +40,15 @@ const WORDS: Readonly<Record<string, string>> = {
   LOCAL_PLAN_LIMIT:
     'The ChatGPT plan is at its usage limit, so there is no answer. ' +
     'Your message is kept; ask again once the plan resets.',
+  GPT_SIGNED_OUT:
+    'GPT is not signed in to the ChatGPT plan, so nothing was sent. ' +
+    'Your message is kept; choose another model, or have GPT signed in again.',
+  GPT_WEEK_RESERVED:
+    'GPT’s weekly allowance is nearly used, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
+  GPT_USAGE_UNKNOWN:
+    'The ChatGPT plan did not confirm GPT may be used now, so nothing was sent. ' +
+    'Your message is kept; ask again shortly, or choose another model.',
   MODEL_MACHINE_AWAY:
     'The machine that runs this model is not answering, so nothing was sent. ' +
     'Your message is kept; ask again shortly.',
@@ -63,6 +72,9 @@ const WORDS: Readonly<Record<string, string>> = {
 /** Release reasons told in their own words; any other reads as a release. */
 const OWN_WORDS: ReadonlySet<string> = new Set([
   'LOCAL_PLAN_LIMIT',
+  'GPT_SIGNED_OUT',
+  'GPT_WEEK_RESERVED',
+  'GPT_USAGE_UNKNOWN',
   'MODEL_MACHINE_AWAY',
   'MODEL_MACHINE_BUSY',
   'CARRIAGE_UNAVAILABLE',

@@ -95,7 +95,7 @@ export type Held = { readonly ok: true; readonly reserved: ReservedCall } | Mode
 
 /**
  * Under the cap's lock: the message's call first (a twin is told where its
- * answer is, never that the model is busy, #1508 F7), then the ceiling, room
+ * answer is, never that the model is busy), then the ceiling, room
  * for the priced maximum, the envelope and the held, sent row naming its
  * message. A twin that inserted after the lookup wins the unique index, and
  * this holds nothing.
