@@ -109,7 +109,6 @@ it('a retry keeps an unhandled error from another file', () => {
     const output = `${child.stdout}\n${child.stderr}`;
     expect(child.error).toBeUndefined();
     expect(output).toContain('SOL_REAL_UNHANDLED_FAILURE');
-    expect(output).toContain('check-records: only timed out; running again alone:');
     expect(output).toContain('check-records: pass  lint ratchet');
     expect(output).toContain('check-records: pass  named suites kept');
     expect(child.status, output).toBe(1);

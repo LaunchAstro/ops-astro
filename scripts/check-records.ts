@@ -15,10 +15,9 @@
 //   node scripts/check-records.ts [--base <sha>]
 //     Runs each check to the end in the working tree, with no DATABASE_URL, and prints a line per
 //     check. Exit 0 when all passed. Exit 1 with `check-records: failed: <names>` naming each
-//     check and test that failed on what it read. Exit 3 with `check-records: timed out: <names>`
-//     when the only failures are tests that ran out of time, twice: a loaded machine, not a
-//     verdict. The base is what the lint ratchet and the kept-suites check compare against: by
-//     default the merge base of HEAD and origin/main.
+//     check and test that failed, a timeout included: on a loaded machine, run it again. The base
+//     is what the lint ratchet and the kept-suites check compare against: by default the merge
+//     base of HEAD and origin/main.
 //   node scripts/check-records.ts --list
 //     Prints the test files, and fails on one that is not there.
 
@@ -64,33 +63,21 @@ type Report = {
       status: string;
       fullName?: string;
       title: string;
-      failureMessages?: string[];
     }[];
   }[];
 };
 
-/** A failed test: `<file> > <test>`, or the file alone when it failed with no failed test. */
-export type Failure = { name: string; file: string; timedOut: boolean };
-
-// Vitest's own message, at the start: an assertion that quotes it is not a timeout.
-const TIMED_OUT = /^(?:Error: )?(?:Test|Hook) timed out in \d+ms\./u;
-
 /**
- * Each failed test in a vitest JSON report, and a file that failed with no failed test in it (an
- * import error, a hook) as the file alone. A failure is `timedOut` when time is all it reports:
- * on a loaded machine that says nothing about the records.
+ * Each failed test in a vitest JSON report as `<file> > <test>`, and a file's own error (an import
+ * error, a failed hook) as the file alone, beside its failed tests or without them.
  */
-export function failedTests(report: Report, root: string): Failure[] {
+export function failedTests(report: Report, root: string): string[] {
   return (report.testResults ?? []).flatMap((result) => {
     const file = relative(root, result.name);
     const failed = (result.assertionResults ?? []).filter((a) => a.status === 'failed');
-    if (failed.length > 0)
-      return failed.map(({ fullName, title, failureMessages = [] }) => ({
-        name: `${file} > ${fullName ?? title}`,
-        file,
-        timedOut: failureMessages.length > 0 && failureMessages.every((m) => TIMED_OUT.test(m)),
-      }));
-    return result.message ? [{ name: file, file, timedOut: TIMED_OUT.test(result.message) }] : [];
+    const names = failed.map(({ fullName, title }) => `${file} > ${fullName ?? title}`);
+    if (result.message) names.push(file);
+    return names;
   });
 }
 
@@ -132,9 +119,9 @@ export default class RunEnd {
 
 /**
  * One vitest run of `tests`, with its failures. An unhandled error, or a run that wrote no report
- * or never reached its end, is a failure on its own, never a timeout.
+ * or never reached its end, is a failure on its own.
  */
-function vitest(tests: readonly string[], env: NodeJS.ProcessEnv, alone: boolean): Failure[] {
+function vitest(tests: readonly string[], env: NodeJS.ProcessEnv): string[] {
   const out = mkdtempSync(join(tmpdir(), 'check-records-'));
   const report = join(out, 'vitest.json');
   const end = join(out, 'end.json');
@@ -145,10 +132,10 @@ function vitest(tests: readonly string[], env: NodeJS.ProcessEnv, alone: boolean
       '--reporter=default',
       '--reporter=json',
       `--reporter=${join(ROOT, 'scripts/check-records.ts')}`,
+      // A test that names no timeout of its own gets longer here; one that does keeps its own.
+      '--testTimeout=30000',
+      `--outputFile.json=${report}`,
     ];
-    if (alone) args.push('--no-file-parallelism');
-    // A test that names no timeout of its own gets longer here; one that does keeps its own.
-    args.push('--testTimeout=30000', `--outputFile.json=${report}`);
     const child = spawnSync(VITEST, args, {
       cwd: ROOT,
       env: { ...env, CHECK_RECORDS_RUN_END: end },
@@ -168,7 +155,7 @@ function vitest(tests: readonly string[], env: NodeJS.ProcessEnv, alone: boolean
           : ran.unhandled > 0
             ? `${ran.unhandled} unhandled error(s)`
             : 'vitest failed with no failed test';
-      failures.push({ name: `record tests: ${why}`, file: '', timedOut: false });
+      failures.push(`record tests: ${why}`);
     }
     return failures;
   } finally {
@@ -180,7 +167,7 @@ function run(base: string): void {
   const env: NodeJS.ProcessEnv = { ...process.env, BASE_SHA: base, GITHUB_BASE_REF: '' };
   delete env['DATABASE_URL'];
   delete env['DATABASE_ADMIN_URL'];
-  const failed: Failure[] = [];
+  const failed: string[] = [];
   const steps: [string, string[]][] = [
     ['lint ratchet', [join(ROOT, 'scripts/lint-ratchet.mjs')]],
     ['named suites kept', [join(ROOT, 'scripts/named-suites.ts'), 'kept', base]],
@@ -189,28 +176,15 @@ function run(base: string): void {
     console.log(`\n=== ${name} ===`);
     const ok = spawnSync(process.execPath, args, { cwd: ROOT, env, stdio: 'inherit' }).status === 0;
     console.log(`check-records: ${ok ? 'pass' : 'FAIL'}  ${name}`);
-    if (!ok) failed.push({ name, file: '', timedOut: false });
+    if (!ok) failed.push(name);
   }
   console.log('\n=== record tests ===');
-  let tests = vitest(files(), env, false);
-  // Time alone is no verdict: the files that only timed out run once more, one file at a time.
-  // A failure of the run itself (an unhandled error) names no file, so it is carried, not retried.
-  const named = tests.filter((t) => t.file !== '');
-  if (named.length > 0 && named.every((t) => t.timedOut)) {
-    const again = [...new Set(named.map((t) => t.file))];
-    console.log(`\ncheck-records: only timed out; running again alone: ${again.join(', ')}`);
-    tests = [...tests.filter((t) => t.file === ''), ...vitest(again, env, true)];
-  }
+  const tests = vitest(files(), env);
   console.log(`check-records: ${tests.length === 0 ? 'pass' : 'FAIL'}  record tests`);
   failed.push(...tests);
-  const real = failed.filter((f) => !f.timedOut);
-  if (real.length > 0) {
-    console.log(`check-records: failed: ${real.map((f) => f.name).join('; ')}`);
-    process.exit(1);
-  }
   if (failed.length > 0) {
-    console.log(`check-records: timed out: ${failed.map((f) => f.name).join('; ')}`);
-    process.exit(3);
+    console.log(`check-records: failed: ${failed.join('; ')}`);
+    process.exit(1);
   }
   console.log(`check-records: every record check passed against ${base}.`);
 }

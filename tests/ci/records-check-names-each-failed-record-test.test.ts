@@ -13,19 +13,17 @@ import { failedTests, RECORD_TESTS } from '../../scripts/check-records.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 
-const SLOW = 'Error: Test timed out in 12000ms.\nIf this is a long-running test, pass a timeout';
-
-it('names each failed test by file and full name, and a file that failed with none', () => {
+it('names each failed test by file and full name, and a file error beside them or alone', () => {
   const shards = 'tests/ci/ci-shards.test.ts';
   const report = {
     testResults: [
       {
         name: join(ROOT, shards),
+        message: 'Error: afterAll failed',
         assertionResults: [
           { status: 'passed', title: 'a', fullName: 'plan > a' },
-          { status: 'failed', title: 'b', fullName: 'plan > b', failureMessages: ['Assertion'] },
-          { status: 'failed', title: 'c', failureMessages: [SLOW] },
-          { status: 'failed', title: 'd', failureMessages: [SLOW, 'AssertionError: x'] },
+          { status: 'failed', title: 'b', fullName: 'plan > b' },
+          { status: 'failed', title: 'c' },
         ],
       },
       { name: join(ROOT, 'tests/ci/db-shards.test.ts'), message: 'import failed' },
@@ -33,10 +31,10 @@ it('names each failed test by file and full name, and a file that failed with no
     ],
   };
   expect(failedTests(report, ROOT)).toStrictEqual([
-    { name: `${shards} > plan > b`, file: shards, timedOut: false },
-    { name: `${shards} > c`, file: shards, timedOut: true },
-    { name: `${shards} > d`, file: shards, timedOut: false },
-    { name: 'tests/ci/db-shards.test.ts', file: 'tests/ci/db-shards.test.ts', timedOut: false },
+    `${shards} > plan > b`,
+    `${shards} > c`,
+    shards,
+    'tests/ci/db-shards.test.ts',
   ]);
   expect(failedTests({}, ROOT)).toStrictEqual([]);
 });
