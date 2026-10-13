@@ -6,7 +6,10 @@
 // key (and the next one during a rotation), custody's credential file and
 // reference for Ollama, and Ollama's address. Ollama is reached on this
 // machine's loopback only, by plain HTTP at its root: any other address is
-// refused at start, so a call never leaves the machine for a model.
+// refused at start, so a call never leaves the machine for a model. The paid
+// chat's settings are optional and go together: custody's credential
+// reference for OpenRouter, and OpenRouter's address, which must be exactly
+// `https://openrouter.ai`.
 
 import { parseCarryKeys } from '../../packages/core-custody/src/agent.ts';
 
@@ -23,7 +26,13 @@ export interface AgentSettings {
   readonly ollamaOrigin: string;
   readonly credentialsFile: string;
   readonly credentialRef: string;
+  /** Custody's reference for OpenRouter's key; absent, no paid chat is sent. */
+  readonly openrouterCredentialRef?: string;
+  readonly openrouterOrigin?: string;
 }
+
+/** OpenRouter's one address. */
+export const OPENROUTER_ORIGIN = 'https://openrouter.ai';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const TEXTS =
@@ -53,7 +62,15 @@ function problemIn(shape: Record<string, unknown>): string | undefined {
   if (next !== undefined && typeof next !== 'string') return 'carryKeyNext is malformed';
   if (!parseCarryKeys(text('carryKey'), next).ok) return 'the carry key is malformed';
   if (!loopback(text('ollamaOrigin') ?? '')) return "ollamaOrigin is not this machine's loopback";
-  return undefined;
+  return paidProblemIn(shape);
+}
+
+/** The paid chat's two settings: both or neither, the address exactly OpenRouter's. */
+function paidProblemIn(shape: Record<string, unknown>): string | undefined {
+  const { openrouterCredentialRef: ref, openrouterOrigin: origin } = shape;
+  if (ref === undefined && origin === undefined) return undefined;
+  if (typeof ref !== 'string' || ref === '') return 'openrouterCredentialRef is missing';
+  return origin === OPENROUTER_ORIGIN ? undefined : `openrouterOrigin is not ${OPENROUTER_ORIGIN}`;
 }
 
 /** The settings, or the first problem with them. */

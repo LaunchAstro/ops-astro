@@ -34,13 +34,14 @@ import {
 } from '../acceptance/world.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
 import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { gotrueQrSvg } from './gotrue-qr-svg.ts';
 
 export const CANARY = 'CANARY-c59-totp-secret-7f3a9e';
 
 export const now = (): number => Math.floor(Date.now() / 1000);
 
 export const GOOD_TOTP: Readonly<Record<string, string>> = {
-  qr_code: 'data:,x',
+  qr_code: gotrueQrSvg(2000),
   secret: 'S',
   uri: 'otpauth://totp/x',
 };
@@ -64,7 +65,7 @@ export const GOOD: Readonly<Record<string, Reply>> = {
   'POST /factors': json(200, {
     id: 'factor-one',
     type: 'totp',
-    totp: { qr_code: 'data:image/svg+xml;utf-8,<svg/>', secret: CANARY, uri: 'otpauth://totp/x' },
+    totp: { qr_code: gotrueQrSvg(2000), secret: CANARY, uri: 'otpauth://totp/x' },
   }),
   'POST /factors/factor-one/challenge': json(200, { id: 'challenge-one', type: 'totp' }),
   'POST /factors/factor-one/verify': json(200, {
@@ -91,21 +92,31 @@ export interface Seen {
   readonly body: string;
 }
 
-/** Hostile answers to an enrolment, each refused. */
-export const HOSTILE: ReadonlyArray<readonly [string, Reply]> = [
-  ['malformed JSON', (_q, response) => response.end('{"id": "factor-one", "totp": ')],
-  // A good answer in every field but its size, so only the size limit refuses it.
-  ['an oversized answer', json(200, { ...GOOD_ENROL, padding: 'x'.repeat(40_000) })],
-  ['the wrong shape', json(200, { id: 'factor-one', totp: { secret: 42 } })],
-  ['an id that is not an identifier', json(200, { id: '../admin', totp: GOOD_TOTP })],
+/** Hostile answers to an enrolment, each refused for the fault it names. */
+export const HOSTILE: ReadonlyArray<readonly [string, Reply, string]> = [
+  ['malformed JSON', (_q, response) => response.end('{"id": "factor-one", "totp": '), 'malformed'],
+  // A good answer in every field, GoTrue's full-size QR among them, but its
+  // size past the enrol's read bound, so only the size limit refuses it.
+  [
+    'an oversized answer',
+    json(200, {
+      ...GOOD_ENROL,
+      totp: { ...GOOD_TOTP, qr_code: gotrueQrSvg(330_000) },
+      padding: 'x'.repeat(2 * 1024 * 1024),
+    }),
+    'oversized',
+  ],
+  ['the wrong shape', json(200, { id: 'factor-one', totp: { secret: 42 } }), 'malformed'],
+  ['an id that is not an identifier', json(200, { id: '../admin', totp: GOOD_TOTP }), 'malformed'],
   [
     'a redirect elsewhere',
     (_q, response) => {
       response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' });
       response.end();
     },
+    'unreachable',
   ],
-  ['a server error carrying the canary', json(500, { msg: `boom ${CANARY}` })],
+  ['a server error carrying the canary', json(500, { msg: `boom ${CANARY}` }), 'unreachable'],
 ];
 
 export let world: World;

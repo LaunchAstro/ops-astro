@@ -13,7 +13,8 @@
 // answer or a fault. If custody's process ends before the answer, the
 // dispatch answers `worker_lost` with the fault ours: the provider may or may
 // not have acted, so the broker holds the reservation and never redispatches
-// without positive proof.
+// without positive proof. A site answer custody judged after sending it
+// answers `withheld` (`echoed` or `malformed`): sent, so never a refusal.
 //
 // A paid send is admitted again at the handoff (#1508, #1509's hook): the
 // broker's `admit` judges it in a transaction it holds open until custody says
@@ -40,7 +41,8 @@ export type CustodyOutcome =
       readonly account: string | null;
     }
   | { readonly kind: 'refused'; readonly started: false; readonly code: string }
-  | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' };
+  | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' }
+  | { readonly kind: 'withheld'; readonly started: true; readonly reason: 'echoed' | 'malformed' };
 
 export interface Carrier {
   readonly credentialKind: StorableKind;
@@ -149,6 +151,10 @@ function outcomeOf(reply: Record<string, unknown> | 'lost', started: boolean): C
       credentialKind: reply['kind'] as StorableKind,
       account: (reply['account'] as string | null) ?? null,
     };
+  }
+  if (reply['type'] === 'withheld') {
+    const reason = reply['reason'] === 'echoed' ? 'echoed' : 'malformed';
+    return { kind: 'withheld', started: true, reason };
   }
   return { kind: 'refused', started: false, code: String(reply['code']) };
 }

@@ -52,6 +52,12 @@ export interface ProviderState {
   lookupCommit: string | undefined;
   /** Requests answered by a fixed answer instead, by method and path prefix. */
   answers: Record<string, TransportAnswer>;
+  /** The deployment the project last wrote to production. */
+  newest: string | undefined;
+  /** Another deployment promoted to production in its place, when set. */
+  production: string | undefined;
+  /** The hosts the project serves its production deployment on. */
+  domains: string[];
 }
 
 const encode = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
@@ -80,6 +86,7 @@ function writeContents(state: ProviderState, body: Readonly<Record<string, strin
   const commit = publishing ? MERGED : REVERTED;
   state.blob = publishing ? 'blob-published' : 'blob-reverted';
   state.deployments[commit] = publishing ? 'dpl_merged' : 'dpl_reverted';
+  state.newest = state.deployments[commit];
   return json({ content: { sha: state.blob }, commit: { sha: commit } }, 200);
 }
 
@@ -95,6 +102,7 @@ function merge(state: ProviderState, body: Readonly<Record<string, string>>) {
     Object.assign(state.defaultExtras, state.proposalExtras);
   }
   state.deployments[MERGED] = 'dpl_merged';
+  state.newest = 'dpl_merged';
   return json({ merged: true, sha: MERGED, message: 'merged', token: 'never-crosses' });
 }
 
@@ -140,6 +148,17 @@ export interface Provider {
   readonly deps: BindingDependencies;
 }
 
+/** The project's production deployment (one promoted in place of the newest, or the newest) and its hosts. */
+function hosting(state: ProviderState, key: string, query: URLSearchParams) {
+  const current = state.production ?? state.newest ?? null;
+  if (key === `GET api.vercel.com /v9/projects/${PROJECT}`)
+    return json({ id: PROJECT, targets: { production: { id: current } } });
+  const host = /^GET api\.vercel\.com \/v4\/aliases\/(.+)$/u.exec(key)?.[1] ?? '';
+  if (!state.domains.includes(host) || query.get('projectId') !== PROJECT)
+    return json({ error: { code: 'not_found' } }, 404);
+  return json({ alias: host, deploymentId: current, projectId: PROJECT });
+}
+
 function route(
   state: ProviderState,
   request: TransportRequest,
@@ -149,6 +168,8 @@ function route(
   const fixed = Object.entries(state.answers).find(([prefix]) => key.startsWith(prefix));
   if (fixed !== undefined) return fixed[1];
   if (key === `GET api.vercel.com /v6/deployments`) return lookup(state, request.url.searchParams);
+  if (/^GET api\.vercel\.com \/v(9\/projects|4\/aliases)\//u.test(key))
+    return hosting(state, key, request.url.searchParams);
   const served = /^GET api\.vercel\.com \/v13\/deployments\/(.+)$/u.exec(key);
   if (served !== null) {
     const sha = Object.keys(state.deployments).find(
@@ -179,6 +200,9 @@ export function provider(start: Partial<ProviderState> & Pick<ProviderState, 'co
     lookupMisses: 0,
     lookupCommit: undefined,
     answers: {},
+    newest: undefined,
+    production: undefined,
+    domains: ['agency.example', 'client-b.example'],
     ...start,
   };
   const sent: SentRequest[] = [];

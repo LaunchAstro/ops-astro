@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner reads a correction live, or reverted, only while the written deployment is the project's production deployment before and after the page capture and the page's host is assigned to it; another commit promoted around the capture, a foreign host or a failed serving read is unknown with one person task, never live and never sent again."
+}
