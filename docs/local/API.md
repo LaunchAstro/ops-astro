@@ -3140,9 +3140,9 @@ bearer:
 | `POST /api/password/begin`   | 200 `{}` | 401 `RESET_LINK_INVALID`, 403 `RESET_NEEDS_SUPPORT` |
 | `POST /api/password/changed` | 200 `{}` | 401 `RESET_LINK_INVALID`, 409 `RESET_NOT_CONFIRMED` |
 
-Both take only a recovery session (`createRecoveryVerifier`, beside the
-ordinary verifier, with its signature and issuer checks): `aal1`, an `amr` of
-exactly one `otp` entry no more than 10 minutes old, and a `session_id`.
+Both take only a recovery session (`recoveryBearer`, with the ordinary
+verifier's signature and issuer checks): `aal1`, an `amr` of exactly one
+`otp` entry no more than 10 minutes old, and a `session_id`.
 Anything else is 401 `RESET_LINK_INVALID`.
 
 `begin`, in one transaction under the login's factor lock, answers a session
@@ -3155,7 +3155,7 @@ business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
 (`ops.subject_resets`) and records it against the session's digest
 (`ops.recovery_resets`). From that commit every session of the login, in
 every business, is refused up to the window's bound (five minutes), the
-recovery session's own included, so a page that fails after the password
+reset's own session included, so a page that fails after the password
 write leaves no old session usable.
 
 `changed` finds the session's open window (none, or settled: 401), then asks

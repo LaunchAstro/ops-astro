@@ -4,7 +4,8 @@
 // GoTrue at `RESET_AUTH_URL`, signing with the keys at `RESET_AUTH_KEYS`, and
 // the API composed as the server composes it, its sign-ins checked against
 // that provider's own published keys. Two businesses, alpha and bravo, over a
-// throwaway database. Without the provider the cases skip.
+// throwaway database. Without the provider the cases skip;
+// `reset-provider-containers.mjs` starts both and runs them.
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
