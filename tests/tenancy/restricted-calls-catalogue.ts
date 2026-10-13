@@ -16,11 +16,18 @@ import { MANDATE_GRANTS, MANDATE_UPDATES, OCCURRENCE_ROLE } from './restricted-c
 const COLUMN_UPDATES: readonly {
   readonly table: string;
   readonly from: string;
+  /** The first migration the table is gone from, when one dropped it. */
+  readonly until?: string;
   readonly columns: readonly string[];
 }[] = [
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
-  // C40B: a reset token is spent by `spent_at` alone.
-  { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
+  // C40B: a reset token is spent by `spent_at` alone, until the table is dropped.
+  {
+    table: 'public.password_reset_tokens',
+    from: '20261005144947',
+    until: '20261013060059',
+    columns: ['spent_at'],
+  },
   // C33: an activation's setting, pin and switch, each change by a person.
   {
     table: 'public.activations',
@@ -73,7 +80,11 @@ const reached = (at: string, from: string): boolean =>
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return COLUMN_UPDATES.filter((grant) => at === undefined || reached(at, grant.from))
+  return COLUMN_UPDATES.filter((grant) =>
+    at === undefined
+      ? grant.until === undefined
+      : reached(at, grant.from) && (grant.until === undefined || !reached(at, grant.until)),
+  )
     .flatMap((grant) => grant.columns.map((column) => `${grant.table}.${column}`))
     .toSorted();
 }
@@ -147,6 +158,19 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   ].map(([act, column]) => ({
     from: '20261005144947',
     line: `ops_astro_app ${act} ops.subject_resets.${column}`,
+  })),
+  // 20261013060059: a recovery session's window; the application opens one and settles it.
+  ...[
+    ['INSERT', 'reset_id'],
+    ['INSERT', 'session_digest'],
+    ['SELECT', 'opened_at'],
+    ['SELECT', 'reset_id'],
+    ['SELECT', 'session_digest'],
+    ['SELECT', 'settled_at'],
+    ['UPDATE', 'settled_at'],
+  ].map(([act, column]) => ({
+    from: '20261013060059',
+    line: `ops_astro_app ${act} ops.recovery_resets.${column}`,
   })),
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are

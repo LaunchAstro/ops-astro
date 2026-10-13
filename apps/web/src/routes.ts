@@ -54,6 +54,15 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // A forgotten password: ask for a link, then set one from it. The provider's
+  // one-time hash is in the fragment, so the address matched is the page alone.
+  'agency:reset': {
+    namespace: 'agency',
+    path: '/reset',
+    title: 'Reset your password',
+    surface: 'none',
+    authenticated: false,
+  },
   // A business's published legal documents (C81, CS-16.20): the client terms,
   // the privacy policy and the data-handling statement, each at an address
   // that needs no sign-in and is linked from sign-in. It draws the public read

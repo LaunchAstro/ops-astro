@@ -176,25 +176,33 @@ export async function door(token: string, key: 'alpha' | 'bravo'): Promise<strin
 }
 
 /** The windows a session opened, and whether each settled. */
-export const windowsOf = async (
+export async function windowsOf(
   token: string,
-): Promise<readonly { readonly settled: boolean; readonly reset_settled: boolean }[]> =>
-  await db.admin.execute<{ readonly settled: boolean; readonly reset_settled: boolean }>(
+): Promise<readonly { readonly settled: boolean; readonly reset_settled: boolean }[]> {
+  const rows = await db.admin.execute<{
+    readonly settled: boolean;
+    readonly reset_settled: boolean;
+  }>(
     `select r.settled_at is not null as settled, s.settled_at is not null as reset_settled
        from ops.recovery_resets r join ops.subject_resets s on s.id = r.reset_id
       where r.session_digest = $1`,
     [digest(sessionOf(token))],
   );
+  return rows.map(({ settled, reset_settled }) => ({ settled, reset_settled }));
+}
 
-/** The reset's audit rows in a business, each as its whole row. */
-export const auditsIn = async (
-  business: BusinessId,
-): Promise<readonly { readonly row: string }[]> =>
-  await db.admin.execute<{ readonly row: string }>(
+/** The reset's audit rows for the person in a business, each as its whole row. */
+export async function auditsOf(person: Person, business: BusinessId): Promise<readonly string[]> {
+  const rows = await db.admin.execute<{ readonly row: string }>(
     `select to_jsonb(a)::text as row from public.audit_events a
-      where business_id = $1 and command = 'account.password_reset' order by seq`,
-    [business],
+      where a.business_id = $1 and a.command = 'account.password_reset'
+        and a.actor_id in (
+          select id from public.actors where business_id = $1 and person_id = $2)
+      order by a.seq`,
+    [business, person.people.get(business) ?? ''],
   );
+  return rows.map(({ row }) => row);
+}
 
 /** The `session_id` a provider token carries. */
 export function sessionOf(token: string): string {

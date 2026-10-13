@@ -128,6 +128,16 @@ export {
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
 export {
+  beginPasswordReset,
+  openWindowOf,
+  requestPasswordReset,
+  RESET_AUDIT_COMMAND,
+  settlePasswordReset,
+  type BeginCode,
+  type BeginResult,
+  type RecoverySession,
+} from './commands/password-reset.ts';
+export {
   endOtherSessions,
   listOwnSessions,
   signOutSession,
