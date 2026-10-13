@@ -13,6 +13,7 @@
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
+import { RESET_EXECUTES, RESET_GROUPS } from './restricted-calls-reset.ts';
 export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
@@ -60,11 +61,6 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_subjects'],
   // 20261005144947 (C40): a reset in flight, by subject digest; settled by its column grant alone.
   ['si', 'ops.subject_resets'],
-  // 20261013060059: a reset request and a minted recovery link, reached only
-  // through their definer functions; a recovery session's window, opened by
-  // insert and settled by its column grant alone.
-  ['', 'ops.password_reset_requests ops.recovery_links'],
-  ['si', 'ops.recovery_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
   // 20261005190651 (C39-T): a Send Email hook message claimed by its send, by
@@ -109,9 +105,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // #475: a retention ask is a fact, never rewritten.
   ['si', 'trace_expiry_asks'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  // 20261005144947 (C40B): a reset token is written once, then spent by its column
-  // grant alone; 20261013060059 drops it (DROPPED_TABLES).
-  ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
+  ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
   // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
   ['si', 'enrolment_tokens invitation_delivery_attempts'],
@@ -197,6 +191,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
   ...MANDATE_GROUPS,
+  ...RESET_GROUPS,
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -204,19 +199,6 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
     names.split(' ').map((name) => [name.includes('.') ? name : `public.${name}`, granted]),
   ),
 );
-
-/**
- * Tables a later migration dropped, by the first migration they are gone from:
- * a prefix before it holds them with their grants, the full schema does not.
- */
-export const DROPPED_TABLES: Readonly<Record<string, string>> = {
-  'public.password_reset_tokens': '20261013060059',
-};
-
-/** The tables the full schema holds: every table the contract names, less the dropped ones. */
-export const FULL_SCHEMA_TABLES: readonly string[] = Object.keys(APPLICATION_GRANTS)
-  .filter((table) => DROPPED_TABLES[table] === undefined)
-  .toSorted();
 
 /**
  * Grants a later migration took back, so a prefix before it still holds them.
@@ -262,18 +244,12 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 20261005144947 (C40B): the reset's token lookup, two ids for one hash; dropped by 20261013060059.
-  'public.password_reset_token_find',
-  // 20261013060059: a reset request counted and recorded under its limits, a
-  // minted recovery link consumed, and the first business a login is mapped in.
-  'ops.password_reset_request',
-  'ops.recovery_link_consume',
-  'ops.recovery_subject_business',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
   // 20261005235557 (C59): a definer, one boolean for a login of the caller's business; not PUBLIC.
   'public.factor_login_live_elsewhere',
   ...MANDATE_EXECUTES,
+  ...RESET_EXECUTES,
   'public.priority_stage_ids_valid',
 ];
 
