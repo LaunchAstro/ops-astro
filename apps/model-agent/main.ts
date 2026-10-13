@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The model agent's process on the owner's machine (`docs/local/model-agent.md`,
-// launchd job `ops-astro-model-agent`). It reads its settings file, which
-// only its owner may read, signs in as its agent login (`../worker/sign-in.ts`),
-// starts custody with Ollama on loopback as its one destination, and carries
-// calls over Realtime until stopped. Nothing listens: it connects out only.
-// Every 30 s it asks custody to describe Ollama's credential; a custody that
-// no longer answers ends the process, and launchd starts it again.
+// The model agent's process on the owner's machine (`docs/local/model-agent.md`):
+// its settings, its agent login, custody with Ollama on loopback as its one
+// destination, then calls carried over Realtime until stopped. A custody that
+// stops answering its heartbeat ends the process, and launchd starts it again.
 
 import { readFileSync, statSync } from 'node:fs';
 import { loadavg } from 'node:os';

@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A carriage whose lines outlive the token they were joined with. Realtime
-// holds a socket's access until the token it was opened with expires, and
-// the agent's doorbell stays joined for as long as the agent runs, so every
-// `everyMs` each line joins its topic again with the login's token as it is
-// now, then leaves the old one. Both are heard while both are joined, so
-// nothing said in between is lost; a message may then be heard twice, which
-// the agent takes as it takes any repeat (an offer for a call it holds, a
-// request for a call running or done, a second `settled`).
+// A carriage whose lines outlive the token they joined with: every `everyMs`
+// each line joins its topic again with the login's current token, then leaves
+// the old one. Both are heard meanwhile, so nothing is lost; a message heard
+// twice the agent takes as any repeat.
 
 import type { Carriage, Line } from '../../packages/core-custody/src/agent.ts';
 

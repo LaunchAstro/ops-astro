@@ -26,63 +26,51 @@ export interface AgentSettings {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-const TEXTS = [
-  'gotrueUrl',
-  'email',
-  'password',
-  'realtimeUrl',
-  'carryKey',
-  'ollamaOrigin',
-  'credentialsFile',
-  'credentialRef',
-] as const;
-const LOOPBACK = new Set(['127.0.0.1', '[::1]']);
+const TEXTS =
+  'gotrueUrl email password realtimeUrl carryKey ollamaOrigin credentialsFile credentialRef';
 
 /** Ollama's address, only when it is this machine's loopback by plain HTTP at the root. */
 function loopback(origin: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    return false;
-  }
-  return url.protocol === 'http:' && LOOPBACK.has(url.hostname) && url.origin === origin;
+  const url = URL.parse(origin);
+  return (
+    url?.protocol === 'http:' &&
+    ['127.0.0.1', '[::1]'].includes(url.hostname) &&
+    url.origin === origin
+  );
 }
 
-/** The settings, or the first problem with them, naming a field and never a value. */
+/** The first problem with the settings, naming a field and never a value. */
+function problemIn(shape: Record<string, unknown>): string | undefined {
+  const text = (field: string): string | undefined =>
+    typeof shape[field] === 'string' ? (shape[field] as string) : undefined;
+  const id = ['business', 'agent'].find((field) => !UUID.test(text(field) ?? ''));
+  if (id !== undefined) return `${id} is not a lower-case uuid`;
+  const missing = TEXTS.split(' ').find((field) => !text(field));
+  if (missing !== undefined || text('providerKey') === undefined) {
+    return `${missing ?? 'providerKey'} is missing`;
+  }
+  const next = shape['carryKeyNext'];
+  if (next !== undefined && typeof next !== 'string') return 'carryKeyNext is malformed';
+  if (!parseCarryKeys(text('carryKey'), next).ok) return 'the carry key is malformed';
+  if (!loopback(text('ollamaOrigin') ?? '')) return "ollamaOrigin is not this machine's loopback";
+  return undefined;
+}
+
+/** The settings, or the first problem with them. */
 export function parseAgentSettings(
   text: string,
 ):
   | { readonly ok: true; readonly settings: AgentSettings }
   | { readonly ok: false; readonly problem: string } {
-  let shape: Record<string, unknown>;
+  let shape: unknown;
   try {
-    shape = JSON.parse(text) as Record<string, unknown>;
+    shape = JSON.parse(text);
   } catch {
     return { ok: false, problem: 'the settings are not JSON' };
   }
   if (typeof shape !== 'object' || shape === null) return { ok: false, problem: 'no settings' };
-  for (const field of ['business', 'agent'] as const) {
-    const value = shape[field];
-    if (typeof value !== 'string' || !UUID.test(value)) {
-      return { ok: false, problem: `${field} is not a lower-case uuid` };
-    }
-  }
-  for (const field of TEXTS) {
-    if (typeof shape[field] !== 'string' || shape[field] === '') {
-      return { ok: false, problem: `${field} is missing` };
-    }
-  }
-  if (typeof shape['providerKey'] !== 'string')
-    return { ok: false, problem: 'providerKey is missing' };
-  const next = shape['carryKeyNext'];
-  if (next !== undefined && typeof next !== 'string')
-    return { ok: false, problem: 'carryKeyNext is malformed' };
-  if (!parseCarryKeys(shape['carryKey'] as string, next).ok) {
-    return { ok: false, problem: 'the carry key is malformed' };
-  }
-  if (!loopback(shape['ollamaOrigin'] as string)) {
-    return { ok: false, problem: "ollamaOrigin is not this machine's loopback" };
-  }
-  return { ok: true, settings: shape as unknown as AgentSettings };
+  const problem = problemIn(shape as Record<string, unknown>);
+  return problem === undefined
+    ? { ok: true, settings: shape as AgentSettings }
+    : { ok: false, problem };
 }
