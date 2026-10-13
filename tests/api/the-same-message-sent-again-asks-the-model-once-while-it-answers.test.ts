@@ -5,11 +5,11 @@
 // kept, and after the call was held. While it answers, the repeat waits for
 // the one answer: Ollama is asked once, one reply is kept, and the repeat gets
 // no pieces of its own. Once kept, a repeat reads the kept reply and asks
-// nothing. Once held, the message is kept unanswered, so a repeat asks again
-// and that answer is kept once. Another person who sends the owner's operation
+// nothing. Once held, the message keeps its one call: a repeat is told the
+// answer ended and asks nothing. Another person who sends the owner's operation
 // id gets no reply and no piece. A server lost between Ollama's answer and the
-// settle keeps nothing; the call stays started until the sweep holds it, and
-// only then does a repeat ask again.
+// settle keeps nothing; the call stays started, a repeat is told it is still
+// answering until the sweep holds it, then that it ended, and Ollama is asked once.
 
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -182,7 +182,7 @@ describe.skipIf(serverUrl === undefined)('the same message sent again', () => {
     expect(ollama.seen.length - before).toBe(1);
   }, 60_000);
 
-  it('held: a repeat asks again, and that answer is kept once', async () => {
+  it('held: a repeat is told the answer ended, and asks nothing again', async () => {
     ollama.shut();
     ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
     const before = ollama.seen.length;
@@ -204,18 +204,15 @@ describe.skipIf(serverUrl === undefined)('the same message sent again', () => {
       reply: { answered: false, code: 'DECISION_STALE' },
     });
     const again = await send(w.api, w.owner, body);
-    expect(again.body).toMatchObject({ reply: { answered: true, body: ANSWER } });
+    expect(again.body).toMatchObject({ reply: { answered: false, code: 'ANSWER_ENDED' } });
     const conversationId = String(detail(again)['conversationId']);
-    expect(await calls(conversationId)).toEqual([
-      { state: 'liability_unknown' },
-      { state: 'settled' },
-    ]);
-    expect(await replies(conversationId)).toEqual([ANSWER]);
-    expect(ollama.seen.length - before).toBe(2);
+    expect(await calls(conversationId)).toEqual([{ state: 'liability_unknown' }]);
+    expect(await replies(conversationId)).toEqual([]);
+    expect(ollama.seen.length - before).toBe(1);
   }, 60_000);
 
   // oxlint-disable-next-line max-lines-per-function -- one lost settle followed to the sweep
-  it('a server lost between the answer and the settle keeps nothing; a repeat asks again only once the sweep holds the call', async () => {
+  it('a server lost between the answer and the settle keeps nothing; a repeat is still answering, then ended once the sweep holds the call', async () => {
     ollama.shut();
     ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
     const before = ollama.seen.length;
@@ -247,11 +244,11 @@ describe.skipIf(serverUrl === undefined)('the same message sent again', () => {
     expect(row?.state).toBe('dispatched');
     expect(await replies(conversationId)).toEqual([]);
     expect(ollama.seen.length - before).toBe(1);
-    // Restarted, the same message: the lost call still counts as in flight.
+    // Restarted, the same message: the lost call is still the message's call.
     const busy = await send(w.api, w.owner, body);
-    expect(busy.body).toMatchObject({ reply: { answered: false, code: 'RATE_LIMITED' } });
+    expect(busy.body).toMatchObject({ reply: { answered: false, code: 'STILL_ANSWERING' } });
     expect(ollama.seen.length - before).toBe(1);
-    // The sweep holds it at its ten minutes; then the repeat asks again and keeps one reply.
+    // The sweep holds it at its ten minutes; then the repeat is told it ended.
     await w.fixture.db.admin.execute(
       `update public.model_calls set started_at = started_at - interval '11 minutes',
               accepted_at = accepted_at - interval '11 minutes' where id = $1`,
@@ -262,12 +259,9 @@ describe.skipIf(serverUrl === undefined)('the same message sent again', () => {
       async (tx) => await sweepModelCalls(tx),
     );
     const again = await send(w.api, w.owner, body);
-    expect(again.body).toMatchObject({ reply: { answered: true, body: ANSWER } });
-    expect(await calls(conversationId)).toEqual([
-      { state: 'liability_unknown' },
-      { state: 'settled' },
-    ]);
-    expect(await replies(conversationId)).toEqual([ANSWER]);
-    expect(ollama.seen.length - before).toBe(2);
+    expect(again.body).toMatchObject({ reply: { answered: false, code: 'ANSWER_ENDED' } });
+    expect(await calls(conversationId)).toEqual([{ state: 'liability_unknown' }]);
+    expect(await replies(conversationId)).toEqual([]);
+    expect(ollama.seen.length - before).toBe(1);
   }, 60_000);
 });
