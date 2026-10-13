@@ -24,7 +24,14 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
 import { carriedWorld, PAID_HOLD, type CarriedWorld } from '../api/carried-world.ts';
-import { ask, callFor, heldFor, linkableTask, repliesTo } from '../api/carried-schedules.ts';
+import {
+  againstTheWrite,
+  ask,
+  callFor,
+  heldFor,
+  linkableTask,
+  repliesTo,
+} from '../api/carried-schedules.ts';
 import { HAIKU } from '../api/openrouter-stand-in-fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { holdRow } from '../support/lock-wait-race.ts';
@@ -219,11 +226,8 @@ describe.skipIf(serverUrl === undefined)('a client link racing a carried paid se
     const body = 'What is left, paid? (linked once judged)';
     const { task, link } = await linkableTask(world);
     const asking = ask(world, body, undefined, task, HAIKU);
-    await world.agent.dispatched(1);
-    const sentAt = Date.now();
-    await link();
+    expect(await againstTheWrite(world, link)).toStrictEqual(['blocked', 'written', 'committed']);
     expect(world.openrouter?.received).toHaveLength(1);
-    expect(Date.now() - sentAt).toBeLessThan(1_500);
     await (await asking).rest();
     expect(await callFor(world, body)).toMatchObject([{ requested: true }]);
   }, 60_000);

@@ -34,6 +34,8 @@ export interface AgentStandIn {
   release(): void;
   /** Runs before each accept is sent: a case's chance to change the world after the offer. */
   beforeAccept: (k: string) => Promise<void>;
+  /** Runs before the write is reported: a case's chance to see what waits on the send. */
+  beforeWritten: () => Promise<void>;
   /** Runs before a request past its deadline is refused: how late the refusal comes. */
   beforeLapse: () => Promise<void>;
   /** Added to the stand-in's own clock, as a machine whose clock disagrees with the function's. */
@@ -94,6 +96,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
     accepted: [],
     beforeAccept: async () => {},
     beforeLapse: async () => {},
+    beforeWritten: async () => {},
     clockOffset: 0,
     requests: [],
     dispatched: async (n) => {
@@ -147,6 +150,7 @@ export async function carriageAgent(options: AgentOptions): Promise<AgentStandIn
       await gate();
       return;
     }
+    await standIn.beforeWritten();
     await say('written', {});
     const reader = ollamaPieces();
     let body = '';

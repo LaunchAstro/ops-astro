@@ -29,6 +29,7 @@ import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database
 import { CONVERSATION } from '../api/aw-03-fixture.ts';
 import { carriedWorld, PAID_HOLD, type CarriedWorld } from '../api/carried-world.ts';
 import {
+  againstTheWrite,
   ask,
   callFor,
   deactivateAgent,
@@ -286,11 +287,12 @@ describe.skipIf(serverUrl === undefined)('a carried paid send is judged again', 
   it('a revocation once the paid send is judged waits until the write is reported; one request', async () => {
     const body = 'Due, paid? (revoked once judged)';
     const asking = ask(world, body, undefined, undefined, HAIKU);
-    await world.agent.dispatched(1);
-    const sentAt = Date.now();
-    await inBusiness(async (tx) => await revokeOwn(world, tx));
+    // On the fixture's own connection, so the revocation waits on the grant rows, not the app's one connection.
+    const { fixture } = world.w;
+    const revoke = async (): Promise<void> =>
+      await fixture.db.app.withBusiness(fixture.business, async (tx) => await revokeOwn(world, tx));
+    expect(await againstTheWrite(world, revoke)).toStrictEqual(['blocked', 'written', 'committed']);
     expect(world.openrouter?.received).toHaveLength(1);
-    expect(Date.now() - sentAt).toBeLessThan(1_500);
     await (await asking).rest();
     expect(await callFor(world, body)).toMatchObject([{ requested: true }]);
   }, 60_000);

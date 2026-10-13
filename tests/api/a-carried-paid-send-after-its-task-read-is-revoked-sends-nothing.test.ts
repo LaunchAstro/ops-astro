@@ -26,7 +26,7 @@ async function revokeTaskReads(current: CarriedWorld): Promise<number> {
   return await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     const grants = await tx.query<{ id: string }>(LIVE_TASK_READS, [tx.businessId]);
     for (const grant of grants) {
-      // eslint-disable-next-line no-await-in-loop -- one transaction, its statements in order
+      // oxlint-disable-next-line no-await-in-loop -- one transaction, its statements in order
       await revokeGrant(tx, grant.id);
     }
     return grants.length;
