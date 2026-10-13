@@ -3,10 +3,19 @@
 // The broker's side of custody's process channel (`custody.ts`): one message
 // out per request id and its answer back, the notes custody sends while a
 // dispatch runs passed on as they come, and `lost` for every waiting request
-// once custody's process is gone.
+// once custody's process is gone. It opens nothing: `custody.ts` forks the
+// process and hands this module its channel.
 
-import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+
+/** The part of custody's child process the channel speaks over. */
+export interface Channel {
+  on(event: 'message', listener: (message: unknown) => void): unknown;
+  on(event: 'exit' | 'error', listener: () => void): unknown;
+  send(message: unknown, callback?: (error: Error | null) => void): boolean;
+  readonly exitCode: number | null;
+  readonly connected: boolean;
+}
 
 /** What custody notes while a dispatch runs, each passed on and never taken as the answer. */
 export interface Notes {
@@ -24,7 +33,7 @@ export type Exchange = (
 
 /** A note on a running dispatch, passed on: true, or false for its answer. */
 function noted(
-  child: ChildProcess,
+  child: Channel,
   id: string,
   message: Record<string, unknown>,
   notes: Notes,
@@ -50,7 +59,7 @@ function noted(
  * `started` note, each `piece` note and a `written` note are passed on, never
  * taken as the answer.
  */
-export function exchangeWith(child: ChildProcess): Exchange {
+export function exchangeWith(child: Channel): Exchange {
   const waiting = new Map<string, (message: Record<string, unknown>) => void>();
   const lost = new Set<() => void>();
   child.on('message', (message: unknown) => {
