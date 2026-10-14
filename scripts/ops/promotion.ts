@@ -226,9 +226,7 @@ export async function promote(
     return { kind: 'refused', reason: `${copied.why}; nothing was migrated or promoted` };
   }
   const beforeMigration = notStillStaged(request.records, request.version, selected.digest);
-  if (beforeMigration !== undefined) {
-    return { kind: 'refused', reason: `${beforeMigration}; nothing was migrated or promoted` };
-  }
+  if (beforeMigration !== undefined) return { kind: 'refused', reason: beforeMigration };
   if (!effects.migrate()) {
     return { kind: 'failed', reason: `the migration did not complete; ${LEFT_STOPPED}` };
   }

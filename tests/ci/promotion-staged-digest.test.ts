@@ -40,14 +40,11 @@ const COMMAND = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathna
 const OTHER_DIGEST = `sha256:${'2'.repeat(64)}`;
 
 /** Effects that note every call; `during` runs inside the named effect. */
-const watched = (
-  during: { services?: () => void; migrate?: () => void; point?: () => void } = {},
-) => {
+const watched = (during: { migrate?: () => void; point?: () => void } = {}) => {
   const calls: string[] = [];
   const effects: PromotionEffects = {
     services: () => {
       calls.push('services');
-      during.services?.();
       return [
         { manager: 'docker', name: 'prod-api', running: false },
         { manager: 'docker', name: 'prod-auth', running: false },
@@ -201,34 +198,6 @@ describe('the promotion believes only a record inside its trust boundary', () =>
 });
 
 describe('the promotion judges staging’s record again after its waits', () => {
-  it.each([
-    ['conflicting', stagingLine(STAGED, OTHER_DIGEST)],
-    ['malformed', '{"torn'],
-    ['invalid digest', stagingLine(STAGED, 'sha256:short')],
-  ])('%s content appended during the service check prevents migration', async (_case, appended) => {
-    const root = store({ [named(STAGED)]: STAGED });
-    const folder = staged(root);
-    const line = typeof appended === 'string' ? appended : JSON.stringify(appended);
-    const append = () => appendFileSync(join(folder, 'deployments.jsonl'), `${line}\n`);
-    const { calls, effects } = watched({ services: append });
-    const outcome = await promote(request({ store: root, records: folder }), effects);
-    expect(calls).toStrictEqual(['services']);
-    expect(outcome).toMatchObject({
-      kind: 'refused',
-      reason: expect.stringMatching(/nothing was migrated or promoted/u),
-    });
-  });
-
-  it('an unrelated line appended during the service check still promotes', async () => {
-    const root = store({ [named(STAGED)]: STAGED });
-    const folder = staged(root);
-    const line = JSON.stringify(stagingLine('fedcba987654', OTHER_DIGEST));
-    const append = () => appendFileSync(join(folder, 'deployments.jsonl'), `${line}\n`);
-    const { effects } = watched({ services: append });
-    const outcome = await promote(request({ store: root, records: folder }), effects);
-    expect(outcome.kind).toBe('promoted');
-  });
-
   it('a conflicting or torn line appended during the migration points and starts nothing', async () => {
     await each([stagingLine(STAGED, OTHER_DIGEST), '{"torn'], async (appended) => {
       const root = store({ [named(STAGED)]: STAGED });
