@@ -55,6 +55,7 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  'task.take_launch',
 ]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */

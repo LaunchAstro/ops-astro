@@ -47,6 +47,8 @@ import { recordTestedRestore } from './tested-restore.ts';
 export interface Operator {
   readonly personId: string;
   readonly business: string;
+  /** The id `business` resolved to when the gate admitted the person. */
+  readonly businessId: BusinessId;
 }
 
 export type Gate =
@@ -241,7 +243,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
   }
   return {
     ok: true,
-    operator: { personId: held.personId, business },
+    operator: { personId: held.personId, business, businessId: held.businessId },
     records,
     ...afterTheAct(env, held, presented, () => checkOperator(environment, operatingOnly)),
   };

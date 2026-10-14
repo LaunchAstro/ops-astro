@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's make refuses every case its admission names, and an operator, session or owner lost while it waits on the agent's lock stops it before any write or provider call"
+}
