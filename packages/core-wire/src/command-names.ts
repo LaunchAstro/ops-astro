@@ -272,8 +272,6 @@ export type CommandName =
   | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
-  // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read'
   // C39-T: team invitations under `access:share`; expiry is the worker's, never a command.
   | 'invitation.create'
   | 'invitation.resend'

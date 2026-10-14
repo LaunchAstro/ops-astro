@@ -136,6 +136,8 @@ export interface ResolvedField {
   readonly name: string;
   readonly source: FieldSource;
   readonly value: string;
+  /** The broker found it the owner's own work, with no client in it (owner line 72). */
+  readonly ownerWork?: boolean;
 }
 
 /** What a paid call asks of the caller, inside a transaction opened as them. */

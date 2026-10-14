@@ -62,7 +62,6 @@ import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
-import { readHarnessTrigger } from './harness-trigger.ts';
 import { listInvitations } from './invitations.ts';
 import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
@@ -939,24 +938,6 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return trace === null
         ? refuseNotFound()
         : { ok: true, trace: { taskId: recordId, ...trace } };
-    },
-  },
-  // AW-12: the harness test's result on one run. No subject record and no
-  // spine: the run names its task, and the read filters it by the caller's
-  // task `read` inside its statement (`reads/harness-trigger.ts`), so the
-  // door asks for any grant and the read refuses the rest itself.
-  'harness.read': {
-    identifiers: ['runId'],
-    parse: ({ runId }) =>
-      typeof runId === 'string'
-        ? parsed({ runId })
-        : rejected('runId', 'Send runId as the run’s identifier.'),
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    async serve(tx, session, { runId }) {
-      const harness = await readHarnessTrigger(tx, session, runId);
-      return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
   // C80: a correction's decision; `run:write` at its party, asked inside the query.

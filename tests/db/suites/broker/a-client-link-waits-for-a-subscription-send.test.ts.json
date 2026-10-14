@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Owner line 72 at the handoff: a subscription send is judged again with the task held until custody has the request; a client link or a client contact's write landing before the judgement sends nothing, and a link issued after it waits for custody."
+}

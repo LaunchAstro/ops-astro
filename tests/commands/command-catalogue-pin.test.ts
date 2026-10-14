@@ -604,7 +604,6 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'graduation.demote',
   'graduation.promote',
   'grant.revoke',
-  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.seen',

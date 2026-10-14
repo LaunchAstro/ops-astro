@@ -39,7 +39,6 @@ const PINNED_IDENTIFIERS = {
   'finance.agent_costs': [],
   'finance.skill_costs': [],
   'gate.pending': [],
-  'harness.read': ['runId'],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
@@ -236,9 +235,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
-  // C80's correction and AW-12's run, which none of these bodies carries.
+  // C80's correction, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
-  'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),

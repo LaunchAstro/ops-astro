@@ -34,8 +34,15 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
-import { clearingWorld, detailOf, ok, proposal, readable } from './inbox-clearing-world.ts';
-import type { Answer, ApiFixture } from '../api/fixture.ts';
+import {
+  clearingWorld,
+  decideBody,
+  detailOf,
+  ok,
+  proposal,
+  readable,
+} from './inbox-clearing-world.ts';
+import { tokenFor, type Answer, type ApiFixture } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -386,6 +393,44 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       { subjectRecordId: task.id, factKind: 'planned_run', factId: proposed['runId'], owed: true },
     ]);
     expect(await open(writer.personId, 'incident')).toStrictEqual([]);
+    expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
+  });
+
+  it('raises an incident for each remaining task:manage holder when an access ending quarantines a marked hold', async () => {
+    const task = await newTask('incident on an ending');
+    const leaver = await enrol(fixture.db.app, fixture.business, 'Lou Leaving');
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await grantTo(tx, reviewer, 'manage', { kind: 'record', id: task.id });
+      await grantTo(tx, leaver, 'write');
+      await grantTo(tx, fixture.member, 'manage', WHOLE_BUSINESS, false, 'access');
+    });
+    const proposed = detailOf(ok(await call('task.propose', proposal(task))));
+    const gate = { gateId: String(proposed['gateId']), versionId: String(proposed['versionId']) };
+    const decided = detailOf(ok(await call('task.decide', decideBody(gate))));
+    const pickup = { reservationId: decided['reservationId'], leaseSeconds: 600 };
+    const picked = detailOf(
+      ok(await call('task.pickup', pickup, await tokenFor(leaver.presented.subject))),
+    );
+    // An observation arrived for this attempt: what the work did is unknown.
+    await fixture.db.admin.execute(
+      `update public.attempts set observed = true, state = 'quarantined' where id = $1`,
+      [picked['attemptId']],
+    );
+    const ended = detailOf(ok(await call('access.end', { holderId: leaver.personId })));
+    expect(ended['classifiedHolds']).toStrictEqual([decided['reservationId']]);
+    const held = 'select state from public.reservations where id = $1';
+    const [hold] = await fixture.db.admin.execute<{ state: string }>(held, [
+      decided['reservationId'],
+    ]);
+    expect(hold?.state).toBe('quarantined');
+    const onTask = async (person: string): Promise<readonly InboxItem[]> =>
+      (await open(person, 'incident')).filter(
+        (item) => readable(item) && item.subjectRecordId === task.id,
+      );
+    expect(await onTask(reviewer.personId)).toMatchObject([
+      { factKind: 'planned_run', factId: proposed['runId'], owed: true },
+    ]);
+    expect(await open(leaver.personId, 'incident')).toStrictEqual([]);
     expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
   });
 

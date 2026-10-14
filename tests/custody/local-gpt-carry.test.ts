@@ -22,6 +22,7 @@ const unattended: CarryContext = {
   workForPersonId: 'p1',
   tenantInstallation: 'here',
   credentialInstallation: 'here',
+  clientWork: false,
 };
 
 const attended: CarryContext = {
