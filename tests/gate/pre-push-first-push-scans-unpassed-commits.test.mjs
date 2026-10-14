@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// A new branch's first push scans only the commits this machine's gate has not
-// already passed, and still refuses a key in any of them.
+// First pushes skip passed commits and still refuse new findings.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -16,6 +22,116 @@ import {
 
 const recordOf = (f) =>
   join(f.git('rev-parse', '--path-format=absolute', '--git-common-dir'), 'gate-passed');
+
+const publicRecordOf = (f) =>
+  join(f.git('rev-parse', '--path-format=absolute', '--git-common-dir'), 'gate-public-passed');
+
+const publicFinding = () => `https://${'pitch'}.example.invalid/fixture\n`;
+
+const inheritedFinding = (t) => {
+  const f = firstPushFixture(t, { hooked: false });
+  f.commit('inherited.txt', publicFinding(), 'inherited note');
+  f.git('push', '-q', 'origin', 'main');
+  f.git('fetch', '-q', 'origin');
+  installHook(f.repo);
+  f.git('checkout', '-q', '-b', 'fresh');
+  return f;
+};
+
+test('a first push with one clean new commit passes an old finding identical to main without scanning old history', (t) => {
+  const f = inheritedFinding(t);
+  const tip = f.commit('fresh.txt', 'clean\n', 'fresh');
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /public-content: 1 commit\(s\)/u);
+  assert.equal(f.published('origin', 'fresh'), tip);
+});
+
+test('a public finding added then deleted in new branch commits still refuses publication', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('new.txt', publicFinding(), 'new note');
+  f.commit('new.txt', null, 'remove note');
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /new.txt \[private-pitch-url\]/u);
+  assert.equal(f.published('origin', 'fresh'), '');
+});
+
+test('rewriting a passed branch scans its replacement commits and refuses a new public finding', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('fresh.txt', 'clean\n', 'fresh');
+  assert.equal(f.push('origin', 'fresh').status, 0);
+  f.git('reset', '--hard', 'origin/main');
+  f.commit('replacement.txt', publicFinding(), 'replacement');
+  const result = f.push('elsewhere', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /replacement.txt \[private-pitch-url\]/u);
+  assert.equal(f.published('elsewhere', 'fresh'), '');
+});
+
+test('a same-regime public receipt skips commits already passed on this machine', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('fresh.txt', 'clean\n', 'fresh');
+  assert.equal(f.push('origin', 'fresh').status, 0);
+  f.git('checkout', '-q', '-b', 'again');
+  const result = f.push('elsewhere', 'again');
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /public-content: 0 commit\(s\)/u);
+});
+
+for (const broken of ['malformed', 'symlink', 'unreadable']) {
+  test(`a public receipt with ${broken} state falls back to full history and refuses the old finding`, (t) => {
+    const f = inheritedFinding(t);
+    f.commit('fresh.txt', 'clean\n', 'fresh');
+    const record = publicRecordOf(f);
+    if (broken === 'unreadable') {
+      const passed = f.push('elsewhere', 'fresh');
+      assert.equal(passed.status, 0, passed.output);
+      assert.match(
+        readFileSync(record, 'utf8'),
+        /^(?:[0-9a-f]{40} [0-9a-f]{40}|[0-9a-f]{64} [0-9a-f]{64})\n$/u,
+      );
+      chmodSync(record, 0o000);
+    } else if (broken === 'symlink') symlinkSync(join(f.scratch, 'absent'), record);
+    else {
+      writeFileSync(record, 'broken receipt\n');
+    }
+    const result = f.push('origin', 'fresh');
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /inherited.txt \[private-pitch-url\]/u);
+    assert.equal(f.published('origin', 'fresh'), '');
+  });
+}
+
+test('missing origin/main falls back to full public history and refuses the old finding', (t) => {
+  const f = inheritedFinding(t);
+  f.git('update-ref', '-d', 'refs/remotes/origin/main');
+  f.commit('fresh.txt', 'clean\n', 'fresh');
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /inherited.txt \[private-pitch-url\]/u);
+});
+
+test('renaming an inherited finding gives it a new path and refuses publication', (t) => {
+  const f = inheritedFinding(t);
+  f.git('mv', 'inherited.txt', 'renamed.txt');
+  f.commit('fresh.txt', 'clean\n', 'rename note');
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /renamed.txt \[private-pitch-url\]/u);
+});
+
+test('a public receipt under weaker rules cannot hide an old branch finding from restored rules', (t) => {
+  const f = inheritedFinding(t);
+  f.commit('scripts/public-content-check.mjs', 'process.exit(0);\n', 'weaker check');
+  f.commit('new.txt', publicFinding(), 'new note');
+  assert.equal(f.push('origin', 'fresh').status, 0);
+  f.git('checkout', 'origin/main', '--', 'scripts');
+  f.commit('new.txt', null, 'restore rules and remove note');
+  const result = f.push('elsewhere', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /new.txt \[private-pitch-url\]/u);
+});
 
 test('a clean new branch scans only its own commits, not history the gate already passed', (t) => {
   const f = firstPushFixture(t);
