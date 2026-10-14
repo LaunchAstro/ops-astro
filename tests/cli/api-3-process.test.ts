@@ -5,10 +5,10 @@
 // process against the production server entry on its own port. The owner
 // check's flow (a task, two subtasks, one blocked by the other, a comment)
 // runs from the terminal exactly as a person or agent would type it. The
-// blocking link is planted until WF-2's `task.set_blocking` joins this tree.
+// blocking and resolution go through their named verbs.
 
-import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -58,26 +58,159 @@ describe.skipIf(serverUrl === undefined)('API-3 verbs as a separate process', ()
     }
   });
 
+  it('six named verbs against the served API each make one HTTP round trip', async () => {
+    let requests = 0;
+    const proxy = createServer(async (request, response) => {
+      requests += 1;
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const answer = await fetch(`${(api as ServedApi).origin}${request.url ?? ''}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: request.headers.authorization ?? '',
+        },
+        body: Buffer.concat(chunks),
+      });
+      response.writeHead(answer.status, { 'content-type': 'application/json' });
+      response.end(await answer.text());
+    });
+    await new Promise<void>((resolve) => {
+      proxy.listen(0, '127.0.0.1', resolve);
+    });
+    const address = proxy.address();
+    if (address === null || typeof address === 'string') throw new Error('no loopback port');
+    const env = { ...as(world.ada.token), OPS_ASTRO_API_URL: `http://127.0.0.1:${address.port}` };
+    const call = async (args: string[]) => {
+      const before = requests;
+      const run = await runCli(args, env);
+      expect(requests - before, args.slice(0, 2).join(' ')).toBe(1);
+      return wrote(run);
+    };
+    const revision = async (id: string) => {
+      const rows = await world.db.admin.execute<{ readonly revision: string }>(
+        'select revision::text as revision from public.records where business_id = $1 and id = $2',
+        [world.alpha, id],
+      );
+      return rows[0]?.revision ?? '';
+    };
+    const chartFile = join(scratch, 'six-chart.json');
+    const graduateFile = join(scratch, 'six-graduate.json');
+    writeFileSync(
+      chartFile,
+      JSON.stringify({ title: 'Process map', tickets: [], fog: ['Process fog'] }),
+    );
+    writeFileSync(graduateFile, JSON.stringify({ tickets: [{ title: 'From fog', type: 'task' }] }));
+    try {
+      const map = await call(['map', 'chart', '--body-file', chartFile]);
+      const one = await call(['task', 'create', '--title', 'Process one', '--parent', map.id]);
+      const two = await call(['task', 'create', '--title', 'Process two', '--parent', map.id]);
+      const blocked = await call([
+        'task',
+        'block',
+        two.id,
+        '--revision',
+        two.revision,
+        '--blocked-by',
+        one.id,
+      ]);
+      const claimed = await call(['task', 'claim', one.id, '--revision', one.revision]);
+      await call([
+        'task',
+        'resolve',
+        one.id,
+        '--revision',
+        claimed.revision,
+        '--answer',
+        'Process answer',
+        '--gist',
+        'Process gist',
+      ]);
+      await call([
+        'task',
+        'close',
+        two.id,
+        '--revision',
+        blocked.revision,
+        '--reason',
+        'Outside process map',
+      ]);
+      const patches = await world.db.admin.execute<{ readonly id: string }>(
+        "select id::text as id from public.map_components where business_id = $1 and map_id = $2 and kind = 'fog' and retired_version is null",
+        [world.alpha, map.id],
+      );
+      expect(patches).toHaveLength(1);
+      await call([
+        'map',
+        'graduate',
+        map.id,
+        '--revision',
+        await revision(map.id),
+        '--patch',
+        patches[0]?.id ?? '',
+        '--body-file',
+        graduateFile,
+      ]);
+      const shown = await runCli(['map', 'frontier', map.id, '--json'], env);
+      expect(shown.code, shown.stderr).toBe(0);
+      expect(shown.json).toMatchObject({
+        fog: [],
+        frontier: [expect.objectContaining({ title: 'From fog' })],
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        proxy.close((error) => (error === undefined ? resolve() : reject(error)));
+      });
+    }
+  }, 60_000);
+
   it('API-3 CLI owner check flow from the terminal', async () => {
     const env = as(world.ada.token);
-    const parent = wrote(await runCli(['task', 'create', '--title', 'from the terminal'], env));
+    const parent = wrote(
+      await runCli(['task', 'create', '--title', 'from the terminal', '--type', 'map'], env),
+    );
     const one = wrote(
       await runCli(['task', 'create', '--title', 'sub one', '--parent', parent.id], env),
     );
     const two = wrote(
       await runCli(['task', 'create', '--title', 'sub two', '--parent', parent.id], env),
     );
-    await world.db.admin.execute(
-      `insert into public.record_links (business_id, id, link_type, from_record_id, to_record_id)
-       values ($1, $2, 'blocks', $3, $4)`,
-      [world.alpha, randomUUID(), one.id, two.id],
-    );
     wrote(
+      await runCli(
+        ['task', 'block', two.id, '--revision', two.revision, '--blocked-by', one.id],
+        env,
+      ),
+    );
+    const commented = wrote(
       await runCli(['task', 'comment', one.id, '--revision', one.revision, '--text', 'on it'], env),
     );
     const shown = await runCli(['task', 'get', two.id, '--detail', 'standard'], env);
     expect(shown.code, shown.stderr).toBe(0);
     expect(shown.stdout).toContain(`blockedBy: ${one.id}`);
+    wrote(
+      await runCli(
+        [
+          'task',
+          'resolve',
+          one.id,
+          '--revision',
+          commented.revision,
+          '--answer',
+          'Finished from the terminal',
+          '--gist',
+          'Terminal proof finished',
+        ],
+        env,
+      ),
+    );
+    const resolved = await runCli(['task', 'get', one.id, '--detail', 'full', '--json'], env);
+    expect(resolved.code, resolved.stderr).toBe(0);
+    expect(resolved.json).toMatchObject({
+      state: { machineCategory: 'completed' },
+      comments: expect.arrayContaining([
+        expect.objectContaining({ body: 'Finished from the terminal' }),
+      ]),
+    });
     const refused = await runCli(['task', 'get', two.id], as(world.noah.token));
     expect(refused.code).toBe(1);
     expect(refused.stdout.trim().split('\n')).toHaveLength(1);
