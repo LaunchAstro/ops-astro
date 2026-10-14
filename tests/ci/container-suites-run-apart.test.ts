@@ -16,8 +16,10 @@ const HERE = 'tests/ci/container-suites-run-apart.test.ts';
 const listed: readonly string[] = (JSON.parse(readFileSync(LIST, 'utf8')) as { suites: string[] })
   .suites;
 
-// A docker call that does more than ask `docker info` starts something.
-const STARTS = /(?:spawn|spawnSync|execFile|execFileSync)\(\s*'docker',\s*(?!\['info'\])/u;
+// Read-only info and inspect calls add no network interface. Other commands
+// remain conservative candidates, including calls with computed arguments.
+const STARTS =
+  /(?:spawn|spawnSync|execFile|execFileSync)\(\s*'docker',(?!\s*\[\s*'(?:info|inspect)'\s*[,\]])/u;
 
 const testFiles = (): string[] =>
   readdirSync('tests', { recursive: true, encoding: 'utf8' })

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's revert ask (20261013213000): the configured approver's one ask that a
+// C80's revert ask (20261014180943): the configured approver's one ask that a
 // live correction be reverted. Its id is what the worker's revert step names.
 // The command judges who may ask, under the correction's lock; this writes the
 // row, once per correction.

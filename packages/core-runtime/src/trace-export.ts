@@ -24,8 +24,14 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
 import { letGo, release, renew, take, type Cursor } from './trace-lease.ts';
 import { owedSince } from './trace-owed.ts';
-import { derivedId, otlp, traceSpan, type TraceSpan } from './trace-span.ts';
+import { derivedId, otlp, traceSpan } from './trace-span.ts';
 import { cellsOf, EVENT_CELLS, type Row } from './trace-read.ts';
+import {
+  MEASUREMENT_COLUMNS,
+  projectMeasurements,
+  type MeasuredTraceSpan,
+  type MeasurementRow,
+} from './trace-measurements.ts';
 
 export type { Cursor } from './trace-lease.ts';
 export { readTaskTrace, TRACE_READ_LIMIT, type ReadSpan } from './trace-read.ts';
@@ -42,7 +48,9 @@ export const TRACE_BATCH = 100;
 /** The trace window, in days (contract 7.5): an event older than it when read is never sent. */
 export const TRACE_WINDOW_DAYS = 30;
 
-type Pending = Row & { readonly past: boolean };
+type ExportRow = Row & MeasurementRow;
+type Pending = ExportRow & { readonly past: boolean };
+const EXPORT_CELLS = `${EVENT_CELLS}, ${MEASUREMENT_COLUMNS}`;
 
 /** The database side the exporter needs: one business's tenant transactions. */
 export interface TraceDatabase {
@@ -82,7 +90,7 @@ export async function exportOnce(
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
     }
-    const owed = await owedSince<Row>(tx, EVENT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
+    const owed = await owedSince<ExportRow>(tx, EXPORT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
     const fresh = rows.filter((row) => !row.past);
     return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh) };
   });
@@ -121,7 +129,10 @@ export async function exportOnce(
  * resend then asks no more of the target than a plain export does, and the
  * earliest span still leaves first.
  */
-async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapCode | null> {
+async function send(
+  deliver: Deliver,
+  spans: readonly MeasuredTraceSpan[],
+): Promise<GapCode | null> {
   const code = gapOf(await deliver(otlp(spans)));
   if (code !== 'target_oversized_body' || spans.length <= TRACE_BATCH) return code;
   const half = Math.ceil(spans.length / 2);
@@ -129,8 +140,11 @@ async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapC
 }
 
 /** The owed events in bodies of `TRACE_BATCH`, the batch's own (up to `TRACE_BATCH` more) with the last; none when both are empty. */
-function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readonly Row[])[] {
-  const bodies: (readonly Row[])[] = [];
+function bodiesOf(
+  owed: readonly ExportRow[],
+  fresh: readonly ExportRow[],
+): readonly (readonly ExportRow[])[] {
+  const bodies: (readonly ExportRow[])[] = [];
   for (let at = 0; at < owed.length; at += TRACE_BATCH) {
     bodies.push(owed.slice(at, at + TRACE_BATCH));
   }
@@ -146,7 +160,7 @@ function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readon
  */
 async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[]> {
   return await tx.query<Pending>(
-    `select ${EVENT_CELLS},
+    `select ${EXPORT_CELLS},
             ev.created_at < now() - make_interval(days => $5) as past
        from public.run_events ev
       where ev.business_id = $1
@@ -158,12 +172,13 @@ async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[
   );
 }
 
-function spanOf(key: Buffer, businessId: string, row: Row): TraceSpan {
-  return traceSpan({
+function spanOf(key: Buffer, businessId: string, row: ExportRow): MeasuredTraceSpan {
+  const span = traceSpan({
     traceId: derivedId(key, ['trace', businessId, row.runId], 32),
     spanId: derivedId(key, ['span', businessId, row.id], 16),
     ...cellsOf(row),
   });
+  return { ...span, measurements: projectMeasurements(row) };
 }
 
 async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> {

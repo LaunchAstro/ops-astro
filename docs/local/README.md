@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Nine companion files describe the parts:
+does not do. Companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
@@ -18,6 +18,8 @@ does not do. Nine companion files describe the parts:
 - [OLLAMA.md](OLLAMA.md): the agent side panel on Qwen or Gemma through Ollama
 - [OPENROUTER.md](OPENROUTER.md): the side panel on a paid model through OpenRouter, held against the AI chat budget
   on the same machine as the API (`ollama`).
+- [LANGFUSE.md](LANGFUSE.md): inspect the existing M5 trace target and stage
+  the no-content exporter without changing running services.
 
 If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
 how a request travels, what to check before restarting anything, which command

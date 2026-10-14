@@ -6,7 +6,7 @@
 
 /**
  * Table grants: a site is moved by column grant, never deleted; a page is bound and unbound; a
- * revert ask (20261013213000) is written once and never changed or removed.
+ * revert ask (20261014180943) is written once and never changed or removed.
  */
 export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'party_sites'],
