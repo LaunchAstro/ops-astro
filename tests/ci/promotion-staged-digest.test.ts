@@ -205,7 +205,7 @@ describe('the promotion judges staging’s record again after its waits', () => 
     ['conflicting', stagingLine(STAGED, OTHER_DIGEST)],
     ['malformed', '{"torn'],
     ['invalid digest', stagingLine(STAGED, 'sha256:short')],
-  ])('a %s line appended during the service check prevents migration', async (_case, appended) => {
+  ])('%s content appended during the service check prevents migration', async (_case, appended) => {
     const root = store({ [named(STAGED)]: STAGED });
     const folder = staged(root);
     const line = typeof appended === 'string' ? appended : JSON.stringify(appended);
@@ -213,7 +213,10 @@ describe('the promotion judges staging’s record again after its waits', () => 
     const { calls, effects } = watched({ services: append });
     const outcome = await promote(request({ store: root, records: folder }), effects);
     expect(calls).toStrictEqual(['services']);
-    expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/staging/u) });
+    expect(outcome).toMatchObject({
+      kind: 'refused',
+      reason: expect.stringMatching(/nothing was migrated or promoted/u),
+    });
   });
 
   it('an unrelated line appended during the service check still promotes', async () => {
