@@ -15,6 +15,8 @@ import { readTokenFileLocked } from '../../packages/core-custody/src/token-file.
 import { withTokenLock } from '../../packages/core-custody/src/token-lock.ts';
 import { HOUR, T0, runChild, seed, tempDir, tokens } from './fixtures/plan-token-world.ts';
 
+const darwin = process.platform === 'darwin';
+
 const noop = (): void => {};
 const soon = (): { deadlineAt: number } => ({ deadlineAt: Date.now() + 1_000 });
 const acl = (entry: string, path: string): void => {
@@ -49,7 +51,8 @@ it.each([
   }
 });
 
-it.each([
+// macOS-only ACL and immutable-flag refusal cases.
+it.runIf(darwin).each([
   [
     'chflags uchg',
     (l: string) => execFileSync('/usr/bin/chflags', ['uchg', l]),
@@ -94,7 +97,8 @@ it('healthy: a writable 0600 lock holds and a child contender lapses', async () 
   }
 });
 
-it.each([
+// macOS-only ACL and immutable-flag refusal cases.
+it.runIf(darwin).each([
   ['directory', 'everyone allow list,search,add_file,delete_child'],
   ['lock', 'everyone allow read'],
   ['token', 'everyone allow read'],
