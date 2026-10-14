@@ -12,8 +12,11 @@ import { parseArgs } from 'node:util';
 import type { Context } from 'hono';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import type { Make, Run } from './agent-login-acting.ts';
+import type { Act, Make, Run } from './agent-login-acting.ts';
+import { admission } from './agent-login-admission.ts';
 import { makeAct, type At } from './agent-login-phases.ts';
+import { restoreAdmission } from './agent-login-restore.ts';
+import { stopAct } from './agent-login-stop.ts';
 import { recordDeployment, requireOperator } from './operator.ts';
 import { databaseProject, projectRefs, Refusal } from './staging-reset.ts';
 
@@ -69,18 +72,21 @@ export function makeInput(environment: Environment, args: readonly string[]): Ma
   try {
     parsed = parseArgs({ args: [...args], allowPositionals: true, options: OPTIONS });
   } catch {
-    throw new Refusal('name the act: make --agent <actor id> --email <address>');
+    throw new Refusal('name the act: make|stop|restore --agent <actor id> [--email <address>]');
   }
   const { positionals, values } = parsed;
-  if (positionals.length !== 1 || positionals[0] !== 'make')
-    throw new Refusal('name one act: make');
+  const [named] = positionals;
+  if (positionals.length !== 1 || (named !== 'make' && named !== 'stop' && named !== 'restore'))
+    throw new Refusal('name one act: make, stop or restore');
   const agentId = values.agent ?? '';
   if (!UUID.test(agentId)) throw new Refusal('--agent is not an actor id');
-  const address = /^([^@+\s]+)@([^@\s]+\.[^@\s]+)$/u.exec(values.email ?? '');
-  if (address === null) throw new Refusal('--email is not an address without a +');
+  // A stop names no address: it acts on whatever login the agent holds.
+  const address = /^([^@+\s]+)@([^@\s]+\.[^@\s]+)$/u.exec(values.email ?? '') ?? [];
+  if (named !== 'stop' && address.length === 0)
+    throw new Refusal('--email is not an address without a +');
   const production = values.production === true;
   oneProject(environment, production);
-  return { agentId, local: address[1] ?? '', domain: address[2] ?? '', production };
+  return { act: named, agentId, local: address[1] ?? '', domain: address[2] ?? '', production };
 }
 
 /** The addresses as connected: a test's throwaway server serves no TLS (plaintext-at-loopback.mjs). */
@@ -119,16 +125,10 @@ function stopped(error: unknown): string {
     : 'the act stopped';
 }
 
-/** The make on the gate's connections; a cross-business read needs an owner login reading every row. */
-async function act(run: Run, password: string, at: At): Promise<{ status: 0; lines: string[] }> {
-  const [owner] = await run.admin.execute<{ reads: boolean }>(
-    'select rolsuper or rolbypassrls as reads from pg_roles where rolname = current_user',
-  );
-  if (owner?.reads !== true)
-    throw new Refusal("DATABASE_ADMIN_URL's login cannot read every business's logins");
-  const { act: done, already } = await makeAct(run, password, at);
+/** The act's line in the deployment record, after its commit: names, never a secret. */
+async function record(run: Run, done: Act): Promise<void> {
   await recordDeployment(run.gate, {
-    act: 'agent-login make',
+    act: `agent-login ${done.act}`,
     id: done.id,
     phase: done.phase,
     businessId: run.businessId,
@@ -136,10 +136,51 @@ async function act(run: Run, password: string, at: At): Promise<{ status: 0; lin
     login: done.login_id,
     providerSubject: done.provider_subject,
     item: done.custody_item,
-    ban: null,
+    ban: done.ban,
   });
+}
+
+/** What a stop says it did, from its receipts. */
+function stopSaid(run: Run, receipts: readonly Act[]): string {
+  const last = receipts.at(-1);
+  if (last === undefined) return `already stopped: agent ${run.make.agentId} holds no live login`;
+  const ban =
+    last.ban === 'shared'
+      ? 'its sign-in is live in another business, so no session was ended and no ban made there'
+      : 'every session of its sign-in is ended and its provider user banned';
+  return `stopped: agent ${run.make.agentId} is off, its delegations revoked; ${last.ban === null ? 'it held no login' : ban}`;
+}
+
+/** The act on the gate's connections; a cross-business read needs an owner login reading every row. */
+async function act(
+  run: Run,
+  password: () => Promise<string>,
+  at: At,
+): Promise<{ status: 0 | 1; lines: string[] }> {
+  const [owner] = await run.admin.execute<{ reads: boolean }>(
+    'select rolsuper or rolbypassrls as reads from pg_roles where rolname = current_user',
+  );
+  if (owner?.reads !== true)
+    throw new Refusal("DATABASE_ADMIN_URL's login cannot read every business's logins");
+  if (run.make.act === 'stop') {
+    const receipts = await stopAct(run);
+    for (const receipt of receipts)
+      // oxlint-disable-next-line no-await-in-loop -- one line per receipt, in order
+      await record(run, receipt);
+    return { status: 0, lines: [`agent-login: ${stopSaid(run, receipts)}`] };
+  }
+  const secret = await password();
+  if (secret.length < 16)
+    return {
+      status: 1,
+      lines: ['agent-login: refused: no password from custody on standard input.'],
+    };
+  const admit = run.make.act === 'restore' ? restoreAdmission : admission;
+  const { act: done, already } = await makeAct(run, secret, at, admit);
+  await record(run, done);
+  const verb = run.make.act === 'restore' ? 'restored' : 'made';
   const said =
-    `${already ? 'already made' : 'made'}: agent ${run.make.agentId} signs in as login ` +
+    `${already ? `already ${verb}` : verb}: agent ${run.make.agentId} signs in as login ` +
     `${done.login_id ?? ''}, its password in custody item "${done.custody_item}"; ` +
     'the probe answered as the agent.';
   return { status: 0, lines: [`agent-login: ${said}`] };
@@ -162,18 +203,12 @@ export async function runAgentLogin(
   const env = reached(environment as Readonly<Record<string, string>>);
   const gate = await requireOperator(env);
   if (!gate.ok) return { status: 1, lines: [`agent-login: refused: ${gate.reason}`] };
-  const password = await readPassword();
-  if (password.length < 16)
-    return {
-      status: 1,
-      lines: ['agent-login: refused: no password from custody on standard input.'],
-    };
   const admin = connectAsAdmin(env['DATABASE_ADMIN_URL'] ?? '', { source: 'admin' });
   const runtime = connect(env['DATABASE_URL'] ?? '', { source: 'runtime' });
   const { businessId } = gate.operator;
   const run: Run = { env, make, gate, businessId, admin, runtime, verify: verifierFor(env) };
   try {
-    return await act(run, password, options.at ?? (async () => {}));
+    return await act(run, readPassword, options.at ?? (async () => {}));
   } catch (error) {
     return {
       status: 1,

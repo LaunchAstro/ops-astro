@@ -28,15 +28,16 @@ import { Refusal } from './staging-reset.ts';
 
 export type Execute = AdminConnection['execute'];
 
-/** What a make is asked to do, read before anything connects. */
+/** What a run is asked to do, read before anything connects. */
 export interface Make {
+  readonly act: 'make' | 'stop' | 'restore';
   readonly agentId: string;
   readonly local: string;
   readonly domain: string;
   readonly production: boolean;
 }
 
-/** One row of `ops.agent_login_acts`, as make reads it. */
+/** One row of `ops.agent_login_acts`. */
 export interface Act {
   readonly id: string;
   readonly act: string;
@@ -45,7 +46,11 @@ export interface Act {
   readonly provider_subject: string | null;
   readonly custody_item: string;
   readonly login_id: string | null;
-  readonly phase: 'reserved' | 'user_made' | 'bound' | 'probed';
+  readonly phase: 'reserved' | 'user_made' | 'bound' | 'probed' | 'stopped';
+  readonly ban: 'owed' | 'done' | 'shared' | null;
+  readonly actor_was_active: boolean | null;
+  readonly actor_deactivated_at: Date | null;
+  readonly stopped_at: Date | null;
   readonly closed_at: Date | null;
 }
 
@@ -151,7 +156,7 @@ export async function signedIn(run: Run): Promise<VerifiedSubject> {
 
 async function actOnce<T>(
   run: Run,
-  subject: string | null,
+  subject: string | readonly string[] | null,
   body: (execute: Execute) => Promise<T>,
 ): Promise<T> {
   // On the owner login as the gate resolved it, before the transaction takes its one connection.
@@ -163,7 +168,10 @@ async function actOnce<T>(
       const tx = { businessId: run.businessId, query: execute };
       await execute(`select set_config('app.business_id', $1, true)`, [run.businessId]);
       await advisoryLock(tx, `agent-login:${run.businessId}:${run.make.agentId}`);
-      if (subject !== null) await lockLoginFactors(tx, subject);
+      const subjects = typeof subject === 'string' ? [subject] : (subject ?? []);
+      for (const one of subjects.toSorted((a, b) => a.localeCompare(b)))
+        // oxlint-disable-next-line no-await-in-loop -- each subject's lock, in sorted order
+        await lockLoginFactors(tx, one);
       // The bearer is judged after each wait, never carried across one: it may expire meanwhile.
       release = await holdOperator(run, await signedIn(run));
       await signedIn(run);
@@ -180,7 +188,7 @@ async function actOnce<T>(
 /** One acting transaction; a deadlock or a serialisation failure retries it once. */
 export async function acting<T>(
   run: Run,
-  subject: string | null,
+  subject: string | readonly string[] | null,
   body: (execute: Execute) => Promise<T>,
 ): Promise<T> {
   try {
@@ -196,21 +204,23 @@ export async function acting<T>(
 export async function admitted(
   execute: Execute,
   run: Run,
-): Promise<{ ownerActor: string; name: string }> {
+  active = true,
+): Promise<{ ownerActor: string; name: string; owner: string; deactivatedAt: Date | null }> {
   const [agent] = await execute<{
     kind: string;
     active: boolean;
+    deactivated_at: Date | null;
     display_name: string | null;
-    owner_person_id: string | null;
+    owner_person_id: string;
   }>(
-    `select kind, active, display_name, owner_person_id from public.actors
+    `select kind, active, display_name, owner_person_id, deactivated_at from public.actors
       where business_id = $1 and id = $2 for update`,
     [run.businessId, run.make.agentId],
   );
   if (agent === undefined)
     throw new Refusal(`--agent is not an agent of ${run.gate.operator.business}`);
   if (agent.kind !== 'agent') throw new Refusal('--agent names a person, not an agent');
-  if (!agent.active) throw new Refusal('the agent is not active');
+  if (active && !agent.active) throw new Refusal('the agent is not active');
   if (agent.display_name === null) throw new Refusal('the agent has no name for its custody item');
   const memberships = await execute<{ active: boolean }>(
     'select active from public.memberships where business_id = $1 and person_id = $2 order by id for share',
@@ -222,7 +232,8 @@ export async function admitted(
     [run.businessId, agent.owner_person_id],
   );
   if (!memberships.some((row) => row.active) || person === undefined) throw new Refusal(OWNER_LEFT);
-  return { ownerActor: person.id, name: agent.display_name };
+  const { display_name: name, owner_person_id: owner, deactivated_at: deactivatedAt } = agent;
+  return { ownerActor: person.id, name, owner, deactivatedAt };
 }
 
 /** The agent's mappings, locked; the live ones' logins. */
@@ -246,47 +257,4 @@ export async function subjectFree(
     [subject, own],
   );
   if (rows.length > 0) throw new Refusal("the provider's user is already a login of a business");
-}
-
-/** What admission decides: already made, resume the open act, or reserve a new generation. */
-export type Admission =
-  | { readonly already: Act }
-  | { readonly open: Act }
-  | { readonly fresh: { readonly email: string; readonly item: string } };
-
-/**
- * A make's admission: already made when its make act's login is the one
- * live mapping; otherwise an active agent whose owner is active, with
- * no live mapping but its open act's own, an address no other act holds, and
- * a stamped subject that no business's login holds but this act's.
- */
-export async function admission(execute: Execute, run: Run): Promise<Admission> {
-  const { name } = await admitted(execute, run);
-  const live = await liveLogins(execute, run);
-  const acts = await execute<Act>(
-    `select * from ops.agent_login_acts where business_id = $1 and agent_actor_id = $2
-      order by created_at for update`,
-    [run.businessId, run.make.agentId],
-  );
-  const open = acts.find((act) => act.closed_at === null);
-  const made = acts.find((act) => act.act === 'make');
-  if (open === undefined && made !== undefined && live.length === 1 && live[0] === made.login_id)
-    return { already: made };
-  const { local, domain, production } = run.make;
-  const email = `${local}+g${open?.generation ?? 1}@${domain}`;
-  if (live.some((login) => login !== open?.login_id)) throw new Refusal(NOT_OURS);
-  const taken = await execute(
-    'select 1 from ops.agent_login_acts where lower(email) = lower($1) and id is distinct from $2',
-    [email, open?.id ?? null],
-  );
-  if (taken.length > 0) throw new Refusal('the address is already used by another act');
-  if (open !== undefined) {
-    if (open.email !== email) throw new Refusal('--email is not the address of the open act');
-    if (open.provider_subject !== null)
-      await subjectFree(execute, open.provider_subject, open.login_id);
-    return { open };
-  }
-  if (made !== undefined) throw new Refusal('the agent was made already');
-  const item = `Ops Astro ${production ? 'Production' : 'Staging'} - ${name} Agent Sign-in g1`;
-  return { fresh: { email, item } };
 }
