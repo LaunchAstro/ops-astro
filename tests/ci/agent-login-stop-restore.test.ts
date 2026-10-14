@@ -245,10 +245,8 @@ async function keepsSecrets(): Promise<void> {
   );
   expect(stopped.status).toBe(0);
   expect(restored.status).toBe(0);
-  const record = readFileSync(
-    join(world.env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl'),
-    'utf8',
-  );
+  const journalPath = join(world.env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl');
+  const record = readFileSync(journalPath, 'utf8');
   const stored = JSON.stringify(await actsOf(world, agent));
   for (const value of [password, ...world.secrets])
     for (const where of [stopped.printed, restored.printed, record, stored])
