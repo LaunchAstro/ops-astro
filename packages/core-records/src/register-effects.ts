@@ -107,6 +107,14 @@ export const EFFECT_ROWS = [
     meaning: "A subscription never carries another person's work",
     source: 'AW-01, LF-5',
   },
+  // Owner line 72 by source: a task or conversation with a client is refused
+  // on every subscription route, before any route is chosen.
+  {
+    code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK',
+    status: 403,
+    meaning: "A subscription never carries work on a client's task",
+    source: 'AW-01, owner line 72',
+  },
   {
     code: 'RATE_LIMITED',
     status: 409,
@@ -124,5 +132,39 @@ export const EFFECT_ROWS = [
     status: 409,
     meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
     source: 'AW-01, O6, O9',
+  },
+  // #1531: one call per message, and calls carried to the model agent.
+  {
+    code: 'STILL_ANSWERING',
+    status: 409,
+    meaning: "The message's one model call is still with the model; its answer is on its way",
+    source: '#1531',
+  },
+  {
+    code: 'ANSWER_ENDED',
+    status: 409,
+    meaning: "The message's one model call ended with nothing kept; send the message again",
+    source: '#1531',
+  },
+  {
+    code: 'CARRIAGE_UNAVAILABLE',
+    status: 409,
+    meaning:
+      "The deployment's model agent is not a member of this conversation, so nothing was sent",
+    source: '#1531',
+  },
+  // #1508: the paid chat's held path.
+  {
+    code: 'PROMPT_TOO_LARGE',
+    status: 422,
+    meaning: "The paid model's request would be past its size limit, so nothing was held or sent",
+    source: '#1508',
+  },
+  {
+    code: 'CUSTODY_NOT_ADMITTED',
+    status: 409,
+    meaning:
+      'The paid send was no longer admitted at the handoff, so nothing was sent and the hold was freed',
+    source: '#1508',
   },
 ] as const;

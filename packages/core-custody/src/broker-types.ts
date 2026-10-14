@@ -31,6 +31,8 @@ export interface ProviderAdapter {
     streamed?: boolean,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
+  /** The most bytes a built request's body may hold; a paid call above it is refused before its hold. */
+  readonly bodyLimit?: number;
   readonly lookup?: (operationId: string) => AdapterRequest;
   readonly readLookup?: (body: unknown) => string | undefined;
 }
@@ -68,11 +70,22 @@ export interface BrokerRoute {
  */
 export interface AuditNote {
   readonly action:
-    'model.call_dispatched' | 'model.call_released' | 'model.call_refused' | 'model.call_held';
+    | 'model.call_dispatched'
+    | 'model.call_released'
+    | 'model.call_refused'
+    | 'model.call_held'
+    // A paid answer whose call another writer had already ended: no money moved, nothing kept.
+    | 'model.call_settle_lost';
   readonly outcome: 'applied' | 'refused';
   /** Set on a refusal, from the refusal register. */
   readonly refusalCode: BrokerRefusal | null;
   readonly detail: Readonly<Record<string, unknown>>;
+}
+
+/** The deployment's carrier: its model agent, and the people it carries calls for. */
+export interface Carrier {
+  readonly agent: string;
+  readonly people: readonly string[];
 }
 
 export interface Broker {
@@ -87,6 +100,14 @@ export interface Broker {
    * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
    */
   readonly localOwnerTesting?: boolean;
+  /**
+   * `OPS_OUTSIDE_MODEL_PEOPLE` (#1508): the `businessId:personId` pairs whose own
+   * typed words may go to the outside paid route (`carriesOutside`). Absent or
+   * empty, nobody's do.
+   */
+  readonly outsidePeople?: readonly string[];
+  /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
+  readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
 }
@@ -115,6 +136,28 @@ export interface ResolvedField {
   readonly name: string;
   readonly source: FieldSource;
   readonly value: string;
+  /** The broker found it the owner's own work, with no client in it (owner line 72). */
+  readonly ownerWork?: boolean;
+}
+
+/** What a paid call asks of the caller, inside a transaction opened as them. */
+export interface PaidCaller {
+  /** After the call's own lock: whether the send still rests on live facts. */
+  readonly stillAdmitted: () => Promise<boolean>;
+  /** Keeps the answer as the reply, in the settling transaction; false when it cannot be. */
+  readonly keep: (text: string) => Promise<boolean>;
+}
+
+export interface PaidSeams {
+  /** Who wrote each person turn the call sends: the asked message and the earlier ones. */
+  readonly authors: readonly string[];
+  /**
+   * Runs `work` in a transaction as the caller, resolved again from their
+   * session; undefined when they cannot be, or a lock they need is held elsewhere.
+   */
+  readonly asCaller: <T>(
+    work: (tx: TenantQuery, caller: PaidCaller) => Promise<T>,
+  ) => Promise<T | undefined>;
 }
 
 export interface ModelCallRequest {
@@ -148,6 +191,13 @@ export type BrokerRefusal =
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
   | 'LIABILITY_UNKNOWN'
+  // #1531: the message's one call is on its way or ended; the carrier is no member.
+  | 'STILL_ANSWERING'
+  | 'ANSWER_ENDED'
+  | 'CARRIAGE_UNAVAILABLE'
+  // #1508: a paid request past its destination's size; the send no longer admitted at the handoff.
+  | 'PROMPT_TOO_LARGE'
+  | 'CUSTODY_NOT_ADMITTED'
   | CarryRefusal;
 
 export type ModelCallResult =
@@ -166,6 +216,8 @@ export type ModelCallResult =
       readonly callId: string | null;
       readonly words?: string;
       readonly retryAfterSeconds?: number;
+      /** What the allowance has left, on a paid call refused for want of room. */
+      readonly leftMinor?: number;
     }
   | {
       readonly ok: false;

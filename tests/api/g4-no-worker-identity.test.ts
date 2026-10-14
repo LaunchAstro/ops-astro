@@ -44,6 +44,8 @@ const OTHERS = [
   'POST /api/b/:businessKey/account/sessions/end-others',
   'POST /api/b/:businessKey/account/sessions/list',
   'POST /api/b/:businessKey/account/sessions/sign-out',
+  // C39-T: an invitation accepted, signed out, on its one-time link's token alone.
+  'POST /api/enrol',
   'POST /api/session',
   'POST /api/session/end',
 ];
@@ -61,6 +63,7 @@ const SETTINGS = [
   'GATE_SIGNING_KEY_ID',
   'GATE_SIGNING_SECRET',
   'GOTRUE_URL',
+  'MODEL_BROKER_CARRIER',
   'OPS_ASTRO_CRASH_POINT',
   'OPS_ENVIRONMENT',
   // C55: the error sink's web address, never its DSN (ORCH49).

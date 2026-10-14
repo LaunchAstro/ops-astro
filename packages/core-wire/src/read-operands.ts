@@ -86,6 +86,7 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'preference.read': NONE,
   'agent.mine': NONE,
   'access.read': NONE,
+  'invitation.list': NONE,
   'client.list': NONE,
   'operations.read': NONE,
   'privacy.draft_breach_notices': {
@@ -101,7 +102,6 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'chat.conversations': NONE,
   'chat.messages': { conversationId: 'id' },
   'trace.read': RECORD,
-  'harness.read': { runId: 'id' },
   'live_correction.read': { correctionId: 'id' },
   'automation.registry': NONE,
 };

@@ -17,7 +17,12 @@ import { isUuid } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type { ConversationModel } from '../../../core-connectors/src/index.ts';
 import type { ConversationModelsResult } from '../../../core-wire/src/index.ts';
-import { installProvider, modelFacts, offeredModels } from '../commands/conversation-model.ts';
+import {
+  installProvider,
+  modelFacts,
+  offeredModels,
+  outsideListed,
+} from '../commands/conversation-model.ts';
 import { holdsOwnConversations } from '../commands/conversations.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 
@@ -27,11 +32,12 @@ const HOLDS_NOTHING = refuseCommand(
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
 
-const viewOf = ({ id, provider, reach, ceilingMinor }: ConversationModel) => ({
+const viewOf = ({ id, provider, reach, ceilingMinor, label }: ConversationModel) => ({
   id,
   provider,
   reach,
   ceilingMinor,
+  ...(label === undefined ? {} : { label }),
 });
 
 export async function readConversationModels(
@@ -43,7 +49,7 @@ export async function readConversationModels(
   if (!(await holdsOwnConversations(tx, session))) return HOLDS_NOTHING;
   const provider = installProvider();
   if (conversationId === undefined || conversationId === null) {
-    const models = await offeredModels(tx, provider, null);
+    const models = await offeredModels(tx, provider, null, outsideListed(tx, session));
     return { ok: true, models: models.map((model) => viewOf(model)), chosen: null };
   }
   if (!isUuid(conversationId)) {
@@ -55,6 +61,6 @@ export async function readConversationModels(
   }
   const facts = await modelFacts(tx, session, conversationId);
   if (facts === undefined) return refuseNotFound();
-  const models = await offeredModels(tx, provider, facts);
+  const models = await offeredModels(tx, provider, facts, outsideListed(tx, session));
   return { ok: true, models: models.map((model) => viewOf(model)), chosen: facts.model };
 }

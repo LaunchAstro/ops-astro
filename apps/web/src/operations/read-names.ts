@@ -100,10 +100,10 @@ export const READ_NAMES = [
   'inbox.unattended',
   // A task's runs' trace (AW-13 readers), for `operations:read`.
   'trace.read',
-  // The harness test's result on one run (AW-12); no screen draws it yet.
-  'harness.read',
   // One live correction's decision, read again for its card (C80).
   'live_correction.read',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.
   'automation.registry',
 ] as const;

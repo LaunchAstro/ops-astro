@@ -128,9 +128,10 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, 
     const picked = await harness.asAgent('task.pickup', { reservationId });
     return { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] };
   }
-  // `model.call` and AW-11's child work answer on the agent prefix only: the person path
-  // refuses it whatever the gate says, so any body shows it writes nothing.
-  if (['model.call', 'run.delegate_child', 'run.child_handback'].includes(declaration.name)) {
+  // `model.call`, AW-11's child work and the take answer on the agent prefix only: the person
+  // path refuses it whatever the gate says, so any body shows it writes nothing.
+  const agentOnly = ['model.call', 'run.delegate_child', 'run.child_handback', 'task.take_launch'];
+  if (agentOnly.includes(declaration.name)) {
     return {};
   }
   const prepared = await harness.positiveBody(declaration);

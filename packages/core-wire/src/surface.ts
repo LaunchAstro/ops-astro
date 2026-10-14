@@ -34,6 +34,7 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
+import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -144,9 +145,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
-  // Launch from the task: a person who directs the task's agent opens a run
-  // for it (`tasks-launch.ts`). Never an agent's.
-  declare('task.launch', 'assign'),
+  // Launch from the task, and its agent taking it, in their own file.
+  ...LAUNCH_SURFACE,
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
@@ -813,11 +813,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record scope and, inside it, the task's own read. Never an agent: no
   // agent-reachable operation returns a trace (the ticket's `no agent read`).
   read('trace.read', 'operations', { authorisedOn: 'record' }),
-  // AW-12: the harness test's result on one run, computed from its frozen
-  // manifest. `read` on tasks, asked inside the statement on the run's task
-  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
-  // framework under test reaches its own verdict.
-  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {
@@ -880,10 +875,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['conversationId'],
   }),
 
-  // C39-T: `access:share` on the whole business, a person's key no agent holds
-  // (the permission key catalogue). Another business's invitation is
-  // NOT_FOUND from the handler, as an id nobody issued. An administrator's
-  // invitation, created or resent, also asks `access:manage` in the handler.
+  // C39-T: `access:share` on the whole business, a person's key no agent holds, and the list
+  // reads under it too. Another business's invitation is NOT_FOUND from the handler, as an id
+  // nobody issued; an administrator's, created or resent, also asks `access:manage` there.
   ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
     declare(name, 'share', {
       collection: 'access',
@@ -891,6 +885,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
     }),
   ),
+  read('invitation.list', 'access', { action: 'share' }),
   // Settings ▸ Workflow triggers (C33). The registry is a business fact read
   // like `settings.read`; an activation is changed under `settings:manage` and
   // a version released under `automation:manage`, both business-wide and

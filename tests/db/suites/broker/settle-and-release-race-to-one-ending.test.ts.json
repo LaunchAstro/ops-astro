@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid call ends once against the sweep and the owner's recorded outcome: the late writer moves no money, keeps no reply, and the loss is recorded"
+}

@@ -35,6 +35,7 @@ import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from 
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
+import { readTicketMap } from './ticket-map.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -60,7 +61,7 @@ import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
-import { readHarnessTrigger } from './harness-trigger.ts';
+import { listInvitations } from './invitations.ts';
 import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
@@ -145,6 +146,20 @@ const NO_GRANT_AT_ALL = refuseCommand(
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
+
+/** What a member's task detail adds: the Client field's facts and the ticket's map. */
+async function memberFacts(
+  tx: TenantQuery,
+  session: Session,
+  spine: { readonly taskTypeId: string },
+  taskId: string,
+) {
+  const subjects = subjectsOf(session);
+  return {
+    ...(await readClientFacts(tx, taskId, subjects)),
+    map: await readTicketMap(tx, spine.taskTypeId, taskId, subjects),
+  };
+}
 
 /** A live task that is not a map is named as one; anything else is not there. */
 async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
@@ -301,11 +316,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
-      // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view carry neither, at any detail level.
-      const shown = agent
-        ? task
-        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      // The Client field's facts (MP-4-8) and the ticket's map go to a member
+      // alone: an agent's detail and the shared view carry neither, at any
+      // detail level.
+      const shown = agent ? task : { ...task, ...(await memberFacts(tx, session, spine, task.id)) };
       if (operands.detail !== undefined) {
         const blockers = await readerBlockers(tx, session, recordId);
         return {
@@ -778,6 +792,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, clients };
     },
   },
+  // C39-T. The business's invitations, under `access:share` on the business,
+  // which no agent holds. No subject record, as for `access.read`.
+  'invitation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await listInvitations(tx),
+  },
   // C55. The business's own operations, so no subject record; it asks
   // `read` on `operations`, which no agent holds. Its unattended items are
   // `inbox.unattended`'s, read for the same caller.
@@ -911,24 +935,6 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return trace === null
         ? refuseNotFound()
         : { ok: true, trace: { taskId: recordId, ...trace } };
-    },
-  },
-  // AW-12: the harness test's result on one run. No subject record and no
-  // spine: the run names its task, and the read filters it by the caller's
-  // task `read` inside its statement (`reads/harness-trigger.ts`), so the
-  // door asks for any grant and the read refuses the rest itself.
-  'harness.read': {
-    identifiers: ['runId'],
-    parse: ({ runId }) =>
-      typeof runId === 'string'
-        ? parsed({ runId })
-        : rejected('runId', 'Send runId as the run’s identifier.'),
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    async serve(tx, session, { runId }) {
-      const harness = await readHarnessTrigger(tx, session, runId);
-      return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
   // C80: a correction's decision; `run:write` at its party, asked inside the query.

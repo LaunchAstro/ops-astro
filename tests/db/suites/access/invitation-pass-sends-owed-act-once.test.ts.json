@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C39-T and AW-07b: the mail unit's invitation pass sends an owed invitation act once, under the business's worker; two passes at once make one provider request, and a resend in flight is a second act, two emails in all, never three"
+}

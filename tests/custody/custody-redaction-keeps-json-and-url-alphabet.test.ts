@@ -39,7 +39,7 @@ function copyWithoutUrlAlphabet(folder: string): string {
   const testFile = 'tests/custody/custody-redacts-escaped-credential.test.ts';
   cpSync(join(ROOT, testFile), join(folder, testFile));
   symlinkSync(join(ROOT, 'node_modules'), join(folder, 'node_modules'), 'dir');
-  const product = join(folder, 'packages/core-custody/src/custody-main.ts');
+  const product = join(folder, 'packages/core-custody/src/redaction.ts');
   const source = readFileSync(product, 'utf8');
   const branch = "return [stable, stable.replaceAll('+', '-').replaceAll('/', '_')];";
   expect(source.includes(branch), 'negative control must remove the URL alphabet branch').toBe(

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C39-T and AW-07b: the mail unit sends an owed invitation only under an active worker of the business, held inside the send's reservation; a deactivated or foreign worker writes no token and no asked row, and the provider hears nothing"
+}

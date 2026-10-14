@@ -119,6 +119,13 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
     'chat.leave': ['conversationId', 'c71-g'],
   };
 
+/** An agent login's own operation: a person is refused by design, so the comparison runs on the agent entry. */
+const AGENT_ENTRY: Readonly<Partial<Record<CommandName, string>>> = {
+  'task.take_launch':
+    'executed alternative: taking-a-launch-is-the-launched-agents-alone.test.ts compares ' +
+    'another agent’s launchId and a fabricated one by the whole refusal, on the agent entry',
+};
+
 /** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
@@ -136,18 +143,13 @@ export function alternativeFor(name: CommandName): string | undefined {
       `${own[0]} by status and raw bytes, audited at home`
     );
   }
+  const agentEntry = AGENT_ENTRY[name];
+  if (agentEntry !== undefined) return agentEntry;
   if (name === 'run.child_handback') {
     // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"
-    );
-  }
-  if (name === 'harness.read') {
-    // AW-12: the body names a run, not a task, so the (c) and (d) cells' recordId misses it.
-    return (
-      'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
-      "compares another business's run and a fabricated one by status and bytes"
     );
   }
   if (name === 'invitation.resend' || name === 'invitation.revoke') {

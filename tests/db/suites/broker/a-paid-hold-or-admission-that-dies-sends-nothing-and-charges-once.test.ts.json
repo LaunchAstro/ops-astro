@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the paid hold and admission failed or cut at a named statement, two connections on one message, and the same message after each ending: one row, one hold, at most one request"
+}

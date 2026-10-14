@@ -23,8 +23,16 @@ export {
   type CredentialQuota,
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
+export { withCarrier } from './commands/context.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { runLiveRevert } from './commands/live-correction-revert.ts';
+export {
+  proposalForBinding,
+  proposeCorrection,
+  type ProposePorts,
+  type ProposeResult,
+  type SeamReads,
+} from './commands/live-correction-propose.ts';
 export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
 export {
   runLivePublish,
@@ -81,7 +89,6 @@ export {
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { admitConversations, hearsConversation } from './reads/live-chat.ts';
 export { isReadName } from './reads/catalogue.ts';
-export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {
   HEALTH_STALE_SECONDS,
   readServiceHealth,
@@ -120,6 +127,7 @@ export {
   type FactorCaller,
 } from './commands/account-factor.ts';
 export {
+  type EnrolAnswer,
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
@@ -137,6 +145,13 @@ export {
   type PasswordResetResult,
   type ResetDependencies,
 } from './commands/account-password.ts';
+export {
+  ACCEPT_OPERATION,
+  acceptInvitation,
+  LOGIN_CREATE_OPERATION,
+  type AcceptCode,
+  type AcceptResult,
+} from './commands/invitation-accept.ts';
 export {
   endOtherSessions,
   listOwnSessions,

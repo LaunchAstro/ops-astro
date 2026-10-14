@@ -2,13 +2,12 @@
 //
 // The surface, checked against the model rather than against itself.
 //
-// Minimum contract 5.3's fourth assertion is the one this file exists for:
-// "for each protected field, the owning operation named in `owning_operation`
-// exists and is reachable through an endpoint. A protected field whose owning
-// operation does not exist is a field nobody can change." The names are in
-// `field_defs`, written per business at install time, so the check reads the
-// installed model and not a list in a module — which is the whole reason T1e
-// put the classification in the data.
+// Minimum contract 5.3's fourth assertion is the one this file exists for: "for each protected
+// field, the owning operation named in `owning_operation` exists and is reachable through an
+// endpoint. A protected field whose owning operation does not exist is a field nobody can
+// change." The names are in `field_defs`, written per business at install time, so the check
+// reads the installed model and not a list in a module — which is the whole reason T1e put the
+// classification in the data.
 //
 // It is also what settles the count. The contract names nine commands and the split is titled
 // after them; the seeded task type names ten owning operations. Nine is not enough for the model
@@ -79,7 +78,7 @@ describe('the surface as a table', () => {
     // with `decide` on tasks. `conversation` is a person's conversation with the agent (AW-03), its
     // writes and its read at its address. `model` is AW-01's call through the broker, asked of the
     // lease's task. `run` is AW-05's budget stop answers; `definition`, AW-04's attribution;
-    // `trace`, AW-13's readers; `harness`, AW-12's result. `operations` and `privacy` are C55's
+    // `trace`, AW-13's readers. `operations` and `privacy` are C55's
     // view and its incident record, and `legal` is C81's documents, asked of `privacy`.
     // `credential` is API-2's agent credential. `time` is MP-4-6's (time entries, rows beside a
     // task); `mandate`, `graduation` MP-14-10a. By piece: `tag` MP-4-11; `chat` C71-D; `invitation`
@@ -108,10 +107,10 @@ const DECLARED_READS = [
   'finance.agent_costs',
   'finance.skill_costs',
   'gate.pending',
-  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'invitation.list',
   'live_correction.read',
   'map.frontier',
   'map.view',
@@ -138,7 +137,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the forty-three reads as reads, and everything else as a write', () => {
+  it('declares the forty-four reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

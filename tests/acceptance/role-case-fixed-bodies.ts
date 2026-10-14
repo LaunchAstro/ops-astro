@@ -36,6 +36,8 @@ const EMPTY: readonly CommandName[] = [
   'inbox.read',
   'inbox.count',
   'inbox.unattended',
+  // C39-T's `invitation.list` asks `access:share`, which the admin holds.
+  'invitation.list',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
   // The reader's own team conversations (C71-D): no operand.
@@ -92,7 +94,6 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
 export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name) || name === 'agent.create') return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
-  if (name === 'harness.read') return { runId: randomUUID() };
   if (name === 'live_correction.read') return { correctionId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };

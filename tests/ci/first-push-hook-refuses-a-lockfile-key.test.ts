@@ -45,12 +45,16 @@ it('the first-push hook refuses a detectable credential appended to the lockfile
     writeFileSync(join(scratch, 'pnpm-lock.yaml'), lockfile);
     git('add', '.');
     git('commit', '-qm', 'clean control');
+    // A push without the private list is refused; the list lives outside the
+    // repository it scans.
+    const terms = join(scratch, '.git', 'terms.txt');
+    writeFileSync(terms, 'zq-made-up-term\n');
     const hook = () =>
       spawnSync('sh', ['-e', '.husky/pre-push'], {
         cwd: scratch,
         encoding: 'utf8',
         input: `refs/heads/main ${git('rev-parse', 'HEAD')} refs/heads/main ${'0'.repeat(40)}\n`,
-        env: { PATH: process.env['PATH'], HOME: scratch },
+        env: { PATH: process.env['PATH'], HOME: scratch, HUB_GATE_TERMS: terms },
       });
     const clean = hook();
     expect(clean.status, clean.stdout + clean.stderr).toBe(0);

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a new conversation answers on the free model; an unlisted person cannot start on or move to the paid model"
+}

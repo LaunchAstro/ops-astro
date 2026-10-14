@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried paid call lost after its write is held at the most once, never sent twice, and records what it was reported to cost"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: a request and a move of its client's providers are held in either order on two connections, the waiting side observed, so a move never commits after an open correction of the client does; and a request rolled back after its insert, wholly or to its savepoint, or two requests on one page, leave a waiting unbind refused only when a correction is stored."
+}

@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { B_FILE, B_PAGE } from './c80-sites.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { grantTo, shareWithClient, type Member } from '../commands/fixture.ts';
@@ -92,7 +93,12 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, another business', 
 
 describe.skipIf(serverUrl === undefined)('C80 decision read, another client', () => {
   it('a grant on party B reads party B’s correction and nothing on party A', async () => {
-    const onB = await requested(w.dee, { partyId: w.partyB, taskId: w.taskB });
+    const onB = await requested(w.dee, {
+      partyId: w.partyB,
+      taskId: w.taskB,
+      pageUrl: B_PAGE,
+      path: B_FILE,
+    });
     const onA = await requested(w.ava);
     expect(readCode(await readAs(w.dee, onB.id))).toBe('not-a-refusal');
     const crossed = await readAs(w.dee, onA.id);

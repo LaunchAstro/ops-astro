@@ -38,6 +38,7 @@ import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
+import { approverConfigured, decisionRefusal } from './live-correction-decision-checks.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export { setApprover } from './live-correction-approver.ts';
@@ -80,6 +81,14 @@ const TASK_ABSENT = refuseCommand(
   ['Name a task in this business for the correction to be worked under.'],
 );
 const PARTY = refuseCommand('CORRECTION_PARTY_MISMATCH', ['partyId'], ['Name the task’s client.']);
+const STORE_REFUSALS = {
+  CORRECTION_PARTY_MISMATCH: PARTY,
+  PAGE_OUTSIDE_PARTY_SITE: refuseCommand(
+    'PAGE_OUTSIDE_PARTY_SITE',
+    ['pageUrl', 'path'],
+    ['Name a page of this client’s own site, and its file, as the site holds them.'],
+  ),
+} as const;
 
 async function taskExists(tx: TenantQuery, taskTypeId: string, taskId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
@@ -145,8 +154,8 @@ export async function storeRequest(
       seam,
     }),
   });
-  // The party is the task's client (P26 low 4): another is refused, and nothing is stored.
-  if ('code' in stored) return refused(PARTY);
+  // The party is the task's client (P26 low 4), the page its site's: else nothing is stored.
+  if ('code' in stored) return refused(STORE_REFUSALS[stored.code]);
   const ended = await endedSince(tx, requester, stored.partyId);
   if (ended !== undefined) return ended;
   return applied(stored.id, stored.revision, {
@@ -157,12 +166,13 @@ export async function storeRequest(
   });
 }
 
-/** The requester's authority read again after the insert's lock wait (`live-correction-standing.ts`). */
+/** After the insert's wait: an approver still set, then the requester's authority again. */
 async function endedSince(
   tx: TenantQuery,
   requester: Requester,
   partyId: string,
 ): Promise<ReturnType<typeof refused> | undefined> {
+  if (!(await approverConfigured(tx))) return refused(UNCONFIGURED);
   const { delegationId } = requester;
   const stood = await standsAfterWaits(tx, {
     covering: { subjects: requester.subjects, collection: RUN_COLLECTION, action: 'write' },
@@ -224,10 +234,8 @@ export async function decideLiveCorrection(
   if (approver.toLowerCase() !== session.personId) return refused(NOT_THE_APPROVER);
   if (correction.state !== 'requested') return refused(DECIDED);
   if (correction.versionId !== request.versionId.toLowerCase()) return refused(STALE);
-  // The gate grant again after the approver setting's wait: one that expired
-  // while the decision waited covers nothing, as a grant that never did.
-  const stood = await standsAfterWaits(tx, { covering: gate, partyId: correction.partyId });
-  if (stood !== 'stands') return refused(NOT_VISIBLE);
+  const after = await decisionRefusal(tx, correction, { gate, unseen: NOT_VISIBLE });
+  if (after !== undefined) return refused(after);
 
   const decided = await writeCorrectionDecision(tx, {
     id: correction.id,

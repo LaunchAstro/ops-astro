@@ -122,6 +122,7 @@ it('AW-07b sender: mail is refused until the sending subdomain verifies DKIM, SP
     dmarc: 'quarantine',
     mock: true,
     checkedAt: expect.any(Number),
+    checkedWallAt: expect.any(Number),
   });
   const item = await itemFor(w.task, 'decision');
   const mail = { ...MAIL, sender: report };

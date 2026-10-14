@@ -97,19 +97,20 @@ const NOTHING_CARRIED = [
   { state: 'refused', route_key: null, route_reach: null, credential_kind: null, account: null },
 ];
 
+// Owner line 72: offered a subscription, the client's refusal names it.
 it.each([
-  ['a cloud key', [CLOUD]],
-  ['a local model', [LOCAL]],
-  ['a subscription', [SUBSCRIPTION]],
-  ['all three', [LOCAL, CLOUD, SUBSCRIPTION]],
+  ['a cloud key', [CLOUD], 'CLIENT_MODEL_USE_OFF'],
+  ['a local model', [LOCAL], 'CLIENT_MODEL_USE_OFF'],
+  ['a subscription', [SUBSCRIPTION], 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK'],
+  ['all three', [LOCAL, CLOUD, SUBSCRIPTION], 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK'],
 ])(
   "C60 route recorded: a client's task offered %s records no route, kind or account",
-  async (_offered, routes) => {
+  async (_offered, routes, code) => {
     const work = await liveWork(s, 'c60 route client', 2_000);
     await forClient(work);
     const seen = world.provider.seen.length;
     const answer = await callAs(work, await workForPerson(work), routes);
-    expect(answer).toMatchObject({ ok: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(answer).toMatchObject({ ok: false, code });
     expect(await carried(answer.ok ? null : answer.callId)).toEqual(NOTHING_CARRIED);
     expect(world.provider.seen.length).toBe(seen);
   },
@@ -158,7 +159,8 @@ it('C60 subscription in own session: with no client, its own person attending is
 
 // Unattended, a subscription checked first would say SUBSCRIPTION_UNATTENDED;
 // attended by its own person, it would pass and record the route. Either way
-// the client's refusal comes first, as the call's step, with nothing carried.
+// the client's refusal comes first, as the call's step, with nothing carried,
+// and names the subscription (owner line 72).
 it.each([
   ['unattended', false],
   ["in its own person's session", true],
@@ -169,7 +171,7 @@ it.each([
     await forClient(work);
     const seen = world.provider.seen.length;
     const answer = await callAs(work, attending ? await workForPerson(work) : null, [SUBSCRIPTION]);
-    expect(answer).toMatchObject({ ok: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(answer).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' });
     expect(await carried(answer.ok ? null : answer.callId)).toEqual(NOTHING_CARRIED);
     expect(world.provider.seen.length).toBe(seen);
   },

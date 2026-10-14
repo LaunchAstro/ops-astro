@@ -124,6 +124,8 @@ export function observed(
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
   if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
   if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
+  // A withheld outcome comes only from a site template route.
+  if (outcome.kind === 'withheld') return { state: 'failed', evidence: 'withheld' };
   if (!outcome.outbound.ok) return { state: 'failed', evidence: outcome.outbound.fault };
   let body: unknown;
   try {

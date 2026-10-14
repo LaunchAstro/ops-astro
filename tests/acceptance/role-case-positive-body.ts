@@ -249,9 +249,11 @@ export function createPositiveBody(
       case 'model.call':
       case 'run.delegate_child':
       case 'run.child_handback':
+      case 'task.take_launch':
         // The run's worker's, never a person's: the person prefix refuses each
         // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
-        // call under its delegation in the agent journey, case (h).
+        // call under its delegation in the agent journey, case (h); the
+        // launched agent takes its launch on its own login.
         return {
           exception:
             'executed alternative: the person prefix refuses it by design; the agent calls it ' +
@@ -264,11 +266,6 @@ export function createPositiveBody(
       case 'run.revise_state':
         // MP-6-2: a proposal's planned run, its state revised under run:write.
         return await revisedRunBody(context, PROPOSAL);
-      case 'harness.read': {
-        // AW-12: the harness result on a proposal's planned run, under the admin's task read.
-        const run = await revisedRunBody(context, PROPOSAL);
-        return 'body' in run ? { body: { runId: run.body['runId'] } } : run;
-      }
       case 'time.start':
       case 'time.stop':
       case 'time.log':

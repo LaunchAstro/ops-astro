@@ -29,11 +29,26 @@ const WORDS: Readonly<Record<string, string>> = {
     'The model chosen for this conversation is not offered for it now, so nothing was sent. ' +
     'Your message is kept; choose another model.',
   BUDGET_UNAVAILABLE:
-    'The chat sends only to models that cost nothing per message, so nothing was sent. ' +
+    'This model is not open to paid replies here, so nothing was sent. ' +
     'Your message is kept; choose another model.',
+  PROMPT_TOO_LARGE:
+    'This conversation is too long for the paid model, so nothing was sent or charged. ' +
+    'Your message is kept; start a new conversation or choose another model.',
+  CUSTODY_NOT_ADMITTED:
+    'Your access or this conversation changed as the answer was being sent, so nothing was ' +
+    'sent or charged. Your message is kept; ask again.',
   LOCAL_PLAN_LIMIT:
     'The ChatGPT plan is at its usage limit, so there is no answer. ' +
     'Your message is kept; ask again once the plan resets.',
+  GPT_SIGNED_OUT:
+    'GPT is not signed in to the ChatGPT plan, so nothing was sent. ' +
+    'Your message is kept; choose another model, or have GPT signed in again.',
+  GPT_WEEK_RESERVED:
+    'GPT’s weekly allowance is nearly used, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
+  GPT_USAGE_UNKNOWN:
+    'The ChatGPT plan did not confirm GPT may be used now, so nothing was sent. ' +
+    'Your message is kept; ask again shortly, or choose another model.',
   MODEL_MACHINE_AWAY:
     'The machine that runs this model is not answering, so nothing was sent. ' +
     'Your message is kept; ask again shortly.',
@@ -57,11 +72,15 @@ const WORDS: Readonly<Record<string, string>> = {
 /** Release reasons told in their own words; any other reads as a release. */
 const OWN_WORDS: ReadonlySet<string> = new Set([
   'LOCAL_PLAN_LIMIT',
+  'GPT_SIGNED_OUT',
+  'GPT_WEEK_RESERVED',
+  'GPT_USAGE_UNKNOWN',
   'MODEL_MACHINE_AWAY',
   'MODEL_MACHINE_BUSY',
   'CARRIAGE_UNAVAILABLE',
   'AUTHORITY_BUSY',
   'SEND_LAPSED',
+  'CUSTODY_NOT_ADMITTED',
 ]);
 
 const UNUSABLE =
@@ -80,6 +99,31 @@ export const refusedWith = (code: string): ConversationReply => ({
  */
 export const releasedWith = (reason: string): ConversationReply =>
   refusedWith(OWN_WORDS.has(reason) ? reason : 'CALL_RELEASED');
+
+/** Whole AUD cents as the panel shows money: `AUD 12.34`. */
+const aud = (minor: number): string =>
+  `AUD ${String(Math.trunc(minor / 100))}.${String(minor % 100).padStart(2, '0')}`;
+
+/** A paid reply past what the AI chat budget has left (#1508). */
+export const budgetWith = (leftMinor: number | undefined): ConversationReply =>
+  leftMinor === undefined
+    ? refusedWith('BUDGET_UNAVAILABLE')
+    : {
+        answered: false,
+        code: 'BUDGET_UNAVAILABLE',
+        words:
+          `The AI chat budget has ${aud(leftMinor)} left, not enough for this reply, so nothing ` +
+          'was sent. Your message is kept; choose a free model, or ask an owner to raise the budget.',
+      };
+
+/** A paid reply whose cost is not known: its most stays set aside (#1508). */
+export const heldWith = (heldMinor: number): ConversationReply => ({
+  answered: false,
+  code: 'LIABILITY_UNKNOWN',
+  words:
+    `This reply's cost is not known yet. ${aud(heldMinor)} stays set aside until an owner ` +
+    'records what happened. Nothing was kept; send your message again to ask again.',
+});
 
 export interface Kept {
   readonly id: string;

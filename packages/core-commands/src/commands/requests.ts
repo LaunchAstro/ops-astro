@@ -139,6 +139,11 @@ export type CommandRequest =
       readonly leaseSeconds?: number;
     } & Envelope)
   | ({
+      readonly command: 'task.take_launch';
+      /** Absent: the caller's own open launch, started before waiting. */
+      readonly launchId?: string;
+    } & Envelope)
+  | ({
       readonly command: 'task.handback';
       readonly leaseId: string;
       /** The fence the pickup handed back. A stale one settles nothing. */

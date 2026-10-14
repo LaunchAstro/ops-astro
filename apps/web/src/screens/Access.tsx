@@ -20,29 +20,44 @@
 // an agent's, by its delegation. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
+//
+// C39-T's: "Invite a team member" sends `invitation.create` under
+// `access:share`, drawn only when `session.capabilities` says the session
+// holds that key (`access/invite.tsx`); the server still refuses anyone else.
+// Under it, the business's invitations from `invitation.list`, each pending
+// one with `invitation.resend` and `invitation.revoke` (`access/invitations.tsx`).
+// It sits beside the access list, not inside it: `access.read` asks
+// `access:manage`, and a holder of `access:share` alone still invites. An
+// administrator's invitation, made or resent, also asks `access:manage`:
+// without it the role is not offered and such a resend is not drawn.
+// Each section has its own outcome line and holds one act at a time.
 
 import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { describeFailure, type SubmitResult } from '../records/submit.ts';
+import type { SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
-import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  AccessReadResult,
+  CapabilitiesResult,
+  PersonView,
+} from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx';
+import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
+import { useAct, type Act } from './access/use-act.tsx';
 
 export interface AccessScreenProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
 }
 
-/** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => void;
-
 const revokeWith =
   (client: OperationsClient, act: Act) =>
   (agent: AccessReadResult['agents'][number]): void => {
-    act(
+    void act(
       () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
       `Revoked the delegation for ${agent.purpose}.`,
     );
@@ -53,20 +68,26 @@ const giveWith =
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    void act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
 
-/** A refusal is drawn as Settings draws one; a success stays a quiet line. */
-const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
-  props.refused ? (
-    <p className="field__error" role="alert" data-access-outcome="refused">
-      {props.text}
-    </p>
-  ) : (
-    <p className="card__sub" role="status" data-access-outcome="done">
-      {props.text}
-    </p>
-  );
+const inviteWith =
+  (client: OperationsClient, act: Act) =>
+  async (invitation: Invitation): Promise<SubmitResult | null> =>
+    await act(
+      () => client.mutate('invitation.create', { ...invitation }),
+      `Invited ${invitation.name}. The invitation is pending until it is accepted, resent, revoked or expires.`,
+    );
+
+const actOnInvitationWith =
+  (client: OperationsClient, act: Act): InvitationAct =>
+  (command, invitation) => {
+    const done = command === 'invitation.resend' ? 'Sent again' : 'Revoked';
+    void act(
+      () => client.mutate(command, { invitationId: invitation.invitationId }),
+      `${done}: the invitation to ${invitation.name}.`,
+    );
+  };
 
 /**
  * The two acts that wait on a confirmation before anything is sent: ending a
@@ -77,14 +98,14 @@ function usePending(client: OperationsClient, act: Act) {
   const [revoking, setRevoking] = useState<Revoking | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
-    act(
+    void act(
       () => client.mutate('access.end', { holderId: person.personId }),
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
   const revokeGrant = ({ person, grant }: Revoking): void => {
     setRevoking(null);
-    act(
+    void act(
       () => client.mutate('access.revoke', { grantId: grant.grantId }),
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
@@ -156,6 +177,37 @@ function AccessLists(props: {
   );
 }
 
+/** C39-T: the invitation form and the business's invitations, for a holder of `access:share`. */
+function InviteSection(props: {
+  readonly client: OperationsClient;
+  readonly busy: boolean;
+  readonly act: Act;
+  readonly canManage: boolean;
+  readonly grantKey: string;
+  readonly version: number;
+  readonly outcome: ReactElement | null;
+}): ReactElement {
+  const { client, act } = props;
+  return (
+    <section className="sec" data-access-section="invitations">
+      {props.outcome}
+      <InviteMember
+        busy={props.busy}
+        canInviteAdmin={props.canManage}
+        onInvite={inviteWith(client, act)}
+      />
+      <Invitations
+        client={client}
+        grantKey={props.grantKey}
+        version={props.version}
+        onAct={actOnInvitationWith(client, act)}
+        canManage={props.canManage}
+        busy={props.busy}
+      />
+    </section>
+  );
+}
+
 export function AccessScreen(props: AccessScreenProps): ReactElement {
   const { client, grantKey } = props;
   const { state, reload } = useRead<AccessReadResult>({
@@ -163,36 +215,43 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<AccessReadResult>('access.read', {}),
     deps: [client],
   });
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = (send, done) => {
-    setBusy(true);
-    void (async () => {
-      const failure = describeFailure(await send());
-      setBusy(false);
-      setOutcome({ text: failure ?? done, refused: failure !== null });
-      if (failure === null) reload();
-    })();
-  };
+  const capabilities = useRead<CapabilitiesResult>({
+    grantKey,
+    run: () => client.read<CapabilitiesResult>('session.capabilities', {}),
+    deps: [client],
+  });
+  const lists = useAct(reload);
+  const invites = useAct(reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
       <p className="card__sub" data-page-lead>
         Who may do what in {client.businessKey}, as the server grants it now.
       </p>
-      <RecordState state={state} subject="access list" onRetry={reload}>
+      <RecordState state={state} subject="access list" onRetry={reload} keep>
         {(result) => (
           <div className="secs">
             <AccessLists
               client={client}
               result={result}
-              busy={busy}
-              act={act}
-              outcome={outcome === null ? null : <Outcome {...outcome} />}
+              busy={lists.busy}
+              act={lists.act}
+              outcome={lists.outcome}
             />
           </div>
         )}
       </RecordState>
+      {holdsAccess(capabilities.state, 'share') ? (
+        <InviteSection
+          client={client}
+          busy={invites.busy}
+          act={invites.act}
+          canManage={holdsAccess(capabilities.state, 'manage')}
+          grantKey={grantKey}
+          version={invites.version}
+          outcome={invites.outcome}
+        />
+      ) : null}
     </div>
   );
 }

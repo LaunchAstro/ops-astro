@@ -55,7 +55,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
-import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
+import { deploymentCarrier, readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
   declarationOf,
@@ -857,7 +857,17 @@ export async function prepareCommand(
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);
-  return { session, declaration, entryPoint, spine, target, request: parsed.request, asked };
+  const carrier = deploymentCarrier();
+  return {
+    session,
+    declaration,
+    entryPoint,
+    spine,
+    target,
+    carrier,
+    request: parsed.request,
+    asked,
+  };
 }
 
 /**

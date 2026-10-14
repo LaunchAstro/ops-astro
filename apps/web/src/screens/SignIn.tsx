@@ -158,9 +158,9 @@ export function SignIn(props: SignInProps): ReactElement {
         {props.ended === null ? null : (
           <div className="banner banner--warn" role="status" data-reason="session-ended">
             <p className="banner__body">
-              Your session has ended and you need to sign in again. The server answered{' '}
-              <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
-              in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
+              wait a minute and sign in again. The server answered <code>{props.ended.code}</code>.
+              Any edit you had not saved was not saved, and signing in to{' '}
+              <strong>{props.ended.businessKey}</strong> will take you back to where you were.
             </p>
           </div>
         )}

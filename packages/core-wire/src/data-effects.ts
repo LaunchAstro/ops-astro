@@ -4,8 +4,7 @@
 // the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects } from './data-effects-types.ts';
-import { business, client, writing } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import {
   CREDENTIAL,
   GRANTS,
@@ -20,7 +19,9 @@ import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 import { CHAT_EFFECTS } from './data-effects-chat.ts';
 import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
+import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
+import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -71,7 +72,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // An assignment raises the assignee's item (INB-1).
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   // A run opened for the task's agent, with the delegation it acts under.
-  'task.launch': writing([...client('task_launches'), ...business('delegations')]),
+  ...LAUNCH_EFFECTS,
   'task.triage': TASK,
   'task.set_stage': TASK,
   // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).
@@ -223,16 +224,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
   // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
-  // AW-12's harness result, AW-11's child work, and the accepted plan.
+  // AW-11's child work and the accepted plan.
   'conversation.allowance': READ,
   'conversation.models': READ,
   'definition.attribution': READ,
   'trace.read': READ,
-  'harness.read': READ,
-  // C39-T: admits no outsider, sends nothing; a create writes its person, expiring a lapsed one.
-  'invitation.create': writing(business('people', 'invitations', 'actors')),
-  'invitation.resend': writing(business('invitations')),
-  'invitation.revoke': writing(business('invitations')),
+  ...INVITATION_EFFECTS,
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),

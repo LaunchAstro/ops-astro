@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // How many records a read handed out, for the export-volume signal and the
-// agent quota: a task is one, a list (a search's hits, the fleet too) is its
-// length, a frontier is its tickets and its fog, a map is its tickets and
+// agent quota: a task is one, a list (a search's hits, the fleet, the
+// invitations too) is its length, a frontier is its tickets and its fog, a map is its tickets and
 // its components, and the signal sections are their grants, tripwires,
 // night round steps and roster. A leveled task is one; a board page, its length.
 // The cost log is its runs; the skill costing, its skills and splits.
@@ -27,9 +27,16 @@ export function recordsIn(read: object): number {
     const { costing } = read as SkillCostsResult;
     return (costing?.skills.length ?? 0) + (costing?.split.length ?? 0);
   }
-  const lists = ['tasks', 'persons', 'queue', 'hits', 'connections', 'page', 'runs'].map(
-    (key) => (read as Record<string, unknown>)[key],
-  );
+  const lists = [
+    'tasks',
+    'persons',
+    'queue',
+    'hits',
+    'connections',
+    'page',
+    'runs',
+    'invitations',
+  ].map((key) => (read as Record<string, unknown>)[key]);
   const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
   if (listed !== undefined) return listed.length;
   if ('map' in read) {

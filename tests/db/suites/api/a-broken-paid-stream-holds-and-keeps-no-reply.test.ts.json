@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid stream cut before or after its pieces, an error event or a 503 holds the most and keeps no reply; a 402 releases; the reconciliation pass leaves the held call to its owner"
+}

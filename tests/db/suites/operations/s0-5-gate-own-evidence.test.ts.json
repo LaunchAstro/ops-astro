@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "tested backups is recorded only on a passed restore drill stamped inside the window and the operations page link, and the second factor only by a person with a verified factor, both read after the installation lock"
+}
