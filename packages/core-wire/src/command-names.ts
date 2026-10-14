@@ -170,14 +170,14 @@ export type CommandName =
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
-  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.list'
+  // WF-2: chart a map, a ticket's blocking, claim and close, fog graduating, and the frontier.
   | 'map.chart'
   | 'task.set_blocking'
   | 'task.claim'
   | 'map.graduate'
   | 'task.resolve'
   | 'task.close_out_of_scope'
-  // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.

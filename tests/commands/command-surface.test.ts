@@ -4,10 +4,10 @@
 //
 // Minimum contract 5.3's fourth assertion is the one this file exists for: "for each protected
 // field, the owning operation named in `owning_operation` exists and is reachable through an
-// endpoint. A protected field whose owning operation does not exist is a field nobody can
-// change." The names are in `field_defs`, written per business at install time, so the check
-// reads the installed model and not a list in a module — which is the whole reason T1e put the
-// classification in the data.
+// endpoint. A protected field whose owning operation does not exist is a field nobody can change."
+// The names are in `field_defs`, written per business at install time, so the check reads the
+// installed model and not a list in a module — which is the whole reason T1e put the classification
+// in the data.
 //
 // It is also what settles the count. The contract names nine commands and the split is titled
 // after them; the seeded task type names ten owning operations. Nine is not enough for the model
@@ -113,6 +113,7 @@ const DECLARED_READS = [
   'invitation.list',
   'live_correction.read',
   'map.frontier',
+  'map.list',
   'map.view',
   'operations.read',
   'person.list',
@@ -206,11 +207,10 @@ describe("MP-6-2's state revised", () => {
 });
 
 describe('the surface as a table', () => {
-  // A case asserting that every action is one of the seven a grant can carry
-  // was removed: `action` is typed `Action`, so an eighth is a type error and
-  // the case could not fail. What is worth checking is that the actions are
-  // not all the same one, which is what would happen if a declaration were
-  // copied rather than decided.
+  // A case asserting that every action is one of the seven a grant can carry was removed: `action`
+  // is typed `Action`, so an eighth is a type error and the case could not fail. What is worth
+  // checking is that the actions are not all the same one, which is what would happen if a
+  // declaration were copied rather than decided.
   it('does not give every command the same action', () => {
     const actions = new Set(COMMAND_SURFACE.map((command) => command.action));
     expect([...actions].toSorted()).toStrictEqual([

@@ -25,9 +25,11 @@ import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
  * kept in step by hand.
  */
 export const READ_NAMES = [
-  // Wayfinder (WF-1, WF-2): the map's sections, its frontier and its fog.
+  // Wayfinder (WF-1, WF-2): the map's sections, its frontier and its fog, and
+  // the maps a person may read.
   'map.view',
   'map.frontier',
+  'map.list',
   'task.read',
   'task.board',
   'person.list',
