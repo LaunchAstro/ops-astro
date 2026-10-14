@@ -83,7 +83,9 @@ describe('protected verdicts read the stock runner counter grammar', () => {
       ).toStrictEqual(['pass', 'pass']);
     }
   });
+});
 
+describe('protected verdicts refuse malformed counter receipts', () => {
   it.each(['0', '-1', '0.5', 'NaN', 'Infinity', '1e3', '15junk'])(
     'refuses a missing positive integer counter: %s',
     (counter) => {
@@ -110,7 +112,9 @@ describe('protected verdicts read the stock runner counter grammar', () => {
   ])('refuses a malformed counter receipt: %s', (tail) => {
     expect(measured(retainedCounters.replace('15 in 1.1s.', tail))[0]?.status).toBe('fail');
   });
+});
 
+describe('protected verdicts keep the runner receipt boundaries', () => {
   it('fails a suite with no receipt, no database use, or only a discovery line', () => {
     for (const replacement of [
       '',
@@ -145,7 +149,7 @@ describe('protected verdicts read the stock runner counter grammar', () => {
   });
 
   it('reads the same receipts after terminal colour controls are stripped', () => {
-    const coloured = `\u001b[32m${retainedCounters}\u001b[0m`;
+    const coloured = `\u001B[32m${retainedCounters}\u001B[0m`;
     expect(measured(stripVTControlCharacters(coloured)).map(({ status }) => status)).toStrictEqual([
       'pass',
       'pass',
