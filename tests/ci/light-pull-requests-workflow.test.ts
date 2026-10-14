@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// CI-SPEED, light pull requests, the workflow's side (the scripts' side is
-// light-pull-requests.test.ts). Every required check still reports under its own name on a pull
+// Light pull requests: every required check still reports on a pull
 // request and on a group; the shards behind `database conformance` skip pull requests alone, and
 // the aggregate passes their skip on a pull request alone, and only when the contamination gate
 // passed; every job behind the gate on a status function (always(), cancelled(), failure(),
 // success()) reads the gate's result; `local checks` and `isolation tests` defer their heavy steps
 // through scripts/ci-scope.ts; and planted forms of each go red. The workflows are read with a YAML
-// parser, as merge-group-jobs.test.ts reads them.
 
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
@@ -62,7 +60,6 @@ const queueOnlyOf = (): string[] =>
 const problemsNow = (ci: Workflow) => workflowProblems(ci, load(REVIEW), queueOnlyOf());
 const aggregateStep = (ci: Workflow) => ci.jobs['database']?.steps?.[0];
 const BEHIND = 'runs on a status function behind the gate';
-// A job's condition with the exact guard against closed pull requests stripped (open-pull-request.ts).
 const jobCondition = (value: unknown): unknown => unguarded(condition(value));
 const needsOf = (job: Job | undefined): string[] =>
   job?.needs === undefined ? [] : ([] as unknown[]).concat(job.needs).map(String);
@@ -94,7 +91,6 @@ function alwaysProblems(ci: Workflow): string[] {
   return problems;
 }
 
-/** Each required check with no job, a workflow that skips a pull request or a group, or a condition. */
 function requiredProblems(workflows: Workflow[]): string[] {
   const problems: string[] = [];
   for (const name of required) {
@@ -113,7 +109,6 @@ function requiredProblems(workflows: Workflow[]): string[] {
   return problems;
 }
 
-/** Each step condition beyond the forms merge-group-workflows.test.ts allows. */
 function stepProblems(path: string, w: Workflow): string[] {
   const problems: string[] = [];
   for (const [key, job] of Object.entries(w.jobs))
@@ -150,15 +145,17 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
     needsOf(aggregate).toSorted().join(' ') !== 'database-shard full gate isolation'
   )
     problems.push('database: must always run over the gate, database-shard and isolation');
-  // CI-SHARDS-2: `local checks` and `isolation tests` run as shards on every event they ran on
-  // whole, each behind an aggregate that always runs over the gate and its shards.
+  // Both shard aggregates also require the gate. Local checks require the pins.
   for (const [shardKey, name] of SHARDED) {
     const cond = jobCondition(ci.jobs[shardKey]?.if);
     if (cond !== undefined) problems.push(`${shardKey}: if: ${String(cond)}`);
     const sum = Object.values(ci.jobs).find((job) => job.name === name);
     if (
       jobCondition(sum?.if) !== 'always()' ||
-      needsOf(sum).toSorted().join(' ') !== [shardKey, 'full', 'gate'].toSorted().join(' ')
+      needsOf(sum).toSorted().join(' ') !==
+        [shardKey, 'full', 'gate', ...(shardKey === 'check' ? ['pin-tests'] : [])]
+          .toSorted()
+          .join(' ')
     )
       problems.push(`${name}: must always run over the gate and ${shardKey}`);
   }

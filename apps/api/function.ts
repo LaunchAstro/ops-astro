@@ -76,6 +76,7 @@ import {
   registerEffectLookup,
   SWEEP_INTERVAL_MS,
 } from './recovery-entry.ts';
+import { HELD_ELSEWHERE } from './held-elsewhere.ts';
 import { composeApi } from './server.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
@@ -252,23 +253,6 @@ function outboxAlerts(
 }
 
 let handler: ((request: Request) => Promise<Response>) | undefined;
-
-/**
- * The admin login, the sink's key, the provider's admin key (C58's endings
- * loop, `apps/endings`), the backup and restore credentials and the daily
- * upkeep's login (20261002105957): the environment machine's and the operator's.
- */
-const HELD_ELSEWHERE = [
-  'DATABASE_ADMIN_URL',
-  'OPS_ERROR_SINK_DSN',
-  'SUPABASE_SERVICE_KEY',
-  'BACKUP_SOURCE_URL',
-  'BACKUP_RETENTION_URL',
-  'DATABASE_UPKEEP_URL',
-  'BACKUP_STORE_URL',
-  'RESTORE_STORE_URL',
-  'RESTORE_KEY_FILE',
-];
 
 /** Vercel's Node.js function signature, one export per method: built on first use. */
 async function handle(request: Request): Promise<Response> {

@@ -85,7 +85,6 @@ it.each([
   ['trace.read', ['recordId']],
   ['conversation.read', ['conversationId']],
   ['chat.messages', ['conversationId']],
-  ['harness.read', ['runId']],
   ['live_correction.read', ['correctionId']],
   ['task.receipt', ['attemptId']],
   ['task.board', ['board']],

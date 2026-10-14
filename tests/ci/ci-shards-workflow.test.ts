@@ -80,7 +80,8 @@ function jobProblems(shardKey: string, name: string): string[] {
     return [...problems, `${name}: ${String(aggregates.length)} jobs`];
   if (unguarded(aggregate.if) !== 'always()') problems.push(`${key}: if: ${String(aggregate.if)}`);
   if (
-    (aggregate.needs ?? []).toSorted().join(' ') !== [shardKey, 'gate', 'full'].toSorted().join(' ')
+    (aggregate.needs ?? []).toSorted().join(' ') !==
+    [shardKey, 'gate', 'full', ...(shardKey === 'check' ? ['pin-tests'] : [])].toSorted().join(' ')
   )
     problems.push(`${key}: needs ${String(aggregate.needs)}`);
   if (aggregate['continue-on-error'] !== undefined || aggregate.steps?.length !== 1)
@@ -107,6 +108,7 @@ function passes(name: string, shardKey: string, values: [string, string, string,
   const known: Record<string, string> = {
     [`\${{ needs.${shardKey}.result }}`]: shards,
     '${{ needs.gate.result }}': gate,
+    '${{ needs.pin-tests.result }}': 'success',
     '${{ github.event_name }}': event,
     '${{ needs.gate.outputs.scope }}': scope,
   };

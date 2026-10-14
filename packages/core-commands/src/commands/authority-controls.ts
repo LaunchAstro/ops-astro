@@ -456,8 +456,12 @@ async function heldAndGiven(
 
 /**
  * Under the complete lock set: revoke the person's grants, then name what lost
- * its authority. Every delegation the person gave loses its ceiling with their
- * grants; an attempt still covered by another live grant is untouched.
+ * its authority. Every delegation the person gave that is still live loses its
+ * ceiling with their grants; one that expired, even while this waited for its
+ * row, has nothing left to revoke. An attempt still covered by another live
+ * grant is untouched. An expired delegation still carrying an attempt that
+ * lost its authority is named all the same, because its hold is classified on
+ * a recorded revocation; `counted` is only the delegations that were live.
  */
 async function revokeHeldAndGiven(
   tx: TenantQuery,
@@ -469,12 +473,27 @@ async function revokeHeldAndGiven(
   readonly value: number;
   readonly lost: readonly string[];
   readonly lostLeases: readonly string[];
+  readonly counted: number;
 }> {
   for (const grantId of grantIds) {
     // eslint-disable-next-line no-await-in-loop -- the person's grants, already locked
     await revokeGrant(tx, grantId);
   }
-  const lost = new Set(given);
+  const named = [
+    ...given,
+    ...candidates.flatMap((each) => (each.delegation_id === null ? [] : [each.delegation_id])),
+  ];
+  const live = new Set(
+    (
+      await tx.query<{ readonly id: string }>(
+        `select id from public.delegations
+          where business_id = $1 and id = any($2::uuid[])
+            and revoked_at is null and settled_at is null and expires_at > clock_timestamp()`,
+        [tx.businessId, named],
+      )
+    ).map((row) => row.id),
+  );
+  const lost = new Set(given.filter((id) => live.has(id)));
   const lostLeases: string[] = [];
   for (const dependent of candidates) {
     // eslint-disable-next-line no-await-in-loop -- one per live attempt, each decisive
@@ -482,7 +501,8 @@ async function revokeHeldAndGiven(
     if (dependent.delegation_id === null) lostLeases.push(dependent.lease_id);
     else lost.add(dependent.delegation_id);
   }
-  return { applied: true, value: grantIds.length, lost: [...lost], lostLeases };
+  const counted = [...lost].filter((id) => live.has(id)).length;
+  return { applied: true, value: grantIds.length, lost: [...lost], lostLeases, counted };
 }
 
 /** What ending a person's authority revoked, by count, and the holds it classified. */
@@ -496,7 +516,8 @@ export interface EndedAuthority {
  * `access.end` (C58): every live grant the person holds, as themselves or as
  * their acting identity, and every delegation they gave an agent, ended in one
  * authority-loss classification, so the work they carried is classified
- * exactly as a revocation classifies it.
+ * exactly as a revocation classifies it, and each task manager is told of a
+ * hold it quarantined as a revocation tells them.
  *
  * The caller holds the access lock. The person's grant rows are locked next,
  * all of them and in id order, before any runtime lock: the order a single
@@ -541,10 +562,11 @@ export async function endPersonAuthority(
         'access.end: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
       );
       const written = await revokeHeldAndGiven(tx, grantIds, given, candidates);
-      delegationsRevoked = written.lost.length;
+      delegationsRevoked = written.counted;
       return written;
     },
   });
+  await raiseIncident(tx, loss.classified);
   return {
     grantsRevoked: loss.value,
     delegationsRevoked,

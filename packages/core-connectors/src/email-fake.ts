@@ -77,7 +77,13 @@ function respond(
 }
 
 /** Start the fake on a loopback port of its own. */
-export async function startFakeEmailProvider(): Promise<FakeEmailProvider> {
+/**
+ * `onAccept` hears each accepted message's body (from, to, subject, text) and never its headers,
+ * so a saved outbox holds no credential, even the made-up one mock custody presents.
+ */
+export async function startFakeEmailProvider(
+  options: { readonly onAccept?: (body: string) => void } = {},
+): Promise<FakeEmailProvider> {
   let current: FakeEmailMode = 'accept';
   const received: OutboxMessage[] = [];
   const kept = { outbox: [] as OutboxMessage[], timers: new Set<NodeJS.Timeout>() };
@@ -90,6 +96,7 @@ export async function startFakeEmailProvider(): Promise<FakeEmailProvider> {
       };
       received.push(message);
       respond(current, message, response, kept);
+      if (current === 'accept') options.onAccept?.(message.body);
     })();
   });
   await new Promise<void>((resolve) => {

@@ -45,12 +45,13 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
+import { taskAdmission } from './broker-admission.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { sweepCarried } from './broker-carriage.ts';
 import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
-import { resolveFields } from './broker-sources.ts';
+import { clientRefusal, resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import { settle, settlementOf } from './broker-settle.ts';
@@ -172,7 +173,9 @@ function startable(
   | { readonly ok: false; readonly code: BrokerRefusal } {
   if (!facts.ok) return facts;
   if (siblingUnknown) return { ok: false, code: 'LIABILITY_UNKNOWN' };
-  if (facts.facts.clientId !== null) return { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
+  if (facts.facts.clientId !== null) {
+    return { ok: false, code: clientRefusal([reserved.route], reserved.operation) };
+  }
   const resolved = resolveFields(request.fields, facts.facts.source);
   if (!resolved.ok) return resolved;
   const still = eligibleRoutes(reserved.operation.fields, resolved.fields, [reserved.route]);
@@ -226,14 +229,22 @@ export async function sendReservedCall(
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
   const values = Object.fromEntries(started.fields.map((field) => [field.name, field.value]));
   const built = adapter.build(values, reserved.callId);
-  const outcome = await broker.custody.dispatch(reserved.route.credentialRef, {
-    destination: reserved.operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: reserved.operation.timeoutMs,
-    maxResponseBytes: reserved.operation.maxResponseBytes,
-  });
+  const outcome = await broker.custody.dispatch(
+    reserved.route.credentialRef,
+    {
+      destination: reserved.operation.destination,
+      path: built.path,
+      method: built.method,
+      body: built.body,
+      timeoutMs: reserved.operation.timeoutMs,
+      maxResponseBytes: reserved.operation.maxResponseBytes,
+    },
+    undefined,
+    // Owner line 72: a subscription send is judged again at the handoff, the task held.
+    reserved.route.credentialKind === 'subscription'
+      ? taskAdmission(database, businessId, request, reserved)
+      : undefined,
+  );
   const settlement = settlementOf(outcome, reserved.operation, adapter);
   return await settle(database, businessId, caller, request, reserved, settlement, broker);
 }

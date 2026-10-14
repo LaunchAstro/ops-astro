@@ -71,21 +71,11 @@ function latch(): { readonly held: Promise<void>; readonly release: () => void }
   return { held, release };
 }
 
-/** Mock delivery over a stand-in key, its provider a closed port on this machine. */
+/** Mock delivery over its own made-up key, its provider a closed port on this machine. */
 function mockSettings(): Extract<MailDeliverySettings, { kind: 'mock' }> {
-  const credentialsFile = join(folder, 'credentials.json');
-  const credential = { kind: 'api_key', account: 'mail-1', header: 'authorization' };
-  writeFileSync(
-    credentialsFile,
-    JSON.stringify([
-      { ref: 'email_key', destination: 'email', ...credential, value: 'stand-in-key-1' },
-    ]),
-    { mode: 0o600 },
-  );
   const settings = mailDeliverySettings({
     MAIL_DELIVERY: 'mock',
     MAIL_PROVIDER_ORIGIN: 'http://127.0.0.1:9',
-    MAIL_CREDENTIALS_FILE: credentialsFile,
     MAIL_APP_ORIGIN: 'https://ops.example.test',
     MAIL_FROM: `hello@${SENDING}`,
   });
@@ -117,7 +107,7 @@ it("server shutdown: the database closes only after the mail worker's running pa
     settings,
     database,
     async () => await Promise.resolve(['first']),
-    { atOnceMs: 10, dailyTickMs: 60_000 },
+    { atOnceMs: 10, dailyTickMs: 60_000, invitationsMs: 60_000 },
   );
   await expect.poll(() => events, { timeout: 2_000 }).toEqual(['pass started']);
 
