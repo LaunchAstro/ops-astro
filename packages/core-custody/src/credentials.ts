@@ -25,7 +25,6 @@
 // subscription, in its own person's session or under the carve-out.
 
 export type CredentialKind = 'subscription' | 'api_key' | 'cloud_credential' | 'replay';
-
 export type StorableKind = Exclude<CredentialKind, 'subscription'>;
 
 export interface StoredCredential {
@@ -291,5 +290,11 @@ export function described(
   }
   // Whether it is sent at all: an answer to one that is sent may echo it, so is never streamed.
   const presents = credential.scheme !== 'none';
-  return { type: 'described', kind: credential.kind, account: credential.account, presents };
+  return {
+    type: 'described',
+    kind: credential.kind,
+    account: credential.account,
+    presents,
+    scheme: credential.scheme,
+  };
 }

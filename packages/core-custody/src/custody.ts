@@ -49,6 +49,8 @@ export interface Carrier {
   readonly account: string | null;
   /** Whether custody sends the credential: false only for one filed as `none`. */
   readonly presents: boolean;
+  /** How it is sent: as a bearer token, a Basic pair, or not at all. */
+  readonly scheme: 'bearer' | 'basic' | 'none';
 }
 
 export interface CustodyConfig {
@@ -200,6 +202,21 @@ async function admittedDispatch(
   }
 }
 
+async function describeCarrier(
+  exchange: Exchange,
+  credentialRef: string,
+  destination: string,
+): Promise<Carrier | null> {
+  const reply = await exchange({ type: 'describe', credentialRef, destination });
+  if (reply === 'lost' || reply['type'] !== 'described') return null;
+  return {
+    credentialKind: reply['kind'] as StorableKind,
+    account: (reply['account'] as string | null) ?? null,
+    presents: reply['presents'] !== false,
+    scheme: (reply['scheme'] as Carrier['scheme'] | undefined) ?? 'bearer',
+  };
+}
+
 export async function startCustody(config: CustodyConfig): Promise<ProcessCustody> {
   const child = forkCustody(config);
   let errors = '';
@@ -223,15 +240,8 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
         onPiece,
         admit,
       ),
-    describe: async (credentialRef, destination) => {
-      const reply = await exchange({ type: 'describe', credentialRef, destination });
-      if (reply === 'lost' || reply['type'] !== 'described') return null;
-      return {
-        credentialKind: reply['kind'] as StorableKind,
-        account: (reply['account'] as string | null) ?? null,
-        presents: reply['presents'] !== false,
-      };
-    },
+    describe: async (credentialRef, destination) =>
+      await describeCarrier(exchange, credentialRef, destination),
     stderr: () => errors,
     raw: async (message) => {
       const reply = await exchange(message);

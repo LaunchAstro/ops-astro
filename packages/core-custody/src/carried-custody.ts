@@ -224,7 +224,12 @@ export function carriedCustody(options: CarriedCustodyOptions): Custody & {
     },
     // The function presents no credential: the agent's custody holds Ollama's, filed as `none`.
     describe: async () =>
-      await Promise.resolve({ credentialKind: 'api_key', account: null, presents: false }),
+      await Promise.resolve({
+        credentialKind: 'api_key',
+        account: null,
+        presents: false,
+        scheme: 'none',
+      }),
     fenceIn: async (tx, callId) => {
       const runner = carrying.runners.get(callId);
       carrying.runners.delete(callId);
