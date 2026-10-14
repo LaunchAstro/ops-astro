@@ -354,14 +354,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
   if (config.authEmailHook !== undefined) {
     mountAuthEmailHook(server, database, config.authEmailHook);
   }
-  // C39-T: an invitation accepted on its one-time link, which needs the database alone.
-  mountEnrolment(server, database);
   // Password reset on the provider's recovery session: the database and the
   // provider's public keys alone, so always mounted.
   mountPasswordReset(server, database, {
     signIn: config.signIn,
     ...(key === '' ? {} : { providerKey: key }),
   });
+  // C39-T: an invitation accepted on its one-time link, which needs the database alone.
+  mountEnrolment(server, database);
 
   server.route(
     '/',

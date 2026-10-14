@@ -52,8 +52,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // column, which stays refused; s0-5-gate-commands proves the column.
   ['s', 'ops.installation'],
   ['si', 'ops.gate_items'],
-  // 0061 (C58): an ended provider session, installation-wide; the application
-  // inserts and reads its id column alone, and changes or removes nothing.
+  // 0061 (C58): an ended provider session, installation-wide; the app inserts and reads its id.
   ['si', 'ops.ended_provider_sessions'],
   // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
@@ -243,7 +242,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_field_changes_valid',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // C39-T (20261013053949): an accept's token lookup.
+  // C39-T (20261013053949): the accept's token lookup, three ids for one hash.
   'public.enrolment_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',

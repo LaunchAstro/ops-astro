@@ -35,7 +35,8 @@
 //    leaves that person the reset's audit target.
 // 4. Settle, once the route's own password write is acknowledged: in the
 //    database clock's next whole second, under the login's ending keys, the
-//    session's window settles, its reset with it, and the target's business
+//    session's window settles, its reset with it, and seen provider sessions
+//    in every business are retired. The target's business
 //    audits `account.password_reset` once, as that person, with a digest
 //    alone. A window already settled settles nothing and audits nothing.
 
@@ -218,6 +219,7 @@ export async function settlePasswordReset(
     );
     if (settled === undefined) return;
     await settleResetWindow(tx, settled.reset_id);
+    await tx.query('select ops.recovery_sessions_end($1::uuid)', [settled.reset_id]);
     await writeAuditEvent(tx, {
       actorId: target.actorId,
       command: RESET_AUDIT_COMMAND,

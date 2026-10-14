@@ -44,6 +44,9 @@ const TRANSPORTS = new Map([
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
   // wraps that fetch for the sign-in address only, adding the public key: a session, not a record
   ['session/provider-key.ts', ['fetcher: typeof fetch', '): typeof fetch {', 'as typeof fetch']],
+  // a forgotten password, on the provider's recovery session and the API's reset routes: a
+  // session, not a record
+  ['session/recovery.ts', ["route.fetch(url, { ...init, redirect: 'error' })"]],
   // accepts an invitation, signed out, on its one-time link: the token is the authority, no command
   [
     'screens/Enrol.tsx',
@@ -53,9 +56,6 @@ const TRANSPORTS = new Map([
       'props.fetch(`${props.apiOrigin}${ENROL_API_PATH}`, {',
     ],
   ],
-  // a forgotten password, on the provider's recovery session and the API's reset routes: a
-  // session, not a record
-  ['session/recovery.ts', ["route.fetch(url, { ...init, redirect: 'error' })"]],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
 // first occurrence in code counts; one after `//` or a `/*` still open on its line, or on a

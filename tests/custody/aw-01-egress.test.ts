@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines -- the closed list of network sites grows one reviewed line at a time */
 //
 // AW-01, the egress conformance proof: ten cases.
 //

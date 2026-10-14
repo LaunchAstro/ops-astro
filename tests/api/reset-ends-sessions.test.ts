@@ -8,8 +8,10 @@
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
+import { authorised, post } from './fixture.ts';
 import {
   alpha,
+  api,
   begin,
   bravo,
   changed,
@@ -19,6 +21,7 @@ import {
   linkSession,
   personIn,
   signIn,
+  sessionOf,
   providerReady,
   writePassword,
   useResetWorld,
@@ -29,6 +32,44 @@ const withProvider = it.skipIf(!providerReady);
 useResetWorld('rstend');
 
 const NEW_PASSWORD = 'a-new-password-for-reset';
+
+withProvider(
+  'a reset retires sessions seen only in another business and leaves another login live',
+  async () => {
+    const person = await personIn(alpha, bravo);
+    const other = await personIn(alpha, bravo);
+    const old = await signIn(person);
+    const unrelated = await signIn(other);
+    expect(await door(old, 'bravo')).toBe('served');
+    expect(await door(unrelated, 'alpha')).toBe('served');
+    expect(await door(unrelated, 'bravo')).toBe('served');
+    await linkMinted(person);
+    const recovery = await linkSession(person);
+    expect((await begin(recovery)).status).toBe(200);
+    await db.app.withBusiness(
+      alpha,
+      async (tx) =>
+        await tx.query(
+          `select ops.recovery_sessions_end(reset_id) from ops.recovery_resets
+          where session_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
+          [sessionOf(recovery)],
+        ),
+    );
+    expect(await durablyEnded(old)).toBe(false);
+    expect((await changed(recovery, NEW_PASSWORD)).status).toBe(200);
+    expect(await durablyEnded(old)).toBe(true);
+    await delay(1100);
+    const fresh = await signIn(person, NEW_PASSWORD);
+    const businesses: readonly ('alpha' | 'bravo')[] = ['alpha', 'bravo'];
+    await Promise.all(
+      businesses.map(async (business) => {
+        await onlyFreshSession(fresh, business);
+        expect(await door(unrelated, business)).toBe('served');
+      }),
+    );
+  },
+  60_000,
+);
 
 withProvider(
   'a session signed in before begin is refused in both businesses after the write, with no changed call',
@@ -99,4 +140,19 @@ async function writeOpen(subject: string): Promise<boolean> {
     [subject],
   );
   return row?.open === true;
+}
+
+async function durablyEnded(token: string): Promise<boolean> {
+  const [row] = await db.admin.execute<{ readonly ended: boolean }>(
+    `select exists (select 1 from ops.ended_provider_sessions where session_id = $1::uuid) as ended`,
+    [sessionOf(token)],
+  );
+  return row?.ended === true;
+}
+
+async function onlyFreshSession(token: string, business: 'alpha' | 'bravo'): Promise<void> {
+  const answer = await post(api, `/api/b/${business}/account/sessions/list`, {}, authorised(token));
+  expect(answer.status).toBe(200);
+  expect(answer.body['sessions']).toHaveLength(1);
+  expect(answer.body).toMatchObject({ sessions: [{ sessionId: sessionOf(token), current: true }] });
 }

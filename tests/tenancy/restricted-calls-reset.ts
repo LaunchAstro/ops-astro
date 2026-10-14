@@ -35,6 +35,7 @@ export const RESET_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   'ops.password_reset_request',
   'ops.recovery_link_consume',
+  'ops.recovery_sessions_end',
   'ops.recovery_subject_business',
   'ops.reset_write_open',
 ];

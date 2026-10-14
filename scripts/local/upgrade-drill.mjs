@@ -2,10 +2,9 @@
 // `pnpm verify:upgrade-drill [--from <version>] [--base <commit>] [--json]`.
 // Its own throwaway database is seeded through the older commit's product.
 // The application stops before upgrade, enforced by the migration runner.
-// Owner-visible snapshots preserve stored rows at every declaration boundary.
+// Atomic upgrade is proved and rolled back before owner-visible boundary snapshots.
 // Row changes name columns and predicates; drops name empty tables. New rows
 // and columns are allowed. Undeclared changes and unused declarations fail.
-// CI supplies the base's newest migration and commit; --from defaults to 0023.
 // Exit 0 for pass, 1 for failure, 2 for refusal. --json prints the final result.
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -19,6 +18,7 @@ import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { Failure, baseCommit, seed } from './upgrade-drill-seed.mjs';
 import * as changes from './upgrade-drill-changes.mjs';
+import { proveAtomicUpgrade } from './upgrade-drill-atomic.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LEDGER = 'ops.schema_migrations';
@@ -135,8 +135,7 @@ function serverUrl() {
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
 /**
- * Every ordinary table and its rows as `jsonb` text, read as the owner. Given
- * the snapshot before, a table's rows are read without the columns added since.
+ * Owner-readable rows as `jsonb` text, without columns added since `before`.
  */
 async function snapshot(admin, before) {
   const tables = await admin.execute(
@@ -168,6 +167,7 @@ async function snapshot(admin, before) {
  * and a later declaration cannot excuse an earlier undeclared change.
  */
 async function upgrade(db, directory, all, at, before) {
+  await proveAtomicUpgrade(db.admin, all);
   const boundaries = new Set([all.length - 1]);
   for (let index = at + 1; index < all.length; index += 1) {
     if (changes.hasDeclarations(directory, all[index].version)) {
