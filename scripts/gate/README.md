@@ -29,7 +29,7 @@ passed. Nothing local proves what a receiver holds (a remote-tracking ref can
 be stale, and a rewritten URL or SSH command can reach another receiver), so
 the record is of scans, not of remotes: `gate-passed` in the repository's
 common Git directory, shared by every worktree and never fetched or pushed.
-Each line is a commit and the fingerprint of what judged it: the pushed
+Each line is a commit and the fingerprint of what judged the secret and literal scans: the pushed
 commit's scanners and canaries, the hook, the checkout's gitleaks rules and
 ignore file, the paths and versions of the tools that run the scans, the
 `PATH` that finds every helper they call, and the private list and receipt. Only a pinned push narrows its range or adds to the
@@ -48,6 +48,27 @@ means the full scan, as does a fresh clone. The hook reads no local grafts or
 replacements. The machine's own interpreters and their site files are
 trusted as the hook itself is. The range stays one
 `BASE..HEAD`, so scanners in a commit from before this rule still read it.
+
+The public-content check selects commits not reachable from `origin/main` or
+from this machine's matching public receipts. It skips only exact blob/path
+pairs already in those baseline trees. Changed bytes, renamed paths and old
+versions reintroduced by a new commit are still checked, including content
+added and later deleted. Commit metadata is checked for every selected commit.
+This policy accepts the existing public main as its baseline, independently
+of the secret and literal scans, which keep their ranges above.
+
+Public receipts live in `gate-public-passed` in the common Git directory.
+Their fingerprint includes the scan fingerprint above and the exact main
+commit. A receipt is appended only after all hook scans pass, with the same
+inputs and main still in place. A new clone with no public receipt starts from
+main. An unreadable, symlinked or malformed receipt, missing main, or a failed
+Git read falls back to all history reachable from the pushed commit. A moved
+main or changed scan rules cannot reuse an earlier public receipt. Unpinned
+pushes and manual hook runs retain the original public-content range checks.
+The hook uses branch selection only when the pushed scanner's
+`--supports-branch` probe declares `branch-v1`. Older scanners receive the
+full tip through their existing `--range` interface and create no public
+branch receipt.
 
 These rules apply to all four:
 

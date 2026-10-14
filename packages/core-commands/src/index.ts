@@ -26,6 +26,13 @@ export {
 export { withCarrier } from './commands/context.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { runLiveRevert } from './commands/live-correction-revert.ts';
+export {
+  proposalForBinding,
+  proposeCorrection,
+  type ProposePorts,
+  type ProposeResult,
+  type SeamReads,
+} from './commands/live-correction-propose.ts';
 export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
 export {
   runLivePublish,
@@ -82,7 +89,6 @@ export {
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { admitConversations, hearsConversation } from './reads/live-chat.ts';
 export { isReadName } from './reads/catalogue.ts';
-export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {
   HEALTH_STALE_SECONDS,
   readServiceHealth,

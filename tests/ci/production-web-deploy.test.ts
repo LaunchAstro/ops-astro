@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { preflightFor, productionPreflight, stagingSigns } from '../../scripts/ops/deploy.ts';
 import { artefactName } from '../../scripts/ops/promotion.ts';
+import { staged } from './promotion.fixture.ts';
 import { deployWeb } from '../../scripts/ops/web-deploy.ts';
 import {
   AUTH_VERSION,
@@ -61,9 +62,16 @@ describe('production web deploy: recorded as staging is, on production', () => {
   it('deploys a database holding real sign-ins once production’s own preflight finds no made-up sign', async () => {
     const vercel = fakeVercel();
     const preflight = vi.fn(clean);
+    const root = store();
     const outcome = await deployWeb(
-      { version: STAGED, store: store() },
-      { env: production(vercel.path), preflight, environment: 'production' },
+      { version: STAGED, store: root },
+      {
+        env: production(vercel.path),
+        preflight,
+        environment: 'production',
+        records: staged(root),
+        authorised: async (work) => await work(),
+      },
     );
     expect(preflight).toHaveBeenCalledOnce();
     expect(outcome.kind).toBe('deployed');
@@ -101,9 +109,16 @@ const refusedWith = async (
   preflight = clean,
 ) => {
   const vercel = fakeVercel();
+  const root = store();
   const outcome = await deployWeb(
-    { version: STAGED, store: store() },
-    { env: production(vercel.path, overrides), preflight, environment: 'production' },
+    { version: STAGED, store: root },
+    {
+      env: production(vercel.path, overrides),
+      preflight,
+      environment: 'production',
+      records: staged(root),
+      authorised: async (work) => await work(),
+    },
   );
   expect(outcome).toStrictEqual({ kind: 'refused', reason: `${reason}. Nothing was deployed.` });
   expect(vercel.lines('argv')).toStrictEqual([]);

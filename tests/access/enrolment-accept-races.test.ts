@@ -5,6 +5,11 @@
 // judges everything after its last lock wait, on the clock, in the order
 // every invitation writer takes its locks, so two accepts, or an accept
 // beside a revoke or a resend, end in one consistent state.
+//
+// Which act takes the invitation's row first is not fixed. A revoke first
+// refuses the accept. A resend only moves the invitation's expiry, and the
+// link stays its newest until a send mints the next, so the accept is seated
+// whether it takes the row before the resend or after it.
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
@@ -53,7 +58,11 @@ describe.skipIf(noDatabase)('accepts beside each other and beside other acts', (
         await holding;
         const [accepted, acted] = await Promise.all([accepting, acting]);
         const state = await seated(id);
-        if (accepted.ok) {
+        if (command === 'invitation.resend') {
+          expect(accepted).toStrictEqual({ ok: true });
+          expect(['applied', 'TRANSITION_NOT_PERMITTED']).toContain(codeOf(acted));
+          expect(state).toMatchObject({ state: 'accepted', memberships: 1, owed: 1 });
+        } else if (accepted.ok) {
           expect(state).toMatchObject({ state: 'accepted', memberships: 1, owed: 1 });
           expect(codeOf(acted)).toBe('TRANSITION_NOT_PERMITTED');
         } else {
@@ -65,6 +74,18 @@ describe.skipIf(noDatabase)('accepts beside each other and beside other acts', (
       }
     },
   );
+
+  it('an accept after an applied resend, before its send, is seated on the same link', async () => {
+    const { id, token } = await invited();
+    expect(codeOf(await as(c.admin, 'invitation.resend', { invitationId: id }))).toBe('applied');
+    const other = connect(w.db.appUrl);
+    try {
+      expect(await acceptInvitation(other, token)).toStrictEqual({ ok: true });
+      expect(await seated(id)).toMatchObject({ state: 'accepted', memberships: 1, owed: 1 });
+    } finally {
+      await other.close();
+    }
+  });
 
   it('a lifetime that ends while the accept waits on the access lock refuses it', async () => {
     const { id, token } = await invited();

@@ -85,15 +85,19 @@ it.skipIf(serverUrl === undefined)('a null read identifier counts as sent', asyn
 });
 
 it.skipIf(serverUrl === undefined)(
-  'a run or incident read refuses the identifier the other one takes',
+  'an incident or receipt read refuses identifiers it does not take',
   async () => {
     expect(
-      await ask({ read: 'harness.read', runId: randomUUID(), incidentId: randomUUID() }),
-    ).toStrictEqual(bodyInvalid('incidentId'));
+      await ask({
+        read: 'privacy.draft_breach_notices',
+        incidentId: randomUUID(),
+        attemptId: randomUUID(),
+      }),
+    ).toStrictEqual(bodyInvalid('attemptId'));
     expect(
       await ask({ read: 'task.receipt', attemptId: randomUUID(), runId: randomUUID() }),
     ).toStrictEqual(bodyInvalid('runId'));
-    expect(await refusedRows('harness.read')).toContain('COMMAND_BODY_INVALID');
+    expect(await refusedRows('privacy.draft_breach_notices')).toContain('COMMAND_BODY_INVALID');
     expect(await refusedRows('task.receipt')).toContain('COMMAND_BODY_INVALID');
   },
 );
@@ -103,6 +107,6 @@ it.skipIf(serverUrl === undefined)('the identifiers a read declares still reach 
   expect(search).not.toHaveProperty('refused');
   const todos = await ask({ read: 'task.todos', person: randomUUID() });
   expect(todos).not.toMatchObject({ code: 'COMMAND_BODY_INVALID' });
-  const harness = await ask({ read: 'harness.read', runId: randomUUID() });
-  expect(harness).not.toMatchObject({ code: 'COMMAND_BODY_INVALID' });
+  const receipt = await ask({ read: 'task.receipt', attemptId: randomUUID() });
+  expect(receipt).not.toMatchObject({ code: 'COMMAND_BODY_INVALID' });
 });

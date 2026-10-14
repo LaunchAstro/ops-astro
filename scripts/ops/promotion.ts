@@ -10,6 +10,12 @@
 // release step's build output). A build from a dirty tree names no commit, so it
 // is not promoted.
 //
+// Those checks hold for any self-consistent tree, and the store is shared, so
+// a store writer could put their own tree under the version's name before
+// selection (#970). The digest must also be the one staging's web deploy
+// recorded for the version, in the operator's own record folder
+// (`stagedDigest`, deployment-record.ts). The dry run selects the same way.
+//
 // Before it migrates, the step asks the service manager whether the API and
 // the auth server are stopped, and refuses while either runs. Open connections
 // cannot tell a stopped app from an idle one: an idle app holds none. The
@@ -19,6 +25,9 @@
 // With both stopped it migrates, points production at the artefact and starts
 // the auth server, then the API. A migration that fails promotes nothing and
 // starts nothing, so the old build never runs against a half-moved schema.
+// After the migration the last acts run under the operator's held grant, the
+// gate asked again first (`authorised`), and staging's record is judged again
+// before the link is pointed and once more after (#970).
 //
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
@@ -26,6 +35,8 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
+import { type Authorised, heldFor } from './authorised-act.ts';
+import { notStillStaged, stagedDigest } from './deployment-record.ts';
 import { frozenCopy, holds } from './served-copy.ts';
 
 /** A service as the service manager names it. */
@@ -55,6 +66,8 @@ export interface PromotionRequest {
   store: string;
   /** The owner's one line that they tried this build on staging. */
   line: string;
+  /** Staging's record folder (OPS_ASTRO_DEPLOYMENTS): only the digest it holds for the version is promoted. */
+  records: string;
   dryRun: boolean;
   api?: ServiceRef;
   auth?: ServiceRef;
@@ -68,6 +81,8 @@ export interface PromotionEffects {
   migrate(): boolean;
   point(current: string, artefact: string): void;
   start(service: ServiceRef): void;
+  /** Runs the acts after the migration under the operator's held grant. */
+  authorised: Authorised;
 }
 
 export type PromotionOutcome =
@@ -115,7 +130,7 @@ function select(request: PromotionRequest): StoredArtefact | string {
   if (lines.length !== 1 || request.line.trim() === '' || request.line.length > LONGEST_LINE) {
     return `the owner's one line that they tried this build on staging is needed: one line, at most ${LONGEST_LINE} characters`;
   }
-  return storedArtefact(request.version, request.store);
+  return stagedArtefact(request.version, request.store, request.records);
 }
 
 /**
@@ -154,7 +169,31 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
   return { path, name, digest };
 }
 
-export function promote(request: PromotionRequest, effects: PromotionEffects): PromotionOutcome {
+/**
+ * The stored artefact for one version, only when it holds the bytes staging
+ * ran: its digest is the one staging's web deploy recorded for that version in
+ * the record folder `records` (#970). Production's selections read it this
+ * way; staging's own deploys read `storedArtefact`, since they make the record.
+ */
+export function stagedArtefact(
+  version: string,
+  store: string,
+  records: string,
+): StoredArtefact | string {
+  const selected = storedArtefact(version, store);
+  if (typeof selected === 'string') return selected;
+  const staged = stagedDigest(records, version);
+  if ('why' in staged) return staged.why;
+  if (staged.digest !== selected.digest) {
+    return `${selected.name} is not the bytes staging ran: it holds ${selected.digest}, staging recorded ${staged.digest}`;
+  }
+  return selected;
+}
+
+export async function promote(
+  request: PromotionRequest,
+  effects: PromotionEffects,
+): Promise<PromotionOutcome> {
   const selected = select(request);
   if (typeof selected === 'string') return { kind: 'refused', reason: selected };
   const record: PromotionRecord = {
@@ -186,23 +225,68 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
   if ('why' in copied) {
     return { kind: 'refused', reason: `${copied.why}; nothing was migrated or promoted` };
   }
-  const served = copied.path;
+  const beforeMigration = notStillStaged(request.records, request.version, selected.digest);
+  if (beforeMigration !== undefined) return { kind: 'refused', reason: beforeMigration };
   if (!effects.migrate()) {
-    return {
-      kind: 'failed',
-      reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
-    };
+    return { kind: 'failed', reason: `the migration did not complete; ${LEFT_STOPPED}` };
   }
-  if (!holds(served, selected.digest)) {
-    return {
-      kind: 'failed',
-      reason: `the copy of ${selected.name} for production changed during the migration; nothing was promoted and the API and the auth server are left stopped`,
-    };
+  return await pointed(request, effects, {
+    selected,
+    record,
+    link,
+    served: copied.path,
+    api,
+    auth,
+  });
+}
+
+const LEFT_STOPPED = 'nothing was promoted and the API and the auth server are left stopped';
+
+/**
+ * After the migration, under the operator's held grant (the migration runner
+ * refuses while another session is connected, so the hold starts here): the
+ * copy and staging's record are judged again, then production is pointed and
+ * started, then the record is judged once more. A record that changed during
+ * the promotion leaves it unrecorded, and says so.
+ */
+async function pointed(
+  request: PromotionRequest,
+  effects: PromotionEffects,
+  at: {
+    selected: StoredArtefact;
+    record: PromotionRecord;
+    link: string;
+    served: string;
+    api: ServiceRef;
+    auth: ServiceRef;
+  },
+): Promise<PromotionOutcome> {
+  const { name, digest } = at.selected;
+  const changed = (): string | undefined =>
+    notStillStaged(request.records, request.version, digest);
+  const held = await heldFor(effects.authorised, (): PromotionOutcome => {
+    if (!holds(at.served, digest)) {
+      const reason = `the copy of ${name} for production changed during the migration; ${LEFT_STOPPED}`;
+      return { kind: 'failed', reason };
+    }
+    const before = changed();
+    if (before !== undefined) {
+      const reason = `staging's record changed during the migration: ${before}; ${LEFT_STOPPED}`;
+      return { kind: 'failed', reason };
+    }
+    effects.point(at.link, at.served);
+    effects.start(at.auth);
+    effects.start(at.api);
+    const after = changed();
+    if (after === undefined)
+      return { kind: 'promoted', record: at.record, artefactPath: at.served };
+    const reason = `production now serves ${name}, but staging's record changed during the promotion: ${after}. It is not recorded; settle staging's record, then promote again`;
+    return { kind: 'failed', reason };
+  });
+  if ('refused' in held) {
+    return { kind: 'failed', reason: `${held.refused}; the migration ran, ${LEFT_STOPPED}` };
   }
-  effects.point(link, served);
-  effects.start(auth);
-  effects.start(api);
-  return { kind: 'promoted', record, artefactPath: served };
+  return held.ran;
 }
 
 /** Why each wanted service is not known to be stopped; empty when all are. */

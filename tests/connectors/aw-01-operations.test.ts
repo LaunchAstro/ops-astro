@@ -149,6 +149,7 @@ const attended = {
   workForPersonId: 'p1',
   tenantInstallation: 'here',
   credentialInstallation: 'here',
+  clientWork: false,
 };
 
 it("a subscription carries its own person's attended work", () => {

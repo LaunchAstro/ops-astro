@@ -45,6 +45,7 @@ const RECIPIENT: OperandShape = {
 export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'map.view': RECORD,
   'map.frontier': RECORD,
+  'map.list': NONE,
   // The read refuses a missing one itself, after the door (`reads/conversation.ts`).
   'conversation.read': { conversationId: 'id' },
   'conversation.list': NONE,
@@ -102,7 +103,6 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'chat.conversations': NONE,
   'chat.messages': { conversationId: 'id' },
   'trace.read': RECORD,
-  'harness.read': { runId: 'id' },
   'live_correction.read': { correctionId: 'id' },
   'automation.registry': NONE,
 };

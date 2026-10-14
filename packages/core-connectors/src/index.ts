@@ -51,6 +51,7 @@ export {
   emailText,
   readEmailAnswer,
   RESEND_DESTINATION,
+  resendDestination,
 } from './email.ts';
 export {
   startFakeEmailProvider,
@@ -75,6 +76,8 @@ export {
   checkableSender,
   checkSender,
   dmarcPolicy,
+  SENDER_FRESH_MS,
+  senderFresh,
   type DmarcPolicy,
   type RecordStatus,
   type SenderReport,

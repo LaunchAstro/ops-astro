@@ -7,13 +7,13 @@ import { createSocket } from 'node:dgram';
 import dns from 'node:dns';
 import { request } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { HARNESS_PINNED_WINDOW } from '../../packages/core-runtime/src/index.ts';
+import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
 import { denyEgress, type EgressGuard } from './deny-egress.ts';
 import { CORPUS_WINDOWS, fakeClock, sourceCorpus } from './fake-clock-corpus.ts';
 import { fakeEffect, type EffectState } from './fake-effect.ts';
 import { digestOf, fakeModel, SLOW_MS, unitsOf, type ModelReply } from './fake-model.ts';
 
-const WINDOW = HARNESS_PINNED_WINDOW.contextUnits;
+const WINDOW = REPLAY_MODEL_WINDOW.contextUnits;
 const LINE = { input: 'Summarise fp-s-001.', text: 'A grounded summary.', outputUnits: 30 };
 
 let guard: EgressGuard;
@@ -36,7 +36,7 @@ const settled = async <T>(promise: Promise<T>): Promise<T | 'pending'> =>
 describe('AW-12 fakes: FP-M, the replay model provider', () => {
   it('answers a scripted request by digest, with usage priced by the replay book', async () => {
     const { client } = fakeModel([LINE], fakeClock());
-    expect(client.window).toBe(HARNESS_PINNED_WINDOW);
+    expect(client.window).toBe(REPLAY_MODEL_WINDOW);
     const reply = await client.complete({ model: 'replay-1', input: LINE.input });
     const input = unitsOf(LINE.input);
     expect(reply).toEqual({

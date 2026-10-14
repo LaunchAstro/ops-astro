@@ -68,6 +68,49 @@ A failure keeps nothing. Every value is the operator's, so it writes no
 made-up row. The installation mode stays `made-up` until every first-client
 gate item is done (migration 0058).
 
+## Agent sign-ins
+
+An agent's sign-in is made, stopped and put back by a person holding
+`operations:manage`, with `scripts/ops/agent-login.mjs`. Set
+`OPS_ASTRO_TOKEN` (your own sign-in), `OPS_ASTRO_BUSINESS` (the business the
+agent belongs to), `OPS_ASTRO_DEPLOYMENTS`, `DATABASE_ADMIN_URL`,
+`DATABASE_URL`, `GOTRUE_URL`, `SUPABASE_SERVICE_KEY`, `PRODUCTION_PROJECT_REF`
+and `STAGING_PROJECT_REF`, and add `--production` on production. Every address
+must be on that one project, and each database address must ask for TLS.
+
+To make one, run the custody wrapper, which creates the password in the
+password manager once, reads it back, and hands it to the command on its
+standard input. The password is never typed, never an argument and never a
+file:
+
+```sh
+node agent-login-custody.mjs --agent-name <name> --generation 1 [--production] -- \
+  make --agent <agent id> --email <address> [--production]
+```
+
+The address is on our own domain and is never mailed; the command adds the
+generation to it. The command signs in as the agent and asks for its queue
+before it says done. If it stops part way, run the same line again: it
+resumes, and it never makes a second password.
+
+To stop one, run `node scripts/ops/agent-login.mjs stop --agent <agent id>`.
+It switches the agent off, revokes its delegations, ends every session of its
+sign-in and bans its sign-in at the provider. If the provider does not answer,
+the stop is kept and the ban is owed: run stop again until it says done. If
+the same sign-in is live in another business, nothing is ended or banned
+there, and the record says it was shared. After a stop, `docker stop` the
+agent's runner, which otherwise exits on its own after ten refused passes.
+
+To put one back, run the wrapper with `restore` in place of `make` and the
+next generation, with the same address. A restore makes a new sign-in and
+leaves the old one banned. It refuses while a ban is owed, after any
+credential of the agent was revoked since the stop, and for an agent this
+tool did not switch off.
+
+Before ending a person's access, stop each agent that person owns. Ending
+access does not yet stop their agents, and an agent whose owner has left is
+never made or put back.
+
 ## The web deploy
 
 ```sh
@@ -75,7 +118,15 @@ node scripts/ops/web-deploy.mjs --version <id> --artefacts <store> --production
 ```
 
 The same operator gate, stored build output, digest checks, sign-in server
-version and Vercel read-back as staging's deploy apply. `VERCEL_ORG_ID` and
+version and Vercel read-back as staging's deploy apply. Production also takes
+only the bytes staging ran. The stored output's digest must be the one
+staging's web deploy recorded for that version in `OPS_ASTRO_DEPLOYMENTS`, so
+run production's deploy with staging's record folder. The folder and every
+folder above it must belong to root or the operator, with no group or other
+write, as the promotion's link folders must. A tree put in the store under
+that version since then is refused, even with a matching stamp and digest.
+So is a version staging has no record of, and a version staging recorded
+with two different digests. `VERCEL_ORG_ID` and
 `VERCEL_PROJECT_ID` name production's Vercel project. The one check left out
 is staging's made-up-only preflight. A database that holds real sign-ins never
 passes it.

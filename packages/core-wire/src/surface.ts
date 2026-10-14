@@ -35,6 +35,7 @@ import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
 import { DECIDE_AT_CORRECTION, REVERT_AT_CORRECTION } from './surface-live-correction.ts';
+import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -144,9 +145,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
-  // Launch from the task: a person who directs the task's agent opens a run
-  // for it (`tasks-launch.ts`). Never an agent's.
-  declare('task.launch', 'assign'),
+  // Launch from the task, and its agent taking it, in their own file.
+  ...LAUNCH_SURFACE,
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
@@ -620,6 +620,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('map.list', TASK_COLLECTION),
   // WF-2. A chart is a business write: it files the map and its tickets.
   declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
   declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
@@ -810,11 +811,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record scope and, inside it, the task's own read. Never an agent: no
   // agent-reachable operation returns a trace (the ticket's `no agent read`).
   read('trace.read', 'operations', { authorisedOn: 'record' }),
-  // AW-12: the harness test's result on one run, computed from its frozen
-  // manifest. `read` on tasks, asked inside the statement on the run's task
-  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
-  // framework under test reaches its own verdict.
-  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {
@@ -945,10 +941,9 @@ export function declarationOf(name: CommandName): CommandDeclaration {
  * The commands with no existing record to be stale against: the rows that
  * target none.
  *
- * It is derived from the rows, and
- * `tests/commands/command-catalogue-pin.test.ts` holds the list as a literal,
- * so a new exemption is still a diff to that test. A test comparing a
- * derivation with its own source could not fail.
+ * It is derived from the rows, and `tests/commands/command-catalogue-pin.test.ts`
+ * holds the list as a literal, so a new exemption is still a diff to that
+ * test. A test comparing a derivation with its own source could not fail.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal

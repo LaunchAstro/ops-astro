@@ -106,16 +106,14 @@ const loaded = load();
 
 /**
  * A PUT its destination lists no route for, or a POST to a destination that
- * takes none: custody never sends one, so it is no request.
+ * takes none or not at that path: custody never sends one, so it is no request.
  */
 const unrouted = (asked: OutboundRequest): boolean => {
   const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
   if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
-  return (
-    asked.method === 'POST' &&
-    destination.post === false &&
-    !pathAllowed(destination, 'POST', asked.path)
-  );
+  if (asked.method !== 'POST') return false;
+  const barred = destination.post === false || destination.posts !== undefined;
+  return barred && !pathAllowed(destination, 'POST', asked.path);
 };
 
 /**

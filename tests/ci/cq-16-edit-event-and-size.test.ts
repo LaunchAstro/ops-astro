@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { isMap, isScalar, parseDocument, visit } from 'yaml';
 import { withoutGuardLines } from './open-pull-request.ts';
 import { script, step, top } from './workflow-text.ts';
 
@@ -38,6 +39,23 @@ const FETCH = 'Read the description as it stands now';
 const CASES = "The checker's own cases";
 const BINDS = 'The review must cover the head being merged';
 const BASE = 'A base change needs every check run again';
+
+function expectReadOnlyWorkflow(text: string): void {
+  expect(text.match(/secrets\.|GITHUB_TOKEN|pull_request_target/u)).toBeNull();
+  const document = parseDocument(text);
+  expect(document.errors).toEqual([]);
+  visit(document, {
+    Pair(_key, pair) {
+      if (!isScalar(pair.key) || pair.key.value !== 'permissions') return;
+      expect(isMap(pair.value)).toBe(true);
+      if (!isMap(pair.value)) return;
+      for (const permission of pair.value.items) {
+        expect(isScalar(permission.value)).toBe(true);
+        if (isScalar(permission.value)) expect(permission.value.value).toBe('read');
+      }
+    },
+  });
+}
 
 describe('CQ-16 edited runs review evidence only', () => {
   it('CQ-16 edited runs review evidence only: ci.yml no longer runs on edited, the new workflow runs on edited alone', () => {
@@ -113,7 +131,7 @@ describe('CQ-16 workflow permissions', () => {
 
   it('CQ-16 workflow permissions: no ci.yml job gains a secret or a write permission', () => {
     const ci = read(CI);
-    expect(ci.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target/u)).toBeNull();
+    expectReadOnlyWorkflow(ci);
     expect(top(ci, 'permissions')).toBe('permissions:\n  contents: read\n\n');
     // The gate alone reads Actions, for the push-to-main scope (scripts/full-run.ts), read only.
     const own = [...jobs(ci)].filter(([, b]) => /^ {4}permissions:/mu.test(b));
@@ -138,6 +156,29 @@ describe('CQ-16 workflow permissions', () => {
     expect(step(block, FETCH)).toContain('GH_TOKEN: ${{ github.token }}');
     // The checkout leaves no copy of the token in .git/config for the steps that run head code.
     expect(block).toContain('persist-credentials: false');
+  });
+});
+
+describe('CQ-16 workflow permissions reject authority changes', () => {
+  it.each([
+    ['top-level write', 'permissions: { contents: write }'],
+    ['quoted write', 'permissions: { "contents": "write" }'],
+    ['write-all', 'permissions: write-all'],
+    ['job write', 'jobs:\n  check:\n    permissions:\n      issues: write'],
+    ['job write-all', 'jobs:\n  check:\n    permissions: write-all'],
+    ['secret', 'env: { MARKER: "${{ secrets.CQ16_SYNTHETIC }}" }'],
+    ['token', 'env: { GITHUB_TOKEN: "${{ github.token }}" }'],
+    ['privileged event', 'on: pull_request_target'],
+  ])('CQ-16 workflow permissions: refuses %s', (_name, workflow) => {
+    expect(() => expectReadOnlyWorkflow(workflow)).toThrow();
+  });
+
+  it('CQ-16 workflow permissions: read-only grants allow filesystem writes in a run step and comments', () => {
+    expectReadOnlyWorkflow(
+      'permissions: { contents: read }\njobs:\n  check:\n    permissions: { actions: read }\n' +
+        '    steps:\n      # This step writes a synthetic local record.\n' +
+        '      - run: node -e \'require("node:fs").writeFileSync("record", "synthetic")\'\n',
+    );
   });
 });
 

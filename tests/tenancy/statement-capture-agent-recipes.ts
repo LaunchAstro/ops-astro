@@ -95,6 +95,12 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       credential: String(detail['credential']),
     };
   },
+  // The launched agent's take, on its own login holding nothing: it takes its
+  // open launch, or answers that it has none. Either is the take applied.
+  'task.take_launch': async (harness) => {
+    await endLive(harness);
+    return { prefix: 'agent', body: {} };
+  },
 };
 
 function childBody(

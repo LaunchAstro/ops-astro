@@ -20,7 +20,8 @@ import {
   type ServiceState,
 } from '../../scripts/ops/promotion.ts';
 import { outputDigest, recordedStamp } from '../../scripts/ops/build-output.ts';
-import { LINE, named, NEWER, scratch, STAGED, store, STORE } from './promotion.fixture.ts';
+import { LINE, named, NEWER, scratch, STAGED, staged, store, STORE } from './promotion.fixture.ts';
+import { each } from './promotion.fixture.ts';
 
 const COMMAND = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
 const CANARY = 'canary-5d1e9a-promotion-secret';
@@ -42,20 +43,17 @@ const watched = (states: readonly ServiceState[], migrates = true) => {
     },
     point: (current, artefact) => calls.push(`point ${current} -> ${artefact}`),
     start: (service) => calls.push(`start ${service.manager}:${service.name}`),
+    authorised: async (work) => await work(),
   };
   return { calls, effects };
 };
 const state = (ref: ServiceRef, running: boolean): ServiceState => ({ ...ref, running });
-const request = (over: Partial<PromotionRequest> = {}): PromotionRequest => ({
-  version: STAGED,
-  store: STORE(),
-  line: LINE,
-  dryRun: false,
-  api: API,
-  auth: AUTH,
-  current: join(scratch, 'current'),
-  ...over,
-});
+/** A request over `over.store` (STORE() unless given), with staging's record of each build it holds. */
+const request = (over: Partial<PromotionRequest> = {}): PromotionRequest => {
+  const root = over.store ?? STORE();
+  const base = { version: STAGED, store: root, records: staged(root), line: LINE, dryRun: false };
+  return { ...base, api: API, auth: AUTH, current: join(scratch, 'current'), ...over };
+};
 
 const run = (args: string[], env: Record<string, string> = {}) => {
   const result = spawnSync(process.execPath, [COMMAND, ...args], {
@@ -77,9 +75,9 @@ describe('S0-1 promotion same artefact', () => {
 });
 
 function promotionSameArtefactCases1() {
-  it('the dry run picks the artefact the staging definition names and records its stamp', () => {
+  it('the dry run picks the artefact the staging definition names and records its stamp', async () => {
     const { calls, effects } = watched([]);
-    const outcome = promote(request({ dryRun: true }), effects);
+    const outcome = await promote(request({ dryRun: true }), effects);
     expect(outcome.kind).toBe('dry-run');
     if (outcome.kind !== 'dry-run') return;
     expect(outcome.artefactPath.endsWith(`/${named(STAGED)}`)).toBe(true);
@@ -94,7 +92,7 @@ function promotionSameArtefactCases1() {
     expect(calls).toEqual([]);
   });
 
-  it('never another build: a different stamp, no stamp, no artefact or a dirty build is refused', () => {
+  it('never another build: a different stamp, no stamp, no artefact or a dirty build is refused', async () => {
     const cases: [Partial<PromotionRequest>, RegExp][] = [
       [{ store: store({ [named(STAGED)]: NEWER }) }, /carries fedcba987654, not 0123456789ab/u],
       [{ store: store({ [named(STAGED)]: null }) }, /carries no stamp/u],
@@ -102,30 +100,30 @@ function promotionSameArtefactCases1() {
       [{ version: `${STAGED}-dirty` }, /not a clean build identifier/u],
       [{ version: '../escape' }, /not a clean build identifier/u],
     ];
-    for (const [over, reason] of cases) {
-      for (const dryRun of [true, false]) {
+    await each(cases, async ([over, reason]) => {
+      await each([true, false], async (dryRun) => {
         const { calls, effects } = watched([state(API, false), state(AUTH, false)]);
-        const outcome = promote(request({ ...over, dryRun }), effects);
+        const outcome = await promote(request({ ...over, dryRun }), effects);
         expect(outcome.kind).toBe('refused');
         if (outcome.kind === 'refused') expect(outcome.reason).toMatch(reason);
         expect(calls).toEqual([]);
-      }
-    }
+      });
+    });
   });
 
-  it("records the owner's one line, and refuses without exactly one", () => {
-    for (const line of ['', '   ', 'tried it\nand it was fine', 'x'.repeat(201)]) {
+  it("records the owner's one line, and refuses without exactly one", async () => {
+    await each(['', '   ', 'tried it\nand it was fine', 'x'.repeat(201)], async (line) => {
       const { calls, effects } = watched([]);
-      const outcome = promote(request({ line, dryRun: true }), effects);
+      const outcome = await promote(request({ line, dryRun: true }), effects);
       expect(outcome.kind).toBe('refused');
       if (outcome.kind === 'refused') expect(outcome.reason).toMatch(/one line/u);
       expect(calls).toEqual([]);
-    }
+    });
   });
 }
 
 function promotionSameArtefactCases2() {
-  it('the same bytes: an artefact changed after its digest, or recording none, is refused', () => {
+  it('the same bytes: an artefact changed after its digest, or recording none, is refused', async () => {
     const changed = STORE();
     writeFileSync(join(changed, named(STAGED), 'index.html'), '<p>another build</p>');
     const bare = STORE();
@@ -134,21 +132,24 @@ function promotionSameArtefactCases2() {
       [changed, /does not hold the bytes its digest records/u],
       [bare, /records no digest/u],
     ] as const;
-    for (const [root, reason] of cases) {
-      for (const dryRun of [true, false]) {
+    await each(cases, async ([root, reason]) => {
+      await each([true, false], async (dryRun) => {
         const { calls, effects } = watched([state(API, false), state(AUTH, false)]);
-        const outcome = promote(request({ store: root, dryRun }), effects);
+        const outcome = await promote(request({ store: root, dryRun }), effects);
         expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(reason) });
         expect(calls).toEqual([]);
-      }
-    }
+      });
+    });
   });
 
   it('the command dry-runs over a store and prints the record, and nothing else', () => {
     const artefacts = STORE();
     const result = run(
       ['--dry-run', '--version', STAGED, '--artefacts', artefacts, '--line', LINE],
-      { DATABASE_ADMIN_URL: `postgres://owner:${CANARY}@db.example/prod` },
+      {
+        DATABASE_ADMIN_URL: `postgres://owner:${CANARY}@db.example/prod`,
+        OPS_ASTRO_DEPLOYMENTS: staged(artefacts),
+      },
     );
     expect(result.status, result.out).toBe(0);
     const record = JSON.parse(result.out.split('\n').find((l) => l.startsWith('{')) ?? '{}');
@@ -171,22 +172,22 @@ function promotionSameArtefactCases2() {
 // ---- S0-1 promotion refuses running app -----------------------------------
 
 describe('S0-1 promotion refuses running app', () => {
-  it('refuses while the API or the auth server runs, idle or not, says what to stop, and does nothing', () => {
+  it('refuses while the API or the auth server runs, idle or not, says what to stop, and does nothing', async () => {
     const cases: [ServiceState[], RegExp][] = [
       [[state(API, true), state(AUTH, false)], /docker:prod-api is running/u],
       [[state(API, false), state(AUTH, true)], /launchd:org\.example\.prod-auth is running/u],
       [[state(API, true), state(AUTH, true)], /prod-api is running.*prod-auth is running/su],
       [[state(AUTH, false)], /cannot find docker:prod-api/u],
     ];
-    for (const [states, reason] of cases) {
+    await each(cases, async ([states, reason]) => {
       const { calls, effects } = watched(states);
-      const outcome = promote(request(), effects);
+      const outcome = await promote(request(), effects);
       expect(outcome.kind).toBe('refused');
-      if (outcome.kind !== 'refused') continue;
+      if (outcome.kind !== 'refused') return;
       expect(outcome.reason).toMatch(reason);
       expect(outcome.reason).toMatch(/stop/iu);
       expect(calls).toEqual(['services']);
-    }
+    });
   });
 
   // The command-level cases (the live service manager's refusal, no saved
@@ -212,10 +213,10 @@ describe('S0-1 promotion refuses running app', () => {
 // ---- S0-1 promotion migrates stopped app ----------------------------------
 
 describe('S0-1 promotion migrates stopped app', () => {
-  it('with both stopped: migrates, points production at the staged artefact, starts auth then API', () => {
+  it('with both stopped: migrates, points production at the staged artefact, starts auth then API', async () => {
     const { calls, effects } = watched([state(API, false), state(AUTH, false)]);
     const req = request();
-    const outcome = promote(req, effects);
+    const outcome = await promote(req, effects);
     expect(outcome.kind).toBe('promoted');
     if (outcome.kind !== 'promoted') return;
     expect(calls).toEqual([
@@ -234,23 +235,23 @@ describe('S0-1 promotion migrates stopped app', () => {
     expect(outcome.record).toMatchObject({ version: STAGED, line: LINE, dryRun: false });
   });
 
-  it('a refused migration promotes nothing and starts nothing, and says both are left stopped', () => {
+  it('a refused migration promotes nothing and starts nothing, and says both are left stopped', async () => {
     const { calls, effects } = watched([state(API, false), state(AUTH, false)], false);
-    const outcome = promote(request(), effects);
+    const outcome = await promote(request(), effects);
     expect(outcome.kind).toBe('failed');
     if (outcome.kind === 'failed') expect(outcome.reason).toMatch(/left stopped/u);
     expect(calls).toEqual(['services', 'migrate']);
   });
 
-  it('a real run needs the API, the auth server and the production link named', () => {
-    for (const missing of ['api', 'auth', 'current'] as const) {
+  it('a real run needs the API, the auth server and the production link named', async () => {
+    await each(['api', 'auth', 'current'] as const, async (missing) => {
       const req = request();
       delete req[missing];
       const { calls, effects } = watched([state(API, false), state(AUTH, false)]);
-      const outcome = promote(req, effects);
+      const outcome = await promote(req, effects);
       expect(outcome.kind).toBe('refused');
       expect(calls).toEqual([]);
-    }
+    });
     expect(existsSync(join(scratch, 'current'))).toBe(false);
   });
 });

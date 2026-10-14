@@ -23,10 +23,20 @@ import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { enrol, grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
-import { harness, teammate, stateOf, useEndAccessWorld } from './c58-end-access-world.ts';
+import {
+  apiWith,
+  end,
+  harness,
+  outcome,
+  scripted,
+  teammate,
+  stateOf,
+  useEndAccessWorld,
+} from './c58-end-access-world.ts';
 
 // WORLD-IMPORTS c58-end-access-world.ts
 
@@ -83,7 +93,55 @@ async function c58EndsAtOnceAGrantRacing(): Promise<void> {
   }
 }
 
+/** A live and an already expired delegation from one person, then their access ended. */
+async function c58EndsOnlyTheLiveDelegations(): Promise<void> {
+  const api = apiWith(scripted().provider);
+  const { person } = await teammate('ivy');
+  const give = async (purpose: string): Promise<string> =>
+    await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+      const minted = await mintDelegation(tx, {
+        agentActorId: harness.world.agent.actorId as string,
+        delegatePersonId: person.personId,
+        mintedByActorId: person.actorId,
+        purpose,
+        collections: ['task'],
+        actions: ['write'],
+        purposeScope: { kind: 'record', id: harness.alphaTask.id },
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      if (!minted.ok) throw new Error(`delegation ${purpose} not minted`);
+      return minted.value.delegation.id;
+    });
+  const live = await give('c58_still_live');
+  const lapsed = await give('c58_lapsed');
+  await harness.world.db.admin.execute(
+    `update public.delegations
+        set granted_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+      where id = $1`,
+    [lapsed],
+  );
+
+  const ended = await end(api, person.personId);
+  expect(outcome(ended)).toEqual({ status: 200, code: 'ok' });
+  const detail = (ended.body['detail'] ?? {}) as Record<string, unknown>;
+  expect(detail['delegationsRevoked']).toBe(1);
+  const rows = await harness.world.db.admin.execute<{ id: string; revoked: boolean }>(
+    `select id::text, revoked_at is not null as revoked from public.delegations
+      where id = any($1::uuid[]) order by id`,
+    [[live, lapsed]],
+  );
+  expect(Object.fromEntries(rows.map((row) => [row.id, row.revoked]))).toEqual({
+    [live]: true,
+    [lapsed]: false,
+  });
+}
+
 describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
+  it(
+    'C58 one act: a delegation the person gave that had already expired is neither revoked again nor counted',
+    c58EndsOnlyTheLiveDelegations,
+  );
+
   it(
     'C58 ends at once: a grant racing an ending leaves nothing live, and two last managers ending each other leave one',
     c58EndsAtOnceAGrantRacing,

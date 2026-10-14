@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Owner line 72 by source: an owner-started task with no client sends its free text to the owner's subscription and records it; a client task is refused by name before any route; a client contact's or agent's write, a staff-started task or an owner who stepped down keeps the text local."
+}

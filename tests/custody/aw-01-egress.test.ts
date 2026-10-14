@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the closed list of network sites grows one reviewed line at a time */
 //
 // AW-01, the egress conformance proof: ten cases.
 //
@@ -56,6 +57,7 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
     "reads the sign-in provider's published key set at its pinned address (S0-6b)",
   'apps/api/auth/supabase.ts': 'threads that key-set fetch to the verifier; it calls nothing',
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
+  'apps/mail/main.ts': "the mail unit's DNS read of the root's DMARC record; no key, no mail",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
   'apps/local-agent/codex.ts': 'LA-1, laptop only: spawns `codex`, which calls its vendor',
