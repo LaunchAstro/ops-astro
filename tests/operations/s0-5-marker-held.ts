@@ -49,6 +49,7 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   // C80: a request files a correction naming the task, and a decision moves it.
   'live_correction.request',
   'live_correction.decide',
+  'live_correction.revert',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);
