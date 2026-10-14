@@ -207,6 +207,26 @@ jobs:
             git show "$c:pnpm-lock.yaml" | ./gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml || exit 1
           done
 
+  pin-tests:
+    # Pin and count contracts read repository-wide facts that changed-import
+    # selection cannot see. Run before ci-next, without a database.
+    name: pin and count tests
+    needs: [gate]
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/ci-scope.ts 'pin and count tests' -- pnpm exec vitest run
+
   full:
     # Queue hygiene (owner, 12 October 2026): the heavy jobs wait on this one,
     # so a light run (the gate's `scope` output, scripts/full-run.ts) skips
@@ -324,8 +344,12 @@ jobs:
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
-      # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database. A pull request's light set
+      # it carries, check its bytes against the digest it records and against
+      # staging's record of that build (#970), and record it. The record here
+      # is a stand-in for the line a staging web deploy of this build writes,
+      # in a folder of its own in the checkout, since a record folder must
+      # pass the promotion's trust walk; it is removed when the step ends. It
+      # touches no service and no database. A pull request's light set
       # builds too, but this dry run is queue-only: on a pull request
       # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
       # the merge queue.
@@ -340,7 +364,11 @@ jobs:
           store="${RUNNER_TEMP}/artefacts"
           mkdir -p "$store"
           node scripts/ops/release.ts --out "${store}/ops-astro-${version}"
-          node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
+          records="$(mktemp -d "${PWD}/.promotion-records-XXXXXX")"
+          trap 'rm -rf "$records"' EXIT
+          node -e 'const fs = require("node:fs"); const [out, folder, version] = process.argv.slice(1); const { digest } = JSON.parse(fs.readFileSync(`${out}/build.json`, "utf8")); fs.writeFileSync(`${folder}/deployments.jsonl`, `${JSON.stringify({ action: "deploy recorded", environment: "staging", version, digest })}\n`, { mode: 0o600 });' \
+            "${store}/ops-astro-${version}" "$records" "$version"
+          OPS_ASTRO_DEPLOYMENTS="$records" node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
             --line "CI dry run of the promotion step over the build just made"
       # INB-1g, the worker's leg: the inbox reads back after the worker is hard-killed
       # and replaced, on the runner's own disposable Postgres. It names the proof, so
@@ -359,18 +387,21 @@ jobs:
     # job would be skipped, and a skipped required check reads as passed. The
     # shards run on pull requests too, so no skip passes anywhere.
     name: local checks
-    needs: [gate, full, check]
+    needs: [gate, full, check, pin-tests]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - name: Every shard succeeded, or a push whose tree its merge group tested
         env:
+          PINS: ${{ needs.pin-tests.result }}
           SHARDS: ${{ needs.check.result }}
           GATE: ${{ needs.gate.result }}
           SCOPE: ${{ needs.gate.outputs.scope }}
           EVENT: ${{ github.event_name }}
         run: |
+          echo "pin and count tests: $PINS"
+          test "$PINS" = success
           echo "local checks shards: $SHARDS, contamination gate: $GATE, scope: $SCOPE"
           if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             if [ "$EVENT" = push ]; then

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A take judges after its last lock: two takes of one launch start it once and hand back one credential; a revocation or an expiry that lands while the take waits on the delegation ends the launch with no credential"
+}

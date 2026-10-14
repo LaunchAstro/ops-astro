@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "sealed messages from another runner or call, or past their seal, move no carried call"
+}

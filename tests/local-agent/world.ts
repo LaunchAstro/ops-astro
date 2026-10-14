@@ -5,11 +5,26 @@
 // binary. Nothing here reaches a model, an account or the real ~/.codex.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const FAKE_CODEX: string = resolve(import.meta.dirname, 'fake-codex.mjs');
 export const RUNNER_KEY = 'runner-key-0123456789abcdef0123456789abcdef';
+/** A loopback port nothing listens on just now: one the system hands out and takes back. */
+export async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((done) => {
+    server.listen(0, '127.0.0.1', done);
+  });
+  const address = server.address();
+  await new Promise<void>((done) => {
+    server.close(() => done());
+  });
+  if (address === null || typeof address === 'string') throw new Error('no TCP listener');
+  return address.port;
+}
+
 /** A planted key in the runner's environment: it must never leave the runner. */
 export const CANARY = 'sk-proj-CANARY-local-agent-7f3e9c';
 

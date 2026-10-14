@@ -127,6 +127,7 @@ const bodies = (claim: Claim): Record<string, Body> => ({
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
   'task.create': () => ({ fields: { title: 'made-up' } }),
   'onboarding.step_result': (record) => ({ recordId: record, outcome: 'done', result: 'made-up' }),
+  'task.take_launch': (record) => ({ launchId: record }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
@@ -184,6 +185,8 @@ export function delegationCrossing(): void {
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
       'onboarding.step_result': 'DELEGATION_OUT_OF_PURPOSE',
+      // A take presents no credential: under one it is refused before a launch is read.
+      'task.take_launch': 'SCOPE_NOT_GRANTED',
     };
     for (const row of agentRows) {
       // A step result's crossing is the other person's ready agent step.

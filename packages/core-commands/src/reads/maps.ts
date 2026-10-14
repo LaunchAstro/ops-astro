@@ -12,7 +12,12 @@ import {
   type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
-import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
+import type {
+  MapComponentView,
+  MapFrontierResult,
+  MapListResult,
+  MapView,
+} from '../../../core-wire/src/index.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -261,4 +266,32 @@ export async function readMapFrontier(
       .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
     fog: fog.map((row) => ({ id: row.id, text: row.body })),
   };
+}
+
+/**
+ * The live maps of this business the subjects' grants reach, by title: a
+ * business-scoped read, or a read on the map itself. A ticket's grant never
+ * reaches its map, nor a map's grant a map filed under it
+ * (`mapTicketCondition`), so each is listed exactly when `map.view` would
+ * admit the reader. Judged in the statement that reads the rows.
+ */
+export async function readMapList(
+  tx: TenantQuery,
+  taskTypeId: string,
+  subjects: readonly Subject[],
+): Promise<MapListResult> {
+  const maps = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+  }>(
+    `select r.id, r.txt_1 as key, r.txt_4 as title
+       from public.records r
+      where r.business_id = $1 and r.record_type_id = $2
+        and r.deleted_at is null and r.data ->> 'type' = 'map'
+        and ${readableTaskCondition('r', 3)}
+      order by r.txt_4, r.id`,
+    [tx.businessId, taskTypeId, ...readableTaskParams(subjects)],
+  );
+  return { ok: true, maps };
 }

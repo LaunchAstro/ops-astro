@@ -154,3 +154,27 @@ export interface Carriage {
     | { readonly ok: false; readonly code: 'CARRIAGE_UNAVAILABLE' }
   >;
 }
+
+export type Judged = { readonly ok: true } | { readonly ok: false; readonly code: string };
+
+/** What the command layer hands the carried custody for one call. */
+export interface Handoff {
+  readonly businessId: string;
+  readonly callId: string;
+  /** The person's own access token: the only identity the line's policy sees. */
+  readonly accessToken: string;
+  /** The offer judgement; passing, the call is offered and the doorbell rings. */
+  offer(): Promise<Judged>;
+  /**
+   * The send judgement for `accept`; passing, the send is recorded and its
+   * locks stay held until `release`, which resolves once they are let go.
+   */
+  fence(accept: {
+    readonly runner: string;
+    readonly acceptedAt: number;
+    readonly heardAt: number;
+  }): Promise<
+    | { readonly ok: true; readonly release: () => Promise<void> }
+    | { readonly ok: false; readonly code: string }
+  >;
+}

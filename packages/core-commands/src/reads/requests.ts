@@ -64,11 +64,10 @@ import type {
   TaskSearchResult,
   TaskLedgerResult,
   AutomationRegistryResult,
-  MapViewResult,
-  MapFrontierResult,
+  MapReadResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt } from '../../../core-runtime/src/index.ts';
 import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -179,6 +178,7 @@ export interface ReadOperands {
   readonly 'map.view': { readonly recordId: string };
   /** A map's frontier and fog, from their read models (WF-2). */
   readonly 'map.frontier': { readonly recordId: string };
+  readonly 'map.list': NoOperands;
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -219,8 +219,6 @@ export interface ReadOperands {
   readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
-  /** The run whose harness test result is read (AW-12). */
-  readonly 'harness.read': { readonly runId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
   readonly 'invitation.list': NoOperands;
@@ -283,8 +281,7 @@ export type ReadResult =
   | InboxCountResult
   | LiveCorrectionReadResult
   | InvitationListResult
-  | MapViewResult
-  | MapFrontierResult
+  | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | ChatConversationsResult
   | ChatMessagesResult
@@ -296,5 +293,4 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading }
   | AutomationRegistryResult;

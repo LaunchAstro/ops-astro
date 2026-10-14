@@ -25,9 +25,9 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { Scope } from '../../packages/core-records/src/authority/grants.ts';
+import { ABOUT, PAGE, bindSites, nameApprovers } from './c80-sites.ts';
 
-export const ABOUT = 'src/pages/about.md';
-export const PAGE = 'https://agency.example/about/';
+export { ABOUT, PAGE };
 export const BEFORE =
   '---\ntitle: About\n---\n\nWe are a friendly studio.\n\nA friendly decoy line.\n';
 export const AFTER =
@@ -196,6 +196,8 @@ export async function c80World(part: string): Promise<C80World> {
   const alpha = { business: world.business, by: people.ava, sharer: people.admin };
   const taskA = (await taskUnder(asIn, alpha, partyA, 'About')).taskId;
   const taskB = (await taskUnder(asIn, alpha, partyB, 'About a client')).taskId;
+  await bindSites(world, people.admin, theirs, { partyA, partyB });
+  await nameApprovers(world, [world.business, people.ben], [theirs.beta, theirs.eve]);
   return {
     world,
     partyA,

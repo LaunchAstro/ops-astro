@@ -3,6 +3,7 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 
 export type CommandName =
@@ -23,8 +24,6 @@ export type CommandName =
   | 'task.set_state'
   | 'task.duplicate'
   | 'task.assign'
-  // Launch from the task: a person opens a run for the task's agent.
-  | 'task.launch'
   | 'task.triage'
   | 'task.set_stage'
   | 'task.set_party'
@@ -171,14 +170,14 @@ export type CommandName =
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
-  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.list'
+  // WF-2: chart a map, a ticket's blocking, claim and close, fog graduating, and the frontier.
   | 'map.chart'
   | 'task.set_blocking'
   | 'task.claim'
   | 'map.graduate'
   | 'task.resolve'
   | 'task.close_out_of_scope'
-  // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
@@ -273,8 +272,6 @@ export type CommandName =
   | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
-  // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read'
   // C39-T: team invitations under `access:share`; expiry is the worker's, never a command.
   | 'invitation.create'
   | 'invitation.resend'
@@ -297,4 +294,5 @@ export type CommandName =
   | 'finance.skill_costs'
   | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
-  | SetupCommandName;
+  | SetupCommandName
+  | LaunchCommandName;

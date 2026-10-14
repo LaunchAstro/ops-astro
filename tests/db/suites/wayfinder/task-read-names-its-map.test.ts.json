@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "task.read names a ticket's map only to a member whose grants reach that map; null for a reader holding the ticket alone, on a map and on a task on no map; absent for an agent credential"
+}

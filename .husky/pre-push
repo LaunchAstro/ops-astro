@@ -12,7 +12,8 @@
 # Exit codes from the scanner:
 #   0  clean
 #   1  contamination found          -> refuse the push
-#   2  the private list is absent   -> only acceptable for the literal sweep
+#   2  the private list is absent   -> refuse the push (only the literal
+#                                      sweep exits 2; any other step is broken)
 #   3  the gate is broken           -> refuse the push, always
 #
 # HUB_GATE_CMD exists so tests/gate/hook-exit-cases.sh can substitute a stub
@@ -33,9 +34,154 @@ export HUB_GATE_REPO
 # exported scanners are the pushed commit's own.
 GIT_NO_REPLACE_OBJECTS=1
 export GIT_NO_REPLACE_OBJECTS
+# Nor a local graft, which would hide a commit's real parents from the scan.
+GIT_GRAFT_FILE=/dev/null
+export GIT_GRAFT_FILE
 scanner_dirs=""
 # shellcheck disable=SC2086
 trap 'rm -rf $scanner_dirs' EXIT
+
+# The commits this machine's gate has passed for publication, in the
+# repository's common Git directory: shared by every worktree, and never
+# fetched, pushed or cloned, so no remote can add to it. A line is a commit and
+# the fingerprint of what judged it, both full hashes. A commit is added only
+# after its push's scans all pass. Its secret and literal scans cover every
+# commit it reaches, either now or previously under the same fingerprint.
+passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-passed
+public_passed_list=$(git rev-parse --path-format=absolute --git-common-dir)/gate-public-passed
+hash_hex=40
+if [ "$(git rev-parse --show-object-format 2>/dev/null || true)" = sha256 ]; then
+  hash_hex=64
+fi
+
+file_digest() {
+  if [ -z "$1" ] || [ ! -e "$1" ]; then
+    echo none
+  else
+    git hash-object --no-filters "$1" 2>/dev/null || echo unreadable
+  fi
+}
+
+# A push is pinned when nothing outside the fingerprint can change what its
+# scans read or refuse: the scanners are the pushed commit's own (no
+# override), no interpreter or Git start-up setting comes from the
+# environment, and the gitleaks rules are the checkout's own file, extending
+# no other. Only a pinned push narrows its range or adds to the record; any
+# other push scans everything reachable and records nothing.
+pinned_push() {
+  [ -z "${HUB_GATE_CMD:-}" ] && [ -z "${HUB_PUBLIC_CONTENT_CMD:-}" ] || return 1
+  for setting in PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONEXECUTABLE \
+    NODE_OPTIONS NODE_PATH GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT \
+    GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM; do
+    eval "[ -z \"\${$setting:-}\" ]" || return 1
+  done
+  gitleaks_extends_nothing
+}
+
+# The checkout's gitleaks rules name no other file. A key has many spellings
+# (quoted, dotted, escaped, an inline table), and gitleaks' loader matches keys
+# case-insensitively and splits them on dots, so a TOML parser reads the file
+# and every key is compared the way that loader compares it. Under extend only
+# the built-in rule switches pass. A file the parser refuses is not pinned.
+gitleaks_extends_nothing() {
+  python3 -I - .gitleaks.toml 2>/dev/null <<'PY'
+import sys, tomllib
+
+def leaves(table, prefix):
+    for key, value in table.items():
+        if not key.isascii():
+            sys.exit(1)
+        path = prefix + [part.lower() for part in key.split('.')]
+        if isinstance(value, dict):
+            yield from leaves(value, path)
+        else:
+            yield path
+
+with open(sys.argv[1], 'rb') as rules:
+    config = tomllib.load(rules)
+for path in leaves(config, []):
+    if path[0] == 'extend' and path[1:] not in (['usedefault'], ['disabledrules']):
+        sys.exit(1)
+PY
+}
+
+# What judges a pinned push of commit $1: that commit's scanners and canaries,
+# this hook, the checkout's gitleaks rules and ignore file, the tools that run
+# the scans and the PATH that finds them, and the private list and receipt. A passed commit vouches only
+# under the same fingerprint, so weaker scanners or rules changed since never
+# stand in for the scan the push would get now.
+scan_fingerprint() {
+  {
+    for path in scripts/gate scripts/public-content-check.mjs \
+      scripts/candidate-snapshot.mjs scripts/public-addresses.mjs \
+      scripts/history-objects.mjs tests/gate/canary.txt tests/gate/shape-canary.txt; do
+      printf '%s %s\n' "$path" "$(git rev-parse -q --verify "$1:$path" || echo none)"
+    done
+    printf 'hook %s\n' "$(file_digest "$0")"
+    printf 'gitleaks-config %s\n' "$(file_digest .gitleaks.toml)"
+    printf 'gitleaks-ignore %s\n' "$(file_digest .gitleaksignore)"
+    for tool in python3 node git gitleaks; do
+      printf 'tool %s %s\n' "$(command -v "$tool" || echo none)" \
+        "$("$tool" --version 2>/dev/null || "$tool" version 2>/dev/null || echo none)"
+    done
+    printf 'git-exec-path %s\n' "${GIT_EXEC_PATH:-}"
+    # Every helper the hook and the scanners call (tar unpacks the scanners
+    # that run) is found on PATH, so a different PATH is a different regime.
+    printf 'path %s\n' "$PATH"
+    printf 'terms %s\n' "$(file_digest "${HUB_GATE_TERMS:-}")"
+    printf 'receipt %s\n' "$(file_digest "${HUB_GATE_LITERAL_HISTORY_RECEIPT:-}")"
+  } | git hash-object --stdin
+}
+
+# The commits passed under fingerprint $1 that this repository still holds, or
+# a failure when the record is missing, unreadable or a symlink. One line not
+# of the record's form voids the whole record: a damaged record is not half
+# trusted. A pruned commit is dropped.
+passed_commits() {
+  [ -f "$passed_list" ] && [ ! -L "$passed_list" ] && [ -r "$passed_list" ] || return 1
+  if grep -qvE "^[0-9a-f]{$hash_hex} [0-9a-f]{$hash_hex}\$" "$passed_list"; then
+    return 1
+  fi
+  sed -n "s/ $1\$//p" "$passed_list" | sort -u |
+    git cat-file --batch-check='%(objectname) %(objecttype)' |
+    sed -n 's/ commit$//p'
+}
+
+# The range a branch's first push scans: BASE..LOCAL, with BASE a commit
+# passed under fingerprint $2. Only a passed commit that LOCAL reaches counts. Everything a passed
+# commit reaches is passed, so no commit the gate has not passed falls outside
+# the range; of the passed commits at the edge of the new ones, BASE is the one
+# that leaves the fewest to scan. With nothing passed, a LOCAL that is not a
+# commit, or any Git error, it is everything LOCAL reaches, as it always was.
+# One range of one form, so a pushed commit's scanners from before this rule
+# still read it.
+first_push_range() {
+  base=""
+  if [ "$(git cat-file -t "$1" 2>/dev/null || true)" = commit ] &&
+    passed=$(passed_commits "$2") && [ -n "$passed" ] &&
+    reached=$({ printf '%s\n' "$passed"; git rev-list "$1"; } | sort | uniq -d) &&
+    [ -n "$reached" ] &&
+    listed=$({ echo "$1"; printf '%s\n' "$reached" | sed 's/^/^/'; } |
+      git rev-list --stdin --boundary); then
+    if [ -z "$(printf '%s\n' "$listed" | sed -n '/^[^-]/p')" ]; then
+      base=$1
+    else
+      fewest=""
+      for edge in $(printf '%s\n' "$listed" | sed -n 's/^-//p'); do
+        if count=$(git rev-list --count "$edge..$1") &&
+          { [ -z "$fewest" ] || [ "$count" -lt "$fewest" ]; }; then
+          fewest=$count
+          base=$edge
+        fi
+      done
+    fi
+  fi
+  if [ -n "$base" ]; then
+    echo "$base..$1"
+  else
+    echo "$1"
+  fi
+}
 
 # Points $GATE and $PUBLIC_CONTENT at one commit's scanners, or at the
 # checkout's with no commit. A commit whose scanners cannot be read is
@@ -103,9 +249,22 @@ scan() {
       ;;
   esac
 
-  # 3. The public-foundation policy also covers commit metadata and every
-  #    historical blob/path. The test command override follows HUB_GATE_CMD.
-  if [ -n "$range" ]; then
+  # 3. Public content has its own branch baseline and passed receipts. If
+  #    main cannot be read, inspect everything reachable from this tip.
+  #    Unpinned and manual runs keep the original range selection.
+  if [ -n "${public_fingerprint:-}" ]; then
+    if public_capability=$($PUBLIC_CONTENT --supports-branch 2>/dev/null) &&
+      [ "$public_capability" = branch-v1 ]; then
+      set -- --branch "$public_tip" --main "$public_main" --fingerprint "$public_fingerprint"
+    else
+      # Older pushed scanners understand only ranges. Give them the full tip
+      # and record no branch receipt when that capability was not declared.
+      public_fingerprint=""
+      set -- --range "$public_tip"
+    fi
+  elif [ -n "${public_tip:-}" ]; then
+    set -- --range "$public_tip"
+  elif [ -n "$range" ]; then
     set -- --range "$range"
   else
     set -- --outgoing
@@ -131,15 +290,15 @@ scan() {
     done
   fi
 
-  # 4. The maintainer-only literal sweep. It needs the clear-text list, which
-  #    lives outside git on a maintainer machine. Exit 2 there means it did
-  #    not run, and that is allowed to pass: the hashed gate and the shape
-  #    rules have already run above, and gitleaks runs in continuous
-  #    integration. It reads the same revisions, not a different selection:
-  #    giving --literal nothing sent it to every outgoing branch, so a
-  #    contaminated backup branch could block a clean push of main and the
-  #    two scanners could disagree about what was being published. Round
-  #    four found it.
+  # 4. The literal sweep. It needs the clear-text list, which lives outside
+  #    git, named by HUB_GATE_TERMS. Exit 2 there means it did not run, and a
+  #    push is refused rather than published with that step skipped: the
+  #    message names the setting, never the list or its path. HUSKY=0 still
+  #    skips every hook, deliberately. It reads the same revisions, not a
+  #    different selection: giving --literal nothing sent it to every
+  #    outgoing branch, so a contaminated backup branch could block a clean
+  #    push of main and the two scanners could disagree about what was being
+  #    published. Round four found it.
   # shellcheck disable=SC2086
   run_gate --literal $range
   case "$status" in
@@ -149,9 +308,10 @@ scan() {
       exit 1
       ;;
     2)
-      echo "pre-push: the literal sweep did not run on this machine: the private"
-      echo "pre-push: list is not here. Continuing. The hashed gate and the shape"
-      echo "pre-push: rules have already run, and gitleaks runs in CI."
+      echo "pre-push: the literal sweep did not run: HUB_GATE_TERMS does not name"
+      echo "pre-push: a readable private list on this machine. Set it to the list's"
+      echo "pre-push: path and push again. Refusing the push."
+      exit 1
       ;;
     *)
       echo "pre-push: the literal sweep reported the gate is broken (exit $status)."
@@ -168,9 +328,11 @@ scan() {
 # branch you are actually publishing is clean. A backup branch kept before a
 # history rewrite is the obvious case.
 #
-# An all-zero remote sha means the remote has no such branch yet, so the
-# range is everything reachable from the local ref. That is the first-push
-# case, and it is the one that matters most.
+# An all-zero remote sha means the remote has no such branch yet: the
+# first-push case, and the one that matters most. Nothing local proves what
+# the receiver holds (a remote-tracking ref can be stale, and a rewritten URL
+# or SSH command can reach another receiver), so the range is every commit
+# this machine's gate has not passed, not every commit the remote lacks.
 pushed=""
 had_input=0
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -182,16 +344,63 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   esac
   case "$remote_sha" in
     *[!0]*) pushed="$pushed $local_sha:$remote_sha..$local_sha" ;;
-    *) pushed="$pushed $local_sha:$local_sha" ;;
+    *) pushed="$pushed $local_sha:first" ;;
   esac
 done
 
 if [ -n "$pushed" ]; then
+  pinned=0
+  if pinned_push; then
+    pinned=1
+  fi
   # Each ref by its own commit's scanners, over its own range.
   for item in $pushed; do
-    use_scanners_of "${item%%:*}"
-    echo "pre-push: scanning what this push would publish: ${item#*:}"
-    scan "${item#*:}"
+    sha=${item%%:*}
+    range=${item#*:}
+    fingerprint=""
+    public_tip=""
+    public_main=""
+    public_fingerprint=""
+    if [ "$pinned" -eq 1 ]; then
+      fingerprint=$(scan_fingerprint "$sha") || fingerprint=""
+      public_tip=$sha
+      if [ -n "$fingerprint" ] &&
+        public_main=$(git rev-parse --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null); then
+        # Main is part of the receipt's fingerprint: a moved or rewritten main
+        # cannot inherit a pass that skipped a different baseline's history.
+        public_fingerprint=$(printf '%s %s\n' "$fingerprint" "$public_main" | git hash-object --stdin) || public_fingerprint=""
+      fi
+    fi
+    if [ "$range" = first ]; then
+      if [ -n "$fingerprint" ]; then
+        range=$(first_push_range "$sha" "$fingerprint")
+      else
+        range=$sha
+      fi
+    fi
+    use_scanners_of "$sha"
+    echo "pre-push: scanning what this push would publish: $range"
+    scan "$range"
+    # Passed only now, every scan clean. The secret/literal receipt is only
+    # for a first push; public receipts can cover any pinned push. The rules and
+    # inputs are read again first: an edit while the scans ran (an editor,
+    # another worktree) means they judged under something the fingerprint
+    # does not name, so nothing is recorded.
+    if [ -n "$fingerprint" ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
+      if pinned_push && [ "$(scan_fingerprint "$sha" || true)" = "$fingerprint" ]; then
+        if [ "${item#*:}" = first ]; then
+          echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
+        fi
+        if [ -n "$public_fingerprint" ] &&
+          [ "$(git rev-parse --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null || true)" = "$public_main" ] &&
+          [ ! -L "$public_passed_list" ] &&
+          { [ ! -e "$public_passed_list" ] || [ -f "$public_passed_list" ]; }; then
+          echo "$(git rev-parse "$sha") $public_fingerprint" >> "$public_passed_list"
+        fi
+      else
+        echo "pre-push: the scan's rules or inputs changed while it ran. Recording nothing."
+      fi
+    fi
   done
 elif [ "$had_input" -eq 1 ]; then
   # A deletion is not the same as no input. With refs on stdin but nothing to

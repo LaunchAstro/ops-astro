@@ -18,7 +18,7 @@ import {
 import { carriesLocally, mayCarry } from './credentials.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
-import { resolveFields } from './broker-sources.ts';
+import { clientRefusal, resolveFields } from './broker-sources.ts';
 import { stopAtCeiling } from './broker-wait.ts';
 import type {
   Broker,
@@ -151,11 +151,10 @@ export async function reserveModelCall(
   if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
     return await refused('EFFECT_NOT_RECONCILABLE');
-  // C60, before any route is chosen: a client's model use is off by default
-  // and cannot be switched on while no local model exists (owner line 72), so
-  // no call on a client's task reaches a route. The setting itself is stored
-  // on the client record once there is one (C32).
-  if (facts.clientId !== null) return await refused('CLIENT_MODEL_USE_OFF');
+  // C60, before any route is chosen: a client's model use is off and cannot be
+  // switched on while no local model exists (owner line 72), so no call on a
+  // client's task reaches a route, naming any subscription offered (C32 stores it).
+  if (facts.clientId !== null) return await refused(clientRefusal(broker.routes, operation));
   // S3: each field's source is the broker's finding, from its row, never the caller's claim.
   const resolved = resolveFields(request.fields, facts.source);
   if (!resolved.ok) return await refused(resolved.code);
@@ -208,6 +207,7 @@ function routeFor(
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
+    clientWork: facts.clientId !== null,
   });
   if (!carry.ok) return { ok: false, code: carry.code };
   return { ok: true, route };

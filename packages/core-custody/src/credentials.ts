@@ -19,9 +19,12 @@
 // `OPS_ENVIRONMENT=local`, and only for a route whose provider is
 // `local_gpt`. Another installation's tenant stays refused under it, and so
 // does an attended call for someone else's work. Everywhere else, unchanged.
+//
+// Owner line 72 (ops-astro-roadmap `docs/decisions/execution.md`, 28 September
+// and 13 October 2026): work on a task with a client never reaches a
+// subscription, in its own person's session or under the carve-out.
 
 export type CredentialKind = 'subscription' | 'api_key' | 'cloud_credential' | 'replay';
-
 export type StorableKind = Exclude<CredentialKind, 'subscription'>;
 
 export interface StoredCredential {
@@ -221,10 +224,18 @@ export interface CarryContext {
   readonly credentialInstallation: string;
   /** LA-1's local carve-out: true only on the laptop, on a `local_gpt` route. */
   readonly localOwnerTesting?: boolean;
+  /**
+   * The work is a client's: its task has a client key. The task path always says;
+   * the conversation seam does not, and its client refusal stays the command layer's (C60).
+   */
+  readonly clientWork?: boolean;
 }
 
 export type CarryRefusal =
-  'SUBSCRIPTION_UNATTENDED' | 'SUBSCRIPTION_OTHER_TENANT' | 'SUBSCRIPTION_NOT_OWN_WORK';
+  | 'SUBSCRIPTION_UNATTENDED'
+  | 'SUBSCRIPTION_OTHER_TENANT'
+  | 'SUBSCRIPTION_NOT_OWN_WORK'
+  | 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK';
 
 /**
  * The local session's provider key (`LOCAL_GPT_PROVIDER` in core-connectors).
@@ -241,12 +252,13 @@ export function carriesLocally(
   return broker.localOwnerTesting === true && route.provider === LOCAL_SESSION_PROVIDER;
 }
 
-/** A subscription carries only a person's own attended work in their own installation. */
+/** A subscription carries only a person's own attended work, with no client, in their own installation. */
 export function mayCarry(
   kind: CredentialKind,
   context: CarryContext,
 ): { readonly ok: true } | { readonly ok: false; readonly code: CarryRefusal } {
   if (kind !== 'subscription') return { ok: true };
+  if (context.clientWork === true) return { ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' };
   if (context.tenantInstallation !== context.credentialInstallation) {
     return { ok: false, code: 'SUBSCRIPTION_OTHER_TENANT' };
   }
@@ -278,5 +290,11 @@ export function described(
   }
   // Whether it is sent at all: an answer to one that is sent may echo it, so is never streamed.
   const presents = credential.scheme !== 'none';
-  return { type: 'described', kind: credential.kind, account: credential.account, presents };
+  return {
+    type: 'described',
+    kind: credential.kind,
+    account: credential.account,
+    presents,
+    scheme: credential.scheme,
+  };
 }

@@ -62,10 +62,30 @@ export interface MapView {
   }[];
 }
 
+/** The map a ticket belongs to, as its detail names it for the link back. */
+export interface TaskMapLink {
+  readonly id: string;
+  readonly key: string | null;
+  readonly title: string | null;
+}
+
 export interface MapViewResult {
   readonly ok: true;
   readonly map: MapView;
 }
+
+/** The live maps the reader's grants reach, by title. */
+export interface MapListResult {
+  readonly ok: true;
+  readonly maps: readonly {
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+  }[];
+}
+
+/** Every map read's answer, as the read path names them. */
+export type MapReadResult = MapViewResult | MapFrontierResult | MapListResult;
 
 /** A map's frontier and fog (WF-2): each from its read model, in order. */
 export interface MapFrontierResult {

@@ -31,6 +31,33 @@ not retroactively certify this initial candidate.
 
 ## Hosted evidence
 
+During the internal Stage 1 epoch `DOMAINFIRST20261008`, a lane writes its
+ticket line and change and test evidence, then asks the orchestrator to add
+`needs-sol`. This label applies to every builder, including Codex. The trusted
+repository variable `OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL` must carry that
+epoch. The label alone cannot activate the deferral.
+
+The review-evidence check computes the range from the PR's full head SHA and
+its merge base with the base being judged. It uses the PR's own head on both
+PR and merge-group runs. A move of `main` or a rebase needs no pasted range
+or checkpoint update. Review remains owed; this check does not establish
+Sol's verdict. The separate reviewer must judge the exact current head.
+
+Adding a complete current verdict record keeps the computed range and requires
+no pasted checkpoint. The checker still validates every record and outcome
+line against the current head, builder provenance and changed paths.
+
+Lanes already carrying the top-level `Review deferral:` marker and a current
+checkpoint may keep that format. Its base must be the judged base or its merge
+base with the PR head. The legacy route still requires `unreviewed` and accepts
+`needs-sol` or the old `needs-second-model` label. Legacy pasted ranges pass
+strictly before `2026-11-01T00:00:00Z` and refuse at or after that instant.
+Remove the pasted marker to use the computed range with `needs-sol` and the
+trusted epoch, which remains available after the cut-off. Other checks remain
+required on both routes.
+
+Outside that trusted deferral, the normal review evidence below still applies.
+
 Use the pull request template to record review evidence for the final head.
 A later commit makes earlier review evidence stale. Required security
 review refers to that same revision. Verify that the ruleset and the check exist

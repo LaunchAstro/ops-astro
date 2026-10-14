@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a paid stream that reports an error, another model or a second usage, a cost above the hold or not a whole number, a model id outside the accepted ids, or a cut at any point is held with no reply kept; a 4xx or 5xx echoing the key leaves no trace; a lost admission sends nothing while streaming"
+}

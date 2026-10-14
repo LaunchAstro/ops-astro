@@ -44,6 +44,7 @@ const ROUTED = [
   'isolation-tests',
   'licences',
   'local-checks',
+  'pin-tests',
   'pr-size',
   'secrets',
   'semgrep',

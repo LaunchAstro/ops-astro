@@ -17,6 +17,7 @@ repository root, with the pinned Node on the path and the API running
 export PATH="$TOOLCHAIN/node-v24.21.0-darwin-arm64/bin:$PATH"
 pnpm cli --help                       # the operations, from the command registry
 pnpm cli login --email ada@alpha.local   # prompts for the password (echo off), or reads OPS_ASTRO_PASSWORD or piped stdin
+pnpm cli login --email ada@alpha.local --second-factor   # then the authenticator code, from stdin or a hidden prompt
 pnpm cli task.board --business alpha --json '{"board":null}'
 pnpm cli task.create --business alpha --json '{"fields":{"title":"Call the supplier"}}'
 pnpm cli task.read --business alpha --body-file ./read.json
@@ -80,6 +81,25 @@ ops-astro logout --env sandbox
   credential files, as before. Use the operation form against a hosted app.
 - The hosted token lasts an hour. After that the API refuses the bearer; run
   `login` again.
+
+## Checking a machine against a hosted app
+
+Run these after "Installing", once per machine and preset. Steps 1 to 3 sign in
+to nothing, so they are safe to run before anyone has agreed to a sign-in.
+
+1. `ops-astro help` prints the verbs.
+2. `curl -s -o /dev/null -w '%{http_code}\n' <origin>/api/health` prints `200`.
+3. `ops-astro task.board --env <preset> --business <key> --json '{"board":null}'`
+   exits 2 with `no bearer`, sends nothing, and writes nothing. This shows the
+   preset has no saved credential, and no other preset's is used.
+4. `ops-astro login --env <preset> --email <address>` prompts for the password
+   with echo off. It prints `{"ok":true,"saved":".../cli-token.<preset>"}`, and
+   that file is mode 600.
+5. Step 3's command now exits 0 with `"ok":true`: a read only.
+6. `ops-astro logout --env <preset>`, unless the machine should stay signed in.
+
+A refused step 4 prints one line of the command line's own (exit 1) and
+saves nothing. After an hour the bearer expires; run step 4 again.
 
 ## Credential files
 
@@ -169,6 +189,23 @@ web does (`withProviderKey`, `apps/web/src/session/provider-key.ts`). A preset
 (`--env`) reads the key from the app instead. A refused `login` prints a line
 of the command line's own and never the service's words, which can echo what
 was sent.
+
+**Second factor.** Once a login has a verified authenticator, a password-only
+token is refused wherever the second factor is asked for, the operator gate
+included (`scripts/ops/operator.ts`). `login --second-factor` reads the
+authenticator code too: the next line of piped stdin (the first when
+`OPS_ASTRO_PASSWORD` gives the password), or a second prompt with echo off. It
+never takes the code from a flag or the environment. It sends the code to the
+person's own account route, `/api/b/<business>/account/factor/verify`, as the
+web's code step does, so it needs `OPS_ASTRO_API_URL` (or `--api`, or a
+preset's origin under `--env`) and the business, and saves only the token that route answers. A refused code saves
+nothing: the half-made sign-in is ended on `account/sessions/sign-out`, and
+the exit is 1, naming the refusal code alone.
+
+Every credential file the command line saves (the token, a pickup's or a
+helper's delegation) is written to a file of its own beside the target, made
+owner-only, then renamed over it: a reader sees the old file or the whole new
+one, and a link at the target is replaced, never written through.
 
 **Agent.** An agent signs in with its own login, never a person's. The seed's
 agent logins are GoTrue passwords like a person's (`scripts/local-seed.mjs`,

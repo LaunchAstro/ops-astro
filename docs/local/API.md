@@ -1438,7 +1438,9 @@ register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
 `SOURCE_UNREADABLE`,
 `LOCAL_MODEL_REQUIRED` 501, `CLIENT_MODEL_USE_OFF` (the task's client has
-model use off, C60), the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
+model use off, C60; a client's task offered a subscription route is
+`SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead, owner line 72), the four
+`SUBSCRIPTION_` codes, `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 `model_calls` row. `BUDGET_UNAVAILABLE` is the approved ceiling reached: the
 run stops and asks in the same transaction (AW-05, the budget wait in
@@ -2090,24 +2092,6 @@ a holder without `read` on the task, a task of another business and a trashed
 one are `NOT_FOUND`, and a member without the key `SCOPE_NOT_GRANTED`. No agent
 route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
-`harness.read` (AW-12) is the harness adoption test's result on one run
-(`{ runId }`, a string, else `FIELD_VALUE_INVALID` naming `runId`), as
-`{ ok: true, harness }`. `harness` is the trigger's reading: `result: 'not_yet'`
-with the `missing` limbs and the two `figures` (the reading against the window,
-the delegation depth against the depth built), or `result: 'fired'` with the
-same two figures and no verdict. The per-candidate runs, with a verdict and a
-recommendation per framework, are AW-12's follow-up, built when the trigger
-first fires; this read does not carry them yet. It is computed from the run's
-frozen accept-time manifest on every read and stores nothing. It is the
-team's: a reader outside the team, or one holding no `read` on tasks, is
-refused `SCOPE_NOT_GRANTED` 403; the run is
-filtered by the caller's task `read` inside the statement, so another client's
-run, another business's and a made-up one are one `NOT_FOUND` 404. A manifest
-it cannot count is `DEFINITION_UNAVAILABLE`. No agent route; the command line
-is `pnpm cli harness.read --json '{"runId":"..."}'`
-(`reads/harness-trigger.ts`; `tests/harness/aw-12-harness-read.test.ts`;
-[RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger)).
-
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -2563,9 +2547,45 @@ signature over the raw body before parsing (401), refuses a stale timestamp
 evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
-Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
-here yet: the send mounted after the command, the hook wired in `main` and the
-enrolment page (C39-T P3).
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). The
+link a send mails is `/enrol/#<token>`: the token is in the fragment, which no
+request carries to a server.
+
+`POST /api/enrol` accepts an invitation on that link (C39-T): the page sends
+`{ token }` alone, with no sign-in and no password, and no cookie is read or
+set. The token's SHA-256 is found by `enrolment_token_find`, a security
+definer answering only for a hash exactly one business holds. In that
+business the accept takes the access lock shared, then the invitation's row,
+then the token's, and judges on the clock, after the last wait:
+
+- the token is unspent, in its own and its invitation's lifetime, and the
+  invitation's newest;
+- the invitation is pending;
+- its inviter still holds `access:share` (and `access:manage` for an
+  administrator's);
+- the first-client gate is open for the invitation class, failing closed.
+
+It then:
+
+- spends the token;
+- accepts the invitation;
+- writes the person's acting identity, their address confirmed, a `supabase`
+  login under a new id, its mapping and a membership in the invited role;
+- owes that login to the provider in `login_provisions`;
+- audits `invitation.accept` and `login.create` as the business's worker.
+
+It gives no grant: an administrator grants on the Access screen. The answers
+are:
+
+- 200 `{ accepted: true }`;
+- 401 `ENROLMENT_LINK_INVALID` for every link that is not live;
+- 409 `ENROLMENT_NOT_YET` while the gate is shut;
+- 400 `ENROLMENT_MALFORMED`;
+- 413 `ENROLMENT_TOO_LARGE`;
+- 503 `ENROLMENT_FAULT`.
+
+The provider's login is made later by the M5 unit, which alone holds the
+provider's key, under that id. The unit then mails a link to set the password.
 
 ## Tags
 
@@ -2613,7 +2633,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,
-`trace.read`, `harness.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
+`trace.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

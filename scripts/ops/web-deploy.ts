@@ -10,6 +10,12 @@
 // a folder of its own as `.vercel/output`, and checks the copy again (the same
 // digest, `buildOutputProblems`), so the bytes Vercel is handed are the ones
 // checked. Staging's database must pass the made-up-only preflight first.
+// Production's deploy takes only the bytes staging ran (`stagedArtefact`, #970):
+// the digest must be the one staging's web deploy recorded for the version in
+// the operator's record folder, so a store writer's self-consistent tree is
+// refused before the database or Vercel is asked. Vercel is asked only under
+// the operator's held grant, the gate asked again first (`authorised`), and
+// the record is judged again just before and once more after.
 //
 // Vercel is asked twice, through the person's own `vercel` sign-in, never a
 // token: `vercel deploy --prebuilt --prod` (its answer on stdout is the new
@@ -44,14 +50,17 @@
 // production's project, never staging's, and its preflight is production's own
 // (`deploy.ts`). The record names the environment.
 
-import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { authVersionOf } from './auth-version.ts';
 import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
-import { type StoredArtefact, storedArtefact } from './promotion.ts';
+import { type Authorised, heldFor } from './authorised-act.ts';
+import { notStillStaged } from './deployment-record.ts';
+import { type StoredArtefact, stagedArtefact, storedArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
+import { deployPrebuilt, readBack } from './vercel-cli.ts';
 import { type DeployEnvironment, productionAddressRefusal } from './deploy.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -78,80 +87,12 @@ const IDS = {
   VERCEL_ORG_ID: /^team_[A-Za-z0-9]{1,64}$/u,
   VERCEL_PROJECT_ID: /^prj_[A-Za-z0-9]{1,64}$/u,
 };
-/** A deployment's own address as `vercel deploy` prints it. */
-const DEPLOYMENT = /^https:\/\/[a-z0-9-]{1,100}\.vercel\.app$/u;
-
-/** The environment the CLI runs with: where it is, whose sign-in, which project. */
-function cliEnvironment(env: Environment): Record<string, string> {
-  const kept = ['PATH', 'HOME', 'TMPDIR', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID'];
-  return {
-    ...Object.fromEntries(kept.flatMap((name) => (env[name] ? [[name, env[name]]] : []))),
-    VERCEL_TELEMETRY_DISABLED: '1',
-  };
-}
-
-function vercel(args: readonly string[], env: Environment, cwd: string) {
-  const result = spawnSync('vercel', args, {
-    cwd,
-    env: cliEnvironment(env),
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
-  return { ok: result.status === 0, out: (result.stdout ?? '').trim() };
-}
-
-/** Whether `vercel inspect --format json` reports `deployment` ready on production. */
-function readyOnProduction(answer: string, deployment: string): boolean {
-  try {
-    const reported = JSON.parse(answer) as {
-      url?: unknown;
-      target?: unknown;
-      readyState?: unknown;
-    };
-    return (
-      `https://${String(reported.url)}` === deployment &&
-      reported.target === 'production' &&
-      reported.readyState === 'READY'
-    );
-  } catch {
-    return false;
-  }
-}
-
 /** The API function's declared runtime, or undefined when it declares none. */
 function runtimeOf(output: string): string | undefined {
   try {
     const path = join(output, 'functions', 'api.func', '.vc-config.json');
     const { runtime } = JSON.parse(readFileSync(path, 'utf8')) as { runtime?: unknown };
     return typeof runtime === 'string' ? runtime : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Staging's sign-in address; a loopback stand-in in tests. */
-const SIGN_IN =
-  /^(?:https:\/\/[a-z]{20}\.supabase\.co|http:\/\/127\.0\.0\.1:[0-9]{1,5})\/auth\/v1$/u;
-const AUTH_VERSION = /^v?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}[0-9A-Za-z.+-]{0,40}$/u;
-const HEALTH_MAX_BYTES = 4096;
-
-/** The version the sign-in server reports: no redirect, a time limit, a size cap, its shape checked. */
-async function authVersionOf(env: Environment): Promise<string | undefined> {
-  const address = env['GOTRUE_URL'] ?? '';
-  if (!SIGN_IN.test(address)) return undefined;
-  const key = env['SUPABASE_PUBLISHABLE_KEY'] ?? '';
-  try {
-    const response = await fetch(`${address}/health`, {
-      redirect: 'error',
-      signal: AbortSignal.timeout(5000),
-      headers: key === '' ? {} : { apikey: key },
-    });
-    if (!response.ok || Number(response.headers.get('content-length') ?? 0) > HEALTH_MAX_BYTES)
-      return undefined;
-    const body = await response.arrayBuffer();
-    if (body.byteLength > HEALTH_MAX_BYTES) return undefined;
-    const { version } = JSON.parse(new TextDecoder().decode(body)) as { version?: unknown };
-    return typeof version === 'string' && AUTH_VERSION.test(version) ? version : undefined;
   } catch {
     return undefined;
   }
@@ -183,20 +124,13 @@ const refused = (why: string): Unrecorded => ({
 });
 
 /** Runs `act` in a folder of its own, removed afterwards, `.vercel` and all. */
-function inFolder<T>(act: (folder: string) => T): T {
+async function inFolder<T>(act: (folder: string) => T | Promise<T>): Promise<T> {
   const folder = mkdtempSync(join(tmpdir(), 'ops-astro-web-deploy-'));
   try {
-    return act(folder);
+    return await act(folder);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
-}
-
-/** `vercel deploy --prebuilt --prod` of `folder`'s output: the deployment's own address, if any. */
-function deployPrebuilt(folder: string, env: Environment): string | undefined {
-  const made = vercel(['deploy', '--prebuilt', '--prod'], env, folder);
-  const deployment = made.out.split('\n').at(-1) ?? '';
-  return made.ok && DEPLOYMENT.test(deployment) ? deployment : undefined;
 }
 
 const NO_ADDRESS: Unrecorded = {
@@ -204,14 +138,22 @@ const NO_ADDRESS: Unrecorded = {
   reason: 'vercel deploy did not answer a deployment address; nothing was recorded',
 };
 
+/** What the deploy runs under: the operator's held grant, and staging's record judged again. */
+interface Held {
+  readonly authorised: Authorised;
+  /** Why staging's record no longer holds the selected digest, or undefined while it does. */
+  readonly changed: () => string | undefined;
+}
+
 /** The stored output copied into `folder`, checked again there, deployed and read back. */
-function deployCopy(
+async function deployCopy(
   folder: string,
   env: Environment,
   { version, environment }: { version: string; environment: DeployEnvironment },
   selected: StoredArtefact,
   authVersion: string,
-): WebDeployOutcome {
+  held: Held,
+): Promise<WebDeployOutcome> {
   const { digest } = selected;
   const output = join(folder, '.vercel', 'output');
   cpSync(selected.path, output, { recursive: true });
@@ -221,16 +163,6 @@ function deployCopy(
   const runtime = runtimeOf(output);
   if (runtime === undefined) problems.push('functions/api.func declares no runtime.');
   if (problems.length > 0 || runtime === undefined) return refused(problems.join(' '));
-
-  const deployment = deployPrebuilt(folder, env);
-  if (deployment === undefined) return NO_ADDRESS;
-  const inspected = vercel(['inspect', deployment, '--format', 'json'], env, folder);
-  if (!inspected.ok || !readyOnProduction(inspected.out, deployment)) {
-    return {
-      kind: 'failed',
-      reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live. It is not recorded. Remove it from the dashboard and find out why.`,
-    };
-  }
   const record = {
     action: 'deploy recorded',
     environment,
@@ -238,10 +170,26 @@ function deployCopy(
     artefact: selected.name,
     digest,
   } as const;
-  return {
-    kind: 'deployed',
-    record: { ...record, deployment, region: 'syd1', runtime, authVersion },
-  };
+  const answer = await heldFor(held.authorised, (): WebDeployOutcome => {
+    // Judged again after every wait, as the last step before Vercel is asked (#970).
+    const before = held.changed();
+    if (before !== undefined)
+      return refused(`staging's record changed before the deploy: ${before}`);
+    const deployment = deployPrebuilt(folder, env);
+    if (deployment === undefined) return NO_ADDRESS;
+    const read = readBack(folder, env, deployment);
+    if (read !== undefined) return read;
+    const after = held.changed();
+    if (after !== undefined) {
+      const reason = `${deployment} is live on production with ${digest}, but staging's record changed during the deploy: ${after}. It is not recorded; settle staging's record, then deploy again.`;
+      return { kind: 'failed', reason };
+    }
+    return {
+      kind: 'deployed',
+      record: { ...record, deployment, region: 'syd1', runtime, authVersion },
+    };
+  });
+  return 'refused' in answer ? refused(answer.refused) : answer.ran;
 }
 
 export async function deployWeb(
@@ -250,13 +198,24 @@ export async function deployWeb(
     env: Environment;
     preflight: () => Promise<string[]>;
     environment?: DeployEnvironment;
+    /** Staging's record folder (OPS_ASTRO_DEPLOYMENTS); production deploys only the digest it holds. */
+    records?: string;
+    /** The operator's held grant, under which Vercel is asked; production refuses without it. */
+    authorised?: Authorised;
   },
 ): Promise<WebDeployOutcome> {
   const environment = options.environment ?? 'staging';
+  const production = environment === 'production';
   const settings = settingProblems(options.env);
-  if (environment === 'production') settings.push(...productionProblems(options.env));
+  if (production) settings.push(...productionProblems(options.env));
+  if (production && options.authorised === undefined) {
+    settings.push("a production deploy runs only under the operator's held grant");
+  }
   if (settings.length > 0) return refused(settings.join('; '));
-  const selected = storedArtefact(request.version, request.store);
+  const records = options.records ?? '';
+  const selected = production
+    ? stagedArtefact(request.version, request.store, records)
+    : storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return refused(selected);
   const signs = await options.preflight();
   if (signs.length > 0) {
@@ -266,14 +225,21 @@ export async function deployWeb(
   if (authVersion === undefined) {
     return refused('the sign-in server at GOTRUE_URL did not report its version');
   }
-  return inFolder((folder) =>
-    deployCopy(
-      folder,
-      options.env,
-      { version: request.version, environment },
-      selected,
-      authVersion,
-    ),
+  const held: Held = {
+    authorised: options.authorised ?? (async (work) => await work()),
+    changed: () =>
+      production ? notStillStaged(records, request.version, selected.digest) : undefined,
+  };
+  return await inFolder(
+    async (folder) =>
+      await deployCopy(
+        folder,
+        options.env,
+        { version: request.version, environment },
+        selected,
+        authVersion,
+        held,
+      ),
   );
 }
 
@@ -281,12 +247,10 @@ export async function deployWeb(
 export function deployMaintenance(options: { env: Environment }): Promise<MaintenanceOutcome> {
   const settings = settingProblems(options.env);
   if (settings.length > 0) return Promise.resolve(refused(settings.join('; ')));
-  return Promise.resolve(
-    inFolder((folder): MaintenanceOutcome => {
-      writeMaintenanceOutput(join(folder, '.vercel', 'output'));
-      const deployment = deployPrebuilt(folder, options.env);
-      if (deployment === undefined) return NO_ADDRESS;
-      return { kind: 'deployed', record: { action: 'maintenance recorded', deployment } };
-    }),
-  );
+  return inFolder((folder): MaintenanceOutcome => {
+    writeMaintenanceOutput(join(folder, '.vercel', 'output'));
+    const deployment = deployPrebuilt(folder, options.env);
+    if (deployment === undefined) return NO_ADDRESS;
+    return { kind: 'deployed', record: { action: 'maintenance recorded', deployment } };
+  });
 }

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the closed list of network sites grows one reviewed line at a time */
 //
 // AW-01, the egress conformance proof: ten cases.
 //
@@ -39,6 +40,7 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/session/use-signed-in.ts':
     "threads that fetch to the held-address offer, the product's own API",
   'apps/web/src/screens/SignIn.tsx': "threads that fetch to the product's own sign-in route",
+  'apps/web/src/screens/Enrol.tsx': "sends a link's token to the product's own enrol route",
   // Main's core after the slice's base (rebase onto 8eba5e6):
   'apps/cli/client.ts':
     "the CLI's and the worker's one transport to the product's own API (T2b), and sign-in fetch",
@@ -55,12 +57,12 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
     "reads the sign-in provider's published key set at its pinned address (S0-6b)",
   'apps/api/auth/supabase.ts': 'threads that key-set fetch to the verifier; it calls nothing',
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
+  'apps/mail/main.ts': "the mail unit's DNS read of the root's DMARC record; no key, no mail",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
   'apps/local-agent/codex.ts': 'LA-1, laptop only: spawns `codex`, which calls its vendor',
   'apps/local-agent/runner.ts': "LA-1, laptop only: listens on loopback for custody's dispatch",
-  // C80: not a model call, so not through custody's broker. Whether its
-  // provider calls should leave through custody instead is open for Sol.
+  // C80: not a model call, so not via custody's broker; whether it should be is open for Sol.
   'packages/core-connectors/src/capture/transport.ts':
     "C80's pinned HTTPS transport: only to an address already checked, no redirect",
   // Main's, taken at the a352c11 join (reviewed in batch 2):

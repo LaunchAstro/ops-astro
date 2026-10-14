@@ -49,7 +49,6 @@ import {
 } from '../../../core-connectors/src/index.ts';
 import {
   callModelInConversation,
-  type ConversationCallRequest,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
 import { isUuid, withSession } from '../../../core-records/src/index.ts';
@@ -60,10 +59,12 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
+import { carriedBy } from './carriage-handoff.ts';
 import { contextOf, type Context } from './conversation-context.ts';
 import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
 import { holdsOwnConversations } from './conversations.ts';
+import { requestFor } from './conversation-request.ts';
 import { askedModel } from './conversation-model.ts';
 import {
   answered,
@@ -85,6 +86,8 @@ export type ConversationExchange = (
   asked: Asked,
   /** Where the answer's display text goes as it is written; only the settled reply is kept. */
   onPiece?: (text: string) => void,
+  /** The person's own access token, for a carried call's line (live chat route B); absent, none is carried. */
+  accessToken?: string,
 ) => Promise<ConversationReply | null>;
 
 interface Question {
@@ -194,39 +197,18 @@ async function activeAt(tx: TenantQuery, conversationId: string, at: string): Pr
   );
 }
 
-/** The seam's request for the asked message: its words, the context beside it and the model. */
-function requestOf(
-  question: Question,
-  asked: Asked,
-  operation: string,
-  onPiece: ((text: string) => void) | undefined,
-): ConversationCallRequest {
-  return {
-    conversation: question.scope,
-    messageId: asked.messageId,
-    operation,
-    fields: [
-      ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
-      { name: 'message', source: 'outside', value: question.body },
-    ],
-    ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
-    ...(onPiece === undefined ? {} : { onPiece }),
-  };
-}
-
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   asked: Asked,
-  found: { readonly session: Session; readonly question: Question },
+  { session, question }: { readonly session: Session; readonly question: Question },
   broker: ModelBroker,
-  onPiece: ((text: string) => void) | undefined,
+  by: { readonly onPiece?: (text: string) => void; readonly accessToken?: string },
 ): Promise<ConversationReply | null> {
-  const { session, question } = found;
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
-  const pieces = onPiece && judgedPieces(database, businessId, presented, asked, onPiece);
+  const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
   const reread = async () =>
     await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
@@ -237,11 +219,18 @@ async function answerOnce(
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question, keep })
       : undefined;
+  const handoff = { ...by, operation, model: question.model };
   const result = await callModelInConversation(
     database,
     businessId,
     { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
-    { ...requestOf(question, asked, operation, pieces?.push), ...(paid && { paid: paid.seams }) },
+    {
+      ...requestFor(question, asked, operation, {
+        ...(pieces === undefined ? {} : { onPiece: pieces.push }),
+        ...carriedBy(database, businessId, presented, broker, handoff),
+      }),
+      ...(paid && { paid: paid.seams }),
+    },
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
@@ -267,7 +256,7 @@ async function answerOnce(
  */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   const asking = new Map<string, Promise<ConversationReply | null>>();
-  return async (database, businessId, presented, asked, onPiece) => {
+  return async (database, businessId, presented, asked, onPiece, accessToken) => {
     // The provider the deployment's broker runs the conversation on: what it can send.
     const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
@@ -292,7 +281,10 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       asked,
       { ...found, question },
       broker,
-      onPiece,
+      {
+        ...(onPiece === undefined ? {} : { onPiece }),
+        ...(accessToken === undefined ? {} : { accessToken }),
+      },
     ).finally(() => asking.delete(key));
     asking.set(key, answering);
     return await answering;

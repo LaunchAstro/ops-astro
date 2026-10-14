@@ -51,10 +51,12 @@ export async function columnUpdateFindings(
  * Tables whose BEFORE UPDATE trigger refuses the own business's no-op update,
  * past privilege and tenancy. 20261006080000 (MP-14-10a): a standing mandate is
  * written once, so an update that does not move its revision by one is refused
- * as a constraint (23001, restrict_violation).
+ * as a constraint (23001, restrict_violation). 20261013051839 (C80): a page of a
+ * client's site is unbound and bound again, never changed, so every update raises.
  */
 const OWN_UPDATE_REFUSALS: Readonly<Record<string, string>> = {
   'public.standing_mandates': 'constraint',
+  'public.party_site_pages': 'raised',
 };
 
 /** A column update's answer: the own business its own rows, other application positions none. */

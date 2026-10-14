@@ -94,8 +94,8 @@ To the screen, both codes mean the session has ended. The client
 mutation alike. It raises `onSessionEnded` with the refusal the server sent. On
 that signal the application drops the session, remembers the address the person
 was on, and goes to `/sign-in`. There a notice (`role="status"`,
-`data-reason="session-ended"`) says the session has ended, quotes the server's
-own code so the person can repeat it, and says that anything unsaved was not
+`data-reason="session-ended"`) says "wait a minute and sign in again", quotes
+the server's own code so the person can repeat it, and says that anything unsaved was not
 saved. Signing in again returns to the remembered address, so a task page stays
 a task page. With nothing remembered it goes to `/projects/`.
 

@@ -92,12 +92,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
-/**
- * In `AGENT_SURFACE` and still not the pickup agent's: a person decides (case (j)
- * of the matrix), and a create is outside a one-task purpose (an agent
- * credential's to make, API-2).
- */
-const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
+// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the launch's take.
+const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
+  'task.decide',
+  'task.create',
+  'task.take_launch',
+]);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
@@ -135,11 +135,11 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       // A correction names its task's client (P26 low 4), so the agent picks
       // up a task the admin put under one, and names that client.
       await hold.release();
-      const { pickup, partyId } = await c80AgentPickup(harness);
+      const { pickup, partyId, pageUrl } = await c80AgentPickup(harness);
       expect(pickup.code, 'the pickup a correction is asked under').toBe('ok');
       hold.track(pickup);
       planOnly = true;
-      return c80AgentBody(operationId, await hold.ensureLive(), partyId);
+      return c80AgentBody(operationId, await hold.ensureLive(), { partyId, pageUrl });
     }
     // Every other cell holds a launched lease, so C80's pickup is given back first.
     if (planOnly) await hold.release();

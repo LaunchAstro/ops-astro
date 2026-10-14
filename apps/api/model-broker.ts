@@ -18,25 +18,15 @@
 // is `local`, with the broker's local carve-out for unattended work on its route.
 // `ollama`, anywhere, is Ollama on this machine's loopback, local only. Under either,
 // the conversation operation's key answers with that provider's declaration.
+//
+// `OPS_OUTSIDE_PROVIDER=openrouter` adds OpenRouter's paid conversation
+// operation beside any of them (#1508), for the people `OPS_OUTSIDE_MODEL_PEOPLE`
+// lists only, on one cloud API key route to exactly `https://openrouter.ai`
+// (`outside-provider.ts`).
 
-import {
-  catalogue,
-  readReplayLookup,
-  CONVERSATION_ANSWER,
-  LOCAL_GPT_COMPOSE,
-  LOCAL_GPT_CONVERSATION,
-  LOCAL_GPT_PROVIDER,
-  localGptAdapter,
-  localGptCostMinor,
-  OLLAMA_CONVERSATION,
-  OLLAMA_PROVIDER,
-  ollamaAdapter,
-  ollamaCostMinor,
-  REPLAY_COMPOSE,
-  replayAdapter,
-  replayCostMinor,
-  replayLookup,
-} from '../../packages/core-connectors/src/index.ts';
+import { LOCAL_GPT_PROVIDER, OLLAMA_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import { catalogueOf, type AgentProvider } from './broker-catalogue.ts';
+import { outsideOf, outsideRouteProblem } from './outside-provider.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import {
   parseDestinations,
@@ -64,7 +54,7 @@ export const MODEL_BROKER_SETTINGS = [
 
 /** Which provider this install's agent work runs on (LA-1). */
 export const AGENT_PROVIDER_SETTING = 'OPS_AGENT_PROVIDER';
-export type AgentProvider = 'api' | 'local-gpt' | 'ollama';
+export type { AgentProvider } from './broker-catalogue.ts';
 
 export type BrokerSettings =
   | { readonly kind: 'absent' }
@@ -74,31 +64,10 @@ export type BrokerSettings =
       readonly custody: CustodyConfig;
       readonly routes: readonly BrokerRoute[];
       readonly installation: string;
+      /** `OPS_OUTSIDE_MODEL_PEOPLE` where `OPS_OUTSIDE_PROVIDER` is `openrouter` (#1508); else none. */
+      readonly outsidePeople: readonly string[];
     }
   | { readonly kind: 'invalid'; readonly problem: string };
-
-const REPLAY = {
-  build: replayAdapter,
-  price: replayCostMinor,
-  // AW-10: the reconciliation pass asks the provider about an unknown call.
-  lookup: replayLookup,
-  readLookup: readReplayLookup,
-};
-const LOCAL_GPT = { build: localGptAdapter, price: localGptCostMinor };
-
-const OPERATIONS = {
-  api: catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]),
-  'local-gpt': catalogue([REPLAY_COMPOSE, LOCAL_GPT_COMPOSE, LOCAL_GPT_CONVERSATION]),
-  ollama: catalogue([OLLAMA_CONVERSATION]),
-} as const;
-const PROVIDERS = {
-  api: new Map([['replay', REPLAY]]),
-  'local-gpt': new Map<string, typeof REPLAY | typeof LOCAL_GPT>([
-    ['replay', REPLAY],
-    [LOCAL_GPT_PROVIDER, LOCAL_GPT],
-  ]),
-  ollama: new Map([[OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }]]),
-} as const;
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
 const KINDS: ReadonlySet<string> = new Set<CredentialKind>([
@@ -124,7 +93,11 @@ function parsedJson(text: string): { readonly ok: true; readonly value: unknown 
   }
 }
 
-function routeOf(entry: unknown, provider: AgentProvider): BrokerRoute | undefined {
+function routeOf(
+  entry: unknown,
+  provider: AgentProvider,
+  outside: boolean,
+): BrokerRoute | undefined {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
   const shape = entry as Record<string, unknown>;
   const keys = Object.keys(shape);
@@ -141,7 +114,7 @@ function routeOf(entry: unknown, provider: AgentProvider): BrokerRoute | undefin
   }
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
-  if (!PROVIDERS[provider].has(text('provider'))) return undefined;
+  if (!catalogueOf(provider, outside).providers.has(text('provider'))) return undefined;
   // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes
   // through. Ollama is on this machine: a `cloud` label would let its route leave it.
   if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
@@ -168,7 +141,7 @@ function offMachineProblem(
   const local = routes.filter(
     (route) => route.reach === 'local' || route.provider === LOCAL_GPT_PROVIDER,
   );
-  const leaves = [...OPERATIONS[provider].values()].some((operation) => {
+  const leaves = [...catalogueOf(provider, false).operations.values()].some((operation) => {
     const destination = listed.get(operation.destination);
     return (
       local.some((route) => route.provider === operation.provider) &&
@@ -184,10 +157,11 @@ function offMachineProblem(
 export function routesOf(
   text: string,
   provider: AgentProvider,
+  outside = false,
 ): readonly (BrokerRoute | undefined)[] | undefined {
   const entries = parsedJson(text)?.value;
   return Array.isArray(entries)
-    ? entries.map((entry: unknown) => routeOf(entry, provider))
+    ? entries.map((entry: unknown) => routeOf(entry, provider, outside))
     : undefined;
 }
 
@@ -212,11 +186,19 @@ export function agentProvider(
   return 'local-gpt';
 }
 
+/** The destinations setting, parsed and checked by custody's own rules; undefined when not JSON. */
+function destinationsOf(text: string): ReturnType<typeof parseDestinations> | undefined {
+  const json = parsedJson(text);
+  return json === undefined ? undefined : parseDestinations(json.value);
+}
+
 export function brokerSettings(
   environment: Readonly<Record<string, string | undefined>>,
 ): BrokerSettings {
   const provider = agentProvider(environment);
   if (typeof provider !== 'string') return invalid(provider.problem);
+  const outside = outsideOf(environment);
+  if (outside.kind === 'invalid') return invalid(outside.problem);
   const value = (name: (typeof MODEL_BROKER_SETTINGS)[number]): string => environment[name] ?? '';
   const missing = MODEL_BROKER_SETTINGS.filter((name) => value(name) === '');
   if (missing.length === MODEL_BROKER_SETTINGS.length) {
@@ -225,17 +207,13 @@ export function brokerSettings(
   if (missing.length > 0) {
     return invalid(`the credential broker needs all four settings; not set: ${missing.join(', ')}`);
   }
-
-  const destinationsJson = parsedJson(value('MODEL_BROKER_DESTINATIONS'));
-  const destinations =
-    destinationsJson === undefined ? undefined : parseDestinations(destinationsJson.value);
+  const destinations = destinationsOf(value('MODEL_BROKER_DESTINATIONS'));
   if (destinations === undefined || !destinations.ok) {
     return invalid(
       'MODEL_BROKER_DESTINATIONS is not a list of { key, origin } bare http(s) origins',
     );
   }
-
-  const routes = routesOf(value('MODEL_BROKER_ROUTES'), provider);
+  const routes = routesOf(value('MODEL_BROKER_ROUTES'), provider, outside.kind === 'openrouter');
   if (routes === undefined || routes.length === 0 || routes.includes(undefined)) {
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +
@@ -243,12 +221,13 @@ export function brokerSettings(
         'provider and a whole-number ceiling of at least 1',
     );
   }
-  const offMachine = offMachineProblem(
-    destinations.destinations,
-    routes as readonly BrokerRoute[],
-    provider,
-  );
-  if (offMachine !== undefined) return invalid(offMachine);
+  const listed = routes as readonly BrokerRoute[];
+  const problem =
+    offMachineProblem(destinations.destinations, listed, provider) ??
+    (outside.kind === 'openrouter'
+      ? outsideRouteProblem(destinations.destinations, listed)
+      : undefined);
+  if (problem !== undefined) return invalid(problem);
 
   return {
     kind: 'configured',
@@ -257,8 +236,9 @@ export function brokerSettings(
       credentialsFile: value('MODEL_BROKER_CREDENTIALS_FILE'),
       destinations: [...destinations.destinations.values()] as readonly Destination[],
     },
-    routes: routes as readonly BrokerRoute[],
+    routes: listed,
     installation: value('MODEL_BROKER_INSTALLATION'),
+    outsidePeople: outside.kind === 'openrouter' ? outside.people : [],
   };
 }
 
@@ -279,11 +259,11 @@ export async function startModelBroker(
   const custody = await startCustody(settings.custody);
   const broker = {
     custody,
-    operations: OPERATIONS[settings.provider],
-    providers: PROVIDERS[settings.provider],
+    ...catalogueOf(settings.provider, settings.outsidePeople.length > 0),
     routes: settings.routes,
     installation: settings.installation,
     localOwnerTesting: settings.provider === 'local-gpt',
+    outsidePeople: settings.outsidePeople,
   };
   return {
     executor: modelCallExecutor(broker),
