@@ -75,7 +75,15 @@ node scripts/ops/web-deploy.mjs --version <id> --artefacts <store> --production
 ```
 
 The same operator gate, stored build output, digest checks, sign-in server
-version and Vercel read-back as staging's deploy apply. `VERCEL_ORG_ID` and
+version and Vercel read-back as staging's deploy apply. Production also takes
+only the bytes staging ran. The stored output's digest must be the one
+staging's web deploy recorded for that version in `OPS_ASTRO_DEPLOYMENTS`, so
+run production's deploy with staging's record folder. The folder and every
+folder above it must belong to root or the operator, with no group or other
+write, as the promotion's link folders must. A tree put in the store under
+that version since then is refused, even with a matching stamp and digest.
+So is a version staging has no record of, and a version staging recorded
+with two different digests. `VERCEL_ORG_ID` and
 `VERCEL_PROJECT_ID` name production's Vercel project. The one check left out
 is staging's made-up-only preflight. A database that holds real sign-ins never
 passes it.

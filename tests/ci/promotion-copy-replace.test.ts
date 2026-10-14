@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, expect, it, vi } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName, promote, storedArtefact } from '../../scripts/ops/promotion.ts';
-import { trustedTemp } from './promotion.fixture.ts';
+import { staged, trustedTemp } from './promotion.fixture.ts';
 
 /** The one fault a case turns on; each stand-in passes through when its fault is off. */
 const fault = vi.hoisted(() => ({
@@ -107,15 +107,16 @@ function world(page = PAGE): { store: string; current: string; hex: string } {
   };
 }
 
-function promoted(
+async function promoted(
   store: string,
   current: string,
-): { outcome: ReturnType<typeof promote>; calls: string[] } {
+): Promise<{ outcome: Awaited<ReturnType<typeof promote>>; calls: string[] }> {
   const calls: string[] = [];
-  const outcome = promote(
+  const outcome = await promote(
     {
       version: VERSION,
       store,
+      records: staged(store),
       line: 'Tried this artefact on staging.',
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },
@@ -133,6 +134,7 @@ function promoted(
       },
       point: () => calls.push('point'),
       start: () => {},
+      authorised: async (work) => await work(),
     },
   );
   return { outcome, calls };
@@ -146,7 +148,7 @@ function earlier(current: string, hex: string, page: string): string {
   return copy;
 }
 
-it('a fresh copy stays closed to other users until every entry in it has its served mode', () => {
+it('a fresh copy stays closed to other users until every entry in it has its served mode', async () => {
   const { store, current } = world();
   const artefact = join(store, artefactName(VERSION));
   fs.chmodSync(join(artefact, 'static'), 0o777);
@@ -154,7 +156,7 @@ it('a fresh copy stays closed to other users until every entry in it has its ser
   const before = process.umask(0);
   let outcome;
   try {
-    ({ outcome } = promoted(store, current));
+    ({ outcome } = await promoted(store, current));
   } finally {
     process.umask(before);
   }
@@ -163,10 +165,10 @@ it('a fresh copy stays closed to other users until every entry in it has its ser
   expect(fault.openWhileSet.filter((bits) => bits !== 0)).toEqual([]);
 });
 
-it("a fresh copy holding an entry that is not the promoter's is refused, and nothing is migrated", () => {
+it("a fresh copy holding an entry that is not the promoter's is refused, and nothing is migrated", async () => {
   const { store, current } = world();
   fault.foreign = [/\/\.copy-[^/]+\/static\/index\.html$/u];
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome).toMatchObject({
     kind: 'refused',
     reason: expect.stringMatching(/static\/index\.html is not the promoter's/u),
@@ -174,11 +176,11 @@ it("a fresh copy holding an entry that is not the promoter's is refused, and not
   expect(calls).toEqual([]);
 });
 
-it("an earlier copy that is not the promoter's is refused by name, not replaced, and nothing is migrated", () => {
+it("an earlier copy that is not the promoter's is refused by name, not replaced, and nothing is migrated", async () => {
   const { store, current, hex } = world();
   const copy = earlier(current, hex, PAGE);
   fault.foreign = [new RegExp(`/served/${hex}$`, 'u')];
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome).toMatchObject({
     kind: 'refused',
     reason: expect.stringContaining(
@@ -188,54 +190,54 @@ it("an earlier copy that is not the promoter's is refused by name, not replaced,
   expect(calls).toEqual([]);
 });
 
-it('a fresh copy that cannot take its served name leaves the earlier copy in place', () => {
+it('a fresh copy that cannot take its served name leaves the earlier copy in place', async () => {
   const { store, current, hex } = world();
   const copy = earlier(current, hex, 'the earlier copy');
   fault.renameIn = true;
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringContaining('EIO') });
   expect(calls).toEqual([]);
   expect(readFileSync(join(copy, 'static', 'index.html'), 'utf8')).toBe('the earlier copy');
 });
 
-it('a refused replacement leaves the earlier copy with its own modes, so it reads as before', () => {
+it('a refused replacement leaves the earlier copy with its own modes, so it reads as before', async () => {
   const { store, current, hex } = world();
   const copy = earlier(current, hex, 'the earlier copy');
   for (const folder of [copy, join(copy, 'static')]) fs.chmodSync(folder, 0o755);
   fs.chmodSync(join(copy, 'static', 'index.html'), 0o644);
   fault.renameIn = true;
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome.kind).toBe('refused');
   expect(calls).toEqual([]);
   expect(fs.statSync(copy).mode & 0o7777).toBe(0o755);
   expect(fs.statSync(join(copy, 'static')).mode & 0o7777).toBe(0o755);
 });
 
-it('a move aside that fails leaves the earlier copy with its own modes, so it reads as before', () => {
+it('a move aside that fails leaves the earlier copy with its own modes, so it reads as before', async () => {
   const { store, current, hex } = world();
   const copy = earlier(current, hex, 'the earlier copy');
   fs.chmodSync(copy, 0o755);
   fault.renameAside = true;
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringContaining('EIO') });
   expect(calls).toEqual([]);
   expect(fs.statSync(copy).mode & 0o7777).toBe(0o755);
   expect(fs.readFileSync(join(copy, 'static', 'index.html'), 'utf8')).toBe('the earlier copy');
 });
 
-it('a cleanup that fails after the copy is in place still promotes', () => {
+it('a cleanup that fails after the copy is in place still promotes', async () => {
   const { store, current } = world();
   fault.remove = true;
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome.kind).toBe('promoted');
   expect(calls).toEqual(['migrate', 'point']);
 });
 
-it('a replace step that cannot start leaves no temporary copy behind', () => {
+it('a replace step that cannot start leaves no temporary copy behind', async () => {
   const { store, current, hex } = world();
   earlier(current, hex, PAGE);
   fault.aside = true;
-  const { outcome, calls } = promoted(store, current);
+  const { outcome, calls } = await promoted(store, current);
   expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringContaining('ENOSPC') });
   expect(calls).toEqual([]);
   expect(readdirSync(join(current, '..', 'served')).filter((name) => name.startsWith('.'))).toEqual(
