@@ -75,6 +75,13 @@ export function TaskHeader(props: {
         <CopyAddress path={pathTo('agency:task-detail', { key: task.key })} />
       </nav>
       <h2 className="tpr__title">{titleOf(task.title)}</h2>
+      {task.map === undefined || task.map === null ? null : (
+        <p className="card__sub">
+          <a className="sb__addr" href={pathTo('agency:map', { key: task.map.key ?? task.map.id })}>
+            Map: {titleOf(task.map.title)}
+          </a>
+        </p>
+      )}
       <RunStatus task={task} run={run} />
     </header>
   );
