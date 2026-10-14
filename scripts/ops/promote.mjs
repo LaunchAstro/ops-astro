@@ -12,7 +12,9 @@
 //   node scripts/ops/promote.mjs --version <id> --artefacts <store> --line "<text>" \
 //     --api docker:<name>|launchd:<label> --auth docker:<name>|launchd:<label> --current <link>
 //
-// A dry run reads only the store: it asks nothing of the service manager and
+// A dry run reads only the store and staging's record folder (a real run's
+// `OPS_ASTRO_DEPLOYMENTS`, read from the environment, since a dry run asks no
+// gate): it selects as a real run does, asks nothing of the service manager and
 // changes nothing. The record is printed as one JSON line. Exit 0 when promoted
 // or dry-run, 1 when refused or failed, 2 when the arguments are unusable.
 // A promotion reads the live service manager, never a saved report: a report
@@ -29,6 +31,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { renameSync, rmSync, symlinkSync } from 'node:fs';
+import { authorisedAct } from './authorised-act.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { parseService, promote } from './promotion.ts';
 import { snapshot } from './service-report.mjs';
@@ -83,14 +86,27 @@ const [version, store, line] = ['--version', '--artefacts', '--line'].map((n) =>
 if (version === undefined || store === undefined || line === undefined) {
   usage('--version, --artefacts and --line are all needed');
 }
-const request = { version, store, line, dryRun };
+// Staging's record folder: only the digest its web deploy recorded is promoted (#970).
+const records = gate ? gate.records : (process.env.OPS_ASTRO_DEPLOYMENTS ?? '');
+const request = { version, store, line, records, dryRun };
 const api = service('--api');
 if (api) request.api = api;
 const auth = service('--auth');
 if (auth) request.auth = auth;
 if (given.has('--current')) request.current = given.get('--current');
 
+// After the migration, production is pointed and started, and the promotion
+// recorded, under the operator's held grant (#970). A dry run never gets there.
+let written;
 const effects = {
+  authorised(work) {
+    if (!gate) return Promise.reject(new Error('a dry run asks no gate, so it acts on nothing'));
+    return authorisedAct(gate, async () => {
+      const answer = await work();
+      if (answer.kind === 'promoted') written = await recordDeployment(gate, answer.record);
+      return answer;
+    });
+  },
   services() {
     return JSON.parse(snapshot()).services;
   },
@@ -112,7 +128,7 @@ const effects = {
 
 let outcome;
 try {
-  outcome = promote(request, effects);
+  outcome = await promote(request, effects);
 } catch (error) {
   // A service manager that cannot be read, or a start that fails after the
   // migration: say so plainly, so the operator checks both services by hand.
@@ -129,4 +145,4 @@ console.log(
     ? `promote: dry run: would promote ${outcome.artefactPath}; nothing asked of the machine, nothing changed`
     : `promote: production now serves ${outcome.artefactPath}`,
 );
-console.log(JSON.stringify(gate ? await recordDeployment(gate, outcome.record) : outcome.record));
+console.log(JSON.stringify(gate ? written : outcome.record));

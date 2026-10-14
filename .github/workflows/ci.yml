@@ -324,8 +324,12 @@ jobs:
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
-      # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database. A pull request's light set
+      # it carries, check its bytes against the digest it records and against
+      # staging's record of that build (#970), and record it. The record here
+      # is a stand-in for the line a staging web deploy of this build writes,
+      # in a folder of its own in the checkout, since a record folder must
+      # pass the promotion's trust walk; it is removed when the step ends. It
+      # touches no service and no database. A pull request's light set
       # builds too, but this dry run is queue-only: on a pull request
       # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
       # the merge queue.
@@ -340,7 +344,11 @@ jobs:
           store="${RUNNER_TEMP}/artefacts"
           mkdir -p "$store"
           node scripts/ops/release.ts --out "${store}/ops-astro-${version}"
-          node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
+          records="$(mktemp -d "${PWD}/.promotion-records-XXXXXX")"
+          trap 'rm -rf "$records"' EXIT
+          node -e 'const fs = require("node:fs"); const [out, folder, version] = process.argv.slice(1); const { digest } = JSON.parse(fs.readFileSync(`${out}/build.json`, "utf8")); fs.writeFileSync(`${folder}/deployments.jsonl`, `${JSON.stringify({ action: "deploy recorded", environment: "staging", version, digest })}\n`, { mode: 0o600 });' \
+            "${store}/ops-astro-${version}" "$records" "$version"
+          OPS_ASTRO_DEPLOYMENTS="$records" node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
             --line "CI dry run of the promotion step over the build just made"
       # INB-1g, the worker's leg: the inbox reads back after the worker is hard-killed
       # and replaced, on the runner's own disposable Postgres. It names the proof, so

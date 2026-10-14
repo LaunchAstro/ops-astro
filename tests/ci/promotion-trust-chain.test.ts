@@ -23,7 +23,7 @@ import { afterEach, expect, it } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName, promote, type PromotionEffects } from '../../scripts/ops/promotion.ts';
 import { untrustedChain } from '../../scripts/ops/served-copy.ts';
-import { trustedTemp } from './promotion.fixture.ts';
+import { staged, trustedTemp } from './promotion.fixture.ts';
 
 const VERSION = '0123456789ab';
 const roots: string[] = [];
@@ -47,10 +47,11 @@ function fixture(): { root: string; store: string } {
   return { root, store };
 }
 
-const promoted = (store: string, current: string) => promotedAfter(store, current, () => {});
+const promoted = async (store: string, current: string) =>
+  await promotedAfter(store, current, () => {});
 
 /** A promotion whose service check (after selection, before the copy) runs `meanwhile`. */
-function promotedAfter(store: string, current: string, meanwhile: () => void) {
+async function promotedAfter(store: string, current: string, meanwhile: () => void) {
   const calls: string[] = [];
   const effects: PromotionEffects = {
     services: () => {
@@ -66,11 +67,13 @@ function promotedAfter(store: string, current: string, meanwhile: () => void) {
     },
     point: (link, served) => calls.push(`point ${link} -> ${served}`),
     start: () => {},
+    authorised: async (work) => await work(),
   };
-  const outcome = promote(
+  const outcome = await promote(
     {
       version: VERSION,
       store,
+      records: staged(store),
       line: 'Tried this artefact on staging.',
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },
@@ -97,9 +100,9 @@ it.each([
   ['sticky, like /tmp', 0o1777, /sticky/u],
 ])(
   'a parent of the link folder that is %s is refused, nothing migrated or pointed',
-  (_name, mode, why) => {
+  async (_name, mode, why) => {
     const { parent, prod, store } = underParent(mode);
-    const { outcome, calls } = promoted(store, join(prod, 'current'));
+    const { outcome, calls } = await promoted(store, join(prod, 'current'));
     expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(why) });
     expect(outcome).toMatchObject({ reason: expect.stringContaining(parent) });
     expect(calls).toEqual([]);
@@ -108,11 +111,11 @@ it.each([
   },
 );
 
-it('a parent reached through a link is refused, nothing migrated or pointed', () => {
+it('a parent reached through a link is refused, nothing migrated or pointed', async () => {
   const { root, store } = fixture();
   mkdirSync(join(root, 'real', 'prod'), { recursive: true });
   symlinkSync(join(root, 'real'), join(root, 'alias'));
-  const { outcome, calls } = promoted(store, join(root, 'alias', 'prod', 'current'));
+  const { outcome, calls } = await promoted(store, join(root, 'alias', 'prod', 'current'));
   expect(outcome).toMatchObject({
     kind: 'refused',
     reason: expect.stringContaining(`${join(root, 'alias')} is a link`),
@@ -132,9 +135,9 @@ it('a folder on the path owned by neither root nor the promoter is refused', () 
   );
 });
 
-it('a link folder that does not exist yet is refused before anything is made', () => {
+it('a link folder that does not exist yet is refused before anything is made', async () => {
   const { root, store } = fixture();
-  const { outcome, calls } = promoted(store, join(root, 'not-yet', 'current'));
+  const { outcome, calls } = await promoted(store, join(root, 'not-yet', 'current'));
   expect(outcome).toMatchObject({
     kind: 'refused',
     reason: expect.stringContaining(`${join(root, 'not-yet')} is missing`),
@@ -142,33 +145,33 @@ it('a link folder that does not exist yet is refused before anything is made', (
   expect(calls).toEqual([]);
 });
 
-it('a link named served, where the copies live, is refused', () => {
+it('a link named served, where the copies live, is refused', async () => {
   const { root, store } = fixture();
-  const { outcome, calls } = promoted(store, join(root, 'served'));
+  const { outcome, calls } = await promoted(store, join(root, 'served'));
   expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/served/u) });
   expect(calls).toEqual([]);
 });
 
-it('the link pointed is the normalised path the walk checked, not the path as given', () => {
+it('the link pointed is the normalised path the walk checked, not the path as given', async () => {
   const { root, store } = fixture();
   mkdirSync(join(root, 'prod'));
-  const { outcome, calls } = promoted(store, `${join(root, 'prod')}/./x/../current`);
+  const { outcome, calls } = await promoted(store, `${join(root, 'prod')}/./x/../current`);
   expect(outcome.kind).toBe('promoted');
   expect(calls[1]).toMatch(new RegExp(`^point ${join(root, 'prod', 'current')} -> `, 'u'));
 });
 
-it('a fully trusted path is promoted', () => {
+it('a fully trusted path is promoted', async () => {
   const { parent, prod, store } = underParent(0o755);
-  const { outcome, calls } = promoted(store, join(prod, 'current'));
+  const { outcome, calls } = await promoted(store, join(prod, 'current'));
   expect(outcome.kind).toBe('promoted');
   expect(calls).toEqual(['migrate', expect.stringContaining(join(parent, 'prod', 'served'))]);
 });
 
-it('an artefact swapped for a link after selection is refused as changed, not blamed on served/', () => {
+it('an artefact swapped for a link after selection is refused as changed, not blamed on served/', async () => {
   const { root, store } = fixture();
   const artefact = join(store, artefactName(VERSION));
   mkdirSync(join(root, 'prod'));
-  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+  const { outcome, calls } = await promotedAfter(store, join(root, 'prod', 'current'), () => {
     renameSync(artefact, `${artefact}-moved`);
     symlinkSync(`${artefact}-moved`, artefact);
   });
@@ -185,26 +188,28 @@ function folds(root: string): boolean {
   return existsSync(join(root, 'prod', 'SERVED'));
 }
 
-it('a link path already holding a folder, or served in another case, is refused before the migration', () => {
-  for (const [name, make] of [
+it('a link path already holding a folder, or served in another case, is refused before the migration', async () => {
+  const cases = [
     ['current', (at: string) => mkdirSync(at)],
     ['SERVED', () => {}],
-  ] as const) {
+  ] as const;
+  const runs = cases.map(async ([name, make]) => {
     const { root, store } = fixture();
     mkdirSync(join(root, 'prod'));
-    if (name === 'SERVED' && !folds(root)) continue;
+    if (name === 'SERVED' && !folds(root)) return;
     make(join(root, 'prod', name));
-    const { outcome, calls } = promoted(store, join(root, 'prod', name));
+    const { outcome, calls } = await promoted(store, join(root, 'prod', name));
     expect(outcome, name).toMatchObject({ kind: 'refused' });
     expect(calls, name).toEqual([]);
-  }
+  });
+  await Promise.all(runs);
 });
 
-it('an artefact swapped for a plain file after selection is refused as changed', () => {
+it('an artefact swapped for a plain file after selection is refused as changed', async () => {
   const { root, store } = fixture();
   const artefact = join(store, artefactName(VERSION));
   mkdirSync(join(root, 'prod'));
-  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+  const { outcome, calls } = await promotedAfter(store, join(root, 'prod', 'current'), () => {
     rmSync(artefact, { recursive: true });
     writeFileSync(artefact, 'not a release output');
   });
@@ -215,11 +220,11 @@ it('an artefact swapped for a plain file after selection is refused as changed',
   expect(calls).toEqual([]);
 });
 
-it('an artefact swapped for a folder without owner write is refused as changed, nothing left in served/', () => {
+it('an artefact swapped for a folder without owner write is refused as changed, nothing left in served/', async () => {
   const { root, store } = fixture();
   const artefact = join(store, artefactName(VERSION));
   mkdirSync(join(root, 'prod'));
-  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+  const { outcome, calls } = await promotedAfter(store, join(root, 'prod', 'current'), () => {
     rmSync(artefact, { recursive: true });
     mkdirSync(artefact);
     writeFileSync(join(artefact, 'index.html'), 'not the staged bytes');
@@ -234,8 +239,8 @@ it('an artefact swapped for a folder without owner write is refused as changed, 
   expect(readdirSync(join(root, 'prod', 'served'))).toEqual([]);
 });
 
-it('a folder at the link swap name, or a link folder the promoter cannot write, is refused first', () => {
-  for (const [name, make] of [
+it('a folder at the link swap name, or a link folder the promoter cannot write, is refused first', async () => {
+  const cases = [
     ['a folder at current.promoting', (prod: string) => mkdirSync(join(prod, 'current.promoting'))],
     ['a link folder without owner write', (prod: string) => chmodSync(prod, 0o555)],
     [
@@ -246,15 +251,17 @@ it('a folder at the link swap name, or a link folder the promoter cannot write, 
       'a served/ without owner write',
       (prod: string) => mkdirSync(join(prod, 'served'), { mode: 0o555 }),
     ],
-  ] as const) {
+  ] as const;
+  const runs = cases.map(async ([name, make]) => {
     const { root, store } = fixture();
     const prod = join(root, 'prod');
     mkdirSync(prod);
     make(prod);
-    const { outcome, calls } = promoted(store, join(prod, 'current'));
+    const { outcome, calls } = await promoted(store, join(prod, 'current'));
     chmodSync(prod, 0o755);
     if (existsSync(join(prod, 'served'))) chmodSync(join(prod, 'served'), 0o755);
     expect(outcome, name).toMatchObject({ kind: 'refused' });
     expect(calls, name).toEqual([]);
-  }
+  });
+  await Promise.all(runs);
 });

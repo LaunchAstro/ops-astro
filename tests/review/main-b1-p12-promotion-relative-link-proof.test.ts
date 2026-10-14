@@ -15,13 +15,13 @@ import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, symlinkSync } 
 import { join, relative } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
 import { promote, type PromotionEffects } from '../../scripts/ops/promotion.ts';
-import { LINE, named, STAGED, store, trustedTemp } from '../ci/promotion.fixture.ts';
+import { LINE, named, STAGED, staged, store, trustedTemp } from '../ci/promotion.fixture.ts';
 
 // Under a folder the promotion's trust walk accepts (OPS497TRUST).
 const production = trustedTemp('p12-2-prod-');
 afterAll(() => rmSync(production, { recursive: true, force: true }));
 
-it('p12-2 a promotion run with a relative --artefacts leaves production linked to the artefact', () => {
+it('p12-2 a promotion run with a relative --artefacts leaves production linked to the artefact', async () => {
   const absolute = store({ [named(STAGED)]: STAGED });
   // The operator names the store relative to where they stand, as any path argument may be.
   const given = relative(process.cwd(), absolute);
@@ -43,11 +43,13 @@ it('p12-2 a promotion run with a relative --artefacts leaves production linked t
       renameSync(next, link);
     },
     start: () => {},
+    authorised: async (work) => await work(),
   };
-  const outcome = promote(
+  const outcome = await promote(
     {
       version: STAGED,
       store: given,
+      records: staged(given),
       line: LINE,
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },

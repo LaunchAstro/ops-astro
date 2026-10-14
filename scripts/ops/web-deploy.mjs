@@ -27,6 +27,7 @@
 
 import { parseArgs } from 'node:util';
 import { preflightFor } from './deploy.ts';
+import { authorisedAct } from './authorised-act.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { deployMaintenance, deployWeb } from './web-deploy.ts';
 
@@ -57,11 +58,25 @@ if (values.maintenance ? (values.version ?? values.artefacts) : !both) {
 }
 
 const environment = values.production ? 'production' : 'staging';
+// Vercel is asked, and the deploy recorded, under the operator's held grant (#970).
+let written;
+const authorised = (work) =>
+  authorisedAct(gate, async () => {
+    const answer = await work();
+    if (answer.kind === 'deployed') written = await recordDeployment(gate, answer.record);
+    return answer;
+  });
 const outcome = values.maintenance
   ? await deployMaintenance({ env: process.env })
   : await deployWeb(
       { version: values.version, store: values.artefacts },
-      { env: process.env, preflight: preflightFor(environment), environment },
+      {
+        env: process.env,
+        preflight: preflightFor(environment),
+        environment,
+        records: gate.records,
+        authorised,
+      },
     );
 if (outcome.kind !== 'deployed') {
   console.error(`web-deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
@@ -69,4 +84,4 @@ if (outcome.kind !== 'deployed') {
 }
 const serves = values.maintenance ? 'the maintenance page' : outcome.record.version;
 console.log(`web-deploy: ${environment} serves ${serves} at ${outcome.record.deployment}`);
-console.log(JSON.stringify(await recordDeployment(gate, outcome.record)));
+console.log(JSON.stringify(written ?? (await recordDeployment(gate, outcome.record))));

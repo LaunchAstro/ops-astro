@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterAll, expect, it, vi } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName, promote } from '../../scripts/ops/promotion.ts';
-import { trustedTemp } from './promotion.fixture.ts';
+import { staged, trustedTemp } from './promotion.fixture.ts';
 import { rmSync } from 'node:fs';
 
 vi.mock('node:fs', async (original) => ({
@@ -23,7 +23,7 @@ const VERSION = '0123456789ab';
 const root = trustedTemp('ops-astro-copy-failure-');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-it('a copy the disk refuses is refused with the disk reason, not as a changed artefact', () => {
+it('a copy the disk refuses is refused with the disk reason, not as a changed artefact', async () => {
   const store = join(root, 'store');
   const artefact = join(store, artefactName(VERSION));
   mkdirSync(join(artefact, 'static'), { recursive: true });
@@ -31,10 +31,11 @@ it('a copy the disk refuses is refused with the disk reason, not as a changed ar
   stampOutput(artefact, VERSION);
   mkdirSync(join(root, 'prod'));
   const calls: string[] = [];
-  const outcome = promote(
+  const outcome = await promote(
     {
       version: VERSION,
       store,
+      records: staged(store),
       line: 'Tried this artefact on staging.',
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },
@@ -52,6 +53,7 @@ it('a copy the disk refuses is refused with the disk reason, not as a changed ar
       },
       point: () => calls.push('point'),
       start: () => {},
+      authorised: async (work) => await work(),
     },
   );
   expect(outcome).toMatchObject({

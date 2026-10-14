@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { outputDigest, recordedStamp, stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName, promote } from '../../scripts/ops/promotion.ts';
-import { trustedTemp } from './promotion.fixture.ts';
+import { staged, trustedTemp } from './promotion.fixture.ts';
 import { serveTestKeySetApart, signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 it('a malformed database address never prints its password', async () => {
@@ -40,7 +40,7 @@ it('a malformed database address never prints its password', async () => {
   }
 });
 
-it('promotion serves the validated bytes despite a store write during migration', () => {
+it('promotion serves the validated bytes despite a store write during migration', async () => {
   // Moved under a folder the promotion's trust walk accepts (OPS497TRUST).
   const store = trustedTemp('sol-ow065-store-');
   try {
@@ -52,10 +52,11 @@ it('promotion serves the validated bytes despite a store write during migration'
     const stagedDigest = outputDigest(artefact);
     expect(recordedStamp(artefact).digest).toBe(stagedDigest);
     let served: string | undefined;
-    const outcome = promote(
+    const outcome = await promote(
       {
         version,
         store,
+        records: staged(store),
         line: 'Tried this artefact on staging.',
         dryRun: false,
         api: { manager: 'docker', name: 'prod-api' },
@@ -76,6 +77,7 @@ it('promotion serves the validated bytes despite a store write during migration'
           served = selected;
         },
         start: () => {},
+        authorised: async (work) => await work(),
       },
     );
     expect(readFileSync(join(artefact, 'index.html'), 'utf8')).toBe(

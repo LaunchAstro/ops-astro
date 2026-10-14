@@ -8,13 +8,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { serveTestKeySetApart, type ServedKeySet } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {
@@ -136,6 +137,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
 
   gatedStopCases1();
   gatedStopCases2();
+  gatedStopCases3();
   parkedStopCases();
 });
 
@@ -194,9 +196,14 @@ function gatedStopCases2() {
     expect(readFileSync(at.calls, 'utf8')).toBe(`${THE_STOP}\n`);
     expect(readdirSync(at.records)).toEqual([]);
   });
+}
 
+function gatedStopCases3() {
   it('owner line 63 holds: while the named services run, the promotion still refuses', async () => {
-    const at = fake();
+    // Staging's record folder must pass the promotion's trust walk, so it sits in the checkout.
+    const records = mkdtempSync(join(realpathSync(process.cwd()), 's0-1g-records-'));
+    onTestFinished(() => rmSync(records, { recursive: true, force: true }));
+    const at = { ...fake(), records };
     const artefacts = mkdtempSync(join(scratch, 'store-'));
     const build = join(artefacts, definition['x-ops-astro'].artefact.replace('{version}', STAGED));
     mkdirSync(build);
@@ -205,6 +212,15 @@ function gatedStopCases2() {
       join(build, 'build.json'),
       JSON.stringify({ build: STAGED, digest: outputDigest(build) }),
     );
+    // Staging's web deploy record of this build, which the selection reads (#970).
+    const staged = `${JSON.stringify({
+      action: 'deploy recorded',
+      environment: 'staging',
+      version: STAGED,
+      digest: (JSON.parse(readFileSync(join(build, 'build.json'), 'utf8')) as { digest: string })
+        .digest,
+    })}\n`;
+    writeFileSync(join(at.records, 'deployments.jsonl'), staged, { mode: 0o600 });
     const current = join(scratch, 'current');
     const result = spawn(
       PROMOTE,
@@ -228,7 +244,8 @@ function gatedStopCases2() {
     expect(result.out).toMatch(/docker:ops-astro-api is running/u);
     expect(readFileSync(at.calls, 'utf8')).not.toMatch(/stop|start/u);
     expect(existsSync(current)).toBe(false);
-    expect(readdirSync(at.records)).toEqual([]);
+    expect(readdirSync(at.records)).toEqual(['deployments.jsonl']);
+    expect(readFileSync(join(at.records, 'deployments.jsonl'), 'utf8')).toBe(staged);
   });
 }
 
