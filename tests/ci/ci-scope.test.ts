@@ -4,9 +4,7 @@
 // is how a suite stops running quietly, so this proves: the queue and main
 // always run everything; a change in each area runs exactly that area's named
 // suites, and every area that imports or names a changed helper runs too; an
-// unknown path or shared tooling runs everything; a shard with nothing in
-// scope skips while every in-scope suite still lands in one shard; and the
-// workflow keeps every required check's name.
+// Shared tooling runs everything; every in-scope suite lands in one shard.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,6 +37,7 @@ const fixtureMap: ScopeMap = {
   runsEverything: ['tests/support/'],
   visualDrift: ['apps/web/', 'tests/visual/'],
   queueOnly: [],
+  alwaysRunTests: [],
 };
 const fixtureDependents = (path: string): string[] =>
   path.startsWith('apps/web/')
@@ -294,7 +293,7 @@ describe('the workflow', () => {
     }
     const others = ci
       .split(/\n(?= {2}[\w-]+:\n)/u)
-      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift):/u.test(b));
+      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift|pin-tests):/u.test(b));
     for (const block of others) expect(block).not.toMatch(/ci-scope/u);
   });
 });

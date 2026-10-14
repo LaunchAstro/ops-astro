@@ -43,6 +43,7 @@ export interface ScopeMap {
   readonly runsEverything: readonly string[];
   readonly visualDrift: readonly string[];
   readonly queueOnly: readonly string[];
+  readonly alwaysRunTests: readonly string[];
 }
 
 /** The areas of the named suites that depend on a path. */
@@ -60,7 +61,7 @@ const isPrefixList = (value: unknown): value is string[] =>
 /** The kept map, refusing anything malformed rather than reading it as empty. */
 export const readScopeMap = (path: string): ScopeMap => {
   const map = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-  for (const key of ['scopable', 'runsEverything', 'visualDrift', 'queueOnly']) {
+  for (const key of ['scopable', 'runsEverything', 'visualDrift', 'queueOnly', 'alwaysRunTests']) {
     if (!isPrefixList(map[key]))
       throw new Error(`${path}: ${key} must be a list of non-empty strings`);
   }
@@ -173,6 +174,17 @@ const pullRequestBase = (root: string): string =>
  */
 const isolationSuites = (root: string): string[] => readIsolationSuites(root).invariant;
 
+/** Run the explicit repository contracts without consulting imports or PR labels. */
+function runPins(root: string, command: readonly string[], tests: readonly string[]): number {
+  if (tests.length === 0) throw new Error('alwaysRunTests must not be empty');
+  for (const path of tests) {
+    if (!path.startsWith('tests/') || !/\.test\.tsx?$/u.test(path) || !existsSync(join(root, path)))
+      throw new Error(`alwaysRunTests: not a test file: ${path}`);
+  }
+  console.error(`ci-scope: pin and count tests: always runs ${tests.length} test files`);
+  return decideOrRun(true, command, [...tests]);
+}
+
 function main(argv: readonly string[]): number {
   const root = resolve(import.meta.dirname, '..');
   const split = argv.indexOf('--');
@@ -185,6 +197,7 @@ function main(argv: readonly string[]): number {
   }
   const event = process.env['GITHUB_EVENT_NAME'] ?? '';
   const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
+  if (check === 'pin and count tests') return runPins(root, command, map.alwaysRunTests);
   if (map.queueOnly.includes(check)) {
     const run = event !== 'pull_request';
     const why = 'deferred on a pull request; it runs in full in the merge queue';
