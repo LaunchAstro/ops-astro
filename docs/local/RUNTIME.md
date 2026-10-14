@@ -2223,50 +2223,12 @@ after the business-wide keys. Tests: `aw-01-occurrence-run`,
 `aw-01-occurrence-run-isolation`, `c52a-run-start`, `c33-intake` and
 `c52a-dispatch-claim-races`.
 
-## The harness adoption test's trigger
+## Framework authority tests
 
-AW-12, part one: `core-runtime/src/harness-trigger.ts` and
-`core-commands/src/reads/harness-trigger.ts`. The round asks whether an agent
-framework has earned a role under the product's loop. It adopts nothing:
-adoption is the owner's separate decision.
+The A1 to A8 suite and the four shared fakes stay in `tests/harness/`.
+Tests: `aw-12-authorities` in three files, and `aw-12-fakes`.
 
-- **Two limbs, both needed.** The run's required reading must exceed one
-  window at the pinned provider: the replay provider's `replay-1`, 32 000
-  units, the only route catalogued. The work must also sub-delegate (AW-11's
-  `delegated` run event, depth one). The reading is the sum of the run's
-  accept-time manifest sizes (0192), each file once: a file is its digest and
-  size, so the same bytes at two paths count once. It is counted in UTF-8
-  bytes, an upper bound on any byte-level tokenizer's units. A run with no pin
-  reads nothing.
-- **"Not yet" is a result.** Either limb missing, the reading is `not_yet`.
-  It names the missing limbs and carries the two figures: the reading against
-  the window, and the depth with the depth built. It is frozen and holds no
-  other number. `enterCandidates` enters no candidate on it. It throws on a
-  reading the trigger did not make, so nothing reaches the candidates unread.
-  The trigger is read from the work's shape, never from a date.
-- **Who reads it.** `readHarnessTrigger` is the team's: a person outside it,
-  or one with no live `task:read`, gets `SCOPE_NOT_GRANTED`. The run is
-  filtered by that grant inside the statement (on the business, the task or
-  the task's client, as `taskAccess` asks), so a run outside it, in another
-  business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
-  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. The owner
-  reads it through `harness.read` (part two), on the API and as the command
-  line's `harness.read` verb, one answer on both: `{ ok: true, harness }`. The
-  agent route refuses it, as it refuses every person-only read; nothing under
-  test reads its own verdict. Nothing is stored: each read computes the result
-  from the run's frozen manifest ([API.md](API.md#reads)).
-- **What stays in the tests.** The pinned candidates with their licences read
-  (`tests/harness/candidates.ts`) and the four shared fakes, all in
-  `tests/harness/`, so none of them is in the product's dependency tree.
-
-Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
-`aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
-candidate audit, a dependency audit at each pinned commit, is part two's),
-`aw-12-fakes`, `aw-12-harness-read`, `aw-12-harness-read-isolation`,
-`aw-12-harness-read-parity` and `aw-12-authorities` (part two, three files). The
-authorities suite holds the product's side of the eight refusals, the boundary
-any candidate would sit behind, with no candidate run: the trigger reads "not
-yet". A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
+A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
 worker's place, handed a worker's settings, one model client and tools by
 name, with its own state store and retry setting. One case per authority,
 each with a positive control, and each shown red once against a broken
@@ -2285,9 +2247,7 @@ refused and recorded at the network layer (A6); one failed model call with
 its retries off gives one dropped attempt and exactly one new attempt and
 reservation, the hand-back's replay none more (A7); and the restricted worker
 role, the canary for a harness's role, is refused 42501 on updating the run,
-its steps and its events, which the application role reaches (A8). No product
-code changed for them. The per-candidate refusal runs, the representative
-case, the comparison families, the ledger and the gates wait on the trigger.
+its steps and its events, which the application role reaches (A8).
 
 ## The agent's output takes its own review round
 

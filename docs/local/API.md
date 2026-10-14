@@ -2092,24 +2092,6 @@ a holder without `read` on the task, a task of another business and a trashed
 one are `NOT_FOUND`, and a member without the key `SCOPE_NOT_GRANTED`. No agent
 route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
-`harness.read` (AW-12) is the harness adoption test's result on one run
-(`{ runId }`, a string, else `FIELD_VALUE_INVALID` naming `runId`), as
-`{ ok: true, harness }`. `harness` is the trigger's reading: `result: 'not_yet'`
-with the `missing` limbs and the two `figures` (the reading against the window,
-the delegation depth against the depth built), or `result: 'fired'` with the
-same two figures and no verdict. The per-candidate runs, with a verdict and a
-recommendation per framework, are AW-12's follow-up, built when the trigger
-first fires; this read does not carry them yet. It is computed from the run's
-frozen accept-time manifest on every read and stores nothing. It is the
-team's: a reader outside the team, or one holding no `read` on tasks, is
-refused `SCOPE_NOT_GRANTED` 403; the run is
-filtered by the caller's task `read` inside the statement, so another client's
-run, another business's and a made-up one are one `NOT_FOUND` 404. A manifest
-it cannot count is `DEFINITION_UNAVAILABLE`. No agent route; the command line
-is `pnpm cli harness.read --json '{"runId":"..."}'`
-(`reads/harness-trigger.ts`; `tests/harness/aw-12-harness-read.test.ts`;
-[RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger)).
-
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -2651,7 +2633,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,
-`trace.read`, `harness.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
+`trace.read`, `invitation.list`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
