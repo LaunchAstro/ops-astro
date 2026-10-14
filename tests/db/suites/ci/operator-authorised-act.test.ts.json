@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#970: production's acts run only under the operator's held grant with the gate asked again first; a grant revoked, a login mapping ended or a login remapped to another person since admission refuses the act with nothing begun, against a real database."
+}
