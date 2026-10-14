@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's provider phase judges the operator and the make's admission again under its own locks, so an expired operator or a login installed after reservation makes no provider user"
+}

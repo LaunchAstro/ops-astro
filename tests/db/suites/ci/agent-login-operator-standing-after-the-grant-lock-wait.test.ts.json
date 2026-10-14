@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an operator whose membership ends while a make waits on their locked grant writes no act and makes no provider call"
+}
