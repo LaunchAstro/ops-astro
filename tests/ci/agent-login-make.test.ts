@@ -31,8 +31,10 @@ Reflect.set(globalThis, Symbol.for('ops-astro.test.plaintext-at-loopback'), true
 
 let world: World;
 const users = providerUsers();
-const record = (): string =>
-  readFileSync(join(world.env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl'), 'utf8');
+const record = (): string => {
+  const file = join(world.env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl');
+  return readFileSync(file, 'utf8');
+};
 const puts = (): string[] => world.provider.calls.filter((call) => call.startsWith('PUT'));
 
 /** The agent's one act, probed, its one provider user holding `password`, its one live login. */
