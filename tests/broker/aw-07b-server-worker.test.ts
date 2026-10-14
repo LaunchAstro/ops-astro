@@ -6,9 +6,9 @@
 // recovers goes out through custody without any test calling the worker, and
 // SIGTERM ends the process cleanly. The worker's own stop is shown in process.
 
+import { mkdtempSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,18 +23,7 @@ const ROOT = join(import.meta.dirname, '..', '..');
 
 useEmailWorld();
 
-let folder = '';
-let credentialsFile = '';
-
 beforeAll(async () => {
-  folder = mkdtempSync(join(tmpdir(), 'aw07b-server-'));
-  credentialsFile = join(folder, 'credentials.json');
-  const credential = { kind: 'api_key', account: 'mail-1', header: 'authorization', value: w.key };
-  writeFileSync(
-    credentialsFile,
-    JSON.stringify([{ ref: 'email_key', destination: 'email', ...credential }]),
-    { mode: 0o600 },
-  );
   if (noDatabase) return;
   await w.db.app.withBusiness(w.alpha, async (tx) => {
     await tx.query(
@@ -44,9 +33,7 @@ beforeAll(async () => {
   });
 });
 
-afterAll(() => {
-  if (folder !== '') rmSync(folder, { recursive: true, force: true });
-});
+afterAll(() => {});
 
 async function freePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -135,7 +122,6 @@ async function serve(settings: Readonly<Record<string, string>>): Promise<Served
 const mockDelivery = (): Record<string, string> => ({
   MAIL_DELIVERY: 'mock',
   MAIL_PROVIDER_ORIGIN: w.provider.origin,
-  MAIL_CREDENTIALS_FILE: credentialsFile,
   MAIL_APP_ORIGIN: MAIL.appOrigin,
   MAIL_FROM: MAIL.from,
 });

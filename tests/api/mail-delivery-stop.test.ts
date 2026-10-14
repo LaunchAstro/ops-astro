@@ -6,7 +6,7 @@
 // pool holds the pass, and custody's real process is watched through `fork`.
 
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, expect, it, vi } from 'vitest';
@@ -56,21 +56,11 @@ function barrier(): { readonly held: Promise<void>; readonly release: () => void
 const untouched = (child: ChildProcess): boolean =>
   !child.killed && child.exitCode === null && child.signalCode === null;
 
-/** Mock delivery over a stand-in key, its provider a closed port on this machine. */
+/** Mock delivery over its own made-up key, its provider a closed port on this machine. */
 function mockSettings(): Extract<MailDeliverySettings, { kind: 'mock' }> {
-  const credentialsFile = join(folder, 'credentials.json');
-  const credential = { kind: 'api_key', account: 'mail-1', header: 'authorization' };
-  writeFileSync(
-    credentialsFile,
-    JSON.stringify([
-      { ref: 'email_key', destination: 'email', ...credential, value: 'stand-in-key-1' },
-    ]),
-    { mode: 0o600 },
-  );
   const settings = mailDeliverySettings({
     MAIL_DELIVERY: 'mock',
     MAIL_PROVIDER_ORIGIN: 'http://127.0.0.1:9',
-    MAIL_CREDENTIALS_FILE: credentialsFile,
     MAIL_APP_ORIGIN: 'https://ops.example.test',
     MAIL_FROM: `hello@${SENDING}`,
   });
@@ -98,7 +88,7 @@ it('AW-07b mail delivery: stop stops custody only after the running pass has end
     settings,
     database,
     async () => await Promise.resolve(['first']),
-    { atOnceMs: 10, dailyTickMs: 60_000 },
+    { atOnceMs: 10, dailyTickMs: 60_000, invitationsMs: 60_000 },
   );
   expect(forked).toHaveLength(1);
   const [custody] = forked;

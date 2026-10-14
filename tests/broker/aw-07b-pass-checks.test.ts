@@ -12,9 +12,6 @@
 // with custody asks for no second, and the pass answers WORKER_REQUIRED.
 
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { mailDeliverySettings, startMailDelivery } from '../../apps/api/mail-delivery.ts';
 import type { SenderReport } from '../../packages/core-connectors/src/index.ts';
@@ -38,19 +35,9 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useEmailWorld();
 
-let folder = '';
-let credentialsFile = '';
 let workerActor = '';
 
 beforeAll(async () => {
-  folder = mkdtempSync(join(tmpdir(), 'aw07b-pass-checks-'));
-  credentialsFile = join(folder, 'credentials.json');
-  const credential = { kind: 'api_key', account: 'mail-1', header: 'authorization', value: w.key };
-  writeFileSync(
-    credentialsFile,
-    JSON.stringify([{ ref: 'email_key', destination: 'email', ...credential }]),
-    { mode: 0o600 },
-  );
   if (noDatabase) return;
   workerActor = randomUUID();
   await w.db.app.withBusiness(w.alpha, async (tx) => {
@@ -61,9 +48,7 @@ beforeAll(async () => {
   });
 });
 
-afterAll(() => {
-  if (folder !== '') rmSync(folder, { recursive: true, force: true });
-});
+afterAll(() => {});
 
 const settle = async (ms: number): Promise<void> => {
   await new Promise((resolve) => {
@@ -79,7 +64,6 @@ it('AW-07b delivery worker: a sender that turns unverified between passes stops 
   const settings = mailDeliverySettings({
     MAIL_DELIVERY: 'mock',
     MAIL_PROVIDER_ORIGIN: w.provider.origin,
-    MAIL_CREDENTIALS_FILE: credentialsFile,
     MAIL_APP_ORIGIN: MAIL.appOrigin,
     MAIL_FROM: MAIL.from,
   });
