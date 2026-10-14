@@ -93,6 +93,30 @@ async function read(path: string, authenticated = false): Promise<unknown> {
   }
 }
 
+/**
+ * Every page of the trace's observations. v2 returns only the core and basic groups unless
+ * asked: the measurements live in metadata, and only a returned io group shows content absent.
+ */
+async function observationsOf(traceId: string): Promise<unknown[]> {
+  const observations: unknown[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page === 0 || cursor !== null; page += 1) {
+    if (page >= 20) throw new Error('observations exceed the bounded page count');
+    const query = new URLSearchParams({ traceId, limit: '100', fields: 'core,basic,metadata,io' });
+    if (cursor !== null) query.set('cursor', cursor);
+    // eslint-disable-next-line no-await-in-loop -- each page names the next
+    const answer = await read(`/api/public/v2/observations?${query.toString()}`, true);
+    if (!object(answer) || !Array.isArray(answer['data']))
+      throw new Error('observations are absent');
+    observations.push(...answer['data']);
+    const next = object(answer['meta']) ? answer['meta']['cursor'] : undefined;
+    if (next !== null && next !== undefined && (typeof next !== 'string' || next === ''))
+      throw new Error('observation cursor is malformed');
+    cursor = typeof next === 'string' ? next : null;
+  }
+  return observations;
+}
+
 it('the existing M5 target is healthy at its pinned version', async () => {
   const health = await read('/api/public/health');
   if (
@@ -130,17 +154,12 @@ it('the existing M5 target is healthy at its pinned version', async () => {
 it('the M5 replay trace shows timings, outcome and call usage with no content', async () => {
   const traceId = process.env['TRACE_PROOF_TRACE_ID'] ?? '';
   if (!/^[a-f0-9]{32}$/u.test(traceId)) throw new Error('proof trace identifier is malformed');
-  const answer = await read(`/api/public/v2/observations?traceId=${traceId}&limit=100`, true);
-  if (!object(answer) || !Array.isArray(answer['data'])) throw new Error('observations are absent');
+  const observations = await observationsOf(traceId);
   let terminal = false;
-  for (const observation of answer['data']) {
+  for (const observation of observations) {
     if (!object(observation)) throw new Error('observation is malformed');
     expect(observation['traceId'] === traceId).toBe(true);
-    const input = observation['input'];
-    const output = observation['output'];
-    expect(
-      (input === null || input === undefined) && (output === null || output === undefined),
-    ).toBe(true);
+    expect(observation['input'] === null && observation['output'] === null).toBe(true);
     for (const name of [
       'TRACE_PROOF_MESSAGE_CANARY',
       'TRACE_PROOF_PAGE_CANARY',

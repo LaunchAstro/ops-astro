@@ -13,22 +13,27 @@ export interface MeasurementRow {
 
 const TERMINAL = new Set(['handed_back', 'child_handed_back', 'dropped']);
 
-/** Call counts at this event, within its business, run and lease. No unit counts are projected. */
-export const MEASUREMENT_COLUMNS = `ev.detail ->> 'outcome' as "recordedOutcome",
+/**
+ * Call counts at this event, within its business, run and lease. No unit counts are projected.
+ * Bounded by the event's write instant, after its writer's locks: its transaction's start
+ * can precede a call that settled while the writer waited.
+ */
+const WRITTEN = 'coalesce(ev.written_at, ev.created_at)';
+export const MEASUREMENT_COLUMNS: string = `ev.detail ->> 'outcome' as "recordedOutcome",
   case when ev.kind in ('handed_back', 'child_handed_back', 'dropped') then
     (select count(*)::float8 from public.model_calls mc
       where mc.business_id = ev.business_id and mc.run_id = ev.run_id
         and mc.reservation_id = (select l.reservation_id from public.leases l
           where l.business_id = ev.business_id and l.id = ev.lease_id)
-        and mc.lease_id = ev.lease_id and mc.accepted_at <= ev.created_at)
+        and mc.lease_id = ev.lease_id and mc.accepted_at <= ${WRITTEN})
     else null end as "modelCalls",
   case when ev.kind in ('handed_back', 'child_handed_back', 'dropped') then
     (select count(*)::float8 from public.model_calls mc
       where mc.business_id = ev.business_id and mc.run_id = ev.run_id
         and mc.reservation_id = (select l.reservation_id from public.leases l
           where l.business_id = ev.business_id and l.id = ev.lease_id)
-        and mc.lease_id = ev.lease_id and mc.accepted_at <= ev.created_at
-        and mc.state = 'settled' and mc.ended_at <= ev.created_at)
+        and mc.lease_id = ev.lease_id and mc.accepted_at <= ${WRITTEN}
+        and mc.state = 'settled' and mc.ended_at <= ${WRITTEN})
     else null end as "settledCalls"`;
 
 function count(value: unknown, field: string): number {

@@ -116,8 +116,9 @@ Record evidence for these checks before closing #1622:
 
 1. Confirm the person responsible for the September installation. File
    ownership identifies the `agencyastro` account, not the installer.
-2. Obtain owner approval for a pinned version and digest in the existing
-   deployment. The current Compose image references are floating tags.
+2. Obtain owner approval to apply the staged image pins in
+   `deploy/m5/langfuse-pins.override.yml` to the existing deployment. The
+   running containers still use floating tags until then.
 3. Confirm Docker Desktop startup after a machine restart and user login.
    `unless-stopped` is a container restart policy, not a cold-boot proof.
 4. Confirm the existing Tailscale Serve mapping on HTTPS port 8449 restricts

@@ -49,8 +49,41 @@ ports bind to `127.0.0.1`.
 
 The web package and health endpoint both report `4.30.0`.
 An unauthenticated request to `/api/public/projects` returns HTTP 401.
-The current image IDs identify what is running, but the Compose references
-above do not pin the same images for the next pull.
+The configured references above are floating tags, so the next pull can
+change the running version.
+
+## Image pins
+
+[`langfuse-pins.override.yml`](langfuse-pins.override.yml) pins each service
+to the image it ran on 14 October 2026. Each digest is the running
+container's image ID, read with `docker inspect` and
+`docker image inspect --format '{{json .RepoDigests}}'`. The version tags
+come from the running images and the registry:
+
+- Web and worker carry the OCI version label `4.30.0`, revision
+  `2f00fd4b504ae9de37dcd0a02b01ee02ee67d3dd`.
+  `docker buildx imagetools inspect` resolves both `4.30.0` tags to the
+  pinned digests.
+- ClickHouse reports `25.12.11.4`, and that registry tag resolves to the
+  pinned digest.
+- Postgres reports `17.11` and Redis reports `7.4.11`. Those registry tags
+  now resolve to newer builds, so the file keeps the configured major tags.
+  The digest is what runs.
+- MinIO reports `RELEASE.2026-07-17T12-07-51Z`. Its publisher's free tier has
+  no version tag, so only the digest pins it.
+
+The running containers still use the floating references. The pins take
+effect only when the owner adds this file as the last `-f` file to the
+installation's Compose command, as in the following step. That step
+recreates the containers, so it is an owner step:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f <repository>/deploy/m5/langfuse-pins.override.yml up -d
+```
+
+After that step, `docker inspect --format '{{.Config.Image}}'` must show a
+digest on all six containers.
 
 Read-only `tailscale serve status --json` confirms HTTPS port 8449 forwards
 to `http://127.0.0.1:3400`. Funnel is disabled on that port. The tailnet ACL
@@ -82,10 +115,11 @@ store volumes. No backup or restore proof was performed in this inspection.
 
 #1622 is partly met and requires owner input. The service exists, is healthy,
 has persistent stores, and uses loopback ports and container restart policies.
-Pinned deployment references, machine-restart behaviour, owner-machine access,
+Applying the staged image pins, machine-restart behaviour, owner-machine access,
 exporter activation, a retrieved no-content replay trace, and live outage
-recovery remain unverified or unmet. The repository now contains a runbook and
-an inactive exporter configuration example. Neither changes runtime state.
+recovery remain unverified or unmet. The repository now contains a runbook, an
+inactive exporter configuration example, and staged image pins. None of
+them changes runtime state.
 
 The existing containers must remain running and unchanged. Do not start a
 second Langfuse stack. Log `BLOCKER` before any proposed container change.
