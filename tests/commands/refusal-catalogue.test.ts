@@ -178,6 +178,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['SUBSCRIPTION_UNATTENDED', 403, 'caller'],
   ['SUBSCRIPTION_OTHER_TENANT', 403, 'caller'],
   ['SUBSCRIPTION_NOT_OWN_WORK', 403, 'caller'],
+  ['SUBSCRIPTION_NOT_FOR_CLIENT_WORK', 403, 'caller'],
   ['RATE_LIMITED', 409, 'caller'],
   ['COPY_NOT_REGISTERED', 409, 'caller'],
   ['LIABILITY_UNKNOWN', 409, 'caller'],

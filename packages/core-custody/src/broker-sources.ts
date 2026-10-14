@@ -26,8 +26,18 @@
 // not on that list counts as a write, so a new one fails closed. A task a
 // client is on never gets here: C60 refuses it first. A bound field that is
 // not business-internal is `outside`, so it reaches a local route only.
+//
+// Owner line 72 (ops-astro-roadmap `docs/decisions/execution.md`, 28 September
+// and 13 October 2026) judges by provenance at the time of each write: a task a
+// person wrote while holding no staff role (a client's contact, a guest) is
+// `outside` too. A business-internal field is marked `ownerWork` when a person
+// then holding the owner role created its task and it has no client key. Only
+// that mark lets free text take the owner's subscription (`data-class.ts`). An
+// agent's write, a summary included, makes the task `outside`, so the stricter
+// class survives.
 
 import type { FieldSource } from '../../core-connectors/src/index.ts';
+import type { CredentialKind } from './credentials.ts';
 import { TASK_SPINE } from '../../core-records/src/index.ts';
 import type { ModelCallField, ResolvedField } from './broker-types.ts';
 
@@ -39,6 +49,10 @@ export interface TaskSource {
   readonly entered: string | null;
   /** Whether the register names an applied write on it by anyone but a person. */
   readonly othersWrote: boolean;
+  /** Whether a person who held no staff role when they wrote it has written it (owner line 72). */
+  readonly clientTyped: boolean;
+  /** Owner line 72 by source: a person then holding the owner role created it, and it has no client key. */
+  readonly ownerWork: boolean;
   readonly data: Readonly<Record<string, unknown>>;
 }
 
@@ -81,10 +95,24 @@ function valueOf(
   return typeof value === 'string' ? value : undefined;
 }
 
+/** Entered by one of the business's own people, and written since by no agent, worker or client. */
+function businessInternal(task: TaskSource): boolean {
+  return (
+    !task.othersWrote &&
+    !task.clientTyped &&
+    task.entered !== null &&
+    ENTERED_BY_OWN_PEOPLE.has(task.entered)
+  );
+}
+
+/** A live task that is business-internal and the owner's own work (owner line 72). */
+export function ownersOwn(task: TaskSource): boolean {
+  return task.live && businessInternal(task) && task.ownerWork;
+}
+
 /** Each field's value and the source the broker found for it; a claim of `business_internal` counts as `outside`. */
 export function resolveFields(fields: readonly ModelCallField[], task: TaskSource): Resolution {
-  const internal =
-    !task.othersWrote && task.entered !== null && ENTERED_BY_OWN_PEOPLE.has(task.entered);
+  const internal = businessInternal(task);
   const resolved: ResolvedField[] = [];
   for (const field of fields) {
     if (!('from' in field)) {
@@ -95,7 +123,29 @@ export function resolveFields(fields: readonly ModelCallField[], task: TaskSourc
     const value = valueOf(task, field.from);
     if (value === undefined) return { ok: false, code: 'SOURCE_UNREADABLE' };
     const source: FieldSource = internal ? 'business_internal' : 'outside';
-    resolved.push({ name: field.name, source, value });
+    resolved.push({ name: field.name, source, value, ownerWork: internal && task.ownerWork });
   }
   return { ok: true, fields: resolved };
+}
+
+/** A route as the client refusal reads it. */
+interface OfferedRoute {
+  readonly provider: string;
+  readonly credentialKind: CredentialKind;
+}
+
+/**
+ * Why a client's work is refused, before any route is chosen. Owner line 72
+ * (ops-astro-roadmap `docs/decisions/execution.md`, 28 September and 13 October
+ * 2026): where any subscription route of the operation's provider could carry
+ * it, by the subscription's name; otherwise C60's `CLIENT_MODEL_USE_OFF`.
+ */
+export function clientRefusal(
+  routes: readonly OfferedRoute[],
+  operation: { readonly provider: string },
+): 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' | 'CLIENT_MODEL_USE_OFF' {
+  const offered = routes.some(
+    (route) => route.provider === operation.provider && route.credentialKind === 'subscription',
+  );
+  return offered ? 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' : 'CLIENT_MODEL_USE_OFF';
 }

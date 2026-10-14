@@ -12,8 +12,14 @@ export function effectOperationId(attemptId: string): string {
   return `effect:${attemptId}`;
 }
 
-/** The attempt an effect identity names, or `undefined` for any other identity. */
+/**
+ * The attempt an effect identity names, or `undefined` for any other identity.
+ * Only a UUID in its one spelling is an attempt: any other suffix, 36 hyphens
+ * included, is an ordinary identity, never an id a query casts.
+ */
 export function effectAttemptOf(operationId: string): string | undefined {
-  const found = /^effect:([0-9a-f-]{36})$/u.exec(operationId);
+  const found = /^effect:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(
+    operationId,
+  );
   return found?.[1];
 }

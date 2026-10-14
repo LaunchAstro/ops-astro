@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The launched agent alone takes its launch on its own login: a take starts it once and hands back the derived credential; a person, another agent's launch and a delegation credential are refused writing nothing; a launch that can no longer run is ended with its cause and no credential; an ended launch answers its receipt; a launched task refuses a client link"
+}

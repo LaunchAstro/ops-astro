@@ -107,6 +107,14 @@ export const EFFECT_ROWS = [
     meaning: "A subscription never carries another person's work",
     source: 'AW-01, LF-5',
   },
+  // Owner line 72 by source: a task or conversation with a client is refused
+  // on every subscription route, before any route is chosen.
+  {
+    code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK',
+    status: 403,
+    meaning: "A subscription never carries work on a client's task",
+    source: 'AW-01, owner line 72',
+  },
   {
     code: 'RATE_LIMITED',
     status: 409,

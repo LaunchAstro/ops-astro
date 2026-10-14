@@ -218,6 +218,30 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
     expect(await comments(w.taskId)).toBe(0);
   });
 
+  it('a receipt reads the same whatever case the attempt id is sent in', async () => {
+    const w = await work();
+    appliedDetail(await dispatchOf(w), 'task.dispatch');
+    appliedDetail(await effectOf(w), 'task.comment');
+    appliedDetail(await observeOf(w), 'task.observe');
+    const lower = await receiptOf(w.attemptId);
+    expect('receipt' in lower).toBe(true);
+    expect(await receiptOf(w.attemptId.toUpperCase())).toStrictEqual(lower);
+  });
+
+  it('an identity shaped like an effect that names no attempt is an ordinary comment, never a fault', async () => {
+    const taskId = await createTask(s, `t2c2 not an effect ${randomUUID()}`);
+    const comment = await asPerson(s, {
+      command: 'task.comment',
+      operationId: `effect:${'-'.repeat(36)}`,
+      recordId: taskId,
+      expectedRevision: await revisionOf(s, taskId),
+      body: 'A comment whose identity only looks like an effect',
+      audience: 'internal',
+    });
+    expect(codeOf(comment)).toBe('applied');
+    expect(await comments(taskId)).toBe(1);
+  });
+
   it('no effect before its dispatch: the effect identity is refused until the step is marked', async () => {
     const w = await work();
     expect(codeOf(await effectOf(w))).toBe('EFFECT_NOT_DISPATCHED');

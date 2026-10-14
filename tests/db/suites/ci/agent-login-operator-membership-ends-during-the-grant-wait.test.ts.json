@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool resolves the operator again once it holds their grants, so an operator whose membership ends while the act waits on their grant stops it before anything is admitted or written"
+}

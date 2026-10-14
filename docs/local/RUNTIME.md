@@ -1652,7 +1652,18 @@ The broker reads the task's client link, the spine's client slot, holding the
 run's task `for share` ahead of the lease (class `task` before `lease`), so a
 `task.set_party` in flight is waited on, never missed. The start reads it
 again under the same locks, and a task that gained a client since the hold
-releases the call unsent.
+releases the call unsent. Offered a subscription route, the refusal is
+`SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead (owner line 72, #1619).
+
+Owner line 72 by source (#1619). Free text goes to a cloud route only when the
+route is a subscription, the owner's own seat, and the broker found the text
+the owner's own work: the task's creation applied by a person then holding
+the owner role, no client key, no applied write by an agent, a worker, or a
+person then holding no staff role (provenance is judged at each operation's
+time from membership intervals, never today's role). A subscription
+send is judged again at custody's handoff in a transaction held until custody
+has the request (`broker-admission.ts`), so a client link or a client's write
+landing after the start sends nothing or waits for the send.
 
 A field reaches a cloud route only when the broker finds its source
 business-internal (S3). The field is bound, `from: { recordId, key }`, to
