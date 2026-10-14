@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "each S2 named verb runs as a real CLI process over loopback HTTP, with owning bodies, operation answer parity, permission-key refusal lines and one-request counts"
+}
