@@ -622,6 +622,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'mandate.revoke',
   'map.chart',
   'map.frontier',
+  'map.list',
   'map.view',
   'model.call',
   'notifications.set_channel',

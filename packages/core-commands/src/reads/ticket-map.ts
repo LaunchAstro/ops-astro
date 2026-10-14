@@ -6,10 +6,13 @@
 import {
   readableTaskCondition,
   readableTaskParams,
+  subjectsOf,
+  type Session,
   type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import type { TaskMapLink } from '../../../core-wire/src/index.ts';
+import { readClientFacts } from '../commands/task-content.ts';
 
 /**
  * The map a ticket belongs to, or null: a live map the ticket is filed under
@@ -35,4 +38,18 @@ export async function readTicketMap(
     [tx.businessId, ticketId, taskTypeId, ...readableTaskParams(subjects)],
   );
   return rows[0] ?? null;
+}
+
+/** What a member's task detail adds: the Client field's facts and the ticket's map. */
+export async function memberFacts(
+  tx: TenantQuery,
+  session: Session,
+  spine: { readonly taskTypeId: string },
+  taskId: string,
+): Promise<Awaited<ReturnType<typeof readClientFacts>> & { map: TaskMapLink | null }> {
+  const subjects = subjectsOf(session);
+  return {
+    ...(await readClientFacts(tx, taskId, subjects)),
+    map: await readTicketMap(tx, spine.taskTypeId, taskId, subjects),
+  };
 }

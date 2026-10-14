@@ -620,6 +620,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('map.list', TASK_COLLECTION),
   // WF-2. A chart is a business write: it files the map and its tickets.
   declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
   declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
@@ -943,10 +944,9 @@ export function declarationOf(name: CommandName): CommandDeclaration {
  * The commands with no existing record to be stale against: the rows that
  * target none.
  *
- * It is derived from the rows, and
- * `tests/commands/command-catalogue-pin.test.ts` holds the list as a literal,
- * so a new exemption is still a diff to that test. A test comparing a
- * derivation with its own source could not fail.
+ * It is derived from the rows, and `tests/commands/command-catalogue-pin.test.ts`
+ * holds the list as a literal, so a new exemption is still a diff to that
+ * test. A test comparing a derivation with its own source could not fail.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal

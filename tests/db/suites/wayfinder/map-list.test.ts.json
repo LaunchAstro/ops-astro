@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "map.list lists a map only to a reader whose grant reaches that map itself (business-wide or on the map), never up from a ticket or down to a nested map; refuses a grantless member and a client login; leaves out trashed, retyped and other businesses' maps"
+}

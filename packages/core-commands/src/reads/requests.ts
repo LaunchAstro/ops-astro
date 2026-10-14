@@ -64,8 +64,7 @@ import type {
   TaskSearchResult,
   TaskLedgerResult,
   AutomationRegistryResult,
-  MapViewResult,
-  MapFrontierResult,
+  MapReadResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt } from '../../../core-runtime/src/index.ts';
@@ -179,6 +178,7 @@ export interface ReadOperands {
   readonly 'map.view': { readonly recordId: string };
   /** A map's frontier and fog, from their read models (WF-2). */
   readonly 'map.frontier': { readonly recordId: string };
+  readonly 'map.list': NoOperands;
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -281,8 +281,7 @@ export type ReadResult =
   | InboxCountResult
   | LiveCorrectionReadResult
   | InvitationListResult
-  | MapViewResult
-  | MapFrontierResult
+  | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | ChatConversationsResult
   | ChatMessagesResult
