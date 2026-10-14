@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool judges the operator's bearer and session again after every wait, so one that expires during a wait stops the act before any write or provider call, and it holds every grant the gate accepts until each step commits"
+}

@@ -3,6 +3,7 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 
 export type CommandName =
@@ -23,8 +24,6 @@ export type CommandName =
   | 'task.set_state'
   | 'task.duplicate'
   | 'task.assign'
-  // Launch from the task: a person opens a run for the task's agent.
-  | 'task.launch'
   | 'task.triage'
   | 'task.set_stage'
   | 'task.set_party'
@@ -295,4 +294,5 @@ export type CommandName =
   | 'finance.skill_costs'
   | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
-  | SetupCommandName;
+  | SetupCommandName
+  | LaunchCommandName;

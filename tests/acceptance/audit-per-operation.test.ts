@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 174 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 175 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 174; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 175; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -315,11 +315,20 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return agentCell(agent, name, { outcome: 'completed' }, String(detail['credential']), null);
   }
 
-  /** AW-11's two on an agent's own lease; every other operation as `applied` builds it. */
+  /**
+   * The take on a fresh agent's own login, no credential and no launch named:
+   * it has none open, so the take applies and answers that.
+   */
+  const ownTake = async (): Promise<Cell> =>
+    agentCell(await freshAgent(), 'task.take_launch', {}, undefined, null);
+
+  /** AW-11's two and the take on an agent's own login; every other operation as `applied` builds it. */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
       ? await childCell(declaration.name)
-      : await applied(declaration);
+      : declaration.name === 'task.take_launch'
+        ? await ownTake()
+        : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
@@ -561,12 +570,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 174 exported operations both ways', () => {
+  it('covered all 175 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(174);
+    expect(names).toHaveLength(175);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 174.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 175.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

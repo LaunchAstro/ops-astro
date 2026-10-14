@@ -17,6 +17,7 @@ import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
 import { launchTask } from './tasks-launch.ts';
+import { takeLaunchAsPerson } from './tasks-take-launch.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
 import { setCategory } from './tasks-category.ts';
@@ -98,6 +99,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
   'task.launch': (tx, context) => launchTask(tx, context),
+  // Only the launched agent takes a launch, on its own entry (`tasks-take-launch.ts`).
+  'task.take_launch': () => takeLaunchAsPerson(),
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
   'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),

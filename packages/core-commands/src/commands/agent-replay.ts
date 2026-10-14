@@ -26,6 +26,7 @@ import type { AgentCall } from './agent-call.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
 import { replayRefusal } from './live-correction-agent.ts';
+import { presentedCredential } from './tasks-take-launch.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -42,6 +43,8 @@ export async function releaseReplay(
       return await replayPickup(tx, call, stored);
     case 'serveAgain':
       return await operation.open(async (row) => await serveAgain(tx, call, row));
+    case 'takeLaunch':
+      return await operation.open(async (row) => await replayTake(tx, call, row, stored));
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
     case 'childPickup':
@@ -88,6 +91,28 @@ async function serveAgain<O extends object>(
   const served = await authorised.run(operands);
   if (isRefused(served)) return served.refusal;
   return { command: call.request.command, ...served };
+}
+
+/**
+ * A take's replay answers about the launch its first answer named, never a
+ * later one: an empty take stays empty (the stored answer, once the login and
+ * the credential it presents are judged again as a fresh take's are), and one
+ * that named a launch is served again for that launch alone, as it stands now.
+ * A launch made since is never taken under the old operation identity.
+ */
+async function replayTake<O extends object>(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: TypedOperation<O>,
+  stored: CommandHandle,
+): Promise<CommandResult | undefined> {
+  const launchId = stored.detail['launchId'];
+  if (typeof launchId !== 'string') {
+    const authorised = await authorise(tx, call, operation);
+    if ('refusal' in authorised) return authorised.refusal;
+    return presentedCredential(call)?.refusal;
+  }
+  return await serveAgain(tx, { ...call, request: { ...call.request, launchId } }, operation);
 }
 
 /**

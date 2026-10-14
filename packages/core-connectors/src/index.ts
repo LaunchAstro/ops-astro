@@ -75,6 +75,8 @@ export {
   checkableSender,
   checkSender,
   dmarcPolicy,
+  SENDER_FRESH_MS,
+  senderFresh,
   type DmarcPolicy,
   type RecordStatus,
   type SenderReport,

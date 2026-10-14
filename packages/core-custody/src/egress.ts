@@ -123,7 +123,7 @@ export function parseDestinations(
  */
 export interface SendGate {
   readonly deadlineAt: number;
-  /** Once the request is written to the socket. */
+  /** Once the request is written to the socket; never for a send answered `lapsed`. */
   readonly onWritten?: () => void;
   readonly now?: () => number;
 }
@@ -241,7 +241,8 @@ async function exchange(
         const timer = setTimeout(cut, left(gate));
         outgoing.end(body, () => {
           clearTimeout(timer);
-          gate.onWritten?.();
+          // A cut or failed write's callback still runs, with no error, once the request is destroyed.
+          if (!outgoing.destroyed) gate.onWritten?.();
         });
       });
     });
