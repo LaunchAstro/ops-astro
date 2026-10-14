@@ -124,7 +124,8 @@ async function tab(
 
 /** The tab has settled on what its sign-in reaches: a private board, or the sign-in again. */
 const landed = (view: Mounted): boolean =>
-  view.text().includes('private client task') || view.text().includes('Your session has ended');
+  view.text().includes('private client task') ||
+  view.text().includes('wait a minute and sign in again');
 
 /** A tab opened as one sign-in, once it has landed. */
 async function landedTab(...args: Parameters<typeof tab>): Promise<Mounted> {
@@ -181,7 +182,7 @@ describe('S0-6 isolation', () => {
     // first person to sign in again.
     const page = await landedTab(api, cookies, 'first@example.test', firstToken);
     expect(page.text()).not.toContain('second-person private client task');
-    expect(page.text()).toContain('Your session has ended');
+    expect(page.text()).toContain('wait a minute and sign in again');
     expect(page.find('.appbar .who__trigger')).toBeNull();
     // No read was answered as the second person for the first person's tab.
     expect(boards).toEqual(['second-person']);
