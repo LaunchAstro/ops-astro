@@ -6,7 +6,10 @@
 // policies on `realtime.messages` see (`ops_carry_may_join`). A message is
 // sent with `ack: true`, which says only that Realtime has it. The function
 // never hears its own messages (`self: false`). A join that cannot be made
-// within its window is refused, never waited on.
+// within its window is refused, never waited on. The token is set on the
+// client before the join: the pinned client pushes a first join before it asks
+// `accessToken`, so Realtime would judge that join by the publishable key alone
+// and refuse every private topic.
 
 import { RealtimeClient } from '@supabase/realtime-js';
 import type { Carriage, Line } from './carriage.ts';
@@ -30,6 +33,7 @@ export function realtimeCarriage(options: RealtimeCarriageOptions): Carriage {
         accessToken: async () => await Promise.resolve(accessToken),
         timeout,
       });
+      await client.setAuth(accessToken);
       const listeners = new Set<(event: string, message: unknown) => void>();
       const channel = client.channel(topic, {
         config: { private: true, broadcast: { ack: true, self: false } },
