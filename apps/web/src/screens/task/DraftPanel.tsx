@@ -29,6 +29,7 @@ import { useLayoutEffect, useState, type KeyboardEvent, type ReactElement } from
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
 import { useKeptDraft, type DraftEditorProps } from './draft-editor.ts';
+import { tell, useToldBy } from './draft-mounts.ts';
 export type { DraftScope } from './draft-editor.ts';
 import { draftProblem, dropDraft, newAttempt, stopTimer, type Attempt } from './task-draft.ts';
 import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
@@ -48,6 +49,8 @@ const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 interface Settled {
   readonly refusal: string | null;
   readonly missed: { readonly taskKey: string; readonly parts: readonly string[] } | null;
+  /** A held Create's retry was refused: the person may stop waiting for it. */
+  readonly mayLetGo?: boolean;
 }
 
 /** Each host's Create still out, by the hold it took; the draft's latest mount shows its answer. */
@@ -55,6 +58,28 @@ const flights = new WeakMap<
   DraftPanelProps['hold'],
   { readonly person: string; show: (settled: Settled) => void }
 >();
+
+/** This mount draws another mount's Create while it is out, and the held attempt as it is now. */
+function useTold(
+  props: DraftPanelProps,
+  kept: Kept,
+  show: (settled: Settled) => void,
+  out: (busy: boolean) => void,
+): void {
+  // A Create another mount sent is still out: its answer is shown here.
+  useLayoutEffect(() => {
+    const flight = flights.get(props.hold);
+    if (flight?.person !== props.person) return;
+    flight.show = (settled) => {
+      kept.reread();
+      show(settled);
+    };
+  }, []);
+  useToldBy(props.hold, () => {
+    kept.reread();
+    out(flights.get(props.hold)?.person === props.person);
+  });
+}
 
 export function DraftPanel(props: DraftPanelProps): ReactElement {
   const kept = useKeptDraft(props);
@@ -151,7 +176,28 @@ function DraftActions(props: {
           Cancel
         </button>
       </div>
+      <LetGo kept={kept} creating={creating} />
     </>
+  );
+}
+
+/**
+ * Stop waiting, offered once a held Create's retry was refused: the Create is
+ * let go by its id and the words stay, so the next Create is a new request.
+ */
+function LetGo(props: { readonly kept: Kept; readonly creating: Creating }): ReactElement | null {
+  const { kept, creating } = props;
+  const held = kept.attempt;
+  if (held === null || creating.busy || creating.mayLetGo !== true) return null;
+  const letGo = (): void => {
+    kept.settled(held.id);
+    creating.show({ refusal: null, missed: null });
+    creating.tell();
+  };
+  return (
+    <button className="btn btn--secondary" type="button" data-draft="let-go" onClick={letGo}>
+      Stop waiting for this change
+    </button>
   );
 }
 
@@ -185,7 +231,8 @@ function DraftHead(props: {
 /** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
 function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
   if (outcome.kind !== 'unknown') kept.settled(at.id);
-  if (outcome.kind !== 'created') return { refusal: outcome.because, missed: null };
+  if (outcome.kind !== 'created')
+    return { refusal: outcome.because, missed: null, mayLetGo: outcome.retryRefused === true };
   dropDraft(props.storage, props.person);
   if (outcome.missed.length > 0) {
     return { refusal: null, missed: { taskKey: outcome.key, parts: outcome.missed } };
@@ -212,15 +259,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     missed: null,
   }));
   const show = (settled: Settled): void => setView({ busy: false, ...settled });
-  // A Create another mount sent is still out: its answer is shown here.
-  useLayoutEffect(() => {
-    const out = flights.get(props.hold);
-    if (out?.person !== props.person) return;
-    out.show = (settled) => {
-      kept.reread();
-      show(settled);
-    };
-  }, []);
+  useTold(props, kept, show, (busy) => setView((last) => ({ ...last, busy })));
   const create = async (): Promise<void> => {
     if (view.busy) return;
     const refusal = createRefusal(props, kept);
@@ -241,6 +280,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     const release = props.hold();
     const flight = { person: props.person, show };
     flights.set(props.hold, flight);
+    tell(props.hold);
     setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
@@ -251,6 +291,8 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       if (flights.get(props.hold) === flight) flights.delete(props.hold);
     }
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
+    // Every mount draws the answer as stored: settled, still held, or the task made.
+    tell(props.hold);
   };
-  return { ...view, create };
+  return { ...view, create, show, tell: () => tell(props.hold) };
 }
