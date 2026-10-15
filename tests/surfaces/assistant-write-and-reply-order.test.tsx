@@ -123,7 +123,7 @@ it('concurrent replies remain beside the questions they answer', async () => {
   first.release();
   await settle();
   await settle();
-  const lines = page.all('[data-message-role]').map((line) => line.textContent);
+  const lines = page.all('[data-message-role] .aip__body').map((line) => line.textContent);
   expect(lines).toEqual([
     'Start',
     'Reply to Start',

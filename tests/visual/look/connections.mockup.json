@@ -184,32 +184,32 @@
       "1480-light": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,255)"
+        "background-color": "rgba(0,0,0,7)"
       },
       "1480-dark": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(248,248,248,255)"
+        "background-color": "rgba(255,255,255,6)"
       },
       "900-light": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,255)"
+        "background-color": "rgba(0,0,0,7)"
       },
       "900-dark": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(248,248,248,255)"
+        "background-color": "rgba(255,255,255,6)"
       },
       "390-light": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,255)"
+        "background-color": "rgba(0,0,0,7)"
       },
       "390-dark": {
         "padding-top": "12px",
         "padding-left": "24px",
-        "border-bottom-color": "rgba(248,248,248,255)"
+        "background-color": "rgba(255,255,255,6)"
       }
     },
     "connections.tripwire-row": {

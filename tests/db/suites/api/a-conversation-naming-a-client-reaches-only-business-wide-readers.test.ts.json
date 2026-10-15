@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A conversation's client name reaches a non-owner only on a business-wide conversation read grant, which already lists every client; a reader held to a task, to that client or to another client, and another business's member, see none of it."
+}
