@@ -35,6 +35,18 @@ test('source header check covers tracked, untracked and hook files without relic
     assert.equal(check(), 1, 'extensionless hook is checked');
     writeFileSync(hook, '#!/bin/sh\n# SPDX-License-Identifier: AGPL-3.0-only\nexit 0\n');
     assert.equal(check(), 0, 'shebang stays first');
+    writeFileSync(source, `const note = \`\n${header}\`;\nexport default note;\n`);
+    assert.equal(check(), 1, 'a marker inside a string near the top is not a header');
+    writeFileSync(source, `// A comment first.\n${header}export const value = 1;\n`);
+    assert.equal(check(), 0, 'a header after other leading comments passes');
+    writeFileSync(source, `/* a */ x = 1; /* b\n${header}*/\n`);
+    assert.equal(check(), 1, 'code between two block comments ends the leading comments');
+    writeFileSync(source, `/**\n * A block first.\n */\n${header}`);
+    assert.equal(check(), 0, 'a header after a closed block comment passes');
+    writeFileSync(hook, '#!/bin/sh\n// SPDX-License-Identifier: AGPL-3.0-only\nexit 0\n');
+    assert.equal(check(), 1, "another syntax's comment is not a hook's header");
+    writeFileSync(hook, '#!/bin/sh\n# SPDX-License-Identifier: AGPL-3.0-only\nexit 0\n');
+    writeFileSync(source, header);
     mkdirSync(join(root, '.claude/skills/vendor'), { recursive: true });
     writeFileSync(
       join(root, '.claude/skills/vendor/upstream.mjs'),

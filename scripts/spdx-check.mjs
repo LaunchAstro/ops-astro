@@ -39,16 +39,38 @@ export function ownedSources(root) {
     .toSorted();
 }
 
+/** A source's line comment and block opener in its own syntax: `#` for scripts and hooks. */
+const SYNTAX = { '.sql': ['--', '/*'], '.py': ['#'], '.sh': ['#'], '': ['#'] };
+
+/**
+ * The line comments a source opens with in its first six lines, read as its
+ * own syntax reads them: a block comment ends at its first close, and the
+ * first code, a string included, ends them.
+ */
+function leadingComments(path, text) {
+  const [line, block] = SYNTAX[extname(path)] ?? ['//', '/*'];
+  const head = text.split(/\r?\n/u).slice(0, 6).join('\n');
+  const comments = [];
+  let at = 0;
+  for (;;) {
+    while (/\s/u.test(head[at] ?? '')) at += 1;
+    if (head.startsWith(line, at) || (at === 0 && head.startsWith('#!'))) {
+      const end = head.indexOf('\n', at);
+      comments.push(head.slice(at, end < 0 ? head.length : end));
+      at = end < 0 ? head.length : end;
+    } else if (block !== undefined && head.startsWith(block, at) && head.includes('*/', at + 2)) {
+      at = head.indexOf('*/', at + 2) + 2;
+    } else return { line, comments };
+  }
+}
+
 export function headerErrors(root) {
   return ownedSources(root).filter((path) => {
-    const markers = readFileSync(resolve(root, path), 'utf8')
-      .split(/\r?\n/u)
-      .slice(0, 6)
-      .filter((line) => /^(?:\/\/|#|--)\s*SPDX-License-Identifier:/u.test(line));
-    return (
-      markers.length !== 1 ||
-      !/^(?:\/\/|#|--) SPDX-License-Identifier: AGPL-3\.0-only$/u.test(markers[0])
+    const { line, comments } = leadingComments(path, readFileSync(resolve(root, path), 'utf8'));
+    const markers = comments.filter((one) =>
+      one.slice(line.length).trimStart().startsWith('SPDX-License-Identifier:'),
     );
+    return markers.length !== 1 || markers[0] !== `${line} SPDX-License-Identifier: AGPL-3.0-only`;
   });
 }
 
