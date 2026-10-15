@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Client access shares nothing when the sharer's grant or the client person's standing expires while it waits on the share lock"
+}
