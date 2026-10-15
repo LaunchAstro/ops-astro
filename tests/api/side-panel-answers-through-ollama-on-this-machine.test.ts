@@ -68,7 +68,7 @@ async function standInOllama(): Promise<{
   close(): Promise<void>;
 }> {
   const seen: Seen[] = [];
-  const has = new Set(['qwen3.6:27b-mlx', 'gemma4:31b-mlx']);
+  const has = new Set(['qwen3.6:35b-mlx', 'qwen3.6:27b-mlx', 'gemma4:31b-mlx']);
   const server: Server = createServer(chat(seen, has));
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -146,26 +146,27 @@ describe.skipIf(serverUrl === undefined)('the side panel on Ollama', () => {
     vi.unstubAllEnvs();
   });
 
-  it('offers Qwen and Gemma in the picker', async () => {
+  it('offers the Qwen MoE first, then Qwen and Gemma, in the picker', async () => {
     const read = await w.as(w.owner, 'conversation.models', {});
     expect(read.status).toBe(200);
     const models = (read.body as { models: { id: string; reach: string }[] }).models;
     expect(models.map((model) => [model.id, model.reach])).toStrictEqual([
+      ['qwen3.6:35b-mlx', 'local'],
       ['qwen3.6:27b-mlx', 'local'],
       ['gemma4:31b-mlx', 'local'],
     ]);
   });
 
-  it("answers the owner's message on Qwen by default, kept as the agent's reply with nothing held", async () => {
+  it("answers the owner's message on the Qwen MoE by default, kept as the agent's reply with nothing held", async () => {
     const opened = await w.as(w.owner, 'conversation.start', { body: 'What is due today?' });
     expect(opened.status).toBe(200);
     expect(replyOf(opened)).toMatchObject({
       answered: true,
-      body: 'qwen3.6:27b-mlx says: two tasks are due today.',
+      body: 'qwen3.6:35b-mlx says: two tasks are due today.',
     });
     expect(ollama.seen.at(-1)).toStrictEqual({
       path: '/api/chat',
-      model: 'qwen3.6:27b-mlx',
+      model: 'qwen3.6:35b-mlx',
       last: 'What is due today?',
     });
     const rows = await w.fixture.db.admin.execute<Record<string, unknown>>(
@@ -198,7 +199,7 @@ describe.skipIf(serverUrl === undefined)('the side panel on Ollama', () => {
 
   it('a model taken off this machine answers in fixed words and keeps nothing', async () => {
     const id = await started(w, w.owner, { body: 'Hello again' });
-    ollama.has.delete('qwen3.6:27b-mlx');
+    ollama.has.delete('qwen3.6:35b-mlx');
     try {
       const next = await w.as(w.owner, 'conversation.message', {
         conversationId: id,
@@ -206,7 +207,7 @@ describe.skipIf(serverUrl === undefined)('the side panel on Ollama', () => {
       });
       expect(replyOf(next)).toMatchObject({ answered: false });
       expect(JSON.stringify(next.body)).not.toContain('not found');
-      expect(ollama.seen.at(-1)).toMatchObject({ model: 'qwen3.6:27b-mlx', last: 'Still there?' });
+      expect(ollama.seen.at(-1)).toMatchObject({ model: 'qwen3.6:35b-mlx', last: 'Still there?' });
       expect(
         await w.count(
           `select count(*)::text as n from public.conversation_messages
@@ -215,7 +216,7 @@ describe.skipIf(serverUrl === undefined)('the side panel on Ollama', () => {
         ),
       ).toBe(1);
     } finally {
-      ollama.has.add('qwen3.6:27b-mlx');
+      ollama.has.add('qwen3.6:35b-mlx');
     }
   });
 

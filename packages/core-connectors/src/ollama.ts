@@ -30,8 +30,12 @@ export const OLLAMA_PROVIDER = 'ollama';
 
 export const OLLAMA_PATH = '/api/chat';
 
-/** The models offered, the default first: Qwen, then Gemma, each as Ollama names it on the M5. */
-export const OLLAMA_MODELS = ['qwen3.6:27b-mlx', 'gemma4:31b-mlx'] as const;
+/**
+ * The models offered, the default first, each as Ollama names it on the M5:
+ * the Qwen mixture of experts (about five times the dense model's speed on the
+ * M5, 15 Oct), then the dense Qwen, then Gemma.
+ */
+export const OLLAMA_MODELS = ['qwen3.6:35b-mlx', 'qwen3.6:27b-mlx', 'gemma4:31b-mlx'] as const;
 export const OLLAMA_DEFAULT_MODEL: string = OLLAMA_MODELS[0];
 
 export interface Turn {
