@@ -71,13 +71,17 @@ it('needs the broker settings, as local-gpt does', () => {
   expect(brokerSettings({ OPS_AGENT_PROVIDER: 'ollama' })).toMatchObject({ kind: 'invalid' });
 });
 
-it('makes Ollama the conversation provider, offering Qwen first and Gemma, both local and free', () => {
+it('makes Ollama the conversation provider, offering the Qwen MoE first, then Qwen and Gemma, all local and free', () => {
   expect(conversationProviderOf({ OPS_AGENT_PROVIDER: 'ollama' })).toBe(OLLAMA_PROVIDER);
   expect(
     conversationProviderOf({ OPS_AGENT_PROVIDER: 'ollama', OPS_ENVIRONMENT: 'production' }),
   ).toBe(OLLAMA_PROVIDER);
   const models = conversationModelsOf(OLLAMA_PROVIDER);
-  expect(models.map((model) => model.id)).toStrictEqual(['qwen3.6:27b-mlx', 'gemma4:31b-mlx']);
+  expect(models.map((model) => model.id)).toStrictEqual([
+    'qwen3.6:35b-mlx',
+    'qwen3.6:27b-mlx',
+    'gemma4:31b-mlx',
+  ]);
   for (const model of models) {
     expect(model).toMatchObject({ provider: OLLAMA_PROVIDER, reach: 'local', ceilingMinor: 0 });
     // No client's model-egress setting names it: a client's conversation is offered neither.
