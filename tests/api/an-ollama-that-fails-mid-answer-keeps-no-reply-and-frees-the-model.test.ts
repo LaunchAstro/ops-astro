@@ -25,7 +25,7 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 const CANARY = 'canary-ollama-7f3a';
 
 const answers = (model: string): Reply => chatAnswer(model, says(model));

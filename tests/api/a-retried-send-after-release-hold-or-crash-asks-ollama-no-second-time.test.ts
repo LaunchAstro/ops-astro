@@ -31,7 +31,7 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 
 const within = async <T>(ms: number, work: Promise<T>): Promise<T> =>
   await Promise.race([
