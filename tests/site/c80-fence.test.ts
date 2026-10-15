@@ -128,6 +128,12 @@ describe('C80 dns rebinding', () => {
     '::ffff:7f00:1',
     '64:ff9b::a9fe:a9fe',
     '2002:7f00:1::',
+    '3fff::1',
+    '5f00::1',
+    '100:0:0:1::1',
+    '4000::1',
+    '8000::1',
+    'e000::1',
   ])('denies %s', (address) => {
     expect(isDeniedAddress(address)).toBe(true);
   });

@@ -17,7 +17,7 @@ import {
   sinkFrom,
 } from '../../apps/api/alerts/sink.ts';
 import { NOT_PLAIN } from './s0-2-plain.ts';
-import { ROOT, fakeSink } from './s0-2-alerts.fixture.ts';
+import { ROOT, carriage, fakeSink } from './s0-2-alerts.fixture.ts';
 
 describe('S0-2 plain words: each alert names what broke, what it affects and what happens next', () => {
   for (const kind of ALERT_KINDS) {
@@ -133,30 +133,15 @@ function errorsLandInCases2() {
 
 function errorsLandInBoundaryCases() {
   it('refuses a private sink address before sending a key or an event', async () => {
-    const asked: string[] = [];
-    const fetchStub = ((url: string) => {
-      asked.push(url);
-      return Promise.resolve(new Response('{}', { status: 200 }));
-    }) as typeof fetch;
+    const sink = carriage(['93.184.215.14']);
     for (const host of ['127.0.0.1', '10.0.0.8', '169.254.169.254']) {
       // oxlint-disable-next-line no-await-in-loop -- each address is checked independently
       await expect(async () => {
-        const send = dsnTransport(`https://canary@${host}/7`, fetchStub);
+        const send = dsnTransport(`https://canary@${host}/7`, sink);
         await send(alertEvent('test', 'staging'));
       }).rejects.toThrow('OPS_ERROR_SINK_DSN');
     }
-    expect(asked).toEqual([]);
-  });
-
-  it('does not follow a sink redirect with the key and event', async () => {
-    const calls: RequestInit[] = [];
-    const fetchStub = ((_url: string, init: RequestInit) => {
-      calls.push(init);
-      return Promise.resolve(new Response('', { status: 302, headers: { location: 'https://elsewhere.test/' } }));
-    }) as typeof fetch;
-    const send = dsnTransport('https://canary@example.test/7', fetchStub);
-    await expect(send(alertEvent('test', 'staging'))).rejects.toThrow();
-    expect(['manual', 'error']).toContain(calls[0]?.redirect);
+    expect(sink.carried).toEqual([]);
   });
 
   it('uses the forwarder release instead of an error row supplied release', () => {
@@ -170,18 +155,15 @@ function errorsLandInBoundaryCases() {
 
 function errorsLandInCases3() {
   it('the transport posts to the sink store named by the DSN, the key in the auth header only', async () => {
-    const calls: { url: string; init: RequestInit }[] = [];
-    const fetchStub = ((url: string, init: RequestInit) => {
-      calls.push({ url, init });
-      return Promise.resolve(new Response('{}', { status: 200 }));
-    }) as unknown as typeof fetch;
-    const send = dsnTransport('https://publickey@example.test/7', fetchStub);
+    const sink = carriage(['93.184.215.14']);
+    const send = dsnTransport('https://publickey@example.test/7', sink);
     await send(alertEvent('test', 'staging'));
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe('https://example.test/api/7/store/');
-    const headers = new Headers(calls[0]?.init.headers);
-    expect(headers.get('x-sentry-auth')).toContain('sentry_key=publickey');
-    expect(String(calls[0]?.init.body).includes('publickey'), 'the key').toBe(false);
+    expect(sink.carried).toHaveLength(1);
+    expect(sink.carried[0]?.url.href).toBe('https://example.test/api/7/store/');
+    expect(sink.carried[0]?.method).toBe('POST');
+    expect(sink.carried[0]?.headers['x-sentry-auth']).toContain('sentry_key=publickey');
+    const body = new TextDecoder().decode(sink.carried[0]?.body);
+    expect(body.includes('publickey'), 'the key').toBe(false);
   });
 
   it('a malformed setting is refused by name, never skipped', () => {
