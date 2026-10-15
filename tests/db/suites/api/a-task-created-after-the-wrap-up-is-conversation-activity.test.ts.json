@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a task created from a conversation after its quiet wrap-up is activity there, so the stale wrap-up no longer covers it and the next one lists the task"
+}

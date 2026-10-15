@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a task create that dies after its conversation write leaves the activity unmoved, its retry is the one create, and a replay moves nothing so its wrap-up still covers"
+}

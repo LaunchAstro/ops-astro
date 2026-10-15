@@ -262,7 +262,16 @@ export async function createTask(
     key: written.key,
     source: data['source'],
   });
-  return origin === undefined ? created : { ...created, originConversationId: origin };
+  if (origin === undefined) return created;
+  // The create is activity in its conversation, as a message and a plan
+  // accept are: a wrap-up written before it no longer covers it, and the next
+  // one, at quiet, lists this task. `originOf`'s key-share lock is kept.
+  await tx.query(
+    `update public.conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
+      where business_id = $1 and id = $2`,
+    [tx.businessId, origin],
+  );
+  return { ...created, originConversationId: origin };
 }
 
 /**
