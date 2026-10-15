@@ -10,7 +10,8 @@
 // canary value and then look everywhere it could have gone: every answer,
 // everything the process wrote to its output, and every row of every table.
 
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
+import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -25,6 +26,13 @@ import {
 } from '../../packages/core-records/src/custody/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
+import {
+  comparablePayload,
+  requestDigest,
+} from '../../packages/core-commands/src/commands/payload.ts';
+import type { UncheckedRequest } from '../../packages/core-commands/src/commands/requests.ts';
+import { payloadDigest } from '../../packages/core-digest/src/index.ts';
+import { credentialKeyring } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { createClient } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 
@@ -51,6 +59,14 @@ async function madeClient(
   if (!made.ok) throw new Error('c31: the client was not made');
   return made.value;
 }
+
+/** A keyring of fixed test keys, the first id active. */
+const ringOf = (active: string, ...held: [string, number][]) => ({
+  ok: true as const,
+  keys: credentialKeyring(active, new Map(held.map(([id, fill]) => [id, Buffer.alloc(32, fill)]))),
+});
+const plainDigest = (operationId: string, body: Readonly<Record<string, unknown>>): string =>
+  payloadDigest(comparablePayload({ command: 'secret.set', operationId, ...body }));
 
 const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
@@ -208,6 +224,215 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
       secretId,
     ]);
     expect(history[0]?.cleared_by_actor_id).toBe(admin.actorId);
+  });
+
+  // A secret's stored digest, read as anyone holding the rows can read it.
+  const RING_A = ringOf('digest@1', ['digest@1', 1]);
+  const apiWith = (delegation: Parameters<Controls['fixture']['compose']>[0]): Hono =>
+    controls.fixture.compose({ custody: pair.key, ...delegation });
+  const setOn = async (
+    api: Hono,
+    operationId: string,
+    body: Readonly<Record<string, unknown>>,
+    who: Member = admin,
+    business = 'alpha',
+  ): Promise<Answer> =>
+    await post(
+      api,
+      path(business, 'secret.set'),
+      { operationId, ...body },
+      authorised(await tokenFor(who.presented.subject)),
+    );
+  const digestsOf = async (
+    operationId: string,
+    actorId = admin.actorId,
+  ): Promise<
+    readonly { readonly source: string; readonly digest: string; readonly outcome: string }[]
+  > =>
+    await controls.fixture.db.admin.execute(
+      `select 'operations' as source, payload_digest as digest, outcome from public.operations
+        where operation_id = $1 and actor_id = $2
+       union all
+       select 'audit', payload_digest, outcome from public.audit_events
+        where operation_id = $1 and actor_id = $2`,
+      [operationId, actorId],
+    );
+
+  it('C31 a stored secret digest needs the keyring: no row holds the plain digest, and another keyring computes another', async () => {
+    const api = apiWith({ delegation: RING_A });
+    const operationId = randomUUID();
+    const body = { name: 'short.pin', value: 'pin-4821' };
+    expect((await setOn(api, operationId, body)).status).toBe(200);
+    const rows = await digestsOf(operationId);
+    expect(new Set(rows.map((row) => row.source))).toEqual(new Set(['operations', 'audit']));
+    expect(rows.filter((row) => row.digest === plainDigest(operationId, body))).toEqual([]);
+    const request: UncheckedRequest = { command: 'secret.set', operationId, ...body };
+    const owner = { businessId: controls.fixture.business, actorId: admin.actorId };
+    const here = requestDigest(owner, request, RING_A).digest;
+    const elsewhere = requestDigest(owner, request, ringOf('digest@9', ['digest@9', 9])).digest;
+    expect(rows.find((row) => row.source === 'operations')?.digest).toBe(here);
+    expect(elsewhere, 'the digest rests on the key').not.toBe(here);
+  });
+
+  it('C31 a refused short or non-string secret value keeps no plain digest in either row', async () => {
+    const api = apiWith({ delegation: RING_A });
+    for (const value of ['hunter2', ['hunter2'], { v: 'hunter2' }, 12345678, null, true]) {
+      const operationId = randomUUID();
+      const body = { name: 'refused.pin', value };
+      const label = JSON.stringify(value);
+      // oxlint-disable-next-line no-await-in-loop -- each value is its own attempt
+      expect((await setOn(api, operationId, body)).status, label).toBe(422);
+      // oxlint-disable-next-line no-await-in-loop -- read after its own attempt
+      const rows = await digestsOf(operationId);
+      expect(new Set(rows.map((row) => row.source)), label).toEqual(
+        new Set(['operations', 'audit']),
+      );
+      expect(
+        rows.filter((row) => row.digest === plainDigest(operationId, body)),
+        label,
+      ).toEqual([]);
+    }
+  });
+
+  it('C31 a failed secret attempt records no plain digest of its body', async () => {
+    const broken = { keyId: 'broken@1', publicKey: generateKeyPairSync('ed25519').publicKey };
+    const api = controls.fixture.compose({ custody: broken, delegation: RING_A });
+    const operationId = randomUUID();
+    const body = { name: 'failed.key', value: 'failed-value-1234' };
+    expect((await setOn(api, operationId, body)).status).toBeGreaterThanOrEqual(500);
+    const rows = await digestsOf(operationId);
+    expect(rows.map((row) => row.outcome)).toContain('failed');
+    expect(rows.filter((row) => row.digest === plainDigest(operationId, body))).toEqual([]);
+  });
+
+  it('C31 a secret retry replays, another value is refused, and key order does not matter', async () => {
+    const api = apiWith({ delegation: RING_A });
+    const operationId = randomUUID();
+    const first = await setOn(api, operationId, { name: 'retry.key', value: 'retry-value-1' });
+    expect(first.status).toBe(200);
+    expect(await setOn(api, operationId, { value: 'retry-value-1', name: 'retry.key' })).toEqual(
+      first,
+    );
+    const other = await setOn(api, operationId, { name: 'retry.key', value: 'retry-value-2' });
+    expect(other.body['code']).toBe('OPERATION_ID_REUSED');
+    const objectId = randomUUID();
+    const refused = await setOn(api, objectId, { name: 'retry.obj', value: { a: 'x', b: 'y' } });
+    expect(refused.status).toBe(422);
+    expect(await setOn(api, objectId, { name: 'retry.obj', value: { b: 'y', a: 'x' } })).toEqual(
+      refused,
+    );
+  });
+
+  it('C31 the same secret body from two businesses or two people stores unrelated digests', async () => {
+    const api = apiWith({ delegation: RING_A });
+    const { db, business } = controls.fixture;
+    const second = await enrol(db.app, business, `second${randomUUID().slice(0, 6)}`);
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, second, 'manage', { kind: 'business', id: null }, false, 'custody');
+    });
+    // A business of its own, so bravo's list stays as the isolation case reads it.
+    const charlie = await insertBusiness(db.app, 'charlie');
+    await installSpine(db.app, charlie);
+    const charlieAdmin = await enrol(db.app, charlie, 'charlieadmin');
+    await db.app.withBusiness(charlie, async (tx) => {
+      await grantTo(tx, charlieAdmin, 'manage', { kind: 'business', id: null }, false, 'custody');
+    });
+    const operationId = randomUUID();
+    const body = { name: 'shared.key', value: 'shared-value-1' };
+    const sets: [Member, string][] = [
+      [admin, 'alpha'],
+      [second, 'alpha'],
+      [charlieAdmin, 'charlie'],
+    ];
+    const digests: string[] = [];
+    for (const [who, where] of sets) {
+      // oxlint-disable-next-line no-await-in-loop -- one person at a time
+      expect((await setOn(api, operationId, body, who, where)).status, where).toBe(200);
+      // oxlint-disable-next-line no-await-in-loop -- read after its own set
+      const rows = await digestsOf(operationId, who.actorId);
+      digests.push(rows.find((row) => row.source === 'operations')?.digest ?? '');
+    }
+    expect(new Set(digests).size).toBe(3);
+  });
+
+  it('C31 a secret retry digested under an older held key replays, and once that key is retired it is refused', async () => {
+    const operationId = randomUUID();
+    const body = { name: 'rotated.key', value: 'rotated-value-1' };
+    const first = await setOn(apiWith({ delegation: RING_A }), operationId, body);
+    expect(first.status).toBe(200);
+    const rotated = ringOf('digest@2', ['digest@1', 1], ['digest@2', 2]);
+    expect(await setOn(apiWith({ delegation: rotated }), operationId, body)).toEqual(first);
+    const retired = ringOf('digest@2', ['digest@2', 2]);
+    const refused = await setOn(apiWith({ delegation: retired }), operationId, body);
+    expect(refused.body['code']).toBe('OPERATION_ID_REUSED');
+  });
+
+  it('C31 a secret request registered before digests were keyed still replays, and writes no plain digest', async () => {
+    const api = apiWith({ delegation: RING_A });
+    const body = { name: 'legacy.key', value: 'legacy-value-1' };
+    const original = randomUUID();
+    const first = await setOn(api, original, body);
+    expect(first.status).toBe(200);
+    // The row an earlier release left: the same answer under the plain digest.
+    const operationId = randomUUID();
+    await controls.fixture.db.admin.execute(
+      `insert into public.operations
+         (business_id, id, operation_id, command, actor_id, payload_digest, outcome, result,
+          record_id, revision)
+       select business_id, gen_random_uuid(), $2, command, actor_id, $3, outcome, result,
+              record_id, revision
+         from public.operations where operation_id = $1 and actor_id = $4`,
+      [original, operationId, plainDigest(operationId, body), admin.actorId],
+    );
+    expect(await setOn(api, operationId, body)).toEqual(first);
+    const other = await setOn(api, operationId, { ...body, value: 'legacy-value-2' });
+    expect(other.body['code']).toBe('OPERATION_ID_REUSED');
+    const audit = (await digestsOf(operationId)).filter((row) => row.source === 'audit');
+    expect(audit.map((row) => row.outcome)).toContain('replayed');
+    expect(audit.filter((row) => row.digest === plainDigest(operationId, body))).toEqual([]);
+  });
+
+  it('C31 without the keyring a secret is refused, nothing is registered, and the key later applies it', async () => {
+    const none = apiWith({ delegation: { ok: false, problem: 'no keyring in this case' } });
+    const operationId = randomUUID();
+    const bodies = [
+      { name: 'unkeyed.key', value: 'unkeyed-value-1' },
+      { name: 'unkeyed.key', value: 'unkeyed-value-2' },
+    ];
+    for (const body of bodies) {
+      // oxlint-disable-next-line no-await-in-loop -- one attempt after the other
+      const answer = await setOn(none, operationId, body);
+      expect(answer.status).toBe(501);
+      expect(answer.body['code']).toBe('DEPENDENCY_NOT_LANDED');
+    }
+    const rows = await digestsOf(operationId);
+    expect(rows.filter((row) => row.source === 'operations')).toEqual([]);
+    const plainOnes = new Set(bodies.map((body) => plainDigest(operationId, body)));
+    expect(rows.filter((row) => plainOnes.has(row.digest))).toEqual([]);
+    expect(
+      (await setOn(apiWith({ delegation: RING_A }), operationId, bodies[1] ?? {})).status,
+    ).toBe(200);
+  });
+
+  it('C31 commands that carry no secret digest exactly as before', async () => {
+    const api = apiWith({ delegation: RING_A });
+    const commands: [string, Readonly<Record<string, unknown>>][] = [
+      ['secret.clear', { secretId: randomUUID() }],
+      ['client.create', { name: `Golden ${randomUUID()}` }],
+    ];
+    const headers = authorised(await tokenFor(admin.presented.subject));
+    for (const [command, body] of commands) {
+      const operationId = randomUUID();
+      // oxlint-disable-next-line no-await-in-loop -- one command at a time
+      await post(api, path('alpha', command), { operationId, ...body }, headers);
+      // oxlint-disable-next-line no-await-in-loop -- read after its own command
+      const rows = await digestsOf(operationId);
+      expect(rows.length, command).toBeGreaterThan(0);
+      const golden = payloadDigest(
+        comparablePayload({ command, operationId, ...body } as UncheckedRequest),
+      );
+      expect(new Set(rows.map((row) => row.digest)), command).toEqual(new Set([golden]));
+    }
   });
 
   it('C31 refusal custody:manage: read and write holders are refused set, clear and list', async () => {

@@ -45,8 +45,10 @@ import type {
   EntryPoint,
 } from '../../../core-records/src/index.ts';
 import { declarationOf } from '../../../core-wire/src/index.ts';
-import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
-import { payloadDigest } from '../../../core-digest/src/index.ts';
+import {
+  crashPointAfterCommit,
+  delegationCredentialKeys,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAppliedEvents, writeAuditEvent, type AuditEvent } from './audit.ts';
 import { firstClientGate } from './first-client-gate.ts';
@@ -65,7 +67,7 @@ import {
   type CommandResult,
   type RegisteredAttempt,
 } from './register-store.ts';
-import { comparablePayload } from './payload.ts';
+import { SEALED_BODIES, requestDigest, storedDigestMatches, type DigestOwner } from './payload.ts';
 import {
   hasIdentity,
   type CommandRequest,
@@ -80,6 +82,11 @@ import { REVISION_FIXES, askedAtCommit, expectedRevisionOf, prepareCommand } fro
 const IDENTITY_FIXES: readonly string[] = [
   'Send an operation_id: 8 to 200 characters of letters, digits, dot, colon, dash or underscore.',
   'Present the same one to retry the same request, and a new one for a new attempt.',
+];
+
+const NO_KEYRING_FIXES: readonly string[] = [
+  'This deployment holds no delegation credential keyring to digest a secret under.',
+  'It is not a permission problem and retrying will not change it.',
 ];
 
 /** Whoever the call is attributed to: a person's actor or an agent's. */
@@ -120,7 +127,9 @@ export async function enter(
   request: UncheckedRequest,
   entry: Entry,
 ): Promise<CommandResult> {
-  const digest = payloadDigest(comparablePayload(request));
+  const keys = delegationCredentialKeys();
+  const owner = { businessId: tx.businessId, actorId: caller.actorId };
+  const { digest, unkeyed } = requestDigest(owner, request, keys);
   if ('outside' in entry) return await settle(tx, caller, request, digest, entry.outside, 'none');
   // The identity first, because an attempt with no identity is not an attempt
   // the register can hold, and it is still an attempt the chain records.
@@ -132,6 +141,17 @@ export async function enter(
   if (!hasIdentity(request)) {
     const refusal = refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES);
     return await settle(tx, caller, request, digest, refusal, 'none');
+  }
+  // A secret's value cannot be compared without the keyring, so the attempt
+  // is refused before the register: held, its value-free digest would answer
+  // every later value under this identity with this refusal.
+  if (unkeyed) {
+    const refusal = refuseCommand(
+      'DEPENDENCY_NOT_LANDED',
+      [request.command, 'delegation keyring'],
+      NO_KEYRING_FIXES,
+    );
+    return await settle(tx, caller, request, digest, refusal, 'unheld');
   }
   // One request per identity at a time, before any lock the command takes: a
   // second waits here, then reads the first's record, so nothing the first
@@ -317,7 +337,7 @@ async function recordFailure(
         command: request.command,
         operationId: hasIdentity(request) ? request.operationId : null,
         outcome: 'failed',
-        payloadDigest: failedDigest(request),
+        payloadDigest: failedDigest({ businessId, actorId: session.actorId }, request),
       });
       return undefined;
     });
@@ -359,9 +379,9 @@ const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
  * with it. It gets the all-zero digest instead, which the
  * column's shape admits and no SHA-256 of a payload will realistically be.
  */
-function failedDigest(request: UncheckedRequest): string {
+function failedDigest(owner: DigestOwner, request: UncheckedRequest): string {
   try {
-    return payloadDigest(comparablePayload(request));
+    return requestDigest(owner, request, delegationCredentialKeys()).digest;
   } catch {
     return UNREPRESENTABLE_DIGEST;
   }
@@ -391,7 +411,7 @@ async function replay(
   // for two different commands differs here without a second comparison. A
   // separate check on `seen.command` could not fail under mutation, so it
   // would be a claim about the digest rather than a check on the request.
-  if (seen.payload_digest !== digest) {
+  if (!sameRequest(tx, caller, request, digest, seen.payload_digest)) {
     const refusal = refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES);
     // The register already holds this identity, so nothing is written to it.
     return await settle(tx, caller, request, digest, refusal, 'registered');
@@ -426,6 +446,22 @@ async function replay(
     payloadDigest: digest,
   });
   return released ?? stored;
+}
+
+/**
+ * Whether a stored digest is this request's: equal, or for a sealed body the
+ * same value digested under another held key or before values were keyed.
+ */
+function sameRequest(
+  tx: TenantQuery,
+  caller: Caller,
+  request: IdentifiedRequest,
+  digest: string,
+  stored: string,
+): boolean {
+  if (stored === digest) return true;
+  const owner = { businessId: tx.businessId, actorId: caller.actorId };
+  return storedDigestMatches(owner, request, delegationCredentialKeys(), stored);
 }
 
 /** A success as the register keeps it: the answer, and beside it what its audit event names. */
@@ -727,9 +763,6 @@ export async function register(
  * new operation would apply twice.
  */
 export type IdentityStanding = 'register' | 'registered' | 'unheld' | 'none';
-
-/** A body that carries a secret (C31): no refusal puts any of its values in the audit. */
-const SEALED_BODIES: ReadonlySet<string> = new Set(['secret.set']);
 
 /**
  * Record the refusal, then hand the caller the version they are allowed to
