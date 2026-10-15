@@ -33,4 +33,13 @@ export const PAGE_ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // A forgotten password, signed out: ask for a link, then set one from it. The
+  // provider's one-time hash is in the fragment, so the address matched is the page alone.
+  'agency:reset': {
+    namespace: 'agency',
+    path: '/reset',
+    title: 'Reset your password',
+    surface: 'none',
+    authenticated: false,
+  },
 } as const;

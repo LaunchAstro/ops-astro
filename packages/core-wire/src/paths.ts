@@ -45,3 +45,14 @@ export const SESSION_PATH = '/api/session';
 export const SESSION_COOKIE = 'ops-astro-session';
 export const CSRF_HEADER = 'x-ops-astro-csrf';
 export const SESSION_HEADER = 'x-ops-astro-session';
+
+/**
+ * A forgotten password (`apps/api/password-reset.ts`), outside the business
+ * prefix and signed out: a link asked for by address, then the provider's
+ * recovery session beginning and settling the reset.
+ */
+export const PASSWORD_RESET_PATHS = {
+  reset: '/api/password/reset',
+  begin: '/api/password/begin',
+  changed: '/api/password/changed',
+} as const;

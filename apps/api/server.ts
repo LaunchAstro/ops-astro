@@ -95,12 +95,12 @@ import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
+import { mountPasswordReset } from './password-reset.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { carrierSettings } from './model-carrier.ts';
 import { carriedAnswers } from './model-carriage.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountEnrolment } from './enrolment.ts';
-import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
 import { startOccurrenceSweeper } from './occurrence-sweeper.ts';
@@ -231,8 +231,6 @@ export interface ApiConfig {
   readonly mailHook?: MailHookOptions;
   /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
   readonly authEmailHook?: AuthEmailHookOptions;
-  /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
-  readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -356,10 +354,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
   if (config.authEmailHook !== undefined) {
     mountAuthEmailHook(server, database, config.authEmailHook);
   }
+  // Password reset on the provider's recovery session: the database and the
+  // provider's public keys alone, so always mounted.
+  mountPasswordReset(server, database, {
+    signIn: config.signIn,
+    ...(key === '' ? {} : { providerKey: key }),
+  });
   // C39-T: an invitation accepted on its one-time link, which needs the database alone.
   mountEnrolment(server, database);
-  // C40: a reset token's password set, mounted when given; `main()` does not yet.
-  if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
   server.route(
     '/',
@@ -370,6 +372,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         : { agentCredentials: { limits: config.agentLimits } }),
       verify: createSupabaseVerifier({
         ...config.signIn,
+        ...(key === '' ? {} : { providerKey: key }),
         // The reason alone: an answer the provider sent is never repeated.
         onRefusal: ({ reason }) => {
           console.error(`api: the sign-in key set answer was refused (${reason})`);

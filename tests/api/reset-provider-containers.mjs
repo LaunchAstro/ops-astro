@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Run from the repository root: node tests/api/c40-password-set-races-containers.mjs
-// Owns and removes only its throwaway containers, volume, network and keys.
+// Run from the repository root: node tests/api/reset-provider-containers.mjs
+// The password reset's cases against a real login provider: a throwaway
+// Postgres and the pinned GoTrue, then reset-audit-target,
+// reset-begin-changed, reset-ends-sessions and reset-late-write (which waits out the five-minute
+// bound) with RESET_AUTH_URL and RESET_AUTH_KEYS set. Owns and
+// removes only its throwaway containers, volume, network and keys.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -13,16 +17,10 @@ const pgImage = 'postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec491
 const authImage =
   'public.ecr.aws/supabase/gotrue:v2.192.0@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab';
 const suffix = randomUUID().slice(0, 8);
-const pg = `c40-races-${suffix}-pg`;
-const auth = `c40-races-${suffix}-auth`;
-const network = `c40-races-${suffix}-net`;
-const directory = mkdtempSync('/tmp/c40-races-proof-');
-const vitestConfig = join(directory, 'vitest.config.mts');
-writeFileSync(
-  vitestConfig,
-  `import base from ${JSON.stringify(join(process.cwd(), 'vitest.config.ts'))};\nexport default { ...base, test: { ...base.test, include: ['tests/api/c40-password-set-races.test.ts'] } };\n`,
-);
-
+const pg = `password-reset-${suffix}-pg`;
+const auth = `password-reset-${suffix}-auth`;
+const network = `password-reset-${suffix}-net`;
+const directory = mkdtempSync('/tmp/password-reset-proof-');
 const docker = (...args) =>
   execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
@@ -87,7 +85,7 @@ try {
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
-    'create database sol_auth',
+    'create database reset_auth',
   );
   docker(
     'exec',
@@ -96,7 +94,7 @@ try {
     '-U',
     'postgres',
     '-d',
-    'sol_auth',
+    'reset_auth',
     '-v',
     'ON_ERROR_STOP=1',
     '-c',
@@ -114,14 +112,15 @@ try {
     GOTRUE_SITE_URL: 'http://127.0.0.1:5190',
     GOTRUE_DB_DRIVER: 'postgres',
     GOTRUE_DB_NAMESPACE: 'auth',
-    DATABASE_URL: `postgres://postgres@${pg}:5432/sol_auth?sslmode=disable&search_path=auth`,
+    DATABASE_URL: `postgres://postgres@${pg}:5432/reset_auth?sslmode=disable&search_path=auth`,
     GOTRUE_JWT_KEYS: JSON.stringify(keys),
     GOTRUE_JWT_SECRET: randomBytes(32).toString('hex'),
     GOTRUE_JWT_AUD: 'authenticated',
     GOTRUE_JWT_ISSUER: issuer,
     GOTRUE_JWT_DEFAULT_GROUP_NAME: 'authenticated',
     GOTRUE_JWT_ADMIN_ROLES: 'service_role',
-    GOTRUE_JWT_EXP: '3600',
+    // Short enough that a refreshed recovery session outlives its first token in a case.
+    GOTRUE_JWT_EXP: '330',
     GOTRUE_DISABLE_SIGNUP: 'false',
     GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true',
     GOTRUE_MAILER_AUTOCONFIRM: 'true',
@@ -142,9 +141,10 @@ try {
       'exec',
       'vitest',
       'run',
-      '--config',
-      vitestConfig,
-      'tests/api/c40-password-set-races.test.ts',
+      'tests/api/reset-audit-target.test.ts',
+      'tests/api/reset-begin-changed.test.ts',
+      'tests/api/reset-ends-sessions.test.ts',
+      'tests/api/reset-late-write.test.ts',
     ],
     {
       stdio: 'inherit',
@@ -152,9 +152,8 @@ try {
         ...process.env,
         DATABASE_URL: databaseUrl,
         DATABASE_ADMIN_URL: databaseUrl,
-        SOL_AUTH_URL: issuer,
-        SOL_AUTH_KEYS: keysPath,
-        SOL_AUTH_DATABASE_URL: `postgres://postgres@127.0.0.1:${pgPort}/sol_auth`,
+        RESET_AUTH_URL: issuer,
+        RESET_AUTH_KEYS: keysPath,
       },
     },
   );

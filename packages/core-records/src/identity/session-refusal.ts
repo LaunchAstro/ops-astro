@@ -6,7 +6,11 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { END_PROVIDER_SESSIONS } from './sessions.ts';
-import { SIGN_IN_CLOCK_SKEW_SECONDS, type VerifiedSubject } from './verified-subject.ts';
+import {
+  SIGN_IN_CLOCK_SKEW_SECONDS,
+  sessionProbeOf,
+  type VerifiedSubject,
+} from './verified-subject.ts';
 
 /** Why login resolution refuses the session, by the one rule the carriage join asks too. */
 export type SessionRefusal = 'AUTH_SESSION_EXPIRED' | 'AUTH_SECOND_FACTOR_REQUIRED';
@@ -17,6 +21,13 @@ export type SessionRefusal = 'AUTH_SESSION_EXPIRED' | 'AUTH_SECOND_FACTOR_REQUIR
  * verified factor when `factorAsked`. The 12 hours are the verifier's, judged
  * before the database. A session refused while a reset is open is ended for
  * good, as `sessionEnded` records it.
+ *
+ * One more, outside the transaction's rows: a session first signed in after an
+ * unsettled reset window's bound, while that window's recovery session, which
+ * a refresh keeps alive, could still write a password and no later reset of
+ * the login has settled (`ops.reset_write_open`). Such a write deletes the login's
+ * other sessions at the provider and leaves nothing here, so the provider is
+ * asked: gone is ended for good, and no answer is refused this once.
  */
 export async function sessionRefusal(
   tx: TenantQuery,
@@ -31,11 +42,14 @@ export async function sessionRefusal(
     readonly refusal: SessionRefusal | null;
     readonly ended: boolean;
     readonly open: boolean | null;
+    readonly ask: boolean | null;
   }>(
-    `select refusal, refusal is not distinct from 'AUTH_SESSION_EXPIRED' as ended, open
+    `select refusal, refusal is not distinct from 'AUTH_SESSION_EXPIRED' as ended, open, ask
        from (select ops.session_refusal($1, $2::uuid, $3, $4, $5, false) as refusal,
                     $2::uuid is not null
-                      and (select open from ops.session_ended($2::uuid, $1, $3, $6)) as open) s`,
+                      and (select open from ops.session_ended($2::uuid, $1, $3, $6)) as open,
+                    $2::uuid is not null and $3::bigint is not null
+                      and ops.reset_write_open($1, $3) as ask) s`,
     [
       presented.subject,
       presented.sessionId ?? null,
@@ -46,5 +60,9 @@ export async function sessionRefusal(
     ],
   );
   if (row?.open === true) await tx.query(END_PROVIDER_SESSIONS, [[presented.sessionId]]);
-  return row?.refusal ?? null;
+  if (row?.refusal !== null && row?.refusal !== undefined) return row.refusal;
+  if (row?.ask !== true) return null;
+  const said = (await sessionProbeOf(presented)?.()) ?? 'unknown';
+  if (said === 'gone') await tx.query(END_PROVIDER_SESSIONS, [[presented.sessionId]]);
+  return said === 'live' ? null : 'AUTH_SESSION_EXPIRED';
 }
