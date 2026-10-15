@@ -252,6 +252,7 @@ export const DECLARED: Readonly<
   // clients, so a duplicate carries none (task-duplicate.test.ts plants one to prove it).
   'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
   'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
+  'live_correction.revert': { carry: 'not carried', plant: 'needs a live correction' },
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
 };
 

@@ -205,6 +205,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'live',
     observations: {},
   },
+  // C80: nothing the journey does asks a revert.
+  'public.live_correction_revert_asks': {
+    correction_id: randomUUID(),
+    asked_by_actor_id: randomUUID(),
+    asked_by_person_id: randomUUID(),
+  },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
   // The journey revises no run's state (MP-6-2).

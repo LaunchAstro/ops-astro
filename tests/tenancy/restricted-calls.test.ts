@@ -384,6 +384,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, party_id, page_url, path)
      select business_id, party_id, 'https://agency.example/about/', 'src/pages/about.md'
        from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // C80's revert ask: the journey asks none. One on the business's seeded correction.
+  'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
+       (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)
+     select business_id, gen_random_uuid(), id, requested_by_actor_id, requested_by_person_id
+       from public.live_corrections where business_id = $1 order by id limit 1 returning 1`,
   // C80: a correction's proposal, claimed on the seeded correction under a lease the
   // journey left; nothing the journey does proposes one.
   'public.live_correction_proposals': `insert into public.live_correction_proposals

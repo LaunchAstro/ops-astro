@@ -651,6 +651,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { correctionId: theirs.correctionId },
         fabricated: { correctionId: randomUUID() },
       });
+      await refuses('live_correction.revert', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
       const request = { ...C80_REQUEST, partyId: randomUUID() };
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...request, taskId: w.foreign.task.id },

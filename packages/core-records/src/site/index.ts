@@ -42,6 +42,7 @@ export {
   type Settlement,
 } from './correction-proposals.ts';
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
+export { insertRevertAsk, type RevertAsk, type RevertAskWrite } from './correction-revert-asks.ts';
 export {
   bindPartySite,
   isBoundPage,

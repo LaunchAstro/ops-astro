@@ -157,12 +157,12 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // C80's live correction: an agent may request it inside its delegation, a
-  // person decides the exact version, a named setting names who, the decision
-  // is read back; the publish, revert and receipt are system writes, not rows here.
+  // C80's live correction: an agent may request it, a person decides the exact version and
+  // asks its revert, a setting names who; the publish, revert and receipt are system writes.
   | 'live_correction.request'
   | 'live_correction.read'
   | 'live_correction.decide'
+  | 'live_correction.revert'
   | 'settings.set_live_correction_approver'
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
   // Retyping to or from grilling, prototype or map also asks the owner's `decide`.

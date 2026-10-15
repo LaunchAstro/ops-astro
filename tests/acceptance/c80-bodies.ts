@@ -147,33 +147,61 @@ export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada'>,
   taskId: string,
 ): Required<
-  Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
-> => ({
-  alphaTaskId: taskId,
-  adminPersonId: world.ada.personId as string,
+  Pick<
+    BodyContext,
+    'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
+  >
+> => {
   // Asked for by a member of its own, holding the run:write the request rests on,
   // so the matrix's callers keep exactly their declared grants.
-  seedCorrection: async () =>
+  const asked = async () =>
     await seedLiveCorrection(
       world.db.app,
       world.alpha,
       taskId,
       await enrol(world.db.app, world.alpha, 'asker'),
       world.ada,
-    ),
-  bindClientSite: async (partyId) =>
-    await world.db.app.withBusiness(
-      world.alpha,
-      async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
-    ),
-});
+    );
+  return {
+    alphaTaskId: taskId,
+    adminPersonId: world.ada.personId as string,
+    seedCorrection: asked,
+    seedLiveCorrection: async () => {
+      const seeded = await asked();
+      await recordLive(world, seeded.correctionId);
+      return seeded;
+    },
+    bindClientSite: async (partyId) =>
+      await world.db.app.withBusiness(
+        world.alpha,
+        async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
+      ),
+  };
+};
 
-/** C80's four operations, whose positive bodies are the matrix's from here. */
+/** A requested correction decided by `ada` and recorded live: the runner's publish, no command's. */
+async function recordLive(world: Pick<World, 'db' | 'ada'>, correctionId: string): Promise<void> {
+  const [admin, decider] = [world.db.admin, world.ada];
+  await admin.execute(
+    `update public.live_corrections
+        set state = 'approved', decided_by_actor_id = $2, decided_by_person_id = $3,
+            decided_at = now(), decided_version_digest = version_digest, revision = revision + 1
+      where id = $1`,
+    [correctionId, decider.actorId, decider.personId],
+  );
+  await admin.execute(
+    `update public.live_corrections set state = 'live', revision = revision + 1 where id = $1`,
+    [correctionId],
+  );
+}
+
+/** C80's five operations, whose positive bodies are the matrix's from here. */
 export const C80_NAMES: ReadonlySet<string> = new Set([
   'settings.set_live_correction_approver',
   'live_correction.request',
   'live_correction.decide',
   'live_correction.read',
+  'live_correction.revert',
 ]);
 
 /** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
@@ -203,6 +231,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   if (context.seedCorrection === undefined || context.adminPersonId === undefined) {
     return { exception: 'this harness seeds no live correction (C80)' };
   }
+  if (name === 'live_correction.revert') return await revertBody(context);
   const correction = await context.seedCorrection();
   // The decision read: that request, read back under the admin's run:write.
   if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
@@ -211,6 +240,19 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   });
   if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
   return { body: { ...correction, decision: 'approve' } };
+}
+
+/** The revert ask: another member's correction recorded live, the admin named its approver. */
+async function revertBody(context: BodyContext): Promise<Prepared> {
+  if (context.seedLiveCorrection === undefined || context.adminPersonId === undefined) {
+    return { exception: 'this harness records no live correction (C80)' };
+  }
+  const { correctionId } = await context.seedLiveCorrection();
+  const named = await context.asPerson('settings.set_live_correction_approver', {
+    value: context.adminPersonId,
+  });
+  if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
+  return { body: { correctionId } };
 }
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */

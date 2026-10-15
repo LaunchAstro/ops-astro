@@ -127,6 +127,10 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
            from public.${table} t group by ${column}`,
     )
     .concat(
+      `select c.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
+        from public.live_correction_revert_asks t
+        join public.live_corrections c on c.business_id = t.business_id and c.id = t.correction_id
+        group by c.task_id`,
       `select uuid_4::text, md5(string_agg(t::text, '|' order by t.id)) from public.records t
         where uuid_4 is not null group by uuid_4`,
     )
