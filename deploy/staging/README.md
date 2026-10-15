@@ -414,3 +414,26 @@ passes on its own, so a key that resolves to no business holds up no other.
 its alert message in plain words, and the recipients to set up in both
 services (`--test`: all mail to the test address).
 `node scripts/ops/alerts.mjs test` sends a test alert through the sink.
+
+## Automation firing in the API process
+
+`AUTOMATION_FIRING` controls the long-running API process entry,
+`node apps/api/server.ts`, only. That process starts its occurrence sweeper
+only for the exact value `on`. An unset setting, an empty value, `off`, or
+any other value keeps it off. The setting is read at startup, so changing it
+requires a process restart.
+
+When enabled, the sweeper runs at startup and every minute over the process's
+recovered businesses. At startup the process logs exactly one
+`api process: automation firing on` or `api process: automation firing off`
+line. Shutdown waits for a started sweeper's running pass before closing the
+pools.
+
+This setting guards one process entry. The hosted function entry,
+`apps/api/function.ts`, starts no occurrence sweeper. A hosted installation
+needs the reviewed scheduled entry in slice A6 of #1653 before it can fire
+scheduled automations. Its deployed scheduler and settings remain unknown.
+
+Production firing stays off until A5's runner and custody reviews, owner
+sign-in, staging proof, and owner's production go. A1 changes no deployed
+setting and grants no switch-on approval.
