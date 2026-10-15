@@ -918,7 +918,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       grantOf(result, child.delegation.id) as GrantView,
       parentEnd - 10 * 60_000,
     );
-    expect([drawn.tone, drawn.words]).toStrictEqual(['warn', '10m left']);
+    expect([drawn.tone, 'minutesLeft' in drawn ? drawn.minutesLeft : drawn.words]).toStrictEqual([
+      'warn',
+      10,
+    ]);
   });
 
   it('MP-14-8 a grant that ran out and was settled by its agent next mint ends at the settlement', async () => {
