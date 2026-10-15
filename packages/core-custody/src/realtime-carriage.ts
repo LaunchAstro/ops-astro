@@ -30,6 +30,10 @@ export function realtimeCarriage(options: RealtimeCarriageOptions): Carriage {
         accessToken: async () => await Promise.resolve(accessToken),
         timeout,
       });
+      // The pinned client pushes the first join before it asks `accessToken`,
+      // so Realtime would judge that join as the publishable key alone and
+      // refuse a private topic. Setting the token first puts it on the join.
+      await client.setAuth(accessToken);
       const listeners = new Set<(event: string, message: unknown) => void>();
       const channel = client.channel(topic, {
         config: { private: true, broadcast: { ack: true, self: false } },
