@@ -66,6 +66,7 @@ agency | Inbox
   inbox | Inbox | @agency:inbox | MP-7-3
 agency | Projects
   projects | Projects | @agency:projects-board | MP-5-8 | /agency/projects/
+  maps | Maps | @agency:maps | 1552
   reviews | Reviews | projects/reviews/ | MP-8-1
 agency | Clients
   clients | Clients | @agency:clients | MP-8-5 | /agency/clients/
