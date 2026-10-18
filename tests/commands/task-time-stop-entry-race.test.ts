@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { TaskTimer } from '../../apps/web/src/screens/task/task-timer.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { entryIdOf, timeWorld, withTimerCleanup, type TimeWorld } from './time-world.ts';
@@ -39,14 +40,31 @@ async function audit(operationId: string): Promise<string[]> {
 function transport(loss: 'before' | 'after') {
   const writes: { readonly command: string; readonly body: Record<string, unknown> }[] = [];
   const stops: CommandResult[] = [];
+  const reads: Promise<unknown>[] = [];
   let lose = true;
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
     signedIn: true,
     fetch: async (url, init) => {
-      const command = String(url).endsWith('/start') ? 'time.start' : 'time.stop';
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const path = String(url);
+      // A refused retry of a lost attempt may read the held task: answer it as a read, never as a write.
+      if (path.endsWith('/task/read')) {
+        const answer = executeRead(w.db.app, w.alpha, w.ada.presented, {
+          read: 'task.read',
+          recordId: String(body['recordId']),
+        });
+        reads.push(answer);
+        const read = await answer;
+        return new Response(JSON.stringify(read), { status: isCommandRefusal(read) ? 404 : 200 });
+      }
+      const command = path.endsWith('/time/start')
+        ? 'time.start'
+        : path.endsWith('/time/stop')
+          ? 'time.stop'
+          : null;
+      if (command === null) throw new Error(`unexpected route ${path}`);
       writes.push({ command, body });
       if (command === 'time.stop' && lose && loss === 'before') {
         lose = false;
@@ -63,7 +81,7 @@ function transport(loss: 'before' | 'after') {
       return new Response(JSON.stringify(result), { status: isCommandRefusal(result) ? 404 : 200 });
     },
   });
-  return { timer: new TaskTimer(client, () => true), writes, stops };
+  return { timer: new TaskTimer(client, () => true), writes, stops, reads };
 }
 
 async function lostStop(loss: 'before' | 'after') {
@@ -109,6 +127,8 @@ it.skipIf(serverUrl === undefined)(
       test.timer.retry();
       await expect.poll(() => test.stops.length).toBe(1);
       await expect.poll(() => test.timer.snapshot().attempt?.status).not.toBe('pending');
+      // Any read the refusal started has answered before the timer is judged.
+      await Promise.all(test.reads);
       expect(await isRunning(entryB), 'retained Stop must leave the newer entry running').toBe(
         true,
       );
