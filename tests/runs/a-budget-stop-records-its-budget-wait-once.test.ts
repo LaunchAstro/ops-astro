@@ -8,8 +8,10 @@
 // door: the stop already took its authority, so that late end changes
 // nothing. Again with the reserve's reply lost after commit, so the worker
 // asks again under the same operation id: the ask, the retirement and the row
-// still commit once. Control: at 2,000 the call proceeds and nothing records
-// an outcome.
+// still commit once. Past the run's consolidated (third) ask the stop raises no
+// fourth and ends the run, and the attempt still records `budget_wait` once
+// (ORCH-DECISION LOOP-LASTASK). Control: at 2,000 the call proceeds and
+// nothing records an outcome.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -109,6 +111,56 @@ it('a budget stop whose reply is lost after commit records its outcome once', as
   await expectStoppedOnce(work, sent);
   await expectLateEndChangesNothing(work, 'ANSWER_LOST');
   await expectStoppedOnce(work, sent);
+});
+
+/**
+ * The run's three asks already raised, the third its consolidated decision,
+ * each in the terms the plan was approved in: a run that has asked all it may.
+ */
+async function asksSpent(work: Work): Promise<void> {
+  await s.db.admin.execute(
+    `insert into public.budget_asks
+       (business_id, id, run_id, reservation_id, lease_id, decision_id, ask_number, kind,
+        ceiling_minor, spent_minor, currency)
+     select l.business_id, gen_random_uuid(), l.run_id, l.reservation_id, l.id, d.id, n,
+            case when n = 3 then 'consolidated' else 'stop' end, r.held_minor, 0, env.currency
+       from public.leases l
+       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
+       join public.task_envelopes env on env.business_id = r.business_id and env.id = r.envelope_id
+       join lateral (
+         select id from public.gate_decisions
+          where business_id = r.business_id and version_id = r.version_id and decision = 'approve'
+          order by seq desc limit 1
+       ) d on true
+       cross join generate_series(1, 3) as n
+      where l.id = $1`,
+    [work.picked['leaseId']],
+  );
+}
+
+it('a budget stop past the consolidated ask ends the run, asks no fourth time and records budget_wait once', async () => {
+  const work = await liveWork(
+    s,
+    `sol1623 budget past the last ask ${randomUUID()}`,
+    UNDER_ONE_CALL,
+  );
+  await asksSpent(work);
+  world.provider.mode('answer');
+  const sent = world.provider.seen.length;
+
+  const stopped = await modelCall(work);
+  expect(stopped.body['code'], 'setup: the ceiling stops the call').toBe('BUDGET_UNAVAILABLE');
+
+  expect(shapeOf(await outcomesOf(work)), 'one budget outcome for the attempt').toEqual([
+    named('budget_wait', 'BUDGET_UNAVAILABLE'),
+  ]);
+  expect(await asksOf(work), 'no fourth ask').toBe(3);
+  expect(await authorityOf(work)).toEqual({
+    lease: 'released',
+    cause: 'work_retired',
+    run: 'cancelled',
+  });
+  expect(world.provider.seen.length, 'nothing was sent').toBe(sent);
 });
 
 it('control: a ceiling that holds the call lets it proceed, and no outcome is written', async () => {
