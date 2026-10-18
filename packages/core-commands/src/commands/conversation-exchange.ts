@@ -223,7 +223,7 @@ async function answerOnce(
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question, keep })
       : undefined;
-  const handoff = { ...by, operation, model: question.model };
+  const handoff = { ...by, operation, model: question.model, page: question.page };
   const result = await callModelInConversation(
     database,
     businessId,

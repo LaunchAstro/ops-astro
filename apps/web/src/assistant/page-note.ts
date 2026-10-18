@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #1467: a tab's page note, the drawer's claim that its page is read into context. Each question
-// keeps the address of the page in scope when it was asked. A refusal for its page takes the claim
-// back only when it answers a question asked on the page the note still names, so a late refusal
-// for an older page or question leaves the note of a page added since alone. The drawer is given
-// the refusal's words, not its code, so the question it answers (`after`) comes through the store.
+// #1467: a tab's page note, the drawer's claim that its page is read into context. Only a task's
+// page is read (as the server parses it); any other page is said not to be. Each question keeps the
+// address of the page in scope when it was asked. A refusal for its page takes the claim back only
+// when it answers a question asked on the page the note still names, so a late refusal for an older
+// page or question leaves the note of a page added since alone. The drawer is given the refusal's
+// words, not its code, so the question it answers (`after`) comes through the store.
 
 import type { AssistantMessage, AssistantPage } from '@launchastro/ui';
+
+/**
+ * A task's page, the one kind the server reads: `taskPageRef` in `core-records`, which the browser
+ * cannot load. The page note's test holds the two equal.
+ */
+const TASK_PAGE = /^\/task\/[^/?#]+$/u;
 
 export interface Noted {
   readonly page: AssistantPage | null;
@@ -24,7 +31,9 @@ export const noted = <T extends Noted>(chat: T, page: AssistantPage): T => ({
     {
       id: 'page',
       role: 'note',
-      body: `Read this page into context — every widget on ${page.address}, and nothing else.`,
+      body: TASK_PAGE.test(page.address)
+        ? `Read this page into context — every widget on ${page.address}, and nothing else.`
+        : 'This page can’t be read into context, so nothing on it is sent.',
       cites: [],
     },
   ],

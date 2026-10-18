@@ -4,16 +4,16 @@
 // gives them to the carried custody (`core-custody/src/carriage.ts`).
 //
 // Each takes every lock the call's authority rests on, in one order: the call
-// with its carriers row (still dispatched; at the offer not yet offered, at
-// the send recorded for this runner), the conversation (the person's own, not
-// purged), its page task (no client's), the agent's open membership, the
-// agent's actor (active, the carrier), the person's conversation grants and,
-// for a page, their task grants (`nowait`: contention refuses, nothing sent),
-// then their ending keys, shared. It judges at the instant read after them,
-// the page's task read and a paid call's outside standing with the rest
-// (`standsOutside`). A revocation, client link, membership leave,
-// deactivation, purge or session ending takes one of those locks, so it
-// commits before the judgement, which sees it, or waits.
+// with its carriers row (still dispatched; at the offer not yet offered, at the
+// send recorded for this runner), the conversation (the person's own, not
+// purged), its page task (the one the request carries, no client's), the
+// agent's open membership, the agent's actor (active, the carrier), the
+// person's conversation grants and, for a page, their task grants (`nowait`:
+// contention refuses, nothing sent), then their ending keys, shared. It judges
+// at the instant read after them, the page's task read and a paid call's
+// outside standing with the rest (`standsOutside`). A revocation, client link,
+// membership leave, deactivation, purge or session ending takes one of those
+// locks, so it commits before the judgement, which sees it, or waits.
 //
 // The send is recorded and committed first (runner, `request_at`, `send_by`,
 // `answer_by`), so the sweep never takes a send for none; the request goes only
@@ -56,6 +56,7 @@ interface Asked {
   readonly accessToken: string;
   readonly callId: string;
   readonly carrier: Carrier;
+  readonly page: string | null;
   /** What a paid call's outside standing is judged against: the broker's live settings, the model asked. */
   readonly outside: {
     readonly broker: Parameters<typeof standsOutside>[0];
@@ -69,7 +70,6 @@ type Called = Parameters<typeof standsOutside>[1] & {
   readonly agent: string;
   readonly offered: boolean;
   readonly runner: string | null;
-  readonly page: string | null;
 };
 
 /** The token's `exp`, in milliseconds; the door verified the token, this reads it. */
@@ -88,10 +88,10 @@ function expiresAt(token: string): number {
 async function heldCall(
   tx: TenantQuery,
   session: Session,
-  callId: string,
+  asked: Pick<Asked, 'callId' | 'page'>,
   mode: 'offer' | { readonly runner: string },
 ): Promise<Called | Judged> {
-  const [call] = await tx.query<Omit<Called, 'model' | 'page'>>(
+  const [call] = await tx.query<Omit<Called, 'model'>>(
     `select c.state, c.conversation_id, k.agent_actor_id as agent, c.operation_key as operation,
             c.provider, c.route_key as route, k.offered_at is not null as offered,
             k.runner::text as runner
@@ -99,7 +99,7 @@ async function heldCall(
        join public.model_call_carriers k on k.business_id = c.business_id and k.call_id = c.id
       where c.business_id = $1 and c.id = $2
       for share of c`,
-    [tx.businessId, callId],
+    [tx.businessId, asked.callId],
   );
   const due = mode === 'offer' ? !call?.offered : call?.runner === mode.runner;
   if (call?.state !== 'dispatched' || !due) return { ok: false, code: 'DECISION_STALE' };
@@ -116,12 +116,12 @@ async function heldCall(
     [tx.businessId, call.conversation_id, session.actorId],
   );
   if (conversation === undefined || !conversation.own || conversation.purged) return LOST;
-  const pageTask = await pageTaskOf(tx, conversation.page, conversation.address);
-  const held = { ...call, model: conversation.model, page: pageTask };
-  if (pageTask === null) return held;
+  if ((await pageTaskOf(tx, conversation.page, conversation.address)) !== asked.page) return LOST;
+  const held = { ...call, model: conversation.model };
+  if (asked.page === null) return held;
   const [page] = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT} as client from public.records where business_id = $1 and id = $2 for share`,
-    [tx.businessId, pageTask],
+    [tx.businessId, asked.page],
   );
   if (page === undefined) return LOST;
   return page.client === null ? held : { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
@@ -149,10 +149,10 @@ async function judgeCarriage(
   asked: Asked,
   mode: 'offer' | { readonly runner: string },
 ): Promise<Judged> {
-  const call = await heldCall(tx, session, asked.callId, mode);
+  const call = await heldCall(tx, session, asked, mode);
   if ('ok' in call) return call;
   const carried = await heldAgent(tx, call, asked.carrier);
-  const grants = await holdGrants(tx, session, call.page);
+  const grants = await holdGrants(tx, session, asked.page);
   await advisoryLock(tx, subjectKey(asked.presented.subject), 'shared');
   if (asked.presented.sessionId !== undefined) {
     await advisoryLock(tx, sessionKey(asked.presented.sessionId), 'shared');
@@ -163,7 +163,7 @@ async function judgeCarriage(
     standsOutside(asked.outside.broker, call, { ...session, model: asked.outside.model });
   if (!carried || !listed || (await sessionEnded(tx, asked.presented))) return LOST;
   if (expiresAt(asked.accessToken) <= Date.parse(at)) return LOST;
-  if (!(await readsPage(tx, session, call.page, { at, held: grants.task }))) return LOST;
+  if (!(await readsPage(tx, session, asked.page, { at, held: grants.task }))) return LOST;
   const own = await holdsOwnConversations(tx, session, { at, held: grants.conversation });
   return own ? { ok: true } : LOST;
 }
@@ -278,11 +278,11 @@ export function carriageHandoff(
   businessId: BusinessId,
   presented: VerifiedSubject,
   accessToken: string,
-  carried: Pick<Asked, 'carrier' | 'outside'> & { readonly timeoutMs: number },
+  carried: Pick<Asked, 'carrier' | 'outside' | 'page'> & { readonly timeoutMs: number },
 ): (callId: string) => Handoff {
-  const { carrier, timeoutMs, outside } = carried;
+  const { carrier, timeoutMs, outside, page } = carried;
   return (callId) => {
-    const asked: Asked = { presented, accessToken, callId, carrier, outside };
+    const asked: Asked = { presented, accessToken, callId, carrier, outside, page };
     return {
       businessId,
       callId,
