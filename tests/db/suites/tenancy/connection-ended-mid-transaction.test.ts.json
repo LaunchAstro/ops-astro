@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1774: a backend ended mid-transaction must leave the process running and refuse the transaction, on each connection kind"
+}
