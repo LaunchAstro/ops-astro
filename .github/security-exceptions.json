@@ -16,7 +16,7 @@
       "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
       "path": "packages/core-custody/src/token-file.ts",
       "matches": ["149ff0d07e6bd7ca"],
-      "file": "1e4dc777f2fbc2cf",
+      "file": "6cf7c8ba84707100",
       "reason": "The regexp has a fixed character class and interpolates only numeric limits from FIELD_MAX. Every caller passes one of those fixed constants; outside token text is tested against the pattern and never enters it. Reviewed for #1661 under DIRECTOR-P1CI-0850, and again for this revision (the sweep on every locked read and write) in #1620 P1a.",
       "impact": "No regexp injection: the variable part is a bounded numeric repetition limit, not outside input.",
       "owner": "Nathan Mulligan, maintainer",

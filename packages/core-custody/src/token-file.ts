@@ -165,10 +165,18 @@ export const sha256 = (bytes: Buffer): Buffer => createHash('sha256').update(byt
 
 const stateDb = (path: string) => `${path}.state`;
 
-/** True for the token file itself or P2's host registration file beside it, under a live hold. */
-const governs = (held: HeldLock, path: string): boolean =>
-  holds(held, held.path) &&
-  (path === held.path || path === `${dirname(held.path)}/${HOST_REGISTRATION_FILE}`);
+/**
+ * The one entry to every locked read or write of the token or host
+ * registration file: false unless `path` is one of them under a live hold,
+ * and otherwise it sweeps the copies earlier holds left before anything else.
+ */
+function enter(held: HeldLock, path: string, fs: Partial<TokenFs>): boolean {
+  if (!holds(held, held.path)) return false;
+  if (path !== held.path && path !== `${dirname(held.path)}/${HOST_REGISTRATION_FILE}`)
+    return false;
+  sweepTokenCopies(held, held.path, fs);
+  return true;
+}
 
 /** The committed digest each hold last read or wrote: its generation fence. */
 const observed = new WeakMap<HeldLock, Buffer | undefined>();
@@ -188,6 +196,8 @@ function digestRow(sqlite: DatabaseSync): Buffer | undefined {
 /**
  * The committed digest under the held lock: the bytes of the last record
  * whose commit succeeded, `undefined` when there is none, or `'failed'`.
+ * It reads only `.state`, never a token or host file's bytes, so it does not
+ * sweep; every hold that reads or writes the record sweeps on the way in.
  */
 export function committedDigest(held: HeldLock, path: string): Buffer | undefined | 'failed' {
   if (!holds(held, path)) return 'failed';
@@ -279,8 +289,8 @@ export function readBytesLocked(
   | Buffer
   | { readonly state: 'absent' }
   | { readonly state: 'refused'; readonly code: TokenFileRefusal } {
+  if (!enter(held, path, fs)) return refused('SUBSCRIPTION_STORE_FAILED');
   const f = files(fs);
-  if (!governs(held, path)) return refused('SUBSCRIPTION_STORE_FAILED');
   let seen: nodeFs.Stats;
   try {
     seen = f.lstatSync(path);
@@ -328,7 +338,6 @@ export function readTokenFileLocked(
   fs: Partial<TokenFs> = {},
 ): OnDisk {
   if (path !== held.path) return refused('SUBSCRIPTION_STORE_FAILED');
-  sweepTokenCopies(held, path, fs);
   const bytes = readBytesLocked(held, path, fs);
   if (!Buffer.isBuffer(bytes)) {
     // An absent file still fences this hold to the generation it saw.
@@ -398,8 +407,7 @@ export function commitBytes(
   bytes: Buffer,
   fs: Partial<TokenFs> = {},
 ): Exclude<CommitOutcome, 'unconfirmed' | 'TOO_LARGE' | 'NOT_TOKENS'> {
-  if (!governs(held, path)) return 'unwritten';
-  sweepTokenCopies(held, held.path, fs);
+  if (!enter(held, path, fs)) return 'unwritten';
   const f = files(fs);
   const r = randomBytes(8).toString('hex');
   const next = `${path}.${r}.next`;
