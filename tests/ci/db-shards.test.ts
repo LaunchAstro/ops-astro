@@ -17,6 +17,7 @@ import {
   databaseItems,
   inPart,
   itemOf,
+  laneWall,
   parseShard,
   planItems,
   readPlan,
@@ -82,15 +83,11 @@ function balance(
 
 // DIRSHARD13, the director's 19 October 2026 decision: 13 shards (12 under RELAYSHARD1830,
 // 13 October), so a merge group runs about 21 jobs at once and two groups fit the account's 60.
-// #1753: each shard runs its items
-// in lanes, a Postgres service each, so its wall time is its items' time over the lanes,
-// slowed by LANE_SLOWDOWN for sharing the runner's cores (56 items on the M5: 218 s in one lane,
-// 94 s in three, 1.29 times a third),
-// and never under its longest item. At most 9 minutes a shard, beside about a minute of
-// checkout, install and the migrated template: the ten-minute job. A plan past it needs more
-// lanes, more shards or a finer split.
+// #1753: each shard runs its items in lanes, a Postgres service each, a free lane taking the
+// longest item left, slowed by LANE_SLOWDOWN for sharing the runner's cores (laneWall). At most
+// 9 minutes a shard, beside about a minute of checkout, install and the migrated template: the
+// ten-minute job. A plan past it needs more lanes, more shards or a finer split.
 const SHARD_WALL_SECONDS = 9 * 60;
-const LANE_SLOWDOWN = 1.3;
 
 /** The lane URLs the shard's runner step is given, one a Postgres service. */
 const laneUrls = (/^ {10}DATABASE_LANE_URLS: (\S+)$/mu.exec(shardJob)?.[1] ?? '').split(',');
@@ -112,10 +109,11 @@ it('the run is split 13 ways, each shard near its share and inside the ten-minut
   expect(shardCount).toBe(13);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
-  const weight = shardWeight(timings);
-  const longest = Math.max(...items.map((item) => weight(item)));
-  const wall = Math.max(longest, (heaviest / lanes) * LANE_SLOWDOWN);
-  expect(wall, 'the heaviest shard, in seconds of wall time over its lanes').toBeLessThanOrEqual(
+  // Each shard as the runner takes it: a free lane takes the longest item left.
+  const walls = assignShards(items, timings, shardCount).map((shard) =>
+    laneWall(shard, timings, lanes),
+  );
+  expect(Math.max(...walls), 'the slowest shard, in seconds of wall time').toBeLessThanOrEqual(
     SHARD_WALL_SECONDS,
   );
 });

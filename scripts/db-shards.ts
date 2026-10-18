@@ -125,3 +125,40 @@ export const assignShards = (
     shard.items.toSorted((a, b) => a.index - b.index).map((entry) => entry.item),
   );
 };
+
+/**
+ * The order a shard's lanes take its items (#1753): longest first, the
+ * manifest's order on a tie, so the lane that frees first takes the longest
+ * item left and the lanes finish close together. Indexes into `items`.
+ */
+export const laneOrder = (
+  items: readonly string[],
+  seconds: Readonly<Record<string, number>>,
+): number[] => {
+  const weight = shardWeight(seconds);
+  return items
+    .map((item, index) => ({ index, weight: weight(item) }))
+    .toSorted((a, b) => b.weight - a.weight || a.index - b.index)
+    .map((entry) => entry.index);
+};
+
+/**
+ * How much slower an item runs beside two others than alone: on the M5, 56
+ * items took 218 s in one lane and 94 s in three, 1.29 times a third (#1753).
+ */
+export const LANE_SLOWDOWN = 1.3;
+
+/** A shard's wall in seconds on `lanes` lanes taking its items in `laneOrder`: the last lane to finish. */
+export const laneWall = (
+  items: readonly string[],
+  seconds: Readonly<Record<string, number>>,
+  lanes: number,
+): number => {
+  const weight = shardWeight(seconds);
+  const loads = Array.from({ length: lanes }, () => 0);
+  for (const index of laneOrder(items, seconds)) {
+    const free = loads.indexOf(Math.min(...loads));
+    loads[free] = (loads[free] ?? 0) + weight(items[index] ?? '');
+  }
+  return Math.max(...loads) * LANE_SLOWDOWN;
+};

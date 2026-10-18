@@ -80,6 +80,7 @@ import {
   assignShards,
   databaseItems,
   itemOf,
+  laneOrder,
   parseShard,
   planItems,
   readPlan,
@@ -486,12 +487,14 @@ if (failures.length === 0) {
   // touching its database while it runs; run two on one server and rule 7
   // becomes the whole-run number this round removed. Each lane is a server
   // of its own (the cluster check above), so lanes run side by side, and
-  // the results keep the share's order.
+  // the results keep the share's order. A free lane takes the longest item
+  // left (laneOrder), so the lanes finish close together.
+  const order = laneOrder(toRun, isolationRun ? readShardPlan(repoRoot).isolation : plan.seconds);
   let next = 0;
   await Promise.all(
     lanes.map(async (lane) => {
-      while (next < toRun.length) {
-        const index = next;
+      while (next < order.length) {
+        const index = order[next];
         next += 1;
         const item = toRun[index];
         const started = performance.now();
