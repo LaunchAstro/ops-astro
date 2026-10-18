@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Every agent write is judged again after its last wait, with the locks held,
-// and so is a retained refusal: a stop that retired its own work (#1623 R1).
+// Every agent write is judged again after its last wait, with the locks held.
 //
 // The door reads the agent's login mapping and its session, and `authorise`
 // its delegation, without a lock, and the handler can wait on rows after
@@ -46,7 +45,6 @@ export interface Judged {
   readonly authority: AgentOperation['authority'];
 }
 
-/** The two whose retained refusal is a stop that retired the caller's own work (#1623 R1). */
 const STOPS: ReadonlySet<string> = new Set(['model.call', 'run.end']);
 
 /**
@@ -63,9 +61,7 @@ export async function workJudged(
   const standing: { ended: CommandRefusal | undefined } = { ended: undefined };
   const outcome = await inSavepoint(tx, async () => {
     const ran = await work();
-    // An ordinary refusal rolls back and has nothing to judge, and so does one
-    // whose kept rows are a lapsed holder's (a late hand-back's report). A
-    // stop that retired its own work (#1623 R1) is judged too.
+    // Only a stop that retired its own work (#1623 R1) keeps rows that are judged.
     const retained = isRefused(ran);
     if (retained && (ran.retains !== true || !STOPS.has(judged.call.declaration.name))) return ran;
     standing.ended = await agentStanding(
@@ -80,9 +76,8 @@ export async function workJudged(
 }
 
 /**
- * The refusal the door would give this agent call now, or nothing. A
- * retained refusal's own stop may have retired its delegation, and that
- * retirement is the write, not a lapse; any other end of it still refuses.
+ * The refusal the door would give this agent call now, or nothing. A retained
+ * stop's own retirement of its delegation is the write, not a lapse.
  */
 async function agentStanding(
   tx: TenantQuery,
