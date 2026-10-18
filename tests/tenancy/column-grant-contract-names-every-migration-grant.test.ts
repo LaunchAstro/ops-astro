@@ -102,8 +102,8 @@ const READS: readonly (readonly [string, string, readonly string[]])[] = [
     [],
   ],
   [
-    'escapes in a string that grants nothing',
-    String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
+    'a set_config() of one literal setting',
+    "do $$ begin perform set_config('app.business_id', 'x', true); end $$;",
     [],
   ],
 ];
@@ -166,6 +166,49 @@ const REFUSALS: readonly (readonly [string, string])[] = [
   ['SQL held in a variable', 'do $$ declare q text; begin execute q; end $$;'],
   ['a format() with %L', "do $$ begin execute format('select %L', 'x'); end $$;"],
   ['a body in another language', "do language plpython3u $$ plpy.execute('select 1') $$;"],
+  [
+    'an escape in a string that grants nothing',
+    String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
+  ],
+  ['an escaped quote in an E string', String.raw`select E'it\'s';`],
+  ['a literal backslash in an E string', String.raw`select strpos(x, E'\\') from s.t;`],
+  ['a U& escape in a string that grants nothing', String.raw`select U&'\0067o';`],
+  ['standard_conforming_strings turned off', 'set standard_conforming_strings = off;'],
+  [
+    'standard_conforming_strings set from a string',
+    "select set_config('standard_conforming_strings', 'off', false);",
+  ],
+  [
+    'standard_conforming_strings as a quoted name',
+    'alter role r set "Standard_Conforming_Strings" = off;',
+  ],
+  [
+    'standard_conforming_strings in a function body',
+    'create function s.f() returns void language sql set standard_conforming_strings = off as $$ select 1 $$;',
+  ],
+  [
+    'a set_config() setting joined at run time',
+    "select set_config('standard_' || 'conforming_strings', 'off', false);",
+  ],
+  [
+    'a set_config() setting by named argument',
+    "select pg_catalog.set_config(new_value => 'off', setting_name => 's', is_local => false);",
+  ],
+  ['a set_config() called by a quoted name', 'select "set_config"(n, \'off\', false) from s.t;'],
+  [
+    'an update of pg_settings',
+    "update pg_settings set setting = 'off' where name like 'standard%';",
+  ],
+  ['a client encoding set', "set client_encoding = 'SJIS';"],
+  ['a client encoding set with SET NAMES', "set session names 'SJIS';"],
+  [
+    'a column list behind a quote in a comment between string parts',
+    "do $$ begin execute 'grant select ' -- 'on s.t to r\n'(a) on s.t to r'; end $$;",
+  ],
+  [
+    'a setting name joined across a comment holding a quote',
+    "select set_config('standard_conforming' -- '\n'_strings', 'off', false);",
+  ],
 ];
 
 describe('reading a column grant the way PostgreSQL does', () => {
@@ -192,6 +235,32 @@ describe('format() placeholders that carry any SQL', () => {
     const version = '20261018000000_another';
     expect(() => migrationColumnGrants({ version, statements: splitStatements(revoke) })).toThrow(
       /placeholder %s/u,
+    );
+  });
+});
+
+describe('a literal backslash in an E string', () => {
+  const check = String.raw`alter table s.t add constraint c check (strpos(x, E'\\') = 0);`;
+
+  it('is read only in the migration named as read by hand', () => {
+    const version = '0094_conversation_page_scope';
+    expect(migrationColumnGrants({ version, statements: splitStatements(check) })).toStrictEqual(
+      [],
+    );
+  });
+
+  it('is refused in any other migration', () => {
+    const version = '20261018000000_another';
+    expect(() => migrationColumnGrants({ version, statements: splitStatements(check) })).toThrow(
+      /string escape/u,
+    );
+  });
+
+  it('is refused in the migration read by hand when it hides another escape', () => {
+    const version = '0094_conversation_page_scope';
+    const hex = String.raw`do $$ begin execute E'\\\x67rant update (a) on s.t to r'; end $$;`;
+    expect(() => migrationColumnGrants({ version, statements: splitStatements(hex) })).toThrow(
+      /string escape/u,
     );
   });
 });

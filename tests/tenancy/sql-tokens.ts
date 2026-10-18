@@ -2,15 +2,18 @@
 //
 // SQL text as tokens, read the way PostgreSQL reads it (statements.ts
 // scanToken), for migration-column-grants.ts: comments dropped, unquoted words
-// folded to lower case, and every string's value decoded, E'' and U&''
-// escapes included, so text spelt with escapes reads as what the server runs.
+// folded to lower case, and every string's value read. Escapes are refused,
+// not decoded: in an E'' or U&'' string any backslash is an error, so text
+// cannot be spelt with escapes past the reader. Only a migration read by hand
+// may hold `\\`, one literal backslash (migration-column-grants.ts). A setting
+// that changes how strings read is refused by migration-column-grants.ts.
 
 import { scanToken } from '../../packages/core-records/src/tenancy/statements.ts';
 
 export interface Token {
   /**
    * `word` is folded to lower case; `name` is a quoted identifier, unquoted;
-   * `quoted` holds a string's or a dollar-quoted body's value, escapes decoded.
+   * `quoted` holds a string's or a dollar-quoted body's value.
    */
   readonly kind: 'word' | 'name' | 'quoted' | 'other';
   readonly text: string;
@@ -18,38 +21,48 @@ export interface Token {
 
 const SPACE = /^[ \t\n\r\f\v]$/u;
 
-/** An E'' string's escapes (PostgreSQL's lexical rules, "String Constants with C-Style Escapes"). */
-const C_ESCAPE =
-  /\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/gu;
-const NAMED: Readonly<Record<string, string>> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
-/** A U&'' string's escapes, with the default escape character. */
-const UNICODE_ESCAPE = /\\(?:\+([0-9A-Fa-f]{6})|([0-9A-Fa-f]{4})|(\\))/gu;
+/** Between the parts of a continued string: whitespace and line comments (statements.ts continuationAt). */
+const GAP = /(?:[ \t\n\r\f\v]|--[^\n\r]*)*/uy;
 
-/** A string's value: each quoted run, quotes undoubled, continuations joined, escapes decoded. */
-function stringValue(text: string, escapes: 'c' | 'unicode' | 'none'): string {
+/**
+ * A string's value: each quoted part, quotes undoubled, continuations joined.
+ * Each part is read from where the last one ended, past the gap, so a quote in
+ * a comment between parts is not paired. In an E'' or U&'' string any escape
+ * is refused, except `\\` as one backslash when `literalBackslash` is set.
+ */
+function stringValue(text: string, escapes: boolean, literalBackslash: boolean): string {
   // A backslash escapes a quote only in an E'' string.
-  const quotedRun = escapes === 'c' ? /'((?:[^'\\]|''|\\[\s\S])*)'/gu : /'((?:[^']|'')*)'/gu;
-  const runs = [...text.matchAll(quotedRun)].map((match) => match[1] ?? '');
+  const part = /^[Ee]'/u.test(text) ? /'((?:[^'\\]|''|\\[\s\S])*)'/uy : /'((?:[^']|'')*)'/uy;
+  const runs: string[] = [];
+  let end = text.indexOf("'");
+  for (let next = end; ; next = GAP.lastIndex) {
+    part.lastIndex = next;
+    const match = part.exec(text);
+    if (match === null) {
+      // A part that never closes runs to the end of the text, as the scanner reads it.
+      if (text[next] === "'") {
+        runs.push(text.slice(next + 1));
+        end = text.length;
+      }
+      break;
+    }
+    runs.push(match[1] ?? '');
+    end = part.lastIndex;
+    GAP.lastIndex = end;
+    GAP.exec(text);
+  }
+  if (end !== text.length) throw new Error('a string this reader cannot split into its parts');
   const joined = runs.map((run) => run.replaceAll("''", "'")).join('');
-  if (escapes === 'c') {
-    return joined.replaceAll(C_ESCAPE, (_, oct, hex, u4, u8, other: string | undefined) => {
-      const code = oct ?? hex ?? u4 ?? u8;
-      const base = oct === undefined ? 16 : 8;
-      if (code === undefined) return NAMED[other ?? ''] ?? other ?? '';
-      return String.fromCodePoint(Number.parseInt(code, base));
-    });
+  if (!escapes) return joined;
+  for (const escape of joined.matchAll(/\\[\s\S]?/gu)) {
+    if (escape[0] !== '\\\\' || !literalBackslash)
+      throw new Error(`a string escape ${escape[0]}, which this reader refuses`);
   }
-  if (escapes === 'unicode') {
-    return joined.replaceAll(
-      UNICODE_ESCAPE,
-      (_, six, four, slash: string | undefined) =>
-        slash ?? String.fromCodePoint(Number.parseInt(six ?? four, 16)),
-    );
-  }
-  return joined;
+  return joined.replaceAll('\\\\', '\\');
 }
 
-export function tokens(sql: string): Token[] {
+/** `literalBackslash` reads `\\` in an E'' or U&'' string as one backslash, for a migration read by hand. */
+export function tokens(sql: string, literalBackslash = false): Token[] {
   const found: Token[] = [];
   for (let at = 0; at < sql.length;) {
     const token = scanToken(sql, at);
@@ -69,8 +82,10 @@ export function tokens(sql: string): Token[] {
       found.push({ kind: 'quoted', text: /^(\$[^$]*\$)([\s\S]*)\1$/u.exec(text)?.[2] ?? '' });
     } else if (token.kind === 'quoted') {
       if (unicode) found.splice(-2, 2);
-      const escapes = /^[Ee]'/u.test(text) ? 'c' : unicode ? 'unicode' : 'none';
-      found.push({ kind: 'quoted', text: stringValue(text, escapes) });
+      found.push({
+        kind: 'quoted',
+        text: stringValue(text, unicode || /^[Ee]'/u.test(text), literalBackslash),
+      });
     } else found.push({ kind: token.kind, text });
   }
   return found;
