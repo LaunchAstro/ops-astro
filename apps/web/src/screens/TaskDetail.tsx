@@ -89,6 +89,7 @@ import { createPortal } from 'react-dom';
 import { useAssignments } from './task/assignment-context.tsx';
 import { PageAssignment } from './task/PageAssignment.tsx';
 import { useRereadOn } from './task/reread-on.ts';
+import { useUnansweredReread } from './task/unanswered-reread.ts';
 import { useHeld } from './task/held-state.ts';
 import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
@@ -187,6 +188,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const timerRefresh = useTimerRefresh(timerRead.changed, state.outcome, reload);
   useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useRereadOn(assignments.state.changed, refresh);
+  useUnansweredReread(state, refresh);
   useFreshOnPage(state, hub);
 
   // Drafts outlive ordinary rereads; live and timer rereads also preserve mounted
