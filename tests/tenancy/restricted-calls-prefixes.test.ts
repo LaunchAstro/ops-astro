@@ -226,6 +226,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     recorded_by_actor_id: randomUUID(),
     recorded_by_person_id: randomUUID(),
   },
+  // #1666: the journey keeps no reply in a chat opened on no task, so no snapshot.
+  'public.conversation_reply_snapshots': { message_id: randomUUID(), created: 1 },
+  'public.conversation_reply_targets': {
+    message_id: randomUUID(),
+    position: 1,
+    task_id: randomUUID(),
+    revision: 0,
+  },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
   // The journey revises no run's state (MP-6-2).
