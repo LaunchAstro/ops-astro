@@ -74,6 +74,9 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/health/tracing.ts': "reads the tracing service's public health route (C34)",
   'apps/web/src/screen-registry.tsx':
     "threads the page's fetch to the public legal page's reader, same origin (C81)",
+  // #1620 P1a (re-cut of #1661):
+  'packages/core-custody/src/token-lock.ts':
+    'runs `/bin/ls` on the plan token directory and files to judge their ACL; no network',
 };
 
 const MODULES =
