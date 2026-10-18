@@ -144,7 +144,8 @@ export const TOKEN_ANSWER_BYTES = 1_048_576;
 export function refreshOnce(
   tokenUrl: URL,
   from: PlanTokens,
-  signal: AbortSignal,
+  deadline: () => AbortSignal, // rechecks the absolute deadline on each call
+  now?: () => number,
 ): Promise<{ readonly result: RefreshResult; readonly sentAt: number | undefined }>;
 
 // plan-token.ts
@@ -304,12 +305,13 @@ which is the commit point:
 - Only `durable` means written. Every caller treats `unwritten`, `reverted`,
   `exposed` and `unconfirmed` as "this write did not happen". `exposed` and
   `unconfirmed` are logged by kind.
-- Sweep: every locked read (`readTokenFileLocked`) and every write
-  (`commitBytes`) first removes every `<basename>.*.next` and
+- Sweep: every locked read (`readBytesLocked`, and so `readTokenFileLocked`)
+  and every write (`commitBytes`, and so `commitTokenFile`) first removes every `<basename>.*.next` and
   `<basename>.*.undo` in the directory, so every hold that reads or writes the
   record sweeps before it does, the sign-in seam's included. No token copy
-  survives beyond the next such hold. (Second sign-in custody check, Q4: only
-  `prepare` swept before 18 Oct.)
+  survives beyond the next such hold. One gate, `enter()`, checks the hold and
+  the path and then sweeps. (Second sign-in custody check, Q4: only `prepare`
+  swept before 18 Oct; Sol's first review of P1a added the raw reader.)
 - Revision 59 probe: `lane-scratch/OA-1620-P1Fix59/digest-arbiter-probe.mjs`
   (Node v24.21.0, `node --test`, exit 0, six passes, child stderr empty,
   synthetic text only). Sol's P1 R1 schedule (directory fsync and
@@ -382,6 +384,12 @@ read after the lock is held.
    record again (`commitTokenFile`). `durable`: log `token store recovered`
    and continue. Otherwise `SUBSCRIPTION_STORE_FAILED`, nothing sent. If the
    committed digest differs, drop `unwritten`.
+   Every holder commit follows a locked fence read in the same hold: the
+   hold's own reads go through `readTokenFileLocked`; recovery reads
+   `committedDigest`, which sets the same generation fence, because
+   `readTokenFileLocked` would refuse the holder's own unconfirmed bytes it
+   must recommit. `every-holder-commit-follows-a-locked-read-in-its-hold.test.ts`
+   pins the order.
 2. Read with the locked reader and act:
 
 | State read under the lock                                        | Action                                                                                                                                       | Answer                        |
@@ -422,11 +430,14 @@ the owner signs in again. That is recovery, not resubmission, and is logged
 ## Refresh request stages
 
 `refreshOnce` uses `node:https` (or `node:http` for a `127.0.0.1` test issuer)
-with `agent: false`, no redirect following, and the prepare's
-`AbortSignal`. The stage moves `resolving` (lookup), `connecting`,
+with `agent: false`, no redirect following, and the prepare's deadline,
+checked again on each call. The stage moves `resolving` (lookup), `connecting`,
 `handshaking`, `carrying` (on `secureConnect` for https, `connect` for the
-loopback http issuer), `answered`. Request bytes cannot leave before
-`carrying`: a TLS socket holds application data until its handshake ends.
+loopback http issuer), `answered`. No request byte is handed to the socket
+before `carrying`: the request is ended only at `carrying`, and only if the
+absolute deadline, checked again at that instant, has not passed. A lapse
+there is `not_sent`, so a slow connection setup can never carry the refresh
+token past `PREPARE_BOUND_MS`.
 
 - Any error or abort while the stage is before `carrying`: `not_sent`. This
   judgement comes from the recorded stage, never from an error code.
