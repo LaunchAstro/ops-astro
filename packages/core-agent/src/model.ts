@@ -80,12 +80,15 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
         mapChatMessagesToStoredMessages(list.map((message) => coerceMessageLikeToMessage(message))),
       ),
     );
-    const asked = Array.isArray(options) ? [...options] : { ...options };
-    if (entryRefused(Array.isArray(asked) ? {} : asked, callbacks) || ownRefused(this)) {
-      throw refused(this.#state);
-    }
-    if (Array.isArray(asked)) return await this.#turns.generate(turns, asked);
-    const { callbacks: _checked, ...handed } = asked;
+    const asked = Array.isArray(options) ? { stop: options } : { ...options };
+    // Core is handed plain copies of the only options a turn uses, never the
+    // caller's own objects.
+    const handed: OpsAstroCallOptions = {
+      ...(asked.stop === undefined ? {} : { stop: Array.from(asked.stop, String) }),
+      ...(asked.tools === undefined ? {} : { tools: Array.from(asked.tools, String) }),
+      ...(asked.signal === undefined ? {} : { signal: asked.signal }),
+    };
+    if (entryRefused(asked, callbacks) || ownRefused(this)) throw refused(this.#state);
     return await this.#turns.generate(turns, handed);
   }
 

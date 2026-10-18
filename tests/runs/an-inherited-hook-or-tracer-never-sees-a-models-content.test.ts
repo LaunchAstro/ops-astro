@@ -12,8 +12,8 @@
 // value that reads one way to the guard and another to core: the model's
 // `verbose` as a getter, a callback manager whose handlers are a getter, an
 // empty list with its own `map`, an empty list behind a proxy, a message
-// whose content getter fills the checked list, a `configurable` or message
-// getter that plants a hook after the guard (#1925); and the runner with a
+// whose content getter fills the checked list, a message getter that plants
+// a hook after the guard (#1925); and the runner with a
 // hook planted. Each is refused
 // `TRACING_NOT_ALLOWED` before any callback, with nothing sent, or runs
 // isolated with the hook never called. Values core never reads are not
@@ -21,9 +21,9 @@
 // first and a recorder after (read once), and the model's own `callbacks` or
 // `verbose` set by a getter core would run after the guard (core runs a
 // model of its own), and a message whose own type accessor would plant a hook
-// at core's last read (core reads a rebuilt copy), and a `metadata` getter
-// that would plant one (core is handed plain copies of `stop` and `tools`
-// only). The cases print booleans and counts,
+// at core's last read (core reads a rebuilt copy), and a `metadata` or
+// `configurable` getter that would plant one (core is handed plain copies of
+// `stop` and `tools` only). The cases print booleans and counts,
 // so the planted marker is never printed.
 //
 // LangSmith makes no network call: a real listener stands in for its
@@ -111,7 +111,6 @@ const OPTIONS = [
   'none-invoke-empty-list-with-its-own-map',
   'none-generate-empty-list-behind-a-proxy',
   'none-generate-message-getter-fills-the-list-after-the-guard',
-  'none-invoke-configurable-getter-plants-a-hook',
   'none-generate-message-type-getter-plants-a-hook',
 ];
 const UNREAD = [
@@ -120,6 +119,7 @@ const UNREAD = [
   'none-own-cache-getter-sets-verbose-after-the-guard',
   'none-generate-message-type-getter-plants-a-hook-at-cores-last-read',
   'none-invoke-metadata-getter-plants-a-hook',
+  'none-invoke-configurable-getter-plants-a-hook',
 ];
 
 // oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes

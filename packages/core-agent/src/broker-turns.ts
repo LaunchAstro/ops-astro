@@ -67,14 +67,16 @@ export class BrokerTurns extends BaseChatModel<OpsAstroCallOptions> {
   /**
    * Core's last step before it configures callbacks, after it has merged the
    * inherited config: the guard again, so nothing a caller's code did after
-   * the first check, a hook planted included, reaches the callbacks (#1925).
+   * the first check, a hook planted included, reaches the callbacks, and no
+   * inherited metadata or tags, which core reads next, run anything (#1925).
    */
   override async _generateUncached(
-    ...call: Parameters<BaseChatModel['_generateUncached']>
+    ...[messages, parsed, handled, started]: Parameters<BaseChatModel['_generateUncached']>
   ): Promise<LLMResult> {
-    if (entryRefused(call[2])) throw refused(this.#state);
+    if (entryRefused(handled)) throw refused(this.#state);
+    const plain = { ...handled, metadata: {}, tags: [] };
     // oxlint-disable-next-line no-underscore-dangle -- the name is core's own
-    return await super._generateUncached(...call);
+    return await super._generateUncached(messages, parsed, plain, started);
   }
 
   async _generate(
