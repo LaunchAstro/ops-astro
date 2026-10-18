@@ -4,8 +4,8 @@
 // without the sign-in list. A refresh, an install given no list, must not
 // install a list it read before another install wrote one, and an install
 // that writes the list must not leave a moment a refresh could read it empty.
-// Sol's proof from #1867 at 1f96df3, then every pause point of each install
-// against the whole of the other.
+// Sol's proofs from #1867 at 1f96df3 and #1881 at c9111fb, then every pause
+// point of each install against the whole of the other.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -55,6 +55,7 @@ async function withAuthDatabase(part: string, body: (admin: OwnerQuery) => Promi
 
 describe.skipIf(serverUrl === undefined)('made-up guard installs at once', () => {
   staleRefresh();
+  overlappingInstall();
   refreshPauses();
   installPauses();
 });
@@ -100,6 +101,34 @@ function staleRefresh(): void {
       ).not.toEqual([]);
     });
   }, 600_000);
+}
+
+function overlappingInstall(): void {
+  it('a list install overlapping a paused refresh completes and retains its restriction', async () => {
+    await withAuthDatabase('overlap', async (admin) => {
+      await guardMadeUp(admin);
+      let overlapped = false;
+      const paused: OwnerQuery = {
+        async execute<Row>(sql: string, parameters?: readonly unknown[]) {
+          const rows = await admin.execute<Row>(sql, parameters);
+          if (!overlapped && sql.startsWith('drop event trigger if exists')) {
+            overlapped = true;
+            expect(await admitBeforeSignIns(admin, true, LIST)).toEqual([]);
+          }
+          return rows;
+        },
+      };
+      // The inner list install runs wholly while the outer refresh is paused,
+      // one of the schedules the pause-point sweeps below cover.
+      await expect(guardMadeUp(paused)).resolves.toBeUndefined();
+      expect(overlapped).toBe(true);
+      await admin.execute('insert into auth.users values ($1, $2)', [
+        randomUUID(),
+        `shared-account.${randomUUID().slice(0, 8)}@company.local`,
+      ]);
+      expect(await productionSigns(admin)).not.toEqual([]);
+    });
+  }, 60_000);
 }
 
 function refreshPauses(): void {
