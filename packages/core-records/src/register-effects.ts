@@ -115,6 +115,13 @@ export const EFFECT_ROWS = [
     meaning: "A subscription never carries work on a client's task",
     source: 'AW-01, owner line 72',
   },
+  // The owner's ChatGPT plan's route (#1620 P4): only runs the owner started.
+  {
+    code: 'SUBSCRIPTION_NOT_OWNER_STARTED',
+    status: 403,
+    meaning: "The owner's ChatGPT plan carries only runs the owner started",
+    source: '#1620 P4',
+  },
   {
     code: 'RATE_LIMITED',
     status: 409,
