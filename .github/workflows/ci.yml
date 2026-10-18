@@ -200,8 +200,13 @@ jobs:
           tar -xzf "$archive" gitleaks
           rm -f "$archive"
           ./gitleaks version
-      - name: Scan every commit, not just the diff
-        run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
+      # Every commit that would land on main, history included: the checked-out
+      # commit and all its ancestors. That is main plus the pull request's
+      # commits, the queue's combined head, or main on a push. gitleaks' default
+      # is `--all`, every branch the full-depth checkout fetched, so a fixture on
+      # a branch that never lands here failed everyone (18 October 2026).
+      - name: Scan every commit that would land on main, not just the diff
+        run: ./gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--full-history HEAD" .
       # gitleaks' own default allowlist, which .gitleaks.toml extends and
       # cannot narrow, skips pnpm-lock.yaml by path; stdin has no path.
       - name: Every version of the lockfile, which gitleaks' allowlist skips
