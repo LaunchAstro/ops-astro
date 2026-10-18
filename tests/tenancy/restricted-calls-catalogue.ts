@@ -170,22 +170,16 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   })),
   // C31: custody's select leaves out the three sealed columns (20261005023013).
   ...[
-    'business_id',
-    'cleared_at',
-    'cleared_by_actor_id',
-    'created_at',
-    'id',
-    'key_id',
-    'last_used_at',
-    'name',
-    'revision',
-    'scope_id',
-    'scope_kind',
-    'set_at',
-    'set_by_actor_id',
+    ...'business_id cleared_at cleared_by_actor_id created_at id key_id last_used_at'.split(' '),
+    ...'name revision scope_id scope_kind set_at set_by_actor_id'.split(' '),
   ].map((column) => ({
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
+  })),
+  // 20261018033724: a Send Email hook message is claimed and read by its digest alone.
+  ...['INSERT', 'SELECT'].map((act) => ({
+    from: '20261018033724',
+    line: `ops_astro_app ${act} ops.auth_hook_messages.message_digest`,
   })),
   ...PART_GRANTS,
 ];

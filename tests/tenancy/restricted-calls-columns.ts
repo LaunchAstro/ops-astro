@@ -21,14 +21,6 @@ import {
 } from './restricted-calls-callers.ts';
 
 /**
- * 20261018033724: a Send Email hook message is claimed and read by its digest
- * alone. Kept here because the catalogue file is at its line limit.
- */
-const HOOK_CLAIM_GRANTS = ['INSERT', 'SELECT'].map(
-  (act) => `${APPLICATION_ROLE} ${act} ops.auth_hook_messages.message_digest`,
-);
-
-/**
  * The column grants held against the contract, then an actual update of each
  * granted column by every caller: the own business moves its own rows, every
  * other application position touches none, and every other role is refused.
@@ -46,7 +38,6 @@ export async function columnUpdateFindings(
   const wanted = [
     ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
     ...roleColumnGrantsAt(at),
-    ...(at === undefined || reached(at, '20261018033724') ? HOOK_CLAIM_GRANTS : []),
   ].toSorted();
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {
