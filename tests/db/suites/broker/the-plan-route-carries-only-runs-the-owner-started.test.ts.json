@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The chatgpt-plan route carries only runs the owner started: an owner-started task with no client reaches the plan unattended and records credential_kind subscription; a staff-started task is refused SUBSCRIPTION_NOT_OWNER_STARTED before any route with nothing sent; a client's task keeps its own refusal."
+}
