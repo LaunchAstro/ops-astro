@@ -10,8 +10,10 @@
 // (`grantKey`: business, person and session generation), so a reload shows
 // them and another sign-in never does: its screen clears them on mounting.
 // Only a mounted screen's outbox writes there, so an answer landing after a
-// switch of sign-in never overwrites the next one's words. One found mid-send after a reload is unanswered: only a
-// Resend under its own id can learn whether it landed.
+// switch of sign-in never overwrites the next one's words. One found mid-send
+// after a reload is unanswered: only a Resend under its own id can learn
+// whether it landed. The page and the dock share one outbox while either is
+// mounted, so neither writes its words over the other's.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { TeamConversations, Unsent } from '@launchastro/ui';
@@ -63,8 +65,27 @@ const isKept = (value: unknown): value is Kept =>
   Array.isArray(value['entries']) &&
   value['entries'].every(isEntry);
 
+/** The mounted outboxes, by the tab's storage and then the sign-in. */
+const shared = new WeakMap<StorageLike, Map<string, ChatOutbox>>();
+
+function sharedIn(storage: StorageLike): Map<string, ChatOutbox> {
+  const byOwner = shared.get(storage) ?? new Map<string, ChatOutbox>();
+  shared.set(storage, byOwner);
+  return byOwner;
+}
+
 export class ChatOutbox {
+  /** The outbox every screen of this sign-in in this tab shares while one is mounted. */
+  static for(owner: string, storage: StorageLike | null): ChatOutbox {
+    if (storage === null) return new ChatOutbox(owner, null);
+    const byOwner = sharedIn(storage);
+    const outbox = byOwner.get(owner) ?? new ChatOutbox(owner, storage);
+    byOwner.set(owner, outbox);
+    return outbox;
+  }
+
   readonly #owner: string;
+  readonly #storage: StorageLike | null;
   readonly #slot: JsonSlot<Kept>;
   readonly #listeners = new Set<() => void>();
   #entries: readonly Entry[];
@@ -72,6 +93,7 @@ export class ChatOutbox {
 
   constructor(owner: string, storage: StorageLike | null) {
     this.#owner = owner;
+    this.#storage = storage;
     this.#slot = jsonSlot(storage, KEY, isKept);
     const kept = this.#slot.read();
     this.#entries =
@@ -92,9 +114,13 @@ export class ChatOutbox {
    */
   mount = (): (() => void) => {
     this.#mounted += 1;
+    const byOwner = this.#storage === null ? undefined : sharedIn(this.#storage);
+    if (byOwner !== undefined && !byOwner.has(this.#owner)) byOwner.set(this.#owner, this);
     this.#set(this.#entries);
     return () => {
       this.#mounted -= 1;
+      // The last screen gone: the next one reads the tab's storage afresh.
+      if (this.#mounted === 0 && byOwner?.get(this.#owner) === this) byOwner.delete(this.#owner);
     };
   };
 
@@ -132,11 +158,11 @@ function useOutbox(
   grantKey: string,
   storage: StorageLike | null,
 ): readonly [ChatOutbox, readonly Entry[]] {
-  const [held, setHeld] = useState(() => new ChatOutbox(grantKey, storage));
+  const [held, setHeld] = useState(() => ChatOutbox.for(grantKey, storage));
   const [owner, setOwner] = useState(grantKey);
   let outbox = held;
   if (owner !== grantKey) {
-    outbox = new ChatOutbox(grantKey, storage);
+    outbox = ChatOutbox.for(grantKey, storage);
     setOwner(grantKey);
     setHeld(outbox);
   }

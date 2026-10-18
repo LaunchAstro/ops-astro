@@ -4,8 +4,10 @@
 // in the task thread's dialect and the composer. A click into the thread reads
 // it; a send moves the sender's marker in the comment command's own
 // transaction (R36). Words the server has not taken wait between the two
-// (#1339): a failure never writes into the composer, and Edit moves refused
-// words back only into an empty one.
+// (#1339). A send with no answer also comes back into the composer, if it is
+// still empty, and sending those words unchanged resends them under their
+// first operation id. Edit moves refused words back only into an empty
+// composer, and they stay kept until the words in the box are sent.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { TeamConversation, TeamMessage, Unsent } from '../state/team.ts';
@@ -96,31 +98,85 @@ function UnsentList(props: {
   );
 }
 
+/** The words this composer last sent, and the unsent entries already there when it did. */
+interface Sent {
+  readonly said: string;
+  readonly before: ReadonlySet<string>;
+}
+
+/**
+ * The composer's box and the unsent entry it holds: a send of its own with no
+ * answer, or refused words taken back by Edit.
+ */
+function useBox(waiting: Waiting, onSend: (body: string) => void) {
+  const [text, setText] = useState('');
+  const [held, setHeld] = useState<Unsent | null>(null);
+  const [sent, setSent] = useState<Sent | null>(null);
+  const { unsent, onResend, onDiscard } = waiting;
+  useEffect(() => {
+    const mine =
+      sent === null
+        ? undefined
+        : unsent.find((one) => one.body === sent.said && !sent.before.has(one.id));
+    if (mine !== undefined && mine.state !== 'sending') {
+      setSent(null);
+      if (mine.state === 'unanswered' && text === '') {
+        setText(mine.body);
+        setHeld(mine);
+      }
+    }
+    // Refused words emptied out of the box go back to the list, Edit and all.
+    if (held?.state === 'refused' && text === '') setHeld(null);
+    if (held !== null && !unsent.some((one) => one.id === held.id)) {
+      setHeld(null);
+      if (text === held.body) setText('');
+    }
+  }, [unsent, sent, held, text]);
+  const take = (one: Unsent): void => {
+    setText(one.body);
+    setHeld(one);
+  };
+  const send = (said: string): void => {
+    if (held?.state === 'unanswered' && said === held.body) {
+      onResend(held.id);
+      return;
+    }
+    if (held?.state === 'refused') onDiscard(held.id);
+    setHeld(null);
+    setSent({ said, before: new Set(unsent.map((one) => one.id)) });
+    onSend(said);
+    setText('');
+  };
+  const shown = unsent.filter((one) => one.id !== held?.id || one.state !== 'refused');
+  return { text, setText, take, send, shown };
+}
+
 function Composer(props: {
   readonly to: string;
   readonly onSend: (body: string) => void;
   readonly waiting: Waiting;
 }): ReactElement {
-  const [text, setText] = useState('');
+  const { text, setText, take, send, shown } = useBox(props.waiting, props.onSend);
   const field = useRef<HTMLInputElement>(null);
   const label = `Message ${props.to}`;
-  const take = (one: Unsent): void => {
+  const edit = (one: Unsent): void => {
     if (text !== '') return;
-    setText(one.body);
-    props.waiting.onDiscard(one.id);
+    take(one);
     field.current?.focus();
   };
   return (
     <>
-      <UnsentList waiting={props.waiting} edit={{ open: text === '', take }} />
+      <UnsentList
+        waiting={{ ...props.waiting, unsent: shown }}
+        edit={{ open: text === '', take: edit }}
+      />
       <form
         className="composer"
         onSubmit={(event) => {
           event.preventDefault();
           const said = text.trim();
           if (said === '') return;
-          props.onSend(said);
-          setText('');
+          send(said);
           field.current?.focus();
         }}
       >
