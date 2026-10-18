@@ -33,6 +33,7 @@ export {
   REPLAY_MODEL_WINDOW,
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
+  REPLAY_TURN,
 } from './replay-adapter.ts';
 
 export type { ReplayLookupMode } from './replay-lookup.ts';
@@ -185,10 +186,8 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
         return;
       }
       if (operation !== null) (NOT_BEGUN.has(current) ? refused : processed).add(operation);
-      const next = current === 'answer' ? scripted.shift() : undefined;
       // An honest answer names the model it was asked for, as a provider's does (CS-7.30).
-      if (next !== undefined) answer(response, next);
-      else if (current === 'answer') answer(response, answered(askedOf(body)));
+      if (current === 'answer') answer(response, scripted.shift() ?? answered(askedOf(body)));
       else respond(current, response, authorization, timers);
     })();
   });
@@ -203,9 +202,7 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
     mode: (next) => {
       current = next;
     },
-    script: (bodies) => {
-      scripted.splice(0, scripted.length, ...bodies);
-    },
+    script: (bodies) => void scripted.splice(0, scripted.length, ...bodies),
     lookupMode: (next) => {
       lookup = next;
     },

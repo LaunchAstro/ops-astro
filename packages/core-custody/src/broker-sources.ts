@@ -45,6 +45,8 @@ import type { ModelCallField, ResolvedField } from './broker-types.ts';
 export interface TaskSource {
   readonly id: string;
   readonly live: boolean;
+  /** The task's revision, read with it: a turn names the one it read (#1623 R3). */
+  readonly revision: number;
   /** The spine's `source`: `<actor kind>:<entry point>`, derived by the server. */
   readonly entered: string | null;
   /** Whether the register names an applied write on it by anyone but a person. */
@@ -96,7 +98,7 @@ function valueOf(
 }
 
 /** Entered by one of the business's own people, and written since by no agent, worker or client. */
-function businessInternal(task: TaskSource): boolean {
+export function businessInternal(task: TaskSource): boolean {
   return (
     !task.othersWrote &&
     !task.clientTyped &&

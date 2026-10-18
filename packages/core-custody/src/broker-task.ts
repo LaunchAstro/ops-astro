@@ -46,7 +46,7 @@ const HELD_THEN = (roles: string): string => `exists (
  * role. `$3` is the commands that leave its data alone.
  */
 const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
-            t.deleted_at is null as live, t.data,
+            t.deleted_at is null as live, t.revision::int as revision, t.data,
             exists (${APPLIED_ON_TASK} and a.kind <> 'person'
                  and o.command <> all($3::text[])) as others_wrote,
             exists (${APPLIED_ON_TASK} and a.kind = 'person'
@@ -97,6 +97,7 @@ interface TaskRow {
   readonly id: string;
   readonly client: string | null;
   readonly live: boolean;
+  readonly revision: number;
   readonly data: Record<string, unknown>;
   readonly others_wrote: boolean;
   readonly client_typed: boolean;
@@ -109,6 +110,7 @@ function sourceOf(task: TaskRow): TaskSource {
   return {
     id: task.id,
     live: task.live,
+    revision: task.revision,
     entered: typeof entered === 'string' ? entered : null,
     othersWrote: task.others_wrote,
     clientTyped: task.client_typed,

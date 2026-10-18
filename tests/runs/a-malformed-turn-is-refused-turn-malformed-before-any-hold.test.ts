@@ -65,7 +65,7 @@ const CASES: readonly {
   {
     name: 'more than 64 parts',
     calls: 0,
-    body: async (work) =>
+    body: (work) =>
       turnBody(
         work,
         0,
