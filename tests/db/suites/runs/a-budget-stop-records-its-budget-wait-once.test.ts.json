@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: a budget stop records budget_wait / BUDGET_UNAVAILABLE in its own transaction, once, also when its reply is lost; a late run.end on the old credential changes nothing."
+}
