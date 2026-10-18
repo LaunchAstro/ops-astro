@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R6 part 2: a client set during the admission's task wait, a non-owner write committed while the admission waits on the run, and a non-owner write committed while the agent's own-site request waits on the task are each seen after the wait and refused, with nothing sent or stored."
+}
