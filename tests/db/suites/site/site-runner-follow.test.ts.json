@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1692) follows an accepted publish while its deployment builds until it serves the change, raises one person task at the ten-minute cap and stops, and a lease lost while following or under the run writes no receipt and raises a task."
+}
