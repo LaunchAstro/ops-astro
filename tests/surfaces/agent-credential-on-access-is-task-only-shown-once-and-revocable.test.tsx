@@ -101,7 +101,9 @@ describe('agent credential on Settings ▸ Access', () => {
     expect(view.find('[data-access="credential"]')).toBeNull();
     expect(view.text()).not.toContain('Make agent credential');
   });
+});
 
+describe('agent credential on Settings ▸ Access: the secret', () => {
   it('draws the secret once, in no outcome line, storage or console, and Hide takes it off the page', async () => {
     const said = vi.spyOn(console, 'log');
     const warned = vi.spyOn(console, 'warn');
@@ -144,7 +146,9 @@ describe('agent credential on Settings ▸ Access', () => {
     expect(view.find('[data-credential="cred-1"] [data-act="revoke"]')).toBeNull();
     expect(view.host.innerHTML).not.toContain(SECRET);
   });
+});
 
+describe('agent credential on Settings ▸ Access: refusals and retries', () => {
   it('draws a refused issue in the server words and shows no credential', async () => {
     const api = world([() => refusal('CREDENTIAL_SCOPE_WIDENS', 403)]);
     const view = await open(api.fetch);
@@ -177,7 +181,9 @@ describe('agent credential on Settings ▸ Access', () => {
     const [first, second] = issues(api);
     expect(second?.body['operationId']).not.toBe(first?.body['operationId']);
   });
+});
 
+describe('agent credential on Settings ▸ Access: a business switch', () => {
   it('a business switch drops the secret, the made credentials and an answer still out for the other business', async () => {
     const held = heldAnswer();
     const api = world([() => json(ISSUED), () => held.promise]);

@@ -901,6 +901,14 @@ active membership, over the whole business or over one client of it
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
 
+Settings ▸ Access also makes an agent credential (API-2, owner check U18) for a
+session holding `credential:write`: `credential.issue` with task access only,
+`task:read` and `task:write`, the purpose typed and a life of 1 to 90 days. The
+secret is drawn once in a read-only field and kept in no outcome line or
+storage; the credential made can be revoked there (`credential.revoke`) while
+the page is open. `access.read` lists no agent credential, so one made earlier
+is revoked from the command line.
+
 Settings ▸ Workflow triggers (C33) reads the business's automations under
 `settings:read` (`automation.registry`), changes an activation under
 `settings:manage` (`activation.change`) and releases a definition version under
