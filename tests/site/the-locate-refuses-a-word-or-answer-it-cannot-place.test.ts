@@ -14,13 +14,19 @@
 // - a file read that times out is a failed check, backed off 30 s, and the
 //   first one once the request is 120 s old settles it `unlocated
 //   SITE_UNREACHABLE`.
-// Every request handed to custody is a read, and no case leaves a version.
+// - a word in expression or frontmatter code settles `unlocated
+//   CHANGE_ENVELOPE_EXCEEDED`, while a quoted brace in frontmatter or a fence
+//   with trailing whitespace still leaves the paragraph below it body copy,
+//   which is pinned (moved from c80-identifiers-and-text, ANS1922: the request
+//   carries no file text, so the scanner meets the file here).
+// Every request handed to custody is a read, and no refused case leaves a version.
 /* eslint-disable max-lines-per-function -- each case keeps its passes and the row they leave in one place */
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Custody, CustodyOutcome } from '../../packages/core-custody/src/index.ts';
 import { contentDigest } from '../../packages/core-connectors/src/index.ts';
 import { ABOUT, BEFORE, PAGE } from './c80-world.ts';
+import { ASTRO_FILE, ASTRO_PAGE } from './c80-sites.ts';
 import { serverUrl, w } from './c80-register-world.ts';
 import { pinAsRunner } from './located.ts';
 import {
@@ -131,6 +137,44 @@ describe.skipIf(serverUrl === undefined)(
       await unpinned(id, 'WORD_NOT_FOUND');
       // The head, then the file at it: two reads and nothing else.
       expect(double.requests).toHaveLength(2);
+      expect(onlyReads(double)).toBe(true);
+    });
+
+    it.each([
+      // A double quote, since replaced() reads an apostrophe as part of the word.
+      ['an expression', '<p>{"}" + "friendly"}</p>\n'],
+      ['frontmatter code', '---\nconst message = `{\n---\nfriendly\n`;\n---\n<p>Unchanged.</p>\n'],
+    ])(
+      'settles a word in %s unlocated CHANGE_ENVELOPE_EXCEEDED, pinning nothing',
+      async (_name, source) => {
+        const id = await requestOn(ASTRO_PAGE);
+        const double = sourceDouble({ [ASTRO_FILE]: source });
+
+        expect(await locateOnce(double)).toEqual([
+          { correctionId: id, outcome: 'CHANGE_ENVELOPE_EXCEEDED' },
+        ]);
+        await unpinned(id, 'CHANGE_ENVELOPE_EXCEEDED');
+        expect(double.requests).toHaveLength(2);
+        expect(onlyReads(double)).toBe(true);
+      },
+    );
+
+    it.each([
+      ['frontmatter that quotes an opening brace', "---\nconst marker = '{';\n---\n"],
+      ['a closing fence with trailing whitespace', "---\nconst marker = 'plain';\n--- \n"],
+    ])('pins the one-word correction below %s', async (_name, frontmatter) => {
+      const source = `${frontmatter}<p>We are a friendly studio.</p>\n`;
+      const id = await requestOn(ASTRO_PAGE);
+      const double = sourceDouble({ [ASTRO_FILE]: source });
+
+      expect(await locateOnce(double)).toEqual([{ correctionId: id, outcome: 'requested' }]);
+      const row = await rowOf(id);
+      expect(row).toMatchObject({
+        state: 'requested',
+        locate_code: null,
+        pre_image_digest: contentDigest(source),
+      });
+      expect(row.version_id).not.toBeNull();
       expect(onlyReads(double)).toBe(true);
     });
 
