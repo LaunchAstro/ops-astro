@@ -1449,16 +1449,16 @@ hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 A model turn (#1623 R3) is the same route with `kind: 'turn'`, `turnOrdinal`,
 `tools` and `parts` in place of `fields`, to an operation that takes a turn
 (`model.replay_turn`). Each part is a reference the broker reads under the
-call's locks, never free text: `{ ref: 'definition', path, digest }` (a pinned
-file the run read, first if present), `{ ref: 'task', taskId, revision }` (the
+call's locks, never free text: `{ ref: 'task', taskId, revision }` (the
 attempt's own task at its current revision, with `toolCallId` as a tool
 result), and `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
 this attempt, carried back with the bytes it returned). `turnOrdinal` must be
 the attempt's count of calls. Before any hold, a turn out of shape or order is
 refused `TURN_MALFORMED`, a wrong ordinal `TURN_ORDINAL_STALE`, and a part the
 broker cannot bind (an altered answer, another attempt's or business's answer,
-another task, a stale revision, free text) `PROVENANCE_UNBOUND`, in the same
-bytes whoever's it was; each records its step and ends the attempt `cancelled`
+another task, a stale revision, free text, and for now any `{ ref:
+'definition', path, digest }`, whose read path waits on #1904)
+`PROVENANCE_UNBOUND`, in the same bytes whoever's it was; each records its step and ends the attempt `cancelled`
 ([RUNTIME.md](RUNTIME.md), "The model call's ledger"). A settled turn also
 answers `toolCalls`, and the call that reached the attempt's limit answers
 `terminal: 'call_limit'`.
