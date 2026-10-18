@@ -69,6 +69,16 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       credential: String(picked['credential']),
     };
   },
+  // The worker's own stop on its lease (#1623 R1), with a code that needs no
+  // proof in the run's records; it applies as the retained `RUN_ENDED`.
+  'run.end': async (harness) => {
+    const picked = await pickedUp(harness);
+    return {
+      prefix: 'agent',
+      body: { leaseId: picked['leaseId'], fence: picked['fence'], endCode: 'TOOL_REFUSED' },
+      credential: String(picked['credential']),
+    };
+  },
   // AW-11: the parent's hand-over on its own lease, and the helper's handback
   // on the child credential it was handed. The world has one agent login, so
   // it is its own helper here: the mint admits it, strictly narrower.
