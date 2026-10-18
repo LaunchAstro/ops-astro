@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The site runner's claims through the queue (`DESIGN.md`, "The lease"): the
+// The site runner's claims through the queue (`docs/local/SITE-RUNNER.md`, "The lease"): the
 // `site_publish` work a person approved, picked up as the runner's agent
 // actor, renewed while followed, and handed back once settled. Each pickup's
 // credential is kept in memory for its lease and never written anywhere: a
