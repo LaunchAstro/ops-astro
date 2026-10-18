@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: a cancel or run.end that commits while a call is dispatched records unknown_provider_outcome / OPEN_CALL_AT_STOP with its own code as the stop cause, on separate connections in both orders; settled first, it records its own outcome."
+}
