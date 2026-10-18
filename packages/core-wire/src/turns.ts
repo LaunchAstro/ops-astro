@@ -34,20 +34,3 @@ export type TurnPart =
       readonly text: string;
       readonly toolCalls: readonly ToolCall[];
     };
-
-/** A `model.call` body of kind `turn`, beside the fields one. */
-export interface TurnBody {
-  readonly kind: 'turn';
-  readonly turnOrdinal: number;
-  readonly tools: readonly string[];
-  readonly parts: readonly TurnPart[];
-}
-
-/** What a settled turn hands back: the answer's bytes, once, on the call that made them. */
-export interface TurnAnswer {
-  readonly callId: string;
-  readonly text: string;
-  readonly toolCalls: readonly ToolCall[];
-  /** Set on the call that reached the attempt's limit: its settlement ended the attempt. */
-  readonly terminal?: 'call_limit';
-}
