@@ -93,6 +93,13 @@ export function revocationBodies(): Readonly<Record<string, Readonly<Record<stri
     'run.child_handback': { outcome: 'completed' },
     // The worker's own stop (#1623 R1), well formed on a lease of no one's.
     'run.end': { leaseId: randomUUID(), fence: 1, endCode: 'TOOL_REFUSED' },
+    // The worker's read of a pinned file (#1904), well formed and naming a lease.
+    'definition.read': {
+      leaseId: randomUUID(),
+      fence: 1,
+      stepId: null,
+      path: 'skills/brief/SKILL.md',
+    },
     // The launched agent's take, named by its launch and never by a record.
     'task.take_launch': { launchId: randomUUID() },
   };

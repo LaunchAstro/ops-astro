@@ -61,6 +61,9 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   // #1623 R1: the worker's own stop, agent-only like `model.call`.
   'run.end':
     'the agent prefix only (the person path refuses it), under a lease: the task already has content',
+  // #1904: the worker's read of a file its run pinned, agent-only like `model.call`.
+  'definition.read':
+    'the agent prefix only (the person path refuses it), under a lease: the task already has content',
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(

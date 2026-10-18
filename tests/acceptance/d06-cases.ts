@@ -137,6 +137,7 @@ const AGENT_ONLY: ReadonlySet<CommandName> = new Set([
   'run.end',
   'run.delegate_child',
   'run.child_handback',
+  'definition.read',
   'task.take_launch',
 ]);
 

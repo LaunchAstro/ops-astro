@@ -250,9 +250,10 @@ export function createPositiveBody(
       case 'run.delegate_child':
       case 'run.child_handback':
       case 'run.end':
+      case 'definition.read':
       case 'task.take_launch':
         // The run's worker's, never a person's: the person prefix refuses each
-        // SCOPE_NOT_GRANTED (AW-01, AW-11, #1623 R1, "n/a (system)"). The agent
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, #1623 R1, #1904, "n/a (system)"). The agent
         // makes the call under its delegation in the agent journey, case (h),
         // and ends its own run in the `k-run-end` rows; the launched agent
         // takes its launch on its own login.

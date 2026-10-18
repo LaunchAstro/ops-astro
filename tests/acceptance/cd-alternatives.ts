@@ -57,6 +57,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'run.delegate_child': ['leaseId', 'agent'],
   // #1623 R1: the worker's own stop, by the lease its delegation holds.
   'run.end': ['leaseId', 'agent'],
+  // #1904: the worker's read of a pinned file, by the lease its delegation holds.
+  'definition.read': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],

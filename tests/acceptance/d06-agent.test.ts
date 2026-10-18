@@ -176,7 +176,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential: String(detail['credential']),
       };
     }
-    // A stop names a code that needs no proof in the run's records.
+    // A stop names a code that needs no proof in the run's records; a read, a file by its path.
     const leased =
       name === 'task.check'
         ? { name: 'the agent checks', outcome: 'passed' }
@@ -184,7 +184,9 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
           ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
           : name === 'run.end'
             ? { endCode: 'TOOL_REFUSED' }
-            : { outcome: 'completed', report: { wrote: 'a draft' } };
+            : name === 'definition.read'
+              ? { stepId: null, path: 'skills/brief/SKILL.md' }
+              : { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...leased };
     return { body, credential };
   }
