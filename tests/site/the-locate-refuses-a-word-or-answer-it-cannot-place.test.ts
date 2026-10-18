@@ -7,6 +7,10 @@
 //   WORD_NOT_FOUND`;
 // - file content that is not the canonical base64 of UTF-8 settles
 //   `unlocated PROVIDER_RESPONSE_MALFORMED`;
+// - a head or file answer outside the catalogued shape (a field missing, a
+//   body that is not JSON) settles a `locating` correction `unlocated
+//   PROVIDER_RESPONSE_MALFORMED`, and is a failed check for a `requested` one:
+//   backed off and unstamped, never settled;
 // - a file read that times out is a failed check, backed off 30 s, and the
 //   first one once the request is 120 s old settles it `unlocated
 //   SITE_UNREACHABLE`.
@@ -15,8 +19,10 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Custody, CustodyOutcome } from '../../packages/core-custody/src/index.ts';
+import { contentDigest } from '../../packages/core-connectors/src/index.ts';
 import { ABOUT, BEFORE, PAGE } from './c80-world.ts';
-import { serverUrl } from './c80-register-world.ts';
+import { serverUrl, w } from './c80-register-world.ts';
+import { pinAsRunner } from './located.ts';
 import {
   dueNow,
   locateOnce,
@@ -39,7 +45,10 @@ const TIMED_OUT: CustodyOutcome = {
   account: null,
 };
 
-/** The double, its answer to every read of `path` replaced by `answer` (given its own), each request still counted. */
+/**
+ * The double, its answer to every read of `path` (or of the head, `'head'`) replaced by `answer`
+ * (given its own), each request still counted.
+ */
 function answering(
   double: SourceDouble,
   path: string,
@@ -48,20 +57,44 @@ function answering(
   const dispatch: Custody['dispatch'] = async (ref, request) => {
     const own = await double.ports.custody.dispatch(ref, request);
     const { pathname } = new URL(request.path, 'https://source.invalid');
-    const read = decodeURIComponent(pathname.split('/contents/')[1] ?? '');
+    const read = pathname.includes('/git/ref/heads/')
+      ? 'head'
+      : decodeURIComponent(pathname.split('/contents/')[1] ?? '');
     return read === path ? answer(own) : own;
   };
   return { ...double, ports: { ...double.ports, custody: { dispatch } } };
 }
 
-/** The provider's own answer, its file content replaced by `content`. */
-const withContent =
-  (content: string) =>
-  (own: CustodyOutcome): CustodyOutcome => {
+type Answer = (own: CustodyOutcome) => CustodyOutcome;
+type Body = Readonly<Record<string, unknown>>;
+
+/** The provider's own answer, its body replaced by the text `body` makes of it. */
+const answeredWith =
+  (body: (own: Body) => string): Answer =>
+  (own) => {
     if (own.kind !== 'answered' || !own.outbound.ok) throw new Error('the double did not answer');
-    const body = { ...(JSON.parse(own.outbound.body) as Record<string, unknown>), content };
-    return { ...own, outbound: { ...own.outbound, body: JSON.stringify(body) } };
+    const parsed = JSON.parse(own.outbound.body) as Body;
+    return { ...own, outbound: { ...own.outbound, body: body(parsed) } };
   };
+
+/** The provider's own answer, its JSON body reshaped. */
+const reshaped = (reshape: (own: Body) => Body): Answer =>
+  answeredWith((own) => JSON.stringify(reshape(own)));
+
+/** The provider's own answer, its file content replaced by `content`. */
+const withContent = (content: string): Answer => reshaped((own) => ({ ...own, content }));
+
+/** Answers outside the catalogued shape, the read each replaces, and the requests a pass makes. */
+const OUT_OF_SHAPE: readonly (readonly [string, string, Answer, number])[] = [
+  [
+    'a file answer without its blob sha',
+    ABOUT,
+    reshaped((own) => Object.fromEntries(Object.entries(own).filter(([name]) => name !== 'sha'))),
+    2,
+  ],
+  ['a head answer without its commit sha', 'head', reshaped((own) => ({ ...own, object: {} })), 1],
+  ['a head answer whose body is not JSON', 'head', answeredWith(() => '{"object":'), 1],
+];
 
 /** Settled `unlocated` with `code`, and no part of a version stored. */
 async function unpinned(id: string, code: string): Promise<void> {
@@ -116,6 +149,46 @@ describe.skipIf(serverUrl === undefined)(
         ]);
         await unpinned(id, 'PROVIDER_RESPONSE_MALFORMED');
         expect(double.requests).toHaveLength(2);
+        expect(onlyReads(double)).toBe(true);
+      },
+    );
+
+    it.each(OUT_OF_SHAPE)(
+      'settles %s unlocated PROVIDER_RESPONSE_MALFORMED, pinning nothing',
+      async (_name, read, answer, requests) => {
+        const id = await requestOn(PAGE);
+        const double = answering(sourceDouble({ [ABOUT]: BEFORE }), read, answer);
+
+        expect(await locateOnce(double)).toEqual([
+          { correctionId: id, outcome: 'PROVIDER_RESPONSE_MALFORMED' },
+        ]);
+        await unpinned(id, 'PROVIDER_RESPONSE_MALFORMED');
+        expect(double.requests).toHaveLength(requests);
+        expect(onlyReads(double)).toBe(true);
+      },
+    );
+
+    it.each(OUT_OF_SHAPE)(
+      'counts %s a failed check for a waiting correction: backed off, unstamped, still requested',
+      async (_name, read, answer) => {
+        const id = await requestOn(PAGE);
+        // Pinned on the file's own bytes, so a good read would stamp it.
+        await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+          await pinAsRunner(tx, id, { preImageDigest: contentDigest(BEFORE) });
+        });
+        const before = await rowOf(id);
+        const double = answering(sourceDouble({ [ABOUT]: BEFORE }), read, answer);
+
+        expect(await locateOnce(double)).toEqual([{ correctionId: id, outcome: 'CHECK_FAILED' }]);
+        const after = await rowOf(id);
+        expect(after).toMatchObject({
+          state: 'requested',
+          locate_code: null,
+          check_failures: 1,
+          version_id: before.version_id,
+          verified_at: before.verified_at,
+        });
+        expect(after.next_in).toBeGreaterThan(25);
         expect(onlyReads(double)).toBe(true);
       },
     );

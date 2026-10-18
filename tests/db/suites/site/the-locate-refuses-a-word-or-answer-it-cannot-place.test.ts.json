@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "The site runner's locate (#1693) pins nothing it cannot place: a word the file does not hold settles unlocated WORD_NOT_FOUND, file content that is not canonical base64 of UTF-8 settles unlocated PROVIDER_RESPONSE_MALFORMED, and a timed-out read backs off as a failed check until the request is 120 s old, when it settles unlocated SITE_UNREACHABLE; every request is a read."
+  "why": "The site runner's locate (#1693) pins nothing it cannot place: a word the file does not hold settles unlocated WORD_NOT_FOUND, file content that is not canonical base64 of UTF-8 settles unlocated PROVIDER_RESPONSE_MALFORMED, a head or file answer outside the catalogued shape settles a locating correction unlocated PROVIDER_RESPONSE_MALFORMED and is a failed check, unstamped, for a requested one, and a timed-out read backs off as a failed check until the request is 120 s old, when it settles unlocated SITE_UNREACHABLE; every request is a read."
 }
