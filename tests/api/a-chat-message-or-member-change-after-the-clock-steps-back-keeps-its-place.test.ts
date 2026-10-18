@@ -6,7 +6,7 @@
 // member change cut on that clock still separates what each member reads.
 // Each case controls only the clock source of its own writes, through the real
 // writers, by swapping `clock_timestamp()` for an earlier time. The first three
-// cases are Sol's proofs from #1806's review, bodies as written.
+// cases are Sol's proofs from #1806's review and the fourth from #1812's, bodies as written.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createGroupWorld, detailOf, type GroupWorld } from './c71-g-world.ts';
@@ -146,6 +146,41 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       expect(
         (await g.viewOf(g.chat.tess, id))?.unread,
         'a later write must not hide behind the existing marker',
+      ).toBe(1);
+    });
+
+    it('a message written after the clock steps back stays unread past another member’s later marker', async () => {
+      const { world } = g.chat.harness;
+      const id = g.conversationId;
+      const read = await g.as(world.mia, 'chat.messages', { conversationId: id });
+      const at = (read.body['messages'] as ChatMessageView[])[0]!.at;
+      const markerTime = new Date(Date.parse(at) + 1000).toISOString();
+      await world.db.app.withBusiness(world.alpha, async (tx) => {
+        await lockConversation(tx, id);
+        // A normal send advances its sender's marker to now, after the message insert.
+        expect(await moveReadMarker(clockAt(tx, markerTime), id, world.mia.personId!, 'now')).toBe(
+          true,
+        );
+      });
+      expect((await g.viewOf(world.mia))?.unread).toBe(0);
+      await world.db.app.withBusiness(world.alpha, async (tx) => {
+        await lockConversation(tx, id);
+        const types = await readConversationTypes(tx);
+        if (!types) throw new Error('missing types');
+        await writeComment(clockAt(tx, at), types.commentTypeId, {
+          taskId: null,
+          conversationId: id,
+          authorActorId: world.ada.actorId!,
+          commentType: 'note',
+          audience: 'group',
+          body: 'unseen after later marker',
+          source: 'api',
+        });
+      });
+      expect(await g.bodiesOf(world.mia)).toContain('unseen after later marker');
+      expect(
+        (await g.viewOf(world.mia))?.unread,
+        'later message must not hide behind the marker',
       ).toBe(1);
     });
 
