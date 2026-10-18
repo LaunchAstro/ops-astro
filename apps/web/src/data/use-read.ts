@@ -199,7 +199,6 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     },
     [grantKey],
   );
-
   const failures = useRef(0);
   const now = useCallback(
     () => ({ state: readRef.current?.state ?? null, failures: failures.current }),
@@ -219,6 +218,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     built.current = [grantKey, ...options.deps];
     liveRef.current = false;
     waitedFrom.current = null;
+    displaced.current = null;
     opening.add(projection.state);
     setState(projection.state);
     start(projection);
