@@ -144,6 +144,18 @@ describe('a failed chat send keeps the person’s words', () => {
     expect(second).not.toBe(first);
   });
 
+  it('refused words emptied out of the composer after Edit wait under the conversation again', async () => {
+    const { api, m } = await team();
+    api.state.refuse = { refused: true, code: 'FIELD_VALUE_INVALID', names: ['body'], fixes: [] };
+    await sendWords(m, CANARY);
+    await until('the refusal kept', () => unsent(m).length === 1);
+    await m.click('.tmc__unsent [data-unsent-edit]');
+    await m.type('.tmc__conv .composer input', '');
+    await until('back in the list', () => unsent(m).length === 1);
+    expect(unsent(m)).toEqual([CANARY]);
+    expect(m.find('.tmc__unsent [data-unsent-edit]')).not.toBeNull();
+  });
+
   it('Edit never writes over words already in the composer', async () => {
     const { api, m } = await team();
     api.state.refuse = { refused: true, code: 'FIELD_VALUE_INVALID', names: ['body'], fixes: [] };

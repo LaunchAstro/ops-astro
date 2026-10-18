@@ -76,8 +76,8 @@ export interface GroupThread extends Readable {
 
 /**
  * Words the server has not taken (#1339): on their way, refused, or sent with
- * no answer. They wait under their conversation, never in the composer and
- * never as a message, until the server takes them or the reader lets them go.
+ * no answer. They wait under their conversation, never as a message, until the
+ * server takes them or the reader lets them go; the composer may hold them too.
  */
 export interface Unsent {
   readonly id: string;
