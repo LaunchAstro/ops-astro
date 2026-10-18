@@ -721,7 +721,11 @@ for tests. P2 to P5 remain PARKED.
 - The token directory's ancestors are not judged. On the M5 the directory
   sits under the owner's home; P2's checklist must confirm no ancestor
   is writable by another user.
-- `tokenUrl` is checked for scheme only, and a disallowed URL is refused only
-  after `pending` is committed (`SUBSCRIPTION_REFRESH_FAILED`, logged as not
-  sent). The production composition pins `https://auth.openai.com` and
-  refuses anything else when it is built (the HTTP127 follow-up above, P4).
+- Settled by #1704: `tokenHolder` throws at build for a `tokenUrl` that is
+  neither on `https://auth.openai.com` nor a 127.0.0.1 test issuer, so no
+  `pending` is committed for a request it may not send, and `refreshOnce`
+  holds the same rule. The production composition builds its holder with
+  `productionTokenHolder` (`plan-token-production.ts`), which accepts only
+  `https://auth.openai.com`, with no credentials in the URL, and answers
+  anything else, loopback included, `SUBSCRIPTION_ISSUER_REFUSED` at start.
+  P4 wires it.
