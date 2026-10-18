@@ -136,13 +136,16 @@ it('run_outcomes is kept to its business by forced row security, and no role but
   expect(table?.secured).toBe(true);
   expect(table?.forced).toBe(true);
 
-  const changers = await w.s.db.admin.execute<{ readonly role: string; readonly right: string }>(
-    `select r.rolname as role, p.right
-       from pg_roles r cross join (values ('UPDATE'), ('DELETE'), ('TRUNCATE')) as p(right)
+  const changers = await w.s.db.admin.execute<{
+    readonly role: string;
+    readonly privilege: string;
+  }>(
+    `select r.rolname as role, p.privilege
+       from pg_roles r cross join (values ('UPDATE'), ('DELETE'), ('TRUNCATE')) as p(privilege)
       where not r.rolsuper and r.rolname <> $1 and r.rolname not like 'pg\\_%'
-        and has_table_privilege(r.oid, 'public.run_outcomes', p.right)`,
+        and has_table_privilege(r.oid, 'public.run_outcomes', p.privilege)`,
     [table?.owner ?? ''],
   );
   // Every effective role, the worker's (`ops_astro_worker`) and the app's included.
-  expect(changers).toStrictEqual([]);
+  expect([...changers]).toStrictEqual([]);
 });

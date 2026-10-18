@@ -35,12 +35,15 @@ export async function outcomesOfAttempt(
   attemptId: string,
 ): Promise<readonly OutcomeRow[]> {
   if (!(await tableExists(admin))) return [];
-  return await admin.execute<OutcomeRow>(
-    `select attempt_id::text as attempt_id, planned_run_id::text as planned_run_id,
-            outcome, end_code, stop_cause
-       from public.run_outcomes where business_id = $1 and attempt_id = $2`,
-    [businessId, attemptId],
-  );
+  // A plain array, so a case's strict comparison judges the rows, not the driver's result type.
+  return [
+    ...(await admin.execute<OutcomeRow>(
+      `select attempt_id::text as attempt_id, planned_run_id::text as planned_run_id,
+              outcome, end_code, stop_cause
+         from public.run_outcomes where business_id = $1 and attempt_id = $2`,
+      [businessId, attemptId],
+    )),
+  ];
 }
 
 /** Every outcome recorded on one run, oldest attempt first. */
@@ -50,15 +53,17 @@ export async function outcomesOfRun(
   runId: string,
 ): Promise<readonly OutcomeRow[]> {
   if (!(await tableExists(admin))) return [];
-  return await admin.execute<OutcomeRow>(
-    `select o.attempt_id::text as attempt_id, o.planned_run_id::text as planned_run_id,
+  return [
+    ...(await admin.execute<OutcomeRow>(
+      `select o.attempt_id::text as attempt_id, o.planned_run_id::text as planned_run_id,
             o.outcome, o.end_code, o.stop_cause
        from public.run_outcomes o
        join public.attempts a on a.business_id = o.business_id and a.id = o.attempt_id
       where o.business_id = $1 and o.planned_run_id = $2
       order by a.created_at, a.id`,
-    [businessId, runId],
-  );
+      [businessId, runId],
+    )),
+  ];
 }
 
 /** The attempt a lease serves: the one a stop on that lease records against. */
