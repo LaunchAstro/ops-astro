@@ -147,6 +147,19 @@ for candidate_policy in memory-off memory-on memory-malformed absent; do
   fi
 done
 
+# A standing Claude user file is expected on this team's seats. The check
+# notes it and keeps the instruction to read it, but does not refuse.
+mkdir -p "$TMP/claude-seat"
+printf 'Keep replies short.\n' > "$TMP/claude-seat/CLAUDE.md"
+output="$( cd "$REPO_ROOT" && CLAUDE_CONFIG_DIR="$TMP/claude-seat" HUB_CODEX_GLOBAL="$TMP/harmless.md" bash "$CHECK" 2>&1 )"
+if printf '%s\n' "$output" | grep -q 'PROBLEM.*claude-seat/CLAUDE.md'; then
+  fail "a standing Claude user file is a note, not a refusal" "the check refused it"
+elif printf '%s\n' "$output" | grep -q 'note .*claude-seat/CLAUDE.md applies to every session in this seat. Read it before'; then
+  pass "a standing Claude user file is a note, not a refusal"
+else
+  fail "a standing Claude user file is a note, not a refusal" "the check did not report the file and the instruction to read it"
+fi
+
 # The answer key reads the seven questions where they now live, CONTRIBUTING.md.
 if ( cd "$REPO_ROOT" && bash "$CHECK" --expect ) | grep 'How many merge questions' | grep -q ' seven$'; then
   pass "the answer key says there are seven merge questions"
