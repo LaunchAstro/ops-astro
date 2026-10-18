@@ -135,10 +135,12 @@ export class ScoresCustody {
   letGo(id: string, operationId: string): void {
     const previous = this.snapshot(id);
     if (!this.#current() || previous.busy || previous.pending?.operationId !== operationId) return;
-    const next = { ...previous, pending: null, uncertain: false, ephemeral: false, failure: null };
-    this.#holds.set(id, next);
+    const next = { ...previous, pending: null, uncertain: false, failure: null };
+    // A memory-only attempt was never stored, so there is no copy to clear.
+    if (previous.ephemeral) return this.#put(id, next);
+    this.#holds.set(id, { ...next, ephemeral: false });
     const kept = this.#save();
-    this.#put(id, { ...next, kept, abandoned: !kept });
+    this.#put(id, { ...next, ephemeral: false, kept, abandoned: !kept });
   }
   sendEphemeral(id: string): void {
     const previous = this.snapshot(id);
@@ -204,7 +206,10 @@ export class ScoresCustody {
       busy: false,
       uncertain,
       failure: answer.kind === 'ok' ? null : answer,
-      changed: previous.changed + (answer.kind === 'ok' ? 1 : 0),
+      // A refused retry is read again, so Stop waiting is judged against the scores as they are.
+      changed:
+        previous.changed +
+        (answer.kind === 'ok' || (uncertain && answer.kind !== 'unknown') ? 1 : 0),
     };
     this.#holds.set(id, next);
     this.#put(id, { ...next, kept: next.ephemeral ? false : this.#save() });
