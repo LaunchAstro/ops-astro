@@ -1657,7 +1657,11 @@ releases the call unsent. Offered a subscription route, the refusal is
 The owner's ChatGPT plan's route (`chatgpt_plan`, #1620 P4) carries a run
 nobody attends, but only one the owner started: the task created, and the run's
 version proposed and every approval of it given, by a person then holding the
-owner role. Any other run, a scheduled one included, is refused
+owner role. The run's standing is what the database stamped on its version
+and each approval as they were written (`proposed_by_owner`,
+`decided_by_owner`, #1909), from the active owner membership read `for share`;
+a later write to membership history changes nothing. Any other run, a
+scheduled one included, is refused
 `SUBSCRIPTION_NOT_OWNER_STARTED` before a route is chosen, and a typed message
 in a conversation never reaches it.
 
