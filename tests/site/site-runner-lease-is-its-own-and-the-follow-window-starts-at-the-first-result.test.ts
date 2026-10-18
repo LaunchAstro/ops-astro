@@ -45,40 +45,47 @@ function runnerFor(
   });
 }
 
-describe.skipIf(serverUrl === undefined)('Sol PR1758 separation', () => {
-  it('Sol proof, criterion 2: another business cannot read or send a held correction', async () => {
-    const id = await approved();
-    const given = world();
-    const runner = runnerFor(id, given, { business: w.beta as SiteRunnerDeps['business'] });
-    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'LEASE_LOST' }]);
-    expect(given.site.sent).toEqual([]);
-    expect(await w.receiptsOf(id)).toBe(0);
-  });
-  it('Sol proof, criterion 2: another actor cannot exercise the lease', async () => {
-    const id = await approved();
-    const given = world();
-    const runner = runnerFor(id, given, { actorId: w.ben.actorId });
-    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'LEASE_LOST' }]);
-    expect(given.site.sent).toEqual([]);
-    expect(await w.receiptsOf(id)).toBe(0);
-  });
-  it('Sol proof, criterion 2: another client correction cannot use the lease', async () => {
-    const detail = detailOf(
-      await w.request(w.ava, { ...requestBody(w.partyB, w.taskB), pageUrl: B_PAGE, path: B_FILE }),
-    );
-    const id = String(detail['correctionId']);
-    expect(id).not.toBe('undefined');
-    await w.approve(w.ben, id, String(detail['versionId']));
-    const given = world();
-    const runner = runnerFor(id, given, {});
-    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'NOT_FOUND' }]);
-    expect(writes(given.site)).toEqual([]);
-    expect(await w.receiptsOf(id)).toBe(0);
-  });
-});
+describe.skipIf(serverUrl === undefined)(
+  'the site runner, a lease used by its own holder only',
+  () => {
+    it('another business cannot read or send a held correction', async () => {
+      const id = await approved();
+      const given = world();
+      const runner = runnerFor(id, given, { business: w.beta as SiteRunnerDeps['business'] });
+      expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'LEASE_LOST' }]);
+      expect(given.site.sent).toEqual([]);
+      expect(await w.receiptsOf(id)).toBe(0);
+    });
+    it('another actor cannot exercise the lease', async () => {
+      const id = await approved();
+      const given = world();
+      const runner = runnerFor(id, given, { actorId: w.ben.actorId });
+      expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'LEASE_LOST' }]);
+      expect(given.site.sent).toEqual([]);
+      expect(await w.receiptsOf(id)).toBe(0);
+    });
+    it('another client correction cannot use the lease', async () => {
+      const detail = detailOf(
+        await w.request(w.ava, {
+          ...requestBody(w.partyB, w.taskB),
+          pageUrl: B_PAGE,
+          path: B_FILE,
+        }),
+      );
+      const id = String(detail['correctionId']);
+      expect(id).not.toBe('undefined');
+      await w.approve(w.ben, id, String(detail['versionId']));
+      const given = world();
+      const runner = runnerFor(id, given, {});
+      expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'NOT_FOUND' }]);
+      expect(writes(given.site)).toEqual([]);
+      expect(await w.receiptsOf(id)).toBe(0);
+    });
+  },
+);
 
-describe.skipIf(serverUrl === undefined)('Sol PR1758 deadline', () => {
-  it('Sol proof, criterion 1: ten minutes are measured from first accepted observation', async () => {
+describe.skipIf(serverUrl === undefined)('the site runner, its follow window', () => {
+  it('ten minutes are measured from first accepted observation', async () => {
     const id = await approved();
     const given = world();
     building(given.site);
