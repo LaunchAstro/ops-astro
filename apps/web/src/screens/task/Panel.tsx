@@ -62,6 +62,7 @@ import { PanelFields } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useAssignments } from './assignment-context.tsx';
 import { useRereadOn } from './reread-on.ts';
+import { useUnansweredReread } from './unanswered-reread.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { useSubtaskDoor } from './subtask-door.ts';
 import { HandlingTicks } from './Ticks.tsx';
@@ -107,6 +108,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   );
 }
 
+/** The panel's task read, on the task's topic of the tab's one live stream (C4), as the task page reads it. */
 function TimerPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
   const fold = useShowTrail(client);
@@ -117,7 +119,6 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
     grantKey: props.grantKey,
     run: timerRead.run,
     deps: [opening.taskKey],
-    // The task's topic on the tab's one live stream (C4), as the task page reads it.
     live: {
       hub: hubOf(client),
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
@@ -127,6 +128,7 @@ function TimerPanel(props: TaskPanelProps): ReactElement {
   useRereadOn(props.changes ?? 0, reload);
   useRereadOn(timerRead.changed, reload);
   useRereadOn(assignments.state.changed, refresh);
+  useUnansweredReread(state, refresh);
   useTimerStop(props, state.outcome === 'ready' ? state.value : null);
   const body = { ...props, fold, conversation, ...useDecisionNote(props, state.outcome) };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
