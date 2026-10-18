@@ -95,6 +95,13 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
     expectSurvivedAndRefused(runCase('admin', ownerUrl));
   }, 60_000);
 
+  it('the outbox: the process survives, the append in flight is refused and the next one lands', () => {
+    const outcome = runCase('outbox', db.appUrl);
+    expect(outcome.stderr).not.toMatch(/TypeError/u);
+    expect(outcome.status).toBe(0);
+    expect(outcome.result).toEqual({ caller: refused, after: { ok: true } });
+  }, 60_000);
+
   it('the listener: the process survives its session ending and listens again', () => {
     const outcome = runCase('listener', db.appUrl);
     expect(outcome.stderr).not.toMatch(/TypeError/u);
