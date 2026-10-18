@@ -111,7 +111,7 @@ describe.skipIf(serverUrl === undefined)('two runners pin a correction once', ()
     );
     const stamped = (await rowOf(id))?.verified_at;
     const drift = `sha256:${'ef'.repeat(32)}`;
-    const superseding = held(w, async (tx) => await supersede(tx, id, drift));
+    const superseding = held(w, async (tx) => await supersede(tx, configured(client), id, drift));
     expect(await superseding.ready).toBe(true);
     const stamping = inAlpha(
       w,
@@ -121,6 +121,23 @@ describe.skipIf(serverUrl === undefined)('two runners pin a correction once', ()
     await superseding.done;
     expect(await stamping).toBe(false);
     expect(await rowOf(id)).toMatchObject({ state: 'superseded', verified_at: stamped });
+  });
+
+  it('supersedes nothing for a runner configured for another site', async () => {
+    const client = await freshClient(w);
+    const other = await freshClient(w);
+    const id = await locatingOn(client);
+    expect(await inAlpha(w, async (tx) => await pinLocated(tx, configured(client), pin(id)))).toBe(
+      'pinned',
+    );
+    const drift = `sha256:${'ef'.repeat(32)}`;
+    expect(await inAlpha(w, async (tx) => await supersede(tx, configured(other), id, drift))).toBe(
+      false,
+    );
+    expect(await rowOf(id)).toMatchObject({ state: 'requested' });
+    expect(await inAlpha(w, async (tx) => await supersede(tx, configured(client), id, drift))).toBe(
+      true,
+    );
   });
 });
 
