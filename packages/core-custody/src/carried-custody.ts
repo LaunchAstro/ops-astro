@@ -29,6 +29,7 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
   ACCEPT_WINDOW_MS,
   PLAN_ACCEPT_WINDOW_MS,
+  PLAN_PREPARE_MS,
   callTopic,
   deadlineOf,
   SEAL_LIFE_MS,
@@ -148,6 +149,25 @@ async function send(
   return started === undefined ? lost : undefined;
 }
 
+/**
+ * An accept's two stamps on the agent's clock: when it joined the call's line,
+ * before any prepare, and when it accepted, no later than the prepare's bound
+ * after. An agent with no prepare stamps one instant: it joined as it accepted.
+ */
+function stampsOf(accept: Heard | undefined) {
+  const body = accept?.body as { acceptedAt?: unknown; joinedAt?: unknown } | null;
+  const acceptedAt = body?.acceptedAt;
+  const joinedAt = body?.joinedAt === undefined ? acceptedAt : body.joinedAt;
+  const fits =
+    typeof acceptedAt === 'number' &&
+    typeof joinedAt === 'number' &&
+    Number.isSafeInteger(acceptedAt) &&
+    Number.isSafeInteger(joinedAt) &&
+    joinedAt <= acceptedAt &&
+    acceptedAt - joinedAt <= PLAN_PREPARE_MS;
+  return fits ? { acceptedAt, joinedAt } : undefined;
+}
+
 /** One call on its joined line: offer, accept, the fenced send, then its answer. */
 async function carry(
   carrying: Carrying,
@@ -166,13 +186,14 @@ async function carry(
   const window = plan ? PLAN_ACCEPT_WINDOW_MS : ACCEPT_WINDOW_MS;
   const accept = await next((heard) => heard.event === 'accept', carrying.now() + window);
   const heardAt = carrying.now();
-  const acceptedAt = Number((accept?.body as { acceptedAt?: unknown } | null)?.acceptedAt);
-  if (accept === undefined || !Number.isSafeInteger(acceptedAt))
-    return refused('MODEL_MACHINE_AWAY');
+  const stamps = stampsOf(accept);
+  if (accept === undefined || stamps === undefined) return refused('MODEL_MACHINE_AWAY');
+  const { acceptedAt, joinedAt } = stamps;
   const { runner } = accept;
-  // The agent stamped its accept once the offer was rung, so its clock is at most this far ahead:
-  // every later seal, both ways, is judged on that, and an expired one is never live.
-  skew.at = acceptedAt - offeredAt;
+  // The agent stamped its join once the offer was rung, before any prepare, so its clock is at
+  // most this far ahead: every later seal, both ways, is judged on that, and an expired one is
+  // never live. Its accept's stamp would add the prepare's wait to that.
+  skew.at = joinedAt - offeredAt;
   const fence = await handoff.fence({ runner, acceptedAt, heardAt });
   if (!fence.ok) return refused(fence.code);
   carrying.runners.set(k, runner);
