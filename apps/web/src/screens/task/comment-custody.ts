@@ -26,7 +26,8 @@ export interface CommentHold {
   readonly uncertain: boolean;
   readonly failure: Failure | null;
   readonly settlement: number;
-  readonly answered: Settlement['kind'] | null;
+  /** `abandoned`: the person let the held attempt go; `settled` names it. */
+  readonly answered: Settlement['kind'] | 'abandoned' | null;
   readonly settled: PendingComment | null;
   readonly kept: boolean;
 }
@@ -84,6 +85,8 @@ export class CommentCustody {
   readonly #generation = tabOwnerGeneration();
   readonly #listeners = new Set<() => void>();
   readonly #holds = new Map<string, CommentHold>();
+  /** Operation ids let go here, so a box that was away when it happened drops them. */
+  readonly #abandoned = new Set<string>();
   #client: OperationsClient;
   #epoch = 0;
   #alive = true;
@@ -119,6 +122,7 @@ export class CommentCustody {
   }
 
   snapshot = (id: string): CommentHold => this.#holds.get(id) ?? EMPTY;
+  abandoned = (operationId: string): boolean => this.#abandoned.has(operationId);
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -129,6 +133,7 @@ export class CommentCustody {
     this.#epoch += 1;
     if (!departed) return;
     this.#holds.clear();
+    this.#abandoned.clear();
     try {
       const raw = this.#storage?.getItem(KEY);
       const kept: unknown = raw === undefined || raw === null ? null : JSON.parse(raw);
@@ -171,6 +176,28 @@ export class CommentCustody {
     const previous = this.snapshot(id);
     if (!this.#current() || previous.busy || previous.pending !== null) return;
     this.#put(id, { ...previous, kept: this.#save() });
+  }
+
+  /**
+   * Stop waiting: drops only this held attempt, rewrites the stored copy
+   * without it, and announces it by operation id so each composer holding it
+   * unlocks with its words. A copy that cannot be rewritten leaves cleanup only.
+   * The id is remembered, so a box that was away and comes back still holding
+   * it drops it rather than sending it again.
+   */
+  letGo(id: string, operationId: string): void {
+    const previous = this.snapshot(id);
+    const pending = previous.pending;
+    if (!this.#current() || previous.busy || pending?.operationId !== operationId) return;
+    const next: CommentHold = {
+      ...EMPTY,
+      settlement: previous.settlement + 1,
+      answered: 'abandoned',
+      settled: pending,
+    };
+    this.#abandoned.add(operationId);
+    this.#holds.set(id, next);
+    this.#put(id, { ...next, kept: this.#save() });
   }
 
   async post(id: string, proposed: PendingComment, alreadyUncertain = false): Promise<void> {
