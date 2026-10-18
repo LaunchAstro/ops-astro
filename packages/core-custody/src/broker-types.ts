@@ -110,6 +110,15 @@ export interface Broker {
   readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
+  /**
+   * T3e1's drop at settlement, given by the command layer (#1623 R1): called
+   * before the settlement's own locks for a provider drop the worker could
+   * report, it takes its locks and returns the writer the stop calls last.
+   */
+  readonly drops?: (
+    tx: TenantQuery,
+    leaseId: string,
+  ) => Promise<((cause: DropCause) => Promise<void>) | undefined>;
 }
 
 /**
