@@ -5,7 +5,8 @@
 // it keys each accept by operation id and digests the whole body, so the same
 // id with another body is refused OPERATION_ID_REUSED, and a gate decides once.
 // A card's kept id belongs to its own body (two tabs' cards differ by their
-// conversation) and to the session that clicked it.
+// conversation) and to the session that clicked it, and outlives one card's
+// answer while another card that sent it has none.
 
 import { afterEach, expect, it } from 'vitest';
 import type { PlanOffer } from '../../packages/core-wire/src/index.ts';
@@ -49,6 +50,8 @@ function registerClient(conversations: readonly string[], spent: readonly string
   const ids: (string | undefined)[] = [];
   let decided = false;
   let lose = false;
+  let hold = false;
+  const held: ((lost: boolean) => void)[] = [];
   let minted = 0;
   const accept = (body: unknown, id: string): unknown => {
     const digest = JSON.stringify(body);
@@ -72,9 +75,12 @@ function registerClient(conversations: readonly string[], spent: readonly string
         const answer = accept(body, options?.operationId ?? '');
         const lost = lose;
         lose = false;
-        return Promise.resolve(lost ? LOST : answer);
+        if (!hold) return Promise.resolve(lost ? LOST : answer);
+        // Committed now, answered when the test releases it.
+        return new Promise((resolve) => held.push((drop) => resolve(drop ? LOST : answer)));
       }
       const reply = { answered: true, messageId: 'm-1', body: 'Here is the plan.', plan: OFFER };
+      if (name === 'conversation.message') return Promise.resolve(ok({ reply }));
       if (name !== 'conversation.start') return Promise.resolve(ok({}));
       return Promise.resolve(ok({ detail: { conversationId: queue.shift() }, reply }));
     },
@@ -82,7 +88,14 @@ function registerClient(conversations: readonly string[], spent: readonly string
   const loseNext = (): void => {
     lose = true;
   };
-  return { client, ids, loseNext, minted: () => minted };
+  const holdAccepts = (): void => {
+    hold = true;
+  };
+  /** Answers held accept `index`: its committed answer, or none if `lost`. */
+  const release = (index: number, lost: boolean): void => {
+    held[index]?.(lost);
+  };
+  return { client, ids, loseNext, holdAccepts, release, minted: () => minted };
 }
 
 async function open(client: OperationsClient, grantKey = 'grant-ada') {
@@ -152,4 +165,33 @@ it('AW04FIX4-F1b an accept refused OPERATION_ID_REUSED drops that id: the click 
   await accept();
   expect(drawer.ids).toStrictEqual(['op-1', 'op-2']);
   expect(page.find('[data-plan="approved"]')).not.toBeNull();
+});
+
+it('AW04-893 two cards sending one accept: the first answered keeps the id the other, unanswered, replays', async () => {
+  const drawer = registerClient([TAB_ONE]);
+  drawer.holdAccepts();
+  // Its own session, so no id an earlier test kept is in play.
+  const { page, ask, accept } = await open(drawer.client, 'grant-dee');
+  track(page);
+  await ask();
+  // Card one's accept is in flight when the same plan comes again as card two.
+  await accept();
+  await ask();
+  expect(page.all('[data-plan="card"]')).toHaveLength(2);
+  await accept();
+  expect(drawer.ids).toStrictEqual(['op-1', 'op-1']);
+  // Card one hears the committed accept; card two's answer is lost.
+  drawer.release(0, false);
+  await settle();
+  drawer.release(1, true);
+  await settle();
+  expect(page.all('[data-plan="approved"]')).toHaveLength(1);
+  // Card two's click again replays op-1 and lands, never a new id refused as decided.
+  await accept();
+  drawer.release(2, false);
+  await settle();
+  expect(drawer.ids).toStrictEqual(['op-1', 'op-1', 'op-1']);
+  expect(drawer.minted()).toBe(1);
+  expect(page.all('[data-plan="approved"]')).toHaveLength(2);
+  expect(page.find('[data-plan="refusal"]')).toBeNull();
 });
