@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#742: an export whose session ends after the last gate ask and before the store reads the part is handed nothing that holds a stored part, and the store writes no part-read receipt"
+}
