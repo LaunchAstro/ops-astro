@@ -3,10 +3,10 @@
 // Production's bootstrap suites' shared settings (production-bootstrap.test.ts
 // and production-bootstrap-refusals.test.ts): two made-up project references,
 // an admin address on the Sydney pooler, the owner's arguments, and the local
-// seed's admin grants read from its own table.
+// seed's admin grants from its own table.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { GRANTS_BY_ROLE } from '../../scripts/local-seed-roles.ts';
 
 export const COMMAND: string = new URL(
   '../../scripts/ops/production-bootstrap.mjs',
@@ -48,11 +48,9 @@ export function ownerArgs(subject: string = randomUUID()): string[] {
   ];
 }
 
-/** The local seed's admin grants, read from its own table, in its order. */
+/** The local seed's admin grants, from its own table, in its order. */
 export function seedAdminGrants(): string[][] {
-  const seed = readFileSync(new URL('../../scripts/local-seed.mjs', import.meta.url), 'utf8');
-  const table = seed.slice(seed.indexOf('  admin: ['), seed.indexOf('  member: ['));
-  return [...table.matchAll(/\['([a-z_]+)', '([a-z_]+)'\]/gu)].map((m) => [m[1]!, m[2]!]);
+  return GRANTS_BY_ROLE.admin.map(([collection, action]) => [collection, action]);
 }
 
 /** What the owner holds: the seed's admin grants, then the operator's one. */
