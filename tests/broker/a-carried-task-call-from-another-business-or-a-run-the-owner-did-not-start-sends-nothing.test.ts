@@ -17,6 +17,7 @@ import {
   type ModelCaller,
 } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
+import { auditAs } from '../../packages/core-commands/src/commands/model-call.ts';
 import { taskHandoff } from '../../packages/core-commands/src/commands/task-carriage.ts';
 import { tokenFor } from '../api/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -100,32 +101,33 @@ describe.skipIf(serverUrl === undefined)('a carried task call, by whose run it i
       delegationId: String(work.picked['delegationId']),
       attendedByPersonId: null,
     };
+    // Its events are its own agent's, in its own business.
+    const on = { ...world.broker, audit: auditAs(other.agentActorId) };
     const reserving = await s.db.app.withBusiness(
       other.business,
-      async (tx) => await reserveModelCall(tx, asking, request, world.broker),
+      async (tx) => await reserveModelCall(tx, asking, request, on),
     );
+    if (!reserving.ok) throw new Error(`the hold was refused: ${reserving.code}`);
+    const { carrier } = world.broker;
+    if (carrier === undefined) throw new Error('the world carries');
     const sent = world.plan.sent.length;
-    if (reserving.ok) {
-      const { carrier } = world.broker;
-      if (carrier === undefined) throw new Error('the world carries');
-      const token = await tokenFor(other.agent.subject);
-      const answer = await sendReservedCall(
-        s.db.app,
-        other.business,
-        asking,
+    const token = await tokenFor(other.agent.subject);
+    const answer = await sendReservedCall(
+      s.db.app,
+      other.business,
+      asking,
+      request,
+      reserving.reserved,
+      on,
+      taskHandoff(s.db.app, other.business, other.agent, token, {
+        caller: asking,
         request,
-        reserving.reserved,
-        world.broker,
-        taskHandoff(s.db.app, other.business, other.agent, token, {
-          caller: asking,
-          request,
-          carrier,
-          broker: world.broker,
-          timeoutMs: PLAN_TASK.timeoutMs,
-        }),
-      );
-      expect(answer).toMatchObject({ ok: false, code: 'CARRIAGE_UNAVAILABLE' });
-    }
+        carrier,
+        broker: on,
+        timeoutMs: PLAN_TASK.timeoutMs,
+      }),
+    );
+    expect(answer).toMatchObject({ ok: false, code: 'CARRIAGE_UNAVAILABLE' });
     expect(world.plan.sent).toHaveLength(sent);
     expect(await offeredOn(work)).toBe(0);
   }, 60_000);

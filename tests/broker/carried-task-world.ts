@@ -52,11 +52,16 @@ const POLICY = readFileSync(
   'utf8',
 );
 
-/** A task operation on the owner's plan: the task's instruction as the pinned Responses call. */
+/**
+ * A task operation on the owner's plan: the task's instruction as the pinned
+ * Responses call. A task's call holds more than nothing until it settles, so
+ * it holds one minor unit and settles at none.
+ */
 export const PLAN_TASK: ModelOperationDeclaration = {
   ...CHATGPT_PLAN_CONVERSATION,
   key: 'model.plan_task',
   fields: REPLAY_COMPOSE.fields,
+  maximumMinor: 1,
 };
 
 export const PLAN: BrokerRoute = {
