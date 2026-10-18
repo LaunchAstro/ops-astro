@@ -25,9 +25,11 @@ import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
 import { COMMENT_SPINE } from './comment-spine.ts';
 import { detachTaskTime } from './time.ts';
+import { taskPageRef } from './page-ref.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
+const KEY = slotOf(TASK_SPINE, 'key');
 const COMMENT_TASK = slotOf(COMMENT_SPINE, 'task');
 
 export type RetentionClass = 'work' | 'evidence' | 'runtime';
@@ -586,6 +588,11 @@ export async function purgeTrashedRecords(
       where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
   );
+  // A conversation whose added page names a purged task (#1467, `/task/<key or id>`) loses the
+  // page and its context epoch the same way, so nothing said on that page reaches a model later.
+  // The page is read as the exchange reads it (`taskPageRef`), so a key spelt encoded or an id in
+  // upper case is cleared too; its rows are locked after the tasks', as the update above locks.
+  await clearPurgedPages(tx, ids);
   // Time entries (0078) and task tags (0081) key to `records` with no cascade:
   // left naming the task, they fault the delete below and roll back the whole
   // purge. Entries are kept, detached (ORCH58: own retention, billing); a tag
@@ -623,4 +630,35 @@ export async function purgeTrashedRecords(
     commentIds,
     grantsRevoked: revoked.length,
   };
+}
+
+/** Every conversation whose added page names one of the purged tasks `ids`: page cleared, epoch bumped. */
+async function clearPurgedPages(tx: TenantQuery, ids: readonly string[]): Promise<void> {
+  const keys = await tx.query<{ readonly key: string }>(
+    `select ${KEY} as key from records
+      where business_id = $1 and id = any ($2::uuid[]) and ${KEY} is not null`,
+    [tx.businessId, ids],
+  );
+  const named = new Set(keys.map((each) => each.key));
+  const lowered = new Set(ids.map((id) => id.toLowerCase()));
+  const paged = await tx.query<{ readonly id: string; readonly address: string }>(
+    `select id, page_address as address from public.conversations
+      where business_id = $1 and page_address like '/task/%'
+      order by id
+      for update`,
+    [tx.businessId],
+  );
+  const cleared = paged
+    .filter((each) => {
+      const ref = taskPageRef(each.address);
+      return typeof ref === 'string' && (named.has(ref) || lowered.has(ref.toLowerCase()));
+    })
+    .map((each) => each.id);
+  if (cleared.length === 0) return;
+  await tx.query(
+    `update public.conversations set page_address = null, page_shows = null,
+            context_epoch = context_epoch + 1
+      where business_id = $1 and id = any ($2::uuid[])`,
+    [tx.businessId, cleared],
+  );
 }

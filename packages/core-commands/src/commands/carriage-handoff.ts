@@ -24,6 +24,8 @@ export function carriedBy(
     readonly accessToken?: string;
     readonly operation: string;
     readonly model: string | null | undefined;
+    /** The page task the request carries. */
+    readonly page: string | null;
   },
 ): { readonly carry?: (callId: string) => Handoff } {
   const { carrier } = broker;
@@ -36,6 +38,7 @@ export function carriedBy(
       carrier,
       timeoutMs,
       outside,
+      page: asking.page,
     }),
   };
 }

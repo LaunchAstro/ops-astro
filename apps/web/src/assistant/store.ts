@@ -81,7 +81,9 @@ export function useStore(start: () => AssistantState = initial): Store {
       count.current += 1;
       const id = `${role}-${String(count.current)}`;
       const into = keyIn(latest.current, key);
-      update((current) => placed(said(current, into, { id, role, body, cites }), into, after));
+      update((current) =>
+        placed(said(current, into, { id, role, body, cites }, after), into, after),
+      );
       return id;
     },
     answer: (key, reply, after, cites = []) => {

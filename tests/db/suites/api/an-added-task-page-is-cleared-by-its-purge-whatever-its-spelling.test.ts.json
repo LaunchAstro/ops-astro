@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an added task page resolves inside its own business and owner, and a purge clears it however its address spells the task, advancing the conversation's context epoch"
+}

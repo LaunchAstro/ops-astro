@@ -21,16 +21,24 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
+import type { Page } from './conversation-page.ts';
+import {
+  BODY_LIMIT,
+  bounded,
+  startFieldsOf,
+  TITLE_LIMIT,
+  type Scope,
+  type StartFields,
+} from './conversation-start-fields.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 import { cutWithEllipsis } from './ellipsis.ts';
 import { followModel } from './conversation-agents.ts';
 import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { isCommandRefusal, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
-const BODY_LIMIT = 20_000;
-export const TITLE_LIMIT = 120;
-const SUBJECT_LIMIT = 200;
+export { bounded, TITLE_LIMIT } from './conversation-start-fields.ts';
 export const DEFAULT_TITLE = 'New conversation';
 
 /** The conversation's address: the page C36 draws, and the API's read of it. */
@@ -60,34 +68,6 @@ export async function holdsOwnConversations(
   if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), OWN_WRITE)).ok;
   const own = await checkAuthorityAt(tx, subjectsOf(session), OWN_WRITE, under.at);
   return own.ok && own.value.some((grant) => under.held.has(grant.id));
-}
-
-export const bounded = (value: unknown, limit: number): value is string =>
-  typeof value === 'string' && value.trim() !== '' && value.length <= limit;
-
-const optionalBounded = (value: unknown, limit: number): boolean =>
-  value === undefined || value === null || bounded(value, limit);
-
-interface Scope {
-  readonly kind: 'task';
-  readonly id: string;
-}
-
-function scopeOf(value: unknown): Scope | null | undefined {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const { kind, id, ...rest } = value as Record<string, unknown>;
-  if (Object.keys(rest).length > 0 || kind !== 'task' || !isIdentifier(id)) return undefined;
-  return { kind, id };
-}
-
-export interface StartFields {
-  readonly body: unknown;
-  readonly title?: unknown;
-  readonly subject?: unknown;
-  readonly scope?: unknown;
-  /** The model chosen before the first message (CS-7.30): an offered one, or absent for the default. */
-  readonly model?: unknown;
 }
 
 /**
@@ -140,35 +120,21 @@ async function citable(
 
 /**
  * The start's waits, then its grants asked after them: a cited task's through
- * `citable`; with none, the audit chain alone (SEC2-1).
+ * `citable`; with none, the added page's task as a message judges it, and the
+ * audit chain (SEC2-1).
  */
 async function startAdmitted(
   tx: TenantQuery,
   context: CommandContext,
   scope: Scope | null,
+  page: Page | null,
 ): Promise<{ readonly pageRefused: PageRefusal | null } | CommandRefusal> {
   if (scope !== null) return await citable(tx, context, scope);
-  await waitsFirst(tx, context.session, null);
+  const pageTask = await pageTaskOf(tx, null, page?.address ?? null);
+  const pageRefused = await waitsFirst(tx, context.session, pageTask);
   const subjects = subjectsOf(context.session);
   const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, await lockedInstant(tx));
-  return own.ok ? { pageRefused: null } : own.refusal;
-}
-
-/** The first message's fields, refused by name; undefined when they will do. */
-function startRefusal(
-  fields: StartFields,
-  scope: Scope | null | undefined,
-): CommandRefusal | undefined {
-  const invalid = [
-    ...(bounded(fields.body, BODY_LIMIT) ? [] : ['body']),
-    ...(optionalBounded(fields.title, TITLE_LIMIT) ? [] : ['title']),
-    ...(optionalBounded(fields.subject, SUBJECT_LIMIT) ? [] : ['subject']),
-    ...(scope === undefined ? ['scope'] : []),
-  ];
-  if (invalid.length === 0) return undefined;
-  return refuseCommand('FIELD_VALUE_INVALID', invalid, [
-    `Send the first message as body, 1 to ${BODY_LIMIT} characters; a title of at most ${TITLE_LIMIT} and a subject of at most ${SUBJECT_LIMIT} if any; and a scope as {"kind":"task","id":<task id>} or nothing.`,
-  ]);
+  return own.ok ? { pageRefused } : own.refusal;
 }
 
 export async function startConversation(
@@ -176,10 +142,10 @@ export async function startConversation(
   context: CommandContext,
   fields: StartFields,
 ): Promise<HandlerOutcome> {
-  const scope = scopeOf(fields.scope);
-  const invalid = startRefusal(fields, scope);
-  if (invalid !== undefined) return refused(invalid);
-  const admitted = await startAdmitted(tx, context, scope ?? null);
+  const checked = startFieldsOf(fields);
+  if (isCommandRefusal(checked)) return refused(checked);
+  const { scope, page } = checked;
+  const admitted = await startAdmitted(tx, context, scope, page);
   if (!('pageRefused' in admitted)) return refused(admitted);
   const { pageRefused } = admitted;
   const { session } = context;
@@ -191,8 +157,8 @@ export async function startConversation(
   await tx.query(
     `insert into conversations
        (business_id, id, owner_actor_id, owner_person_id, title, subject, scope_kind,
-        scope_record_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        scope_record_id, page_address, page_shows)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       tx.businessId,
       conversationId,
@@ -202,6 +168,8 @@ export async function startConversation(
       subject,
       scope?.kind ?? null,
       scope?.id ?? null,
+      page?.address ?? null,
+      page?.shows.trim() ?? null,
     ],
   );
   // CS-7.30: kept before the commit, so the first exchange asks for it; refused, nothing kept.
@@ -261,8 +229,9 @@ export async function messageConversation(
     readonly owner_actor_id: string;
     readonly body_purged_at: Date | null;
     readonly scope_record_id: string | null;
+    readonly page_address: string | null;
   }>(
-    `select owner_actor_id, body_purged_at, scope_record_id from conversations
+    `select owner_actor_id, page_address, body_purged_at, scope_record_id from conversations
       where business_id = $1 and id = $2
       for update`,
     [tx.businessId, fields.conversationId],
@@ -271,7 +240,8 @@ export async function messageConversation(
   if (conversation === undefined) return refused(refuseNotFound());
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
-  const pageRefused = await waitsFirst(tx, context.session, conversation.scope_record_id);
+  const { scope_record_id: scope, page_address: address } = conversation;
+  const pageRefused = await waitsFirst(tx, context.session, await pageTaskOf(tx, scope, address));
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
   // The grant the door asked is asked again at that clock: one that lapsed

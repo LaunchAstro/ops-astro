@@ -61,6 +61,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { carriedBy } from './carriage-handoff.ts';
 import { contextOf, type Context } from './conversation-context.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
 import { holdsOwnConversations } from './conversations.ts';
@@ -127,9 +128,11 @@ async function questionOf(
     readonly owner_person_id: string;
     readonly body: string;
     readonly scope_record_id: string | null;
+    readonly page_address: string | null;
     readonly author: string;
   }>(
-    `select c.owner_person_id, m.body, c.scope_record_id, m.author_actor_id::text as author
+    `select c.owner_person_id, m.body, c.scope_record_id, c.page_address,
+            m.author_actor_id::text as author
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
@@ -137,7 +140,8 @@ async function questionOf(
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
   );
   if (found === undefined) return undefined;
-  const { body, scope_record_id: page } = found;
+  const { body } = found;
+  const page = await pageTaskOf(tx, found.scope_record_id, found.page_address);
   const context = await contextOf(tx, session, { ...asked, body }, page);
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
@@ -219,7 +223,7 @@ async function answerOnce(
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question, keep })
       : undefined;
-  const handoff = { ...by, operation, model: question.model };
+  const handoff = { ...by, operation, model: question.model, page: question.page };
   const result = await callModelInConversation(
     database,
     businessId,

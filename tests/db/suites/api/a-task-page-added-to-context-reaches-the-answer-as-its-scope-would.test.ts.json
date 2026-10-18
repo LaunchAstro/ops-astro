@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a task page added to context reaches the answer as a task scope does: id and title only, cited by key, and a client's, unknown or unreadable page asks no model"
+}

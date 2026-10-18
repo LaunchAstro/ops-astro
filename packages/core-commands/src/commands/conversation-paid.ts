@@ -35,6 +35,7 @@ import {
   type Kept,
 } from './conversation-replies.ts';
 import { bounded } from './conversations.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 import { isCommandRefusal } from './refusal.ts';
 import { storableText } from './values.ts';
 
@@ -65,12 +66,17 @@ async function stillAsked(
 ): Promise<boolean> {
   const { asked, page } = ask;
   if ((await hearingAt(tx, session, asked, 'share')) === undefined) return false;
-  const [now] = await tx.query<{ readonly page: string | null; readonly model: string | null }>(
-    `select scope_record_id as page, model_id as model from conversations
-      where business_id = $1 and id = $2`,
+  const [now] = await tx.query<{
+    readonly page: string | null;
+    readonly address: string | null;
+    readonly model: string | null;
+  }>(
+    `select scope_record_id as page, page_address as address, model_id as model
+       from conversations where business_id = $1 and id = $2`,
     [tx.businessId, asked.conversationId],
   );
-  if (now === undefined || now.page !== page || now.model !== ask.model) return false;
+  if (now === undefined || now.model !== ask.model) return false;
+  if ((await pageTaskOf(tx, now.page, now.address)) !== page) return false;
   if (page === null) return true;
   // The task grants held too, so a revocation of the read waits for the send, as the conversation's do.
   await holdCoveringGrants(tx, subjectsOf(session), 'task', 'nowait');
