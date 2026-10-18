@@ -69,8 +69,11 @@ on production is an owner step in the runbook (PR2).
 ## How the actor reaches `db.withBusiness`
 
 The database login carries no actor. `db.withBusiness` sets only the business
-(`app.business_id`). The runner learns its actor id from the API session it
-signed in with, as the worker does. It passes that id in the `CorrectionRun`
+(`app.business_id`). The runner learns its actor id from the holder the API
+names in its own `task.pickup` answer (`holderActorId`). Before a pickup an
+agent may reach only `task.queue`, `task.pickup` and `task.take_launch`
+(`BEFORE_PICKUP`, `agent-envelope.ts`), so `session.capabilities` is refused
+then. It passes that id in the `CorrectionRun`
 with the lease id and fence. Every read and write under the lease compares
 `holder_actor_id`, the fence and the task under lock (`holdUnderLease`,
 `core-records/src/site/correction-receipts.ts:95`). A wrong or stale actor

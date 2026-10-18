@@ -41,15 +41,17 @@ function apiCall(settings: Settings, bearer: () => Promise<string>): AgentCall {
   };
 }
 
-/** A renewal's refusal, named; the runner keeps its current bearer until it lapses. */
-const renewalFailed = (because: string): void => {
-  console.error(`site-runner: a sign-in renewal failed: ${because}`);
+/**
+ * A renewal's refusal, as a fixed line: the sign-in server's own text can
+ * echo the password, so none of it is printed. The runner keeps its current
+ * bearer until it lapses.
+ */
+const renewalFailed = (): void => {
+  console.error('site-runner: a sign-in renewal failed');
 };
 
-/** Signed in as the runner's agent, with its actor id from the API's own answer; or why not. */
-async function signedIn(
-  settings: Settings,
-): Promise<{ call: AgentCall; actorId: string } | string> {
+/** Signed in as the runner's agent, or a fixed line saying it was refused. */
+async function signedIn(settings: Settings): Promise<AgentCall | string> {
   const login = {
     gotrueUrl: settings.OPS_ASTRO_GOTRUE_URL,
     email: settings.OPS_ASTRO_EMAIL,
@@ -57,15 +59,11 @@ async function signedIn(
     providerKey: settings.providerKey,
   };
   const bearer = await agentSignIn(login, renewalFailed, unredirected);
-  if ('because' in bearer) return `sign-in refused: ${bearer.because}`;
-  const call = apiCall(settings, bearer.current);
-  const self = await call('session.capabilities', {});
-  const actorId = 'detail' in self ? String(self.detail['agentActorId'] ?? '') : '';
-  return actorId === '' ? 'the API named no agent actor for this login' : { call, actorId };
+  return 'because' in bearer ? 'sign-in refused' : apiCall(settings, bearer.current);
 }
 
 /** The runner on custody, the fence and its own database login, and how to stop them. */
-async function hosted(settings: Settings, call: AgentCall, actorId: string) {
+async function hosted(settings: Settings, call: AgentCall) {
   const business = settings.OPS_ASTRO_BUSINESS_ID as Parameters<typeof queueClaims>[2];
   const db = connect(settings.SITE_RUNNER_DATABASE_URL, { max: 2 });
   const custody = await startCustody({
@@ -94,7 +92,12 @@ async function hosted(settings: Settings, call: AgentCall, actorId: string) {
   const runner = createSiteRunner({
     db,
     business,
-    actorId,
+    // Before a pickup an agent may ask nothing but the queue (`agent-envelope.ts`,
+    // `BEFORE_PICKUP`), so its actor is the holder the API names in its own pickup
+    // answer. Every run is on a claim, so it is read after that pickup.
+    get actorId() {
+      return claims.holder();
+    },
     claims,
     sites,
     raiseTask,
@@ -146,7 +149,7 @@ async function main(): Promise<number> {
     console.error(`site-runner: ${agent}`);
     return 1;
   }
-  const { runner, stop } = await hosted(settings, agent.call, agent.actorId);
+  const { runner, stop } = await hosted(settings, agent);
   // `launchctl bootout` sends SIGTERM: the pass in hand finishes, then everything stops.
   const stopping = new AbortController();
   process.once('SIGTERM', () => stopping.abort());
