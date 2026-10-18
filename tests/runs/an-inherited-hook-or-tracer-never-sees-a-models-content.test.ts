@@ -8,7 +8,10 @@
 // options; a model built or bound with callbacks, or built with core's
 // `callbackManager` alias; an `invoke` with callbacks or verbose output; the
 // model's own `callbacks` set after it is built, after it is bound, or by a
-// subclass before it is built, and its own `verbose` set after (#1921); and
+// subclass before it is built, and its own `verbose` set after (#1921); a
+// value that reads one way to the guard and another to core: the model's
+// `verbose` as a getter, a callback manager whose handlers are a getter, an
+// empty list with its own `map`, an empty list behind a proxy (#1925); and
 // the runner with a hook planted. Each is refused
 // `TRACING_NOT_ALLOWED` before any callback, with nothing sent, or runs
 // isolated with the hook never called. A `generate` whose options read empty
@@ -96,6 +99,10 @@ const OPTIONS = [
   'none-own-callbacks-set-after-binding',
   'none-own-callbacks-set-before-construction',
   'none-own-verbose-set-after-construction',
+  'none-own-verbose-read-late',
+  'none-generate-manager-handlers-read-late',
+  'none-invoke-empty-list-with-its-own-map',
+  'none-generate-empty-list-behind-a-proxy',
 ];
 
 // oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes

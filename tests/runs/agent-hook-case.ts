@@ -10,6 +10,7 @@
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
+import { CallbackManager } from '@langchain/core/callbacks/manager';
 import { awaitAllCallbacks } from '@langchain/core/callbacks/promises';
 import { registerConfigureHook, setContextVariable } from '@langchain/core/context';
 import { HumanMessage } from '@langchain/core/messages';
@@ -151,6 +152,47 @@ function ownCases(run: Run): Cases {
   };
 }
 
+/** Values that read one way to the guard and another to core (#1925). */
+function twoReadCases(run: Run): Cases {
+  const input = [new HumanMessage(MARKER)];
+  const model = (): OpsAstroChatModel => new OpsAstroChatModel(run.ports.broker, run.state);
+  return {
+    'none-own-verbose-read-late': async () => {
+      const built = model();
+      Object.defineProperty(built, 'verbose', { get: lateRead(false, true) });
+      return await built.invoke(input, {});
+    },
+    'none-generate-manager-handlers-read-late': async () => {
+      const manager = new CallbackManager();
+      Object.defineProperty(manager, 'handlers', { get: lateRead([], [new Recorder()], 2) });
+      return await model().generate([input], { callbacks: manager });
+    },
+    'none-invoke-empty-list-with-its-own-map': async () => {
+      const list = Object.defineProperty([], 'map', { value: () => [new Recorder()] });
+      return await model().invoke(input, { callbacks: list });
+    },
+    'none-generate-empty-list-behind-a-proxy': async () => {
+      let read = 0;
+      const list = new Proxy([] as Recorder[], {
+        get: (target, key) =>
+          key === 'length' && (read += 1) > 1
+            ? 1
+            : key === '0'
+              ? new Recorder()
+              : target[key as never],
+        has: (target, key) => key === '0' || key in target,
+      });
+      return await model().generate([input], { callbacks: list });
+    },
+  };
+}
+
+/** A getter that reads `first` for its first `times` reads and `after` from then on. */
+function lateRead<T>(first: T, after: T, times = 1): () => T {
+  let read = 0;
+  return () => ((read += 1) <= times ? first : after);
+}
+
 /** The runner, refusing a planted hook, or isolated in a fresh store. */
 const runnerCases = (run: Run): Cases => ({
   'context-runner': async () => await ran(run, false),
@@ -166,7 +208,9 @@ const runnerCases = (run: Run): Cases => ({
 async function main(kind: string): Promise<Record<string, unknown>> {
   const run = scripted((n) => (n === 1 ? reads(1) : final(2)));
   plant(kind);
-  const step = { ...modelCases(run), ...ownCases(run), ...runnerCases(run) }[kind];
+  const step = { ...modelCases(run), ...ownCases(run), ...twoReadCases(run), ...runnerCases(run) }[
+    kind
+  ];
   if (step === undefined) throw new Error('no such case');
   const result = await attempt(step);
   return { result, seen, marked, sent: run.sent.length, ended: run.ended };
