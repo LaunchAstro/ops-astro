@@ -18,8 +18,9 @@
 //   model's own `callbacks` and `verbose`, however they were set (#1921),
 //   including a getter or proxy that would read differently to core (#1925).
 //   Core then runs a model of its own (`BrokerTurns`), built here and never
-//   handed out, with no callbacks: nothing a caller sets on this model, or
-//   runs after the guard, reaches the callbacks core configures.
+//   handed out, with no callbacks, on messages rebuilt from their stored
+//   form, and checks again just before it configures callbacks: nothing a
+//   caller sets on this model, or runs after the guard, reaches them.
 
 import type { Callbacks } from '@langchain/core/callbacks/manager';
 import { BaseChatModel, type BindToolsInput } from '@langchain/core/language_models/chat_models';
@@ -27,18 +28,15 @@ import {
   type AIMessageChunk,
   type BaseMessage,
   coerceMessageLikeToMessage,
+  mapChatMessagesToStoredMessages,
+  mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 import type { ChatResult, LLMResult } from '@langchain/core/outputs';
-import { BrokerTurns, type BrokerPort, type OpsAstroCallOptions } from './broker-turns.ts';
+import { BrokerTurns, refused, type BrokerPort, type OpsAstroCallOptions } from './broker-turns.ts';
 import { entryRefused, ownRefused } from './guard.ts';
 import { RunEnd, type AttemptState } from './turn.ts';
 
 export type { BrokerPort, Turn, TurnAnswer } from './broker-turns.ts';
-
-const refused = (state: AttemptState): RunEnd => {
-  state.ended ??= new RunEnd('TRACING_NOT_ALLOWED', false);
-  return state.ended;
-};
 
 export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
   readonly #turns: BrokerTurns;
@@ -75,10 +73,12 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     options?: string[] | OpsAstroCallOptions,
     callbacks?: Callbacks,
   ): Promise<LLMResult> {
-    // Messages and options are read once, before the guard, so no caller
-    // code runs between the guard and the callbacks core configures.
+    // Messages and options are read once, before the guard: each message is
+    // rebuilt from its stored form, so core reads none of the caller's own.
     const turns = messages.map((list) =>
-      list.map((message) => coerceMessageLikeToMessage(message)),
+      mapStoredMessagesToChatMessages(
+        mapChatMessagesToStoredMessages(list.map((message) => coerceMessageLikeToMessage(message))),
+      ),
     );
     const asked = Array.isArray(options) ? [...options] : { ...options };
     if (entryRefused(Array.isArray(asked) ? {} : asked, callbacks) || ownRefused(this)) {

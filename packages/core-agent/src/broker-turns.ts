@@ -12,8 +12,9 @@ import {
   type BaseChatModelCallOptions,
 } from '@langchain/core/language_models/chat_models';
 import { AIMessage, type BaseMessage } from '@langchain/core/messages';
-import type { ChatResult } from '@langchain/core/outputs';
+import type { ChatResult, LLMResult } from '@langchain/core/outputs';
 import type { EndCode, RunOutcome, ToolCall, TurnPart } from '../../core-wire/src/index.ts';
+import { entryRefused } from './guard.ts';
 import { keepAnswer, partsOf, RunEnd, type AttemptState } from './turn.ts';
 
 /** One turn as the broker is sent it. */
@@ -42,6 +43,12 @@ export interface OpsAstroCallOptions extends BaseChatModelCallOptions {
   readonly tools?: readonly string[];
 }
 
+/** Ends the attempt `TRACING_NOT_ALLOWED`: a handler, flag, hook or tracing run tree is there. */
+export const refused = (state: AttemptState): RunEnd => {
+  state.ended ??= new RunEnd('TRACING_NOT_ALLOWED', false);
+  return state.ended;
+};
+
 /** The model core runs for each turn: no callbacks, no verbose output, no cache, never handed out. */
 export class BrokerTurns extends BaseChatModel<OpsAstroCallOptions> {
   readonly #port: BrokerPort;
@@ -55,6 +62,19 @@ export class BrokerTurns extends BaseChatModel<OpsAstroCallOptions> {
 
   _llmType(): string {
     return 'ops-astro-broker';
+  }
+
+  /**
+   * Core's last step before it configures callbacks, after it has merged the
+   * inherited config: the guard again, so nothing a caller's code did after
+   * the first check, a hook planted included, reaches the callbacks (#1925).
+   */
+  override async _generateUncached(
+    ...call: Parameters<BaseChatModel['_generateUncached']>
+  ): Promise<LLMResult> {
+    if (entryRefused(call[2])) throw refused(this.#state);
+    // oxlint-disable-next-line no-underscore-dangle -- the name is core's own
+    return await super._generateUncached(...call);
   }
 
   async _generate(
