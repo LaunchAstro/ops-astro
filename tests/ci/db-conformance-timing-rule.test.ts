@@ -19,7 +19,7 @@ const root = resolve(import.meta.dirname, '../..');
 const serverUrl = databaseUrlFromEnvironment();
 
 /** A suite that reads the fixture table, then fails on the runs `failing` names (1 is its first). */
-const suite = (failing: string, where: 'test' | 'file' = 'test'): string => `
+const suite = (failing: string, where: 'test' | 'file' | 'rejection' = 'test'): string => `
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import pg from 'pg';
@@ -39,7 +39,8 @@ test('reads the fixture table', async () => {
   } finally {
     await client.end();
   }
-  ${where === 'test' ? "expect(fails, 'this run is one the fixture fails').toBe(false);" : ''}
+  ${where === 'rejection' ? "if (fails) void Promise.reject(new Error('timing-rule fixture rejection nobody handled'));" : ''}
+  ${where === 'file' ? '' : "expect(fails, 'this run is one the fixture fails').toBe(false);"}
 });
 `;
 
@@ -181,6 +182,13 @@ async function neverReRunsAFailureNoTestOwns(): Promise<void> {
   expect(out.stdout).not.toContain('does not touch');
 }
 
+async function neverReRunsAFailureBesideAnUnhandledRejection(): Promise<void> {
+  const out = await run({ flaky: suite(ONCE, 'rejection') }, { event: 'merge_group' });
+  expect(out.status).toBe(1);
+  expect(out.stdout).not.toContain('does not touch');
+  expect(out.summary).not.toContain('timing:');
+}
+
 async function neverReRunsOutsideAGroup(plan: Plan | 'none'): Promise<void> {
   const out = await run({ flaky: suite(ONCE) }, plan);
   expect(out.status).toBe(1);
@@ -196,6 +204,18 @@ async function leavesOutAnUntouchedQuarantinedSuite(): Promise<void> {
   expect(out.ran).toStrictEqual(['steady']);
   expect(out.stdout).toContain('<listed> is left out of this merge group');
   expect(out.summary).toContain('<listed>: quarantined, #1798, owner Nathan-Mulligan');
+}
+
+async function aShardHoldingOnlyQuarantinedSuitesSitsOut(): Promise<void> {
+  const out = await run(
+    { listed: suite(ALWAYS) },
+    { event: 'merge_group', quarantined: ['listed'] },
+    ['--shard', '1/1'],
+  );
+  expect(out.status, out.stderr).toBe(0);
+  expect(out.ran).toStrictEqual([]);
+  expect(out.stdout).toContain('<listed> is left out of this merge group');
+  expect(out.stderr).not.toContain('was given no suite');
 }
 
 async function runsATouchedQuarantinedSuite(): Promise<void> {
@@ -235,6 +255,16 @@ describe.skipIf(serverUrl === undefined)('database conformance: the timing-failu
   it('blocks an untouched suite that fails again on its one re-run', blocksASecondFailure, minutes);
   it('never re-runs a suite the group touches', neverReRunsATouchedSuite, minutes);
   it('never re-runs a failure no test owns', neverReRunsAFailureNoTestOwns, minutes);
+  it(
+    'never re-runs a failed test beside an unhandled rejection',
+    neverReRunsAFailureBesideAnUnhandledRejection,
+    minutes,
+  );
+  it(
+    'passes a shard whose whole share is quarantined and left out',
+    aShardHoldingOnlyQuarantinedSuitesSitsOut,
+    minutes,
+  );
   it('never re-runs on a push', () => neverReRunsOutsideAGroup({ event: 'other' }), minutes);
   it('never re-runs without a plan', () => neverReRunsOutsideAGroup('none'), minutes);
   it(
