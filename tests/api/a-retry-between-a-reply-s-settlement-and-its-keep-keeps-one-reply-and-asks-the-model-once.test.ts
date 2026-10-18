@@ -12,11 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  purgeConversation,
-  writeWrapUp,
-  type ConversationReply,
-} from '../../packages/core-commands/src/index.ts';
+import { purgeConversation, writeWrapUp } from '../../packages/core-commands/src/index.ts';
 import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { waitingOn } from '../support/lock-waits.ts';
@@ -109,26 +105,30 @@ const CASES = [
   ['while the keep holds the conversation, its reply not committed', INSERT, 'hold-after', REPLY],
 ] as const satisfies readonly (readonly [string, string, StepHow, object])[];
 
+/** The first exchange stopped at `marker`, the retry run against it, and both answers. */
+async function raced(q: Asked, marker: string, how: StepHow) {
+  const step = stepped(c.fixture.db.appUrl, marker, how);
+  try {
+    const first = c.model.exchange(step.database, c.fixture.business, c.w.owner.presented, q);
+    await step.reached;
+    const again = retried(q);
+    // While the keep holds the conversation's row the retry waits on it; else it is answered first.
+    if (marker === INSERT) await waitingOn(c.fixture.db.admin, 'transactionid', LOCK);
+    else await again;
+    step.release();
+    return [await first, await again] as const;
+  } finally {
+    await step.close();
+  }
+}
+
 describe.skipIf(serverUrl === undefined)('a retry between settlement and keep', () => {
   it.each(CASES)(
     'a retry %s leaves one reply, and the model asked once',
     async (_when, marker, how, told) => {
       const q = await question();
       const before = asked();
-      const step = stepped(c.fixture.db.appUrl, marker, how);
-      let answers: readonly (ConversationReply | null)[] = [];
-      try {
-        const first = c.model.exchange(step.database, c.fixture.business, c.w.owner.presented, q);
-        await step.reached;
-        const again = retried(q);
-        // While the keep holds the conversation's row the retry waits on it; else it is answered first.
-        if (marker === INSERT) await waitingOn(c.fixture.db.admin, 'transactionid', LOCK);
-        else await again;
-        step.release();
-        answers = [await first, await again];
-      } finally {
-        await step.close();
-      }
+      const answers = await raced(q, marker, how);
       expect(answers).toMatchObject([REPLY, told]);
       expect(asked()).toBe(before + 1);
       const rows = await rowsOf(q.messageId);
@@ -173,6 +173,25 @@ async function rolledBack(q: Asked): Promise<void> {
   }
 }
 
+/** The conversation's body purged, a week's window over this world's work window passed. */
+async function purgedBody(conversationId: string) {
+  await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
+    const work = await writeBusinessSetting(tx, {
+      key: 'retention_window_days',
+      owningOperation: 'settings.set_retention_window',
+      value: 30,
+    });
+    expect(work).not.toBeUndefined();
+    await setConversationWindow(tx, 7);
+  });
+  await c.w.age(conversationId, 8);
+  return await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
+    const wrapped = await writeWrapUp(tx, { conversationId, codeRevision: 'answer-copy' });
+    expect(wrapped).toMatchObject({ ok: true });
+    return await purgeConversation(tx, { conversationId, operationId: randomUUID() });
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('an answer copy whose reply rolled back', () => {
   it('becomes a reply for the conversation owner only', async () => {
     const q = await question();
@@ -197,28 +216,7 @@ describe.skipIf(serverUrl === undefined)('an answer copy whose reply rolled back
     const q = await question();
     await rolledBack(q);
     expect((await rowsOf(q.messageId)).copies).toBe(1);
-    // A week's window over this world's work window, passed, so the wrap-up and the purge are due.
-    await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
-      const work = await writeBusinessSetting(tx, {
-        key: 'retention_window_days',
-        owningOperation: 'settings.set_retention_window',
-        value: 30,
-      });
-      expect(work).not.toBeUndefined();
-      await setConversationWindow(tx, 7);
-    });
-    await c.w.age(q.conversationId, 8);
-    const purged = await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
-      const wrapped = await writeWrapUp(tx, {
-        conversationId: q.conversationId,
-        codeRevision: 'answer-copy',
-      });
-      expect(wrapped).toMatchObject({ ok: true });
-      return await purgeConversation(tx, {
-        conversationId: q.conversationId,
-        operationId: randomUUID(),
-      });
-    });
+    const purged = await purgedBody(q.conversationId);
     expect(purged).toStrictEqual({ ok: true, replayed: false, messagesPurged: 1 });
     expect(await rowsOf(q.messageId)).toMatchObject({ replies: [], copies: 0 });
     const before = asked();

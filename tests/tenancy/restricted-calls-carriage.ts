@@ -2,13 +2,17 @@
 //
 // #1531's part of the restricted-calls contract (20261013010100, 20261013010200,
 // 20261013044500): an agent's conversation membership, a carried call's record and the one
-// session rule, gathered with MP-14-10a's part in
+// session rule, with #1563's answer copy (20261018060000), gathered with MP-14-10a's part in
 // `restricted-calls-mandates.ts` and spread into the main lists beside the rest. Apart from
 // them to keep each under the line limit.
 
-/** Table grants: a membership closes, and a carried call's times are set, by column grant. */
+/**
+ * Table grants: a membership closes, and a carried call's times are set, by column grant. A
+ * settled call's answer copy is deleted once its reply is kept (#1563).
+ */
 export const CARRIAGE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'conversation_agent_members model_call_carriers'],
+  ['sid', 'conversation_answer_copies'],
 ];
 
 /**

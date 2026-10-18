@@ -163,12 +163,9 @@ async function answerOnce(
 ): Promise<ConversationReply | null> {
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
   const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
-  // A read that came back after an earlier answer was kept and its flight ended: read again,
-  // and a settled answer whose keep failed is kept now from its copy (#1563).
+  // Read again after an earlier answer was kept, or keep it now from its settled copy (#1563).
   const reread = async () =>
-    await withSession(database, businessId, presented, (tx, now) =>
-      keptReply(tx, now, asked),
-    ).catch(heldElsewhere);
+    await withSession(database, businessId, presented, keptReply(asked)).catch(heldElsewhere);
   const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
   const operation = operationFor(question.model);

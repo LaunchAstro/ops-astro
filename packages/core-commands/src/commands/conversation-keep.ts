@@ -80,24 +80,22 @@ async function activeAt(tx: TenantQuery, conversationId: string, at: string): Pr
 }
 
 /**
- * The message's reply: the one kept, or one kept now by `keep` from its
- * settled call's answer copy, which no model is asked for. The copy is read
- * in the message's own conversation, and `keep` judges the caller under the
- * lock as it judges any reply.
+ * The message's reply, read in the caller's session: the one kept, or one
+ * kept now by `keep` from its settled call's answer copy, which no model is
+ * asked for. The copy is read in the message's own conversation, and `keep`
+ * judges the caller under the lock as it judges any reply.
  */
-export async function keptReply(
-  tx: TenantQuery,
-  session: Session,
-  asked: Asked,
-): Promise<Kept | undefined> {
-  const reply = await replyTo(tx, asked);
-  if (reply !== undefined) return reply;
-  const [copy] = await tx.query<{ readonly body: string }>(
-    `select a.body from conversation_answer_copies a
-       join conversation_messages m on m.business_id = a.business_id and m.id = a.message_id
-      where a.business_id = $1 and a.message_id = $2 and m.conversation_id = $3`,
-    [tx.businessId, asked.messageId, asked.conversationId],
-  );
-  if (copy === undefined || !usableReply(copy.body)) return undefined;
-  return await keep(tx, session, asked, copy.body);
-}
+export const keptReply =
+  (asked: Asked) =>
+  async (tx: TenantQuery, session: Session): Promise<Kept | undefined> => {
+    const reply = await replyTo(tx, asked);
+    if (reply !== undefined) return reply;
+    const [copy] = await tx.query<{ readonly body: string }>(
+      `select a.body from conversation_answer_copies a
+         join conversation_messages m on m.business_id = a.business_id and m.id = a.message_id
+        where a.business_id = $1 and a.message_id = $2 and m.conversation_id = $3`,
+      [tx.businessId, asked.messageId, asked.conversationId],
+    );
+    if (copy === undefined || !usableReply(copy.body)) return undefined;
+    return await keep(tx, session, asked, copy.body);
+  };

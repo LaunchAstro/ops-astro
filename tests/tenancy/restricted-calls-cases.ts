@@ -82,8 +82,6 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-01: the model-call ledger, and the copy register, which is append only.
   ['siu', 'model_calls'],
   ['si', 'copy_registrations'],
-  // #1563: a settled conversation call's answer, copied until its reply is kept, then deleted.
-  ['sid', 'conversation_answer_copies'],
   // AW-02: the pin and the read ledger are never rewritten; the audit copy is
   // kept and never read back by a run role.
   ['si', 'bootstrap_reads run_definition_pins'],
