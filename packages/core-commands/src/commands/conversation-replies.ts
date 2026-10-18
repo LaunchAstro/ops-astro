@@ -4,6 +4,7 @@
 // (`conversation-exchange.ts`): the kept answer, or a refusal in fixed words,
 // never the model's or the person's.
 
+import type { ConversationTargetsView } from '../../../core-wire/src/index.ts';
 import type { Cite } from './conversation-context.ts';
 
 /** What the person path hands back beside an applied message: the answer, or why none. */
@@ -14,6 +15,8 @@ export type ConversationReply =
       readonly body: string;
       /** The records the call read, by the product's own address. */
       readonly cites: readonly Cite[];
+      /** The tasks an edit it proposes may apply to, kept with it (#1666), as the caller may have them. */
+      readonly targets?: ConversationTargetsView;
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
@@ -128,6 +131,7 @@ export const heldWith = (heldMinor: number): ConversationReply => ({
 export interface Kept {
   readonly id: string;
   readonly body: string;
+  readonly targets?: ConversationTargetsView;
 }
 
 export const answered = (reply: Kept, cites: readonly Cite[]): ConversationReply => ({
@@ -135,4 +139,5 @@ export const answered = (reply: Kept, cites: readonly Cite[]): ConversationReply
   messageId: reply.id,
   body: reply.body,
   cites,
+  ...(reply.targets === undefined ? {} : { targets: reply.targets }),
 });
