@@ -1,40 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type {
-  SearchHit,
-  TaskReadResult,
-  TaskTimeView,
-} from '../../../../../packages/core-wire/src/index.ts';
+import type { TaskReadResult, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { CallResult, CommandOutcome, OperationsClient } from '../../operations/client.ts';
 import { settle, type Settlement } from '../../records/use-command.ts';
-import type { TimerCustody, TimerDurability } from './task-timer-custody.ts';
+import type {
+  Attempt,
+  TimerBinding,
+  TimerCustody,
+  TimerState,
+  TimerTask,
+} from './task-timer-types.ts';
+export type { TimerState, TimerTask } from './task-timer-types.ts';
 
-export type TimerTask = Pick<SearchHit, 'id'> & Partial<Pick<SearchHit, 'key' | 'title'>>;
-export interface TimerBinding {
-  readonly task: TimerTask;
-  readonly running: TaskTimeView['running'];
-}
-interface Attempt {
-  readonly command: 'time.start' | 'time.stop';
-  readonly task: TimerTask;
-  readonly payload: Readonly<{ taskId: string; expectedEntryId?: string }>;
-  readonly operationId: string;
-  readonly status: 'pending' | 'unknown' | 'refused' | 'abandoned';
-  readonly because: string | null;
-  readonly uncertain: boolean;
-  readonly refusal?: boolean;
-  readonly entryId: string | null;
-}
 interface ReadFlight {
   readonly ticket: number;
   readonly keys: Set<string>;
   answer: Promise<CallResult<TaskReadResult>> | null;
-}
-export interface TimerState {
-  readonly binding: TimerBinding | null;
-  readonly attempt: Attempt | null;
-  readonly changed: number;
-  readonly unavailable: boolean;
-  readonly durability: TimerDurability;
 }
 const initial = (): TimerState => ({
   binding: null,
