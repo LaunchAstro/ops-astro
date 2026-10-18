@@ -91,6 +91,7 @@
     "model-agent": "node apps/model-agent/main.ts",
     "forwarder": "node scripts/ops/forwarder.mjs",
     "endings": "node apps/endings/main.ts",
+    "automations:sweep": "node apps/automations/sweep.ts",
     "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {

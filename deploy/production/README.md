@@ -222,6 +222,22 @@ The drill still takes no target. It restores only into its own container,
 database. Its receipt's `ranOn` says `staging machine` for a drill on the M5:
 that is the store's own value for "on the machine", shared by both stores.
 
+## The scheduled occurrence sweep
+
+`ops-astro-occurrence-sweep.plist` is staging's
+[scheduled occurrence sweep](../staging/README.md#the-scheduled-occurrence-sweep)
+job renamed: `node apps/automations/sweep.ts` every 60 seconds, its env file
+`@PRODUCTION_SWEEP_ENV_FILE@` and its log `@PRODUCTION_SWEEP_LOG@`. The env
+file holds the same four settings: `AUTOMATION_FIRING`,
+`AUTOMATION_BUSINESS_KEYS`, `DATABASE_URL` (production's application login)
+and `DATABASE_LOOKUP_URL`. Unset `AUTOMATION_FIRING` means off, and any value
+but exactly `on` is off too.
+
+The job ships unloaded, with its env file absent. Loading it is the owner's
+switch-on step, A5 of #1653: after staging's proof, the runs gates and the
+owner's go, in daylight. One sweeping entry per environment: this job or a
+long-running API process with `AUTOMATION_FIRING=on`, never both.
+
 ## The promotion step
 
 `scripts/ops/promote.mjs` predates the Vercel plan. A real run stops and

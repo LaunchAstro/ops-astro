@@ -431,9 +431,40 @@ pools.
 
 This setting guards one process entry. The hosted function entry,
 `apps/api/function.ts`, starts no occurrence sweeper. A hosted installation
-needs the reviewed scheduled entry in slice A6 of #1653 before it can fire
-scheduled automations. Its deployed scheduler and settings remain unknown.
+fires scheduled automations through the scheduled occurrence sweep below.
 
 Production firing stays off until A5's runner and custody reviews, owner
 sign-in, staging proof, and owner's production go. A1 changes no deployed
 setting and grants no switch-on approval.
+
+## The scheduled occurrence sweep
+
+`ops-astro-staging-occurrence-sweep.plist` is a launchd job on the M5 that
+runs `node apps/automations/sweep.ts` (`pnpm automations:sweep`) every 60
+seconds. One run is one round of the occurrence sweep over staging's
+businesses, then it exits. Each business is swept in its own transaction as
+its own active worker; a business with none is skipped. No route, command
+line verb or request reaches it.
+
+Its env file, `@STAGING_SWEEP_ENV_FILE@`, holds four settings:
+
+| Setting                    | What it is                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `AUTOMATION_FIRING`        | exactly `on` to sweep; unset or any other value is off                                         |
+| `AUTOMATION_BUSINESS_KEYS` | the business keys to sweep, comma separated, or `none`, written as `RECOVERY_BUSINESS_KEYS` is |
+| `DATABASE_URL`             | the application login, the one the endings loop holds on this machine                          |
+| `DATABASE_LOOKUP_URL`      | the lookup login, which reads business ids and keys alone                                      |
+
+Unset means off: the run prints `automation sweep: firing off` and exits 0
+before it reads another setting or opens a connection. On, it prints one
+line of counts and no ids, `{"firing":"on","swept":n,"noWorker":m,"failed":f}`,
+to `@STAGING_SWEEP_LOG@`. It exits 1 when a business failed, a key naming no
+business included, and 2 on a settings problem, which it names on stderr. It
+refuses to start beside any login or key held elsewhere, `DATABASE_ADMIN_URL`
+among them.
+
+The job ships unloaded, with its env file absent. Loading it with
+`AUTOMATION_FIRING=on` is the owner's switch-on step, A5 of #1653, staging
+first. Run one sweeping entry per environment: this job or the API process's
+switch above, never both on. Both on is safe, since the claim starts each run
+once, but doubles the work.

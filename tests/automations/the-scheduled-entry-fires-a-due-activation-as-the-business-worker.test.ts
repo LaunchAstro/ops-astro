@@ -19,6 +19,7 @@ import { createAutomationWorld, type AutomationWorld } from './world.ts';
 const serverUrl = databaseUrlFromEnvironment();
 const AT = (): Date => new Date(Date.UTC(2026, 10, 3, 9, 30));
 
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('the scheduled entry with firing on', () => {
   let w: AutomationWorld;
   let worker: string;
