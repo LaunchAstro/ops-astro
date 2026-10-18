@@ -4,6 +4,7 @@
 
 import type { CommandName } from './command-names.ts';
 import { client, writing, type DataEffects } from './data-effects-types.ts';
+import { TASK } from './data-effects-shapes.ts';
 
 type OnboardingCommand = Extract<
   CommandName,
@@ -14,9 +15,9 @@ export const ONBOARDING_EFFECTS: { readonly [Name in OnboardingCommand]: DataEff
   // C41-A: the client row, its step tasks, a result comment, and the inbox item parking a step with its owner.
   'record.create': writing(client('clients')),
   // A step task moved to another client is no longer anyone's move.
-  'task.set_party': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.set_party': writing([...TASK.writes, ...client('inbox_items')]),
   // A step that opened while its task was in the trash is parked with its owner on restore.
-  'task.restore': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.restore': writing([...TASK.writes, ...client('inbox_items')]),
   'onboarding.start': writing(
     client('records', 'record_unique_values', 'onboardings', 'onboarding_steps', 'inbox_items'),
   ),
