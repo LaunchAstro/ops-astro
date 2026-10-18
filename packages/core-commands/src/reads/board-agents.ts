@@ -18,7 +18,11 @@ import {
   type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
-import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
+import type {
+  AgentAssigneeView,
+  AgentOfferView,
+  TaskRunView,
+} from '../../../core-wire/src/index.ts';
 
 export interface RowAgents {
   readonly agent: AgentAssigneeView | null;
@@ -60,12 +64,17 @@ export async function readBoardAgents(
 
 /**
  * SQL: the open launch `run`'s state, `unanswered` while it still waits once
- * `$5` minutes have passed since it was launched (#1710), judged when the
- * read's statement runs.
+ * `$5` minutes have passed since it was launched (#1710), and how long a
+ * waiting run's bound has left in whole milliseconds, rounded up so `waiting`
+ * always has some; both judged at the one time the read's statement runs.
  */
 const RUN_STATE = `case when run.state = 'waiting'
                         and run.launched_at <= statement_timestamp() - make_interval(mins => $5)
                        then 'unanswered' else run.state end`;
+const RUN_LEFT = `case when run.state = 'waiting'
+                       then greatest(0, ceil(1000 * extract(epoch from run.launched_at
+                              + make_interval(mins => $5) - statement_timestamp())))::integer
+                       else 0 end`;
 
 /** The agent holding each row, and whether a run of it is in progress there. */
 async function heldAgents(
@@ -82,13 +91,14 @@ async function heldAgents(
     readonly live: boolean;
     readonly run_state: 'waiting' | 'unanswered' | 'started' | null;
     readonly launched_at: Date | null;
+    readonly bound_left_ms: number;
   }>(
     `select r.id as task_id, a.id as agent_id, ${AGENT_NAME_SQL} as name,
             a.owner_person_id as owner_id, p.display_name as owner_name,
             exists (select 1 from public.delegations d
                      where d.business_id = r.business_id and d.agent_actor_id = a.id
                        and d.purpose_scope_id = r.id and ${DELEGATION_STANDS}) as live,
-            ${RUN_STATE} as run_state, run.launched_at
+            ${RUN_STATE} as run_state, run.launched_at, ${RUN_LEFT} as bound_left_ms
        from public.records r
        join public.actors a on a.business_id = r.business_id and a.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = a.business_id and p.id = a.owner_person_id
@@ -108,10 +118,17 @@ async function heldAgents(
       name: row.name,
       owner: row.owner_id === null ? null : { personId: row.owner_id, name: row.owner_name ?? '' },
       live: row.live,
-      run:
-        row.run_state === null || row.launched_at === null
-          ? null
-          : { state: row.run_state, launchedAt: row.launched_at.toISOString() },
+      run: runOf(row.run_state, row.launched_at, row.bound_left_ms),
     },
   ]);
 }
+
+/** The open run on the wire, or null when the task has none. */
+const runOf = (
+  state: TaskRunView['state'] | null,
+  launchedAt: Date | null,
+  boundLeftMs: number,
+): TaskRunView | null =>
+  state === null || launchedAt === null
+    ? null
+    : { state, launchedAt: launchedAt.toISOString(), boundLeftMs };

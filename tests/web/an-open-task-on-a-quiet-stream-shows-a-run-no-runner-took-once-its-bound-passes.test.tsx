@@ -28,6 +28,7 @@ it('a quiet healthy stream still shows a run no runner took once its bound passe
         return {
           state: Date.now() - launchedAt >= 15 * 60_000 ? 'unanswered' : 'waiting',
           launchedAt: new Date(launchedAt).toISOString(),
+          boundLeftMs: Math.max(0, launchedAt + 15 * 60_000 - Date.now()),
         };
       },
     },
@@ -48,7 +49,8 @@ it('a quiet healthy stream still shows a run no runner took once its bound passe
 
 it("asks again a minute later when the server's clock says the bound has not passed", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  const launchedAt = new Date(Date.now()).toISOString();
+  const launchedMs = Date.now();
+  const launchedAt = new Date(launchedMs).toISOString();
   const asked = { reads: 0 };
   const server = serving({
     agent: {
@@ -58,7 +60,12 @@ it("asks again a minute later when the server's clock says the bound has not pas
       live: true,
       get run() {
         asked.reads += 1;
-        return { state: 'waiting', launchedAt };
+        // Still waiting by this server's account, with its time left run out.
+        return {
+          state: 'waiting',
+          launchedAt,
+          boundLeftMs: Math.max(0, launchedMs + 15 * 60_000 - Date.now()),
+        };
       },
     },
     myAgents: [],
