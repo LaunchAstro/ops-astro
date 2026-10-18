@@ -77,15 +77,22 @@ export let broker: Broker;
 
 export const withRoutes = (routes: readonly BrokerRoute[]): Broker => ({ ...broker, routes });
 
+/** The broker's audit, written as `actorId`: another business's calls audit as its own agent. */
+export const auditAs =
+  (actorId: string) =>
+  async (tx: TenantQuery, note: AuditNote): Promise<void> => {
+    await writeAuditEvent(tx, {
+      actorId,
+      command: note.action,
+      outcome: note.outcome,
+      refusalCode: note.refusalCode,
+      payloadDigest: digestOf(note.detail),
+      attempted: note.outcome === 'refused' ? note.detail : null,
+    });
+  };
+
 const audit = async (tx: TenantQuery, note: AuditNote): Promise<void> => {
-  await writeAuditEvent(tx, {
-    actorId: s.agentActorId,
-    command: note.action,
-    outcome: note.outcome,
-    refusalCode: note.refusalCode,
-    payloadDigest: digestOf(note.detail),
-    attempted: note.outcome === 'refused' ? note.detail : null,
-  });
+  await auditAs(s.agentActorId)(tx, note);
 };
 
 const steps = new Map<string, string>();
