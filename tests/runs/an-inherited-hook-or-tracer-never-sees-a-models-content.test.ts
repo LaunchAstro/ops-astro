@@ -18,6 +18,12 @@
 // Controls: the same hook, on a plain model outside the agent, does see the
 // marker, and the same tracing settings outside the agent do reach the
 // listener, so the recorder and the listener are live.
+//
+// #1904 P15 adds the definition: the marker planted in the attempt's pinned
+// file, its system message (`agent-definition-hook-case.ts`). A planted hook
+// or tracing is refused before any callback, and an isolated run hands the
+// marker to the broker port, the way to the provider, with the hook never
+// called.
 
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -30,6 +36,7 @@ interface CaseResult {
   readonly marked: boolean;
   readonly sent: number;
   readonly ended: readonly string[];
+  readonly delivered?: boolean;
 }
 
 let hits = 0;
@@ -57,6 +64,7 @@ const CLEAN_ENV = Object.fromEntries(
 async function inFreshProcess(
   kind: string,
   extra: Readonly<Record<string, string>> = {},
+  script = 'tests/runs/agent-hook-case.ts',
 ): Promise<CaseResult & { readonly leaked: boolean; readonly hits: number }> {
   hits = 0;
   const env = {
@@ -66,19 +74,16 @@ async function inFreshProcess(
     ...extra,
   };
   const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((done) => {
-    execFile(
-      process.execPath,
-      ['tests/runs/agent-hook-case.ts', kind],
-      { env },
-      (_error, out, err) => {
-        done({ stdout: out, stderr: err });
-      },
-    );
+    execFile(process.execPath, [script, kind], { env }, (_error, out, err) => {
+      done({ stdout: out, stderr: err });
+    });
   });
   const line = stdout.trim().split('\n').at(-1) ?? '{}';
   const leaked = /OA-MARKER-/u.test(stdout) || /OA-MARKER-/u.test(stderr);
   return { ...(JSON.parse(line) as CaseResult), leaked, hits };
 }
+
+const DEFINITION_CASE = 'tests/runs/agent-definition-hook-case.ts';
 
 const REFUSED = ['context-direct', 'context-bound', 'env-direct', 'env-bound'];
 const OPTIONS = [
@@ -135,5 +140,32 @@ describe('an inherited hook or tracer never sees an agent model content', () => 
       LANGSMITH_TRACING: 'true',
     });
     expect(run.hits).toBeGreaterThan(0);
+  });
+});
+
+describe("a run's definition never reaches an inherited hook or tracer", () => {
+  it("a run's definition with a hook planted is refused before any callback", async () => {
+    // Mutation: the system message built before the run's refusal, inside a hooked store -> seen, red.
+    const run = await inFreshProcess('definition-context-runner', {}, DEFINITION_CASE);
+    expect(run).toMatchObject({ result: 'TRACING_NOT_ALLOWED', seen: 0, marked: false, sent: 0 });
+    expect(run).toMatchObject({ delivered: false, leaked: false });
+  });
+
+  it("a run's definition in a fresh store reaches the broker port, never the hook", async () => {
+    // Mutation: the run's store not isolated -> the hook sees the definition, red.
+    const run = await inFreshProcess('definition-env-runner-isolated', {}, DEFINITION_CASE);
+    expect(run).toMatchObject({ result: 'ran', seen: 0, marked: false, sent: 2, delivered: true });
+    expect(run.leaked).toBe(false);
+  });
+
+  it("LangSmith: a run's definition with tracing on is refused and sends its endpoint nothing", async () => {
+    // Mutation: the runner skips `runRefused` when it has a definition -> sent and traced, red.
+    const run = await inFreshProcess(
+      'definition-tracing-runner',
+      { LANGSMITH_TRACING: 'true' },
+      DEFINITION_CASE,
+    );
+    expect(run).toMatchObject({ result: 'TRACING_NOT_ALLOWED', sent: 0, leaked: false });
+    expect(run.hits).toBe(0);
   });
 });

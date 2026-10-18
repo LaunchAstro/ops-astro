@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P11: definition.read leaves an owner-entered internal task internal, so its [definition, task] turn takes the cloud route, and a definition carries its task's class, so an outside task's [definition]-only turn takes only the local route."
+}

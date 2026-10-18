@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P12: the start and custody's admission each bind a definition part again under their own locks: with every earlier guard still passing, a run whose ledger row the owner deleted after the reserve is released PROVENANCE_UNBOUND at the start, and not admitted at a subscription handoff, while a disposable control built the same way settles or is admitted."
+}

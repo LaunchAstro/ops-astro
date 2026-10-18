@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P5: a definition part whose text differs from the bytes the run read (one character, CRLF, NFD, a byte order mark added or removed, an instruction appended), carrying the read file's own digest, is refused PROVENANCE_UNBOUND before any hold or send."
+}

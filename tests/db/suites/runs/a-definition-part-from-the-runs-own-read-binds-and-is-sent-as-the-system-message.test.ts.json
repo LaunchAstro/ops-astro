@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P1: a definition part made from the run's own definition.read binds by its hash and the run's ledger row, settles, and reaches the provider as a system message byte-equal to the pinned file."
+}

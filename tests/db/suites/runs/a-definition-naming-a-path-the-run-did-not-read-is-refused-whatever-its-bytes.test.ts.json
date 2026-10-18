@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P9: a definition part carrying the bytes and digest the run read under another spelling of the path (./AGENTS.md, agents.md, AGENTS.md/, docs/AGENTS.md) is refused PROVENANCE_UNBOUND before any hold: the ledger binds the path too."
+}
