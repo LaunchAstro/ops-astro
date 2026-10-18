@@ -5,7 +5,8 @@
 // it records, resolves nothing by name or path when the pin is missing, and
 // hands the bytes back only after their ledger row and the read's one audit
 // event are written. The audit copy is kept in a savepoint: a copy the store
-// cannot keep is raised to the team (AW-04) and the read goes through.
+// cannot keep is raised to the team (AW-04) and the read goes through. The
+// agent door's caller is `definition.read` (#1904), under the model call's locks.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery, TransactionQuery } from '../../core-records/src/index.ts';
