@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A correction whose page is edited between its stamp and its publish never publishes (#1693, gap 2): Launch inside the 60 s bound is accepted and the runner's head check before its first write sends nothing; a locate pass after the edit supersedes the version and Launch is refused with the row unchanged; an edit just before the publish's write is refused by the blob precondition with nothing written and a person task; an edit to another file leaves the version fresh and it publishes."
+}
