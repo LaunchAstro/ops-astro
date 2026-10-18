@@ -7,10 +7,12 @@
 // the wait is seen after it and refused, with nothing sent or stored.
 
 import { describe, expect, it } from 'vitest';
+import { advisoryLock } from '../../packages/core-records/src/index.ts';
 import { codeOf } from '../commands/agent-fixture.ts';
 import { held, seenWaiting } from '../site/party-site-races.ts';
 import {
   ask,
+  ownBody,
   requestOwn,
   sends,
   serverUrl,
@@ -112,5 +114,30 @@ describe.skipIf(serverUrl === undefined)('at the agent’s request on our own si
     expect(codeOf(await request)).toBe('CORRECTION_NOT_OWN_WORK');
     expect(waited).toBe(true);
     expect(await storedOn(picked.taskId)).toBe(0);
+  }, 120_000);
+});
+
+describe.skipIf(serverUrl === undefined)('at a replay of the agent’s request', () => {
+  it('gets no stored receipt back from a replay that waited on the audit chain while an agent wrote', async () => {
+    const picked = await workedBy('owner', 'Our about page, replay during audit wait');
+    const body = ownBody(picked);
+    expect(codeOf(await requestOwn(picked, body))).toBe('not-a-refusal');
+    const holding = held(w, async (tx) => {
+      await advisoryLock(tx, tx.businessId.toLowerCase());
+    });
+    await holding.ready;
+    const request = requestOwn(picked, body);
+    let waited = false;
+    try {
+      waited = await seenWaiting(w, /insert into audit_events/u);
+      await wrote(picked.taskId, w.world.agentActorId);
+    } finally {
+      holding.release();
+      await holding.done;
+    }
+    expect(waited).toBe(true);
+    const replayed = await request;
+    expect(codeOf(await requestOwn(picked))).toBe('CORRECTION_NOT_OWN_WORK');
+    expect(codeOf(replayed)).toBe('CORRECTION_NOT_OWN_WORK');
   }, 120_000);
 });
