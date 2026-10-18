@@ -2,15 +2,18 @@
 //
 // SQL text as tokens, read the way PostgreSQL reads it (statements.ts
 // scanToken), for migration-column-grants.ts: comments dropped, unquoted words
-// folded to lower case, and every string's value decoded, E'' and U&''
-// escapes included, so text spelt with escapes reads as what the server runs.
+// folded to lower case, and every string's value read. Escapes are refused,
+// not decoded: in an E'' or U&'' string any backslash but `\\` (one literal
+// backslash, which spells nothing) is an error, so text cannot be spelt with
+// escapes past the reader. A setting that changes how strings read is refused
+// by migration-column-grants.ts.
 
 import { scanToken } from '../../packages/core-records/src/tenancy/statements.ts';
 
 export interface Token {
   /**
    * `word` is folded to lower case; `name` is a quoted identifier, unquoted;
-   * `quoted` holds a string's or a dollar-quoted body's value, escapes decoded.
+   * `quoted` holds a string's or a dollar-quoted body's value.
    */
   readonly kind: 'word' | 'name' | 'quoted' | 'other';
   readonly text: string;
@@ -18,35 +21,21 @@ export interface Token {
 
 const SPACE = /^[ \t\n\r\f\v]$/u;
 
-/** An E'' string's escapes (PostgreSQL's lexical rules, "String Constants with C-Style Escapes"). */
-const C_ESCAPE =
-  /\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|([\s\S]))/gu;
-const NAMED: Readonly<Record<string, string>> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
-/** A U&'' string's escapes, with the default escape character. */
-const UNICODE_ESCAPE = /\\(?:\+([0-9A-Fa-f]{6})|([0-9A-Fa-f]{4})|(\\))/gu;
-
-/** A string's value: each quoted run, quotes undoubled, continuations joined, escapes decoded. */
-function stringValue(text: string, escapes: 'c' | 'unicode' | 'none'): string {
+/**
+ * A string's value: each quoted run, quotes undoubled, continuations joined.
+ * In an E'' or U&'' string, `\\` is one backslash and any other escape is refused.
+ */
+function stringValue(text: string, escapes: boolean): string {
   // A backslash escapes a quote only in an E'' string.
-  const quotedRun = escapes === 'c' ? /'((?:[^'\\]|''|\\[\s\S])*)'/gu : /'((?:[^']|'')*)'/gu;
+  const quotedRun = /^[Ee]'/u.test(text) ? /'((?:[^'\\]|''|\\[\s\S])*)'/gu : /'((?:[^']|'')*)'/gu;
   const runs = [...text.matchAll(quotedRun)].map((match) => match[1] ?? '');
   const joined = runs.map((run) => run.replaceAll("''", "'")).join('');
-  if (escapes === 'c') {
-    return joined.replaceAll(C_ESCAPE, (_, oct, hex, u4, u8, other: string | undefined) => {
-      const code = oct ?? hex ?? u4 ?? u8;
-      const base = oct === undefined ? 16 : 8;
-      if (code === undefined) return NAMED[other ?? ''] ?? other ?? '';
-      return String.fromCodePoint(Number.parseInt(code, base));
-    });
+  if (!escapes) return joined;
+  for (const escape of joined.matchAll(/\\[\s\S]?/gu)) {
+    if (escape[0] !== '\\\\')
+      throw new Error(`a string escape ${escape[0]}, which this reader refuses`);
   }
-  if (escapes === 'unicode') {
-    return joined.replaceAll(
-      UNICODE_ESCAPE,
-      (_, six, four, slash: string | undefined) =>
-        slash ?? String.fromCodePoint(Number.parseInt(six ?? four, 16)),
-    );
-  }
-  return joined;
+  return joined.replaceAll('\\\\', '\\');
 }
 
 export function tokens(sql: string): Token[] {
@@ -69,8 +58,7 @@ export function tokens(sql: string): Token[] {
       found.push({ kind: 'quoted', text: /^(\$[^$]*\$)([\s\S]*)\1$/u.exec(text)?.[2] ?? '' });
     } else if (token.kind === 'quoted') {
       if (unicode) found.splice(-2, 2);
-      const escapes = /^[Ee]'/u.test(text) ? 'c' : unicode ? 'unicode' : 'none';
-      found.push({ kind: 'quoted', text: stringValue(text, escapes) });
+      found.push({ kind: 'quoted', text: stringValue(text, unicode || /^[Ee]'/u.test(text)) });
     } else found.push({ kind: token.kind, text });
   }
   return found;

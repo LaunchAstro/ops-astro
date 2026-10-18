@@ -10,8 +10,10 @@
 // only, so a column grant a later migration revokes still needs its contract
 // line here.
 //
-// Quoted SQL is read as the server reads it: escapes in E'' and U&'' strings
-// are decoded first. SQL built at run time cannot be read from text, so it is
+// Quoted SQL is read as the server reads it, and an escape in an E'' or U&''
+// string other than a literal backslash is refused, never decoded
+// (sql-tokens.ts), as is any setting that changes how the server reads strings.
+// SQL built at run time cannot be read from text, so it is
 // refused: every EXECUTE in a function or DO body takes a literal, or format()
 // of a literal whose only placeholder is %I, with nothing joined to it; and a
 // function body is SQL or PL/pgSQL. The database suites stay the gate in the
@@ -203,6 +205,34 @@ function refuseLanguage(list: readonly Token[]): void {
 }
 
 /**
+ * Settings that change how the server reads strings: standard_conforming_strings
+ * off gives plain strings escapes, and a client encoding such as SJIS can take a
+ * backslash into the character before it, so the text no longer reads as written.
+ */
+const STRING_SETTINGS = /standard_conforming_strings|client_encoding/iu;
+
+/**
+ * Refuse a setting that changes how strings read: its name as a word, quoted
+ * name or string; SET NAMES; a set_config() whose setting is not one literal;
+ * and pg_settings, whose update sets a parameter.
+ */
+function refuseStringSettings(list: readonly Token[]): void {
+  for (const [at, token] of list.entries()) {
+    if (STRING_SETTINGS.test(token.text))
+      throw new Error(`"${token.text}", which changes how strings read`);
+    const name = token.kind === 'word' || token.kind === 'name' ? token.text.toLowerCase() : '';
+    if (name === 'names' && ['set', 'session', 'local'].some((w) => isWord(list[at - 1], w)))
+      throw new Error('SET NAMES, which changes how strings read');
+    if (name === 'pg_settings') throw new Error('pg_settings, whose update sets a parameter');
+    if (
+      name === 'set_config' &&
+      (list[at + 1]?.text !== '(' || list[at + 2]?.kind !== 'quoted' || list[at + 3]?.text !== ',')
+    )
+      throw new Error('a set_config() whose setting is not one literal');
+  }
+}
+
+/**
  * Refuse a grant made from quoted SQL (an `execute` of a string, or a function
  * body that runs one) unless the string alone shows it names no column: it
  * reaches TO, and what it grants and to whom are names, commas and `%I`. A
@@ -212,6 +242,7 @@ function refuseLanguage(list: readonly Token[]): void {
 function refuseQuoted(sql: string, anyFormat: boolean): void {
   for (const piece of splitStatements(sql)) {
     const list = tokens(piece);
+    refuseStringSettings(list);
     refuseLanguage(list);
     refuseDynamic(list, anyFormat);
     for (const token of list) if (token.kind === 'quoted') refuseQuoted(token.text, anyFormat);
@@ -242,6 +273,7 @@ export function columnGrants(
   return statements.flatMap((statement, at) => {
     try {
       const list = tokens(statement);
+      refuseStringSettings(list);
       refuseLanguage(list);
       for (const token of list)
         if (token.kind === 'quoted') refuseQuoted(token.text, options.anyFormat === true);
