@@ -670,6 +670,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  // #1623 R1: the lease holder's stop, asked of the lease like model.call.
+  declare('run.end', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work
   // controls. The runtime asks the same pair of the run's own task again under
