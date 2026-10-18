@@ -25,6 +25,7 @@ import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { CORRECTION_REQUEST } from './live-correction-agent.ts';
+import { RUN_END } from './run-end-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { handbackLease } from './tasks-handback.ts';
@@ -895,6 +896,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   ['live_correction.request', row(CORRECTION_REQUEST)],
+  ['run.end', row(RUN_END)],
   [
     'model.call',
     modelCallRow(() =>
