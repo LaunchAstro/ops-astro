@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1692) takes its lease through the real queue: a person's approved site_publish step is picked up as its agent actor, its task's correction published under that lease, the lease renewed while followed and handed back once settled; work with another purpose stays on the queue."
+}
