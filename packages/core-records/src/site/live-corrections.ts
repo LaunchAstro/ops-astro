@@ -11,13 +11,13 @@
 // an approver changed at the same moment is either seen or waited for.
 //
 // The system write that records an observed publish or revert with its
-// receipt is `correction-receipts.ts`; the decision read and the approver
-// reads, `correction-decisions.ts`; the grant filter and its lock, `covering.ts`.
+// receipt is `correction-receipts.ts`; the decision read, its write and the
+// approver reads, `correction-decisions.ts`; the grant filter and its lock, `covering.ts`.
 
 import { randomUUID } from 'node:crypto';
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { isPartysTask, shareClientSite } from './party-sites.ts';
+import { shareClientSite, taskClient } from './party-sites.ts';
 import {
   COVERED,
   EFFECTIVE_AT,
@@ -31,7 +31,10 @@ export const GATE_COLLECTION = 'gate';
 export const APPROVER_SETTING = 'live_correction_approver';
 
 export type CorrectionState =
+  | 'locating'
+  | 'unlocated'
   | 'requested'
+  | 'superseded'
   | 'approved'
   | 'rejected'
   | 'cancelled'
@@ -66,18 +69,42 @@ export interface LiveCorrection {
   readonly revision: number;
 }
 
-type Decided = 'decidedByPersonId' | 'decidedVersionDigest' | 'singleOperatorSelfApproval';
-export type NewLiveCorrection = Omit<
-  LiveCorrection,
-  'id' | 'state' | Decided | 'revision' | 'versionId'
->;
+type PinKey = 'preImageDigest' | 'baseRevision' | 'versionId' | 'versionDigest';
 
-const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
+/**
+ * A correction the site runner has not pinned (#1693): `locating`, `unlocated`, or cancelled
+ * before it was located. It names no version, so nothing can decide or run it.
+ */
+export type UnpinnedCorrection = Omit<LiveCorrection, PinKey> & {
+  readonly [K in PinKey]: null;
+};
+
+/** Any stored correction: pinned (`LiveCorrection`) or not yet. */
+export type StoredCorrection = LiveCorrection | UnpinnedCorrection;
+
+/**
+ * A request as the door sends it (#1693): the task, the page as the person typed it, and the two
+ * words. The site, its page and file are resolved in the insert; the version is pinned later by
+ * the site runner from the file itself, never taken from a caller.
+ */
+export interface NewLiveCorrection {
+  readonly taskId: string;
+  readonly requestedByActorId: string;
+  readonly requestedByPersonId: string;
+  readonly delegationId: string | null;
+  /** The page's exact address, or its last path segment in any case (`home` for the root). */
+  readonly page: string;
+  readonly word: string;
+  readonly replacement: string;
+  readonly seam: string;
+}
+
+export const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
   c.delegation_id, c.target_path, c.word, c.replacement, c.page_url, c.pre_image_digest,
   c.base_revision, c.seam, c.version_id, c.version_digest, c.state, c.decided_by_person_id,
   c.decided_version_digest, c.single_operator_self_approval, c.revision`;
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly party_id: string | null;
   readonly task_id: string;
@@ -88,11 +115,11 @@ interface Row {
   readonly word: string;
   readonly replacement: string;
   readonly page_url: string;
-  readonly pre_image_digest: string;
-  readonly base_revision: string;
+  readonly pre_image_digest: string | null;
+  readonly base_revision: string | null;
   readonly seam: string;
-  readonly version_id: string;
-  readonly version_digest: string;
+  readonly version_id: string | null;
+  readonly version_digest: string | null;
   readonly state: CorrectionState;
   readonly decided_by_person_id: string | null;
   readonly decided_version_digest: string | null;
@@ -100,7 +127,7 @@ interface Row {
   readonly revision: number;
 }
 
-function correctionFrom(row: Row): LiveCorrection {
+function correctionFrom(row: Row): StoredCorrection {
   return {
     id: row.id,
     partyId: row.party_id,
@@ -122,84 +149,85 @@ function correctionFrom(row: Row): LiveCorrection {
     decidedVersionDigest: row.decided_version_digest,
     singleOperatorSelfApproval: row.single_operator_self_approval,
     revision: row.revision,
-  };
+  } as StoredCorrection;
+}
+
+/** A row read only where it is pinned (`c.pre_image_digest is not null` in its query). */
+export const pinnedFrom = (row: Row): LiveCorrection => correctionFrom(row) as LiveCorrection;
+
+/** A request's refusal: the task's own site holds no one page by that name. */
+export interface PageRefused {
+  readonly ok: false;
+  readonly code: 'PAGE_NOT_FOUND';
 }
 
 /**
- * A request's refusals: its party is not the client of a live task (null: the task has a client),
- * or its page and file are not one pair that site holds.
+ * The last path segment of a page's address, in lower case, or `home` for the site's root: the
+ * name a person may type for it.
  */
-export type PartyRefused = {
-  readonly ok: false;
-  readonly code: 'CORRECTION_PARTY_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE';
-};
+const PAGE_NAME = `coalesce(nullif(lower(regexp_replace(regexp_replace(
+    regexp_replace(p.page_url, '^[a-z]+://[^/]+', ''), '/+$', ''), '^.*/', '')), ''), 'home')`;
 
 /**
- * Store a request at its task's own client (the `client` link), read in the insert under a share
- * lock on the task: a party the task does not carry, a record that is no task, or a trashed task
- * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. A null party names a task with no
- * client, whose site is the business's own (R6). The page and file are joined in the same
- * statement as one pair of that site (its holder: the client, or the business), key-share locked so an unbind waits for the
- * request, and the site row share-locked so a move of its providers waits too (and the request
- * for a move in flight); any other spelling, another client's page or none is
- * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here. The site row is
- * share-locked first, on its own: an unbind takes the site before the page, so
- * a request does too, and neither holds what the other waits on.
+ * Store a request `locating` on its task's own site (#1693). The holder is the task's client, read
+ * in the insert under a share lock on the task, or the business itself for a task with no client
+ * (R6). The typed page, trimmed, names a page of that holder's site only, inside the query: its
+ * exact address, or its last path segment in any case. Exactly one match stores the request with
+ * that page's address and file; none, more than one, another holder's page or an unbound name is
+ * one `PAGE_NOT_FOUND`, storing nothing and telling no id, address or count. The page is key-share
+ * locked so an unbind waits for the request, and the site row share-locked so a move of its
+ * providers does too; the site row is share-locked first, on its own, as an unbind takes the site
+ * before the page. No pin is stored: the site runner pins the version from the file itself.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
   input: NewLiveCorrection,
-): Promise<LiveCorrection | PartyRefused> {
-  await shareClientSite(tx, input.partyId);
+): Promise<StoredCorrection | PageRefused> {
+  const client = await taskClient(tx, input.taskId);
+  if (client !== undefined) await shareClientSite(tx, client);
   const [row] = await tx.query<Row>(
-    `insert into public.live_corrections as c
+    `with task as (
+       select r.business_id, r.id, r.uuid_7 from public.records r
+         join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+        where r.business_id = $1 and r.id = $3::uuid and t.key = 'task' and r.deleted_at is null
+          for share of r),
+     named as (
+       select p.page_url, p.path from task
+         join public.party_site_pages p
+           on p.business_id = task.business_id and p.holder = coalesce(task.uuid_7, task.business_id)
+         join public.party_sites s on s.business_id = p.business_id and s.holder = p.holder
+        where p.page_url = $8::text or ${PAGE_NAME} = lower($8::text)
+          for key share of p for share of s)
+     insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
-        delegation_id, target_path, word, replacement, page_url, pre_image_digest,
-        base_revision, seam, version_id, version_digest)
-     select r.business_id, $2::uuid, r.uuid_7, r.id, $5::uuid, $6::uuid, $7::uuid, $8::text,
-            $9::text, $10::text, $11::text, $12::text, $13::text, $14::text, $15::uuid,
-            $16::text
-       from public.records r
-       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-       join public.party_site_pages p
-         on p.business_id = r.business_id and p.holder = coalesce(r.uuid_7, r.business_id)
-        and p.page_url = $11::text and p.path = $8::text
-       join public.party_sites s on s.business_id = p.business_id and s.holder = p.holder
-      where r.business_id = $1 and r.id = $4::uuid and t.key = 'task'
-        and r.uuid_7 is not distinct from $3::uuid and r.deleted_at is null
-        for share of r for key share of p for share of s
+        delegation_id, target_path, word, replacement, page_url, seam, state)
+     select task.business_id, $2::uuid, task.uuid_7, task.id, $4::uuid, $5::uuid, $6::uuid,
+            named.path, $9::text, $10::text, named.page_url, $7::text, 'locating'
+       from task, named
+      where (select count(*) from named) = 1
      returning ${COLUMNS}`,
     [
       tx.businessId,
       randomUUID(),
-      input.partyId,
       input.taskId,
       input.requestedByActorId,
       input.requestedByPersonId,
       input.delegationId,
-      input.targetPath,
+      input.seam,
+      input.page.trim(),
       input.word,
       input.replacement,
-      input.pageUrl,
-      input.preImageDigest,
-      input.baseRevision,
-      input.seam,
-      randomUUID(),
-      input.versionDigest,
     ],
   );
-  if (row !== undefined) return correctionFrom(row);
-  return {
-    ok: false,
-    code: (await isPartysTask(tx, input)) ? 'PAGE_OUTSIDE_PARTY_SITE' : 'CORRECTION_PARTY_MISMATCH',
-  };
+  return row === undefined ? { ok: false, code: 'PAGE_NOT_FOUND' } : correctionFrom(row);
 }
 
 /**
  * One correction by its id on `taskId`, locked, with no grant filter: the
  * system's read for the runner, whose authority is the worker lease on that
  * task (`correction-receipts.ts` checks it in the same transaction). A
- * correction on another task is not read, locked or told apart from none.
+ * correction on another task, or one not pinned yet (#1693), is not read,
+ * locked or told apart from none.
  */
 export async function lockCorrectionForSystem(
   tx: TenantQuery,
@@ -209,11 +237,12 @@ export async function lockCorrectionForSystem(
   const rows = await tx.query<Row>(
     `select ${COLUMNS} from public.live_corrections c
       where c.business_id = $1 and c.id = $2 and c.task_id = $3
+        and c.pre_image_digest is not null
       for update of c`,
     [tx.businessId, id, taskId],
   );
   const [row] = rows;
-  return row === undefined ? undefined : correctionFrom(row);
+  return row === undefined ? undefined : pinnedFrom(row);
 }
 
 /**
@@ -231,7 +260,7 @@ export async function lockCoveredCorrection(
   tx: TenantQuery,
   id: string,
   covering: Covering,
-): Promise<LiveCorrection | undefined> {
+): Promise<StoredCorrection | undefined> {
   const parameters = [tx.businessId, ...coveringParameters(covering), id];
   const [row] = await tx.query<Row>(
     `${EFFECTIVE_AT}
@@ -255,7 +284,7 @@ export async function lockCoveredCorrection(
 export async function listCoveredCorrections(
   tx: TenantQuery,
   subjects: readonly Subject[],
-): Promise<readonly LiveCorrection[]> {
+): Promise<readonly StoredCorrection[]> {
   const rows = await tx.query<Row>(
     `${EFFECTIVE_AT}
      select ${COLUMNS} from public.live_corrections c
@@ -267,34 +296,4 @@ export async function listCoveredCorrections(
     ],
   );
   return rows.map((row) => correctionFrom(row));
-}
-
-export interface DecisionWrite {
-  readonly id: string;
-  readonly decision: 'approved' | 'rejected';
-  readonly actorId: string;
-  readonly personId: string;
-  readonly selfApproval: boolean;
-}
-
-/**
- * Write the decision on a row the caller has already locked and judged. The
- * decision records the version digest of the version the approver named.
- */
-export async function writeCorrectionDecision(
-  tx: TenantQuery,
-  write: DecisionWrite,
-): Promise<LiveCorrection> {
-  const rows = await tx.query<Row>(
-    `update public.live_corrections as c
-        set state = $3, decided_by_actor_id = $4, decided_by_person_id = $5,
-            decided_at = now(), decided_version_digest = c.version_digest,
-            single_operator_self_approval = $6, revision = c.revision + 1, updated_at = now()
-      where c.business_id = $1 and c.id = $2 and c.state = 'requested'
-      returning ${COLUMNS}`,
-    [tx.businessId, write.id, write.decision, write.actorId, write.personId, write.selfApproval],
-  );
-  const [row] = rows;
-  if (row === undefined) throw new Error('writeCorrectionDecision: the row left requested');
-  return correctionFrom(row);
 }

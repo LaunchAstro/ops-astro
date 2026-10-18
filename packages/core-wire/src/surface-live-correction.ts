@@ -4,17 +4,7 @@
 // `write-operands.ts`, whose type checks every operand (moved whole for the line cap).
 
 export const LIVE_CORRECTION_OPERANDS = {
-  'live_correction.request': {
-    partyId: 'any',
-    taskId: 'any',
-    path: 'any',
-    word: 'any',
-    replacement: 'any',
-    pageUrl: 'any',
-    baseRevision: 'any',
-    before: 'any',
-    after: 'any',
-  },
+  'live_correction.request': { taskId: 'any', page: 'any', word: 'any', replacement: 'any' },
   'live_correction.decide': { correctionId: 'id', versionId: 'id', decision: 'text' },
   'live_correction.revert': { correctionId: 'id' },
   'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
