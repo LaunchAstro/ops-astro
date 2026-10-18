@@ -130,6 +130,21 @@ const UNREACHED: Readonly<Record<string, string>> = {
          select id, owner_actor_id from public.conversations
           where business_id = $1 order by id limit 1) c on true
      returning 1`,
+  // #1563: a call on the business's first message, and its answer's copy.
+  'public.conversation_answer_copies': `with message as (
+       select id, conversation_id from public.conversation_messages
+        where business_id = $1 order by id limit 1),
+     call as (
+       insert into public.model_calls
+         (business_id, id, conversation_id, operation_key, state, reserved_minor, route_key,
+          route_reach, credential_kind, started_at)
+       select $1, gen_random_uuid(), m.conversation_id, 'conversation.answer', 'dispatched', 0,
+              'm5_ollama', 'local', 'api_key', now()
+         from message m
+       returning business_id, id)
+     insert into public.conversation_answer_copies (business_id, call_id, message_id, body)
+     select call.business_id, call.id, m.id, 'restricted calls seed' from call, message m
+     returning 1`,
   'public.conversation_wrap_ups': `insert into public.conversation_wrap_ups
        (business_id, id, conversation_id, version, written_by_operation, code_revision,
         request_quotation, items, left_open, activity_through)

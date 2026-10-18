@@ -17,9 +17,10 @@ import {
   writeWrapUp,
   type ConversationReply,
 } from '../../packages/core-commands/src/index.ts';
+import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { waitingOn } from '../support/lock-waits.ts';
-import { detail } from './aw-03-fixture.ts';
+import { detail, setConversationWindow } from './aw-03-fixture.ts';
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import {
   epochWorld,
@@ -196,6 +197,17 @@ describe.skipIf(serverUrl === undefined)('an answer copy whose reply rolled back
     const q = await question();
     await rolledBack(q);
     expect((await rowsOf(q.messageId)).copies).toBe(1);
+    // A week's window over this world's work window, passed, so the wrap-up and the purge are due.
+    await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
+      const work = await writeBusinessSetting(tx, {
+        key: 'retention_window_days',
+        owningOperation: 'settings.set_retention_window',
+        value: 30,
+      });
+      expect(work).not.toBeUndefined();
+      await setConversationWindow(tx, 7);
+    });
+    await c.w.age(q.conversationId, 8);
     const purged = await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
       const wrapped = await writeWrapUp(tx, {
         conversationId: q.conversationId,
@@ -207,7 +219,7 @@ describe.skipIf(serverUrl === undefined)('an answer copy whose reply rolled back
         operationId: randomUUID(),
       });
     });
-    expect(purged).toMatchObject({ ok: true, replayed: false });
+    expect(purged).toStrictEqual({ ok: true, replayed: false, messagesPurged: 1 });
     expect(await rowsOf(q.messageId)).toMatchObject({ replies: [], copies: 0 });
     const before = asked();
     expect(await retried(q)).toBeNull();

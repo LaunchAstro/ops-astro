@@ -2,12 +2,13 @@
 //
 // One model call per conversation message (#1531): a retry of a message is
 // answered from the call it already has, and the row is started at most once,
-// with its carriers row on a carried deployment. Apart from
-// `broker-conversation.ts` to keep it under the line limit.
+// with its carriers row on a carried deployment. Its settled answer is copied
+// until the reply is kept (#1563). Apart from `broker-conversation.ts` to keep
+// it under the line limit.
 
 import { randomUUID } from 'node:crypto';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { TenantQuery, TransactionQuery } from '../../core-records/src/index.ts';
 import { writeCarriers } from './broker-carriage.ts';
 import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import { registerPromptCopy } from './broker-reserve.ts';
@@ -17,7 +18,8 @@ import type { BrokerRoute, Carrier, ModelCallResult } from './broker-types.ts';
  * The message's call, if one was made: a retry is answered from it, never a
  * second call (#1531). A kept reply is found before the broker is asked. A
  * call still with the model, or settled with its reply kept or being kept, is
- * on its way; any other ending kept nothing.
+ * on its way; any other ending kept nothing. A settled call whose keep failed
+ * has its answer copied (`copyAnswer`), which the caller keeps as the reply.
  */
 export async function messageCall(
   tx: TenantQuery,
@@ -109,4 +111,51 @@ export async function insertStarted(
   await registerPromptCopy(tx, callId);
   if (carrier !== undefined) await writeCarriers(tx, callId, carrier);
   return callId;
+}
+
+/** Words a message's row can hold (0092), so a reply may be kept from them. */
+const ANSWER_LIMIT = 20_000;
+/** Half a split character: with the `u` flag only an unpaired surrogate matches. */
+const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
+const copyable = (text: string): boolean =>
+  text.trim() !== '' &&
+  text.length <= ANSWER_LIMIT &&
+  !text.includes('\0') &&
+  !UNPAIRED_SURROGATE.test(text);
+
+/**
+ * A settled call's answer, copied in its settling transaction (#1563): a
+ * retry of the message keeps its reply from the copy, never from a second
+ * call. Registered first, as every copy is (0085); invalidated when the
+ * reply is kept, and gone with the message when its body is purged. The copy
+ * is a savepoint of its own: a message a purge took first fails its foreign
+ * key, and then nothing is copied and the settlement stands. Nor is text no
+ * reply could hold copied.
+ */
+export async function copyAnswer(
+  tx: TransactionQuery,
+  callId: string,
+  text: string,
+): Promise<void> {
+  if (!copyable(text)) return;
+  const [call] = await tx.query<{ readonly message: string | null }>(
+    `select conversation_message_id as message from public.model_calls
+      where business_id = $1 and id = $2`,
+    [tx.businessId, callId],
+  );
+  if (call?.message === undefined || call.message === null) return;
+  const { message } = call;
+  await tx.savepoint(async (inner) => {
+    await inner.query(
+      `insert into public.copy_registrations
+         (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
+       values ($1, $2, 'answer_copy', $3, 'reply_kept', 'transient')`,
+      [inner.businessId, randomUUID(), `model_call:${callId}`],
+    );
+    await inner.query(
+      `insert into public.conversation_answer_copies (business_id, call_id, message_id, body)
+       values ($1, $2, $3, $4)`,
+      [inner.businessId, callId, message, text],
+    );
+  });
 }

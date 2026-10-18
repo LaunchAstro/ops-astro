@@ -3,11 +3,13 @@
 // The conversation seam's send and settlement (`broker-conversation.ts`):
 // through custody, a carried call with its handoff, then the answer settled
 // at nothing or held, never above nothing. Only a call still dispatched
-// settles, and a carried one only through its custody's fence. Split from
+// settles, and a carried one only through its custody's fence; a settled
+// message's answer is copied until its reply is kept (#1563). Split from
 // that file for its line cap.
 
-import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
+import type { BusinessId, Database, TransactionQuery } from '../../core-records/src/index.ts';
 import { WORKER_LOST } from './broker-fault.ts';
+import { copyAnswer } from './broker-message-call.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
 import type { Broker, ModelCallResult, ResolvedField } from './broker-types.ts';
@@ -68,7 +70,7 @@ export async function sendAndSettle(
  * else moved, is no success and keeps no answer.
  */
 async function settledFor(
-  tx: TenantQuery,
+  tx: TransactionQuery,
   called: ReservedCall,
   settlement: Settlement,
   broker: Broker,
@@ -97,5 +99,7 @@ async function settledFor(
     return { ok: false, code: 'DECISION_STALE', callId };
   }
   const { text } = settlement.answer;
+  // Copied as it settles, so a reply keep that fails after this commits can be made good once.
+  await copyAnswer(tx, callId, text);
   return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
 }
