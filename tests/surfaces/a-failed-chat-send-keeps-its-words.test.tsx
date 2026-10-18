@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // #1339: a chat send the server refuses or never answers keeps the person's
-// words. They wait under the conversation, never in the composer and never as
-// a transcript message, until the server takes them or the person lets them
-// go. A resend after a lost answer reuses the first operation id, so the
+// words. They wait under the conversation, never as a transcript message,
+// until the server takes them or the person lets them go; a send with no
+// answer also puts them back in the box. A resend after a lost answer reuses
+// the first operation id, so the
 // server posts the message once; the words survive a reload of the tab and
 // stay with the sign-in that wrote them. The stand-in server is
 // `team-chat-stand-in.ts`; the database half is
@@ -101,13 +102,13 @@ describe('a failed chat send keeps the person’s words', () => {
     expect(m.find('.tmc__unsent [data-unsent="refused"] [data-unsent-edit]')).not.toBeNull();
   });
 
-  it('a direct send the API answers 503 keeps its words and offers Resend', async () => {
+  it('a direct send the API answers 503 keeps its words in the box and offers Resend', async () => {
     const { api, m } = await team();
     api.state.unanswered = 'before';
     await sendWords(m, CANARY);
     await until('the failure drawn', () => m.find('[role="alert"]') !== null);
     expect(unsent(m)).toEqual([CANARY]);
-    expect(composer(m)).toBe('');
+    expect(composer(m)).toBe(CANARY);
     expect(transcript(m)).not.toContain(CANARY);
     expect(
       m.find('.tmc__unsent [data-unsent="unanswered"] [data-unsent-resend]')?.textContent,
