@@ -262,7 +262,7 @@ export interface CorrectionReceiptView {
   readonly afterCapture: ReceiptCapture | null;
 }
 
-/** `live_correction.receipts`: one correction's receipts, newest first, at most 20. */
+/** `live_correction.receipts`: one correction's receipts, newest first, at most 10. */
 export interface LiveCorrectionReceiptsResult {
   readonly ok: true;
   readonly correctionId: string;
