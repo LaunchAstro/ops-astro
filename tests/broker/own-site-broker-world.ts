@@ -146,17 +146,19 @@ export async function ask(
 }
 
 /** The agent's request on the business's own about page, under its delegation. */
-export const requestOwn = async (picked: PickedUp): Promise<CommandResult> =>
-  await w.world.asAgent(
-    {
-      ...requestBody(w.partyA, picked.taskId),
-      partyId: null,
-      pageUrl: OWN_PAGE,
-      path: OWN_FILE,
-      operationId: randomUUID(),
-    },
-    picked.credential,
-  );
+export const requestOwn = async (
+  picked: PickedUp,
+  body: Readonly<Record<string, unknown>> = ownBody(picked),
+): Promise<CommandResult> => await w.world.asAgent(body, picked.credential);
+
+/** The body of that request, with an operation id of its own: sent twice, a replay. */
+export const ownBody = (picked: PickedUp): Readonly<Record<string, unknown>> => ({
+  ...requestBody(w.partyA, picked.taskId),
+  partyId: null,
+  pageUrl: OWN_PAGE,
+  path: OWN_FILE,
+  operationId: randomUUID(),
+});
 
 export const sends = (): number => custody.provider.seen.length;
 
