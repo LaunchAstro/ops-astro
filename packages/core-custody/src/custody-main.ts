@@ -21,7 +21,8 @@
 // its path names that party's bound repository, and is sent with a token
 // minted for it alone (`github-app.ts`), refused when none is minted. The
 // mint spends the call's own time, and the token goes only while still in
-// date: one that expires while admission waits is refused, never sent.
+// date: its expiry gates the network write itself, so one that expires while
+// admission or the lookup waits is refused `CUSTODY_TOKEN_EXPIRED`, never sent.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -211,11 +212,6 @@ async function answer(
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
     return;
   }
-  // A minted token is judged at the send, not at the mint: admission may outlast it.
-  if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) {
-    reply({ type: 'refused', code: 'CUSTODY_TOKEN_EXPIRED' });
-    return;
-  }
   const streaming = streamingOf(credential, request.destination, (text) =>
     reply({ type: 'piece', text }),
   );
@@ -223,14 +219,18 @@ async function answer(
   const route = templateFilled(destination, request.method, request.path);
   // A template route's answer is judged whole, so none of it goes out as it is read.
   const onChunk = route === undefined ? streaming.onChunk : undefined;
-  let outcome = await send(
-    loaded.destinations,
-    request,
-    credential,
-    undefined,
-    onChunk,
-    sendGate ?? undefined,
-  );
+  // A minted token's expiry gates the write itself, after admission and the lookup.
+  const { expiresAt } = credential;
+  const gate =
+    expiresAt === undefined
+      ? (sendGate ?? undefined)
+      : { ...sendGate, deadlineAt: Math.min(expiresAt, sendGate?.deadlineAt ?? expiresAt) };
+  let outcome = await send(loaded.destinations, request, credential, undefined, onChunk, gate);
+  const expired = expiresAt !== undefined && gate?.deadlineAt === expiresAt;
+  if (expired && !outcome.ok && outcome.fault === 'lapsed') {
+    reply({ type: 'refused', code: 'CUSTODY_TOKEN_EXPIRED' });
+    return;
+  }
   if (route !== undefined && outcome.ok) {
     const kept = keptOf(outcome, route.fields);
     if (kept === undefined || withholds(kept.values, credential)) {
