@@ -386,7 +386,13 @@ pages reread every 30 s and the header marker says how fresh that read is,
 not "Reconnecting" (where hosted pages get a live channel is #1242). It owns recovery:
 before a request it runs the reconciliation pass for each business
 `RECOVERY_BUSINESS_KEYS` names, which a named environment (`OPS_ENVIRONMENT`)
-must set, if only to `none`. It has no admin login. It reads the business key
+must set, if only to `none`. The pass runs on a connection of its own, and a
+request waits on the pass in flight for at most `RECOVERY_WAIT_MS` (2 s), so a
+pass stalled on a lock holds no request past that
+(`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`).
+Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a
+migrate window drains
+(`tests/api/the-hosted-functions-database-sessions-close-once-idle.test.ts`). It has no admin login. It reads the business key
 on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046), and
 with that unset refuses every key. It refuses to start with
 `DATABASE_ADMIN_URL` set. It answers only requests whose `Host` and URL both

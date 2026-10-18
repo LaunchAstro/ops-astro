@@ -37,6 +37,16 @@ writes each address to an owner-only file in a new `OPS_LOGINS_DIR` for the
 password manager and the M5's settings files. The owner deletes the folder
 after use.
 
+### How a migrate window drains
+
+A migration refuses while any other session is connected, so production's
+database drains the way staging's does ([staging README](../staging/README.md),
+"How a migrate window drains"): the API's alias detached, the worker and
+forwarder stopped (`scripts/ops/stop-production.mjs`), then a wait of about a
+minute while the function's idle connections close (20 seconds without a
+statement, `RUNTIME_IDLE_SECONDS`). A session left after that is read in
+`pg_stat_activity` before anything ends it.
+
 ## The first business and its owner
 
 Production starts with no business. After the migrations and the logins, the

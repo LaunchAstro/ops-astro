@@ -19,9 +19,21 @@ export interface DatabaseOptions {
    */
   readonly log?: StatementLog;
   readonly max?: number;
+  /**
+   * Close a connection once it has sat idle this many seconds; unset, it stays
+   * open until the handle ends. Only a handle that keeps no session state
+   * between statements may set it: a closed connection reopens on the next
+   * statement, and a session advisory lock or `set role` would be gone.
+   */
+  readonly idleSeconds?: number;
 }
 
-/** How long the runtime pools keep an idle connection (#1530); not yet applied. */
+/**
+ * How long the runtime pools keep an idle connection (#1530). A migration and
+ * the staging reset refuse while any other session is connected, and a warm
+ * hosted function with no traffic otherwise held its sessions for as long as
+ * the instance lived, so a migrate window could not drain.
+ */
 export const RUNTIME_IDLE_SECONDS = 20;
 
 /**
@@ -48,6 +60,7 @@ export function open(
   const source = options.source ?? 'runtime';
   const sql = parsed(url, {
     max: options.max ?? 1,
+    ...(options.idleSeconds === undefined ? {} : { idle_timeout: options.idleSeconds }),
     prepare: false,
     onnotice: () => {},
     debug: (_connection: number, query: string) => {
