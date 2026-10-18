@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "live_correction.receipts answers a correction's receipts only in reach, cut to the receipt text limit, and answers another business, another client party and a member without task read exactly as an id that names nothing; a delegated agent reads none."
+}
