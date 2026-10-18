@@ -2,7 +2,7 @@
 /// <reference lib="dom" />
 /* oxlint-disable no-await-in-loop -- a step clicks, then looks, in order: the film shows one after the next */
 //
-// The owner checks of the shell and dock units (U06, U07, U08 with U12, U10),
+// The owner checks of the shell and dock units (U06, U07, U08 with U12),
 // as the owner checks issue (ops-astro#1750) words them.
 import {
   BEAT,
@@ -12,10 +12,15 @@ import {
   go,
   notHere,
   red,
+  reload,
   signIn,
   type Check,
 } from './owner-checks-steps.ts';
 import { loginOf } from './owner-checks-source.ts';
+import type { Page } from 'playwright';
+
+/** The panel width each film's drag left, read back after its reload. */
+const savedPanel = new WeakMap<Page, number>();
 
 export const SHELL: readonly Check[] = [
   {
@@ -188,11 +193,16 @@ export const SHELL: readonly Check[] = [
           await page.mouse.move(box.x + 120, box.y + box.height / 2, { steps: 12 });
           await page.mouse.up();
           const after = Number(await grip.getAttribute('aria-valuenow'));
-          if (!(before - after >= 20)) {
+          // The panel itself (the grip's own section) must narrow, not only the number it reports.
+          const drawn = await grip.evaluate(
+            (one) => one.closest('section')?.getBoundingClientRect().width ?? 0,
+          );
+          if (!(before - after >= 20) || before - drawn < 20) {
             throw red(
-              `the panel width went from ${String(before)} to ${String(after)}px, dragged 120`,
+              `the panel went from ${String(before)} to ${String(after)}px (drawn ${String(drawn)}px), dragged 120`,
             );
           }
+          savedPanel.set(page, after);
         },
       ],
       [
@@ -212,85 +222,19 @@ export const SHELL: readonly Check[] = [
       ],
       [
         'The panel width is kept next time',
-        notHere('the made-up reads keep no saved width (preference.read answers no dock.width)'),
-      ],
-    ],
-  },
-  {
-    unit: 'U10',
-    issue: 680,
-    title: 'Access, second factor, service health, operations view and the legal basics (2 of 2)',
-    width: PHONE,
-    start: '/settings/operations/',
-    steps: [
-      [
-        'The operations view: watcher status and last restore date',
         async (page) => {
-          await expectVisible('Unattended', () =>
-            page.getByRole('heading', { name: 'Unattended' }),
-          );
-          await page.getByRole('heading', { name: 'Last tested restore' }).scrollIntoViewIfNeeded();
-          await page.waitForTimeout(BEAT);
-          await page.getByRole('heading', { name: 'Service health' }).scrollIntoViewIfNeeded();
-        },
-      ],
-      [
-        'The privacy policy from the sign-in page',
-        async (page) => {
-          // Signed out from the person menu, so no load re-adds the made-up session.
-          await page.getByRole('button', { name: /signed in$/u }).click();
-          await page
-            .getByRole('menuitem', { name: /sign out/iu })
-            .or(page.getByRole('button', { name: /sign out/iu }))
-            .first()
-            .click();
-          await expectVisible('the sign-in form', () =>
-            page.getByRole('form', { name: 'Sign in' }),
-          );
-          // The legal links are for the business typed into the form (SignIn.tsx).
-          await page.getByRole('textbox', { name: 'Business' }).fill('alpha');
-          await page.waitForTimeout(BEAT);
-          const link = page.getByRole('link', { name: 'Privacy policy' });
-          await expectVisible('the Privacy policy link on sign-in', () => link);
-          await link.click();
-          await expectVisible('the Legal page', () =>
-            page.getByRole('heading', { name: 'Legal', level: 1 }),
-          );
-        },
-      ],
-      [
-        'Every outside service listed with what it receives',
-        notHere('the made-up reads do not answer the public legal document read'),
-      ],
-      [
-        'The teammate signs in: authenticator code asked, a wrong code refused',
-        async (page, at) => {
-          const login = loginOf('TEAMMATE');
-          if (login === undefined) {
+          await reload(page);
+          const saved = savedPanel.get(page);
+          if (saved === undefined) throw red('no panel width was saved by the drag step');
+          await page.getByRole('button', { name: /^Open Notifications/u }).click();
+          const grip = page.getByRole('separator', { name: 'Panel width', exact: true }).first();
+          await expectVisible('the panel grip', () => grip);
+          const now = Number(await grip.getAttribute('aria-valuenow'));
+          if (Math.abs(now - saved) > 2) {
             throw red(
-              'no made-up teammate login in OWNER_CHECK_TEAMMATE_EMAIL and _PASSWORD; waits on ops-astro#1808',
+              `the panel opened at ${String(now)}px after a reload, saved ${String(saved)}px`,
             );
           }
-          await signIn(page, at, login);
-          await expectVisible('the authenticator code step', () =>
-            page.locator('[data-sign-in="code"]'),
-          );
-          const code = page.getByRole('textbox', { name: 'Authenticator code' });
-          await code.fill('000000');
-          await page.getByRole('button', { name: 'Continue' }).click();
-          const refused = await page
-            .waitForFunction(
-              () =>
-                document
-                  .querySelector('[data-step-up="code"], input[aria-invalid="true"]')
-                  ?.getAttribute('aria-invalid') === 'true',
-              undefined,
-              { timeout: 8000 },
-            )
-            .then(() => true)
-            .catch(() => false);
-          if (!refused) throw red('a wrong code was not refused');
-          await page.getByRole('button', { name: 'Cancel' }).click();
         },
       ],
     ],

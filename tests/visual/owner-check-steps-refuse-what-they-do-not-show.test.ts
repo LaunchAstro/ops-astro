@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest';
 import { Missed } from './owner-checks-steps.ts';
 import { sourceOf } from './owner-checks-source.ts';
+import { ACCESS } from './owner-checks-access.ts';
 import { SHELL } from './owner-checks-shell.ts';
 import { launchChromium } from '../support/chromium.ts';
 
@@ -19,7 +20,7 @@ it('films the deployed made-up build unless told --local', () => {
 });
 
 it('runs the teammate authenticator check, and with no teammate login fails it red naming #1808', async () => {
-  const check = SHELL.find((one) => one.unit === 'U10')!;
+  const check = ACCESS.find((one) => one.unit === 'U10')!;
   const step = check.steps.find(([name]) => name.startsWith('The teammate signs in:'))!;
   delete process.env['OWNER_CHECK_TEAMMATE_EMAIL'];
   delete process.env['OWNER_CHECK_TEAMMATE_PASSWORD'];
