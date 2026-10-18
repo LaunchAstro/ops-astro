@@ -17,44 +17,23 @@
 //   refuses anything `guard.ts` finds in the call's options or in the
 //   model's own `callbacks` and `verbose`, however they were set (#1921),
 //   including a getter or proxy that would read differently to core (#1925).
+//   Core then runs a model of its own (`BrokerTurns`), built here and never
+//   handed out, with no callbacks: nothing a caller sets on this model, or
+//   runs after the guard, reaches the callbacks core configures.
 
-import type { CallbackManagerForLLMRun, Callbacks } from '@langchain/core/callbacks/manager';
+import type { Callbacks } from '@langchain/core/callbacks/manager';
+import { BaseChatModel, type BindToolsInput } from '@langchain/core/language_models/chat_models';
 import {
-  BaseChatModel,
-  type BaseChatModelCallOptions,
-  type BindToolsInput,
-} from '@langchain/core/language_models/chat_models';
-import { AIMessage, type AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
+  type AIMessageChunk,
+  type BaseMessage,
+  coerceMessageLikeToMessage,
+} from '@langchain/core/messages';
 import type { ChatResult, LLMResult } from '@langchain/core/outputs';
-import type { EndCode, RunOutcome, ToolCall, TurnPart } from '../../core-wire/src/index.ts';
+import { BrokerTurns, type BrokerPort, type OpsAstroCallOptions } from './broker-turns.ts';
 import { entryRefused, ownRefused } from './guard.ts';
-import { keepAnswer, partsOf, RunEnd, type AttemptState } from './turn.ts';
+import { RunEnd, type AttemptState } from './turn.ts';
 
-/** One turn as the broker is sent it. */
-export interface Turn {
-  readonly turnOrdinal: number;
-  readonly tools: readonly string[];
-  readonly parts: readonly TurnPart[];
-}
-
-/** The broker's answer: words and tool calls under their call, or the stop it recorded. */
-export type TurnAnswer =
-  | {
-      readonly callId: string;
-      readonly text: string;
-      readonly toolCalls: readonly ToolCall[];
-      /** Set when this settlement ended the attempt: the limit-th call, `call_limit`. */
-      readonly terminal?: RunOutcome;
-    }
-  | { readonly stopped: EndCode; readonly recorded: boolean };
-
-export interface BrokerPort {
-  readonly turn: (turn: Turn) => Promise<TurnAnswer>;
-}
-
-interface OpsAstroCallOptions extends BaseChatModelCallOptions {
-  readonly tools?: readonly string[];
-}
+export type { BrokerPort, Turn, TurnAnswer } from './broker-turns.ts';
 
 const refused = (state: AttemptState): RunEnd => {
   state.ended ??= new RunEnd('TRACING_NOT_ALLOWED', false);
@@ -62,7 +41,7 @@ const refused = (state: AttemptState): RunEnd => {
 };
 
 export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
-  readonly #port: BrokerPort;
+  readonly #turns: BrokerTurns;
   readonly #state: AttemptState;
 
   constructor(
@@ -75,7 +54,7 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
       throw refused(state);
     }
     super({ maxRetries: 0, verbose: false });
-    this.#port = port;
+    this.#turns = new BrokerTurns(port, state);
     this.#state = state;
   }
 
@@ -96,12 +75,18 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     options?: string[] | OpsAstroCallOptions,
     callbacks?: Callbacks,
   ): Promise<LLMResult> {
-    // Options are read once, so core configures the callbacks the guard saw.
+    // Messages and options are read once, before the guard, so no caller
+    // code runs between the guard and the callbacks core configures.
+    const turns = messages.map((list) =>
+      list.map((message) => coerceMessageLikeToMessage(message)),
+    );
     const asked = Array.isArray(options) ? [...options] : { ...options };
     if (entryRefused(Array.isArray(asked) ? {} : asked, callbacks) || ownRefused(this)) {
       throw refused(this.#state);
     }
-    return await super.generate(messages, asked, callbacks);
+    if (Array.isArray(asked)) return await this.#turns.generate(turns, asked);
+    const { callbacks: _checked, ...handed } = asked;
+    return await this.#turns.generate(turns, handed);
   }
 
   override withConfig(
@@ -124,31 +109,8 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     return this.withConfig({ ...kwargs, tools: names });
   }
 
-  async _generate(
-    messages: BaseMessage[],
-    options: this['ParsedCallOptions'],
-    _run?: CallbackManagerForLLMRun,
-  ): Promise<ChatResult> {
-    const state = this.#state;
-    const parts = partsOf(state, messages);
-    const turnOrdinal = state.calls;
-    state.calls += 1;
-    const tools = options.tools ?? [];
-    const answer = await this.#port.turn({ turnOrdinal, tools, parts });
-    if ('stopped' in answer) {
-      state.ended ??= new RunEnd(answer.stopped, answer.recorded);
-      throw state.ended;
-    }
-    keepAnswer(state, answer.callId, answer.text, answer.toolCalls);
-    if (answer.terminal !== undefined) {
-      state.ended ??= new RunEnd('CALL_LIMIT_REACHED', true, answer.terminal);
-      throw state.ended;
-    }
-    const message = new AIMessage({
-      id: answer.callId,
-      content: answer.text,
-      tool_calls: answer.toolCalls.map((call) => ({ ...call, type: 'tool_call' as const })),
-    });
-    return { generations: [{ text: answer.text, message }] };
+  /** Reached only by bypassing `generate`: core has configured callbacks, so nothing is sent. */
+  async _generate(): Promise<ChatResult> {
+    return await Promise.reject(refused(this.#state));
   }
 }
