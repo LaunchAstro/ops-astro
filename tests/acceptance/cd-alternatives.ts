@@ -64,6 +64,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.read': ['correctionId', 'liveCorrection'],
   'live_correction.receipts': ['correctionId', 'liveCorrection'],
   'live_correction.revert': ['correctionId', 'liveCorrection'],
+  'live_correction.record_review': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

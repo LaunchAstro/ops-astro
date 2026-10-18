@@ -438,6 +438,7 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
   'live_correction.decide': CORRECTION_PARTY,
   'live_correction.revert': CORRECTION_PARTY,
+  'live_correction.record_review': CORRECTION_PARTY,
   'grant.revoke': [
     'grantId',
     (tx, id) =>

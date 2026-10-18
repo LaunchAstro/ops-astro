@@ -82,6 +82,8 @@ const INJECTED_BOUNDS = 3;
 
 /** The operations that name no identifier, from the list the matrix and SC2 case share. */
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
+/** R5: Astra's review operands beside the correction it names. */
+const REVIEW_BODY = { versionDigest: 'sha256:a-version', verdict: 'approve', review: 'reviewed' };
 
 const NOBODY = 'text nobody should find in an audit row';
 /** The ask an AW-05 answer names: the run is refused before any ask is read. */
@@ -365,6 +367,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         code: 'NOT_FOUND',
         foreign: () => ({ correctionId: theirs.correctionId }),
         fabricated: () => ({ correctionId: randomUUID() }),
+      },
+      {
+        op: 'live_correction.record_review',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId, ...REVIEW_BODY }),
+        fabricated: () => ({ correctionId: randomUUID(), ...REVIEW_BODY }),
       },
     );
     const request = { ...C80_REQUEST, partyId: randomUUID() };

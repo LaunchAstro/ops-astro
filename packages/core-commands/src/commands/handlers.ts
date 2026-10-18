@@ -75,8 +75,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { makeAgent, renameOwnAgent } from './agents.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
-import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
-import { askLiveRevert } from './live-correction-revert-ask.ts';
+import { LIVE_CORRECTION_HANDLERS } from './live-correction-handlers.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { CHAT_HANDLERS } from './chat-handlers.ts';
 import { invitationAct } from './invitations.ts';
@@ -194,10 +193,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     revokeDelegationAsManager(tx, context, request.delegationId),
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
-  'live_correction.request': requestLiveCorrection,
-  'live_correction.decide': decideLiveCorrection,
-  'live_correction.revert': askLiveRevert,
-  'settings.set_live_correction_approver': setApprover,
+  ...LIVE_CORRECTION_HANDLERS,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
   // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the

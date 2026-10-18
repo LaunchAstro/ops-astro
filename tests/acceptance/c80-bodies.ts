@@ -20,6 +20,7 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
+import { revertBody, reviewBody } from './c80-revert-body.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
@@ -203,6 +204,7 @@ export const C80_NAMES: ReadonlySet<string> = new Set([
   'live_correction.read',
   'live_correction.receipts',
   'live_correction.revert',
+  'live_correction.record_review',
 ]);
 
 /** The matrix's positive bodies for C80's operations (`role-case-positive-body.ts`). */
@@ -234,6 +236,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   }
   if (name === 'live_correction.revert') return await revertBody(context);
   const correction = await context.seedCorrection();
+  if (name === 'live_correction.record_review') return reviewBody(correction.correctionId);
   // The decision and receipts reads: that request, read back under the admin's run:write.
   if (name !== 'live_correction.decide') return { body: { correctionId: correction.correctionId } };
   const named = await context.asPerson('settings.set_live_correction_approver', {
@@ -241,19 +244,6 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   });
   if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
   return { body: { ...correction, decision: 'approve' } };
-}
-
-/** The revert ask: another member's correction recorded live, the admin named its approver. */
-async function revertBody(context: BodyContext): Promise<Prepared> {
-  if (context.seedLiveCorrection === undefined || context.adminPersonId === undefined) {
-    return { exception: 'this harness records no live correction (C80)' };
-  }
-  const { correctionId } = await context.seedLiveCorrection();
-  const named = await context.asPerson('settings.set_live_correction_approver', {
-    value: context.adminPersonId,
-  });
-  if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
-  return { body: { correctionId } };
 }
 
 /** What D06's agent case asks of its harness (`role-case-harness.ts`). */
