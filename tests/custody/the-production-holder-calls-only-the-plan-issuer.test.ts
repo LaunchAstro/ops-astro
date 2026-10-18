@@ -125,8 +125,9 @@ it.each(neverCalled)('a test holder refuses %s at build, before any pending', as
   const before = issuer.count();
   const w = await due();
   try {
+    // The whole message: neither the URL nor any credential in it is echoed.
     expect(() => tokenHolder({ file: w.file, tokenUrl: at(href), now: () => T0 })).toThrow(
-      'the token URL is not the plan issuer or a 127.0.0.1 test issuer',
+      /^the token URL is not the plan issuer or a 127\.0\.0\.1 test issuer$/u,
     );
     w.unchanged();
     expect(issuer.count() - before).toBe(0);
