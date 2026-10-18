@@ -77,12 +77,15 @@ async function queued(purpose: string): Promise<{ taskId: string; correctionId: 
   return { taskId, correctionId };
 }
 
-function runnerFor(given: World) {
+/** As the host composes it: the runner's actor is the holder the pickup answer names. */
+function runnerFor(given: World, claims = queueClaims(call, w.world.db.app, w.world.business)) {
   return createSiteRunner({
     db: w.world.db.app,
     business: w.world.business,
-    actorId: w.world.agentActorId,
-    claims: queueClaims(call, w.world.db.app, w.world.business),
+    get actorId() {
+      return claims.holder();
+    },
+    claims,
     sites: given.sites,
     raiseTask: (_claim, reason) => {
       given.raised.push(reason);
@@ -102,12 +105,14 @@ async function leaseOf(taskId: string): Promise<{ state: string; expires: string
 }
 
 describe.skipIf(serverUrl === undefined)('the site runner, claiming through the queue', () => {
-  it('picks up queued site work, publishes its correction and hands the lease back', async () => {
+  it('picks up queued site work as the holder its pickup names, publishes its correction and hands the lease back', async () => {
     const { taskId, correctionId } = await queued(SITE_PURPOSE);
     const given = world();
-    const runner = runnerFor(given);
+    const claims = queueClaims(call, w.world.db.app, w.world.business);
+    const runner = runnerFor(given, claims);
 
     expect(await runner.pass()).toEqual([{ correctionId, outcome: 'live' }]);
+    expect(claims.holder()).toBe(w.world.agentActorId);
     expect(merges(given.site)).toHaveLength(1);
     expect((await leaseOf(taskId))?.state).not.toBe('live');
     expect(await runner.pass()).toEqual([]);

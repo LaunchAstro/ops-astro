@@ -71,10 +71,13 @@ async function handBack(
 /** The claims, and a person task raised on a claim's task: an internal comment under its lease. */
 export interface QueueClaims extends Claims {
   readonly raise: (claim: Claim, reason: string) => Promise<void>;
+  /** The lease holder the API named in its last pickup answer: the runner's own actor. */
+  readonly holder: () => string;
 }
 
 export function queueClaims(call: AgentCall, db: Database, business: BusinessId): QueueClaims {
   const pickups = new Map<string, string>();
+  let holder = '';
   // A pickup whose answer is lost holds a lease nobody renews: it lapses and the sweep returns it.
   const pick = async (entry: Readonly<Record<string, unknown>>): Promise<Claim | undefined> => {
     const picked = await call('task.pickup', { reservationId: entry['reservationId'] });
@@ -84,6 +87,7 @@ export function queueClaims(call: AgentCall, db: Database, business: BusinessId)
       fence: Number(picked.detail['fence']),
     };
     pickups.set(lease.leaseId, String(picked.detail['credential']));
+    holder = String(picked.detail['holderActorId'] ?? '');
     const taskId = String(entry['taskId']);
     const correctionId = await correctionOn(db, business, taskId);
     if (correctionId !== undefined) return { correctionId, taskId, ...lease };
@@ -91,6 +95,7 @@ export function queueClaims(call: AgentCall, db: Database, business: BusinessId)
     return undefined;
   };
   return {
+    holder: () => holder,
     async take() {
       const queued = entriesOf(await call('task.queue', {}));
       const claims: Claim[] = [];
