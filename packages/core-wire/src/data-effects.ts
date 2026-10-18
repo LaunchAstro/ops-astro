@@ -201,11 +201,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.set_model': writing(client('conversations')),
   // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
   // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
-  // delegation retired, the run waiting. The provider call goes through the credential broker; a
-  // client's task never reaches a route (C60), so it is the business's own.
+  // delegation retired, the run waiting; past the run's last ask, the run ended and a person told
+  // on the task (`alerts`). The provider call goes through the credential broker; a client's task
+  // never reaches a route (C60), so it is the business's own.
   'model.call': writing(
     [
-      ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
+      ...client('model_calls', 'alerts', 'budget_asks', 'leases', 'planned_runs'),
       ...business('copy_registrations', 'delegations'),
     ],
     [{ provider: 'model', forClient: false }],
