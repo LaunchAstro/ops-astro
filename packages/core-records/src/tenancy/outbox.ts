@@ -2,7 +2,7 @@
 //
 // The API's outbox connection (S0-2 error outbox; migration 0047).
 
-import { open, type Connection, type DatabaseOptions } from './database.ts';
+import { open, RUNTIME_IDLE_SECONDS, type Connection, type DatabaseOptions } from './database.ts';
 
 /** One row of `ops.api_events` (0047): a security signal, or an error's bounded event. */
 export interface ApiEvent {
@@ -23,8 +23,9 @@ export interface Outbox extends Connection {
   append(event: ApiEvent): Promise<void>;
 }
 
+/** One insert per call and no session state, so it closes when idle as the runtime pool does. */
 export function connectOutbox(url: string, options: DatabaseOptions = {}): Outbox {
-  const { sql, log } = open(url, options);
+  const { sql, log } = open(url, { idleSeconds: RUNTIME_IDLE_SECONDS, ...options });
 
   return {
     log,

@@ -19,11 +19,19 @@
 // so the function runs the reconciliation pass (`passDeployment`: sweep,
 // replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
 // names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
-// `none`. Each business passes on its own, awaited by every request while it
-// runs, again each `SWEEP_INTERVAL_MS` after it succeeds, since an instance may
-// be frozen once it answers. Instances that pass at once meet
-// on the pass's own row locks. `server.ts` runs the same pass only where there
-// is no function.
+// `none`. Each business passes on its own, again each `SWEEP_INTERVAL_MS`
+// after it succeeds. A request waits on the pass in flight, since an instance
+// may be frozen once it answers, but for at most `RECOVERY_WAIT_MS`: the pass
+// runs on a connection of its own, so a pass stalled on a lock holds neither
+// the runtime connection nor any request past that bound (#1411). A request
+// served beside a pass is what another instance's request already is;
+// instances that pass at once meet on the pass's own row locks. `server.ts`
+// runs the same pass only where there is no function.
+//
+// **Every session closes once idle (#1530).** The runtime pool, the pass's,
+// the outbox and the lookup login keep no session state, and each closes a
+// connection idle for `RUNTIME_IDLE_SECONDS`, so with the alias detached a
+// migrate window drains without terminating anything.
 //
 // **No admin login (G2).** The business key, the one read before tenancy, is
 // read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
@@ -55,7 +63,7 @@ import {
   connect,
   connectAsAdmin,
   connectOutbox,
-  type Database,
+  RUNTIME_IDLE_SECONDS,
 } from '../../packages/core-records/src/index.ts';
 import {
   crashSeamProblem,
@@ -119,7 +127,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   const database = connect(databaseUrl, { source: 'runtime' });
   const { app, resolveBusiness } = composeApi({
     database,
-    admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
+    admin: connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS }),
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
@@ -128,7 +136,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
     ...carriedOption(settings),
   });
-  const pass = recoveryPass(settings, database, resolveBusiness, keys);
+  const pass = recoveryPass(settings, databaseUrl, resolveBusiness, keys);
 
   return async (request) => {
     const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
@@ -148,6 +156,17 @@ async function answered(
 ): Promise<Response> {
   const fetched = async (): Promise<Response> => await app.fetch(request);
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
+}
+
+/** The longest a request waits on the reconciliation pass in flight. */
+export const RECOVERY_WAIT_MS = 2_000;
+
+/** Wait for `work` or `ms`, whichever ends first; the timer keeps nothing running. */
+async function within(work: Promise<void>, ms: number): Promise<void> {
+  const bound = new Promise<void>((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
+  await Promise.race([work, bound]);
 }
 
 /** The most instances the limits split across with at least one of each. */
@@ -189,14 +208,16 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request while it runs. A business passes on its own, so a key
+ * awaited by every request while it runs, each for up to `RECOVERY_WAIT_MS`.
+ * It opens its own connection at its first statement, so a pass waiting on a
+ * lock leaves the runtime one to the requests. A business passes on its own, so a key
  * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
  * `none` does nothing; unset does nothing only where no environment is named,
  * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
-  database: Database,
+  databaseUrl: string,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: RuntimeKeys,
 ): () => Promise<void> {
@@ -205,6 +226,7 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
+  const database = connect(databaseUrl, { source: 'runtime' });
   const due = new Map<string, number>();
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
@@ -223,7 +245,7 @@ function recoveryPass(
       else console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
-  // Every request waits on the pass in flight, so none is served beside it.
+  // Every request waits on the pass in flight, until it ends or its bound passes.
   return async (): Promise<void> => {
     const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
     if (running === undefined && owed.length > 0) {
@@ -231,7 +253,7 @@ function recoveryPass(
         running = undefined;
       });
     }
-    await running;
+    if (running !== undefined) await within(running, RECOVERY_WAIT_MS);
   };
 }
 

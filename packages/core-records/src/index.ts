@@ -258,6 +258,7 @@ export {
   connectAsAdmin,
   connectListener,
   isBusinessId,
+  RUNTIME_IDLE_SECONDS,
   type AdminConnection,
   type BusinessId,
   type Database,

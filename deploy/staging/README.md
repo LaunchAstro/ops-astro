@@ -139,6 +139,19 @@ setting's value.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+### How a migrate window drains
+
+The migrations and the reset refuse while any other session is connected. To
+drain staging's database, detach the API's alias so no request reaches the
+function, stop the M5 unit's worker and forwarder (each holds a session of its
+own), then wait about a minute. The function keeps no session open once
+idle: its runtime pool, its reconciliation pass's connection, its outbox and
+its lookup login each close a connection after 20 seconds without a statement
+(`RUNTIME_IDLE_SECONDS`, #1530). A session still connected after that is not
+one the wait covers: read `pg_stat_activity` for its login and its last
+statement before anything else. Ending it with `pg_terminate_backend` is the
+last resort, and the run's record says so.
+
 The dump from Supabase's pooler leaves out `auth`. On hosted Supabase that
 schema belongs to the platform, and staging's owner may use it but may not
 grant it. No platform role is granted to the backup identity, because each one

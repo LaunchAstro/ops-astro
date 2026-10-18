@@ -14,7 +14,7 @@
 // business is already set.
 
 import type postgres from 'postgres';
-import { open, type DatabaseOptions } from './driver.ts';
+import { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 import type { StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
 import {
@@ -25,7 +25,7 @@ import {
 } from './transaction.ts';
 
 export type { BusinessId, TenantQuery, TransactionQuery } from './transaction.ts';
-export { open, type DatabaseOptions } from './driver.ts';
+export { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 
 export function isBusinessId(value: string): value is BusinessId {
   return isUuid(value);
@@ -144,8 +144,13 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
   };
 }
 
+/**
+ * The runtime pool. Every statement on it is inside a `withBusiness`
+ * transaction, so no session state outlives one, and an idle connection
+ * closes after `RUNTIME_IDLE_SECONDS` unless the caller says otherwise.
+ */
 export function connect(url: string, options: DatabaseOptions = {}): Database {
-  const { sql, log } = open(url, options);
+  const { sql, log } = open(url, { idleSeconds: RUNTIME_IDLE_SECONDS, ...options });
 
   return {
     log,
