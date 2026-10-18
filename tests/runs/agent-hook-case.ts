@@ -6,6 +6,8 @@
 // failure never prints the planted marker. Run by
 // `an-inherited-hook-or-tracer-never-sees-a-models-content.test.ts`.
 
+// oxlint-disable max-classes-per-file -- a subclass is the one way to set a model's callbacks before it is built
+
 import { setTimeout as sleep } from 'node:timers/promises';
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import { awaitAllCallbacks } from '@langchain/core/callbacks/promises';
@@ -61,6 +63,15 @@ async function attempt(step: () => Promise<unknown>): Promise<string> {
   }
 }
 
+/** Call options whose callbacks read empty the first time and a recorder after. */
+function readLate(): { callbacks?: Recorder[] } {
+  let read = 0;
+  return Object.defineProperty({}, 'callbacks', {
+    enumerable: true,
+    get: () => ((read += 1) === 1 ? undefined : [new Recorder()]),
+  });
+}
+
 type Run = ReturnType<typeof scripted>;
 type Cases = Record<string, () => Promise<unknown>>;
 
@@ -105,6 +116,41 @@ function modelCases(run: Run): Cases {
   };
 }
 
+/** Handlers reaching the owned model by its constructor, its call options or its own fields (#1921). */
+function ownCases(run: Run): Cases {
+  const input = [new HumanMessage(MARKER)];
+  const model = (): OpsAstroChatModel => new OpsAstroChatModel(run.ports.broker, run.state);
+  return {
+    'none-constructed-with-callback-manager': async () =>
+      await new OpsAstroChatModel(run.ports.broker, run.state, {
+        callbackManager: [new Recorder()],
+      }).invoke(input),
+    'none-generate-callbacks-read-late': async () => await model().generate([input], readLate()),
+    'none-own-callbacks-set-after-construction': async () => {
+      const built = model();
+      built.callbacks = [new Recorder()];
+      return await built.invoke(input, {});
+    },
+    'none-own-callbacks-set-after-binding': async () => {
+      const built = model();
+      const binding = built.bindTools([readTool]);
+      built.callbacks = [new Recorder()];
+      return await binding.invoke(input, {});
+    },
+    'none-own-callbacks-set-before-construction': async () => {
+      class Preset extends OpsAstroChatModel {
+        override callbacks = [new Recorder()];
+      }
+      return await new Preset(run.ports.broker, run.state).invoke(input, {});
+    },
+    'none-own-verbose-set-after-construction': async () => {
+      const built = model();
+      built.verbose = true;
+      return await built.invoke(input, {});
+    },
+  };
+}
+
 /** The runner, refusing a planted hook, or isolated in a fresh store. */
 const runnerCases = (run: Run): Cases => ({
   'context-runner': async () => await ran(run, false),
@@ -120,7 +166,7 @@ const runnerCases = (run: Run): Cases => ({
 async function main(kind: string): Promise<Record<string, unknown>> {
   const run = scripted((n) => (n === 1 ? reads(1) : final(2)));
   plant(kind);
-  const step = { ...modelCases(run), ...runnerCases(run) }[kind];
+  const step = { ...modelCases(run), ...ownCases(run), ...runnerCases(run) }[kind];
   if (step === undefined) throw new Error('no such case');
   const result = await attempt(step);
   return { result, seen, marked, sent: run.sent.length, ended: run.ended };
