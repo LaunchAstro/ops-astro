@@ -17,7 +17,9 @@
 //    covers it all.
 //
 // A signed token is judged on its signature: its header and claims are not
-// secret, and would match every answer that shows a token. Not judged:
+// secret, and would match every answer that shows a token. A token counts as
+// signed only when its header and claims decode to JSON and the header names
+// its algorithm; an opaque three-part secret is judged whole. Not judged:
 // pieces of one or two characters apart or out of order (chance covers as
 // much), pieces shorter than FRAGMENT_RUN glued inside other text, and other
 // deliberate encodings. No text rule catches
@@ -86,9 +88,32 @@ function readingsOf(text: string): readonly [string, string, string] {
   return [text, unpercent(text), decoded];
 }
 
-/** The part of a secret a fragment is judged on: a signed token's signature, or the whole. */
-const secretPart = (secret: string): string =>
-  /^[\w-]+\.[\w-]+\.[\w-]+$/u.test(secret) ? secret.slice(secret.lastIndexOf('.') + 1) : secret;
+/** A base64url part decoded to a JSON object, or undefined. */
+function jsonPart(part: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The part of a secret a fragment is judged on: a signed token's signature,
+ * or the whole. A token is signed only when its header and claims decode to
+ * JSON objects and the header names its algorithm; any other three-part
+ * secret is opaque.
+ */
+function secretPart(secret: string): string {
+  const [header = '', claims = '', signature = ''] = secret.split('.');
+  const signed =
+    /^[\w-]+\.[\w-]+\.[\w-]+$/u.test(secret) &&
+    typeof jsonPart(header)?.['alg'] === 'string' &&
+    jsonPart(claims) !== undefined;
+  return signed ? signature : secret;
+}
 
 /** Rule 1: a run of FRAGMENT_RUN characters of the secret (a shorter secret whole) in a text. */
 function holdsRun(texts: readonly string[], secret: string): boolean {
