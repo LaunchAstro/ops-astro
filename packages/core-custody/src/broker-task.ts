@@ -61,7 +61,33 @@ const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
  * earlier view of the operations, so an edit committed during the wait would
  * be read without the write that made it.
  */
-const READ_TASK = `select run.id::text as run_id, ${TASK_SOURCE} ${TASK_OF_LEASE}`;
+/** Whether `person` held the owner role at `at`: membership history, as `HELD_THEN` reads it. */
+const OWNER_AT = (person: string, at: string): string => `exists (
+                   select 1 from public.memberships m
+                    where m.business_id = run.business_id and m.person_id = ${person}
+                      and m.role_key = 'owner' and m.joined_at <= ${at}
+                      and (m.ended_at is null or m.ended_at > ${at}))`;
+
+/**
+ * Whether the owner started the run (#1620 P4): its version proposed by a
+ * person then holding the owner role, and every approval of it given by one.
+ * A run an agent or a schedule proposed, or a member approved, is not.
+ */
+const OWNER_RAN = `exists (select 1 from public.proposal_versions v
+                join public.actors pa on pa.business_id = v.business_id
+                                     and pa.id = v.proposed_by_actor_id
+               where v.business_id = run.business_id and v.id = run.version_id
+                 and pa.kind = 'person' and ${OWNER_AT('pa.person_id', 'v.created_at')})
+         and exists (select 1 from public.gate_decisions d
+               where d.business_id = run.business_id and d.version_id = run.version_id
+                 and d.decision = 'approve')
+         and not exists (select 1 from public.gate_decisions d
+               where d.business_id = run.business_id and d.version_id = run.version_id
+                 and d.decision = 'approve'
+                 and not ${OWNER_AT('d.decided_by_person_id', 'd.decided_at')})`;
+
+const READ_TASK = `select run.id::text as run_id, ${OWNER_RAN} as owner_ran,
+            ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
 /** A task by its id, as a conversation's page: `$2` the task. */
 const READ_PAGE = `select ${TASK_SOURCE}
@@ -106,17 +132,28 @@ export async function lockTask(
   tx: TenantQuery,
   leaseId: string,
 ): Promise<
-  | { readonly runId: string; readonly clientId: string | null; readonly source: TaskSource }
+  | {
+      readonly runId: string;
+      readonly clientId: string | null;
+      readonly source: TaskSource;
+      /** The owner proposed and approved the run (`OWNER_RAN`). */
+      readonly ownerRan: boolean;
+    }
   | undefined
 > {
   await tx.query(LOCK_TASK, [tx.businessId, leaseId]);
-  const [task] = await tx.query<TaskRow & { run_id: string }>(READ_TASK, [
+  const [task] = await tx.query<TaskRow & { run_id: string; owner_ran: boolean }>(READ_TASK, [
     tx.businessId,
     leaseId,
     LEAVES_ROW_DATA,
   ]);
   if (task === undefined) return undefined;
-  return { runId: task.run_id, clientId: task.client, source: sourceOf(task) };
+  return {
+    runId: task.run_id,
+    clientId: task.client,
+    source: sourceOf(task),
+    ownerRan: task.owner_ran,
+  };
 }
 
 /** A conversation's page task, as a source, and its client link; undefined when there is none. */

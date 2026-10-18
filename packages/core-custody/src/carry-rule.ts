@@ -20,7 +20,8 @@
 // subscription, in its own person's session or under the carve-out.
 //
 // The owner's ChatGPT plan's route (#1620 P4), answered from the M5, carries
-// a run nobody attends, but only one on a task the owner created; any other
+// a run nobody attends, but only one the owner started on a task the owner
+// created (each judged on the owner role held at the time); any other
 // is refused `SUBSCRIPTION_NOT_OWNER_STARTED`. Like `credentials.ts`, this file
 // imports no connector code.
 
@@ -45,7 +46,10 @@ export interface CarryContext {
   readonly clientWork?: boolean;
   /** The route is the owner's ChatGPT plan's (`carriesOnPlan`), which carries owner-started runs only. */
   readonly planRoute?: boolean;
-  /** The run's task was created by a person then holding the owner role (owner line 72's provenance). */
+  /**
+   * The owner created the run's task (owner line 72's provenance) and proposed and approved
+   * the run, each while holding the owner role; the task has no client.
+   */
   readonly ownerStarted?: boolean;
 }
 
