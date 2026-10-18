@@ -375,7 +375,7 @@ export async function proposeUnderLocks(
   if (written.value.supersededVersionId !== null) {
     // AW-09: the agent's revision of its reviewed output is its output too.
     await markRevision(tx, written.value.versionId, written.value.supersededVersionId);
-    await retireWork(tx, liveWork, locks);
+    await retireWork(tx, liveWork, locks, 'PLAN_SUPERSEDED');
     await classifyVersions(
       tx,
       [written.value.supersededVersionId],
