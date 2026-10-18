@@ -125,3 +125,52 @@ describe('a failed sign-in store', () => {
     }
   });
 });
+
+describe('a failed store past its own hold', () => {
+  it('removes its new bytes when the lock file is replaced mid-commit and the digest is fenced', async () => {
+    const { file, dir } = await world(true);
+    // A same-user process removes the lock file just after the token file's
+    // directory fsync: the file is durable, then the digest commit is fenced.
+    let lapsed = false;
+    const lapse: Partial<TokenFs> = {
+      fsyncSync: (fd) => {
+        nodeFs.fsyncSync(fd);
+        const landed = filesHolding(dir, 'synthetic-refresh-new').includes('plan-token.json');
+        if (!lapsed && nodeFs.fstatSync(fd).isDirectory() && landed) {
+          lapsed = true;
+          nodeFs.unlinkSync(`${file}.lock`);
+        }
+      },
+    };
+    expect(await storeSignIn({ file, fs: lapse }, LATER, NEW)).toEqual({
+      ok: false,
+      code: 'SIGN_IN_STORE_FAILED',
+    });
+    expect(lapsed).toBe(true);
+    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual([]);
+    expect(filesHolding(dir, 'synthetic-access-new')).toEqual([]);
+    expect(await presented(file)).toBe('SUBSCRIPTION_SIGN_IN_NEEDED');
+  });
+
+  it('removes its new bytes when the digest is busy and the locked read then fails too', async () => {
+    const { file, dir } = await world(true);
+    const busy = faultyFs({ step: 'digest-busy', on: 'ready' });
+    let renamed = false;
+    const fs: Partial<TokenFs> = {
+      ...busy,
+      renameSync: (from, to) => {
+        busy.renameSync?.(from, to);
+        if (String(to) === file) renamed = true;
+      },
+      readSync: ((...args: Parameters<typeof nodeFs.readSync>) => {
+        if (renamed) throw new Error('injected fault');
+        return (nodeFs.readSync as (...a: unknown[]) => number)(...args);
+      }) as TokenFs['readSync'],
+    };
+    expect(await storeSignIn({ file, fs }, LATER, NEW)).toEqual({
+      ok: false,
+      code: 'SIGN_IN_STORE_FAILED',
+    });
+    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual([]);
+  });
+});

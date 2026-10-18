@@ -22,7 +22,7 @@
 // It reads no other sign-in on the machine, Codex's own login included, and
 // says nothing secret: each line is fixed text or the authorise address.
 
-import { createHash, randomBytes, type JsonWebKey } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import {
   beginSignIn,
@@ -43,7 +43,7 @@ const REGISTRATION_CLIENT = 'dynamic_agent_client';
 const AGENT_NAME = 'Ops Astro';
 const AUTHORIZE_PATH = '/api/accounts/authorize';
 const TOKEN_PATH = '/api/accounts/oauth/token';
-/** The registration's fixed port; a later sign-in may pass another. */
+/** The default loopback port, as OpenAI's flow names it; the owner may pass another. */
 export const SIGN_IN_PORT = 1455;
 const CALLBACK = '/auth/callback';
 const SIGN_IN_WAIT_MS = 5 * 60_000;
@@ -183,13 +183,14 @@ async function json(
 }
 
 /** The issuer's published keys, found through its OpenID configuration on its own origin. */
-async function publishedKeys(issuer: string): Promise<readonly JsonWebKey[]> {
+async function publishedKeys(issuer: string): Promise<readonly unknown[]> {
   const configuration = await json(new URL('/.well-known/openid-configuration', issuer));
   if (configuration === undefined || !sameIssuer(configuration['issuer'], issuer)) return [];
-  const uri = URL.parse(String(configuration['jwks_uri']));
+  const named = configuration['jwks_uri'];
+  const uri = typeof named === 'string' ? URL.parse(named) : null;
   if (uri?.origin !== issuer) return [];
   const set = await json(uri);
-  return Array.isArray(set?.['keys']) ? (set['keys'] as JsonWebKey[]) : [];
+  return Array.isArray(set?.['keys']) ? (set['keys'] as unknown[]) : [];
 }
 
 /** The code exchanged, the grant and its ID token judged, and the tokens stored by custody. */

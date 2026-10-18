@@ -163,6 +163,43 @@ describe('the final hold', () => {
     expect(hostRecord(file)).toEqual(host);
   });
 
+  it('refuses a first registration over a held pair of another registration, writing neither file', async () => {
+    const { file } = world();
+    const other = { ...signInTokens('old', T0 + HOUR), clientId: 'oaiapp_synthetic-old-client' };
+    await seed(file, { state: 'ready', tokens: other });
+    // The host file was removed on its own, so the start hold makes a fresh host-only one.
+    const begun = await beginSignIn({ file });
+    expect(begun).toMatchObject({ ok: true, clientId: undefined });
+    if (!begun.ok) return;
+    const before = fileBytes(file);
+    expect(await storeSignIn({ file }, begun, signInTokens('new', T0 + 2 * HOUR))).toEqual({
+      ok: false,
+      code: 'SIGN_IN_REGISTRATION_CHANGED',
+    });
+    expect(hostRecord(file)).toEqual({ extAgentHostId: begun.hostId });
+    expect(fileBytes(file).equals(before)).toBe(true);
+    // A pending record of another registration is refused the same way; a spent one carries none.
+    await seed(file, { state: 'pending', tokens: other, since: T0 });
+    expect((await storeSignIn({ file }, begun, signInTokens('new', T0 + 2 * HOUR))).ok).toBe(false);
+    await seed(file, { state: 'spent', subject: 'synthetic-subject-a' });
+    expect(await storeSignIn({ file }, begun, signInTokens('new', T0 + 2 * HOUR))).toEqual({
+      ok: true,
+    });
+  });
+
+  it('refuses a later sign-in when the held pair names another client id than the host file', async () => {
+    const { file } = world();
+    await seedHost(file, { extAgentHostId: HOST_ID, clientId: ISSUED });
+    await seed(file, {
+      state: 'ready',
+      tokens: { ...signInTokens('old', T0 + HOUR), clientId: 'oaiapp_synthetic-old-client' },
+    });
+    expect(await storeSignIn({ file }, LATER, signInTokens('new', T0 + HOUR))).toEqual({
+      ok: false,
+      code: 'SIGN_IN_REGISTRATION_CHANGED',
+    });
+  });
+
   it('refuses another account SIGN_IN_ACCOUNT_CHANGED before the registration, writing nothing', async () => {
     const { file } = world();
     await seedHost(file, { extAgentHostId: HOST_ID });

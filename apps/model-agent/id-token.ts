@@ -55,7 +55,7 @@ export function claimsHold(idToken: unknown, expected: Expected): Claimed | unde
   if (!(Array.isArray(audience) ? audience : [audience]).includes(expected.clientId))
     return undefined;
   const expires = claims['exp'];
-  if (typeof expires !== 'number' || expires * 1000 <= expected.now) return undefined;
+  if (!Number.isFinite(expires) || (expires as number) * 1000 <= expected.now) return undefined;
   if (claims['nonce'] !== expected.nonce) return undefined;
   const subject = claims['sub'];
   if (typeof subject !== 'string' || subject === '') return undefined;
@@ -68,11 +68,14 @@ export function claimsHold(idToken: unknown, expected: Expected): Claimed | unde
 }
 
 /** The account a token names when its claims hold and a published RSA key with its id signed it. */
-export function validatedSubject(
-  claimed: Claimed,
-  keys: readonly JsonWebKey[],
-): string | undefined {
-  const key = keys.find((k) => k['kid'] === claimed.kid && k.kty === 'RSA');
+export function validatedSubject(claimed: Claimed, keys: readonly unknown[]): string | undefined {
+  const key = keys.find(
+    (k): k is JsonWebKey =>
+      typeof k === 'object' &&
+      k !== null &&
+      (k as JsonWebKey)['kid'] === claimed.kid &&
+      (k as JsonWebKey).kty === 'RSA',
+  );
   if (key === undefined) return undefined;
   try {
     return verify(
