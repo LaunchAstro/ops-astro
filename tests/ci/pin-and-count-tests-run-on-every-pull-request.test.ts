@@ -6,6 +6,7 @@ import { parseDocument } from 'yaml';
 import { expect, it } from 'vitest';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
 import { readScopeMap } from '../../scripts/ci-scope.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 it.each(['pull_request', 'merge_group', 'push', ''])(
   'runs the migration-order pin on %s without reading changed imports',
@@ -45,7 +46,7 @@ it('runs the pin job before the full-check label and keeps the database shards q
   );
   expect(workflow.on.pull_request.paths).toBeUndefined();
   expect(workflow.on.pull_request['paths-ignore']).toBeUndefined();
-  expect(workflow.jobs['database-shard'].if).toBe("github.event_name != 'pull_request'");
+  expect(workflow.jobs['database-shard'].if).toBe(SHARDS_RUN);
 });
 
 it('lists every repository pin and catalogue count in the always-run settings', () => {

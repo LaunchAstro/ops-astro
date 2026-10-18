@@ -14,6 +14,12 @@
 // `queueOnly` (CI-SPEED, light pull requests) never runs on a pull request: the
 // merge queue, the only way into main, runs it in full, as do a push and any
 // other or empty event.
+//
+// A pre-check batch (#1918) is the one pull request that decides as a merge
+// group: one labelled `precheck-batch` whose head is a branch of this
+// repository, so a fork cannot ask for it. Every check then runs in full,
+// unscoped, so the batch's green covers what the queue runs. The label only
+// widens what runs; an event file that is named but does not read fails.
 
 // A scoped job wraps each heavy step in this, so no step carries a condition
 // that could skip a merge group (tests/ci/merge-group-workflows.test.ts): the
@@ -24,6 +30,7 @@
 // Usage: node scripts/ci-scope.ts <check> [--shard i/n] -- <command> [args...]
 //        node scripts/ci-scope.ts <check> --decide   (prints run or skip)
 //   GITHUB_EVENT_NAME  the event; anything but pull_request runs everything.
+//   GITHUB_EVENT_PATH, GITHUB_REPOSITORY  on a pull request, whether it is a batch.
 //   A queue-only check reads no change: on a pull request it says it runs in
 //   the merge queue and passes (`--decide` prints skip).
 //   On a pull request the base is `node scripts/merge-group.mjs base`.
@@ -46,6 +53,33 @@ export interface ScopeMap {
   readonly alwaysRunTests: readonly string[];
 }
 
+/** A field of an object, or undefined when either is not there. */
+const field = (value: unknown, key: string): unknown =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+
+/** Two strings equal without case, as ci.yml's `contains` and `==` compare them. */
+const same = (value: unknown, text: string): boolean =>
+  typeof value === 'string' && value.toLowerCase() === text.toLowerCase();
+
+/**
+ * The event the checks decide on: the one given, but a pull request labelled `precheck-batch`
+ * whose head is a branch of `repository` decides as a batch, which runs everything. It reads the
+ * label and the head as ci.yml's shard condition does, so the two agree.
+ */
+export const decidingEvent = (event: string, payload: unknown, repository: string): string => {
+  if (event !== 'pull_request' || repository === '') return event;
+  const pull = field(payload, 'pull_request');
+  const labels = field(pull, 'labels');
+  const labelled =
+    Array.isArray(labels) && labels.some((label) => same(field(label, 'name'), PRECHECK_BATCH));
+  const own = same(field(field(field(pull, 'head'), 'repo'), 'full_name'), repository);
+  return labelled && own ? BATCH_EVENT : event;
+};
+
+/** The event file GitHub wrote, or undefined when none is named. One that is named must read. */
+const readEvent = (path: string): unknown =>
+  path === '' ? undefined : (JSON.parse(readFileSync(path, 'utf8')) as unknown);
+
 /** The areas of the named suites that depend on a path. */
 export type Dependents = (path: string) => readonly string[];
 
@@ -54,6 +88,10 @@ export type Scope =
   | { readonly everything: false; readonly areas: readonly string[]; readonly reasons: string[] };
 
 const SCOPED = ['database conformance', 'isolation tests', 'visual drift'] as const;
+
+export const PRECHECK_BATCH = 'precheck-batch';
+/** The event a pre-check batch decides as: not a pull request, so everything runs. */
+const BATCH_EVENT = `pull_request labelled ${PRECHECK_BATCH}`;
 
 const isPrefixList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((p) => typeof p === 'string' && p !== '');
@@ -195,9 +233,11 @@ function main(argv: readonly string[]): number {
   if (command.length === 0 && !own.includes('--decide')) {
     throw new Error('give -- <command> to run, or --decide');
   }
-  const event = process.env['GITHUB_EVENT_NAME'] ?? '';
   const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
   if (check === 'pin and count tests') return runPins(root, command, map.alwaysRunTests);
+  const given = process.env['GITHUB_EVENT_NAME'] ?? '';
+  const payload = given === 'pull_request' ? readEvent(process.env['GITHUB_EVENT_PATH'] ?? '') : {};
+  const event = decidingEvent(given, payload, process.env['GITHUB_REPOSITORY'] ?? '');
   if (map.queueOnly.includes(check)) {
     const run = event !== 'pull_request';
     const why = 'deferred on a pull request; it runs in full in the merge queue';

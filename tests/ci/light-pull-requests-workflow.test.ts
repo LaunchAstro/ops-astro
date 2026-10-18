@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Light pull requests: every required check still reports on a pull
-// request and on a group; the shards behind `database conformance` skip pull requests alone, and
-// the aggregate passes their skip on a pull request alone, and only when the contamination gate
-// passed; every job behind the gate on a status function (always(), cancelled(), failure(),
+// request and on a group; the shards behind `database conformance` skip pull requests alone, but
+// for a pre-check batch (#1918, tests/ci/precheck-batch.ts), and the aggregate passes their skip on
+// a pull request alone that is not a batch, and only when the contamination gate passed; every job behind the gate on a status function (always(), cancelled(), failure(),
 // success()) reads the gate's result; `local checks` and `isolation tests` defer their heavy steps
 // through scripts/ci-scope.ts; and planted forms of each go red. The workflows are read with a YAML
 
@@ -12,6 +12,7 @@ import { parseDocument } from 'yaml';
 import { aggregateProblems, condition } from './light-pull-requests-aggregate.ts';
 import { read } from './merge-group-repo.ts';
 import { unguarded } from './open-pull-request.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 type Env = Record<string, string>;
 type Step = { name?: string; if?: unknown; run?: string; uses?: string; env?: Env };
@@ -138,7 +139,7 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
     ...alwaysProblems(ci),
   ];
   const shards = jobCondition(ci.jobs['database-shard']?.if);
-  if (shards !== SKIPS_PULL_REQUESTS) problems.push(`database-shard: if: ${String(shards)}`);
+  if (shards !== SHARDS_RUN) problems.push(`database-shard: if: ${String(shards)}`);
   const aggregate = ci.jobs['database'];
   if (
     jobCondition(aggregate?.if) !== 'always()' ||
@@ -168,7 +169,7 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
 }
 
 describe('the workflows: every required check reports on a pull request and on a group', () => {
-  it('holds every rule, and the shards skip pull requests alone', () => {
+  it('holds every rule, and the shards skip pull requests alone, but for a batch', () => {
     expect(problemsNow(load(CI))).toStrictEqual([]);
   });
 
@@ -192,7 +193,7 @@ describe('the workflows: every required check reports on a pull request and on a
       expect(s.run).toMatch(/^node scripts\/ci-scope\.ts 'isolation tests' -- /u);
   });
 
-  it('the aggregate needs success on a group and a push, passes a skip on a pull request whose gate passed alone, and fails a failure or a cancel', () => {
+  it('the aggregate needs success on a group, a push and a batch, passes a skip on a pull request whose gate passed alone, and fails a failure or a cancel', () => {
     expect(aggregateProblems(aggregateStep(load(CI)))).toStrictEqual([]);
   }, 120_000);
 });

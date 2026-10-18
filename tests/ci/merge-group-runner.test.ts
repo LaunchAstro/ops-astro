@@ -14,6 +14,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { read, ROOT } from './merge-group-repo.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 import {
   behindRequired,
   evaluate,
@@ -169,8 +170,8 @@ const PLANTS: [string, [string, string, string][], string][] = [
     [
       [
         CI,
-        `    if: github.event_name != 'pull_request'\n    runs-on: ${ROUTE}\n`,
-        `    if: github.event_name != 'pull_request'\n    runs-on: ubuntu-latest\n`,
+        `    if: ${SHARDS_RUN}\n    runs-on: ${ROUTE}\n`,
+        `    if: ${SHARDS_RUN}\n    runs-on: ubuntu-latest\n`,
       ],
     ],
     'database conformance shard ${{ matrix.shard }}: stays hosted',

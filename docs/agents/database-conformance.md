@@ -92,7 +92,7 @@ contamination gate and every shard, and fails unless all of the shards
 succeeded, a skipped or cancelled shard included.
 
 The shards run in the merge queue and on a push to `main`, never on a pull
-request (CI-SPEED, light pull requests). A pull request's checks are the light
+request but a pre-check batch (CI-SPEED, light pull requests). A pull request's checks are the light
 set and flag issues; the full set runs in the merge queue, which is the only
 way into `main`. So on a pull request the shards skip and the aggregate passes
 on that skip when the contamination gate passed, and nowhere else. A failed,
@@ -101,7 +101,12 @@ aggregate, so a red gate never shows a green `database conformance`. On a
 merge group or a push a skipped shard fails it, and a failed or cancelled shard
 fails it everywhere.
 `isolation tests` defers its suites to the queue the same way, still reporting
-under its name. A green `database conformance` on a pull request therefore
+under its name.
+A pre-check batch (#1918) is a pull request labelled `precheck-batch` whose
+head is a branch of this repository. With `ci-next` it runs the merge-group
+set on hosted runners: the shards run, `scripts/ci-scope.ts` runs every suite
+and defers nothing, and the aggregate needs every shard and isolation shard to
+succeed, as on a group. A fork's pull request is never a batch. A green `database conformance` on a pull request therefore
 proves nothing about the suites; builders run the full `pnpm check` locally,
 and `pnpm db:conformance` against a local database for a change that reaches
 the database, before declaring ready.
@@ -214,8 +219,8 @@ container's URL is already the owner's.
 
 A green here means what the last line the runner prints says it means: the
 named suites ran against a real database and none of them skipped. That holds
-for the merge queue's run and a push to `main`; on a pull request the runner
-does not run, and the green says only that the gate passed and the shards
+for the merge queue's run, a push to `main` and a pre-check batch; on any other
+pull request the runner does not run, and the green says only that the gate passed and the shards
 skipped there. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.
