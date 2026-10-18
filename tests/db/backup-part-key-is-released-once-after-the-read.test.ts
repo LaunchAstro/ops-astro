@@ -37,11 +37,11 @@ const partReads = async (): Promise<{ actor: string; part: number }[]> => [
   )),
 ];
 
-/** The newest archive's id, its header read (and logged) as `reader`. */
-async function header(reader: Client): Promise<string> {
+/** The newest archive's id, its header read (and logged) as `reader`, the operator `person`. */
+async function header(reader: Client, person: string = operator): Promise<string> {
   const { rows } = await reader.query<{ id: string }>(
     'select id from backups.read_latest($1, $2)',
-    [operator, OPERATING_BUSINESS],
+    [person, OPERATING_BUSINESS],
   );
   const id = rows[0]?.id;
   if (id === undefined) throw new Error('no archive');
@@ -66,6 +66,8 @@ const open = (sealed: Buffer, key: string): Buffer => {
 };
 
 const body = randomBytes(1000);
+// The person the installation appointed the second operator's login as.
+const secondPerson = '00000000-0000-4000-8000-0000000000b2';
 let second: { url: string; name: string };
 let reader: Client;
 
@@ -82,7 +84,7 @@ describe.skipIf(serverUrl === undefined)('a part key released once, after the re
     second = await loginIn(store, RESTORE, 'o2');
     await store.admin.execute('insert into backups.appointed (login, person) values ($1, $2)', [
       second.name,
-      '00000000-0000-4000-8000-0000000000b2',
+      secondPerson,
     ]);
     reader = await asRole(operatorLogin.url, RESTORE);
   });
@@ -140,7 +142,8 @@ function releasedOnlyToItsReader() {
     const unappointed = await asRole(restoreLogin.url, RESTORE);
     const job = await asRole(backupLogin.url, BACKUP);
     try {
-      await header(other);
+      // The other operator reads the header as its own person, as the store requires.
+      await header(other, secondPerson);
       const before = await partReads();
       expect({
         anotherOperator: await attempt(other, RELEASE, [id]),
