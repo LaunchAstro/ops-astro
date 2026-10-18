@@ -115,14 +115,22 @@ async function actorOf(tx: TransactionQuery, personId: string): Promise<string> 
   return row.id;
 }
 
-/** A business's own site already bound to other providers, which the step never moves. */
-async function boundOtherwise(tx: TransactionQuery, site: OwnSite): Promise<boolean> {
-  const [row] = await tx.query<{ other: boolean }>(
-    `select (repository, default_branch, project) is distinct from ($2, $3, $4) as other
-       from public.party_sites where business_id = $1 and party_id is null`,
+/**
+ * The own site as the write will meet it: its revision (undefined where none is bound) and
+ * whether it binds other providers, which the step never moves. A bound row is locked here, so
+ * nothing moves or deletes it before the write. An absent row cannot be locked: `bind` catches
+ * a binding committed after this read once its own write is done.
+ */
+async function boundBefore(
+  tx: TransactionQuery,
+  site: OwnSite,
+): Promise<{ revision: number | undefined; other: boolean }> {
+  const [row] = await tx.query<{ revision: number; other: boolean }>(
+    `select revision, (repository, default_branch, project) is distinct from ($2, $3, $4) as other
+       from public.party_sites where business_id = $1 and party_id is null for update`,
     [tx.businessId, site.repository, site.defaultBranch, site.project],
   );
-  return row?.other === true;
+  return { revision: row?.revision, other: row?.other === true };
 }
 
 /** The binding, in one transaction as the operator: its revision, and whether it changed. */
@@ -138,9 +146,9 @@ async function bind(
       if (why !== undefined)
         throw new Refusal(`DATABASE_URL must be the application's login, and this one ${why}`);
       const actorId = await actorOf(tx, gate.operator.personId);
-      if (await boundOtherwise(tx, site))
+      const before = await boundBefore(tx, site);
+      if (before.other)
         throw new Refusal('the business already binds its own site to other providers');
-      const before = await revisionOf(tx);
       const pages = await tx.query<{ n: number }>(
         'select count(*)::int as n from public.party_site_pages where business_id = $1',
         [tx.businessId],
@@ -153,7 +161,13 @@ async function bind(
         [tx.businessId],
       );
       if (after === undefined) throw new Error(`${NAME}: the site is not bound after its write`);
-      return { revision: after, changed: before !== after || pages[0]?.n !== now[0]?.n };
+      // Unbound at the read, the write must have inserted the row, at the column's default
+      // revision 1. A binding committed since makes the upsert update it, which always raises
+      // its revision past 1: refused, the rollback leaves that binding as it was. (`xmax = 0`
+      // would not tell: the page insert's foreign-key check locks the new row, setting it.)
+      if (before.revision === undefined && after !== 1)
+        throw new Refusal('the business bound its own site elsewhere while the step ran');
+      return { revision: after, changed: before.revision !== after || pages[0]?.n !== now[0]?.n };
     });
   } finally {
     await database.close();
