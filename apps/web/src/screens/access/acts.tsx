@@ -2,7 +2,8 @@
 //
 // Settings ▸ Access's two acts: giving one person one permission over the
 // whole business or one client (C32, `access.grant`), and the confirmation
-// C58's End access waits on before anything is sent.
+// C58's End access waits on before anything is sent. Under Give access,
+// Preview access draws the chosen teammate's preview (`preview.tsx`, U14).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Card, Select, type Option } from '@launchastro/ui';
@@ -12,6 +13,7 @@ import {
   type AccessReadResult,
   type PersonView,
 } from '../../../../../packages/core-wire/src/index.ts';
+import { PreviewAccess } from './preview.tsx';
 import { scopeWords } from './rows.tsx';
 
 const WHOLE_BUSINESS = '';
@@ -82,6 +84,7 @@ export function GiveAccess(props: {
             </Button>
           </div>
         </form>
+        <PreviewAccess people={people} holder={holder} clients={props.result.clientRecords} />
       </Card>
     </div>
   );
