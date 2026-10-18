@@ -1635,6 +1635,20 @@ both tenancy-scoped with row security forced, and the fair share's count
   the step's held calls in its transaction, with `outcome` and
   `outcome_person_id`; no timer does. `readCallDrops` reads a task's held
   calls in its business. Tests: `tests/broker/aw-10-*`.
+- Turns and the call limit (#1623 R3, `20261018153000_turn_provenance_and_call_limit`,
+  `core-custody/src/broker-turn.ts`, `broker-turn-read.ts`, `broker-limit.ts`):
+  each hold of a run attempt records its place among the attempt's calls
+  (`call_ordinal`, counted under the run lock) and the attempt's limit, the one
+  its first hold recorded (`AGENT_MODEL_CALL_LIMIT`, or the deployment's
+  `callLimit`). The settlement of the limit-th call writes `call_limit /
+CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
+  comes back marked terminal; the reserve refuses a hold past it, a backstop.
+  A turn's ordinal must be that place. Its parts are bound at the reserve and
+  again at the start: an answer by the digest its settlement kept
+  (`answer_digest`, sha256 of the canonical JSON of `{v, text, toolCalls}`;
+  the words are never stored), scoped to the business and the attempt. The
+  turn's class is its strictest source's, kept on the answer as
+  `answer_source`, so an answer never becomes less strict on a later turn.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
