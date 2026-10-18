@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1904 P10: a turn on a client's task carrying an altered definition is answered with the client refusal (C60) before any definition field is bound, with nothing sent."
+}

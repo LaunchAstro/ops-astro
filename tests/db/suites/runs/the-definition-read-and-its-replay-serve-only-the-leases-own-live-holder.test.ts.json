@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P2: definition.read and its replay answer a pinned file's text only to the lease's own holder, under its delegation, at its fence, live at the end: another delegation, a stale fence, an ended lease, an undeclared runId, a revocation before or during the read, an expiry during a wait at the reservation or the business lock (D1904-1) and a login ended during a replay's wait are each refused with no text and nothing written, on separate connections."
+}
