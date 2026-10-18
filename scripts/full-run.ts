@@ -160,6 +160,34 @@ export async function queueBusyNow({
   return false;
 }
 
+/** A tested push's scope at the end of a batch: full when the queue is empty, light while it holds more. */
+export async function batchEnd({
+  api,
+  graphql,
+  repo,
+}: {
+  api: Api;
+  graphql: GraphQL;
+  repo: string;
+  sha: string;
+  pause: () => Promise<void>;
+  waits?: number;
+}): Promise<Scope> {
+  if (!(await queueBusyNow({ api, graphql, repo }))) {
+    console.log('full run: the merge queue is empty, the end of a batch; the full set runs');
+    return FULL;
+  }
+  console.log('full run: the queue holds more; the light set runs');
+  return LIGHT;
+}
+
+/** The wait between two reads of the queue and main. */
+async function wait(): Promise<void> {
+  await new Promise((done) => {
+    setTimeout(done, 30_000);
+  });
+}
+
 function client(token: string, base: string): { api: Api; graphql: GraphQL } {
   const headers = {
     accept: 'application/vnd.github+json',
@@ -202,11 +230,11 @@ async function decide(env: NodeJS.ProcessEnv): Promise<Scope> {
     );
     return scope;
   }
-  return await pushScope(env, payload);
+  return await pushScope(env);
 }
 
 /** A push to main's scope: light only when its tree was tested and the queue holds more. */
-async function pushScope(env: NodeJS.ProcessEnv, payload: unknown): Promise<Scope> {
+async function pushScope(env: NodeJS.ProcessEnv): Promise<Scope> {
   try {
     const repo = env['GITHUB_REPOSITORY'] ?? '';
     const { api, graphql } = client(env['GH_TOKEN'] ?? '', env['GITHUB_API_URL'] ?? '');
@@ -227,12 +255,7 @@ async function pushScope(env: NodeJS.ProcessEnv, payload: unknown): Promise<Scop
       return FULL;
     }
     console.log(`full run: merge group run ${String(tested.id)} tested this tree`);
-    if (!(await queueBusyNow({ api, graphql, repo }))) {
-      console.log('full run: the merge queue is empty, the end of a batch; the full set runs');
-      return FULL;
-    }
-    console.log('full run: the queue holds more; the light set runs');
-    return scopeOf({ eventName: 'push', payload, tested: true, queueBusy: true });
+    return await batchEnd({ api, graphql, repo, sha: env['GITHUB_SHA'] ?? '', pause: wait });
   } catch (error) {
     console.log(
       `full run: ${error instanceof Error ? error.message : String(error)}; the full set runs`,
