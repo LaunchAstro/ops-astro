@@ -15,6 +15,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   changeGroupMembers,
   lockConversation,
+  moveReadMarker,
   readConversationTypes,
   writeComment,
 } from '../../packages/core-records/src/index.ts';
@@ -146,12 +147,33 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
         (await g.viewOf(g.chat.tess, id))?.unread,
         'a later write must not hide behind the existing marker',
       ).toBe(1);
-      // Marking read up to that message counts it, though it is stamped past the stepped-back clock.
-      const after = await g.as(g.chat.tess, 'chat.messages', { conversationId: id });
-      const last = (after.body['messages'] as ChatMessageView[]).at(-1)!.at;
-      expect(
-        (await g.as(g.chat.tess, 'chat.mark_read', { conversationId: id, upTo: last })).status,
-      ).toBe(200);
+    });
+
+    it('a marker moved while the clock is stepped back counts the messages stamped past that clock', async () => {
+      const { world } = g.chat.harness;
+      const { id, at } = await groupWithOneMessage('marked late');
+      await aSecondBefore(at, id, async (tx) => {
+        const types = await readConversationTypes(tx);
+        if (types === undefined) throw new Error('types absent');
+        await writeComment(tx, types.commentTypeId, {
+          taskId: null,
+          conversationId: id,
+          authorActorId: world.ada.actorId!,
+          commentType: 'note',
+          audience: 'group',
+          body: 'marked late after',
+          source: 'api',
+        });
+      });
+      const read = await g.as(g.chat.tess, 'chat.messages', { conversationId: id });
+      const shown = (read.body['messages'] as ChatMessageView[]).map((m) => m.at);
+      expect(shown).toHaveLength(2);
+      expect((await g.viewOf(g.chat.tess, id))?.unread).toBe(2);
+      // Tess saw both; her marker moves while the clock still reads a second behind them.
+      await aSecondBefore(at, id, async (tx) => {
+        const upTo = { at: new Date(Date.parse(at)), seen: shown.length };
+        expect(await moveReadMarker(tx, id, g.chat.tess.personId!, upTo)).toBe(true);
+      });
       expect((await g.viewOf(g.chat.tess, id))?.unread).toBe(0);
     });
 
