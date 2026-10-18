@@ -190,7 +190,7 @@ within `backups.settings.restore_days` (35 to start). Once none has, the
 watcher mails the owner and the second operator that the restore drill is out
 of date. The same job deletes second-factor codes recorded and hook message
 claims made more than 24 hours ago from staging's database (migrations
-20261002105957 and 20261012133600, `ops.expire_second_factor_codes()` and
+20261002105957 and 20261018033724, `ops.expire_second_factor_codes()` and
 `ops.expire_auth_hook_messages()`) as `ops_astro_upkeep`, over
 `DATABASE_UPKEEP_URL` in its env file: the login that
 `staging-logins.mjs after-reset` writes, leaving by the pooler the relay lists

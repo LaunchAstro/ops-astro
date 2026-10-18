@@ -16,7 +16,7 @@ import { dropLogins, hostReach, job, loginIn, serverUrl } from './backup-identit
 
 const UPKEEP = 'ops_astro_upkeep';
 const EXPIRE = 'select ops.expire_second_factor_codes()';
-/** What the upkeep identity may run: the two expiries (20261002105957, 20261012133600). */
+/** What the upkeep identity may run: the two expiries (20261002105957, 20261018033724). */
 const UPKEEP_HOLDS = [
   'ops.expire_auth_hook_messages() EXECUTE',
   'ops.expire_second_factor_codes() EXECUTE',

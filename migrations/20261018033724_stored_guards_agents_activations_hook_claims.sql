@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is").
 --
--- 20261012133600 three rows the application role wrote with no database rule
+-- 20261018033724 three rows the application role wrote with no database rule
 -- behind the product's own (package P03). Each guard holds a new write; no
 -- stored row is read or rewritten.
 --

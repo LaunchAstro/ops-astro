@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `activations_change_one_step` (20261012133600) asks that a change stamps
+// `activations_change_one_step` (20261018033724) asks that a change stamps
 // `changed_at` with `now()`, the time its transaction began, not the time it
 // took the row. A transaction opened before another change committed then
 // writes the next revision stamped before the one it follows, and a

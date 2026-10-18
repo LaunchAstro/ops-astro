@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The upkeep's `ops.expire_auth_hook_messages()` (20261012133600) deletes hook
+// The upkeep's `ops.expire_auth_hook_messages()` (20261018033724) deletes hook
 // message claims older than a day while a send may be claiming a message. The
 // claim is the primary key, so a claim of a digest the expiry is deleting
 // waits on the expiry's transaction: committed, the message is claimed afresh;
