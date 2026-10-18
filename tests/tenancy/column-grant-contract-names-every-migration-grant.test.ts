@@ -101,9 +101,10 @@ const READS: readonly (readonly [string, string, readonly string[]])[] = [
     "do $$ begin execute format('grant r to %I -- 100%%', current_user); end $$;",
     [],
   ],
+  ['a literal backslash in an E string', String.raw`select strpos(x, E'\\') from s.t;`, []],
   [
-    'escapes in a string that grants nothing',
-    String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
+    'a set_config() of one literal setting',
+    "do $$ begin perform set_config('app.business_id', 'x', true); end $$;",
     [],
   ],
 ];
@@ -166,6 +167,40 @@ const REFUSALS: readonly (readonly [string, string])[] = [
   ['SQL held in a variable', 'do $$ declare q text; begin execute q; end $$;'],
   ['a format() with %L', "do $$ begin execute format('select %L', 'x'); end $$;"],
   ['a body in another language', "do language plpython3u $$ plpy.execute('select 1') $$;"],
+  [
+    'an escape in a string that grants nothing',
+    String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
+  ],
+  ['an escaped quote in an E string', String.raw`select E'it\'s';`],
+  ['a U& escape in a string that grants nothing', String.raw`select U&'\0067o';`],
+  ['standard_conforming_strings turned off', 'set standard_conforming_strings = off;'],
+  [
+    'standard_conforming_strings set from a string',
+    "select set_config('standard_conforming_strings', 'off', false);",
+  ],
+  [
+    'standard_conforming_strings as a quoted name',
+    'alter role r set "Standard_Conforming_Strings" = off;',
+  ],
+  [
+    'standard_conforming_strings in a function body',
+    'create function s.f() returns void language sql set standard_conforming_strings = off as $$ select 1 $$;',
+  ],
+  [
+    'a set_config() setting joined at run time',
+    "select set_config('standard_' || 'conforming_strings', 'off', false);",
+  ],
+  [
+    'a set_config() setting by named argument',
+    "select pg_catalog.set_config(new_value => 'off', setting_name => 's', is_local => false);",
+  ],
+  ['a set_config() called by a quoted name', 'select "set_config"(n, \'off\', false) from s.t;'],
+  [
+    'an update of pg_settings',
+    "update pg_settings set setting = 'off' where name like 'standard%';",
+  ],
+  ['a client encoding set', "set client_encoding = 'SJIS';"],
+  ['a client encoding set with SET NAMES', "set session names 'SJIS';"],
 ];
 
 describe('reading a column grant the way PostgreSQL does', () => {
