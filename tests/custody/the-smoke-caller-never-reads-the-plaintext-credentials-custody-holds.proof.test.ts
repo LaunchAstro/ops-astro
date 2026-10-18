@@ -87,7 +87,7 @@ const smoke = () =>
     resolve: () => Promise.resolve(['76.76.21.21']),
   });
 
-it('Sol proof, criterion 1: the smoke caller never reads plaintext credentials outside custody', async () => {
+it('the smoke caller never reads plaintext credentials outside custody', async () => {
   observed.plaintextReads = 0;
   observed.enabled = true;
   let result;
