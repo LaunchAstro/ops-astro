@@ -12,8 +12,10 @@ import {
   go,
   notHere,
   red,
+  signIn,
   type Check,
 } from './owner-checks-steps.ts';
+import { loginOf } from './owner-checks-source.ts';
 
 export const SHELL: readonly Check[] = [
   {
@@ -130,15 +132,30 @@ export const SHELL: readonly Check[] = [
         },
       ],
       [
-        'Drag a panel grip wider',
+        'Drag a panel grip: the panel narrows',
         async (page) => {
-          const grip = page.getByRole('separator').filter({ hasNotText: 'Menu width' }).last();
+          // The dock's own grip says the panel width it holds (EdgeGrip's aria-valuenow).
+          const grip = page.getByRole('separator', { name: 'Panel width', exact: true }).first();
+          if ((await grip.count()) === 0) {
+            const named = await page
+              .getByRole('separator')
+              .evaluateAll((all) => all.map((one) => one.getAttribute('aria-label')));
+            throw red(`no panel grip among separators ${named.join(', ')}`);
+          }
           const box = await grip.boundingBox();
-          if (box === null) throw red('no panel grip');
+          if (box === null) throw red('the panel grip has no size');
+          const before = Number(await grip.getAttribute('aria-valuenow'));
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
           await page.mouse.down();
-          await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 12 });
+          // Two panels at laptop width fill the room beside the rail, so the drag narrows.
+          await page.mouse.move(box.x + 120, box.y + box.height / 2, { steps: 12 });
           await page.mouse.up();
+          const after = Number(await grip.getAttribute('aria-valuenow'));
+          if (!(before - after >= 20)) {
+            throw red(
+              `the panel width went from ${String(before)} to ${String(after)}px, dragged 120`,
+            );
+          }
         },
       ],
       [
@@ -181,12 +198,6 @@ export const SHELL: readonly Check[] = [
         },
       ],
       [
-        'The teammate signs in: authenticator code asked, a wrong code refused',
-        notHere(
-          'needs the made-up teammate login with an authenticator (Bitwarden), not prepared in this lane',
-        ),
-      ],
-      [
         'The privacy policy from the sign-in page',
         async (page) => {
           // Signed out from the person menu, so no load re-adds the made-up session.
@@ -213,6 +224,37 @@ export const SHELL: readonly Check[] = [
       [
         'Every outside service listed with what it receives',
         notHere('the made-up reads do not answer the public legal document read'),
+      ],
+      [
+        'The teammate signs in: authenticator code asked, a wrong code refused',
+        async (page, at) => {
+          const login = loginOf('TEAMMATE');
+          if (login === undefined) {
+            throw red(
+              'no made-up teammate login in OWNER_CHECK_TEAMMATE_EMAIL and _PASSWORD; waits on ops-astro#1808',
+            );
+          }
+          await signIn(page, at, login);
+          await expectVisible('the authenticator code step', () =>
+            page.locator('[data-sign-in="code"]'),
+          );
+          const code = page.getByRole('textbox', { name: 'Authenticator code' });
+          await code.fill('000000');
+          await page.getByRole('button', { name: 'Continue' }).click();
+          const refused = await page
+            .waitForFunction(
+              () =>
+                document
+                  .querySelector('[data-step-up="code"], input[aria-invalid="true"]')
+                  ?.getAttribute('aria-invalid') === 'true',
+              undefined,
+              { timeout: 8000 },
+            )
+            .then(() => true)
+            .catch(() => false);
+          if (!refused) throw red('a wrong code was not refused');
+          await page.getByRole('button', { name: 'Cancel' }).click();
+        },
       ],
     ],
   },

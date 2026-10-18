@@ -157,6 +157,15 @@ export const FOUNDATION: readonly Check[] = [
         async (page) => {
           const charts = page.locator('main svg[role="img"], main figure svg, main [data-chart]');
           if ((await charts.count()) === 0) throw red('no chart on the Executive page');
+          const drawn = await charts.evaluateAll((all) =>
+            all.map((one) => {
+              const box = one.getBoundingClientRect();
+              return one.checkVisibility() && box.width > 0 && box.height > 0;
+            }),
+          );
+          const undrawn = drawn.indexOf(false);
+          if (undrawn !== -1)
+            throw red(`chart ${String(undrawn + 1)} of ${String(drawn.length)} is not drawn`);
           const box = await charts.first().boundingBox();
           if (box === null) throw red('the first chart has no size');
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

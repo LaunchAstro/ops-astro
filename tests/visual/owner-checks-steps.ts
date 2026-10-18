@@ -6,6 +6,7 @@
 
 import type { Page } from 'playwright';
 import type { Theme } from './packet.ts';
+import type { Login } from './owner-checks-source.ts';
 
 export const PHONE = 390;
 export const TABLET = 820;
@@ -65,6 +66,15 @@ export const reload = async (page: Page): Promise<void> => {
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#app:empty') === null);
 };
+
+/** Signs in through the app's own form; the login's values are typed, never shown. */
+export async function signIn(page: Page, at: Ctx, login: Login): Promise<void> {
+  await go(page, at, '/sign-in');
+  await page.getByRole('textbox', { name: 'Email' }).fill(login.email);
+  await page.getByLabel('Password').fill(login.password);
+  await page.getByRole('textbox', { name: 'Business' }).fill(login.business);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+}
 
 /** A caption drawn over the page, so the film says which step is on screen. */
 export async function caption(page: Page, text: string): Promise<void> {

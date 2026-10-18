@@ -10,19 +10,25 @@
 //
 //   node tests/visual/owner-checks.ts [--out DIR] [--unit U06]
 //
-// The app is served from source and draws the made-up reads (made-up-api.ts)
-// under the made-up session, as the width-and-theme harness does: no
-// database, no sign-in service, no hosted site, so nothing here reaches real
-// data or production. A step that needs a real back end (a sign-in, a second
-// factor, a session ended elsewhere, an agent command, a production alert or
-// drill receipt) prints `not here` with what it waits on; it is the owner's
-// to run on app.opsastro.com. A step whose screen is wrong prints `red`.
+//   OWNER_CHECK_OWNER_EMAIL=… OWNER_CHECK_OWNER_PASSWORD=… OWNER_CHECK_BUSINESS=…
+//   [OWNER_CHECK_TEAMMATE_EMAIL=… OWNER_CHECK_TEAMMATE_PASSWORD=…] node tests/visual/owner-checks.ts
+//   node tests/visual/owner-checks.ts --local
+//
+// The films are of the deployed made-up build on app.opsastro.com
+// (owner-checks-source.ts), each signed in first with the made-up owner login
+// from the environment; a missing login makes the film's steps red, never
+// skipped. With --local the app is served from source over the made-up reads
+// and session, as the width-and-theme harness does, for working on the steps.
+// A step that cannot be shown in any film (a production alert or drill
+// receipt, the private mockup, a client record the made-up data lacks)
+// prints `not here` with what it waits on; a step whose screen is wrong, or
+// whose login is missing, prints `red`.
 // The films, `pack.json` and the phone page `index.html` land in DIR
 // (default .local/evidence/owner-checks, gitignored).
 
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Browser, BrowserContextOptions } from 'playwright';
+import type { Browser, BrowserContextOptions, Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
 import { BUILD_SELECTOR } from '../browser/served-build.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
@@ -32,7 +38,17 @@ import { ACCESS } from './owner-checks-access.ts';
 import { FOUNDATION } from './owner-checks-foundation.ts';
 import { renderPack, stepLine, type StepResult, type UnitResult } from './owner-checks-report.ts';
 import { SHELL } from './owner-checks-shell.ts';
-import { BEAT, caption, LAPTOP, Missed, type Check, type Ctx } from './owner-checks-steps.ts';
+import { DEPLOYED, loginOf, sourceOf } from './owner-checks-source.ts';
+import {
+  BEAT,
+  caption,
+  go,
+  LAPTOP,
+  Missed,
+  signIn,
+  type Check,
+  type Ctx,
+} from './owner-checks-steps.ts';
 import { fetchAssets, MODE, readAssets, readPacket, type Packet } from './packet.ts';
 
 const args = process.argv.slice(2);
@@ -63,24 +79,66 @@ function filming(
   });
 }
 
+/** A film's page: the deployed build signed in as the made-up owner, or the local copy. */
+async function opened(
+  browser: Browser,
+  packet: Packet,
+  at: Ctx,
+  session: string | undefined,
+  check: Check,
+): Promise<{ page: Page; close: () => Promise<void>; signedIn: StepResult | undefined }> {
+  const video = { dir: join(out, '.raw'), size: { width: check.width, height: packet.height } };
+  const colorScheme = check.theme ?? 'light';
+  if (session !== undefined) {
+    const side: Side = await openSide(filming(browser, video), packet, check.width, {
+      app: at.app,
+      session,
+      colorScheme,
+    });
+    await answerMadeUp(side.context);
+    const page = await load(side, packet, new URL(check.start, at.app).href);
+    return { page, close: () => side.context.close(), signedIn: undefined };
+  }
+  const context = await browser.newContext({
+    viewport: { width: check.width, height: packet.height },
+    colorScheme,
+    reducedMotion: 'reduce',
+    locale: 'en-AU',
+    timezoneId: 'Australia/Brisbane',
+    recordVideo: video,
+  });
+  const page = await context.newPage();
+  const step = 'Sign in as the made-up owner';
+  const login = loginOf('OWNER');
+  const outcome = await (async () => {
+    if (login === undefined) throw new Error('no made-up owner login in OWNER_CHECK_OWNER_EMAIL');
+    await signIn(page, at, login);
+    await page.waitForURL((url) => url.pathname !== '/sign-in', { timeout: 15_000 });
+    await go(page, at, check.start);
+  })().then(
+    () => ({ kind: 'ok' }) as const,
+    (error: unknown) => ({ kind: 'red', why: firstLine(error) }) as const,
+  );
+  return { page, close: () => context.close(), signedIn: { step, outcome } };
+}
+
+const firstLine = (error: unknown): string =>
+  error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error);
+
 async function film(
   browser: Browser,
   packet: Packet,
   at: Ctx,
-  session: string,
+  session: string | undefined,
   check: Check,
 ): Promise<UnitResult> {
-  const dir = join(out, '.raw');
-  const video = { dir, size: { width: check.width, height: packet.height } };
-  const side: Side = await openSide(filming(browser, video), packet, check.width, {
-    app: at.app,
-    session,
-    colorScheme: check.theme ?? 'light',
-  });
-  await answerMadeUp(side.context);
-  const steps: StepResult[] = [];
-  const page = await load(side, packet, new URL(check.start, at.app).href);
+  const { page, close: closeFilm, signedIn } = await opened(browser, packet, at, session, check);
+  const steps: StepResult[] = signedIn === undefined ? [] : [signedIn];
   for (const [step, act] of check.steps) {
+    if (signedIn !== undefined && signedIn.outcome.kind !== 'ok') {
+      steps.push({ step, outcome: { kind: 'red', why: 'not signed in as the made-up owner' } });
+      continue;
+    }
     await caption(page, `${check.unit}: ${step}`);
     await page.waitForTimeout(BEAT);
     const outcome = await act(page, at).then(
@@ -90,7 +148,7 @@ async function film(
           ? ({ kind: 'not here', why: error.message } as const)
           : ({
               kind: 'red',
-              why: error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error),
+              why: firstLine(error),
             } as const),
     );
     steps.push({ step, outcome });
@@ -98,7 +156,7 @@ async function film(
     await page.waitForTimeout(BEAT);
   }
   const raw = page.video();
-  await side.context.close();
+  await closeFilm();
   const name = `${check.unit.replaceAll(/[^A-Z0-9]+/gu, '-').replace(/-$/u, '')}-${at.stamp}.webm`;
   if (raw !== null) renameSync(await raw.path(), join(out, name));
   return {
@@ -114,12 +172,18 @@ mkdirSync(out, { recursive: true });
 const packet = readPacket();
 await fetchAssets(readAssets(), packet);
 const browser = await launchChromium(MODE);
-const { app, close } = await serveApp();
+const source = sourceOf(args);
+const local = source.kind === 'local' ? await serveApp() : undefined;
+const app = local === undefined ? DEPLOYED : local.app;
 try {
-  const session = madeUpSession(app, join(out, '.session'));
-  const probe = await openSide(browser, packet, LAPTOP, { app, session });
-  await answerMadeUp(probe.context);
-  const first = await load(probe, packet, new URL('/projects/', app).href);
+  const session = local === undefined ? undefined : madeUpSession(local.app, join(out, '.session'));
+  const probe =
+    session === undefined
+      ? { context: await browser.newContext() }
+      : await openSide(browser, packet, LAPTOP, { app, session });
+  if (session !== undefined) await answerMadeUp(probe.context);
+  const first = await probe.context.newPage();
+  await first.goto(new URL(session === undefined ? '/sign-in' : '/projects/', app).href);
   const stamp =
     (await first.locator(BUILD_SELECTOR).first().getAttribute('data-build')) ?? 'unstamped';
   await probe.context.close();
@@ -136,5 +200,5 @@ try {
   console.log(`owner checks: ${out}/index.html (build ${stamp})`);
 } finally {
   await browser.close();
-  await close();
+  await local?.close();
 }
