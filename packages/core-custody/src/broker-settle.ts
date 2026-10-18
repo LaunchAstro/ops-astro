@@ -260,6 +260,12 @@ export async function settle(
   broker: Broker,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
+    // A drop the worker could have reported takes T3e1's locks first, in their order.
+    const cause = settlement.kind === 'unknown' ? settlement.cause : null;
+    const dropWriter =
+      cause === 'provider_unavailable' || cause === 'connection_lost'
+        ? await broker.drops?.(tx, request.leaseId)
+        : undefined;
     const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;
     const state = await lockedState(tx, callId);
@@ -271,7 +277,12 @@ export async function settle(
     };
     const unknown = async (observed: number | null, drop: Parameters<typeof hold>[3]) =>
       await stop('LIABILITY_UNKNOWN', await hold(tx, reserved, observed, drop, broker));
-    if (settlement.kind === 'unknown') return await unknown(null, settlement);
+    if (settlement.kind === 'unknown') {
+      const held = await unknown(null, settlement);
+      // The stop ended the attempt; the drop is recorded after it, so the work comes back.
+      if (work === 'stands' && cause !== null && dropWriter !== undefined) await dropWriter(cause);
+      return held;
+    }
     if (settlement.kind === 'nothing') {
       const end = releaseEndOf(settlement.reason, reserved.operation);
       if (end === undefined) return await unknown(null, UNPROVEN_RELEASE);
