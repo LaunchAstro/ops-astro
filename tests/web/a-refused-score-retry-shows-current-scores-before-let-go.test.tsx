@@ -27,3 +27,26 @@ it('a refused score retry shows the current scores before the person lets it go'
   expect(letGo, 'Stop waiting is offered after the refused retry').toBeDefined();
   expect(impact(app.view.find('#page-score-impact button')?.textContent)).toContain('10');
 });
+
+async function ticks(tick: () => Promise<void>): Promise<void> {
+  for (let round = 0; round < 6; round += 1) {
+    // eslint-disable-next-line no-await-in-loop -- one tick at a time
+    await tick();
+  }
+}
+
+it('each refused score retry reads the task again once, never in a loop', async () => {
+  const server = marksWorld('lost-after');
+  const app = await realm(server.fetch, draftTab(), '/task/' + KEY);
+  await chooseMark(app.view, 'page', 'impact', '10');
+  server.deny(true);
+  const reads = (): number => server.sent.filter((one) => one.path === '/task/read').length;
+  const before = reads();
+  await app.view.click('[data-score-retry]');
+  await ticks(app.tick);
+  expect(reads(), 'one read for the refusal').toBe(before + 1);
+  await app.view.click('[data-score-retry]');
+  await ticks(app.tick);
+  expect(reads(), 'one more for the second refusal').toBe(before + 2);
+  expect(server.effects()).toBe(1);
+});
