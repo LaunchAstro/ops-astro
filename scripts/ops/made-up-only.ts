@@ -32,7 +32,7 @@
 // can remove it on purpose, as the owner can write the mark by hand.
 import { createHash, randomBytes } from 'node:crypto';
 import { GUARD, GUARDED, installStatements, LEDGER, STANDS } from './made-up-install.ts';
-import { anyUnvouched, installedList } from './made-up-sign-ins.ts';
+import { anyUnvouched } from './made-up-sign-ins.ts';
 
 /** The one call this needs from the owner connection. */
 export interface OwnerQuery {
@@ -187,10 +187,7 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
  */
 export async function guardMadeUp(admin: OwnerQuery, signIns?: readonly string[]): Promise<void> {
   // The guard and the watch, in order, for this process's seed tag.
-  const listed =
-    signIns === undefined
-      ? await installedList(admin)
-      : signIns.map((address) => digest(address.toLowerCase()));
+  const listed = signIns?.map((address) => digest(address.toLowerCase()));
   const install = installStatements(digest(SEED_SECRET), listed);
   // In order: each statement builds on the one before.
   // oxlint-disable-next-line no-await-in-loop

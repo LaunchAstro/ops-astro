@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The made-up guard's sign-in list (made-up-only.ts says what it is for): the
-// address digests `db:admit` installed, kept for every later install, and the
-// sign-ins at those addresses still waiting for `auth:seed` to vouch for them.
+// sign-ins at its addresses still waiting for `auth:seed` or the seed to vouch
+// for them.
 // Each reads or writes digests only, never a sign-in's row.
-import { ADMITTED, UNVOUCHED } from './made-up-install.ts';
+import { UNVOUCHED } from './made-up-install.ts';
 import type { OwnerQuery } from './made-up-only.ts';
 
 async function exists(admin: OwnerQuery, table: string): Promise<boolean> {
@@ -13,13 +13,6 @@ async function exists(admin: OwnerQuery, table: string): Promise<boolean> {
     [table],
   );
   return row?.present === true;
-}
-
-/** The address digests the installed guard admits, or none when it holds no list. */
-export async function installedList(admin: OwnerQuery): Promise<string[]> {
-  if (!(await exists(admin, ADMITTED))) return [];
-  const rows = await admin.execute<{ digest: string }>(`select digest from ${ADMITTED} order by 1`);
-  return rows.map((row) => row.digest);
 }
 
 /** Whether a sign-in at a listed address is still waiting for `auth:seed`'s word. */

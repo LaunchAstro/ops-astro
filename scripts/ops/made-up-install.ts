@@ -93,29 +93,18 @@ function guardList(signIns: readonly string[]): string {
 // A sign-in passes when its address is a made-up `.local` one and, while a
 // sign-in list is installed (`db:admit`, kept by every later install), its
 // address's digest is on the list. The list is part of the function's text,
-// so the guard reads no table for it, whichever role writes the sign-in. A
+// written in at install (`installGuard`), so the guard reads no table for it,
+// whichever role writes the sign-in. A
 // listed sign-in written, or moved to its address, is pended until `auth:seed`
 // or the seed vouches for it as one it created: an owner's row at a seed
 // address is not.
-function guardFunction(signIns: readonly string[]): string {
-  const listed =
-    signIns.length === 0
-      ? ''
-      : ` or encode(sha256(convert_to(lower(new.email), 'UTF8')), 'hex')
-            <> all (${guardList(signIns)})`;
-  const pended =
-    signIns.length === 0
-      ? ''
-      : `
-        elsif tg_op = 'INSERT' or old.email is distinct from new.email then
-          perform ops_astro_made_up.pend(new.id::text);`;
-  return `
+const GUARD_FUNCTION = `
     create or replace function ops_astro_made_up.guard() returns trigger
       language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
     begin
       if tg_table_schema = 'auth' then
-        if new.email is null or lower(new.email) not like '%.local'${listed} then
-          perform ops_astro_made_up.note('auth.users');${pended}
+        if new.email is null or lower(new.email) not like '%.local' /*listed*/ then
+          perform ops_astro_made_up.note('auth.users'); /*pended*/
         end if;
       elsif (select rolsuper from pg_roles where rolname = current_user)
           or pg_has_role(current_user,
@@ -132,6 +121,39 @@ function guardFunction(signIns: readonly string[]): string {
       end if;
       return null;
     end $$`;
+
+/**
+ * The guard function, made from the list as it stands once this install holds
+ * the list's lock, after writing `signIns` there when given. Installs take the
+ * lock one at a time, so none installs a list another has since replaced, and
+ * none ever sees it half written.
+ */
+function installGuard(signIns: readonly string[] | undefined): string {
+  const write =
+    signIns === undefined
+      ? ''
+      : `delete from ${ADMITTED};
+      ${signIns.length === 0 ? '' : `insert into ${ADMITTED} select unnest(${guardList(signIns)});`}`;
+  return `
+    do $install$
+    declare
+      listed text;
+    begin
+      lock table ${ADMITTED} in share row exclusive mode;
+      ${write}
+      if exists (select from ${ADMITTED} where digest !~ '^[0-9a-f]{64}$') then
+        raise exception 'made-up-install: a sign-in digest is not a sha256 hex digest';
+      end if;
+      select string_agg(quote_literal(digest), ', ' order by digest) into listed from ${ADMITTED};
+      execute replace(replace($guard$${GUARD_FUNCTION}$guard$,
+        '/*listed*/', case when listed is null then '' else
+          $l$ or encode(sha256(convert_to(lower(new.email), 'UTF8')), 'hex')
+            <> all (array[$l$ || listed || $l$]::text[])$l$ end),
+        '/*pended*/', case when listed is null then '' else
+          $p$
+        elsif tg_op = 'INSERT' or old.email is distinct from new.email then
+          perform ops_astro_made_up.pend(new.id::text);$p$ end);
+    end $install$`;
 }
 
 /** After the guard function: the watch, protect() and the event trigger. */
@@ -177,9 +199,21 @@ const WATCH_AND_PROTECT = [
   end $$`,
   `revoke all on all functions in schema ops_astro_made_up from public`,
   `drop event trigger if exists ${GUARD}`,
-  `create event trigger ${GUARD} on ddl_command_end
-  when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch()`,
-  `alter event trigger ${GUARD} enable always`,
+  // Made only when absent, with its enabling in the same statement: another
+  // install may have made it since this one dropped it. One under the name
+  // that does not call watch() is refused, never kept.
+  `
+  do $$ begin
+    if exists (select from pg_event_trigger where evtname = '${GUARD}'
+        and evtfoid <> 'ops_astro_made_up.watch()'::regprocedure) then
+      raise exception 'made-up-install: an event trigger named ${GUARD} does not call watch()';
+    end if;
+    if not exists (select from pg_event_trigger where evtname = '${GUARD}') then
+      create event trigger ${GUARD} on ddl_command_end
+      when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch();
+    end if;
+    alter event trigger ${GUARD} enable always;
+  end $$`,
 ];
 
 /**
@@ -187,12 +221,12 @@ const WATCH_AND_PROTECT = [
  * `seedDigest` is the digest of the seed's tag, the only form the guard holds,
  * kept for this backend beside other live seed sessions' digests; the digests
  * of sessions that have ended go. `signIns`, the digests of the only sign-in
- * addresses the guard admits, is empty unless `db:admit` installed a list; it
- * is kept in ADMITTED for the next install.
+ * addresses the guard admits from now on, replaces the list in ADMITTED;
+ * without it the install keeps the list there, if any.
  */
 export function installStatements(
   seedDigest: string,
-  signIns: readonly string[] = [],
+  signIns?: readonly string[],
 ): readonly string[] {
   return [
     ...LEDGER_AND_NOTE,
@@ -200,14 +234,7 @@ export function installStatements(
     `delete from ${SEEDS} where pid not in (select pid from pg_stat_activity)`,
     `insert into ${SEEDS} select pid, backend_start, '${seedDigest}' from (${THIS_BACKEND}) b
       on conflict do nothing`,
-    // Added before the rest go, so a refresh reading the list meanwhile never finds it empty.
-    ...signIns.map(
-      (digest) => `insert into ${ADMITTED} values ('${digest}') on conflict do nothing`,
-    ),
-    signIns.length === 0
-      ? `delete from ${ADMITTED}`
-      : `delete from ${ADMITTED} where digest <> all (${guardList(signIns)})`,
-    guardFunction(signIns),
+    installGuard(signIns),
     ...WATCH_AND_PROTECT,
   ];
 }

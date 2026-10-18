@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two made-up guard installs at once never leave the guard without the sign-in list: a refresh cannot install a list it read before another install wrote one, and a list install leaves no moment a refresh reads it empty"
+}
