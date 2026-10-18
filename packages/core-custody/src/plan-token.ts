@@ -226,7 +226,7 @@ export function tokenHolder(options: TokenHolderOptions): TokenHolder {
       return refuse('SUBSCRIPTION_STORE_FAILED');
     carrying = from;
     // Judged after the pending write: a deadline already passed sends nothing.
-    const { result, sentAt } = await refreshOnce(tokenUrl, from, lapse(), now);
+    const { result, sentAt } = await refreshOnce(tokenUrl, from, lapse, now);
     const next = afterRequest(result, from, t, sentAt ?? t);
     log(next.log);
     if (next.kind === 'keep') return refuse(next.answer);

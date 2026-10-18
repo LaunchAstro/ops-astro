@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // One plan token refresh request (#1620 P1), with the stage it reached
-// recorded. Request bytes cannot leave before `carrying` (a TLS socket holds
-// application data until its handshake ends), so a failure before it is
-// `not_sent`. That judgement comes from the recorded stage, never an error
-// code. No retry, no redirect, no shared agent.
+// recorded. No header or body byte is handed to the socket before `carrying`:
+// the request is ended only once the socket can carry (`connect` for http,
+// `secureConnect` for https) and the absolute deadline, rechecked at that
+// instant, has not passed. A failure or a lapse before it is `not_sent`. That
+// judgement comes from the recorded stage, never an error code. No retry, no
+// redirect, no shared agent.
 
 import { request as httpRequest, type ClientRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -61,14 +63,19 @@ function followStages(socket: Socket, tls: boolean, move: (stage: RefreshStage) 
   if (tls) socket.once('secureConnect', () => move('carrying'));
 }
 
-/** One request, never retried; the stage it reached decides `not_sent`. */
+/**
+ * One request, never retried; the stage it reached decides `not_sent`.
+ * `deadline` rechecks the prepare's absolute deadline on every call and
+ * returns its signal, aborted once the deadline has passed.
+ */
 // oxlint-disable-next-line max-lines-per-function -- one request's stage, its single settlement and its three ways to end
 export function refreshOnce(
   tokenUrl: URL,
   from: PlanTokens,
-  signal: AbortSignal,
+  deadline: () => AbortSignal,
   now: () => number = Date.now,
 ): Promise<{ readonly result: RefreshResult; readonly sentAt: number | undefined }> {
+  const signal = deadline();
   if (!allowed(tokenUrl) || signal.aborted)
     return Promise.resolve({ result: { kind: 'not_sent' }, sentAt: undefined });
   const body = Buffer.from(
@@ -97,9 +104,12 @@ export function refreshOnce(
         stage === 'carrying' || stage === 'answered' ? { kind: 'unknown' } : { kind: 'not_sent' },
       );
     const onAbort = (): void => failed();
+    /** The only place request bytes are written: after the deadline is rechecked. */
     const carrying = (): void => {
+      if (settled || deadline().aborted) return failed();
       sentAt = now();
       stage = 'carrying';
+      req?.end(body);
     };
     const answered = (res: IncomingMessage): void => {
       stage = 'answered';
@@ -126,6 +136,5 @@ export function refreshOnce(
       });
     });
     req.on('error', failed);
-    req.end(body);
   });
 }

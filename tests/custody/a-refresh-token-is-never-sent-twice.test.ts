@@ -5,7 +5,8 @@
 // an error code, decides whether it was sent: only a failure before `carrying`
 // restores `ready`.
 
-import { createServer, type Server } from 'node:net';
+import { subscribe, unsubscribe } from 'node:diagnostics_channel';
+import { createServer, type Server, type Socket } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import {
@@ -167,6 +168,42 @@ it('a closed loopback port fails in connecting: not_sent, ready restored', async
   const out = await holder(file, { tokenUrl: new URL(`http://127.0.0.1:${port}/token`) }).prepare();
   expect(out).toEqual({ ok: false, code: 'SUBSCRIPTION_REFRESH_FAILED' });
   expect(state(file)).toBe('ready');
+});
+
+it('a deadline that passes as the connection completes lets no request byte reach the socket: not_sent, ready restored', async () => {
+  const { file } = await start();
+  let received = 0;
+  const open: Socket[] = [];
+  const server = await rawServer((s) => {
+    open.push(s);
+    s.on('data', (chunk: Buffer) => (received += chunk.length));
+  });
+  const port = (server.address() as AddressInfo).port;
+  let at = T0;
+  // Runs before the holder's own listeners on the same socket: the clock
+  // passes the deadline at the instant the socket can first carry bytes.
+  const onSocket = (message: unknown): void => {
+    (message as { socket: Socket }).socket.once('connect', () => {
+      at = T0 + 31_000;
+    });
+  };
+  subscribe('net.client.socket', onSocket);
+  try {
+    const out = await holder(file, {
+      tokenUrl: new URL(`http://127.0.0.1:${port}/token`),
+      now: () => at,
+    }).prepare();
+    await sleep(100);
+    expect(out).toEqual({ ok: false, code: 'SUBSCRIPTION_REFRESH_FAILED' });
+    expect(state(file)).toBe('ready');
+    expect(received, 'no header or body byte may leave after the deadline').toBe(0);
+  } finally {
+    unsubscribe('net.client.socket', onSocket);
+    for (const s of open) s.destroy();
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+  }
 });
 
 it('a deadline that lapses during the lock wait sends nothing and leaves ready', async () => {
