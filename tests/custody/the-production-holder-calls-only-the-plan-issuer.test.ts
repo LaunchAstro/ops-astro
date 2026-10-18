@@ -164,3 +164,21 @@ it('one refresh request to an https host other than the plan issuer opens no soc
   }
   expect(sockets).toBe(0);
 });
+
+it('a test holder keeps the issuer it was built on when its caller edits the URL afterwards', async () => {
+  const other = await startIssuer();
+  const w = await due();
+  try {
+    issuer.set({ kind: 'json', status: 400, body: {} });
+    const before = issuer.count();
+    const url = new URL(issuer.url.href);
+    const holder = tokenHolder({ file: w.file, tokenUrl: url, now: () => T0 });
+    url.href = other.url.href;
+    await holder.prepare();
+    expect(other.count()).toBe(0);
+    expect(issuer.count() - before).toBe(1);
+  } finally {
+    await other.close();
+    w.done();
+  }
+});
