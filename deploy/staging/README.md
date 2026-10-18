@@ -214,14 +214,23 @@ before each step with the store, so an operator whose sign-in ended or whose
 `operations:manage` was revoked part way reads and records nothing more.
 
 Those gate checks run in the operator's own command, and the store cannot see
-a sign-in. A sign-in that ends after the last check can still receive the part
-already asked for; the check after the read then refuses it and the command
-keeps nothing. No hold in the command closes that gap, because a revoked
-operator could reach the store with their store login without this command at
-all. The store's own authority is `backups.appointed`, checked inside
-`backups.read_part` as each part is read. So to end an operator's backup
-access, the store's admin deletes that operator's `backups.appointed` row and
-drops their store login; the next part they ask for is refused.
+a sign-in, so each part is read in two steps (`backup-store-upgrade-3.sql`).
+`backups.read_part` hands the part out sealed under a key of its own and logs
+nothing. The command asks the gate again, and only then calls
+`backups.release_part`, which hands out that key once, to the login that read
+the part, within ten minutes of the read, and logs the part's read. A sign-in
+that ends before that ask leaves the command with nothing it can open, and it
+keeps nothing. The operator's grant is held from that ask until the key
+arrives, so a revocation of it cannot land in between. A sign-in that ends in
+that moment is ordered after the release, as for a drill's receipt; the ask
+after the key then refuses the part and the command keeps nothing.
+
+A revoked operator could still reach the store with their store login without
+this command at all. The store's own authority is `backups.appointed`, checked
+inside `backups.read_part` and `backups.release_part`. So to end an operator's
+backup access, the store's admin deletes that operator's `backups.appointed`
+row and drops their store login; the next part or key they ask for is
+refused.
 
 The carried drill takes three commands:
 
