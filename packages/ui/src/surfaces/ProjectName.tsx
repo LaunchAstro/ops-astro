@@ -93,16 +93,17 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
         event.preventDefault();
         const waiting = opening.current !== null;
         stopOpening();
-        // A second click while the open waits, however slow, is a rename.
-        if (waiting && actions?.onRename !== undefined) return setRenaming(row);
         if (event.shiftKey) return onOpen(row, true);
+        // A second plain click while the open waits, however slow, is a rename.
+        if (waiting && actions?.onRename !== undefined) return setRenaming(row);
         opening.current = setTimeout(() => {
           opening.current = null;
           onOpen(row);
         }, OPEN_DELAY_MS);
       }}
       onDoubleClick={(event) => {
-        if (actions?.onRename === undefined) return;
+        // A Shift second click opened beside already; the browser's count makes it no rename.
+        if (actions?.onRename === undefined || event.shiftKey) return;
         event.preventDefault();
         stopOpening();
         setRenaming(row);
