@@ -66,6 +66,26 @@ const strip = ({ at, body }: { at: string; body: Record<string, unknown> }) => {
   return { at, ...rest };
 };
 
+/** The Team screen open on the group, its read saying `canManage`, and which controls it drew. */
+async function groupControls(canManage: boolean) {
+  const api = server();
+  const group = api.chats[GROUP];
+  if (group === undefined) throw new Error('group fixture absent');
+  // Cy is a teammate outside the group, so a manager has someone to add.
+  Object.assign(group.view, { canManage, members: ['p-me', 'p-bo'] });
+  view = await mount(<TeamScreen client={api.client} grantKey="alpha:ana" />);
+  const m = view;
+  await until('the conversation open on Bo', () => shown(m).length > 0);
+  await m.click(`[data-group="${GROUP}"]`);
+  const drawn = {
+    leave: m.find('.tmc__leave') !== null,
+    rename: m.find('.tmc__rename') !== null,
+    add: m.find('.tmc__adding') !== null,
+    remove: m.find('.tmc__remove') !== null,
+  };
+  return { api, m, drawn };
+}
+
 describe('C71 web (5) the live Team screen acts on what its reads say', () => {
   it('the live Team screen offers management when the group read authorises it', async () => {
     const api = server();
@@ -81,6 +101,28 @@ describe('C71 web (5) the live Team screen acts on what its reads say', () => {
       rename: m.find('.tmc__rename') !== null,
       remove: m.find('.tmc__remove') !== null,
     }).toEqual({ rename: true, remove: true });
+  });
+
+  it('a member the group read does not authorise sees Leave only, and a holder gets Rename, Add and Remove that send the chat commands', async () => {
+    const plain = await groupControls(false);
+    expect(plain.drawn).toEqual({ leave: true, rename: false, add: false, remove: false });
+    await view?.unmount();
+    const holder = await groupControls(true);
+    expect(holder.drawn).toEqual({ leave: true, rename: true, add: true, remove: true });
+    const { api, m } = holder;
+    await act(() => {
+      m.host
+        .querySelector('.tmc__adding')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await m.click('.tmc__remove');
+    await until('two member changes', () =>
+      api.sent.some((s) => s.at === '/chat/change_members' && 'remove' in s.body),
+    );
+    expect(api.sent.filter((s) => s.at === '/chat/change_members').map((s) => strip(s))).toEqual([
+      { at: '/chat/change_members', conversationId: GROUP, add: ['p-cy'] },
+      { at: '/chat/change_members', conversationId: GROUP, remove: ['p-bo'] },
+    ]);
   });
 });
 
