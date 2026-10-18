@@ -13,6 +13,7 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TeamScreen } from '../../apps/web/src/screens/Team.tsx';
+import { ChatOutbox } from '../../apps/web/src/screens/team/outbox.ts';
 import type { StorageLike } from '../../apps/web/src/session/storage-slot.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { GROUP, server } from './team-chat-stand-in.ts';
@@ -199,7 +200,7 @@ describe('#1339 a failed chat send keeps the person’s words', () => {
     expect(operationsSent(again.api)).toEqual(operationsSent(first.api));
   });
 
-  it('another sign-in in the same tab never sees the unsent words', async () => {
+  it('another sign-in in the same tab never sees the unsent words, and its screen clears them from the tab', async () => {
     const storage = memoryStorage();
     const first = await team(server(), storage);
     first.api.state.unanswered = 'before';
@@ -209,5 +210,22 @@ describe('#1339 a failed chat send keeps the person’s words', () => {
     const other = await team(server(), storage, 'bravo:bea@example.test:1');
     expect(unsent(other.m)).toEqual([]);
     expect(other.m.host.textContent).not.toContain(CANARY);
+    expect(storage.getItem('ops-astro.chat-unsent')).toBeNull();
+  });
+
+  it('an answer landing after a switch of sign-in never overwrites the next sign-in’s kept words', () => {
+    const storage = memoryStorage();
+    const before = new ChatOutbox('alpha:ana@example.test:0', storage);
+    const leave = before.mount();
+    const old = { id: '00000000-0000-4000-8000-000000000001', to: 'p-bo', body: 'old words' };
+    before.sending({ ...old, kind: 'direct', state: 'sending' });
+    leave();
+    const after = new ChatOutbox('bravo:bea@example.test:1', storage);
+    after.mount();
+    const kept = { id: '00000000-0000-4000-8000-000000000002', to: 'p-cy', body: CANARY };
+    after.sending({ ...kept, kind: 'direct', state: 'sending' });
+    before.answered(old.id, 'refused');
+    const again = new ChatOutbox('bravo:bea@example.test:1', storage);
+    expect(again.snapshot().map((one) => one.body)).toEqual([CANARY]);
   });
 });
