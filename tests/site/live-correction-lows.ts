@@ -270,7 +270,7 @@ function findingFour(): void {
     const { taskB, clientA, clientB } = lows();
     expect(await file(taskB, clientA)).toStrictEqual({
       ok: false,
-      code: 'CORRECTION_PARTY_MISMATCH',
+      code: 'PAGE_NOT_FOUND',
     });
     expect(await countOf(OF_TASK_B, taskB)).toBe(0);
     // The control: under the task's own client it is stored, at that party.
