@@ -118,8 +118,8 @@ function planCall(call: Record<string, unknown>, body: string): boolean {
     );
   return (
     turns &&
-    CHATGPT_PLAN_MODELS.includes(String(model)) &&
     typeof model === 'string' &&
+    CHATGPT_PLAN_MODELS.includes(model) &&
     typeof instructions === 'string' &&
     Buffer.byteLength(body) <= CHATGPT_PLAN_BODY_LIMIT &&
     chatgptPlanBody({ model, instructions, input }) === body

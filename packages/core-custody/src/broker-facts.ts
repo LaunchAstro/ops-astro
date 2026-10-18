@@ -26,6 +26,8 @@ export interface Facts {
   readonly clientId: string | null;
   /** The run's task as a bound field's source, as held (S3). */
   readonly source: TaskSource;
+  /** The owner started both the task and the run, and the task has no client (#1620 P4). */
+  readonly ownerStarted: boolean;
 }
 
 export type Checked =
@@ -176,6 +178,7 @@ export async function lockFacts(
       heldMinor: held.heldMinor,
       clientId: task.clientId,
       source: task.source,
+      ownerStarted: task.source.ownerWork && task.ownerRan,
     },
   };
 }

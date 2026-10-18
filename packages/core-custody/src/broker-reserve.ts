@@ -185,11 +185,11 @@ function routeFor(
 ):
   | { readonly ok: true; readonly route: BrokerRoute }
   | { readonly ok: false; readonly code: BrokerRefusal; readonly words?: string } {
-  const choice = eligibleRoutes(
-    operation.fields,
-    fields,
-    broker.routes.filter((route) => route.provider === operation.provider),
-  );
+  const offered = broker.routes.filter((route) => route.provider === operation.provider);
+  // The plan's route is named before the data classes choose, as a client's task is (C60).
+  if (offered.some((route) => carriesOnPlan(route)) && !facts.ownerStarted)
+    return { ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' };
+  const choice = eligibleRoutes(operation.fields, fields, offered);
   const local = {
     ok: false,
     code: 'LOCAL_MODEL_REQUIRED',
@@ -208,7 +208,7 @@ function routeFor(
     localOwnerTesting: carriesLocally(broker, route),
     clientWork: facts.clientId !== null,
     planRoute: carriesOnPlan(route),
-    ownerStarted: facts.source.ownerWork,
+    ownerStarted: facts.ownerStarted,
   });
   if (!carry.ok) return { ok: false, code: carry.code };
   return { ok: true, route };

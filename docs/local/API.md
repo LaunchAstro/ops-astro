@@ -1441,7 +1441,8 @@ register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 model use off, C60; a client's task offered a subscription route is
 `SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead, owner line 72), the four
 `SUBSCRIPTION_` codes, `SUBSCRIPTION_NOT_OWNER_STARTED` (the owner's ChatGPT
-plan's route carries only runs on a task the owner created, #1620 P4), `RATE_LIMITED`
+plan's route carries only runs the owner proposed and approved on a task the owner
+created, #1620 P4), `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 `model_calls` row. `BUDGET_UNAVAILABLE` is the approved ceiling reached: the
 run stops and asks in the same transaction (AW-05, the budget wait in
