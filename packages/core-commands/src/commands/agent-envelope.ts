@@ -71,7 +71,7 @@ import { enter, retryOnce, settle } from './envelope.ts';
 import { firstClientGate } from './first-client-gate.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
-import { releaseReplay } from './agent-replay.ts';
+import { replaying } from './agent-replay.ts';
 import { recordApplied } from './agent-applied.ts';
 import { workJudged } from './agent-standing.ts';
 import {
@@ -242,8 +242,7 @@ async function runAgentCommand(
     declaration,
   });
   return await enter(tx, session, request, {
-    release: async (stored, identified) =>
-      await releaseReplay(tx, callOf(identified), operation, stored),
+    ...replaying(tx, callOf, operation),
     attempt: async (identified, digest) =>
       await operation.open(
         async (row) => await runRow(tx, callOf(identified), verified, identified, row, digest),

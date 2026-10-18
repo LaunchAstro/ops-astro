@@ -72,8 +72,9 @@ async function withinDelegation(
  * On the business's own site (no party), the refusal unless the task is the
  * owner's own internal work, judged as the broker judges a run's task (S2,
  * owner line 72, R6 #1699). A request asks it last, after the agent's own
- * standing waits (`lastCheck`), so a write that names the task without moving
- * its row, committed during any wait, is read too; a replay asks it as well.
+ * standing waits (`lastCheck`), and a replay after its audit event's chain
+ * wait (`replayOwnWork`), so a write that names the task without moving its
+ * row, committed during any wait, is read too.
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
@@ -128,10 +129,9 @@ async function storeAsAgent(
  * A replay's answer under the delegation presented now: the refusal, or
  * undefined when the stored receipt may go back. A replay carries the same
  * body (`OPERATION_ID_REUSED` refuses another), so it names the stored
- * request's task and party, and the request's own checks are asked again,
- * its own-work check included. A later delegation for another task or client,
- * or a task that is no longer the owner's own work, gets the refusal, never
- * the receipt.
+ * request's task and party, and the request's own checks are asked again. A
+ * later delegation for another task or client gets the refusal, never the
+ * receipt; the own-work check is asked last (`replayOwnWork`).
  */
 export async function replayRefusal(
   tx: TenantQuery,
@@ -139,7 +139,20 @@ export async function replayRefusal(
   delegation: Delegation,
 ): Promise<CommandRefusal | undefined> {
   const within = await withinDelegation(tx, sent, delegation);
-  return 'refusal' in within ? within.refusal : await ownWorkRefusal(tx, within);
+  return 'refusal' in within ? within.refusal : undefined;
+}
+
+/**
+ * A released replay's own-work check, asked after its audit event's chain
+ * wait (`Entry.lastCheck`): a task that is no longer the owner's own work gets
+ * the refusal, never the receipt.
+ */
+export async function replayOwnWork(
+  tx: TenantQuery,
+  sent: Readonly<Record<string, unknown>>,
+): Promise<CommandRefusal | undefined> {
+  const operands = typedOperands(sent);
+  return 'refusal' in operands ? operands.refusal : await ownWorkRefusal(tx, operands);
 }
 
 /** `live_correction.request`'s agent row: replayed only to a delegation that could make it now. */

@@ -23,16 +23,18 @@ import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
+import type { IdentifiedRequest } from './requests.ts';
+import type { Replaying } from './envelope.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
-import { replayRefusal } from './live-correction-agent.ts';
+import { replayOwnWork, replayRefusal } from './live-correction-agent.ts';
 import { presentedCredential } from './tasks-take-launch.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
  * back in its place, a refusal, or nothing when the receipt goes out as stored.
  */
-export async function releaseReplay(
+async function releaseReplay(
   tx: TenantQuery,
   call: AgentCall,
   operation: AgentOperation,
@@ -70,6 +72,22 @@ export async function releaseReplay(
         return await replayRefusal(tx, call.request, resolved.value);
       });
   }
+}
+
+/**
+ * The agent entry's replay (`Replaying`): a stored success released by the
+ * row's `replay`, and an own-site correction request's own-work check asked
+ * again last, after the replay's audit-chain wait (#1877).
+ */
+export function replaying(
+  tx: TenantQuery,
+  callOf: (request: IdentifiedRequest) => AgentCall,
+  operation: AgentOperation,
+): Replaying {
+  const release = async (stored: CommandHandle, request: IdentifiedRequest) =>
+    await releaseReplay(tx, callOf(request), operation, stored);
+  if (operation.replay !== 'correctionRequest') return { release };
+  return { release, lastCheck: async (request) => await replayOwnWork(tx, request) };
 }
 
 /**
