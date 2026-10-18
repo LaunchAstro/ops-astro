@@ -213,16 +213,25 @@ export async function stampVerified(
   return rows.length > 0;
 }
 
-/** A `requested` correction whose file no longer holds its pinned bytes: `superseded`. */
-export async function supersede(tx: TenantQuery, id: string, digest: string): Promise<boolean> {
+/**
+ * A `requested` correction whose file no longer holds its pinned bytes, and whose binding is still
+ * the configured site's: `superseded`. False: nothing written.
+ */
+export async function supersede(
+  tx: TenantQuery,
+  site: ConfiguredSite,
+  id: string,
+  digest: string,
+): Promise<boolean> {
+  await shareHoldersSite(tx, id);
   const rows = await tx.query<{ readonly id: string }>(
     `update public.live_corrections as c
         set state = 'superseded', locate_code = 'CONTENT_DRIFTED',
             revision = c.revision + 1, updated_at = now()
       where c.business_id = $1 and c.id = $2 and c.state = 'requested'
-        and c.pre_image_digest is distinct from $3
+        and c.pre_image_digest is distinct from $9 and exists (${BOUND})
       returning c.id`,
-    [tx.businessId, id, digest],
+    [tx.businessId, id, ...siteParameters(site), digest],
   );
   return rows.length > 0;
 }
