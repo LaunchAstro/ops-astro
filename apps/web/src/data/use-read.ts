@@ -17,7 +17,7 @@ import { AuthorisedRead, initialState, type ReadState } from './authorised-read.
 import { dropsAnswer } from './read-breaks.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
-import { isRefusal, type CallResult } from '../operations/client.ts';
+import { isRefusal, isUnavailable, type CallResult } from '../operations/client.ts';
 import { useFollow } from './use-follow.ts';
 
 /**
@@ -106,12 +106,12 @@ async function offer<T>(
   generation: number,
   run: () => Promise<CallResult<T> | typeof RETIRED>,
   grantKey: string,
-  refusedLate: () => void,
+  late: (result: CallResult<T>) => void,
 ): Promise<void> {
   try {
     const result = await run();
     if (result === RETIRED) return;
-    if (!projection.accept(generation, result, grantKey) && isRefusal(result)) refusedLate();
+    if (!projection.accept(generation, result, grantKey)) late(result);
   } catch {
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
@@ -129,7 +129,6 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   useLayoutEffect(() => {
     runRef.current = options.run;
   });
-
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
   const first = useMemo(() => opened<T>(grantKey), [grantKey]);
@@ -140,15 +139,23 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const waitedFrom = useRef<number | null>(null);
   /** The grant and dependencies the projection in `readRef` was built for. */
   const built = useRef<readonly unknown[]>([]);
-  /** The read in flight, until it ends. */
+  /** The read in flight, until it ends, and its generation; and the generation `land` retired. */
   const flight = useRef<Promise<void> | null>(null);
+  const started = useRef(0);
+  const displaced = useRef<number | null>(null);
   const start = useCallback(
     (projection: AuthorisedRead<T>) => {
-      const refusedLate = (): void => {
-        if (readRef.current === projection) setBreaks((count) => count + 1);
+      const generation = projection.begin();
+      // A read `land` retired still withdraws on a refusal or outage: what landed read less.
+      const late = (result: CallResult<T>): void => {
+        if (readRef.current !== projection) return;
+        if (displaced.current === generation && (isRefusal(result) || isUnavailable(result)))
+          projection.accept(projection.begin(), result, grantKey);
+        else if (isRefusal(result)) setBreaks((count) => count + 1);
       };
-      const running = offer(projection, projection.begin(), runRef.current, grantKey, refusedLate);
+      const running = offer(projection, generation, runRef.current, grantKey, late);
       flight.current = running;
+      started.current = generation;
       void running.finally(() => {
         if (flight.current === running) flight.current = null;
       });
@@ -178,17 +185,16 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
       if (flight.current === null && readRef.current === projection) reread(false);
     });
   }, [reread, coalesce]);
-
   const refresh = useCallback(() => {
     reread(true);
   }, [reread]);
-
   const land = useCallback(
     (result: CallResult<T>) => {
       const projection = readRef.current;
       if (projection === null) return;
       liveRef.current = false;
       waitedFrom.current = null;
+      displaced.current = flight.current === null ? null : started.current;
       projection.accept(projection.begin(), result, grantKey);
     },
     [grantKey],
