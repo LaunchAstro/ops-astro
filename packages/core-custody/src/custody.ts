@@ -129,9 +129,16 @@ function forkCustody(config: CustodyConfig): ChildProcess {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),
+      ...(config.plan === undefined
+        ? {}
+        : {
+            CUSTODY_PLAN_TOKEN_FILE: config.plan.tokenFile,
+            CUSTODY_PLAN_ISSUER: config.plan.issuer,
+          }),
     },
     // No inherited flag, and no inspector on SIGUSR1: custody holds the credentials.
-    execArgv: ['--disable-sigusr1'],
+    // The plan's token store is on node:sqlite, which warns as experimental: custody's stderr is its own words.
+    execArgv: ['--disable-sigusr1', '--disable-warning=ExperimentalWarning'],
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
   });
@@ -247,7 +254,13 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
         onPiece,
         admit,
       ),
-    prepare: async () => await Promise.resolve({ ok: false, code: 'CUSTODY_UNKNOWN_REQUEST' }),
+    prepare: async () => {
+      const reply = await exchange({ type: 'prepare' });
+      if (reply === 'lost') return { ok: false, code: 'CUSTODY_LOST' };
+      return reply['type'] === 'prepared'
+        ? { ok: true }
+        : { ok: false, code: String(reply['code']) };
+    },
     describe: async (credentialRef, destination) =>
       await describeCarrier(exchange, credentialRef, destination),
     stderr: () => errors,

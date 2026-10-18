@@ -5,7 +5,7 @@
 // the lock wait and the request, it reads the committed record, refreshes a
 // due pair with exactly one request after a durable `pending`, and holds the
 // presentable pair in memory. `present()` is synchronous: no file, no lock, no
-// refresh. Inert until P4 wires `plan-token-production.ts`, its one importer.
+// refresh. Its one importer is `plan-token-production.ts`, custody's plan holder.
 
 import {
   FIELD_MAX,
