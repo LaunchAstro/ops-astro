@@ -75,10 +75,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
   ['si', 'run_states'],
   // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
-  // edited) and its wrap-ups (append only, never purged).
+  // edited), its wrap-ups (append only) and, #1666, a reply's snapshot (cascades).
   ['siu', 'conversations'],
   ['sid', 'conversation_messages'],
-  ['si', 'conversation_wrap_ups'],
+  ['si', 'conversation_reply_snapshots conversation_reply_targets conversation_wrap_ups'],
   // AW-01: the model-call ledger, and the copy register, which is append only.
   ['siu', 'model_calls'],
   ['si', 'copy_registrations'],
