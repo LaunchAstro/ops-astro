@@ -259,7 +259,6 @@ export async function settle(
   broker: Broker,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
-    // A drop the worker could have reported takes T3e1's locks first, in their order.
     const drop = await dropAfterStop(tx, settlement, request.leaseId, broker);
     const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;

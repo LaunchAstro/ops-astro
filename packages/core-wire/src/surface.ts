@@ -672,7 +672,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation and the reservation again under their locks when it holds the
   // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
   declare('model.call', 'write', ASKED_OF_LEASE),
-  // #1623 R1: the lease holder's stop, asked of the lease like model.call.
   declare('run.end', 'write', ASKED_OF_LEASE),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work

@@ -217,12 +217,7 @@ export async function stopAtSettlement<Result>(
   return result;
 }
 
-/**
- * A provider drop the worker could have reported, at settlement (ruling
- * R1B-A): T3e1's locks are taken before custody's, in their order, and the
- * writer this returns runs after the stop, so the drop is recorded and the
- * work comes back.
- */
+/** A reportable provider drop at settlement (R1B-A): T3e1's locks first, its writer after the stop. */
 export async function dropAfterStop(
   tx: TenantQuery,
   settlement: { readonly kind: string; readonly cause?: Failure['cause'] },
