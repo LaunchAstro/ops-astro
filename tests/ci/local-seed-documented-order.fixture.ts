@@ -128,6 +128,7 @@ export async function openWorld(): Promise<World> {
     ...seedSteps.map((script) => scriptFile(script)),
     'scripts/local-seed-roles.ts',
     'scripts/local/signing-key.mjs',
+    'scripts/local/synthetic-logins.mjs',
   ];
   for (const file of files) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
