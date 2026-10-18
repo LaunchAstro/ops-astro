@@ -28,6 +28,7 @@ import {
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
+import { lockDropAtSettlement } from '../../packages/core-runtime/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
 import { openSchedules, type Schedules, type Work } from '../runtime/schedules-harness.ts';
 
@@ -211,6 +212,8 @@ export function useBrokerWorld(label: string): void {
       routes: [CLOUD],
       installation: 'here',
       audit,
+      // As model.call builds it: a provider drop at settlement records T3e1's drop (#1623 R1).
+      drops: lockDropAtSettlement,
     };
   }, 180_000);
 
