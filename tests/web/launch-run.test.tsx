@@ -50,6 +50,18 @@ describe('Launch from the task', () => {
     expect(view.find('[data-run-state]')?.textContent).toBe('Run waiting for the runner');
   });
 
+  it('a run no runner took within its bound says so, and offers Launch again', async () => {
+    const server = serving(held({ state: 'unanswered', launchedAt: '2026-10-11T09:00:00Z' }));
+    const view = await panel(server.client);
+    expect(view.find('[data-run-state]')?.textContent).toBe(
+      'No runner picked this run up. Launch it again.',
+    );
+    expect(view.find('[data-launch-run]')?.textContent).toBe('Launch Reply drafter');
+    await view.click('[data-launch-run]');
+    await tick();
+    expect(server.sent.filter((one) => one.to === '/task/launch')).toHaveLength(1);
+  });
+
   it("a client's task says it cannot go to an AI agent", async () => {
     const view = await panel(
       serving({ ...held(null), client: { clientId: 'c-1', name: 'Acme' }, clientSet: true }).client,

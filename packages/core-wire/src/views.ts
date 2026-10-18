@@ -29,10 +29,10 @@ import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView, TaskClientFacts } from './views-client.ts';
 import type { RankView, TaskScoreFacts } from './views-rank.ts';
 import type { TaskMapLink } from './views-map.ts';
-import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+import type { TaskStateView, PersonView, TaskRunView, TaskSummary } from './views-task.ts';
 
 export type { RankView, TaskScores } from './views-rank.ts';
-export type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+export type { TaskStateView, PersonView, TaskRunView, TaskSummary } from './views-task.ts';
 
 export type {
   ClientListResult,
@@ -259,12 +259,6 @@ export interface AgentAssigneeView {
   readonly live: boolean;
   /** The run a person launched for this agent on the task, while it is open; else null. */
   readonly run: TaskRunView | null;
-}
-
-/** An open run of the task's agent: `waiting` until the runner takes it. */
-export interface TaskRunView {
-  readonly state: 'waiting' | 'started';
-  readonly launchedAt: string;
 }
 
 /** One agent the Assign to AI control offers the reader. */
