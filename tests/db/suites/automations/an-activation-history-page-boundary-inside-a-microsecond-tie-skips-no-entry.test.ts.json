@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "51 occurrences recorded at one microsecond split across a page boundary: the cursor keeps the microsecond, so the next page gives the rest and none twice"
+}
