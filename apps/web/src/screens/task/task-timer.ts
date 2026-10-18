@@ -149,9 +149,6 @@ export class TaskTimer {
     if (outcome.kind !== 'ok') {
       this.put({
         ...this.state,
-        // A refused retry of a lost attempt is read again, so Stop waiting is
-        // judged against the timer as it is.
-        changed: this.state.changed + (attempt.uncertain && outcome.kind !== 'unknown' ? 1 : 0),
         attempt: {
           ...current,
           status: outcome.kind === 'unknown' || attempt.uncertain ? 'unknown' : 'refused',
@@ -160,6 +157,10 @@ export class TaskTimer {
           because: outcome.because,
         },
       });
+      // A refused retry of a lost attempt reads the held task, wherever the
+      // person is, so Stop waiting is judged against its timer as it is.
+      if (attempt.uncertain && outcome.kind !== 'unknown')
+        void this.read(current.task.id, () => transport === this.client);
       return;
     }
     const detail = outcome.value.detail ?? {};

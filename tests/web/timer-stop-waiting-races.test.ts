@@ -36,6 +36,8 @@ function held() {
   const calls: Call[] = [];
   const fetch: typeof globalThis.fetch = (url, init) =>
     new Promise((resolve, reject) => {
+      // A task read is never answered: the calls are the timer's commands.
+      if (String(url).endsWith('/task/read')) return;
       calls.push({
         path: String(url).replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1'),
         body: JSON.parse(String(init?.body)) as Record<string, unknown>,

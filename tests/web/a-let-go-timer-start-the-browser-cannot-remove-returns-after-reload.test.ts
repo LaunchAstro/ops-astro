@@ -21,10 +21,11 @@ const settleMicrotasks = async (): Promise<void> => {
   await pause();
 };
 
-/** The first send of each change is lost; every later one is refused. */
+/** The first send of each change is lost; every later one is refused; a task read never answers. */
 function server() {
   const ids: string[] = [];
-  const fetch: typeof globalThis.fetch = (_url, init) => {
+  const fetch: typeof globalThis.fetch = (url, init) => {
+    if (String(url).endsWith('/task/read')) return new Promise(() => {});
     ids.push(String((JSON.parse(String(init?.body)) as { operationId: unknown }).operationId));
     return ids.length === 1
       ? Promise.reject(new TypeError('Failed to fetch'))
