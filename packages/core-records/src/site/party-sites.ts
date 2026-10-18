@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Each client's site (C80): its repository, default branch and hosting
-// project, and each page with its source file. The one place a party is
-// mapped to its pages, read by a correction's request in its insert and by the
-// runner for its binding. No command writes it: the operator's own script
+// Each client's site (C80), and the business's own (R6, #1688): its
+// repository, default branch and hosting project, and each page with its
+// source file. The one place a site's holder is mapped to its pages, read by a
+// correction's request in its insert and by the runner for its binding. A
+// site's holder is its client, or the business itself where its party is null:
+// no client is the business, so the two never meet. No command writes it: the operator's own script
 // binds a site, under the business's tenancy, as an actor of that business.
 //
 // A site is bound once in the installation (its repository, in lower case,
@@ -15,9 +17,10 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { TransactionQuery } from '../tenancy/transaction.ts';
 
-/** One client's site as the runner binds it: the shape `core-connectors` takes. */
+/** One site as the runner binds it: the shape `core-connectors` takes. */
 export interface PartySiteRecord {
-  readonly partyId: string;
+  /** The client the site belongs to, or null for the business's own site. */
+  readonly partyId: string | null;
   readonly repository: string;
   readonly defaultBranch: string;
   readonly project: string;
@@ -84,7 +87,7 @@ export async function bindPartySite(
       `insert into public.party_sites as s
          (business_id, party_id, repository, default_branch, project, changed_by_actor_id)
        values ($1, $2::uuid, $3, $4, $5, $6::uuid)
-       on conflict (business_id, party_id) do update
+       on conflict (business_id, holder) do update
          set repository = excluded.repository, default_branch = excluded.default_branch,
              project = excluded.project, changed_by_actor_id = excluded.changed_by_actor_id,
              changed_at = now(), revision = s.revision + 1
@@ -105,7 +108,7 @@ export async function bindPartySite(
         `insert into public.party_site_pages (business_id, party_id, page_url, path)
          select $1, $2::uuid, $3, $4
           where not exists (select 1 from public.party_site_pages p
-                             where p.business_id = $1 and p.party_id = $2::uuid
+                             where p.business_id = $1 and p.holder = coalesce($2::uuid, $1)
                                and p.page_url = $3 and p.path = $4)`,
         [tx.businessId, site.partyId, page.pageUrl, page.path],
       );
@@ -114,25 +117,25 @@ export async function bindPartySite(
 }
 
 /**
- * Unbind one page of a client's site, unless an open correction names it. The
+ * Unbind one page of a site (null: the business's own), unless an open correction names it. The
  * site row is taken before the page, the order every writer of the site keeps,
  * so two unbinds of one client's pages queue on it rather than deadlock.
  */
 export async function unbindPartySitePage(
   tx: TransactionQuery,
-  partyId: string,
+  partyId: string | null,
   pageUrl: string,
 ): Promise<SiteWrite> {
   return await held(tx, async (inner) => {
     await inner.query(
       `select 1 from public.party_sites
-        where business_id = $1 and party_id = $2::uuid
+        where business_id = $1 and holder = coalesce($2::uuid, $1)
           for no key update`,
       [tx.businessId, partyId],
     );
     await inner.query(
       `delete from public.party_site_pages
-        where business_id = $1 and party_id = $2::uuid and page_url = $3`,
+        where business_id = $1 and holder = coalesce($2::uuid, $1) and page_url = $3`,
       [tx.businessId, partyId, pageUrl],
     );
   });
@@ -145,20 +148,24 @@ export async function unbindPartySitePage(
  */
 export async function isBoundPage(
   tx: TenantQuery,
-  page: { readonly partyId: string; readonly pageUrl: string; readonly path: string },
+  page: { readonly partyId: string | null; readonly pageUrl: string; readonly path: string },
 ): Promise<boolean> {
   const rows = await tx.query<{ readonly bound: boolean }>(
     `select true as bound from public.party_site_pages
-      where business_id = $1 and party_id = $2::uuid and page_url = $3 and path = $4`,
+      where business_id = $1 and holder = coalesce($2::uuid, $1) and page_url = $3
+        and path = $4`,
     [tx.businessId, page.partyId, page.pageUrl, page.path],
   );
   return rows.length > 0;
 }
 
-/** The client's site with its pages, or undefined where the business binds none for it. */
+/**
+ * The client's site with its pages (null: the business's own), or undefined
+ * where the business binds none for it.
+ */
 export async function readPartySite(
   tx: TenantQuery,
-  partyId: string,
+  partyId: string | null,
 ): Promise<PartySiteRecord | undefined> {
   const [site] = await tx.query<{
     readonly repository: string;
@@ -166,13 +173,13 @@ export async function readPartySite(
     readonly project: string;
   }>(
     `select repository, default_branch, project from public.party_sites
-      where business_id = $1 and party_id = $2::uuid`,
+      where business_id = $1 and holder = coalesce($2::uuid, $1)`,
     [tx.businessId, partyId],
   );
   if (site === undefined) return undefined;
   const pages = await tx.query<{ readonly page_url: string; readonly path: string }>(
     `select page_url, path from public.party_site_pages
-      where business_id = $1 and party_id = $2::uuid order by page_url`,
+      where business_id = $1 and holder = coalesce($2::uuid, $1) order by page_url`,
     [tx.businessId, partyId],
   );
   return {
@@ -185,28 +192,32 @@ export async function readPartySite(
 }
 
 /**
- * The client's site row, share-locked on its own before a request locks its
- * page: an unbind takes the site before the page, so a request does too.
+ * The site row (null: the business's own), share-locked on its own before a
+ * request locks its page: an unbind takes the site before the page, so a
+ * request does too.
  */
-export async function shareClientSite(tx: TenantQuery, partyId: string): Promise<void> {
+export async function shareClientSite(tx: TenantQuery, partyId: string | null): Promise<void> {
   await tx.query(
     `select 1 from public.party_sites
-      where business_id = $1 and party_id = $2::uuid
+      where business_id = $1 and holder = coalesce($2::uuid, $1)
         for share`,
     [tx.businessId, partyId],
   );
 }
 
-/** Whether the task is a live task of the named party: asked only of the operand party. */
+/**
+ * Whether the task is a live task of the named party, or one with no client
+ * where the party is null: asked only of the operand party.
+ */
 export async function isPartysTask(
   tx: TenantQuery,
-  input: { readonly partyId: string; readonly taskId: string },
+  input: { readonly partyId: string | null; readonly taskId: string },
 ): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
     `select r.id from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-        and r.deleted_at is null`,
+      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task'
+        and r.uuid_7 is not distinct from $3::uuid and r.deleted_at is null`,
     [tx.businessId, input.taskId, input.partyId],
   );
   return rows.length > 0;

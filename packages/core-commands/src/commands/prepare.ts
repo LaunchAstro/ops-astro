@@ -415,13 +415,17 @@ const GATE_TASK: ScopeLookup = [
   },
 ];
 
-/** The party of the correction a decision or a revert ask names, read in this business only. */
+/**
+ * The party of the correction a decision or a revert ask names, read in this business only; one
+ * on the business's own site has none and is asked of the business (R6).
+ */
 const CORRECTION_PARTY: ScopeLookup = [
   'correctionId',
   (tx, id) =>
     firstRow(
       tx,
-      `select 'party' as kind, party_id as id from public.live_corrections
+      `select case when party_id is null then 'business' else 'party' end as kind, party_id as id
+         from public.live_corrections
         where business_id = $1 and id = $2`,
       id,
     ),

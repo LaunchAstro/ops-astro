@@ -11,7 +11,8 @@ import type { Envelope } from './request-envelope.ts';
 export type LiveCorrectionRequest =
   | ({
       readonly command: 'live_correction.request';
-      readonly partyId: string;
+      /** The task's client, or null for the business's own site (R6). */
+      readonly partyId: string | null;
       readonly taskId: string;
       readonly path: string;
       readonly word: string;
