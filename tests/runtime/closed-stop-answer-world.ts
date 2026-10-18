@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The steps the closed-stop crossings take (`closed-stop-answer-isolation`):
-// two businesses, a stop raised on a closed hold with a call still reserved
+// two businesses, a stop raised on a closed hold with a call never sent
 // on it, the answers a person or an agent sends, and everything an answer
 // could write, read back as the owner reads it.
 
@@ -39,7 +39,7 @@ import {
   unsentCall,
 } from './version-room-world.ts';
 
-/** A run stopped on its closed first hold, with a call on that hold still reserved. */
+/** A run stopped on its closed first hold, with a call on that hold never sent, which its stop released. */
 export interface Stopped {
   readonly work: Work;
   readonly first: string;
