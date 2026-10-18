@@ -10,6 +10,11 @@
 // it answered, so a refused or unanswered decision draws the state and version
 // the read answers now; its refusal is said in the same plain words.
 //
+// **When it was read.** Each read's answer is stamped with `performance.now()`
+// as it lands (`readAt`), beside how long its version's check holds
+// (`verifiedForMs`), so the card times its Approve from the answer and never
+// from the wall clock. The card reads again through `reread`.
+//
 // **Keyed on business and grant.** Everything is held under the business it
 // was asked in (`client.businessKey`) and the grant it was asked under (the
 // view's `grantKey`: business, person and session), and every answer lands
@@ -31,6 +36,8 @@ export interface Corrections {
   readonly busy: boolean;
   readonly request: (ask: CorrectionAsk) => void;
   readonly decide: (correctionId: string, decision: 'approve' | 'reject') => void;
+  /** Read the correction again, under the business and grant it is held under. */
+  readonly reread: (correctionId: string) => void;
 }
 
 interface Held {
@@ -80,10 +87,31 @@ async function readInto(
     amend(key, correctionId, { refusal: failureWords(settled) });
     return false;
   }
-  const { state, approver, versionId } = settled.value.correction;
-  amend(key, correctionId, { state: cardState(state), approver, versionId, refusal: null });
+  const { state, approver, versionId, verifiedForMs, refusal } = settled.value.correction;
+  amend(key, correctionId, {
+    state: cardState(state),
+    approver,
+    versionId,
+    verifiedForMs: Number.isFinite(verifiedForMs) && verifiedForMs > 0 ? verifiedForMs : 0,
+    readAt: performance.now(),
+    reason: typeof refusal === 'string' ? refusal : null,
+    refusal: null,
+  });
   return true;
 }
+
+/** A correction just asked for, before its first read answers. */
+const asked = (correctionId: string, ask: CorrectionAsk): Correction => ({
+  correctionId,
+  ask,
+  state: 'requested',
+  approver: null,
+  versionId: null,
+  verifiedForMs: 0,
+  readAt: null,
+  reason: null,
+  refusal: null,
+});
 
 /** `work`, counted busy on the desk under `key` while it runs. */
 function tracked(change: Change, key: string, work: Promise<void>): void {
@@ -113,15 +141,11 @@ export function useCorrections(
       return;
     }
     const { correctionId } = answer;
-    const asked: Correction = {
-      correctionId,
-      ask,
-      state: 'requested',
-      approver: null,
-      versionId: null,
+    change(key, (desk) => ({
+      ...desk,
       refusal: null,
-    };
-    change(key, (desk) => ({ ...desk, refusal: null, list: [...desk.list, asked] }));
+      list: [...desk.list, asked(correctionId, ask)],
+    }));
     await read(key, correctionId);
   };
   const decide = async (key: string, id: string, decision: 'approve' | 'reject'): Promise<void> => {
@@ -142,6 +166,9 @@ export function useCorrections(
     },
     decide: (id, decision) => {
       tracked(change, at, decide(at, id, decision));
+    },
+    reread: (id) => {
+      void read(at, id);
     },
   };
 }

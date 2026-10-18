@@ -31,12 +31,12 @@ async function approvedPastTheStore(pageUrl: string, path: string): Promise<stri
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         delegation_id, target_path, word, replacement, page_url, pre_image_digest,
         base_revision, seam, version_id, version_digest, state, decided_by_actor_id,
-        decided_by_person_id, decided_at, decided_version_digest)
+        decided_by_person_id, decided_at, decided_version_digest, located_at, verified_at)
      select business_id, $2::uuid, party_id, task_id, requested_by_actor_id,
             requested_by_person_id, delegation_id, $4, word, replacement, $3,
             pre_image_digest, base_revision, 'seam-' || $2, gen_random_uuid(), version_digest,
             state, decided_by_actor_id, decided_by_person_id, decided_at,
-            decided_version_digest
+            decided_version_digest, located_at, verified_at
        from public.live_corrections where id = $1`,
     [own, id, pageUrl, path],
   );

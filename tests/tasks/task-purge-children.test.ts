@@ -129,9 +129,10 @@ async function seedCorrected(tx: TenantQuery) {
     `insert into public.live_corrections
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
-        version_id, version_digest)
+        version_id, version_digest, state, located_at)
      values ($1, $2, $3, $4, $5, $6, 'src/pages/about.md', 'friendly', 'welcoming',
-             'https://agency.example/about/', 'sha256:pre', 'rev-1', 'seam', $7, 'sha256:v')`,
+             'https://agency.example/about/', 'sha256:' || repeat('ab', 32), repeat('c0', 20), 'seam', $7,
+             'sha256:' || repeat('cd', 32), 'requested', now())`,
     [tx.businessId, correctionId, randomUUID(), corrected, actorId, personId, randomUUID()],
   );
   const trash = async (rootId: string) => {

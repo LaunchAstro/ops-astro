@@ -7,6 +7,8 @@
 //   guarded writes `site.source.propose` composes beside its contents write
 //   (branch, commit, request; `propose.ts`);
 // - `site.request.read`: the human review request's state;
+// - `site.source.head`: the default branch's head commit, the revision a
+//   locate pins and every later check reads the file at (#1693);
 // - `site.deployment.lookup`: the hosting deployment found by the written
 //   commit, so the publish answers a deployment id without a promotion;
 // - `site.deployment.current` and `site.deployment.alias`: the project's
@@ -91,6 +93,16 @@ export const BINDING_OPERATIONS: readonly OperationRegistration[] = [
     pathTemplate: '/repos/{repository*}/pulls/{number}',
     bodyParams: [],
     responseSchema: { merged: 'boolean', state: 'string' },
+    refusalProofs: {},
+    credential: 'source_control',
+    ...LIMITS,
+  }),
+  operation(read('site.source.head', SOURCE_QUOTA, 'site_source'), {
+    host: SOURCE_HOST,
+    method: 'GET',
+    pathTemplate: '/repos/{repository*}/git/ref/heads/{branch}',
+    bodyParams: [],
+    responseSchema: { 'object.sha': 'string' },
     refusalProofs: {},
     credential: 'source_control',
     ...LIMITS,

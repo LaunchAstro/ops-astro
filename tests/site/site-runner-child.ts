@@ -7,12 +7,14 @@
 
 import { connect, type BusinessId } from '../../packages/core-records/src/index.ts';
 import { createSiteRunner, type Claim } from '../../apps/site-runner/runner.ts';
+import type { ConfiguredSite } from '../../apps/site-runner/configured.ts';
 import { custodyOver, sitesOver, type Served } from './site-runner-servers.ts';
 
 interface Handed {
   readonly appUrl: string;
   readonly business: BusinessId;
   readonly actorId: string;
+  readonly site: ConfiguredSite;
   readonly claim: Claim;
   readonly served: Pick<Served, 'origins' | 'credentialsFile'>;
 }
@@ -29,13 +31,14 @@ let taken = false;
 const runner = createSiteRunner({
   db,
   business: handed.business,
+  site: handed.site,
   actorId: handed.actorId,
   claims: {
     take: () => Promise.resolve(taken ? [] : ((taken = true), [handed.claim])),
     beat: () => Promise.resolve(true),
     release: () => Promise.resolve(),
   },
-  sites: sitesOver(custody, handed.served.origins, Date.now),
+  sites: sitesOver(custody, handed.served.origins, Date.now, handed.site),
   raiseTask: (_claim, reason) => {
     raised.push(reason);
     return Promise.resolve();

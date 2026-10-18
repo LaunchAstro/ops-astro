@@ -127,8 +127,21 @@ module.exports = {
           '^$1/',
           '^packages/[^/]+/src/index\\.ts$',
           '^packages/core-custody/src/agent\\.ts$',
+          '^packages/core-records/src/site/locate\\.ts$',
         ],
       },
+    },
+    {
+      name: 'locate-writes-are-the-runners',
+      severity: 'error',
+      comment:
+        "#1693: the locate's pin, stamp and supersede add facts the site runner read through " +
+        'custody, and only the runner may vouch for a version. `core-records/src/site/locate.ts` ' +
+        'is in no index; the site runner alone imports it, by path. Tests may reach in.',
+      from: {
+        pathNot: ['^apps/site-runner/', '^tests/', '^packages/core-records/src/site/locate\\.ts$'],
+      },
+      to: { path: '^packages/core-records/src/site/locate\\.ts$' },
     },
     {
       name: 'worker-holds-no-database',

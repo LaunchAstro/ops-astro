@@ -830,7 +830,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         : declaration.name === 'run.child_handback'
           ? probe
           : declaration.name === 'live_correction.request'
-            ? { ...probe, ...C80_REQUEST, partyId: randomUUID(), taskId: sibling.id }
+            ? { ...probe, ...C80_REQUEST, taskId: sibling.id }
             : { ...probe, recordId: sibling.id };
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(declaration.name, body, credential);

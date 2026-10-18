@@ -15,16 +15,27 @@ import { passes } from '../../apps/site-runner/main.ts';
 import { readSettings, settingsFrom } from '../../apps/site-runner/settings.ts';
 
 const SECRET = 'canary-password-5c1d0e77';
+const BUSINESS = '6f1c2a54-9d0b-4c1e-8a7f-3b2d1e0f9a8c';
+/** The one site, with its pages as given. */
+const siteWith = (pageUrl: string): string =>
+  JSON.stringify({
+    business: BUSINESS,
+    holder: BUSINESS,
+    repository: 'LaunchAstro/agency-astro-astro',
+    defaultBranch: 'main',
+    project: 'prj_agency',
+    pages: [{ pageUrl, path: 'src/pages/about.astro' }],
+  });
 const GOOD = {
   OPS_ASTRO_API_URL: 'https://ops.example',
   OPS_ASTRO_BUSINESS: 'agency',
-  OPS_ASTRO_BUSINESS_ID: '6f1c2a54-9d0b-4c1e-8a7f-3b2d1e0f9a8c',
+  OPS_ASTRO_BUSINESS_ID: BUSINESS,
   OPS_ASTRO_EMAIL: 'site-runner@example.com',
   OPS_ASTRO_PASSWORD: SECRET,
   OPS_ASTRO_GOTRUE_URL: 'https://auth.example',
   SITE_RUNNER_DATABASE_URL: `postgres://site_runner:${SECRET}@db.example:5432/postgres?sslmode=require`,
   SITE_RUNNER_CREDENTIALS_FILE: '/var/empty/site-credentials.json',
-  SITE_RUNNER_PAGES: 'https://agencyastro.com/about',
+  SITE_RUNNER_SITE: siteWith('https://agencyastro.com/about'),
 };
 
 const folder = mkdtempSync(join(tmpdir(), 'site-runner-settings-'));
@@ -39,7 +50,9 @@ function fileOf(name: string, body: unknown, mode: number): string {
 
 describe('the site runner, its settings', () => {
   it('reads a settings file only its owner can read', () => {
-    const settings = readSettings({ SITE_RUNNER_SETTINGS: fileOf('own.json', GOOD, 0o600) });
+    // The site may be written in the file as an object of its own.
+    const own = { ...GOOD, SITE_RUNNER_SITE: JSON.parse(GOOD.SITE_RUNNER_SITE) as unknown };
+    const settings = readSettings({ SITE_RUNNER_SETTINGS: fileOf('own.json', own, 0o600) });
     expect(typeof settings === 'string' ? settings : settings.pages).toEqual([
       'https://agencyastro.com/about',
     ]);
@@ -52,15 +65,18 @@ describe('the site runner, its settings', () => {
         ...GOOD,
         SITE_RUNNER_DATABASE_URL: GOOD.SITE_RUNNER_DATABASE_URL.split('?')[0],
       }),
-      settingsFrom({ ...GOOD, SITE_RUNNER_PAGES: 'https://agencyastro.com/about/../about' }),
-      settingsFrom({ ...GOOD, SITE_RUNNER_PAGES: 'http://agencyastro.com/about' }),
+      settingsFrom({
+        ...GOOD,
+        SITE_RUNNER_SITE: siteWith('https://agencyastro.com/about/../about'),
+      }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_SITE: siteWith('http://agencyastro.com/about') }),
       settingsFrom({ ...GOOD, OPS_ASTRO_PASSWORD: '' }),
     ];
     expect(refusals).toEqual([
       'the settings file is readable by others',
       'SITE_RUNNER_DATABASE_URL does not require TLS (add ?sslmode=require or stricter)',
-      'SITE_RUNNER_PAGES holds an address that is not an exact https page',
-      'SITE_RUNNER_PAGES holds an address that is not an exact https page',
+      'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
+      'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
       'missing OPS_ASTRO_PASSWORD',
     ]);
     expect(JSON.stringify(refusals)).not.toContain(SECRET);

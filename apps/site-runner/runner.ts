@@ -6,7 +6,9 @@
 // (`runLivePublish`). A publish recorded `accepted` is followed, one run per
 // pass, until it reads `live` or `unknown`, and for at most `FOLLOW_FOR_MS`.
 // Every guarantee about sending is the library's: this file chooses what runs
-// and with which ports, and holds no credential and no transaction.
+// and with which ports, and holds no credential and no transaction. A claim on
+// a correction whose site or page is not the one configured (`SITE_RUNNER_SITE`)
+// runs nothing: one person task, and the lease handed back `SITE_NOT_CONFIGURED`.
 
 import {
   proposalForBinding,
@@ -30,6 +32,12 @@ import {
   siteBindingFor,
   type SiteBinding,
 } from '../../packages/core-connectors/src/index.ts';
+import {
+  bindingConfigured,
+  NOT_CONFIGURED,
+  pairConfigured,
+  type ConfiguredSite,
+} from './configured.ts';
 
 /** How often the host runs a pass, so a followed publish is observed again. */
 export const FOLLOW_EVERY_MS = 15_000;
@@ -71,6 +79,8 @@ export interface Sites {
 export interface SiteRunnerDeps {
   readonly db: Database;
   readonly business: BusinessId;
+  /** The one site this runner acts for: a claim on any other runs nothing. */
+  readonly site: ConfiguredSite;
   /** The runner's agent actor, from its API session: every lease read compares it. */
   readonly actorId: string;
   readonly claims: Claims;
@@ -202,6 +212,14 @@ async function start(runner: Runner, claim: Claim): Promise<Passed> {
   const run = runOf(runner, claim);
   const held = await heldUnder(deps.db, run);
   if (!held.ok) return await settle(runner, claim, held.code);
+  const { correction, site } = held;
+  if (
+    !bindingConfigured(deps.site, site.partyId ?? deps.business, site) ||
+    !pairConfigured(deps.site, correction.pageUrl, correction.targetPath)
+  ) {
+    await raising(runner, claim)(NOT_CONFIGURED);
+    return await settle(runner, claim, NOT_CONFIGURED);
+  }
   const ports = deps.sites.propose(held.site, held.correction.targetPath, raising(runner, claim));
   if (held.correction.state === 'approved' || held.correction.state === 'requested') {
     const proposed = await proposeCorrection(deps.db, run, ports);
