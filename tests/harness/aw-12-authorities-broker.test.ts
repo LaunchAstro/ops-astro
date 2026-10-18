@@ -202,12 +202,10 @@ async function effectAuthority(): Promise<void> {
     { command: 'shell.exec', outcome: 'refused', refusal_code: 'DELEGATION_EXCLUDES_OPERATION' },
   ]);
   expect(seen()).toBe(before);
-  // Control: the catalogued operation goes through, on fresh work, since the refusal
-  // above ended its attempt (#1623 R1, B2).
+  // Control: the catalogued operation goes through, on fresh work (B2: the refusal ended it).
   const fresh = await liveWork(s, 'aw12 catalogue control', 2_000);
-  const control = framework(fresh, [
-    ['compose', async () => await call(fresh, { operation: REPLAY_COMPOSE.key })],
-  ]);
+  const compose = async () => await call(fresh, { operation: REPLAY_COMPOSE.key });
+  const control = framework(fresh, [['compose', compose]]);
   expect(await control.callTool('compose', '')).toMatchObject({ ok: true });
   expect(seen()).toBe(before + 1);
 }
