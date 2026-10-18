@@ -134,7 +134,11 @@ async function delegationFor(taskId: string): Promise<string> {
  * The worker's plan on a fresh task, accepted and not launched. `runner`,
  * when given, is injected through the worker's options as `runner`.
  */
-export async function acceptedPlan(title: string, runner?: Scripted['runner']): Promise<Seam> {
+export async function acceptedPlan(
+  title: string,
+  runner?: Scripted['runner'],
+  broker?: Parameters<typeof door>[1],
+): Promise<Seam> {
   await retirePickups();
   const taskId = await createTask(s, `${title} ${randomUUID()}`);
   const [business] = await rows<{ key: string }>(
@@ -144,7 +148,7 @@ export async function acceptedPlan(title: string, runner?: Scripted['runner']): 
   );
   const log: Sent[] = [];
   const options = {
-    transport: transportOver(door(), log),
+    transport: transportOver(door(s.db.app, broker), log),
     businessKey: String(business?.key),
     credential: await tokenFor(s.agent.subject),
     delegation: await delegationFor(taskId),

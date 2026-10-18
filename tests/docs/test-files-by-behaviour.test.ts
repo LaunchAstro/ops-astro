@@ -335,10 +335,6 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
-    'packages/core-agent/src/index.ts',
-    "the agent loop on the pinned stack (#1715); the worker's agent step runner, its first product importer, arrives in #1905",
-  ],
-  [
     'apps/site-runner/runner.ts',
     "the site runner's composition (#1692); its launchd entry point, apps/site-runner/main.ts, arrives in #1692's second pull request",
   ],

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R4: the worker agent runner on the pinned LangChain stack reads its task and takes its turns through the real agent door and broker on the replay turn; a final answer hands back one success row, and answers that only ask for tools end call_limit at the third settlement with no fourth call and no handback."
+}
