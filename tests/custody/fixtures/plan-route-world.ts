@@ -110,6 +110,8 @@ export interface PlanRouteWorld {
   readonly pieces: string[];
   /** One request through the agent's mapping, written by the agent's send deadline. */
   dispatch(request: OutboundRequest): Promise<CustodyOutcome>;
+  /** Custody as the model agent sees it, for a case that runs the agent itself. */
+  readonly agentCustody: ReturnType<typeof agentCustody>;
   close(): Promise<void>;
 }
 
@@ -198,6 +200,7 @@ export async function openPlanRouteWorld(options: PlanRouteOptions = {}): Promis
       box.reply = next;
     },
     pieces,
+    agentCustody: mapped,
     dispatch: async (request) =>
       await mapped.dispatch(
         request,
