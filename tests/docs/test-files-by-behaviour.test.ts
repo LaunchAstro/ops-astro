@@ -387,8 +387,8 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     "the tenancy wrapper's default-deny conformance check, part of that protected component",
   ],
   [
-    'packages/core-custody/src/token-file.ts',
-    "#1620 P1a's plan token file; inert until P1b's holder imports it (and P4, #1702, wires the holder)",
+    'packages/core-custody/src/plan-token.ts',
+    "#1620 P1's plan token holder; inert until P4 (#1702) wires it into the chatgpt-plan route",
   ],
 ]);
 

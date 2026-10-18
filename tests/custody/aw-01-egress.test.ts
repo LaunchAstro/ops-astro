@@ -77,6 +77,9 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   // #1620 P1a (re-cut of #1661):
   'packages/core-custody/src/token-lock.ts':
     'runs `/bin/ls` on the plan token directory and files to judge their ACL; no network',
+  // #1620 P1b:
+  'packages/core-custody/src/token-refresh.ts':
+    "the plan token's one refresh request, to the token URL its holder was built with; no redirect (pinned by #1704)",
 };
 
 const MODULES =
