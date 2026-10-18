@@ -59,7 +59,7 @@ function expectSurvivedAndRefused(outcome: Outcome): void {
   expect(outcome.result).toEqual({ caller: refused, statement: refused, after: { ok: true } });
 }
 
-describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1774)', () => {
+describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction', () => {
   let db: FreshDatabase;
   let ownerUrl: string;
 
