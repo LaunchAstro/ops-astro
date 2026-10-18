@@ -67,9 +67,9 @@ after(() => {
 // container for each probe, so a lane holding a fixed port stays on it.
 const givenUrl = process.env['DB_CONFORMANCE_CASES_URL'] ?? '';
 
-/** A throwaway Postgres, removed however this ends. */
-function withDatabase(run) {
-  if (givenUrl !== '') return run(givenUrl);
+/** A throwaway Postgres, removed however this ends; `fresh` starts one even beside a given URL. */
+function withDatabase(run, { fresh = false } = {}) {
+  if (givenUrl !== '' && !fresh) return run(givenUrl);
   const password = randomBytes(18).toString('hex');
   const name = `hub-db-conformance-${randomBytes(6).toString('hex')}`;
   startedAny = true;
@@ -612,6 +612,68 @@ test('a counter read that fails is a failure, not a zero baseline', (t) => {
         assert.match(run.stderr, /could not read the database counter/u);
         assert.match(run.stderr, /a transient counter read failure/u);
       },
+    ),
+  );
+});
+
+/** The runner over lanes, one URL each (DATABASE_LANE_URLS, #1753). */
+const cruiseLanes = (manifestPath, urls) =>
+  spawnSync(process.execPath, [runner, '--manifest', manifestPath], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, DATABASE_URL: urls[0], DATABASE_LANE_URLS: urls.join(',') },
+    maxBuffer: 32 * 1024 * 1024,
+  });
+
+test('two lane URLs that reach one Postgres cluster are refused', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites({ 'reaches.test.ts': REACHES_DATABASE }, { invariant: ['reaches.test.ts'] }, (m) => {
+      // The same server under a second spelling of its address.
+      const run = cruiseLanes(m, [url, url.replace('@127.0.0.1:', '@localhost:')]);
+      assert.equal(run.status, 2, `expected exit 2, got ${String(run.status)}: ${run.stdout}`);
+      assert.match(run.stderr, /two lane URLs reach the same Postgres cluster/u);
+      assert.doesNotMatch(run.stdout, /reaches\.test\.ts moved the database counter/u);
+    }),
+  );
+});
+
+test('on two lanes, a suite beside the database fails while its sibling moves the other lane', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((first) =>
+    withDatabase(
+      (second) =>
+        withSuites(
+          {
+            'reaches.test.ts': REACHES_DATABASE,
+            'also-reaches.test.ts': REACHES_DATABASE,
+            'beside.test.ts': NEVER_TOUCHES_THE_DATABASE,
+          },
+          {
+            invariant: ['reaches.test.ts', 'also-reaches.test.ts'],
+            conformance: ['beside.test.ts'],
+          },
+          (m) => {
+            const run = cruiseLanes(m, [first, second]);
+            assert.equal(
+              run.status,
+              1,
+              `expected exit 1, got ${String(run.status)}: ${run.stdout}`,
+            );
+            const named = run.stderr.split(
+              'transaction movement above measurement cost and a new client session',
+            )[1];
+            assert.ok(named !== undefined, `rule 7 did not fire: ${run.stderr}`);
+            assert.match(named, /beside\.test\.ts/u);
+            assert.doesNotMatch(named, /reaches\.test\.ts/u);
+            // Every suite ran once, in the share's order, whichever lane took it.
+            const order = [
+              ...run.stdout.matchAll(/db-conformance: \S+\/(\S+\.test\.ts) moved/gu),
+            ].map((match) => match[1]);
+            assert.deepEqual(order, ['reaches.test.ts', 'also-reaches.test.ts', 'beside.test.ts']);
+          },
+        ),
+      { fresh: true },
     ),
   );
 });
