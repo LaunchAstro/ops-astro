@@ -3,12 +3,13 @@
 // #1620 P2: a sign-in whose store fails at any step of the commit answers
 // SIGN_IN_STORE_FAILED and leaves no copy of the new tokens in the token
 // directory, visible or transient, once its own hold ends. A holder then
-// presents only what was committed before.
+// presents only what was committed before. A store whose hold died mid-commit
+// leaves its bytes in the token file, never presented, for the owner.
 
 import * as nodeFs from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { signIn } from '../../apps/model-agent/chatgpt-sign-in.ts';
-import { storeSignIn } from '../../packages/core-custody/src/plan-sign-in.ts';
+import { beginSignIn, storeSignIn } from '../../packages/core-custody/src/plan-sign-in.ts';
 import { tokenHolder } from '../../packages/core-custody/src/plan-token.ts';
 import type { TokenFs } from '../../packages/core-custody/src/token-file.ts';
 import {
@@ -126,8 +127,9 @@ describe('a failed sign-in store', () => {
   });
 });
 
-describe('a failed store past its own hold', () => {
-  it('removes its new bytes when the lock file is replaced mid-commit and the digest is fenced', async () => {
+// oxlint-disable-next-line max-lines-per-function -- two hold-loss schedules, each step in order
+describe('a failed store past its own hold leaves its bytes for the owner', () => {
+  it('a lock file replaced mid-commit: no transient copy, never presented, the next sign-in sent to the owner', async () => {
     const { file, dir } = await world(true);
     // A same-user process removes the lock file just after the token file's
     // directory fsync: the file is durable, then the digest commit is fenced.
@@ -147,12 +149,13 @@ describe('a failed store past its own hold', () => {
       code: 'SIGN_IN_STORE_FAILED',
     });
     expect(lapsed).toBe(true);
-    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual([]);
-    expect(filesHolding(dir, 'synthetic-access-new')).toEqual([]);
+    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual(['plan-token.json']);
+    expect(filesHolding(dir, 'synthetic-access-new')).toEqual(['plan-token.json']);
     expect(await presented(file)).toBe('SUBSCRIPTION_SIGN_IN_NEEDED');
+    expect(await beginSignIn({ file })).toEqual({ ok: false, code: 'SIGN_IN_FILE_NEEDS_OWNER' });
   });
 
-  it('removes its new bytes when the digest is busy and the locked read then fails too', async () => {
+  it('a busy digest then a failed locked read: no transient copy, never presented', async () => {
     const { file, dir } = await world(true);
     const busy = faultyFs({ step: 'digest-busy', on: 'ready' });
     let renamed = false;
@@ -171,6 +174,8 @@ describe('a failed store past its own hold', () => {
       ok: false,
       code: 'SIGN_IN_STORE_FAILED',
     });
-    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual([]);
+    expect(filesHolding(dir, 'synthetic-refresh-new')).toEqual(['plan-token.json']);
+    expect(filesHolding(dir, 'synthetic-access-new')).toEqual(['plan-token.json']);
+    expect(await presented(file)).toBe('SUBSCRIPTION_SIGN_IN_NEEDED');
   });
 });
