@@ -28,6 +28,7 @@ export const AGENT_RUN_OPERANDS: Readonly<Partial<Record<CommandName, Spec>>> = 
     outcome: 'any',
     note: 'any',
   },
+  'definition.read': { leaseId: 'any', fence: 'any', stepId: 'any', path: 'any' },
   'model.call': {
     leaseId: 'any',
     fence: 'any',

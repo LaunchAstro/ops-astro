@@ -67,7 +67,11 @@ import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope, setModel } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
-import { refuseModelCallAsPerson, refuseRunEndAsPerson } from './model-call-person.ts';
+import {
+  refuseDefinitionReadAsPerson,
+  refuseModelCallAsPerson,
+  refuseRunEndAsPerson,
+} from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
@@ -231,6 +235,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // AW-01 and #1623 R1: the run's worker's, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
   'run.end': refuseRunEndAsPerson,
+  'definition.read': refuseDefinitionReadAsPerson,
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,

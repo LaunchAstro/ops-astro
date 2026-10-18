@@ -74,16 +74,36 @@ function taskOf(value: Record<string, unknown>): Part | undefined {
   return typeof toolCallId === 'string' ? { ref: 'task', taskId, revision, toolCallId } : undefined;
 }
 
+/** A pinned file's digest: lowercase hex sha256, as `identityOf` writes it. */
+const DIGEST = /^[0-9a-f]{64}$/u;
+
+/** The most a definition's text may be, in UTF-8 bytes (#1904). */
+export const MOST_DEFINITION_BYTES: number = 256 * 1024;
+
+/** A surrogate standing alone: under `u`, a well-formed pair reads as one code point. */
+const LONE_SURROGATE = /\p{Cs}/u;
+
+/**
+ * The definition part (#1904): the file's text as `definition.read` returned
+ * it, well formed, so no lone surrogate stands in for a U+FFFD the file holds,
+ * and within its bound. Its hash and its ledger row are binding's.
+ */
+function definitionOf(value: Record<string, unknown>): Part | undefined {
+  const { path, digest, text } = value;
+  if (!keysAre(value, ['ref', 'path', 'digest', 'text'])) return undefined;
+  if (typeof path !== 'string' || typeof digest !== 'string' || typeof text !== 'string') {
+    return undefined;
+  }
+  if (!DIGEST.test(digest) || LONE_SURROGATE.test(text)) return undefined;
+  if (Buffer.byteLength(text, 'utf8') > MOST_DEFINITION_BYTES) return undefined;
+  return { ref: 'definition', path, digest, text };
+}
+
 function partOf(value: unknown, first: boolean): Part | undefined {
   if (!isObject(value) || typeof value['ref'] !== 'string') return undefined;
   switch (value['ref']) {
-    case 'definition': {
-      const { path, digest } = value;
-      if (!first || !keysAre(value, ['ref', 'path', 'digest'])) return undefined;
-      return typeof path === 'string' && typeof digest === 'string'
-        ? { ref: 'definition', path, digest }
-        : undefined;
-    }
+    case 'definition':
+      return first ? definitionOf(value) : undefined;
     case 'task':
       return taskOf(value);
     case 'answer':

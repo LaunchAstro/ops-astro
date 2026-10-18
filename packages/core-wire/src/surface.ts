@@ -673,6 +673,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
   declare('model.call', 'write', ASKED_OF_LEASE),
   declare('run.end', 'write', ASKED_OF_LEASE),
+  // #1904: the lease holder's read of a pinned file. Its one audit event is the
+  // read's own (`definitions-read.ts`), and a replay writes none, so the
+  // envelope's replay event is off: the file's text is never in the register.
+  declare('definition.read', 'write', { ...ASKED_OF_LEASE, audited: false }),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work
   // controls. The runtime asks the same pair of the run's own task again under

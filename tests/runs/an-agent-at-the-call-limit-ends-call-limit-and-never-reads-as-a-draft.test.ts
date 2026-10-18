@@ -19,7 +19,7 @@ const LIMIT = 3;
 
 it('a task read then a final answer is success, the tool call carried back as it came', async () => {
   const run = scripted((n) => (n === 1 ? reads(1) : final(2)));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'success', endCode: 'COMPLETED' });
   expect(run.ended).toEqual([]);
   expect(run.toolRuns()).toBe(1);
@@ -40,7 +40,7 @@ it('a task read then a final answer is success, the tool call carried back as it
 it("the server's settlement of the limit-th call ends it call_limit, never success", async () => {
   // A final answer at the limit is still the limit: the conservative rule.
   const run = scripted((n) => (n < LIMIT ? reads(n) : { ...final(n), terminal: 'call_limit' }));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
   expect(run.sent).toHaveLength(LIMIT);
   expect(run.ended, 'the server wrote it; the worker writes nothing').toEqual([]);
@@ -48,7 +48,7 @@ it("the server's settlement of the limit-th call ends it call_limit, never succe
 
 it('a final answer below the limit succeeds', async () => {
   const run = scripted((n) => (n < 2 ? reads(n) : final(n)));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end.outcome).toBe('success');
   expect(run.sent).toHaveLength(2);
 });
@@ -56,7 +56,7 @@ it('a final answer below the limit succeeds', async () => {
 it("LangChain's limit raises before a send past it, and the run ends call_limit through run.end, not as a draft", async () => {
   // The server here never ends it, so only the local limit can stop it.
   const run = scripted((n) => reads(n));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end.outcome).not.toBe('success');
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
   expect(run.sent, 'no send past the limit').toHaveLength(LIMIT);
@@ -65,7 +65,7 @@ it("LangChain's limit raises before a send past it, and the run ends call_limit 
 
 it('a stop the broker recorded is the outcome, and the worker records nothing more', async () => {
   const run = scripted(() => ({ stopped: 'BUDGET_UNAVAILABLE', recorded: true }));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'budget_wait', endCode: 'BUDGET_UNAVAILABLE' });
   expect(run.ended).toEqual([]);
 });
@@ -78,13 +78,7 @@ it('a refused task read ends the run with its own code, recorded through run.end
       async () => await Promise.resolve({ refused: 'TOOL_REFUSED' as const, recorded: false }),
     ],
   ]);
-  const end = await runAttempt(
-    run.state,
-    { ...run.ports, tools: refused },
-    LIMIT,
-    undefined,
-    'The task.',
-  );
+  const end = await runAttempt(run.state, { ...run.ports, tools: refused }, LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'cancelled', endCode: 'TOOL_REFUSED' });
   expect(run.ended).toEqual(['TOOL_REFUSED']);
   expect(run.sent, 'no turn after the refusal').toHaveLength(1);
@@ -96,7 +90,7 @@ it('an uncatalogued tool asked for ends the run with nothing more sent', async (
     text: 'Deleting.',
     toolCalls: [{ id: 'call_1', name: 'task.delete', args: {} }],
   }));
-  const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, LIMIT, 'The task.');
   expect(end.outcome).toBe('cancelled');
   expect(['TOOL_NOT_CATALOGUED', 'TOOL_REFUSED']).toContain(end.endCode);
   expect(run.sent).toHaveLength(1);

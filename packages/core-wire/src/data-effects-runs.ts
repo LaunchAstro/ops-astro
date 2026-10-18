@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What `model.call` and `run.end` do to data, entries of `COMMAND_EFFECTS`
+// What `model.call`, `run.end` and `definition.read` do to data, entries of `COMMAND_EFFECTS`
 // (data-effects.ts; `model.call` moved whole for the line cap).
 
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
@@ -11,6 +11,12 @@ import { business, client, writing, type DataEffects } from './data-effects-type
 export const RUN_END_EFFECTS: DataEffects = writing([
   ...client('leases', 'model_calls', 'run_outcomes'),
   ...business('delegations'),
+]);
+
+// #1904: a pinned read's ledger row, on the run, and its audit copy, kept once per business.
+export const DEFINITION_READ_EFFECTS: DataEffects = writing([
+  ...client('bootstrap_reads'),
+  ...business('bootstrap_bytes'),
 ]);
 
 // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved

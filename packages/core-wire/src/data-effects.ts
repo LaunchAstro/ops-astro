@@ -22,7 +22,11 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
-import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS } from './data-effects-runs.ts';
+import {
+  DEFINITION_READ_EFFECTS,
+  MODEL_CALL_EFFECTS,
+  RUN_END_EFFECTS,
+} from './data-effects-runs.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -204,6 +208,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.set_model': writing(client('conversations')),
   'model.call': MODEL_CALL_EFFECTS,
   'run.end': RUN_END_EFFECTS,
+  'definition.read': DEFINITION_READ_EFFECTS,
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
   // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
   // At a hold its calls spent whole, the top-up is the step's fresh hold: a new attempt.

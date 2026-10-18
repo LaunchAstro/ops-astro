@@ -133,9 +133,11 @@ export async function runAttempt(
   state: AttemptState,
   ports: AttemptPorts,
   limit: number,
-  system: string | undefined,
   task: string,
 ): Promise<AttemptEnd> {
+  // The system message is the pinned file `definition.read` returned (#1904):
+  // its part carries the same text, and the broker binds it by its hash.
+  const system = state.definition?.text;
   // Refused before the fresh store is entered: inside it, a planted hook is
   // already out of sight.
   const refused = runRefused(process.env);
