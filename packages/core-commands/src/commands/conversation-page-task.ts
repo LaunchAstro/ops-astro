@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A conversation's page task (#1467): the task it was opened on, or else the
-// task its added page names (`conversation.set_scope`, `/task/<key or id>`),
-// so "Add page to context" sends what a conversation opened on that task
-// sends, judged the same way (`conversation-context.ts`, `pageOf`). The
-// exchange and the message keep both ask it, so they judge one page. An added
-// page naming no task of this business is judged as a task that is gone,
-// never told apart from one the caller may not read; any other page is no
-// task at all.
+// A conversation's page task (#1467): the task its stored page names
+// (`conversation.set_scope`, `/task/<key or id>`), or else the task it was
+// opened on, so "Add page to context" sends what a conversation opened on that
+// task sends, judged the same way (`conversation-context.ts`, `pageOf`), and a
+// client's page added since is judged as that client's (S1930-1). The exchange,
+// the message keep and the models offered all ask it, so they judge one page.
+// An added page naming no task of this business is judged as a task that is
+// gone, never told apart from one the caller may not read; any other page
+// leaves the task it was opened on. The stored page is then the only source of
+// the client judged (S1930-2): a conversation opened on client A given client
+// B's page is judged as B's. One opened on a client's task, or on one gone
+// since, is never judged as no client's: an internal page added to it is
+// judged as a task that is gone, so nothing is offered and nothing is asked.
 
 import { isUuid, slotOf, TASK_SPINE, taskPageRef } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 
 const KEY = slotOf(TASK_SPINE, 'key');
+const CLIENT = slotOf(TASK_SPINE, 'client');
 /** An id no task holds: `pageOf` answers it as a task that is gone. */
 const NO_TASK = '00000000-0000-4000-8000-000000000000';
 
@@ -21,9 +27,8 @@ export async function pageTaskOf(
   scopeRecordId: string | null,
   pageAddress: string | null,
 ): Promise<string | null> {
-  if (scopeRecordId !== null) return scopeRecordId;
   const named = taskPageRef(pageAddress);
-  if (named === undefined) return null;
+  if (named === undefined) return scopeRecordId;
   if (named === null) return NO_TASK;
   const [task] = await tx.query<{ readonly id: string }>(
     `select r.id from public.records r
@@ -32,5 +37,18 @@ export async function pageTaskOf(
         and (r.${KEY} = $2 or ($3::uuid is not null and r.id = $3::uuid))`,
     [tx.businessId, named, isUuid(named) ? named : null],
   );
-  return task?.id ?? NO_TASK;
+  if (task === undefined) return NO_TASK;
+  // Opened on a client's task, or one gone: never judged as no client's, so an internal page is gone.
+  const lifts = scopeRecordId !== null && (await internal(tx, task.id));
+  return lifts && !(await internal(tx, scopeRecordId)) ? NO_TASK : task.id;
+}
+
+/** Whether task `id` is still this business's, and no client's. */
+async function internal(tx: TenantQuery, id: string): Promise<boolean> {
+  const [task] = await tx.query<{ readonly client: string | null }>(
+    `select ${CLIENT}::text as client from public.records
+      where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, id],
+  );
+  return task !== undefined && task.client === null;
 }

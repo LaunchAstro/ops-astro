@@ -119,6 +119,14 @@ const written = (client: OperationsClient, conversationId: string, write: Write)
     : setScope(client, conversationId, write.page);
 };
 
+/** A write as tab `chat` stands when it goes, so a change made while it waited is never undone (S1920-2). */
+function asNow(chat: Chat, write: Write): Write | null {
+  if (write.kind === 'rename') return { kind: 'rename', title: chat.title };
+  if (write.kind === 'set_model')
+    return chat.model === null ? null : { ...write, model: chat.model };
+  return chat.page === null ? null : { ...write, page: chat.page };
+}
+
 /** A kept start replayed: its restore, its answer where that puts it, then its writes. */
 function replayIn(
   sending: Sending,
@@ -156,8 +164,10 @@ function follow(
   const waits = [starts.get(key), twin === null ? undefined : starts.get(twin)];
   const turn = Promise.all(waits).then(async () => {
     for (const write of fold.writes) {
+      const tab = sending.store.now().chats.find((chat) => chat.key === key);
+      const value = tab === undefined ? write : asNow(tab, write);
       // oxlint-disable-next-line no-await-in-loop -- each write in turn, as the tab made them
-      await report(key, written(client, id, write));
+      if (value !== null) await report(key, written(client, id, value));
     }
     return id;
   });
