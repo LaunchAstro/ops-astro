@@ -44,12 +44,13 @@ function settled(promise: Promise<unknown>): Promise<{ ok: boolean; code?: strin
 const turns = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200));
 
 function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${what} did not settle in ${ms} ms`)), ms),
-    ),
-  ]);
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} did not settle in ${ms} ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 const cases: Record<string, () => Promise<Record<string, unknown>>> = {
