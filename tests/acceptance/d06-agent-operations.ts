@@ -39,9 +39,15 @@ export const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.handback',
   // The worker's own stop (#1623 R1): its success is the retained `RUN_ENDED`.
   'run.end',
+  // The worker's read of a pinned file (#1904), on the journey's run, which pins none.
+  'definition.read',
   // An onboarding step's result (C41-A), on a step the agent picked up.
   'onboarding.step_result',
 ];
 
-/** What a valid request answers: `ok`, or `run.end`'s retained stop. */
-export const success = (name: CommandName): string => (name === 'run.end' ? 'RUN_ENDED' : 'ok');
+/**
+ * What a valid request answers: `ok`, `run.end`'s retained stop, or for `definition.read` the
+ * read's own answer past the lease and delegation checks on a run that pinned no file.
+ */
+export const success = (name: CommandName): string =>
+  name === 'run.end' ? 'RUN_ENDED' : name === 'definition.read' ? 'DEFINITION_UNAVAILABLE' : 'ok';

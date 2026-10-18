@@ -79,6 +79,7 @@ type Body = (record: string) => Record<string, unknown> | null;
  * that person's approved reservation, still held; the run's state, the run on that
  * person's picked-up task. The same bodies at the agent's own claim are the control.
  */
+// eslint-disable-next-line max-lines-per-function -- one body per agent command
 const bodies = (claim: Claim): Record<string, Body> => ({
   'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
   'task.read': (record) => ({ recordId: record }),
@@ -122,6 +123,7 @@ const bodies = (claim: Claim): Record<string, Body> => ({
     knowledge: ['made-up'],
     unknowns: [],
   }),
+  'definition.read': () => ({ ...claim.lease, stepId: null, path: 'skills/brief/SKILL.md' }),
   // No crossing target: the helper's handback answers to its own child credential.
   'run.child_handback': () => ({ outcome: 'completed' }),
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
@@ -181,6 +183,7 @@ export function delegationCrossing(): void {
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
+      'definition.read': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
@@ -233,7 +236,7 @@ export function delegationCrossing(): void {
 
   it('API-1 isolation: the agent reaches the lease and run operations on its own delegated task', async () => {
     const ours = bodies({ lease: ownLease, taskId: delegatedTask, runId: ownRunId });
-    for (const command of RUN_AND_LEASE) {
+    for (const command of [...RUN_AND_LEASE, 'definition.read']) {
       const row = rows.find((one) => one.command === command) as CatalogueRow;
       // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list
       const heard = await asAgent(row, 'alpha', ours[command]?.(delegatedTask) ?? {});
@@ -242,8 +245,10 @@ export function delegationCrossing(): void {
         heard.map((one) => one.code),
         where,
       ).not.toContain('DELEGATION_OUT_OF_PURPOSE');
-      // Past the delegation and served; the model call answers that no broker is set.
+      // Past the delegation and served; the model call answers that no broker is set, and the
+      // read (#1904) that the world's run pins no file.
       if (command === 'model.call') expect(heard[0]?.code, where).toBe('DEPENDENCY_NOT_LANDED');
+      else if (command === 'definition.read') expect(heard[0]?.code).toBe('DEFINITION_UNAVAILABLE');
       else expect(heard[0]?.status, where).toBe(200);
     }
   }, 60_000);
