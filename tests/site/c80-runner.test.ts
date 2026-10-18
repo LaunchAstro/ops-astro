@@ -10,7 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { ABOUT, AFTER, BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
+import { REV, ABOUT, AFTER, BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
 import { PROVIDER_URL, doubles } from './c80-runner-doubles.ts';
 import { runLivePublish, type RunnerPorts } from '../../packages/core-commands/src/index.ts';
 import { contentDigest, dispatchToken } from '../../packages/core-connectors/src/index.ts';
@@ -95,7 +95,7 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner', () => {
         target: { path: ABOUT, word: 'friendly', replacement: 'welcoming' },
         change: { files: [{ path: ABOUT, before: BEFORE, after: AFTER }] },
         preImageDigest: contentDigest(BEFORE),
-        baseRevision: 'rev-1',
+        baseRevision: REV,
         pageUrl: PAGE,
       },
     ]);
@@ -149,7 +149,7 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, refusals before di
     const ports = doubles({
       readSource: () => {
         read += 1;
-        return Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'rev-1' } });
+        return Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: REV } });
       },
     });
     expect(await publish(id, ports)).toEqual({ kind: 'refused', code: 'APPROVAL_MISSING' });

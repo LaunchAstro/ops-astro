@@ -7,6 +7,7 @@
 // comparison is `captures.ts`.
 
 import { closingFence } from './fence.ts';
+import { wordPairRefusal } from './word-pair.ts';
 
 export interface CorrectionTarget {
   readonly path: string;
@@ -43,7 +44,6 @@ const exceeded = (reason: string): EnvelopeResult => ({
   reason,
 });
 
-const ONE_WORD = /^\p{L}+$/u;
 /**
  * One path segment, by an explicit allow-list of characters, opening with a letter or digit: no
  * route parameter, escape, `.` or `..`, and no `_` or `.` file Astro leaves out of its routes.
@@ -272,10 +272,8 @@ function inTextNode(source: string, offset: number, markdown: boolean): boolean 
 
 /** Refuses anything wider than the envelope, naming why. */
 export function checkEnvelope(change: ProposedChange, target: CorrectionTarget): EnvelopeResult {
-  if (!ONE_WORD.test(target.word) || !ONE_WORD.test(target.replacement)) {
-    return exceeded('the correction is not one word for one word');
-  }
-  if (target.word === target.replacement) return exceeded('the word does not change');
+  const pair = wordPairRefusal(target);
+  if (pair !== undefined) return exceeded(pair);
   if (change.files.length !== 1) return exceeded('more than one file');
   const [file] = change.files;
   if (file === undefined || file.path !== target.path) return exceeded('not the target file');

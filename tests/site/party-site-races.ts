@@ -102,19 +102,14 @@ type Stored = ReturnType<typeof insertLiveCorrection>;
 
 /** A request on the client's task for one page, as the record layer stores it. */
 export const askedOn = (w: C80World, client: FreshClient, page: Page): Asked => ({
-  partyId: client.partyId,
   taskId: client.taskId,
   requestedByActorId: w.ava.actorId,
   requestedByPersonId: w.ava.personId,
   delegationId: null,
-  targetPath: page.path,
   word: 'friendly',
   replacement: 'welcoming',
-  pageUrl: page.pageUrl,
-  preImageDigest: 'pre-image',
-  baseRevision: 'rev-1',
+  page: page.pageUrl,
   seam: `seam-${randomUUID()}`,
-  versionDigest: 'version',
 });
 
 /** The record layer's insert of that request, for a held transaction. */

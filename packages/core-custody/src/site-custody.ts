@@ -64,6 +64,9 @@ export function siteDestination(
 }
 
 const EMPTY = new Uint8Array();
+const ROUTE_REFUSALS: ReadonlyMap<string, string> = new Map([
+  ['CUSTODY_REQUEST_MALFORMED', 'CUSTODY_ROUTE_REFUSED'],
+]);
 const WITHHELD = {
   echoed: 'PROVIDER_CREDENTIAL_ECHOED',
   malformed: 'PROVIDER_RESPONSE_MALFORMED',
@@ -84,7 +87,10 @@ export function siteCustody(
       timeoutMs: request.timeoutMs,
       maxResponseBytes: request.maxBytes,
     });
-    if (outcome.kind === 'refused') return { kind: 'refused', code: outcome.code };
+    // The guarded call builds a site call whole, so custody finding one malformed is a write on a
+    // route it does not hold (a read off its routes is `bad_path`): the same refusal, nothing sent.
+    if (outcome.kind === 'refused')
+      return { kind: 'refused', code: ROUTE_REFUSALS.get(outcome.code) ?? outcome.code };
     // Custody lost mid-call may have sent it: unreadable, so a write stays unknown.
     if (outcome.kind === 'worker_lost') return { kind: 'failed' };
     // Withheld after sending: unreadable, so a write stays unknown.
