@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { revokeGrant, writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { conversationWorld, started, type ConversationWorld } from './aw-03-fixture.ts';
@@ -148,5 +148,49 @@ describe.skipIf(serverUrl === undefined)('a task page added to context, read rev
     const refused = await say(conversationId, 'second');
     expect(replyOf(refused)).toMatchObject({ answered: false });
     expect(model.provider.seen.length).toBe(seen);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('a task page added to context, purged', () => {
+  it('a purge clears the page and cuts what was said on it from later questions', async () => {
+    const { db, business } = w.fixture;
+    // Read again (a case above revoked it), the purge's own `manage`, and trash purged at once.
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, w.owner, 'read');
+      await grantTo(tx, w.owner, 'manage');
+      await writeBusinessSetting(tx, {
+        key: 'retention_window_days',
+        owningOperation: 'settings.set_retention_window',
+        value: 0,
+      });
+    });
+    const page = await task(`to be purged ${randomUUID()}`);
+    const conversationId = await withPage(`/task/${page.key}`);
+    const said = `on the page ${randomUUID()}`;
+    expect(replyOf(await say(conversationId, said))).toMatchObject({ answered: true });
+    const [row] = await db.admin.execute<{ revision: string }>(
+      'select revision::text as revision from public.records where id = $1',
+      [page.id],
+    );
+    const trashed = await w.as(w.owner, 'task.trash', {
+      operationId: randomUUID(),
+      recordId: page.id,
+      expectedRevision: Number(row?.revision),
+    });
+    expect(trashed.status).toBe(200);
+    await db.admin.execute(
+      "update public.records set deleted_at = now() - interval '1 hour' where business_id = $1 and id = $2",
+      [business, page.id],
+    );
+    const purged = await w.as(w.owner, 'task.purge', { operationId: randomUUID() });
+    expect(purged.body['detail']).toMatchObject({ purgedIds: [page.id] });
+    const [after] = await db.admin.execute<{ address: string | null }>(
+      'select page_address as address from public.conversations where id = $1',
+      [conversationId],
+    );
+    expect(after?.address).toBeNull();
+    expect(replyOf(await say(conversationId, 'and now?'))).toMatchObject({ answered: true });
+    expect(lastFields()['page']).toBeUndefined();
+    expect(lastFields()['earlier'] ?? '').not.toContain(said);
   });
 });
