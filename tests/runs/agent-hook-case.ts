@@ -18,6 +18,7 @@ import { AsyncLocalStorageProviderSingleton } from '@langchain/core/singletons';
 import { tool } from '@langchain/core/tools';
 import { FakeListChatModel } from '@langchain/core/utils/testing';
 import { OpsAstroChatModel, runAttempt } from '../../packages/core-agent/src/index.ts';
+import { batchCases } from './agent-batch-cases.ts';
 import { final, reads, scripted } from './agent-ports.ts';
 
 const MARKER = `OA-MARKER-${String(process.pid)}`;
@@ -286,6 +287,7 @@ async function main(kind: string): Promise<Record<string, unknown>> {
     ...twoReadCases(run),
     ...afterGuardCases(run),
     ...hookAfterGuardCases(run),
+    ...batchCases(run, MARKER, () => new Recorder()),
     ...runnerCases(run),
   }[kind];
   if (step === undefined) throw new Error('no such case');

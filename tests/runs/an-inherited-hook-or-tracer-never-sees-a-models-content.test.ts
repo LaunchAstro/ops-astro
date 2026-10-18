@@ -24,7 +24,9 @@
 // at core's last read (core reads a rebuilt copy), and a `metadata` or
 // `configurable` getter, or an inherited callback manager's metadata getter,
 // that would plant one (core is handed plain copies of `stop` and `tools`
-// only, and no callbacks). The cases print booleans and counts,
+// only, and no callbacks), and a message batch whose own `map` or iterator,
+// or a proxy element, would plant one inside core (the batch is copied by
+// index into plain messages before the guard; `agent-batch-cases.ts`). The cases print booleans and counts,
 // so the planted marker is never printed.
 //
 // LangSmith makes no network call: a real listener stands in for its
@@ -122,6 +124,8 @@ const UNREAD = [
   'none-invoke-metadata-getter-plants-a-hook',
   'none-invoke-configurable-getter-plants-a-hook',
   'none-inherited-manager-metadata-getter-plants-a-hook',
+  'none-generate-batch-subclass-plants-a-hook',
+  'none-generate-proxy-element-plants-a-hook',
 ];
 
 // oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes
