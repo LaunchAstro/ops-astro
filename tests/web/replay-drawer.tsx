@@ -11,7 +11,25 @@ import type { RouteId } from '../../apps/web/src/routes.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';
 import { doubleClick, press, track } from '../surfaces/mp-7-11-drawer-fixtures.tsx';
-import { TASK, type Body, type Sent } from './resend-fixture.tsx';
+
+/** The task the stand-in serves: a synthetic brief, no client's. */
+export const TASK = {
+  id: '55555555-5555-4555-8555-555555555555',
+  title: 'Synthetic brief',
+  clientId: null,
+};
+
+/** A write's command and the operation id it went under. */
+export interface Sent {
+  readonly command: string;
+  readonly operationId: string;
+}
+
+/** A write as it went out: its command and its exact body. */
+export interface Body {
+  readonly command: string;
+  readonly body: Readonly<Record<string, unknown>>;
+}
 
 export interface DrawerAt {
   readonly grantKey?: string;

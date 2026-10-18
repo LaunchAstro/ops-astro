@@ -10,12 +10,7 @@
 // (`apps/web/src/assistant/resend.ts`).
 
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-
-export const TASK = {
-  id: '55555555-5555-4555-8555-555555555555',
-  title: 'Synthetic brief',
-  clientId: null,
-};
+import { TASK, type Body, type Sent } from './replay-drawer.tsx';
 
 /**
  * What the stand-in does with a write: answer it, lose its answer, hold it,
@@ -23,17 +18,6 @@ export const TASK = {
  * then commit the answer and lose it.
  */
 export type Turn = 'answer' | 'drop' | 'hold' | 'hold-drop' | 'refuse' | 'split-drop';
-
-export interface Sent {
-  readonly command: string;
-  readonly operationId: string;
-}
-
-/** A write as it went out: its command and its exact body. */
-export interface Body {
-  readonly command: string;
-  readonly body: Readonly<Record<string, unknown>>;
-}
 
 type Page = { readonly address: string; readonly shows: string } | null;
 
