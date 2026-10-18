@@ -18,7 +18,7 @@ import { isAbsolute } from 'node:path';
 import {
   CHATGPT_PLAN_ISSUER,
   CHATGPT_PLAN_ORIGIN,
-} from '../../packages/core-connectors/src/chatgpt-plan.ts';
+} from '../../packages/core-connectors/src/index.ts';
 import { parseCarryKeys } from '../../packages/core-custody/src/agent.ts';
 
 export interface AgentSettings {
