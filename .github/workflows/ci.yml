@@ -215,11 +215,18 @@ jobs:
       - name: Scan every commit that would land on main, not just the diff
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--full-history --diff-merges=first-parent HEAD" .
       # gitleaks' own default allowlist, which .gitleaks.toml extends and
-      # cannot narrow, skips pnpm-lock.yaml by path; stdin has no path.
+      # cannot narrow, skips pnpm-lock.yaml by path; stdin has no path. Every
+      # version any commit or merge on HEAD's history wrote, each read once:
+      # `--full-history -m` keeps the side branches plain `git log -- <path>`
+      # prunes when a merge leaves the file as one parent had it. A list that
+      # failed to build, or came back empty, fails the step: a lockfile exists.
       - name: Every version of the lockfile, which gitleaks' allowlist skips
         run: |
-          git log --format=%H -- pnpm-lock.yaml | while read -r c; do
-            git show "$c:pnpm-lock.yaml" | ./gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml || exit 1
+          set -o pipefail
+          blobs="$(git log --full-history -m --format= --raw --no-abbrev HEAD -- pnpm-lock.yaml | awk '{print $4}' | grep -v -E '^0+$' | sort -u)"
+          test -n "$blobs"
+          for blob in $blobs; do
+            git cat-file blob "$blob" | ./gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml
           done
 
   pin-tests:
