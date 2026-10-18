@@ -25,10 +25,6 @@ jobs:
     name: quarantined suites, nightly (not required)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # `issues: read` reads each entry's ticket, as in ci.yml's database shards.
-    permissions:
-      contents: read
-      issues: read
     services:
       postgres:
         # The same digest and throwaway password as ci.yml's `database conformance`.
@@ -53,9 +49,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # It reads each entry's ticket with no token, as ci.yml's database shards do.
       - name: The suites the quarantine holds out of the merge group today
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: node scripts/timing-rule.ts prepare --nightly --out "$RUNNER_TEMP/timing-rule.json"
       - name: Each of them against Postgres 17, with no re-run
         env:

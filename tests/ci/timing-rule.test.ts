@@ -8,6 +8,7 @@
 // tests/ci/db-conformance-timing-rule.test.ts.
 
 import { execFile } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -97,16 +98,16 @@ describe('a ticket read from the issues API', () => {
 describe('prepare reads each ticket the committed file names', () => {
   // The database shards hold no token (CQ-16); this public repository's issues need none.
   it.each([
-    ['with no token, as on the database shards', '', undefined],
-    ['with a token, as on the nightly run', 'synthetic-token', 'Bearer synthetic-token'],
-  ])('%s', async (_name, token, authorization) => {
+    ['with no token, as on the database shards', ''],
+    ['and never sends a token the environment holds', 'synthetic-token'],
+  ])('%s', async (_name, token) => {
     const seen: { url: string | undefined; authorization: string | undefined }[] = [];
     const api = createServer((request, response) => {
       seen.push({ url: request.url, authorization: request.headers.authorization });
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ state: 'open' }));
     });
-    await new Promise<void>((listening) => api.listen(0, '127.0.0.1', listening));
+    await once(api.listen(0, '127.0.0.1'), 'listening');
     const scratch = mkdtempSync(join(tmpdir(), 'timing-rule-'));
     try {
       const { stdout } = await promisify(execFile)(
@@ -127,10 +128,11 @@ describe('prepare reads each ticket the committed file names', () => {
       expect(seen).toStrictEqual(
         listed.map(({ ticket }) => ({
           url: `/repos/LaunchAstro/ops-astro/issues/${String(ticket)}`,
-          authorization,
+          authorization: undefined,
         })),
       );
       expect(stdout).not.toContain('could not be read');
+      expect(stdout).not.toContain('synthetic-token');
     } finally {
       api.close();
       rmSync(scratch, { recursive: true, force: true });

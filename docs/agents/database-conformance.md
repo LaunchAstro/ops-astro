@@ -375,8 +375,9 @@ a group out and rebuilt every group behind it.
   duplicate or unnamed entry, an isolation suite, or a ticket that is a pull
   request or does not exist fails the shard. A ticket that cannot be read keeps
   its suite in the group. A touched suite is never re-run and never left out.
-  The `isolation tests` shards only re-run (`--rerun-only`), as they hold no
-  token (CQ-15).
+  Tickets are read with no token, as this repository is public: no `ci.yml`
+  job but the gate holds one (CQ-16). The `isolation tests` shards only re-run
+  (`--rerun-only`) and read no ticket (CQ-15).
 
 This is the one exception to "no test dropped", and only for listed suites.
 `tests/ci/timing-rule.test.ts` and `tests/ci/db-conformance-timing-rule.test.ts`
