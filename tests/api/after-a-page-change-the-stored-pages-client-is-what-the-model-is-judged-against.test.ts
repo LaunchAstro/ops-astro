@@ -158,4 +158,75 @@ describe.skipIf(serverUrl === undefined)('after a page change, the stored page i
     const offered = await w.as(w.owner, 'conversation.models', { conversationId: onClient });
     expect(ids(offered)).toStrictEqual([]);
   });
+
+  it('switching from client A to egress-disabled client B offers no model and refuses its selection', async () => {
+    const a = await aClientTask();
+    const b = await aClientTask();
+    await w.fixture.db.admin.execute(
+      `update public.clients set model_egress = true, model_providers = '{replay}' where id = (select uuid_7 from public.records where id = $1)`,
+      [a],
+    );
+    await w.fixture.db.admin.execute(
+      `insert into public.overseas_services
+      (business_id, id, service, receives, stored_where, trains_on_it, contract, to_confirm, in_use, updated_by_actor)
+      values ($1, gen_random_uuid(), 'replay', 'test prompts', 'this machine', 'no', 'none', false, true, $2)`,
+      [w.fixture.business, w.owner.actorId],
+    );
+    const conversationId = await started(w, w.owner, {
+      body: 'About A',
+      scope: { kind: 'task', id: a },
+    });
+    const offeredA = ids(await w.as(w.owner, 'conversation.models', { conversationId }));
+    expect(offeredA.length).toBeGreaterThan(0);
+    const address = `/task/${b}`;
+    expect(
+      (
+        await w.as(w.owner, 'conversation.set_scope', {
+          conversationId,
+          page: { address, shows: 'B' },
+        })
+      ).status,
+    ).toBe(200);
+    const [stored] = await w.fixture.db.admin.execute<{ address: string }>(
+      'select page_address as address from public.conversations where id = $1',
+      [conversationId],
+    );
+    expect(stored?.address).toBe(address);
+    expect
+      .soft(
+        ids(await w.as(w.owner, 'conversation.models', { conversationId })),
+        'B egress is disabled',
+      )
+      .toEqual([]);
+    const selected = await w.as(w.owner, 'conversation.set_model', {
+      conversationId,
+      model: offeredA[0],
+    });
+    expect(selected.status, 'a model not offered on B must be refused').toBe(422);
+  });
+
+  it('a conversation opened on a client task with no page set is judged as that client, never as no client', async () => {
+    const conversationId = await started(w, w.owner, {
+      body: `Opening on the client task ${randomUUID()}`,
+      scope: { kind: 'task', id: await aClientTask() },
+    });
+    const [stored] = await w.fixture.db.admin.execute<{ address: string | null }>(
+      'select page_address as address from public.conversations where id = $1',
+      [conversationId],
+    );
+    expect(stored?.address ?? null).toBeNull();
+    expect(ids(await w.as(w.owner, 'conversation.models', { conversationId }))).toStrictEqual([]);
+    const chosen = await w.as(w.owner, 'conversation.set_model', {
+      conversationId,
+      model: 'replay-1',
+    });
+    expect(chosen.status, 'a model the client never allowed is refused').toBe(422);
+    const before = model.provider.seen.length;
+    const asked = await w.as(w.owner, 'conversation.message', {
+      conversationId,
+      body: 'A question about the client',
+    });
+    expect(asked.body['reply']).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(model.provider.seen.length).toBe(before);
+  });
 });
