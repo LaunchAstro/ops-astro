@@ -262,7 +262,6 @@ export {
   CHATGPT_PLAN_ANSWER_BYTES,
   CHATGPT_PLAN_BODY_LIMIT,
   CHATGPT_PLAN_CONVERSATION,
-  CHATGPT_PLAN_DEFAULT_MODEL,
   CHATGPT_PLAN_ISSUER,
   CHATGPT_PLAN_MODELS,
   CHATGPT_PLAN_ORIGIN,
@@ -276,10 +275,7 @@ export {
   readChatgptPlanAnswer,
   readChatgptPlanToolCalls,
   type PlanAsk,
-  type PlanCall,
-  type PlanCallOutput,
   type PlanItem,
   type PlanTool,
-  type PlanToolCall,
   type PlanTurn,
 } from './chatgpt-plan.ts';
