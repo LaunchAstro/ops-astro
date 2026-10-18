@@ -30,15 +30,15 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const GITLEAKS = spawnSync('sh', ['-c', 'command -v gitleaks'], { encoding: 'utf8' }).stdout.trim();
 
-/** The `run` of the CI step that scans the history with `gitleaks git`. */
-function scanStep(): string {
+/** The `run` of the history job's step whose command holds `marker`. */
+function step(marker: string): string {
   const ci = parse(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')) as {
     jobs: Record<string, { name?: string; steps: { run?: string }[] }>;
   };
   const job = Object.values(ci.jobs).find((j) => j.name === 'gitleaks over the full history');
-  const step = job?.steps.find((s) => s.run?.includes('gitleaks git'));
-  expect(step?.run, 'the history step in the gitleaks job').toBeTypeOf('string');
-  return step?.run ?? '';
+  const run = job?.steps.find((s) => s.run?.includes(marker))?.run;
+  expect(run, `the ${marker} step in the gitleaks job`).toBeTypeOf('string');
+  return run ?? '';
 }
 
 /**
@@ -93,9 +93,9 @@ function commit(dir: string, git: (...args: string[]) => void, file: string, tex
   git('commit', '-q', '-m', `change ${file}`);
 }
 
-/** The step's exit status and output, run where the checkout left `HEAD`. */
-function scan(dir: string): { status: number | null; out: string } {
-  const run = spawnSync('bash', ['-e', '-c', scanStep()], { cwd: dir, encoding: 'utf8' });
+/** A step's exit status and output, run where the checkout left `HEAD`. */
+function scan(dir: string, marker = 'gitleaks git'): { status: number | null; out: string } {
+  const run = spawnSync('bash', ['-e', '-c', step(marker)], { cwd: dir, encoding: 'utf8' });
   return { status: run.status, out: `${run.stdout}${run.stderr}` };
 }
 
@@ -152,5 +152,35 @@ describe('the history scan reads every commit that would land on main', () => {
     commit(dir, git, 'behind.ts', 'export const answer = 42;\n');
     git('branch', '-D', 'ahead');
     expect(scan(dir).status).not.toBe(0);
+  });
+});
+
+describe('the history scan reads what a merge commit itself adds', () => {
+  it('fails on a key a merge commit adds that neither parent holds', () => {
+    const { dir, git } = repository('evil-merge');
+    git('switch', '-q', '-c', 'side');
+    commit(dir, git, 'side.ts', 'export const side = 1;\n');
+    git('switch', '-q', 'main');
+    git('switch', '-q', '-c', 'pull');
+    commit(dir, git, 'pull.ts', 'export const pull = 1;\n');
+    git('merge', '-q', '--no-ff', '--no-commit', 'side');
+    writeFileSync(join(dir, 'resolved.ts'), detectedKey());
+    git('add', 'resolved.ts');
+    git('commit', '-q', '--no-edit');
+    expect(scan(dir).status).not.toBe(0);
+  });
+
+  it('fails on a lockfile key added and reverted on a side branch merged in', () => {
+    const { dir, git } = repository('lockfile-side');
+    const lockfile = "lockfileVersion: '9.0'\n";
+    commit(dir, git, 'pnpm-lock.yaml', lockfile);
+    git('switch', '-q', '-c', 'side');
+    commit(dir, git, 'pnpm-lock.yaml', `${lockfile}# ${detectedKey()}`);
+    commit(dir, git, 'pnpm-lock.yaml', lockfile);
+    git('switch', '-q', 'main');
+    git('switch', '-q', '-c', 'pull');
+    git('merge', '-q', '--no-ff', '--no-edit', 'side');
+    git('branch', '-D', 'side');
+    expect(scan(dir, 'pnpm-lock.yaml').status).not.toBe(0);
   });
 });
