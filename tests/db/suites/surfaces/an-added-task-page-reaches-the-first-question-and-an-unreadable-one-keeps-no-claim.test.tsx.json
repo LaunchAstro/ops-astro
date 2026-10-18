@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a task page added before the first question reaches the first model request, and an unreadable added page asks no model and keeps no claim it was read into context"
+}
