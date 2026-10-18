@@ -9,11 +9,13 @@
 // purged), its page task (the one the request carries, no client's), the
 // agent's open membership, the agent's actor (active, the carrier), the
 // person's conversation grants and, for a page, their task grants (`nowait`:
-// contention refuses, nothing sent), then their ending keys, shared. It judges
-// at the instant read after them, the page's task read and a paid call's
-// outside standing with the rest (`standsOutside`). A revocation, client link,
-// membership leave, deactivation, purge or session ending takes one of those
-// locks, so it commits before the judgement, which sees it, or waits.
+// contention refuses, nothing sent), then their ending keys, shared. Each task
+// the earlier exchanges sent may carry (#1666) is held and judged as the page
+// is. It judges at the instant read after them, the page's task read and a
+// paid call's outside standing with the rest (`standsOutside`). A revocation,
+// client link, membership leave, deactivation, purge or session ending takes
+// one of those locks, so it commits before the judgement, which sees it, or
+// waits.
 //
 // The send is recorded and committed first (runner, `request_at`, `send_by`,
 // `answer_by`), so the sweep never takes a send for none; the request goes only
@@ -27,9 +29,7 @@ import {
   advisoryLock,
   sessionEnded,
   sessionKey,
-  slotOf,
   subjectKey,
-  TASK_SPINE,
   withSession,
   type BusinessId,
   type Database,
@@ -38,11 +38,9 @@ import {
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { lockedInstant } from '../../../core-runtime/src/index.ts';
-import { holdGrants, readsPage } from './carriage-grants.ts';
+import { heldTasks, holdGrants, readsTasks } from './carriage-grants.ts';
 import { holdsOwnConversations } from './conversations.ts';
 import { pageTaskOf } from './conversation-page-task.ts';
-
-const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /** After the send's window and the model's wait, ten seconds more: the latest an answer settles. */
 const SETTLE_MARGIN_MS = 10_000;
@@ -57,6 +55,8 @@ interface Asked {
   readonly callId: string;
   readonly carrier: Carrier;
   readonly page: string | null;
+  /** The tasks the earlier exchanges sent may carry (#1666), judged with the page. */
+  readonly sources: readonly string[];
   /** What a paid call's outside standing is judged against: the broker's live settings, the model asked. */
   readonly outside: {
     readonly broker: Parameters<typeof standsOutside>[0];
@@ -88,7 +88,7 @@ function expiresAt(token: string): number {
 async function heldCall(
   tx: TenantQuery,
   session: Session,
-  asked: Pick<Asked, 'callId' | 'page'>,
+  asked: Pick<Asked, 'callId' | 'page' | 'sources'>,
   mode: 'offer' | { readonly runner: string },
 ): Promise<Called | Judged> {
   const [call] = await tx.query<Omit<Called, 'model'>>(
@@ -118,13 +118,9 @@ async function heldCall(
   if (conversation === undefined || !conversation.own || conversation.purged) return LOST;
   if ((await pageTaskOf(tx, conversation.page, conversation.address)) !== asked.page) return LOST;
   const held = { ...call, model: conversation.model };
-  if (asked.page === null) return held;
-  const [page] = await tx.query<{ readonly client: string | null }>(
-    `select ${CLIENT} as client from public.records where business_id = $1 and id = $2 for share`,
-    [tx.businessId, asked.page],
-  );
-  if (page === undefined) return LOST;
-  return page.client === null ? held : { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
+  const tasks = await heldTasks(tx, [asked.page, ...asked.sources]);
+  if (tasks === 'gone') return LOST;
+  return tasks === 'client' ? { ok: false, code: 'CLIENT_MODEL_USE_OFF' } : held;
 }
 
 /** Locks 4 and 5: whether the agent is still an open member, active, and the carrier. */
@@ -152,7 +148,7 @@ async function judgeCarriage(
   const call = await heldCall(tx, session, asked, mode);
   if ('ok' in call) return call;
   const carried = await heldAgent(tx, call, asked.carrier);
-  const grants = await holdGrants(tx, session, asked.page);
+  const grants = await holdGrants(tx, session, asked.page !== null || asked.sources.length > 0);
   await advisoryLock(tx, subjectKey(asked.presented.subject), 'shared');
   if (asked.presented.sessionId !== undefined) {
     await advisoryLock(tx, sessionKey(asked.presented.sessionId), 'shared');
@@ -163,7 +159,9 @@ async function judgeCarriage(
     standsOutside(asked.outside.broker, call, { ...session, model: asked.outside.model });
   if (!carried || !listed || (await sessionEnded(tx, asked.presented))) return LOST;
   if (expiresAt(asked.accessToken) <= Date.parse(at)) return LOST;
-  if (!(await readsPage(tx, session, asked.page, { at, held: grants.task }))) return LOST;
+  if (!(await readsTasks(tx, session, [asked.page, ...asked.sources], { at, held: grants.task }))) {
+    return LOST;
+  }
   const own = await holdsOwnConversations(tx, session, { at, held: grants.conversation });
   return own ? { ok: true } : LOST;
 }
@@ -278,11 +276,13 @@ export function carriageHandoff(
   businessId: BusinessId,
   presented: VerifiedSubject,
   accessToken: string,
-  carried: Pick<Asked, 'carrier' | 'outside' | 'page'> & { readonly timeoutMs: number },
+  carried: Pick<Asked, 'carrier' | 'outside' | 'page' | 'sources'> & {
+    readonly timeoutMs: number;
+  },
 ): (callId: string) => Handoff {
-  const { carrier, timeoutMs, outside, page } = carried;
+  const { carrier, timeoutMs, outside, page, sources } = carried;
   return (callId) => {
-    const asked: Asked = { presented, accessToken, callId, carrier, outside, page };
+    const asked: Asked = { presented, accessToken, callId, carrier, outside, page, sources };
     return {
       businessId,
       callId,

@@ -18,8 +18,8 @@
 // (`stream-decode.ts`) and hands the broker its pieces and one folded body;
 // the price is the cost OpenRouter reports in it, never an estimate.
 
-import { conversationInstructions } from './conversation-prompt.ts';
-import { earlierTurns, pageTitle, type Turn } from './ollama.ts';
+import { conversationInstructions, promptPage } from './conversation-prompt.ts';
+import { earlierTurns, type Turn } from './ollama.ts';
 import {
   readModelId,
   type AdapterRequest,
@@ -108,7 +108,7 @@ export function openrouterRequest(
 ): AdapterRequest {
   const chosen = modelOf(model);
   const messages: readonly Turn[] = [
-    { role: 'system', content: conversationInstructions(pageTitle(values['page'])) },
+    { role: 'system', content: conversationInstructions(promptPage(values['page'])) },
     ...earlierTurns(values['earlier']),
     { role: 'user', content: values['message'] ?? '' },
   ];

@@ -26,6 +26,8 @@ export function carriedBy(
     readonly model: string | null | undefined;
     /** The page task the request carries. */
     readonly page: string | null;
+    /** The tasks the earlier exchanges sent may carry (#1666), judged with the page. */
+    readonly sources?: readonly string[];
   },
 ): { readonly carry?: (callId: string) => Handoff } {
   const { carrier } = broker;
@@ -39,6 +41,7 @@ export function carriedBy(
       timeoutMs,
       outside,
       page: asking.page,
+      sources: asking.sources ?? [],
     }),
   };
 }
