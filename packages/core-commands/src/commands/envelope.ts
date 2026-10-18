@@ -96,18 +96,29 @@ export interface Caller {
  */
 export type Entry =
   | { readonly outside: CommandRefusal }
-  | {
-      /**
-       * A stored success as the rights held now release it: an answer in its
-       * place, a refusal, or nothing when it goes out as stored.
-       */
-      readonly release: (
-        stored: CommandHandle,
-        request: IdentifiedRequest,
-      ) => Promise<CommandResult | Refused | undefined>;
+  | (Replaying & {
       /** A request the register has not seen, carrying a usable identity. */
       readonly attempt: (request: IdentifiedRequest, digest: string) => Promise<CommandResult>;
-    };
+    });
+
+/** How an entry answers a request the register already holds. */
+export interface Replaying {
+  /**
+   * A stored success as the rights held now release it: an answer in its
+   * place, a refusal, or nothing when it goes out as stored.
+   */
+  readonly release: (
+    stored: CommandHandle,
+    request: IdentifiedRequest,
+  ) => Promise<CommandResult | Refused | undefined>;
+  /**
+   * A released success's last judgement, asked after the replay's audit
+   * event, whose chain wait is its last: what `release` read before that
+   * wait may have changed during it. A refusal takes the event back.
+   */
+  readonly lastCheck?:
+    ((request: IdentifiedRequest) => Promise<CommandRefusal | undefined>) | undefined;
+}
 
 /**
  * The part of every call that is the same on both prefixes, in this order:
@@ -142,10 +153,7 @@ export async function enter(
   // One register for both prefixes, keyed on the caller's own actor, so a
   // pickup retried after a lost response replays the lease it already holds.
   const seen = await lookupAttempt(tx, caller.actorId, request.operationId);
-  if (seen !== undefined) {
-    const release = async (stored: CommandHandle) => await entry.release(stored, request);
-    return await replay(tx, caller, request, digest, seen, release);
-  }
+  if (seen !== undefined) return await replay(tx, caller, request, digest, seen, entry);
   return await entry.attempt(request, digest);
 }
 
@@ -385,7 +393,7 @@ async function replay(
   request: IdentifiedRequest,
   digest: string,
   seen: RegisteredAttempt,
-  release: (stored: CommandHandle) => Promise<CommandResult | Refused | undefined>,
+  entry: Replaying,
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
   // for two different commands differs here without a second comparison. A
@@ -405,7 +413,7 @@ async function replay(
   // so its replay names less than the first answer). A stored success is released
   // only to the rights held now: a revocation bites on the next call, and a
   // replay is a call.
-  const released = isCommandRefusal(stored) ? undefined : await release(stored);
+  const released = isCommandRefusal(stored) ? undefined : await entry.release(stored, request);
   if (released !== undefined && isCommandRefusal(released)) {
     return await settle(tx, caller, request, digest, released, 'registered');
   }
@@ -413,19 +421,45 @@ async function replay(
     const { refusal, attempted } = released;
     return await settle(tx, caller, request, digest, refusal, 'registered', attempted);
   }
-  if (!isCommandRefusal(stored) && !declarationOf(request.command).audited) {
-    return released ?? stored;
+  const ended = await replayed(tx, caller, request, digest, { stored, subject }, entry);
+  if (ended === undefined) return released ?? stored;
+  return await settle(tx, caller, request, digest, ended, 'registered');
+}
+
+/**
+ * A replay's audit event, then a released success's last check: the event's
+ * trigger waits on the business's audit chain, the replay's last wait. Its
+ * refusal takes the event back.
+ */
+async function replayed(
+  tx: TenantQuery,
+  caller: Caller,
+  request: IdentifiedRequest,
+  digest: string,
+  { stored, subject }: { stored: CommandResult; subject: string | null },
+  { lastCheck }: Replaying,
+): Promise<CommandRefusal | undefined> {
+  const last = isCommandRefusal(stored) ? undefined : lastCheck;
+  if (last !== undefined) await tx.query('savepoint command_replay');
+  if (isCommandRefusal(stored) || declarationOf(request.command).audited) {
+    await writeAuditEvent(tx, {
+      actorId: caller.actorId,
+      command: request.command,
+      operationId: request.operationId,
+      outcome: 'replayed',
+      refusalCode: isCommandRefusal(stored) ? stored.code : null,
+      subjectRecordId: subject,
+      payloadDigest: digest,
+    });
   }
-  await writeAuditEvent(tx, {
-    actorId: caller.actorId,
-    command: request.command,
-    operationId: request.operationId,
-    outcome: 'replayed',
-    refusalCode: isCommandRefusal(stored) ? stored.code : null,
-    subjectRecordId: subject,
-    payloadDigest: digest,
-  });
-  return released ?? stored;
+  if (last === undefined) return undefined;
+  const ended = await last(request);
+  await tx.query(
+    ended === undefined
+      ? 'release savepoint command_replay'
+      : 'rollback to savepoint command_replay',
+  );
+  return ended;
 }
 
 /** A success as the register keeps it: the answer, and beside it what its audit event names. */

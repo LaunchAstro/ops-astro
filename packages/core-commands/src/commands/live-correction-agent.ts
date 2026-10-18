@@ -76,7 +76,8 @@ async function withinDelegation(
  * insert and holds the task `for share` until commit, so the client read here
  * is the party it stored, whatever the task held before the site lock's wait.
  * A task with a client was judged at that client's grant; a task this cannot
- * read is refused. A replay asks it as well.
+ * read is refused. A replay asks it after its audit event's chain wait
+ * (`replayOwnWork`).
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
@@ -131,10 +132,9 @@ async function storeAsAgent(
  * A replay's answer under the delegation presented now: the refusal, or
  * undefined when the stored receipt may go back. A replay carries the same
  * body (`OPERATION_ID_REUSED` refuses another), so it names the stored
- * request's task and party, and the request's own checks are asked again,
- * its own-work check included. A later delegation for another task or client,
- * or a task that is no longer the owner's own work, gets the refusal, never
- * the receipt.
+ * request's task, and the request's own checks are asked again. A later
+ * delegation for another task or client gets the refusal, never the receipt;
+ * the own-work check is asked last (`replayOwnWork`).
  */
 export async function replayRefusal(
   tx: TenantQuery,
@@ -142,7 +142,23 @@ export async function replayRefusal(
   delegation: Delegation,
 ): Promise<CommandRefusal | undefined> {
   const within = await withinDelegation(tx, sent, delegation);
-  return 'refusal' in within ? within.refusal : await ownWorkRefusal(tx, within);
+  return 'refusal' in within ? within.refusal : undefined;
+}
+
+/**
+ * A released replay's own-work check, asked after its audit event's chain
+ * wait (`Entry.lastCheck`) under the delegation presented then: the party is
+ * read again with the grant, so a task given a client during the wait is
+ * judged at that client, and a task that is no longer the owner's own work
+ * gets the refusal, never the receipt.
+ */
+export async function replayOwnWork(
+  tx: TenantQuery,
+  sent: Readonly<Record<string, unknown>>,
+  delegation: Delegation,
+): Promise<CommandRefusal | undefined> {
+  const operands = await withinDelegation(tx, sent, delegation);
+  return 'refusal' in operands ? operands.refusal : await ownWorkRefusal(tx, operands);
 }
 
 /** `live_correction.request`'s agent row: replayed only to a delegation that could make it now. */

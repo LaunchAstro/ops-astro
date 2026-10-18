@@ -110,7 +110,9 @@ accepted it on 18 October 2026 (owner question d; the round register, items
   its last lock wait at admission, and again at custody's handoff. An agent
   asks on the business's own site only while its task is still the owner's
   own work, read after the request's lock wait by the broker's own reader
-  (`CORRECTION_NOT_OWN_WORK`).
+  (`CORRECTION_NOT_OWN_WORK`). A replay of that request reads it again after
+  the replay's audit-chain wait, its last, and a refusal takes the replay's
+  audit event back (#1877).
 
 ## Selected foundation
 
