@@ -6,11 +6,12 @@
 // size cap. One check answers the request and its replay, so a stored receipt
 // goes back only to a delegation that could make that request now.
 
+import { ownersOwn, readPage } from '../../../core-custody/src/index.ts';
 import { checkAuthority, RUN_COLLECTION, taskClient } from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { refused, type HandlerOutcome } from './outcome.ts';
+import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
 import {
   requestOperands,
   storeRequest,
@@ -22,6 +23,13 @@ const OUT_OF_PURPOSE = refuseCommand(
   'DELEGATION_OUT_OF_PURPOSE',
   ['taskId'],
   ['A delegation reaches only the task it was minted for.'],
+);
+const NOT_OWN_WORK = refuseCommand(
+  'CORRECTION_NOT_OWN_WORK',
+  ['taskId'],
+  [
+    "An agent asks on the business's own site only from a task its owner started that no client, agent or worker has written.",
+  ],
 );
 const OUTSIDE_DELEGATION = refuseCommand(
   'DELEGATION_EXCLUDES_OPERATION',
@@ -61,8 +69,21 @@ async function withinDelegation(
 }
 
 /**
+ * Whether the task is the owner's own internal work, judged as the broker
+ * judges a run's task (S2, owner line 72), read after the request's last lock
+ * wait: the insert holds the task's row, so a write that names the task
+ * without moving its row, committed during a wait, is read here too.
+ */
+async function ownersWorkStill(tx: TenantQuery, taskId: string): Promise<boolean> {
+  const task = await readPage(tx, taskId);
+  return task !== undefined && task.clientId === null && ownersOwn(task.source);
+}
+
+/**
  * The request by an agent. The person recorded as the requester is the
- * delegating person, so they cannot approve it either.
+ * delegating person, so they cannot approve it either. On the business's own
+ * site (no party) the task must still be the owner's own work once the request
+ * has waited (R6, #1699); otherwise its stored row rolls back with the refusal.
  */
 export async function requestAsAgent(
   tx: TenantQuery,
@@ -72,6 +93,17 @@ export async function requestAsAgent(
 ): Promise<HandlerOutcome> {
   const operands = await withinDelegation(tx, sent, delegation);
   if ('refusal' in operands) return refused(operands.refusal);
+  const stored = await storeAsAgent(tx, agentActorId, operands, delegation);
+  if (isRefused(stored) || operands.partyId !== null) return stored;
+  return (await ownersWorkStill(tx, operands.taskId)) ? stored : refused(NOT_OWN_WORK);
+}
+
+async function storeAsAgent(
+  tx: TenantQuery,
+  agentActorId: string,
+  operands: RequestOperands,
+  delegation: Delegation,
+): Promise<HandlerOutcome> {
   const spine = await readTaskSpine(tx);
   const personId = delegation.delegatePersonId;
   return await storeRequest(

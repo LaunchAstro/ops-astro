@@ -62,6 +62,13 @@ export const LIVE_CORRECTION_ROWS = [
     source: 'C80, the approval checks',
   },
   {
+    code: 'CORRECTION_NOT_OWN_WORK',
+    status: 409,
+    meaning:
+      "An agent asks on the business's own site only from a task its owner started that no client, agent or worker has written",
+    source: 'R6 part 2, #1699',
+  },
+  {
     code: 'VERSION_NOT_READY',
     status: 409,
     meaning: 'The correction has no version to decide: it is locating, unlocated or superseded',
