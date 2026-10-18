@@ -123,3 +123,93 @@ it('a three-part token is judged on its signature only when its header and claim
     });
   }
 });
+
+it('a completed message with a non-text refusal is malformed and withheld', () => {
+  const malformed = {
+    ...completed(['fine']),
+    output: [{ type: 'message', role: 'assistant', content: [{ type: 'refusal', refusal: 42 }] }],
+  };
+  const log: string[] = [];
+  expect(planAnswer(answered(stream(malformed)), SECRETS, (kind) => log.push(kind))).toMatchObject({
+    ok: false,
+    code: 'SUBSCRIPTION_ANSWER_WITHHELD',
+  });
+  expect(log).toEqual(['plan answer withheld: malformed']);
+});
+
+/** A completed response whose output is these items. */
+const withOutput = (...output: readonly unknown[]): Record<string, unknown> => ({
+  ...completed([]),
+  output,
+});
+/** A completed response whose one message holds these parts. */
+const withParts = (...content: readonly unknown[]): Record<string, unknown> =>
+  withOutput({ type: 'message', role: 'assistant', content });
+
+it('each allowed item and part type passes with its payload and is withheld with a bad one', () => {
+  const call = { type: 'function_call', call_id: 'c', name: 'note', arguments: '{}' };
+  const summary = { type: 'summary_text', text: 'thought' };
+  const cases: readonly (readonly [string, Record<string, unknown>, Record<string, unknown>])[] = [
+    [
+      'output_text',
+      withParts({ type: 'output_text', text: 'hi', annotations: [] }),
+      withParts({ type: 'output_text', text: ['hi'] }),
+    ],
+    [
+      'refusal',
+      withParts({ type: 'refusal', refusal: 'no' }),
+      withParts({ type: 'refusal', refusal: null }),
+    ],
+    ['message', withParts(), withOutput({ type: 'message', role: 'user', content: [] })],
+    ['function_call', withOutput(call), withOutput({ ...call, arguments: { x: 1 } })],
+    [
+      'reasoning',
+      withOutput({ type: 'reasoning', summary: [summary] }),
+      withOutput({ type: 'reasoning', summary: 'thought' }),
+    ],
+    [
+      'summary_text',
+      withOutput({ type: 'reasoning', summary: [summary] }),
+      withOutput({ type: 'reasoning', summary: [{ ...summary, text: 7 }] }),
+    ],
+  ];
+  for (const [type, good, bad] of cases) {
+    const log: string[] = [];
+    expect(planAnswer(answered(stream(good)), SECRETS), type).toMatchObject({ ok: true });
+    expect(
+      planAnswer(answered(stream(bad)), SECRETS, (kind) => log.push(kind)),
+      type,
+    ).toMatchObject({
+      ok: false,
+      code: 'SUBSCRIPTION_ANSWER_WITHHELD',
+    });
+    expect(log, type).toEqual(['plan answer withheld: malformed']);
+  }
+});
+
+it('an unknown item type, an unknown part type, a part in the wrong place or a citation is withheld', () => {
+  const unknown: readonly Record<string, unknown>[] = [
+    withOutput({ type: 'web_search_call', status: 'completed' }),
+    withParts({ type: 'output_audio', data: 'x' }),
+    withParts({ type: 'summary_text', text: 'thought' }),
+    withOutput({ type: 'output_text', text: 'hi' }),
+    withOutput({ type: 'reasoning', summary: [{ type: 'output_text', text: 'hi' }] }),
+    withParts({
+      type: 'output_text',
+      text: 'hi',
+      annotations: [{ type: 'url_citation', url: 'https://example.com' }],
+    }),
+    withParts({ type: 'toString', text: 'hi' }),
+    withParts({ type: '__proto__', text: 'hi' }),
+  ];
+  for (const response of unknown) {
+    const log: string[] = [];
+    expect(planAnswer(answered(stream(response)), SECRETS, (kind) => log.push(kind))).toMatchObject(
+      {
+        ok: false,
+        code: 'SUBSCRIPTION_ANSWER_WITHHELD',
+      },
+    );
+    expect(log).toEqual(['plan answer withheld: malformed']);
+  }
+});
