@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ops-astro-site-runner</string>
+  <key>WorkingDirectory</key>
+  <string>@SITE_RUNNER_BUILD_DIR@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>apps/site-runner/main.ts</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@SITE_RUNNER_PATH@</string>
+    <key>SITE_RUNNER_SETTINGS</key>
+    <string>@SITE_RUNNER_SETTINGS_FILE@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>@SITE_RUNNER_LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@SITE_RUNNER_LOG@</string>
+</dict>
+</plist>
