@@ -43,9 +43,10 @@ unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
 
 Decision `R5-S1-20261018`, R5 in
 [Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
-recording seam S1 as the director settled it on 14 October 2026. It needs
-Nathan's acceptance before the pull request that carries it merges (#1689,
-owner question d).
+recording seam S1 as the director settled it on 14 October 2026. Nathan
+accepted it on 18 October 2026, including his own hand-typed request, Astra's
+review before the first self-approval and the revert ask (owner questions a, c
+and d; the round register, items 10, 11 and 13).
 
 - An operator is an active member of the business in a staff role (owner,
   administrator or member): the people who may be the configured approver.
@@ -56,10 +57,10 @@ owner question d).
   the same transaction, whatever wrote the membership.
 - While it is on, the configured approver may approve a live correction they
   requested themselves, or one their own agent requested. This covers the
-  owner's own hand-typed request too, not only the agent's: flagged for
-  Nathan's acceptance. The decision re-reads the mode and the operator count
-  under its lock, so a second operator added while it waits is seen and the
-  approval refused with nothing written.
+  owner's own hand-typed request too, not only the agent's. The decision
+  re-reads the mode and the operator count under its lock, so a second
+  operator added while it waits is seen and the approval refused with nothing
+  written.
 - The business's first such approval also needs Astra's review recorded on
   the correction, bound to its exact version digest and approving it. The
   owner records it with `live_correction.record_review`, carrying Astra's
