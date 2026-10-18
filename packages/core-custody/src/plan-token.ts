@@ -5,7 +5,7 @@
 // the lock wait and the request, it reads the committed record, refreshes a
 // due pair with exactly one request after a durable `pending`, and holds the
 // presentable pair in memory. `present()` is synchronous: no file, no lock, no
-// refresh. Inert: nothing imports this until P4 wires it.
+// refresh. Inert until P4 wires `plan-token-production.ts`, its one importer.
 
 import {
   FIELD_MAX,
@@ -23,7 +23,7 @@ import {
   type TokenFs,
 } from './token-file.ts';
 import { withTokenLock, type HeldLock } from './token-lock.ts';
-import { refreshOnce, type RefreshResult } from './token-refresh.ts';
+import { issuerCopy, refreshOnce, type RefreshResult } from './token-refresh.ts';
 
 export const REFRESH_AHEAD_MS: number = 5 * 60_000;
 export const PREPARE_HORIZON_MS = 60_000;
@@ -48,7 +48,7 @@ export type PlanLogKind =
   | 'token store recovered';
 export interface TokenHolderOptions {
   readonly file: string;
-  /** `https:`, or `http:` on 127.0.0.1 for tests only. */
+  /** The plan issuer, or a 127.0.0.1 issuer for tests only; anything else throws at build. Copied. */
   readonly tokenUrl: URL;
   readonly now?: () => number;
   readonly log?: (kind: PlanLogKind) => void;
@@ -162,7 +162,8 @@ function fromAnswer(
 
 // oxlint-disable-next-line max-lines-per-function -- one holder's state (held pair, unwritten record, prepare in flight) and the steps that change it
 export function tokenHolder(options: TokenHolderOptions): TokenHolder {
-  const { file, tokenUrl } = options;
+  const { file } = options;
+  const tokenUrl = issuerCopy(options.tokenUrl);
   const now = options.now ?? Date.now;
   const log = options.log ?? (() => {});
   const fs = options.fs ?? {};
