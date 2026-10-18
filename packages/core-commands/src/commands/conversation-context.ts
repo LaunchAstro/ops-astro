@@ -226,6 +226,8 @@ export async function contextOf(
   const created = await createdOf(tx, asked.conversationId, scopeRecordId !== null, (id) =>
     pageOf(tx, session, id),
   );
+  // Held until the transaction ends: the owner cannot change before the read.
+  if (!(await ownsAsked(tx, session, asked, 'share'))) return REFUSED;
   const rows = await earlierRows(tx, session, asked, created.cut);
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];

@@ -15,21 +15,28 @@ export interface Asked {
 
 /**
  * Whether the session owns the asked message's conversation, its body kept.
- * `contextOf` asks it before it reads anything (#1483). It takes no lock: the
- * application role may change a conversation's owner (0092), so the earlier
- * messages are read in a statement that asks the owner again itself
- * (`earlierRows` in `conversation-earlier.ts`), and a session that no longer
- * owns the conversation at that instant reads none.
+ * `contextOf` asks it twice (#1483). First unlocked, before it reads
+ * anything. Then `share`, just before the earlier messages: the row is held
+ * for share until the transaction ends, so the owner cannot change between
+ * that check and the read, and a change committed first is refused. The
+ * page task is locked before it, as a purge locks the task before the
+ * conversation, and a read the page already refuses never takes it, so a
+ * read never waits behind a purge's uncommitted update.
  */
-export async function ownsAsked(tx: TenantQuery, session: Session, asked: Asked): Promise<boolean> {
+export async function ownsAsked(
+  tx: TenantQuery,
+  session: Session,
+  asked: Asked,
+  lock: 'none' | 'share' = 'none',
+): Promise<boolean> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return false;
-  const [row] = await tx.query<{ readonly owns: boolean }>(
-    `select exists (
-       select 1 from conversations c
-         join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
-        where c.business_id = $1 and c.id = $2 and m.id = $3
-          and c.owner_actor_id = $4 and c.body_purged_at is null) as owns`,
+  const rows = await tx.query(
+    `select c.id from conversations c
+       join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
+      where c.business_id = $1 and c.id = $2 and m.id = $3
+        and c.owner_actor_id = $4 and c.body_purged_at is null
+      ${lock === 'share' ? 'for share of c' : ''}`,
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
   );
-  return row?.owns === true;
+  return rows.length > 0;
 }

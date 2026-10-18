@@ -36,8 +36,8 @@ export function earlierOf(
  * epoch, which a purge of the task it was opened on bumps under the row lock
  * every message write takes. A reply counts only when its question does too,
  * so one kept after the purge to a question from before it is cut with it.
- * The statement asks the owner itself, so the rows are the session's own at
- * the one instant it reads them (#1483).
+ * The statement asks the owner itself too, so it reads nothing for a session
+ * that is not the owner however it was reached (#1483).
  */
 interface EarlierRow {
   readonly role: string;
