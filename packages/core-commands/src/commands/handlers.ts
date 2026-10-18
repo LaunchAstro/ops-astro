@@ -67,11 +67,7 @@ import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope, setModel } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
-import {
-  refuseDefinitionReadAsPerson,
-  refuseModelCallAsPerson,
-  refuseRunEndAsPerson,
-} from './model-call-person.ts';
+import * as agentOnly from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
@@ -100,7 +96,6 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
   'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
-
   'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
   'task.launch': (tx, context) => launchTask(tx, context),
   // Only the launched agent takes a launch, on its own entry (`tasks-take-launch.ts`).
@@ -232,10 +227,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'conversation.rename': renameConversation,
   'conversation.set_scope': setConversationScope,
   'conversation.set_model': setModel,
-  // AW-01 and #1623 R1: the run's worker's, on the agent prefix only.
-  'model.call': refuseModelCallAsPerson,
-  'run.end': refuseRunEndAsPerson,
-  'definition.read': refuseDefinitionReadAsPerson,
+  // AW-01, #1623 R1 and #1904: the run's worker's, on the agent prefix only.
+  'model.call': agentOnly.refuseModelCallAsPerson,
+  'run.end': agentOnly.refuseRunEndAsPerson,
+  'definition.read': agentOnly.refuseDefinitionReadAsPerson,
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,

@@ -243,7 +243,7 @@ async function runAgentCommand(
   });
   return await enter(tx, session, request, {
     release: async (stored, identified) =>
-      await releaseReplay(tx, callOf(identified), operation, stored),
+      await releaseReplay(tx, callOf(identified), operation, stored, verified),
     attempt: async (identified, digest) =>
       await operation.open(
         async (row) => await runRow(tx, callOf(identified), verified, identified, row, digest),
@@ -289,12 +289,12 @@ async function runRow<O extends object>(
 
   // Judged again after the handler's last wait, holding no operation id.
   const judged = { call, presented: verified, authority: operation.authority };
-  const outcome = await workJudged(tx, judged, async () => await authorised.run(operands));
+  const work = async () => await authorised.run(operands);
+  const outcome = await workJudged(tx, judged, work, operation.final);
   if ('ended' in outcome) return await settle(tx, session, request, digest, outcome.ended, 'none');
   if (isRefused(outcome)) {
     const { refusal, attempted, kept } = outcome;
     return await settle(tx, session, request, digest, refusal, 'register', attempted, kept);
   }
-
-  return await recordApplied(tx, session, request, digest, outcome);
+  return await recordApplied(tx, session, request, digest, outcome, operation);
 }

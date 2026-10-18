@@ -200,12 +200,10 @@ export type CommandName =
   // CS-7.30: the models a conversation may run on, and the one it runs on.
   | 'conversation.models'
   | 'conversation.set_model'
-  // One priced model call, made by the lease holder through the credential
-  // broker (AW-01). The grant is the run's delegation, one of the six facts
-  // the broker verifies from rows; no person grant carries it. run.end: its stop (#1623 R1).
+  // AW-01: a priced model call, the lease holder's through the broker under the run's delegation
+  // (no person grant); run.end its stop (#1623 R1); definition.read its pinned read (#1904).
   | 'model.call'
   | 'run.end'
-  // #1904: the lease holder's read of a file its run pinned, for a definition part.
   | 'definition.read'
   // A person's two answers to a run waiting at its approved ceiling (AW-05):
   // a top-up under four eyes above the business's threshold, or one click

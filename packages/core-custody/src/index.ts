@@ -107,6 +107,8 @@ export {
   type ReservedCall,
   type ReserveRefusal,
 } from './broker.ts';
+// #1904: the call's lock path, which `definition.read` takes as a model call does.
+export { lockFacts, type Checked, type Facts } from './broker-facts.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
 export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
 export {

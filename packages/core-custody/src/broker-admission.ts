@@ -94,6 +94,7 @@ export function taskAdmission(
       // A turn is bound again, as at the start, against the task held here.
       const resolved = await fieldsOf(tx, request, reserved.operation, {
         leaseId: request.leaseId,
+        runId: task.runId,
         source: task.source,
       });
       if (!resolved.ok) return false;

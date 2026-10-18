@@ -15,7 +15,7 @@ import {
   LEGACY_SCHEME,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
@@ -27,6 +27,8 @@ import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
 import { replayRefusal } from './live-correction-agent.ts';
 import { presentedCredential } from './tasks-take-launch.ts';
+import { workJudged } from './agent-standing.ts';
+import { keptRead, type DefinitionReadOperands } from './definition-read-agent.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -37,8 +39,13 @@ export async function releaseReplay(
   call: AgentCall,
   operation: AgentOperation,
   stored: CommandHandle,
+  verified: VerifiedSubject,
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
+    case 'definitionRead':
+      return await operation.open(
+        async (row) => await replayDefinitionRead(tx, call, row, stored, verified),
+      );
     case 'pickup':
       return await replayPickup(tx, call, stored);
     case 'serveAgain':
@@ -243,4 +250,36 @@ async function replaySettledHandback(
     scope: held.purposeScope,
   });
   return decision.ok ? undefined : decision.refusal;
+}
+
+/**
+ * A pinned read's replay (#1904): always an answer or a refusal, never the
+ * stored row, which holds no text. The call is authorised as a fresh one and
+ * its read runs again under `workJudged` on the stored lease, fence, step and
+ * run, never the body's, then the final lease check (`definition-read-agent.ts`).
+ * It writes no ledger row, copy or event.
+ */
+async function replayDefinitionRead<O extends object>(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: TypedOperation<O>,
+  stored: CommandHandle,
+  verified: VerifiedSubject,
+): Promise<CommandResult> {
+  const again = keptRead(stored.detail);
+  if (again === undefined) throw new Error('definition.read: a stored read without its lease');
+  const authorised = await authorise(tx, call, operation);
+  if ('refusal' in authorised) return authorised.refusal;
+  const operands: DefinitionReadOperands = { ...again, again };
+  const judged = { call, presented: verified, authority: operation.authority };
+  const outcome = await workJudged(
+    tx,
+    judged,
+    // The row's own serve, which reads `again` in place of a fresh read.
+    async () => await authorised.run(operands as unknown as O),
+    operation.final,
+  );
+  if ('ended' in outcome) return outcome.ended;
+  if (isRefused(outcome)) return outcome.refusal;
+  return { command: call.request.command, ...outcome };
 }

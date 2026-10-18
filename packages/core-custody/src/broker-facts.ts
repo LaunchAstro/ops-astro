@@ -18,6 +18,8 @@ export interface Facts {
   readonly versionId: string;
   readonly reservationId: string;
   readonly delegationId: string | null;
+  /** The lease's holder, as locked: the caller, or the parent's holder for a helper (AW-11). */
+  readonly holderActorId: string;
   /** The caller's own delegation: the lease's for its holder, a child's for a helper (AW-11). */
   readonly callerDelegationId: string | null;
   readonly workForPersonId: string | null;
@@ -171,6 +173,7 @@ export async function lockFacts(
       versionId: held.versionId,
       reservationId: lease.reservation_id,
       delegationId: lease.delegation_id,
+      holderActorId: lease.holder_actor_id,
       callerDelegationId: caller.delegationId,
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,

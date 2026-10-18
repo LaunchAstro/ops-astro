@@ -70,6 +70,8 @@ export const LEAVES_ROW_DATA: readonly string[] = [
   'task.propose',
   'task.decide',
   'model.call',
+  // #1904: a pinned read names the task in the register; it writes none of its data.
+  'definition.read',
 ];
 
 /** A person of the business, through one of its own surfaces. */
