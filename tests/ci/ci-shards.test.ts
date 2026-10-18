@@ -46,6 +46,14 @@ const SHARD_SETUP_SECONDS = 60;
 /** Whether a shard of `load` measured seconds, plus the setup every shard repeats, fits its job. */
 const fitsItsJob = (load: number): boolean => load + SHARD_SETUP_SECONDS <= SHARD_JOB_SECONDS;
 
+it('a shard job may take 25 minutes: the full merge-group runs measured up to 23.1', () => {
+  // The slowest local checks or isolation tests job of three green groups (#1478, 18 October
+  // 2026): 22.3 min in 39089644296 and 39088733082, 23.1 min in 38695912255.
+  expect(fitsItsJob(23.1 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS + 1)).toBe(false);
+});
+
 it('the plan reads the measured times, and refuses a key it does not know or a value that is not seconds', () => {
   expect(Object.keys(plan.isolation).length).toBeGreaterThan(100);
   expect(Object.keys(plan.files).length).toBeGreaterThan(100);
