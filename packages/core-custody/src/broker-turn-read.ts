@@ -12,10 +12,36 @@ import type { TurnRequest } from './broker-types.ts';
 const MOST_PARTS = 64;
 const MOST_ARGUMENT_BYTES = 16 * 1024;
 
-/** The tools the catalogue offers a turn, each with its arguments' schema. */
+/**
+ * A correction's operands, as a person sends them (#1624 R7): the agent's
+ * request names exactly these, so it asks nothing a person could not.
+ */
+const REQUEST_KEYS = [
+  'partyId',
+  'taskId',
+  'path',
+  'word',
+  'replacement',
+  'pageUrl',
+  'baseRevision',
+  'before',
+  'after',
+] as const;
+
+/** The tools the catalogue offers a turn (`AGENT_TOOLS`), each with its arguments' schema. */
 const TOOLS: ReadonlyMap<string, (args: Readonly<Record<string, unknown>>) => boolean> = new Map([
   ['task.read', (args) => Object.keys(args).length === 1 && typeof args['taskId'] === 'string'],
+  [
+    'live_correction.request',
+    (args) => keysAre(args, REQUEST_KEYS) && typeof args['taskId'] === 'string',
+  ],
 ]);
+
+/** The tool each kind of result answers. */
+const ANSWERS: Readonly<Record<'task' | 'correction', string>> = {
+  task: 'task.read',
+  correction: 'live_correction.request',
+};
 
 /** A part whose kind the broker binds nothing to: refused when it is bound. */
 export type Part = TurnPart | { readonly ref: 'unbound' };
@@ -29,7 +55,7 @@ export interface Turn {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const keysAre = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
+const keysAre = (value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 
 const whole = (value: unknown): value is number =>
@@ -86,6 +112,13 @@ function partOf(value: unknown, first: boolean): Part | undefined {
     }
     case 'task':
       return taskOf(value);
+    case 'correction': {
+      const { correctionId, toolCallId } = value;
+      if (!keysAre(value, ['ref', 'correctionId', 'toolCallId'])) return undefined;
+      return typeof correctionId === 'string' && typeof toolCallId === 'string'
+        ? { ref: 'correction', correctionId, toolCallId }
+        : undefined;
+    }
     case 'answer':
       return answerOf(value);
     default:
@@ -103,7 +136,10 @@ function inOrder(parts: readonly Part[]): boolean {
         if (asked.has(call.id)) return false;
         asked.add(call.id);
       }
-    } else if (part.ref === 'task' && part.toolCallId !== undefined) {
+    } else if (
+      (part.ref === 'task' || part.ref === 'correction') &&
+      part.toolCallId !== undefined
+    ) {
       if (!asked.has(part.toolCallId) || answered.has(part.toolCallId)) return false;
       answered.add(part.toolCallId);
     }
@@ -137,12 +173,13 @@ export function toolsKept(turn: Turn): boolean {
         asked.set(call.id, call);
       }
     } else if (
-      part.ref === 'task' &&
-      part.toolCallId !== undefined &&
-      // A read's result is of the task it asked for.
-      asked.get(part.toolCallId)?.args['taskId'] !== part.taskId
+      (part.ref === 'task' || part.ref === 'correction') &&
+      part.toolCallId !== undefined
     ) {
-      return false;
+      const call = asked.get(part.toolCallId);
+      // A result answers a call of its own tool, and a read is of the task it asked for.
+      if (call?.name !== ANSWERS[part.ref]) return false;
+      if (part.ref === 'task' && call.args['taskId'] !== part.taskId) return false;
     }
   }
   return true;

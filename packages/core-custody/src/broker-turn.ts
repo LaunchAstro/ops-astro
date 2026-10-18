@@ -11,7 +11,8 @@
 // 2. Bind. Every part is a reference to something the broker owns, read here
 //    under the call's locks: the attempt's own task at its current revision,
 //    or an earlier answer of this attempt, matched by the digest its
-//    settlement kept. A definition (a pinned file the run read) is refused:
+//    settlement kept, or a correction this attempt's delegation requested on
+//    that task (#1624 R7), shown as its id and state alone. A definition (a pinned file the run read) is refused:
 //    its kept copy is insert-only for the application (0086), and its read
 //    path waits on #1904. Anything else, or a mismatch, is
 //    `PROVENANCE_UNBOUND`, in the same bytes whoever's it was:
@@ -82,10 +83,31 @@ async function answerMessage(
   return { message, source: call.answer_source };
 }
 
+/** A correction the run's own delegation requested on its task: its id and state, never its words. */
+async function correctionMessage(
+  tx: TenantQuery,
+  facts: Bindings,
+  part: TurnPart & { ref: 'correction' },
+): Promise<Bound> {
+  if (!isUuid(part.correctionId)) return undefined;
+  const [row] = await tx.query<{ state: string }>(
+    `select c.state from public.live_corrections c
+       join public.leases l on l.business_id = c.business_id and l.delegation_id = c.delegation_id
+      where c.business_id = $1 and c.id = $2 and c.task_id = $3 and l.id = $4`,
+    [tx.businessId, part.correctionId, facts.source.id, facts.leaseId],
+  );
+  if (row === undefined) return undefined;
+  const text = JSON.stringify({ correctionId: part.correctionId.toLowerCase(), state: row.state });
+  const source: FieldSource = businessInternal(facts.source) ? 'business_internal' : 'outside';
+  return { message: { role: 'tool', toolCallId: part.toolCallId, text }, source };
+}
+
 async function boundOf(tx: TenantQuery, facts: Bindings, part: Part): Promise<Bound> {
   switch (part.ref) {
     case 'task':
       return taskMessage(facts, part);
+    case 'correction':
+      return await correctionMessage(tx, facts, part);
     case 'answer':
       return await answerMessage(tx, facts, part);
     default:
