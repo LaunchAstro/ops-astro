@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a conversation's clock never steps back: a message written after the wall clock steps back stays after the reader's marker, and a member added or removed then reads only their own window"
+}
