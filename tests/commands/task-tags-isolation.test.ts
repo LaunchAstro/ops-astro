@@ -34,6 +34,8 @@ beforeAll(async () => {
   w = await timeWorld('tgi');
   await w.db.app.withBusiness(w.alpha, async (tx) => {
     await grantTo(tx, w.ada, 'write', WHOLE, false, 'tag');
+    // `task.set_party` puts a task on a client under `share`.
+    await grantTo(tx, w.ada, 'share');
   });
   await w.db.app.withBusiness(w.bravo, async (tx) => {
     await grantTo(tx, w.bravoOwner, 'write', WHOLE, false, 'tag');
