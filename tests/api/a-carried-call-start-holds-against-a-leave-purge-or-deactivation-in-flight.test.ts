@@ -46,7 +46,7 @@ import { says, standInOllama, type StandIn } from './ollama-stand-in-fixture.ts'
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 
 const as = async (api: Hono, member: Member, name: string, body: Record<string, unknown>) =>
   await post(
