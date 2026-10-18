@@ -201,9 +201,12 @@ const WATCH_AND_PROTECT = [
   `drop event trigger if exists ${GUARD}`,
   // Made only when absent, with its enabling in the same statement: another
   // install may have made it since this one dropped it. One under the name
-  // that does not call watch() is refused, never kept.
+  // that does not call watch() is refused, never kept. Installs take this
+  // statement one at a time: the lock waits for another's uncommitted
+  // trigger, and the checks after it see that trigger once it commits.
   `
   do $$ begin
+    perform pg_advisory_xact_lock(hashtext('${GUARD}'));
     if exists (select from pg_event_trigger where evtname = '${GUARD}'
         and evtfoid <> 'ops_astro_made_up.watch()'::regprocedure) then
       raise exception 'made-up-install: an event trigger named ${GUARD} does not call watch()';
