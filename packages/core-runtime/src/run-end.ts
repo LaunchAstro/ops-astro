@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `run.end`, the worker's own stop for what only it can see (#1623 R1, design
-// F1): an uncatalogued tool, a refused tool, a malformed conversation, tracing
+// `run.end`, the worker's own stop for what only it can see (#1623 R1): an
+// uncatalogued tool, a refused tool, a malformed conversation, tracing
 // refused, a pinned file that changed, an answer lost after it settled, or the
 // door refusing its call while its delegation is live. The worker names a
 // code; the server derives the outcome and records it in this transaction.
@@ -17,7 +17,7 @@
 
 import { retireAttempt, type StoppedAs } from '../../core-custody/src/index.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
-import { isWorkerEndCode, type WorkerEndCode } from '../../core-wire/src/run-outcomes.ts';
+import { isWorkerEndCode, type WorkerEndCode } from '../../core-wire/src/index.ts';
 import { identityOf, type FileIdentity } from './definitions.ts';
 import { configuredInstructionSource } from './instruction-root.ts';
 import { leaseReason } from './lease-ownership.ts';
