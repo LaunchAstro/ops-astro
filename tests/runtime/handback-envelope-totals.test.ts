@@ -46,8 +46,13 @@ describe.skipIf(serverUrl === undefined)('handback envelope totals', () => {
       [s.business, decision['attemptId']],
     );
 
+    // A marked step is never a success (#1623 R2), so it hands back failed.
     const handed = appliedDetail(
-      await asAgent(s, handbackBody(picked), String(picked['credential'])),
+      await asAgent(
+        s,
+        { ...handbackBody(picked), outcome: 'failed' },
+        String(picked['credential']),
+      ),
       'task.handback of a marked attempt',
     );
     expect(handed['reservationState']).toBe('quarantined');
