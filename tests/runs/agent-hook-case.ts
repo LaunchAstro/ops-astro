@@ -219,6 +219,39 @@ function afterGuardCases(run: Run): Cases {
   };
 }
 
+/** Caller code core runs after the guard that plants a configure hook. */
+function hookAfterGuardCases(run: Run): Cases {
+  const model = (): OpsAstroChatModel => new OpsAstroChatModel(run.ports.broker, run.state);
+  /** A hook planted at the `nth` read and never again. */
+  const plantAt = (nth: number) => {
+    let read = 0;
+    return (): void => {
+      if ((read += 1) !== nth) return;
+      registerConfigureHook({ contextVar: HOOK });
+      setContextVariable(HOOK, new Recorder());
+    };
+  };
+  return {
+    'none-invoke-configurable-getter-plants-a-hook': async () =>
+      await model().invoke([new HumanMessage(MARKER)], {
+        configurable: Object.defineProperty({}, 'model', { enumerable: true, get: plantAt(1) }),
+      }),
+    'none-generate-message-type-getter-plants-a-hook': async () => {
+      const message = new HumanMessage(MARKER);
+      const plantHook = plantAt(2);
+      const typeKey = '_getType';
+      const ownType = message[typeKey].bind(message);
+      Object.defineProperty(message, typeKey, {
+        get: () => {
+          plantHook();
+          return ownType;
+        },
+      });
+      return await model().generate([[message]], {});
+    },
+  };
+}
+
 /** A getter that reads `first` for its first `times` reads and `after` from then on. */
 function lateRead<T>(first: T, after: T, times = 1): () => T {
   let read = 0;
@@ -245,6 +278,7 @@ async function main(kind: string): Promise<Record<string, unknown>> {
     ...ownCases(run),
     ...twoReadCases(run),
     ...afterGuardCases(run),
+    ...hookAfterGuardCases(run),
     ...runnerCases(run),
   }[kind];
   if (step === undefined) throw new Error('no such case');

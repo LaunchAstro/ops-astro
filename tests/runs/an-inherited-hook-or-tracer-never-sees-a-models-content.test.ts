@@ -12,7 +12,8 @@
 // value that reads one way to the guard and another to core: the model's
 // `verbose` as a getter, a callback manager whose handlers are a getter, an
 // empty list with its own `map`, an empty list behind a proxy, a message
-// whose content getter fills the checked list (#1925); and the runner with a
+// whose content getter fills the checked list, a `configurable` or message
+// getter that plants a hook after the guard (#1925); and the runner with a
 // hook planted. Each is refused
 // `TRACING_NOT_ALLOWED` before any callback, with nothing sent, or runs
 // isolated with the hook never called. Values core never reads are not
@@ -107,6 +108,8 @@ const OPTIONS = [
   'none-invoke-empty-list-with-its-own-map',
   'none-generate-empty-list-behind-a-proxy',
   'none-generate-message-getter-fills-the-list-after-the-guard',
+  'none-invoke-configurable-getter-plants-a-hook',
+  'none-generate-message-type-getter-plants-a-hook',
 ];
 const UNREAD = [
   'none-generate-callbacks-read-late',
