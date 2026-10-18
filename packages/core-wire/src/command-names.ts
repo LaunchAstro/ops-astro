@@ -161,6 +161,9 @@ export type CommandName =
   // asks its revert, a setting names who; the publish, revert and receipt are system writes.
   | 'live_correction.request'
   | 'live_correction.read'
+  // #1694: the business's corrections for its cards, and one correction's receipts.
+  | 'live_correction.list'
+  | 'live_correction.receipts'
   | 'live_correction.decide'
   | 'live_correction.revert'
   | 'settings.set_live_correction_approver'

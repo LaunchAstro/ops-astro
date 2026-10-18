@@ -41,6 +41,14 @@ export {
   type ProposalState,
   type Settlement,
 } from './correction-proposals.ts';
+export {
+  RECEIPT_TEXT_LIMIT,
+  listReadableCorrections,
+  readReadableReceipts,
+  type ReadableCorrection,
+  type ReadableReceipt,
+  type ReceiptText,
+} from './correction-reads.ts';
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
 export { insertRevertAsk, type RevertAsk, type RevertAskWrite } from './correction-revert-asks.ts';
 export {

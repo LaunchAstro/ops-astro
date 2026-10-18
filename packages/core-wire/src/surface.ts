@@ -645,6 +645,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // ask `gate:decide`, never an agent's, and only of the configured approver who
   // is not the requester.
   read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
+  read('live_correction.list', RUN_COLLECTION, { action: 'write' }),
+  read('live_correction.receipts', RUN_COLLECTION, { action: 'write' }),
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,

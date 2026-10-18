@@ -38,6 +38,8 @@ import type {
   InboxCountResult,
   InboxReadResult,
   LiveCorrectionReadResult,
+  LiveCorrectionListResult,
+  LiveCorrectionReceiptsResult,
   InvitationListResult,
   PersonListResult,
   TagListResult,
@@ -223,6 +225,10 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** One live correction's decision, read again for its card (C80). */
   readonly 'live_correction.read': { readonly correctionId: string };
+  /** The business's corrections the reader reaches, newest first (#1694). */
+  readonly 'live_correction.list': NoOperands;
+  /** One correction's receipts, newest first (#1694). */
+  readonly 'live_correction.receipts': { readonly correctionId: string };
   readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
@@ -283,6 +289,8 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | LiveCorrectionReadResult
+  | LiveCorrectionListResult
+  | LiveCorrectionReceiptsResult
   | InvitationListResult
   | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }

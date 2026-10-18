@@ -18,4 +18,6 @@ export const LIVE_CORRECTION_EFFECTS: {
   'live_correction.decide': writing(client('live_corrections')),
   'live_correction.revert': writing(client('live_correction_revert_asks')),
   'live_correction.read': writing([]),
+  'live_correction.list': writing([]),
+  'live_correction.receipts': writing([]),
 };

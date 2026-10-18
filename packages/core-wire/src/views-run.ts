@@ -213,3 +213,58 @@ export interface LiveCorrectionReadResult {
     readonly versionId: string;
   };
 }
+
+/**
+ * #1694: one correction in `live_correction.list`, enough to draw its card
+ * again after a reload: its task, its state as `live_correction.read` names
+ * it, the person who decided it or null, its version, the page and the two
+ * words, and when it was asked. No digest, file path or requester comes back.
+ */
+export interface CorrectionListItem {
+  readonly correctionId: string;
+  readonly taskId: string;
+  readonly state: string;
+  readonly approver: string | null;
+  readonly versionId: string;
+  readonly pageUrl: string;
+  readonly word: string;
+  readonly replacement: string;
+  /** ISO 8601. */
+  readonly requestedAt: string;
+}
+
+/** `live_correction.list`: the reader's reachable corrections, newest first, at most 100. */
+export interface LiveCorrectionListResult {
+  readonly ok: true;
+  readonly corrections: readonly CorrectionListItem[];
+}
+
+/** A page captured for a receipt, cut to the receipt text limit; `clipped` says it was cut. */
+export interface ReceiptCapture {
+  readonly text: string;
+  readonly clipped: boolean;
+}
+
+/**
+ * One publish or revert receipt as its card reads it: the outcome observed,
+ * the commit and deployment the runner saw, and the before and after
+ * captures. A field the runner did not record is null.
+ */
+export interface CorrectionReceiptView {
+  readonly receiptId: string;
+  readonly step: 'publish' | 'revert';
+  readonly outcome: string;
+  /** ISO 8601. */
+  readonly recordedAt: string;
+  readonly commit: string | null;
+  readonly deploymentId: string | null;
+  readonly beforeCapture: ReceiptCapture | null;
+  readonly afterCapture: ReceiptCapture | null;
+}
+
+/** `live_correction.receipts`: one correction's receipts, newest first, at most 20. */
+export interface LiveCorrectionReceiptsResult {
+  readonly ok: true;
+  readonly correctionId: string;
+  readonly receipts: readonly CorrectionReceiptView[];
+}
