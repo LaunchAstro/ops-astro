@@ -288,6 +288,13 @@ service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
 operator's record folder: the version and the artefact.
 
+The forwarder sends every error and alert with its own `OPS_RELEASE`, never
+the release an API instance wrote (`rebuiltError`). So at each deploy, set
+`STAGING_RELEASE` to the build stamp of the version deployed, the `<id>` given
+to `--version` (the `build` in the artefact's `build.json`), before
+`deploy.mjs` starts Compose. A unit left on an earlier stamp names the wrong
+build on every alert (#1787). The Vercel function reads no release setting.
+
 The web app goes to Vercel with `scripts/ops/web-deploy.mjs --version <id>
 --artefacts <store>` (the Vercel re-plan, step 4), beside the deploy above.
 The same gate comes first, and the same stored build output and preflight are
@@ -404,7 +411,8 @@ environment at run time:
 | `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                                                                                                                    |
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it)                                                                                                   |
 | `OPS_ERROR_SINK_URL`                                       | the API                                      | the sink's web address, the operations view's link (C55); no secret, never the DSN (an address with a user part stops the API)                                                                                                                               |
-| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                                                                                                                   |
+| `OPS_ENVIRONMENT`                                          | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`                                                                                                                                                                                                                                    |
+| `OPS_RELEASE`                                              | the forwarder, `alerts.mjs test`             | the build stamp of the version deployed, the release on every event the sink receives; set at each deploy (above). The Vercel function reads none                                                                                                            |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                                                                                                                      |
 | `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, the function does not start                                                                                                                                                   |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                                                                                                                      |

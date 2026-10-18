@@ -176,6 +176,10 @@ worker and forwarder containers are `ops-astro-worker` and
 node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production
 ```
 
+Set `PRODUCTION_RELEASE` to that `<id>`, the build stamp being deployed, before
+each run: it is the forwarder's `OPS_RELEASE`, the release on every event the
+sink receives (see the staging runbook's deploy section, #1787).
+
 The worker is parked: the deploy reads `compose.json` alone, so no
 `PRODUCTION_WORKER_*` setting is needed and no worker sign-in is made in the
 business. A profile cannot park it, because Compose requires every

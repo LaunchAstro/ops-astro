@@ -49,6 +49,8 @@
 // the events its own request raised are in the outbox or dropped, since the
 // instance may be frozen once it answers; another request's never hold it.
 // The sink's DSN is the forwarder's, so the entry refuses to start beside it.
+// So is the release each event is sent with (`rebuiltError`), so the function
+// reads no `OPS_RELEASE` (#1787).
 //
 // **The agent quota is per instance (API-2).** Its counts live in one
 // process's memory and every instance starts its own, so each holds the
@@ -270,8 +272,7 @@ function outboxAlerts(
   }
   const key = scopeKey(required('ALERT_SCOPE_KEY'));
   const outbox = connectOutbox(databaseUrl, { source: 'runtime' });
-  const release = settings['OPS_RELEASE'];
-  return createOutboxAlerts({ outbox, key, where, root: ROOT, ...(release ? { release } : {}) });
+  return createOutboxAlerts({ outbox, key, where, root: ROOT });
 }
 
 let handler: ((request: Request) => Promise<Response>) | undefined;
