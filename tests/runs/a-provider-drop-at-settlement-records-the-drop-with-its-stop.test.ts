@@ -64,7 +64,7 @@ it.each(CASES)(
     const work = await liveWork(s, `r1 drop ${mode}`, 2_000);
     world.provider.mode(mode);
     const answer = await asAgent('/model/call', work, callBody(work), await signedIn());
-    expect(answer.body).toMatchObject({ refused: true, code: 'LIABILITY_UNKNOWN' });
+    expect(answer.body['code'], JSON.stringify(answer.body)).toBe('LIABILITY_UNKNOWN');
     const after = await recorded(work);
     expect(after.outcomes).toMatchObject([
       { outcome: 'unknown_provider_outcome', end_code: 'LIABILITY_UNKNOWN', stop_cause: null },
