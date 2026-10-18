@@ -6,6 +6,9 @@
 // version is the launch, and the worker's next pass picks the launch up and
 // applies it. Like the rest of the worker, this only shapes calls to the API.
 
+import type { Call, Unanswered } from './agent-call.ts';
+import type { UsageReporter } from './usage.ts';
+
 /** The work handed back for review: the successor's pending gate and its version. */
 export interface HandedBack {
   readonly taskId: string;
@@ -49,3 +52,15 @@ export const handedBackFrom = (
     versionId: String(detail['successorVersionId']),
   },
 });
+
+/** The plan's work handed back for review under `operationId`, with `step` its successor's. */
+export async function handBackForReview(
+  call: Call,
+  work: { readonly taskId: string; readonly lease: object; readonly operationId: string },
+  step: Parameters<typeof reviewBody>[2],
+  reporter: UsageReporter,
+): Promise<{ readonly handedBack: HandedBack } | Unanswered> {
+  const body = reviewBody(work.lease, work.operationId, step, reporter.estimate(step));
+  const back = await call('task.handback', body);
+  return 'body' in back ? handedBackFrom(work.taskId, back.detail) : back;
+}
