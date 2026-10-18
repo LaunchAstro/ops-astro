@@ -44,53 +44,13 @@ import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
 import { stepResultBody } from './d06-agent-step.ts';
+import { AGENT_OPERATIONS, success } from './d06-agent-operations.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/d06-agent: DATABASE_URL is unset, so nothing below ran.');
 }
-
-/** The agent's operations with a positive control, in the order the journey needs them. */
-const AGENT_OPERATIONS: readonly CommandName[] = [
-  'task.queue',
-  'session.capabilities',
-  'task.read',
-  'task.comment',
-  'task.propose',
-  'run.revise_state',
-  // An author's edit and delete (MP-4-5), each on a comment the agent wrote.
-  'task.edit_comment',
-  'task.delete_comment',
-  // The three marks (MP-4-9), the Ad hoc mark (MP-4-10) and the category
-  // (MP-4-8), which an agent sets on its own task inside its delegation.
-  'task.set_scores',
-  'task.set_adhoc',
-  'task.set_category',
-  // The description and the brief (MP-4-7), the name, the due date and the
-  // page link (MP-4-8, MP-4-12): the fields an agent writes through
-  // `task.update` on its own task.
-  'task.update',
-  // The assignee (MP-4-8), under a delegation that also holds assign.
-  'task.assign',
-  'live_correction.request',
-  'task.heartbeat',
-  'task.dispatch',
-  'task.observe',
-  'task.check',
-  'model.call',
-  'run.delegate_child',
-  'run.child_handback',
-  'task.pickup',
-  'task.handback',
-  // The worker's own stop (#1623 R1): its success is the retained `RUN_ENDED`.
-  'run.end',
-  // An onboarding step's result (C41-A), on a step the agent picked up.
-  'onboarding.step_result',
-];
-
-/** What a valid request answers: `ok`, or `run.end`'s retained stop. */
-const success = (name: CommandName): string => (name === 'run.end' ? 'RUN_ENDED' : 'ok');
 
 /** A business-internal field the replay operation may take to its cloud route. */
 /** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
