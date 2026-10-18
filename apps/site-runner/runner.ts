@@ -88,7 +88,8 @@ export interface Passed {
 interface Followed {
   readonly claim: Claim;
   readonly binding: SiteBinding;
-  readonly since: number;
+  /** When this process first saw the publish recorded `accepted`: unset until then. */
+  readonly since?: number;
 }
 
 type Held =
@@ -180,6 +181,11 @@ async function publish(runner: Runner, { claim, binding, since }: Followed): Pro
   const result = await runLivePublish(deps.db, runOf(runner, claim), ports);
   const outcome = result.kind === 'recorded' ? result.state : result.code;
   if (outcome !== 'accepted') return await settle(runner, claim, outcome);
+  // The window opens once the first run has returned accepted, so its own sends and reads take none of it.
+  if (since === undefined) {
+    runner.following.set(claim.correctionId, { claim, binding, since: deps.now() });
+    return { correctionId: claim.correctionId, outcome: 'following' };
+  }
   if (deps.now() - since >= FOLLOW_FOR_MS) {
     await raise('LIVE_CHECK_TIMED_OUT');
     return await settle(runner, claim, 'LIVE_CHECK_TIMED_OUT');
@@ -201,7 +207,7 @@ async function start(runner: Runner, claim: Claim): Promise<Passed> {
   }
   const binding = await bindingOf(deps.db, run, held, ports.file);
   if (typeof binding === 'string') return await settle(runner, claim, binding);
-  return await publish(runner, { claim, binding, since: deps.now() });
+  return await publish(runner, { claim, binding });
 }
 
 /** A followed publish run again, its lease renewed first. */

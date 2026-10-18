@@ -89,7 +89,8 @@ only, public addresses only, no redirects. These are the only ways out.
   `runLivePublish` again on the same lease. The register holds the effect,
   so a pass observes and never sends.
 - Following stops at `live` or `unknown`, or at any refusal.
-- The cap is 10 minutes from the first `accepted` this process saw. At the
+- The cap is 10 minutes from the moment this process first saw the publish
+  recorded `accepted`, after that run returned. At the
   cap the runner raises one person task (`LIVE_CHECK_TIMED_OUT`) and hands the
   lease back.
 - A lost lease ends the following. The library writes no receipt and raises
