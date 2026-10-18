@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The site runner's composition (`DESIGN.md`): each pass takes the leases its
+// The site runner's composition (`docs/local/SITE-RUNNER.md`): each pass takes the leases its
 // claims hold, proposes each approved correction once (`proposeCorrection`),
 // binds the publish to that proposal (`siteBindingFor`) and runs it
 // (`runLivePublish`). A publish recorded `accepted` is followed, one run per
