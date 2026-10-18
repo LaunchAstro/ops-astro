@@ -21,6 +21,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 import { cutWithEllipsis } from './ellipsis.ts';
 import { followModel } from './conversation-agents.ts';
 import { keepModel } from './conversation-model.ts';
@@ -261,8 +262,9 @@ export async function messageConversation(
     readonly owner_actor_id: string;
     readonly body_purged_at: Date | null;
     readonly scope_record_id: string | null;
+    readonly page_address: string | null;
   }>(
-    `select owner_actor_id, body_purged_at, scope_record_id from conversations
+    `select owner_actor_id, body_purged_at, scope_record_id, page_address from conversations
       where business_id = $1 and id = $2
       for update`,
     [tx.businessId, fields.conversationId],
@@ -271,7 +273,8 @@ export async function messageConversation(
   if (conversation === undefined) return refused(refuseNotFound());
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
-  const pageRefused = await waitsFirst(tx, context.session, conversation.scope_record_id);
+  const { scope_record_id: scope, page_address: address } = conversation;
+  const pageRefused = await waitsFirst(tx, context.session, await pageTaskOf(tx, scope, address));
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
   // The grant the door asked is asked again at that clock: one that lapsed
