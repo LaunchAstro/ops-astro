@@ -8,6 +8,16 @@
 export const GUARD: string = 'ops_astro_made_up_guard';
 export const LEDGER: string = 'ops_astro_made_up.untrusted';
 /**
+ * The digests of the only sign-in addresses the guard admits: the list
+ * `db:admit` installs, which every later install keeps. Empty: no list.
+ */
+export const ADMITTED: string = 'ops_astro_made_up.sign_ins';
+/**
+ * The id digest of each sign-in written at a listed address that `auth:seed`
+ * has not vouched for as one it created (made-up-sign-ins.ts).
+ */
+export const UNVOUCHED: string = 'ops_astro_made_up.unvouched';
+/**
  * Each admitted session's tag digest, by its backend, so a later run's
  * admission leaves an earlier one's tag good, and a tag ends with its session.
  */
@@ -46,7 +56,7 @@ export const STANDS: string = `(t.tgfoid = to_regprocedure('ops_astro_made_up.gu
         and not pg_has_role(current_user, (select relowner from pg_class where oid = t.tgrelid),
           'USAGE'))))`;
 
-/** Before the guard function: the schema, the ledger, the seed tags' digests and note(). */
+/** Before the guard function: the schema, the ledger, the seed tags' digests, note() and pend(). */
 const LEDGER_AND_NOTE = [
   `create schema if not exists ops_astro_made_up`,
   `revoke all on schema ops_astro_made_up from public`,
@@ -57,6 +67,13 @@ const LEDGER_AND_NOTE = [
   create or replace function ops_astro_made_up.note(relation text) returns void
     language sql security definer set search_path = pg_catalog, pg_temp
     as $$ insert into ${LEDGER} values (relation) on conflict do nothing $$`,
+  `create table if not exists ${ADMITTED} (digest text primary key)`,
+  `create table if not exists ${UNVOUCHED} (sign_in text primary key)`,
+  `
+  create or replace function ops_astro_made_up.pend(sign_in text) returns void
+    language sql security definer set search_path = pg_catalog, pg_temp
+    as $$ insert into ${UNVOUCHED} values (encode(sha256(convert_to(sign_in, 'UTF8')), 'hex'))
+      on conflict do nothing $$`,
 ];
 
 // A write is the seed's when it tags its transaction on the session the seed
@@ -67,9 +84,11 @@ const LEDGER_AND_NOTE = [
 // reads the digests.
 //
 // A sign-in passes when its address is a made-up `.local` one and, while a
-// sign-in list is installed (`db:admit`, until the next install without one),
-// its address's digest is on the list. The list is part of the function's
-// text, so the guard reads no table for it, whichever role writes the sign-in.
+// sign-in list is installed (`db:admit`, kept by every later install), its
+// address's digest is on the list. The list is part of the function's text,
+// so the guard reads no table for it, whichever role writes the sign-in. A
+// listed sign-in written, or moved to its address, is pended until `auth:seed`
+// vouches for it as one it created: an owner's row at a seed address is not.
 function guardFunction(signIns: readonly string[]): string {
   if (signIns.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)))
     throw new Error('made-up-install: a sign-in digest is not a sha256 hex digest');
@@ -78,13 +97,19 @@ function guardFunction(signIns: readonly string[]): string {
       ? ''
       : ` or encode(sha256(convert_to(lower(new.email), 'UTF8')), 'hex')
             <> all (array[${signIns.map((digest) => `'${digest}'`).join(', ')}]::text[])`;
+  const pended =
+    signIns.length === 0
+      ? ''
+      : `
+        elsif tg_op = 'INSERT' or old.email is distinct from new.email then
+          perform ops_astro_made_up.pend(new.id::text);`;
   return `
     create or replace function ops_astro_made_up.guard() returns trigger
       language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
     begin
       if tg_table_schema = 'auth' then
         if new.email is null or lower(new.email) not like '%.local'${listed} then
-          perform ops_astro_made_up.note('auth.users');
+          perform ops_astro_made_up.note('auth.users');${pended}
         end if;
       elsif (select rolsuper from pg_roles where rolname = current_user)
           or pg_has_role(current_user,
@@ -156,7 +181,8 @@ const WATCH_AND_PROTECT = [
  * `seedDigest` is the digest of the seed's tag, the only form the guard holds,
  * kept for this backend beside other live seed sessions' digests; the digests
  * of sessions that have ended go. `signIns`, the digests of the only sign-in
- * addresses the guard admits, is empty except at `db:admit`.
+ * addresses the guard admits, is empty unless `db:admit` installed a list; it
+ * is kept in ADMITTED for the next install.
  */
 export function installStatements(
   seedDigest: string,
@@ -168,6 +194,8 @@ export function installStatements(
     `delete from ${SEEDS} where pid not in (select pid from pg_stat_activity)`,
     `insert into ${SEEDS} select pid, backend_start, '${seedDigest}' from (${THIS_BACKEND}) b
       on conflict do nothing`,
+    `delete from ${ADMITTED}`,
+    ...signIns.map((digest) => `insert into ${ADMITTED} values ('${digest}')`),
     guardFunction(signIns),
     ...WATCH_AND_PROTECT,
   ];
