@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1530: every session the hosted function opens (runtime, the pass's, outbox, lookup) closes after RUNTIME_IDLE_SECONDS idle, so a migrate window drains without pg_terminate_backend"
+}

@@ -150,6 +150,9 @@ async function answered(
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
+/** The longest a request waits on the reconciliation pass in flight (#1411); not yet applied. */
+export const RECOVERY_WAIT_MS = 2_000;
+
 /** The most instances the limits split across with at least one of each. */
 const INSTANCES_MOST = Math.min(
   ...[

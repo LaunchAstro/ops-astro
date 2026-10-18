@@ -25,7 +25,7 @@ import {
 } from './transaction.ts';
 
 export type { BusinessId, TenantQuery, TransactionQuery } from './transaction.ts';
-export { open, type DatabaseOptions } from './driver.ts';
+export { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 
 export function isBusinessId(value: string): value is BusinessId {
   return isUuid(value);

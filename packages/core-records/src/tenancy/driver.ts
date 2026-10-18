@@ -21,6 +21,9 @@ export interface DatabaseOptions {
   readonly max?: number;
 }
 
+/** How long the runtime pools keep an idle connection (#1530); not yet applied. */
+export const RUNTIME_IDLE_SECONDS = 20;
+
 /**
  * The driver over `url`. postgres.js parses the address at once, and its
  * parse error carries the whole address, password and all, as its input; the
