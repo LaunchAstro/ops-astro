@@ -58,12 +58,14 @@ it('AW-01 personal information stays local, on the broker: refused before any ro
     words: expect.stringContaining('waits on a local model'),
   });
   expect(world.provider.seen.length).toBe(before);
-  const local = await call(work, { fields: personal }, withRoutes([CLOUD, LOCAL]));
+  // #1623 R1 (B2): the refusal ended that attempt, so the local route is tried on fresh work.
+  const next = await liveWork(s, `personal information ${PLANTED_PROMPT}`, 2_000);
+  const local = await call(next, { fields: personal }, withRoutes([CLOUD, LOCAL]));
   expect(local.ok).toBe(true);
   expect(await rowsOf((local as { callId: string }).callId)).toMatchObject([
     { route_key: 'on_premises', route_reach: 'local' },
   ]);
-  const internal = await call(work, {}, withRoutes([CLOUD, LOCAL]));
+  const internal = await call(next, {}, withRoutes([CLOUD, LOCAL]));
   expect(await rowsOf((internal as { callId: string }).callId)).toMatchObject([
     { route_key: 'replay' },
   ]);
@@ -94,14 +96,16 @@ it('AW-01 subscription refusal, on the broker: an unattended run on a subscripti
     code: 'SUBSCRIPTION_UNATTENDED',
   });
   const elsewhere = withRoutes([{ ...subscription, installation: 'there' }]);
-  expect(await call(work, {}, elsewhere)).toMatchObject({
+  // The first refusal ended its attempt (B2), so the second is asked on fresh work.
+  const next = await liveWork(s, 'subscription elsewhere', 2_000);
+  expect(await call(next, {}, elsewhere)).toMatchObject({
     ok: false,
     code: 'SUBSCRIPTION_OTHER_TENANT',
   });
   expect(world.provider.seen.length).toBe(before);
 });
 
-it('AW-01 rate limit: past the durable ceiling the caller is told to wait, and nothing is written', async () => {
+it('AW-01 rate limit: past the durable ceiling the call is refused, holding nothing', async () => {
   const work = await liveWork(s, 'one at a time', 2_000);
   world.provider.mode('slow');
   const first = call(work, { operation: ONE_AT_A_TIME.key });
@@ -118,13 +122,13 @@ it('AW-01 rate limit: past the durable ceiling the caller is told to wait, and n
     )
     .toBe(1);
   const before = await callCount();
-  expect(await call(work, { operation: ONE_AT_A_TIME.key })).toEqual({
-    ok: false,
-    code: 'RATE_LIMITED',
-    callId: null,
-    retryAfterSeconds: 5,
-  });
-  expect(await callCount()).toBe(before);
+  // #1623 R1 (B2): a recorded refusal with no retry; its row holds nothing.
+  const refused = await call(work, { operation: ONE_AT_A_TIME.key });
+  expect(refused).toEqual({ ok: false, code: 'RATE_LIMITED', callId: expect.any(String) });
+  expect(await callCount()).toBe(before + 1);
+  expect(await rowsOf((refused as { callId: string }).callId)).toMatchObject([
+    { state: 'refused', reserved_minor: 0 },
+  ]);
   await first;
 });
 
@@ -157,9 +161,10 @@ it('AW-01 last room: two calls at once for room enough for one hold one', async 
       where lease_id = $1 order by reserved_minor`,
     [work.picked['leaseId']],
   );
+  // The budget stop ends the attempt (B2) and releases the winner's hold, which was never sent.
   expect(rows).toEqual([
     { state: 'refused', reserved_minor: '0' },
-    { state: 'reserved', reserved_minor: '500' },
+    { state: 'released', reserved_minor: '500' },
   ]);
   expect(world.provider.seen.length).toBe(seen);
 });
@@ -178,7 +183,8 @@ it('AW-01 revocation mid-transfer: that transfer finishes, nothing further is gr
   const inFlight = await pending;
   expect(inFlight).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
   world.provider.mode('answer');
-  expect(await call(work)).toEqual({ ok: false, code: 'AUTHORITY_LOST', callId: null });
+  // The unknown end retired the attempt (B2), so the next call finds no live lease.
+  expect(await call(work)).toEqual({ ok: false, code: 'LEASE_EXPIRED', callId: null });
 });
 
 it('AW-01 revocation between the hold and the send: nothing is sent and the hold is released', async () => {

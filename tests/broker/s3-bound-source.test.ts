@@ -83,7 +83,9 @@ it('AW-01 personal information stays local (S3): a caller that only claims busin
     code: 'LOCAL_MODEL_REQUIRED',
   });
   expect(world.provider.seen.length).toBe(seen);
-  const local = await call(work, { fields: [claimed] }, withRoutes([CLOUD, LOCAL]));
+  // The refusal ended that attempt (#1623 R1, B2), so the local route is asked on fresh work.
+  const next = await liveWork(s, 's3 claimed internal, again', 2_000);
+  const local = await call(next, { fields: [claimed] }, withRoutes([CLOUD, LOCAL]));
   expect(local.ok).toBe(true);
   expect(await rowsOf((local as { callId: string }).callId)).toMatchObject([
     { route_key: 'on_premises', route_reach: 'local' },
@@ -165,9 +167,15 @@ it('AW-01 personal information stays local (S3): a source the agent may not read
   const cases = await unreadable(work);
   const seen = world.provider.seen.length;
   const shapes = new Set<string>();
-  for (const [label, field] of cases) {
+  for (const [at, [label]] of cases.entries()) {
+    // Each case on its own work: a refusal ends its attempt (#1623 R1, B2).
     // eslint-disable-next-line no-await-in-loop
-    const answer = await call(work, { fields: [field] }, withRoutes([CLOUD, LOCAL]));
+    const own = at === 0 ? work : await liveWork(s, 's3 unreadable', 2_000);
+    // eslint-disable-next-line no-await-in-loop
+    const [, field] = at === 0 ? (cases[0] ?? []) : ((await unreadable(own))[at] ?? []);
+    if (field === undefined) throw new Error(`s3: no case ${String(at)}`);
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await call(own, { fields: [field] }, withRoutes([CLOUD, LOCAL]));
     expect(answer, label).toMatchObject({ ok: false, code: 'SOURCE_UNREADABLE' });
     const { callId: _callId, ...shape } = answer as { callId: string };
     shapes.add(JSON.stringify(shape));
