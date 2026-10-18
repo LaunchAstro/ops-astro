@@ -254,8 +254,7 @@ Production's alerts are staging's [alerts](../staging/README.md#alerts), with
 production named in their words. Every alert mails the owner
 (`OPS_ALERT_OWNER_EMAIL`) and the second operator
 (`OPS_ALERT_SECOND_OPERATOR_EMAIL`) at once. Nobody else gets them, and no
-alert goes to a client or a business's own people. A proof run with
-`alerts.mjs plan --test` mails only the agreed test address.
+alert goes to a client or a business's own people.
 
 | Alert                                                     | Raised by                                   | Who sees it                       |
 | --------------------------------------------------------- | ------------------------------------------- | --------------------------------- |
@@ -267,12 +266,18 @@ alert goes to a client or a business's own people. A proof run with
 | Failed sign-ins, refusals, permission changes, downloads  | the error sink, from production's forwarder | the owner and the second operator |
 | A failed secret scan                                      | the error sink, from the scan itself        | the owner and the second operator |
 
-The watcher checks production once `OPS_WATCH_PRODUCTION_URL` is set for
-`alerts.mjs plan`. The operations view links the error sink once
-`OPS_ERROR_SINK_URL` is set on production's Vercel project. It holds the sink's
-web address and no secret. Setting it takes one daylight redeploy.
-`node scripts/ops/alerts.mjs test`, run with production's forwarder settings,
-sends the test alert that proves the sink's mail arrives.
+Nothing here sets up the watcher or the sink. With `OPS_WATCH_PRODUCTION_URL`
+set, `node scripts/ops/alerts.mjs plan` prints production's checks, their
+alert words and the recipients; the operator adds each one by hand in the
+watcher and in the sink. For a proof, `plan --test` prints the agreed test
+address as the only recipient, to enter in place of the operators'.
+
+The operations view links the error sink once `OPS_ERROR_SINK_URL` is set on
+production's Vercel project. It holds the sink's web address and no secret.
+Setting it takes one daylight redeploy. Delivery is proved only by mail
+arriving: `node scripts/ops/alerts.mjs test`, run with production's forwarder
+settings, raises one test alert through the sink, and a planted health failure
+proves the watcher.
 
 ## The promotion step
 
