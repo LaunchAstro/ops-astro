@@ -11,23 +11,17 @@
 //
 // The completed response is redacted against the holder's secrets
 // (`redactedValue`), so a whole echo in any spelling the redacter knows
-// becomes `[redacted]`. Then the split-fragment rule: the answer is withheld
-// whole when a run of FRAGMENT_RUN characters of any secret (of a signed
-// token, its signature: its header and claims are not secret) appears in any
-// one of its strings (each key, each value, each number's text), in that
-// string percent-decoded or base64-decoded, or in a join in document order
-// of all its strings, all its values, or the values under one key name. A
-// secret split into strings that follow one another is caught by a join,
-// however short its pieces; pieces apart or out of order are caught one by
-// one. Shorter pieces apart are not judged: no text rule catches a deliberate
-// encoding, and the token reaches only the request's header, never the model.
+// becomes `[redacted]`. What redaction leaves is judged by the split-fragment
+// rules (`plan-fragments.ts`): a run of a secret, or pieces of one in any
+// order, withhold the answer whole.
 
 import type { Outbound } from './egress-answer.ts';
 import { planRefused, type PlanCode, type PlanResult } from './plan-words.ts';
+import { holdsSecret } from './plan-fragments.ts';
 import { redactedValue, redacterOf } from './redaction.ts';
 
-/** The shortest run of a secret that withholds an answer. */
-export const FRAGMENT_RUN = 6;
+export { FRAGMENT_RUN } from './plan-fragments.ts';
+
 /** The deepest nesting a completed response may have; a Responses answer is a few levels deep. */
 const MOST_DEPTH = 64;
 const USAGE_LIMIT = 'subscription_sharing_usage_limit_exceeded';
@@ -152,88 +146,11 @@ function folded(stream: string): Folded {
   return end ?? { kind: 'withheld', why: 'interrupted' };
 }
 
-/**
- * What a reader can join from a parsed value: every key, string and number's
- * text alone, and, in document order, all of them together, the values
- * together, and the values under each key name together (every `text`).
- */
-function textsOf(value: unknown): {
-  readonly alone: readonly string[];
-  readonly joined: readonly string[];
-} {
-  const alone: string[] = [];
-  const values: string[] = [];
-  const byKey = new Map<string, string[]>();
-  // A key's own text is filed under null: it is no value.
-  const pending: [unknown, string | null][] = [[value, '']];
-  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-    const [item, key] = next;
-    if (typeof item !== 'object' || item === null) {
-      const text = typeof item === 'string' ? item : JSON.stringify(item);
-      alone.push(text);
-      if (key === null) continue;
-      values.push(text);
-      const same = byKey.get(key) ?? [];
-      same.push(text);
-      byKey.set(key, same);
-      continue;
-    }
-    const items: [unknown, string | null][] = Array.isArray(item)
-      ? item.map((child) => [child, key])
-      : Object.entries(item).flatMap(([name, child]) => [
-          [name, null],
-          [child, name],
-        ]);
-    // Reversed onto the list, so they come off it in document order.
-    for (let at = items.length - 1; at >= 0; at -= 1) pending.push(items[at] ?? [null, null]);
-  }
-  const together = [alone, values, ...byKey.values()].map((texts) => texts.join(''));
-  return { alone, joined: together };
-}
-
-/** Percent escapes decoded, each byte as one character. */
-const unpercent = (text: string): string =>
-  text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_, code: string) =>
-    String.fromCodePoint(Number.parseInt(code, 16)),
-  );
-
-/** A string as sent, percent-decoded, and base64 or base64url decoded when it is wholly that. */
-function readingsOf(text: string): readonly string[] {
-  const packed = text.replaceAll(/\s/gu, '').replaceAll('-', '+').replaceAll('_', '/');
-  const decoded = /^[A-Za-z0-9+/]+={0,2}$/u.test(packed)
-    ? [Buffer.from(packed, 'base64').toString('latin1')]
-    : [];
-  return [text, unpercent(text), ...decoded];
-}
-
-/** Whether a run of FRAGMENT_RUN characters of a secret (or a shorter secret whole) is in the texts. */
-/** The part of a secret a fragment is judged on: a signed token's signature, or the whole. */
-const secretPart = (secret: string): string =>
-  /^[\w-]+\.[\w-]+\.[\w-]+$/u.test(secret) ? secret.slice(secret.lastIndexOf('.') + 1) : secret;
-
-function holdsFragment(texts: ReturnType<typeof textsOf>, secrets: readonly string[]): boolean {
-  const runs = new Set<string>();
-  for (const secret of secrets.map((whole) => secretPart(whole))) {
-    const run = Math.min(FRAGMENT_RUN, secret.length);
-    for (let at = 0; at + run <= secret.length; at += 1) runs.add(secret.slice(at, at + run));
-  }
-  const lengths = [...new Set([...runs].map((run) => run.length))];
-  const readings = [...texts.alone.flatMap((text) => readingsOf(text)), ...texts.joined];
-  return readings.some((text) =>
-    lengths.some((length) => {
-      for (let at = 0; at + length <= text.length; at += 1)
-        if (runs.has(text.slice(at, at + length))) return true;
-      return false;
-    }),
-  );
-}
-
 /** The folded answer judged against the secrets: redacted, or withheld for a fragment. */
 function againstSecrets(response: Record<string, unknown>, secrets: readonly string[]): Folded {
   if (secrets.length === 0) return { kind: 'withheld', why: 'no secret to judge' };
   const redacted = redactedValue(response, redacterOf(secrets)) as Record<string, unknown>;
-  if (holdsFragment(textsOf(redacted), secrets))
-    return { kind: 'withheld', why: 'secret fragment' };
+  if (holdsSecret(redacted, secrets)) return { kind: 'withheld', why: 'secret fragment' };
   return { kind: 'completed', response: redacted };
 }
 
