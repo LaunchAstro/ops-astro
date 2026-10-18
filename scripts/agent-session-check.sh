@@ -118,7 +118,8 @@ else
   note "claude session hook" "none in this seat"
 fi
 if [ -f "$claude_dir/CLAUDE.md" ]; then
-  bad "$claude_dir/CLAUDE.md applies to every session in this seat. Read it before"
+  # Standing user instructions are expected; their presence requires reading, not refusal.
+  warn "$claude_dir/CLAUDE.md applies to every session in this seat. Read it before"
   printf '           trusting anything this session says about its own instructions.\n'
 else
   note "claude user law" "none, so AGENTS.md is the whole law here"
