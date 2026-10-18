@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": true,
-  "why": "#1483: contextOf holds the conversation row for share from its locked ownership check through the earlier-messages read, so an ownership change waits for the read, and one committed first refuses the former owner"
+  "why": "#1483: contextOf asks the owner again in the earlier-messages read's own statement, so the owner cannot change between the check and the read, and an ownership change committed before the read refuses the former owner"
 }
