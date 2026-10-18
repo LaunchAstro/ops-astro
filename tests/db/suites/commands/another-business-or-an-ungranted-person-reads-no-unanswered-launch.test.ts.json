@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1710: a launch read as unanswered past its bound shows no agent and no run to another business or to a person with no grant on the task."
+}
