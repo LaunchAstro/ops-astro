@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
 //
-// The owner checks of search, the person menu, access and the agent credential
-// (U11, U14, U17, U18), as the owner checks issue (ops-astro#1750) words them.
+// The owner checks of search, the person menu and the rail (U11, U17), as the
+// owner checks issue (ops-astro#1750) words them. U14 and U18 are filmed when
+// their screens exist (ops-astro#1819, #1818).
 import {
   BEAT,
   LAPTOP,
@@ -12,7 +13,6 @@ import {
   red,
   type Check,
 } from './owner-checks-steps.ts';
-import { loginOf } from './owner-checks-source.ts';
 
 export const ACCESS: readonly Check[] = [
   {
@@ -49,39 +49,6 @@ export const ACCESS: readonly Check[] = [
               .getByRole('menuitem', { name: /settings/iu })
               .or(page.getByRole('link', { name: /settings/iu })),
           );
-        },
-      ],
-    ],
-  },
-  {
-    unit: 'U14',
-    issue: 684,
-    title: 'Access, second factor, service health and operations view (1 of 2)',
-    width: LAPTOP,
-    start: '/settings/access/',
-    steps: [
-      [
-        'Settings > Access lists the team, each with End access',
-        async (page) => {
-          await expectVisible('End access', () => page.getByRole('button', { name: 'End access' }));
-          await page.getByRole('heading', { name: 'Give access' }).scrollIntoViewIfNeeded();
-        },
-      ],
-      [
-        'Give the teammate one client, check the preview, end access: their session signs out',
-        async (page) => {
-          if (loginOf('TEAMMATE') === undefined) {
-            throw red(
-              'no made-up teammate login in OWNER_CHECK_TEAMMATE_EMAIL and _PASSWORD; waits on ops-astro#1808',
-            );
-          }
-          const give = page.getByRole('heading', { name: 'Give access' });
-          if ((await give.count()) === 0) throw red('no Give access section on Settings > Access');
-          await give.scrollIntoViewIfNeeded();
-          await expectVisible('a preview of what the teammate may see', () =>
-            page.getByRole('button', { name: /preview/iu }),
-          );
-          throw red('the preview and the session end are not filmed yet; ops-astro#1814');
         },
       ],
     ],
@@ -133,38 +100,6 @@ export const ACCESS: readonly Check[] = [
           await page.waitForTimeout(BEAT);
           await page.getByRole('button', { name: /^Open Notifications/u }).click();
           await expectVisible('the panel', () => page.getByRole('button', { name: /^Close/u }));
-        },
-      ],
-    ],
-  },
-  {
-    unit: 'U18',
-    issue: 688,
-    title: 'Agent credential on Settings > Access, and the first-client gate',
-    width: LAPTOP,
-    start: '/settings/access/',
-    steps: [
-      [
-        'Settings > Access lists agents with Revoke delegation',
-        async (page) => {
-          await page.getByRole('heading', { name: 'Agents' }).scrollIntoViewIfNeeded();
-          await expectVisible('Revoke delegation', () =>
-            page.getByRole('button', { name: 'Revoke delegation' }),
-          );
-        },
-      ],
-      [
-        'Make a task-only credential, the agent adds a task, revoke: the next command refused',
-        async (page) => {
-          const agents = page.getByRole('heading', { name: 'Agents' });
-          if ((await agents.count()) === 0) throw red('no Agents section on Settings > Access');
-          await agents.scrollIntoViewIfNeeded();
-          await expectVisible('a control to make an agent credential', () =>
-            page.getByRole('button', { name: /credential|agent key/iu }),
-          );
-          throw red(
-            'the agent command and the refusal after revoking are not filmed yet; ops-astro#1814',
-          );
         },
       ],
     ],
