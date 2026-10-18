@@ -12,8 +12,11 @@ import { savePreference } from '../../apps/web/src/data/preference-saves.ts';
 import { nextRequest, type Tag } from '../../apps/web/src/data/owned.ts';
 import { tabOwnerGeneration } from '../../apps/web/src/session/token.ts';
 import { adaToken, call, read, usePreferencesWorld } from '../api/preferences-world.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-usePreferencesWorld('newestprefwins');
+// The preferences world needs Postgres; with no server URL every case skips.
+const serverUrl = databaseUrlFromEnvironment();
+if (serverUrl !== undefined) usePreferencesWorld('newestprefwins');
 
 type Step = (stored: () => Promise<Response>, body: Record<string, unknown>) => Promise<Response>;
 
@@ -56,63 +59,69 @@ const turn = (): Promise<void> =>
     setTimeout(resolve, 0);
   });
 
-it('an older save stored after the newest one but answering first does not keep the older choice', async () => {
-  const older = gate();
-  const newer = gate();
-  // The older sign-in's save is slow to reach the server; the newer one's answer is slow to come back.
-  const first = signIn(async (stored) => {
-    await older.open;
-    return stored();
-  });
-  const latest = signIn(async (stored) => {
-    const answer = await stored();
-    await newer.open;
-    return answer;
-  });
-  const person = 'alpha:ada:answers-out-of-order';
-  const dark = savePreference(first, 'appearance', 'dark', tag(person));
-  await turn();
-  const light = savePreference(latest, 'appearance', 'light', tag(person));
-  await turn();
-  expect((await read(adaToken))['appearance']).toBe('light');
-  older.release();
-  expect(await dark).toMatchObject({ ok: true });
-  expect((await read(adaToken))['appearance']).toBe('dark');
-  newer.release();
-  expect(await light).toMatchObject({ ok: true });
-  await turn();
-  await turn();
-  expect((await read(adaToken))['appearance']).toBe('light');
-});
+it.skipIf(serverUrl === undefined)(
+  'an older save stored after the newest one but answering first does not keep the older choice',
+  async () => {
+    const older = gate();
+    const newer = gate();
+    // The older sign-in's save is slow to reach the server; the newer one's answer is slow to come back.
+    const first = signIn(async (stored) => {
+      await older.open;
+      return stored();
+    });
+    const latest = signIn(async (stored) => {
+      const answer = await stored();
+      await newer.open;
+      return answer;
+    });
+    const person = 'alpha:ada:answers-out-of-order';
+    const dark = savePreference(first, 'appearance', 'dark', tag(person));
+    await turn();
+    const light = savePreference(latest, 'appearance', 'light', tag(person));
+    await turn();
+    expect((await read(adaToken))['appearance']).toBe('light');
+    older.release();
+    expect(await dark).toMatchObject({ ok: true });
+    expect((await read(adaToken))['appearance']).toBe('dark');
+    newer.release();
+    expect(await light).toMatchObject({ ok: true });
+    await turn();
+    await turn();
+    expect((await read(adaToken))['appearance']).toBe('light');
+  },
+);
 
-it('a retry of the newest save whose answer was lost does not leave an older save stored over it', async () => {
-  const older = gate();
-  let lose = true;
-  const first = signIn(async (stored) => {
-    await older.open;
-    return stored();
-  });
-  // The newest save is stored, and its answer is lost on the way back once.
-  const latest = signIn(async (stored) => {
-    const answer = await stored();
-    if (!lose) return answer;
-    lose = false;
-    return new Response('upstream gone', { status: 503 });
-  });
-  const person = 'alpha:ada:lost-newest-answer';
-  const dark = savePreference(first, 'appearance', 'dark', tag(person));
-  await turn();
-  const lost = await savePreference(latest, 'appearance', 'light', tag(person));
-  expect(lost).toMatchObject({ unavailable: true });
-  older.release();
-  expect(await dark).toMatchObject({ ok: true });
-  await turn();
-  // The person sees the save did not answer and makes the same choice again: the same intent,
-  // so its operation id is the lost one's and the server replays the stored outcome.
-  expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
-    ok: true,
-  });
-  await turn();
-  await turn();
-  expect((await read(adaToken))['appearance']).toBe('light');
-});
+it.skipIf(serverUrl === undefined)(
+  'a retry of the newest save whose answer was lost does not leave an older save stored over it',
+  async () => {
+    const older = gate();
+    let lose = true;
+    const first = signIn(async (stored) => {
+      await older.open;
+      return stored();
+    });
+    // The newest save is stored, and its answer is lost on the way back once.
+    const latest = signIn(async (stored) => {
+      const answer = await stored();
+      if (!lose) return answer;
+      lose = false;
+      return new Response('upstream gone', { status: 503 });
+    });
+    const person = 'alpha:ada:lost-newest-answer';
+    const dark = savePreference(first, 'appearance', 'dark', tag(person));
+    await turn();
+    const lost = await savePreference(latest, 'appearance', 'light', tag(person));
+    expect(lost).toMatchObject({ unavailable: true });
+    older.release();
+    expect(await dark).toMatchObject({ ok: true });
+    await turn();
+    // The person sees the save did not answer and makes the same choice again: the same intent,
+    // so its operation id is the lost one's and the server replays the stored outcome.
+    expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
+      ok: true,
+    });
+    await turn();
+    await turn();
+    expect((await read(adaToken))['appearance']).toBe('light');
+  },
+);

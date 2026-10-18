@@ -12,8 +12,11 @@ import { savePreference } from '../../apps/web/src/data/preference-saves.ts';
 import { nextRequest, type Tag } from '../../apps/web/src/data/owned.ts';
 import { tabOwnerGeneration } from '../../apps/web/src/session/token.ts';
 import { adaToken, call, read, usePreferencesWorld } from '../api/preferences-world.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-usePreferencesWorld('sol1502repair');
+// The preferences world needs Postgres; with no server URL every case skips.
+const serverUrl = databaseUrlFromEnvironment();
+if (serverUrl !== undefined) usePreferencesWorld('sol1502repair');
 
 type Step = (stored: () => Promise<Response>, body: Record<string, unknown>) => Promise<Response>;
 
@@ -56,42 +59,45 @@ const turn = (): Promise<void> =>
     setTimeout(resolve, 0);
   });
 
-it('retrying the newest choice after an unavailable repair stores that choice', async () => {
-  const held = gate();
-  const first = signIn(async (stored) => {
-    await held.open;
-    return stored();
-  });
-  let firstId: unknown;
-  let attempts = 0;
-  const latest = signIn(async (stored, body) => {
-    attempts++;
-    if (attempts === 1) {
-      firstId = body['operationId'];
-      await stored();
-      return new Response('lost answer', { status: 503 });
-    }
-    // The repair's fresh operation never reaches storage; the person's retry does.
-    if (attempts === 2 && body['operationId'] !== firstId)
-      return new Response('unavailable', { status: 503 });
-    return stored();
-  });
-  const person = 'alpha:ada:lost-repair';
-  const dark = savePreference(first, 'appearance', 'dark', tag(person));
-  await turn();
-  expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
-    unavailable: true,
-  });
-  expect((await read(adaToken))['appearance']).toBe('light');
-  held.release();
-  await dark;
-  await turn();
-  await turn();
-  expect((await read(adaToken))['appearance']).toBe('dark');
-  expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
-    ok: true,
-  });
-  await turn();
-  await turn();
-  expect((await read(adaToken))['appearance']).toBe('light');
-});
+it.skipIf(serverUrl === undefined)(
+  'retrying the newest choice after an unavailable repair stores that choice',
+  async () => {
+    const held = gate();
+    const first = signIn(async (stored) => {
+      await held.open;
+      return stored();
+    });
+    let firstId: unknown;
+    let attempts = 0;
+    const latest = signIn(async (stored, body) => {
+      attempts++;
+      if (attempts === 1) {
+        firstId = body['operationId'];
+        await stored();
+        return new Response('lost answer', { status: 503 });
+      }
+      // The repair's fresh operation never reaches storage; the person's retry does.
+      if (attempts === 2 && body['operationId'] !== firstId)
+        return new Response('unavailable', { status: 503 });
+      return stored();
+    });
+    const person = 'alpha:ada:lost-repair';
+    const dark = savePreference(first, 'appearance', 'dark', tag(person));
+    await turn();
+    expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
+      unavailable: true,
+    });
+    expect((await read(adaToken))['appearance']).toBe('light');
+    held.release();
+    await dark;
+    await turn();
+    await turn();
+    expect((await read(adaToken))['appearance']).toBe('dark');
+    expect(await savePreference(latest, 'appearance', 'light', tag(person))).toMatchObject({
+      ok: true,
+    });
+    await turn();
+    await turn();
+    expect((await read(adaToken))['appearance']).toBe('light');
+  },
+);
