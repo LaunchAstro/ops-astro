@@ -8,7 +8,9 @@
 // arriving late. A question refused on its own first answer, a changed one,
 // or one asked again after its answer, goes afresh. The production client
 // runs the real send path over a stand-in API; this proves the identities
-// sent, and the real-register suite proves the rows.
+// sent, and the real-register suite proves the rows. A lost start replayed
+// after another question started the tab answers under itself, and the tab
+// stays on the conversation it is on.
 
 import { afterEach, expect, it } from 'vitest';
 import { settle } from '../surfaces/mount.tsx';
@@ -96,4 +98,19 @@ it('the same question asked again after its answer came goes under a fresh ident
   const messages = identities(api.sent, 'conversation.message');
   expect(messages).toHaveLength(2);
   expect(messages[1]).not.toBe(messages[0]);
+});
+
+it('a lost first question replayed after another question started the tab answers under itself and leaves the tab on that conversation', async () => {
+  const api = standIn({ 'conversation.start': ['drop'] });
+  await (
+    await drawer(api.client)
+  )('Question A', 'Question B', 'Question A');
+  // The stand-in numbers conversations as they commit: A's is 1, B's is 2.
+  const address = document.querySelector('[data-assistant="address"]')?.getAttribute('href');
+  expect(address).toBe('/agent/c0000000-0000-4000-8000-000000000002');
+  const lines = [...document.querySelectorAll<HTMLElement>('[data-message-role]')].map(
+    (line) => `${line.dataset['messageRole'] ?? ''}: ${line.textContent ?? ''}`,
+  );
+  expect(lines.slice(-2)).toEqual(['user: Question A', 'ai: ']);
+  expect(api.committed).toEqual(['conversation.start', 'conversation.start']);
 });
