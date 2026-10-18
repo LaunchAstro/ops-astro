@@ -17,13 +17,12 @@
 // **Frozen once clicked.** The click keeps the chosen task's id, and only the
 // id, in the tab by the reply's message id, and every later click on that
 // reply, after a reload too, sends that task again, so a retry presents the
-// same payload under the same operation id and the register replays it.
+// same payload under the same operation id and the register replays it. No
+// later click pushes a choice out, and a choice the tab cannot keep is not
+// sent: nothing is written that a reload could not send again.
 
 import { PICK_SIZE, type AssistantPick, type AssistantPickMove } from '@launchastro/ui';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
-
-/** At most this many frozen choices are kept in a tab, the newest. */
-export const CHOICE_LIMIT = 32;
 
 /** At most this many targets are read from one reply. */
 export const TARGET_LIMIT = 500;
@@ -84,9 +83,7 @@ export function moved(pick: AssistantPick, move: AssistantPickMove): AssistantPi
 type Choices = Readonly<Record<string, string>>;
 
 const isChoices = (value: unknown): value is Choices =>
-  isRecord(value) &&
-  Object.keys(value).length <= CHOICE_LIMIT &&
-  Object.entries(value).every(([id, taskId]) => isUuid(id) && isUuid(taskId));
+  isRecord(value) && Object.entries(value).every(([id, taskId]) => isUuid(id) && isUuid(taskId));
 
 /** The session's own slot; with no session, none, so nothing is kept (as `kept.ts`). */
 const choiceSlot = (grantKey: string | undefined) =>
@@ -111,7 +108,8 @@ export function restored(
 
 /**
  * The target a click on reply `source` writes: the choice frozen in the tab,
- * or else the one chosen now, which it freezes. Null when that is no target.
+ * or else the one chosen now, once the tab holds it frozen. Null when that is
+ * no target, or the tab could not keep it.
  */
 export function pickedTarget(
   grantKey: string | undefined,
@@ -123,8 +121,8 @@ export function pickedTarget(
   const target = pick.targets.find((each) => each.taskId === (frozen ?? pick.chosen));
   if (target === undefined) return null;
   if (frozen === undefined) {
-    const kept = Object.entries({ ...slot.read(), [source]: target.taskId });
-    slot.write(Object.fromEntries(kept.slice(-CHOICE_LIMIT)));
+    slot.write({ ...slot.read(), [source]: target.taskId });
+    if (slot.read()?.[source] !== target.taskId) return null;
   }
   return target;
 }
