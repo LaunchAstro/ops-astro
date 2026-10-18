@@ -165,8 +165,8 @@ interface EarlierDays {
  * while one is on its way, whatever a refresh does. A failure withdraws the
  * window as a refresh's would, and retires the refresh in flight. A page joins
  * only the window it left from, with no failure landed since; one that joins
- * while a refresh is in flight starts the refresh again, since that one reads
- * only the days before it.
+ * while a refresh is in flight asks for another once that one ends, since it
+ * reads only the days before the page.
  */
 function useEarlierDays(client: OperationsClient, log: WindowRead): EarlierDays {
   const [asking, setAsking] = useState<Asking | null>(null);

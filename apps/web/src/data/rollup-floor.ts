@@ -5,8 +5,6 @@
 // while the tab is visible, at once when it is shown again or comes back
 // online, and not at all while hidden.
 
-import { useEffect } from 'react';
-import type { AuthorisedRead } from './authorised-read.ts';
 import { FLOOR_MS, type HubOptions } from './live.ts';
 
 /** The floor for pages no topic reaches (C4 CS-1.2): agency-wide rollups. */
@@ -77,56 +75,4 @@ export function createRollupFloor({
   visible = () => document.visibilityState === 'visible',
 }: HubOptions = {}): RollupFloor {
   return new Floor(visible);
-}
-
-/**
- * How long a read in flight is waited for before a floor tick asks again:
- * three floors, less half of one, so a tick that runs a little early still
- * counts as the fourth.
- */
-const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS - FLOOR_MS / 2;
-
-/**
- * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
- * rather than superseding it: a newer read would retire its answer, so reads
- * slower than the floor would never land.
- *
- * Given the projection, reads have no transport timeout, so a read still in
- * flight `ROLLUP_PATIENCE_MS` after a tick first found it is superseded, and a
- * revoke still draws. The wait is time on the monotonic clock, so tab-shows do
- * not shorten it, and every re-read (`waitedFrom` is cleared by `reread`)
- * starts it again.
- *
- * Given the read in flight instead (`coalesce`), the run bounds its own time:
- * a tick that finds it sets one follow-up, started when it ends unless another
- * read has begun by then, and never supersedes it.
- */
-export function useRollup<T>(
-  rollup: RollupFloor | undefined,
-  inFlight:
-    { readonly current: AuthorisedRead<T> | null } | { readonly current: Promise<void> | null },
-  waitedFrom: { current: number | null },
-  reload: () => void,
-): void {
-  useEffect(() => {
-    let following = false;
-    return rollup?.follow(() => {
-      const now = inFlight.current;
-      if (now instanceof Promise) {
-        if (following) return;
-        following = true;
-        void now.finally(() => {
-          following = false;
-          if (inFlight.current === null) reload();
-        });
-        return;
-      }
-      if (now?.state.outcome === 'loading') {
-        const at = performance.now();
-        waitedFrom.current ??= at;
-        if (at - waitedFrom.current < ROLLUP_PATIENCE_MS) return;
-      }
-      reload();
-    });
-  }, [rollup, inFlight, waitedFrom, reload]);
 }

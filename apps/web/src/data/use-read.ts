@@ -16,7 +16,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
 import { dropsAnswer } from './read-breaks.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
-import { useRollup, type RollupFloor } from './rollup-floor.ts';
+import type { RollupFloor } from './rollup-floor.ts';
 import { isRefusal, type CallResult } from '../operations/client.ts';
 
 /**
@@ -44,9 +44,9 @@ export interface UseReadOptions<T> {
   /** Which published answers break what the host admits; refused or out when absent. */
   readonly breaks?: (state: ReadState<T>) => boolean;
   /**
-   * One read at a time on the rollup floor: a tick that finds a read in flight
-   * asks for one more when it ends, and never supersedes it. For a run that
-   * bounds its own time, so a read slower than the floor still lands.
+   * One read at a time: a reload, the rollup floor's included, that finds a
+   * read in flight starts one more when it ends, and never supersedes it. For
+   * a run that bounds its own time, so a read slower than the floor still lands.
    */
   readonly coalesce?: boolean;
 }
@@ -82,6 +82,9 @@ export interface UseReadLive<T> extends UseReadResult<T> {
   /** Breaks (`breaks`, and refusals of superseded reads) counted as each lands, drawn or not. */
   readonly breaks: number;
 }
+
+/** No read to wait for: a coalescing read's reload does its own waiting. */
+const IDLE = { current: null } as const;
 
 /** The states a projection starts from: a first read, not a re-read of one. */
 const opening = new WeakSet<ReadState<unknown>>();
@@ -184,9 +187,19 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     },
     [start],
   );
+  const coalesce = options.coalesce === true;
   const reload = useCallback(() => {
-    reread(false);
-  }, [reread]);
+    const running = flight.current;
+    const projection = readRef.current;
+    if (!coalesce || running === null) {
+      reread(false);
+      return;
+    }
+    // Once it ends, unless another read has begun or the projection is another reader's.
+    void running.finally(() => {
+      if (flight.current === null && readRef.current === projection) reread(false);
+    });
+  }, [reread, coalesce]);
 
   const refresh = useCallback(() => {
     reread(true);
@@ -243,7 +256,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // hold back from recovery (#397).
   useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
-  useRollup(options.rollup, options.coalesce === true ? flight : readRef, waitedFrom, reload);
+  useRollup(options.rollup, coalesce ? IDLE : readRef, waitedFrom, reload);
 
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
@@ -258,6 +271,42 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     live: own && liveRef.current && state.outcome === 'loading',
     breaks,
   };
+}
+
+/**
+ * How long a read in flight is waited for before a floor tick asks again:
+ * three floors, less half of one, so a tick that runs a little early still
+ * counts as the fourth.
+ */
+const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS - FLOOR_MS / 2;
+
+/**
+ * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
+ * rather than superseding it: a newer read would retire its answer, so reads
+ * slower than the floor would never land. Reads have no transport timeout, so
+ * a read still in flight `ROLLUP_PATIENCE_MS` after a tick first found it is
+ * superseded, and a revoke still draws. The wait is time on the monotonic
+ * clock, so tab-shows do not shorten it, and every re-read (`waitedFrom` is
+ * cleared by `reread`) starts it again.
+ */
+function useRollup<T>(
+  rollup: RollupFloor | undefined,
+  readRef: { readonly current: AuthorisedRead<T> | null },
+  waitedFrom: { current: number | null },
+  reload: () => void,
+): void {
+  useEffect(
+    () =>
+      rollup?.follow(() => {
+        if (readRef.current?.state.outcome === 'loading') {
+          const now = performance.now();
+          waitedFrom.current ??= now;
+          if (now - waitedFrom.current < ROLLUP_PATIENCE_MS) return;
+        }
+        reload();
+      }),
+    [rollup, readRef, waitedFrom, reload],
+  );
 }
 
 /** Whether two dependency lists match, compared the way React compares them. */
