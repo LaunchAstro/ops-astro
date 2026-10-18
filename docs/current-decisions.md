@@ -53,8 +53,9 @@ and d; the round register, items 10, 11 and 13).
 - Single-operator mode is a business setting, `single_operator_mode`, off by
   default, set by `settings.set_single_operator` under `settings:manage`.
   Turning it on is refused unless the business has exactly one operator.
-  Adding a second operator, or making a second person one, turns it off in
-  the same transaction, whatever wrote the membership.
+  A membership change that leaves the business without exactly one operator
+  (a second added, or the last ended) turns it off in the same transaction,
+  whatever wrote the membership.
 - While it is on, the configured approver may approve a live correction they
   requested themselves, or one their own agent requested. This covers the
   owner's own hand-typed request too, not only the agent's. The decision
@@ -62,7 +63,8 @@ and d; the round register, items 10, 11 and 13).
   operator added while it waits is seen and the approval refused with nothing
   written.
 - The business's first such approval also needs Astra's review recorded on
-  the correction, bound to its exact version digest and approving it. The
+  the correction, bound to its exact version digest and approving it; the
+  latest review of that version is the one that counts. The
   owner records it with `live_correction.record_review`, carrying Astra's
   saved review and the digest, which the server checks against the stored
   version (owner question c, the recommended answer). The server refuses

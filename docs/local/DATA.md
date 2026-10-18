@@ -1016,9 +1016,9 @@ by `settings.set_single_operator`, which refuses turning it on
 active membership in the owner, admin or member role. The migration adds the
 row to every business that has settings; `installBusinessSettings` adds it to
 a later one. `memberships_end_single_operator` runs after every membership
-insert or update that makes an operator: it locks the setting's row for update
-and turns the mode off once there are two, in the same transaction, moving its
-revision. It is the one writer of a setting besides `writeBusinessSetting`.
+insert or update: it locks the setting's row for update and turns the mode off
+once the business has any number of operators but one (a second, or none), in
+the same transaction, moving its revision. It is the one writer of a setting besides `writeBusinessSetting`.
 
 `live_corrections.single_operator_self_approval` marks an approval by the
 person who requested the correction. `live_corrections_no_self_approval` now
@@ -1029,7 +1029,8 @@ decision, only while the mode is on, and never changes it after.
 `live_correction.decide` writes the mark after it share-locks the mode's row,
 counts one operator, and, for the business's first such approval, finds
 Astra's approving review of the correction's exact version digest
-(`ASTRA_REVIEW_MISSING` otherwise).
+(`ASTRA_REVIEW_MISSING` otherwise): the latest review of that digest counts, so a
+later `changes_requested` withdraws an earlier approval.
 
 `live_correction_reviews` holds Astra's review of a correction: the version
 digest it read, its verdict (`approve` or `changes_requested`) and the saved

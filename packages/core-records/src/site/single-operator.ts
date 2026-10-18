@@ -47,20 +47,24 @@ export async function hasSelfApproved(tx: TenantQuery): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Whether Astra's review of this correction approves this exact version. */
+/**
+ * Whether Astra's latest review of this exact version approves it: a later
+ * `changes_requested` withdraws an earlier approval. Reviews of one correction
+ * are written under its row lock, so the latest is the one written last.
+ */
 export async function reviewApproves(
   tx: TenantQuery,
   correctionId: string,
   versionDigest: string,
 ): Promise<boolean> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.live_correction_reviews
+  const [latest] = await tx.query<{ readonly verdict: string }>(
+    `select verdict from public.live_correction_reviews
       where business_id = $1 and correction_id = $2 and version_digest = $3
-        and verdict = 'approve'
+      order by created_at desc, id desc
       limit 1`,
     [tx.businessId, correctionId, versionDigest],
   );
-  return rows.length > 0;
+  return latest?.verdict === 'approve';
 }
 
 export interface NewReview {

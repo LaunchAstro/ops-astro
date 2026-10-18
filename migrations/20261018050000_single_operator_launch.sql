@@ -5,13 +5,14 @@
 --
 -- An operator is an active member in a staff role (owner, admin or member),
 -- the people `isActiveMember` admits as the configured approver. The business
--- setting `single_operator_mode` is on only while the business has one: its
--- command refuses turning it on otherwise, and the trigger below turns it off
--- in the transaction that makes a second operator, whatever writes the
--- membership. That trigger locks the setting's row for update whenever it
--- makes an operator, so a decision that share-locks the row and then counts
--- the operators either waits for that membership and counts it, or is
--- counted before it.
+-- setting `single_operator_mode` is on only while the business has exactly
+-- one: its command refuses turning it on otherwise, and the trigger below
+-- turns it off in the transaction of any membership write that leaves the
+-- business with another number (a second operator, or none), whatever writes
+-- the membership. That trigger locks the setting's row for update on every
+-- membership write, so a decision that share-locks the row and then counts the
+-- operators either waits for that membership and counts it, or is counted
+-- before it.
 --
 -- A decision by the person who requested the correction stands only on a row
 -- carrying `single_operator_self_approval`, an approval written while the mode
@@ -31,7 +32,7 @@ select s.business_id, gen_random_uuid(), 'single_operator_mode', 'Single-operato
   from (select distinct business_id from public.business_settings) s
 on conflict do nothing;
 
--- A second operator turns the mode off, in the same transaction.
+-- Any number of operators but one turns the mode off, in the same transaction.
 create or replace function public.memberships_end_single_operator()
   returns trigger
   language plpgsql
@@ -39,18 +40,16 @@ create or replace function public.memberships_end_single_operator()
   set search_path = pg_catalog, public
 as $$
 begin
-  if new.active and new.ended_at is null and new.role_key in ('owner', 'admin', 'member') then
-    perform 1 from public.business_settings
-     where business_id = new.business_id and key = 'single_operator_mode'
-     for update;
-    update public.business_settings
-       set value = 'false'::jsonb, revision = revision + 1, updated_at = now()
-     where business_id = new.business_id and key = 'single_operator_mode'
-       and value = 'true'::jsonb
-       and (select count(distinct m.person_id) from public.memberships m
-             where m.business_id = new.business_id and m.active and m.ended_at is null
-               and m.role_key in ('owner', 'admin', 'member')) > 1;
-  end if;
+  perform 1 from public.business_settings
+   where business_id = new.business_id and key = 'single_operator_mode'
+   for update;
+  update public.business_settings
+     set value = 'false'::jsonb, revision = revision + 1, updated_at = now()
+   where business_id = new.business_id and key = 'single_operator_mode'
+     and value = 'true'::jsonb
+     and (select count(distinct m.person_id) from public.memberships m
+           where m.business_id = new.business_id and m.active and m.ended_at is null
+             and m.role_key in ('owner', 'admin', 'member')) <> 1;
   return null;
 end;
 $$;
@@ -122,7 +121,8 @@ create table public.live_correction_reviews (
   review                text        not null,
   recorded_by_actor_id  uuid        not null,
   recorded_by_person_id uuid        not null,
-  created_at            timestamptz not null default now(),
+  -- The instant of the insert, not the transaction's start: the latest review counts.
+  created_at            timestamptz not null default clock_timestamp(),
   constraint live_correction_reviews_pkey primary key (id),
   constraint live_correction_reviews_tenant_id_key unique (business_id, id),
   constraint live_correction_reviews_business_fkey foreign key (business_id, business_id)
