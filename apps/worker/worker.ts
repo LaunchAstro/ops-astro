@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The worker's composition root and its two jobs: propose one versioned
-// synthetic change to the task its delegation is for (T2b), hand the approved
-// plan back for review (AW-08), and once a person launches the reviewed
-// output, apply it once (T2c2): pick the work up, dispatch the step, write
-// the one team-only comment under the operation identity derived from the
-// attempt, and observe it. Each step retried after a lost answer presents the
-// same identity, so it replays rather than repeats.
+// synthetic change to the task its delegation is for (T2b), compute the plan
+// and hand a success back for review (AW-08, #1623 R3), and once a person
+// launches the reviewed output, apply it once (T2c2): pick the work up,
+// dispatch the step, write the one team-only comment under the operation
+// identity derived from the attempt, and observe it. Each step retried after
+// a lost answer presents the same identity, so it replays rather than repeats.
 //
 // It is a client of the API and nothing more (spike RN-04). It talks through
 // the command line's own agent entry (`apps/cli/client.ts`), holds its own
@@ -23,7 +23,8 @@ import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
 import { proposeStep, selfOf, type Proposer } from './proposal.ts';
-import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
+import { handBackForReview, type HandedBack } from './review.ts';
+import { SYNTHETIC_RUNNER, type StepEnd, type StepRunner } from './step-runner.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
@@ -36,6 +37,8 @@ export interface WorkerOptions {
   readonly reporter: UsageReporter;
   /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
   readonly provider?: Provider;
+  /** What computes an accepted plan before its Launch (#1623 R3). Absent is the synthetic one. */
+  readonly runner?: StepRunner;
 }
 
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
@@ -57,6 +60,8 @@ export type WorkerOutcome =
     }
   /** The plan's work, handed back for review (AW-08, `review.ts`); its launch applies next. */
   | { readonly handedBack: HandedBack }
+  /** The plan's compute ended short of success: its stop recorded the outcome, and nothing is handed back. */
+  | { readonly ended: { readonly taskId: string } & StepEnd }
   /** The provider call dropped after the step was marked, and may have acted; handed back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
@@ -199,15 +204,9 @@ async function effectOnce(
   // A drop whose hand-back answer was lost: send the hand-back again, and
   // never call the provider a second time for this attempt.
   if (held.drop !== undefined) return await handBackDrop(held.drop);
-  const handBackForReview = async (operationId: string): Promise<WorkerOutcome> => {
-    const maximumMinor = options.reporter.estimate(SYNTHETIC_STEP);
-    const back = await call(
-      'task.handback',
-      reviewBody(lease, operationId, SYNTHETIC_STEP, maximumMinor),
-    );
-    return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
-  };
-  if (held.review !== undefined) return await handBackForReview(held.review.operationId);
+  const forReview = async (operationId: string): Promise<WorkerOutcome> =>
+    await handBackForReview(call, { taskId, lease, operationId }, SYNTHETIC_STEP, options.reporter);
+  if (held.review !== undefined) return await forReview(held.review.operationId);
   const commentAndObserve = async (effected: NonNullable<Held['effected']>) => {
     let commentId = effected.commentId;
     if (commentId === undefined) {
@@ -245,11 +244,14 @@ async function effectOnce(
   // comment, so the pass cannot prove the provider did nothing.
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
-  // AW-08: a plan's lease fires nothing; refused before any mark, it goes back for review.
+  // AW-08, #1623 R3: a plan's lease fires nothing; the runner computes, a success is reviewed.
   if ('refused' in dispatched && dispatched.refused.code === 'LAUNCH_NOT_DECIDED') {
+    const context = { phase: 'compute', taskId, attemptId, lease, call } as const;
+    const ended = await (options.runner ?? SYNTHETIC_RUNNER).compute(context);
+    if (ended.outcome !== 'success') return { ended: { taskId, ...ended } };
     const review = { operationId: randomUUID() };
     keep({ ...held, review });
-    return await handBackForReview(review.operationId);
+    return await forReview(review.operationId);
   }
   if (!('body' in dispatched)) return dispatched;
   // The provider start is made durable before the call, so a
