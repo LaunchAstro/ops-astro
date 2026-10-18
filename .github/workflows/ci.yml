@@ -521,6 +521,11 @@ jobs:
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
+    # `issues: read` lets the timing-failure rule read its quarantine's
+    # tickets, which this public repository shows anyone (scripts/timing-rule.ts).
+    permissions:
+      contents: read
+      issues: read
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
@@ -575,8 +580,17 @@ jobs:
       # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a merge
       # group or a push the wrapped command always runs, and the shards run on
       # nothing else. No step here carries a condition.
+      # The timing-failure rule (register item 50a, scripts/timing-rule.ts): on a
+      # merge group, which failures may run once more and which quarantined
+      # suites sit out, in a plan the runner reads. It fails the shard on a
+      # malformed .github/test-quarantine.json. A step of its own, so GH_TOKEN
+      # is never in a suite's environment.
+      - name: What the timing-failure rule lets this run re-run and leave out
+        env:
+          GH_TOKEN: ${{ github.event_name == 'merge_group' && github.token || '' }}
+        run: node scripts/timing-rule.ts prepare --out "$RUNNER_TEMP/timing-rule.json"
       # --without-isolation: the `isolation tests` shards run the isolation suites.
-      - run: node scripts/ci-scope.ts 'database conformance' --shard "$SHARD" -- pnpm run db:conformance --shard "$SHARD" --without-isolation
+      - run: node scripts/ci-scope.ts 'database conformance' --shard "$SHARD" -- pnpm run db:conformance --shard "$SHARD" --without-isolation --timing-rule "$RUNNER_TEMP/timing-rule.json"
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # T4a's clone past a reader dumps and restores inside the server's
@@ -856,7 +870,12 @@ jobs:
       # the merge queue, the only way into main, and passes, so the check
       # still reports under its name; on a merge group or a push each always
       # runs. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD"
+      # The timing-failure rule's plan, as in `database conformance`. An
+      # isolation suite is never quarantined, so here it only re-runs, and the
+      # plan reads no ticket: these shards hold no token (CQ-15).
+      - name: What the timing-failure rule lets this run re-run
+        run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/timing-rule.ts prepare --rerun-only --out "$RUNNER_TEMP/timing-rule.json"
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD" --timing-rule "$RUNNER_TEMP/timing-rule.json"
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a

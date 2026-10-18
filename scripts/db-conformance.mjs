@@ -16,7 +16,8 @@
 //   3. every named suite exists on disk;
 //   4. the suites ran, and more than zero tests executed;
 //   5. no test was skipped or marked todo;
-//   6. no test failed;
+//   6. no test failed (on a merge group, a suite the timing-failure rule
+//      re-ran is judged on its re-run; scripts/timing-rule.ts);
 //   7. the database's own transaction counter moved while each named suite
 //      ran, so every one of them reached it rather than passing beside it;
 //   8. every suite the manifest names appears in vitest's report, with tests
@@ -62,9 +63,18 @@
 //                 before reaching the database (tests/ci/ci-shards.test.ts).
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
 //   with SUITE_PART=i/k, sharded or not; every rule applies to each part.
+//   --timing-rule <plan>
+//                 the plan scripts/timing-rule.ts wrote for this run. On a
+//                 merge group, a suite the group does not touch that fails
+//                 only on its tests runs once more, and a pass is logged as
+//                 timing; a quarantined suite the group does not touch is
+//                 left out. Without it nothing is re-run or left out; a plan
+//                 it cannot read is refused.
+//   --quarantined runs only the plan's quarantined suites, for the nightly
+//                 run, and passes when there are none.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -80,6 +90,7 @@ import {
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
 import { manifestPathIn, readIsolationSuites, readNamedSuites, suiteList } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
+import { readRulePlan, touchedBy } from './timing-rule.ts';
 // One verdict line per run item, the only lines the journey's protected
 // verdicts read. Kept beside its reader; exported here as the runner's own.
 import { verdictLine } from './local/journey-proofs.ts';
@@ -111,6 +122,36 @@ try {
   console.error(`db-conformance: ${error instanceof Error ? error.message : String(error)}.`);
   process.exit(2);
 }
+
+// The timing-failure rule (scripts/timing-rule.ts) reads only the plan its own
+// step wrote, never the quarantine file or the API.
+const ruleFlag = argv.indexOf('--timing-rule');
+const quarantinedRun = argv.includes('--quarantined');
+let rule;
+try {
+  const planPath = ruleFlag === -1 ? undefined : (argv[ruleFlag + 1] ?? '');
+  if (planPath !== undefined && !existsSync(planPath)) {
+    throw new Error(`timing-rule plan: there is none at ${planPath}`);
+  }
+  rule = planPath === undefined ? undefined : readRulePlan(readFileSync(planPath, 'utf8'));
+} catch (error) {
+  console.error(`db-conformance: ${error instanceof Error ? error.message : String(error)}.`);
+  process.exit(2);
+}
+if (quarantinedRun && rule?.event !== 'nightly') {
+  console.error('db-conformance: --quarantined needs a nightly plan given with --timing-rule.');
+  process.exit(2);
+}
+const inGroup = rule?.event === 'merge_group';
+const quarantine = new Map((rule?.quarantined ?? []).map((entry) => [entry.test, entry]));
+/** Whether the group's diff misses the suite; one that cannot be read counts as touched. */
+const untouched = (suite) => {
+  try {
+    return !touchedBy(repoRoot, suite, rule?.changed ?? []);
+  } catch {
+    return false;
+  }
+};
 
 const url = (process.env['DATABASE_URL'] ?? '').trim();
 if (url === '') {
@@ -160,7 +201,15 @@ const shareOf = ({ index, count }) =>
         (item) => !ISOLATION_STEPS.includes(item),
       )
     : (assignShards(runItems, plan.seconds, count)[index - 1] ?? []);
-const toRun = shard === undefined ? runItems : shareOf(shard);
+const shardItems = shard === undefined ? runItems : shareOf(shard);
+// The nightly run takes every quarantined suite; a merge group leaves out each
+// quarantined suite it does not touch, and runs the rest of its share.
+const toRun = quarantinedRun
+  ? runItems.filter((item) => quarantine.has(itemOf(item).suite))
+  : shardItems.filter(
+      (item) => !(inGroup && quarantine.has(itemOf(item).suite) && untouched(itemOf(item).suite)),
+    );
+const leftOut = shardItems.filter((item) => !quarantinedRun && !toRun.includes(item));
 // Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
 // it never exits 0: a stray --list in a CI command fails that shard. It exits
 // once the list has left: a write to a full pipe is queued, and an exit
@@ -171,6 +220,26 @@ if (argv.includes('--list')) {
 }
 const shardLabel =
   shard === undefined ? '' : `shard ${String(shard.index)}/${String(shard.count)} `;
+
+if (quarantinedRun && toRun.length === 0) {
+  console.log('db-conformance: no suite is quarantined, so the nightly run has nothing to run.');
+  process.exit(0);
+}
+
+/** A line for the job's summary, when the job has one. */
+const summarise = (line) => {
+  const summary = process.env['GITHUB_STEP_SUMMARY'];
+  if (summary) appendFileSync(summary, `${line}\n`);
+};
+
+for (const item of leftOut) {
+  const { ticket, owner, expires } = quarantine.get(itemOf(item).suite);
+  const why = `quarantined, #${String(ticket)}, owner ${owner}, until ${expires}`;
+  console.log(
+    `db-conformance: ${item} is left out of this merge group: ${why} (.github/test-quarantine.json).`,
+  );
+  summarise(`- ${item}: ${why}; it runs nightly.`);
+}
 
 if (named.length > 0 && toRun.length === 0) {
   failures.push(
@@ -399,16 +468,73 @@ const runSuite = async (suite, part) => {
 
 const results = [];
 
+/**
+ * A failure its tests alone own: vitest exited 1 on a readable report of this
+ * suite only, with failed tests and nothing skipped, raised outside a test or
+ * unmeasured. Only this is re-run; any other failure is not timing.
+ */
+const failedOnItsTests = ({ suite, run, report, readError }) => {
+  const files = Array.isArray(report?.testResults) ? report.testResults : [];
+  return (
+    readError === undefined &&
+    (run.error ?? undefined) === undefined &&
+    run.signal === null &&
+    run.status === 1 &&
+    Number(report?.numFailedTests ?? 0) > 0 &&
+    Number(report?.numPendingTests ?? 0) + Number(report?.numTodoTests ?? 0) === 0 &&
+    (Array.isArray(report?.errors) ? report.errors.length : 0) === 0 &&
+    files.length === 1 &&
+    resolve(repoRoot, String(files[0]?.name ?? '')) === resolve(repoRoot, suite) &&
+    String(files[0]?.message ?? '').trim() === ''
+  );
+};
+const passed = ({ run, report, readError }) =>
+  readError === undefined &&
+  run.signal === null &&
+  run.status === 0 &&
+  report?.success !== false &&
+  Number(report?.numFailedTests ?? 1) === 0;
+const failedNames = (report) =>
+  (report?.testResults ?? [])
+    .flatMap((file) => file.assertionResults ?? [])
+    .filter((test) => test.status === 'failed')
+    .map((test) => String(test.fullName ?? test.title ?? 'unnamed test'));
+const timing = [];
+
 if (failures.length === 0) {
   // One at a time, and never Promise.all. The counter reads either side of a
   // suite are only that suite's if nothing else is touching the database
   // while it runs; run them in parallel and rule 7 becomes the whole-run
   // number this round removed.
   for (const item of toRun) {
+    const { suite, part } = itemOf(item);
     const started = performance.now();
     // eslint-disable-next-line no-await-in-loop
-    const result = await runSuite(itemOf(item).suite, itemOf(item).part);
+    let result = await runSuite(suite, part);
+    // The timing-failure rule: one re-run, on a merge group, of a suite the
+    // group does not touch that failed only on its tests. Every rule below
+    // judges the re-run's result.
+    if (inGroup && failedOnItsTests(result) && untouched(suite)) {
+      const failed = failedNames(result.report);
+      console.log(
+        `db-conformance: ${item} failed in a suite this group does not touch; running it once more (the timing-failure rule).`,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      result = await runSuite(suite, part);
+      if (passed(result)) timing.push({ item, failed });
+      else console.error(`db-conformance: ${item} failed again on its one re-run, so it blocks.`);
+    }
     results.push({ ...result, item, seconds: (performance.now() - started) / 1000 });
+  }
+
+  // Each pass on a re-run is logged as timing, with what a quarantine entry needs.
+  for (const { item, failed } of timing) {
+    const line = redactDetail(
+      `timing: ${item} (${failed.join('; ')}) failed, then passed on its one re-run; ` +
+        `run ${rule.run}; pull requests ${rule.pulls.map((n) => `#${n}`).join(', ')}`,
+    ).replaceAll(/\s+/gu, ' ');
+    console.log(`::warning title=timing::${line.replaceAll('%', '%25')}`);
+    summarise(`- ${line}`);
   }
 
   for (const { suite, run, report } of results) {

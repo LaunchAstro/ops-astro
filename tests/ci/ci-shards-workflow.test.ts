@@ -145,7 +145,7 @@ describe('the workflow', () => {
       s.run?.includes('scripts/db-conformance.mjs'),
     );
     expect(runner.map((s) => s.run)).toStrictEqual([
-      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD"`,
+      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD" --timing-rule "$RUNNER_TEMP/timing-rule.json"`,
     ]);
     expect(runner.map((s) => s.env?.['SHARD'])).toStrictEqual([SHARD]);
     expect(stepEnv('check', 'browser proofs')).toStrictEqual({ BROWSER_PROOFS: '1', SHARD });

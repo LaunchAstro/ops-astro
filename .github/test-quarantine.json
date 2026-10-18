@@ -1,0 +1,18 @@
+{
+  "comment": [
+    "The timing-failure rule's quarantine (register item 50a, owner, 18 October 2026; #1857). scripts/timing-rule.ts reads it and holds every rule.",
+    "A suite goes in after two merge-group runs where it failed apart from the diff (`timing` names both run ids), with a ticket to fix it. While its ticket is open and before `expires` (at most 14 days after `added`), a merge group that does not touch it leaves it out, and .github/workflows/quarantine-nightly.yml runs it each night.",
+    "A closed ticket or a passed expiry puts it back in the merge group. Remove the entry in the fix's pull request. A malformed entry fails the database shards."
+  ],
+  "tests": [
+    {
+      "test": "tests/ci/agent-login-provider-phase-rejudges.test.ts",
+      "reason": "The expiry case samples the operator's promise state on a timer instead of observing its lock wait, so under load it reads 'finished' where it needs 'waiting' (line 91). Fixed by #1800.",
+      "owner": "Nathan-Mulligan",
+      "ticket": 1798,
+      "added": "2026-10-18",
+      "expires": "2026-11-01",
+      "timing": [39095428326, 39097222489]
+    }
+  ]
+}
