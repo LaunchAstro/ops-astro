@@ -218,10 +218,7 @@ export interface CallDrop {
   readonly reconcileMode: string | null;
   /** How far the call got: held only, or sent to the provider. */
   readonly reached: 'accepted' | 'started';
-  /**
-   * The run's last event written before the call was held: where the work got
-   * to. By the write instant, so a drop the settlement records comes after it.
-   */
+  /** The run's last event before the call was held: where the work got to. */
   readonly afterEvent: number | null;
   /** What the pass last established. */
   readonly note: string | null;
@@ -241,7 +238,7 @@ export async function readCallDrops(tx: TenantQuery, taskId: string): Promise<re
             case when c.started_at is null then 'accepted' else 'started' end as reached,
             (select max(e.position)::int from public.run_events e
               where e.business_id = c.business_id and e.task_id = run.task_id
-                and coalesce(e.written_at, e.created_at) < c.unknown_since) as "afterEvent",
+                and e.created_at < c.unknown_since) as "afterEvent",
             c.reconcile_note as note, c.outcome
        from public.model_calls c
        join public.planned_runs run on run.business_id = c.business_id and run.id = c.run_id
