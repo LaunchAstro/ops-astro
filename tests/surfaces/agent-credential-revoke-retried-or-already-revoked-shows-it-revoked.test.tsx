@@ -92,7 +92,9 @@ describe('agent credential revocation on Settings ▸ Access', () => {
     expect(revokes.map((call) => call.body['operationId'])).toEqual([first, first]);
     shownRevoked(view);
   });
+});
 
+describe('agent credential revocation on Settings ▸ Access: other answers', () => {
   it('an answer that it is revoked already shows the credential revoked and drops the secret', async () => {
     let api: ReturnType<typeof server> | undefined;
     api = server(
