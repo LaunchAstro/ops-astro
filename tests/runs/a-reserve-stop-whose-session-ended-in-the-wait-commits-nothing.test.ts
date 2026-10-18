@@ -44,7 +44,7 @@ import {
   s,
   signedIn,
   useDoorWorld,
-} from './sol-1623-door-world.ts';
+} from './run-stop-door-world.ts';
 import { attemptOfLease } from './run-outcomes-read.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -138,7 +138,7 @@ const ORDERS: readonly Order[] = ['ended during the run wait', 'ending held over
 const STOPS: readonly Stop[] = ['rate', 'budget'];
 
 it.each(STOPS.flatMap((stop) => ORDERS.map((order) => [stop, order] as const)))(
-  'Sol 1623: a retained %s stop, session %s, is refused AUTH_SESSION_EXPIRED and commits nothing',
+  'a retained %s stop, session %s, is refused AUTH_SESSION_EXPIRED and commits nothing',
   async (stop, order) => {
     const work = await workFor(stop, `${stop} stop, session ended`);
     const before = await durable(work);
@@ -166,7 +166,7 @@ it.each([
   ['rate', 'cancelled', 'RATE_LIMITED'],
   ['budget', 'budget_wait', 'BUDGET_UNAVAILABLE'],
 ] as const)(
-  'Sol 1623 control: a retained %s stop on a live session commits one %s outcome, one retirement and one audit',
+  'control: a retained %s stop on a live session commits one %s outcome, one retirement and one audit',
   async (stop, outcome, endCode) => {
     const work = await workFor(stop, `${stop} stop, live session`);
     const before = await durable(work);
