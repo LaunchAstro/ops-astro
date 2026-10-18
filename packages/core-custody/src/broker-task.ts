@@ -56,36 +56,29 @@ const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
                  and ${HELD_THEN(`('owner')`)}) as owner_started`;
 
 /**
- * What S3 reads of the task, in a statement of its own after the lock: a
- * statement that waits on the lock rereads the task's row but keeps its
- * earlier view of the operations, so an edit committed during the wait would
- * be read without the write that made it.
- */
-/** Whether `person` held the owner role at `at`: membership history, as `HELD_THEN` reads it. */
-const OWNER_AT = (person: string, at: string): string => `exists (
-                   select 1 from public.memberships m
-                    where m.business_id = run.business_id and m.person_id = ${person}
-                      and m.role_key = 'owner' and m.joined_at <= ${at}
-                      and (m.ended_at is null or m.ended_at > ${at}))`;
-
-/**
  * Whether the owner started the run (#1620 P4): its version proposed by a
  * person then holding the owner role, and every approval of it given by one.
- * A run an agent or a schedule proposed, or a member approved, is not.
+ * A run an agent or a schedule proposed, or a member approved, is not. The
+ * standing is what the database stamped as each row was written (#1909),
+ * never membership history read now, which the application may rewrite.
  */
 const OWNER_RAN = `exists (select 1 from public.proposal_versions v
-                join public.actors pa on pa.business_id = v.business_id
-                                     and pa.id = v.proposed_by_actor_id
                where v.business_id = run.business_id and v.id = run.version_id
-                 and pa.kind = 'person' and ${OWNER_AT('pa.person_id', 'v.created_at')})
+                 and v.proposed_by_owner is true)
          and exists (select 1 from public.gate_decisions d
                where d.business_id = run.business_id and d.version_id = run.version_id
                  and d.decision = 'approve')
          and not exists (select 1 from public.gate_decisions d
                where d.business_id = run.business_id and d.version_id = run.version_id
                  and d.decision = 'approve'
-                 and not ${OWNER_AT('d.decided_by_person_id', 'd.decided_at')})`;
+                 and d.decided_by_owner is not true)`;
 
+/**
+ * What S3 reads of the task, in a statement of its own after the lock: a
+ * statement that waits on the lock rereads the task's row but keeps its
+ * earlier view of the operations, so an edit committed during the wait would
+ * be read without the write that made it.
+ */
 const READ_TASK = `select run.id::text as run_id, ${OWNER_RAN} as owner_ran,
             ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
