@@ -107,9 +107,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
   const replays: Replays = {
     resent: useRef(resends<Context>()).current,
-    keep: (reply, at) => {
-      keepBaseline(props.grantKey, reply, at);
-    },
+    keep: (reply, at) => keepBaseline(props.grantKey, reply, at),
   };
   const report = async (key: string, sent: Sent): Promise<boolean> => {
     const settled = settle(await sent);
@@ -121,7 +119,10 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
   const start = (opening: Omit<Opening, 'subject'>, on: Store): Promise<string | null> =>
-    startWith({ client: props.client, store, report, replays }, on, { ...opening, subject });
+    startWith({ client: props.client, store, report, replays, starts: starts.current }, on, {
+      ...opening,
+      subject,
+    });
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;

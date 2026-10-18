@@ -34,7 +34,12 @@ export interface Chat extends AssistantChat, Noted {
   readonly reading?: boolean;
   /** A kept conversation's task, from its read: what a proposal's edit applies to. */
   readonly taskId?: string | null;
+  /** When the person last set each field here, by the drawer's own counter (`stamp`). */
+  readonly stamps?: Readonly<Partial<Record<Field, number>>>;
 }
+
+/** The fields a person sets on a tab, which a fold reconciles (`started.ts`). */
+export type Field = 'title' | 'model' | 'page';
 
 export interface AssistantState {
   readonly chats: readonly Chat[];
@@ -49,6 +54,8 @@ export interface AssistantState {
   readonly answering: Readonly<Record<string, number>>;
   /** A tab folded into another (`started`), by key: what still lands for it lands there. */
   readonly folded: Readonly<Record<string, string>>;
+  /** The drawer's own counter for tab changes: an order no clock change can reorder (#897). */
+  readonly stamp?: number;
 }
 
 export interface AskEntry {
@@ -125,10 +132,26 @@ export function selecting(state: AssistantState, key: string): AssistantState {
 export const select = (state: AssistantState, key: string): AssistantState =>
   has(state, key) && state.selected !== key ? selecting(state, key) : state;
 
+/** Tab `key` changed by `edit`, its `field` stamped with the drawer's next count. */
+function stamped(
+  state: AssistantState,
+  key: string,
+  field: Field,
+  edit: (chat: Chat) => Chat,
+): AssistantState {
+  if (!has(state, key)) return state;
+  const stamp = (state.stamp ?? 0) + 1;
+  const next = change(state, key, (chat) => ({
+    ...edit(chat),
+    stamps: { ...chat.stamps, [field]: stamp },
+  }));
+  return { ...next, stamp };
+}
+
 export function rename(state: AssistantState, key: string, title: string): AssistantState {
   const trimmed = title.trim().slice(0, TAB_TITLE_LIMIT);
   if (trimmed === '') return state;
-  return change(state, key, (chat) => ({ ...chat, title: trimmed, reading: false }));
+  return stamped(state, key, 'title', (chat) => ({ ...chat, title: trimmed, reading: false }));
 }
 
 export function takeOut(state: AssistantState, key: string): AssistantState {
@@ -141,11 +164,11 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
 }
 
 export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
-  change(state, key, (chat) => ({ ...chat, model }));
+  stamped(state, key, 'model', (chat) => ({ ...chat, model }));
 
 /** The page in scope; a second one replaces the first, and its note with it (`page-note.ts`). */
 export const addPage = (state: AssistantState, key: string, page: AssistantPage): AssistantState =>
-  change(state, key, (chat) => noted(chat, page));
+  stamped(state, key, 'page', (chat) => noted(chat, page));
 
 export function ask(state: AssistantState, entry: AskEntry): AssistantState {
   const question = entry.question.trim();
