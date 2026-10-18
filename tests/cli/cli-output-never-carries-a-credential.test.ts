@@ -81,8 +81,8 @@ const ANSWERS: readonly {
   {
     name: 'a transport failure whose message carries both',
     route: (url) => {
-      if (api(url)) throw new TypeError(`connect failed ${BOTH}`);
-      return undefined;
+      if (!api(url)) return;
+      throw new TypeError(`connect failed ${BOTH}`);
     },
     exit: 3,
     shown: false,
@@ -98,8 +98,8 @@ const PATHS = [
 ] as const;
 
 describe('the command line never prints a credential it sent', () => {
-  for (const path of PATHS) {
-    for (const answer of ANSWERS) {
+  PATHS.flatMap((path) => ANSWERS.map((answer) => ({ path, answer }))).forEach(
+    ({ path, answer }) => {
       it(`${path.name}, ${answer.name}`, async () => {
         const stand = standIn(answer.route);
         vi.stubGlobal('fetch', stand.fetch);
@@ -113,8 +113,8 @@ describe('the command line never prints a credential it sent', () => {
         const heard = stand.seen.filter((one: Seen) => new URL(one.url).origin === PRODUCTION);
         expect(heard).toStrictEqual([]);
       });
-    }
-  }
+    },
+  );
 
   it('a bearer set by hand is redacted from an echo too', async () => {
     const hand = 'hand-set-bearer-echo-canary';

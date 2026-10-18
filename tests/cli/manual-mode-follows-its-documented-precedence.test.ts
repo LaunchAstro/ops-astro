@@ -91,19 +91,17 @@ const ROWS = [
 ] as const;
 
 describe('manual mode follows its documented order', () => {
-  for (const path of PATHS) {
-    for (const row of ROWS) {
-      it(`${path.name}: ${row.name}`, async () => {
-        await run([...path.argv, ...row.argv], { ...env, ...row.env });
-        expect(seen.length).toBe(1);
-        const [sent] = seen as [Seen];
-        expect(new URL(sent.url).origin).toBe(row.origin);
-        expect(sent.headers['authorization']).toBe(`Bearer ${row.bearer}`);
-        expect(sent.headers[DELEGATION_HEADER]).toBe(row.delegation);
-        for (const canary of PRESET_CANARIES) {
-          expect(holds(canary, JSON.stringify(seen)), 'a preset file was read').toBe(false);
-        }
-      });
-    }
-  }
+  PATHS.flatMap((path) => ROWS.map((row) => ({ path, row }))).forEach(({ path, row }) => {
+    it(`${path.name}: ${row.name}`, async () => {
+      await run([...path.argv, ...row.argv], { ...env, ...row.env });
+      expect(seen.length).toBe(1);
+      const [sent] = seen as [Seen];
+      expect(new URL(sent.url).origin).toBe(row.origin);
+      expect(sent.headers['authorization']).toBe(`Bearer ${row.bearer}`);
+      expect(sent.headers[DELEGATION_HEADER]).toBe(row.delegation);
+      for (const canary of PRESET_CANARIES) {
+        expect(holds(canary, JSON.stringify(seen)), 'a preset file was read').toBe(false);
+      }
+    });
+  });
 });

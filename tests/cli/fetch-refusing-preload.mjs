@@ -6,8 +6,8 @@
 
 import { appendFileSync } from 'node:fs';
 
-globalThis.fetch = async (input) => {
+globalThis.fetch = (input) => {
   const address = input instanceof Request ? input.url : String(input);
   appendFileSync(process.env.FETCH_RECORD ?? '', `${address}\n`);
-  throw new TypeError('fetch refused by the test preload');
+  return Promise.reject(new TypeError('fetch refused by the test preload'));
 };

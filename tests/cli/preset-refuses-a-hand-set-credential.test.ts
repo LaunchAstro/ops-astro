@@ -45,23 +45,20 @@ const PATHS = [
   },
 ] as const;
 
+const CASES = ['OPS_ASTRO_TOKEN', 'OPS_ASTRO_DELEGATION'].flatMap((variable) =>
+  ['sandbox', 'production'].flatMap((preset) => PATHS.map((path) => ({ variable, preset, path }))),
+);
+
 describe('a preset refuses a credential set by hand', () => {
-  for (const variable of ['OPS_ASTRO_TOKEN', 'OPS_ASTRO_DELEGATION']) {
-    for (const preset of ['sandbox', 'production']) {
-      for (const path of PATHS) {
-        it(`${variable} beside --env ${preset}, on ${path.name}`, async () => {
-          const canary = `${variable.toLowerCase()}-hand-set-canary`;
-          const refused = await run([...path.argv, '--env', preset], {
-            ...env,
-            [variable]: canary,
-          });
-          expect(refused.code).toBe(2);
-          expect(refused.err).toContain('--env');
-          expect(refused.err).toContain(variable);
-          expect(holds(canary, refused.out, refused.err)).toBe(false);
-          expect(seen).toStrictEqual([]);
-        });
-      }
-    }
-  }
+  CASES.forEach(({ variable, preset, path }) => {
+    it(`${variable} beside --env ${preset}, on ${path.name}`, async () => {
+      const canary = `${variable.toLowerCase()}-hand-set-canary`;
+      const refused = await run([...path.argv, '--env', preset], { ...env, [variable]: canary });
+      expect(refused.code).toBe(2);
+      expect(refused.err).toContain('--env');
+      expect(refused.err).toContain(variable);
+      expect(holds(canary, refused.out, refused.err)).toBe(false);
+      expect(seen).toStrictEqual([]);
+    });
+  });
 });

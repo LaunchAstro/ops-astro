@@ -51,8 +51,8 @@ const MISSING = [
 ] as const;
 
 describe('a preset never falls back to another bearer, or retries', () => {
-  for (const path of PATHS) {
-    for (const missing of MISSING) {
+  PATHS.flatMap((path) => MISSING.map((missing) => ({ path, missing }))).forEach(
+    ({ path, missing }) => {
       it(`${path.name} with ${missing.name}: exit 2, no bearer, nothing sent`, async () => {
         for (const file of missing.files) save(file, `${file}-bearer`);
         const refused = await run(path.argv, env);
@@ -61,8 +61,10 @@ describe('a preset never falls back to another bearer, or retries', () => {
         expect(refused.err).toContain('login --env sandbox');
         expect(seen).toStrictEqual([]);
       });
-    }
+    },
+  );
 
+  PATHS.forEach((path) => {
     it(`${path.name} with a stale bearer: one request to its own origin, then exit 1`, async () => {
       for (const file of ['token', 'token.sandbox', 'token.production']) save(file, `${file}-x`);
       const refused = await run(path.argv, env);
@@ -70,5 +72,5 @@ describe('a preset never falls back to another bearer, or retries', () => {
       expect(seen.map((one) => new URL(one.url).origin)).toStrictEqual([SANDBOX]);
       expect(seen[0]?.headers['authorization']).toBe('Bearer token.sandbox-x');
     });
-  }
+  });
 });

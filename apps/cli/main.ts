@@ -39,7 +39,7 @@ import {
 } from './client.ts';
 import { handoffOf } from '../../packages/core-wire/src/index.ts';
 import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
-import { createVerbCli, VERB_TABLE } from './verbs.ts';
+import { createVerbCli, prepare, VERB_TABLE, verbHelp } from './verbs.ts';
 import { stepUp } from './second-factor.ts';
 import {
   beginSave,
@@ -125,7 +125,7 @@ interface Connection {
  * preset's name appended, so a bearer signed in for one origin is never read
  * for another's (`designs/on-cli-rules.md`).
  */
-function connectionOf(flags: Parsed['flags'], env: Environment): Connection {
+export function connectionOf(flags: Parsed['flags'], env: Environment): Connection {
   let preset: Preset | undefined;
   try {
     preset = presetOf(flags, env);
@@ -141,6 +141,41 @@ function connectionOf(flags: Parsed['flags'], env: Environment): Connection {
     tokenFile: `${env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile}${suffix}`,
     delegationFile: `${env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile}${suffix}`,
   };
+}
+
+/** The business named by `--business` or `OPS_ASTRO_BUSINESS`, or a refusal. */
+function businessOf(flags: Parsed['flags'], env: Environment): string {
+  const businessKey = text(flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
+  if (businessKey === undefined || businessKey === '') {
+    throw new UsageError('name the business with --business or OPS_ASTRO_BUSINESS');
+  }
+  return businessKey;
+}
+
+/**
+ * The bearer and, for an agent, the delegation, each hidden from every line
+ * printed after it is read. Under a preset only its own files are read: a
+ * hand-set one beside it was refused (`presetOf`), and no other file stands
+ * in for a missing one. Without a preset the environment comes before the
+ * files ("Manual mode", docs/local/CLI.md).
+ */
+function credentialsOf(connection: Connection, env: Environment, agent: boolean, io: Shown) {
+  const { preset, tokenFile, delegationFile } = connection;
+  const hand = (name: string): string | undefined => (preset === undefined ? env[name] : undefined);
+  const credential = hand('OPS_ASTRO_TOKEN') ?? readOptional(tokenFile);
+  if (credential === undefined || credential === '') {
+    throw new UsageError(
+      preset === undefined
+        ? 'no bearer: set OPS_ASTRO_TOKEN or run `login` first'
+        : `no bearer: run \`login --env ${preset.name}\` first`,
+    );
+  }
+  io.hide(credential);
+  const delegation = agent
+    ? (hand('OPS_ASTRO_DELEGATION') ?? readOptional(delegationFile))
+    : undefined;
+  io.hide(delegation);
+  return { credential, delegation };
 }
 
 /**
@@ -247,6 +282,34 @@ interface Io {
   readonly err: (line: string) => void;
   /** Piped stdin whole, or at a terminal one answer typed after `label` with echo off. */
   readonly stdin: (label?: string) => Promise<string>;
+}
+
+/** An `Io` that prints no credential it has been told of. */
+interface Shown extends Io {
+  readonly hide: (value: string | undefined) => void;
+}
+
+/**
+ * `io` with each credential this run sent replaced by `(redacted)` in every
+ * line, on stdout and stderr: an echoed body, a refusal's fixes, a fault's
+ * text. Only the exact value is caught, not an encoded copy; the server's rule
+ * against echoing a credential stays the first guard.
+ */
+function scrubbed(io: Io): Shown {
+  const hidden: string[] = [];
+  const scrub = (line: string): string =>
+    hidden.reduce((said, value) => said.replaceAll(value, '(redacted)'), line);
+  return {
+    out: (line) => io.out(scrub(line)),
+    err: (line) => io.err(scrub(line)),
+    stdin: io.stdin,
+    hide: (value) => {
+      if (value === undefined || value === '') return;
+      hidden.push(value);
+      // The longer first, so one value inside another is never half shown.
+      hidden.sort((one, other) => other.length - one.length);
+    },
+  };
 }
 
 /**
@@ -366,49 +429,74 @@ export function isVerbLine(argv: readonly string[]): boolean {
   return group === 'help' || VERB_TABLE.some((row) => row.verb === `${group ?? ''} ${verb ?? ''}`);
 }
 
-/** A verb line (`pnpm cli task get <id>`): the connection read as an operation's, the rest to `verbs.ts`. */
-async function verbLine(argv: readonly string[], env: Environment, io: Io): Promise<number> {
+/** A verb line's connection flags, in both forms and never empty; everything else is the verb's. */
+const CONNECTION_FLAGS = new Set(['api', 'gotrue', 'web', 'env', 'business']);
+
+function connectionFlags(argv: readonly string[]): {
+  readonly flags: Parsed['flags'];
+  readonly rest: readonly string[];
+} {
+  const flags: Record<string, string | true> = {};
   const rest: string[] = [];
-  const connection: Record<string, string | true> = {};
   for (let at = 0; at < argv.length; at += 1) {
     const argument = argv[at] as string;
-    const name = argument.slice(2);
-    if (argument === '--agent') connection['agent'] = true;
-    else if (argument === '--business' || argument === '--api') {
-      connection[name] = argv[(at += 1)] ?? '';
+    const [name = '', inline] = argument.startsWith('--') ? argument.slice(2).split(/=(.*)/su) : [];
+    if (name === 'agent') flags['agent'] = true;
+    else if (CONNECTION_FLAGS.has(name)) {
+      const value = inline ?? argv[(at += 1)];
+      if (value === undefined || value === '') throw new UsageError(`--${name} needs a value`);
+      flags[name] = value;
     } else rest.push(argument);
   }
-  const help = rest[0] === 'help';
-  const businessKey = text(connection, 'business') ?? env['OPS_ASTRO_BUSINESS'] ?? '';
-  const credential =
-    env['OPS_ASTRO_TOKEN'] ?? readOptional(env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile) ?? '';
-  if (!help && (businessKey === '' || credential === '')) {
-    io.err('cli: name the business (--business or OPS_ASTRO_BUSINESS) and sign in (`login`) first');
+  return { flags, rest };
+}
+
+/**
+ * A verb line (`pnpm cli task get <id>`). Everything that can be refused
+ * without a credential is refused first: the connection flags, the verb line
+ * itself (`prepare`), the preset and the business. Only then are the bearer
+ * and the delegation read, and the request sent.
+ */
+async function verbLine(argv: readonly string[], env: Environment, io: Shown): Promise<number> {
+  let send: () => ReturnType<ReturnType<typeof createVerbCli>['send']>;
+  try {
+    const { flags, rest } = connectionFlags(argv);
+    if (rest[0] === 'help') {
+      io.out(verbHelp());
+      return EXIT.ok;
+    }
+    const agent = flags['agent'] === true || env['OPS_ASTRO_AGENT'] === '1';
+    const prepared = prepare(rest, agent);
+    if (!('row' in prepared)) {
+      (prepared.exit === EXIT.usage ? io.err : io.out)(prepared.out);
+      return prepared.exit;
+    }
+    const connection = connectionOf(flags, env);
+    const businessKey = businessOf(flags, env);
+    const { credential, delegation } = credentialsOf(connection, env, agent, io);
+    const cli = createVerbCli({
+      transport: httpTransport(connection.api),
+      businessKey: encodeURIComponent(businessKey),
+      credential,
+      entry: agent ? 'agent' : 'person',
+      ...(delegation === undefined ? {} : { delegation }),
+      address: shownAddress(connection.api),
+    });
+    send = async () => await cli.send(prepared);
+  } catch (cause) {
+    if (!(cause instanceof UsageError || cause instanceof CredentialsBusy)) throw cause;
+    io.err(`cli: ${cause.message}`);
     return EXIT.usage;
   }
-  const agent = connection['agent'] === true || env['OPS_ASTRO_AGENT'] === '1';
-  const delegation = agent
-    ? (env['OPS_ASTRO_DELEGATION'] ??
-      readOptional(env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile))
-    : undefined;
-  const base = text(connection, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api;
-  const api = base.replace(/\/$/u, '');
-  const cli = createVerbCli({
-    transport: httpTransport(api),
-    businessKey: encodeURIComponent(businessKey),
-    credential,
-    entry: agent ? 'agent' : 'person',
-    ...(delegation === undefined ? {} : { delegation }),
-    address: shownAddress(api),
-  });
-  const answer = await cli.run(rest);
+  const answer = await send();
   const said = answer.exit === EXIT.transport ? `cli: ${answer.out}` : answer.out;
   (answer.exit === EXIT.usage || answer.exit === EXIT.transport ? io.err : io.out)(said);
   return answer.exit;
 }
 
 // eslint-disable-next-line max-lines-per-function, max-statements -- one entry, read top to bottom
-export async function main(argv: readonly string[], env: Environment, io: Io): Promise<number> {
+export async function main(argv: readonly string[], env: Environment, given: Io): Promise<number> {
+  const io = scrubbed(given);
   if (isVerbLine(argv)) return await verbLine(argv, env, io);
   let parsed: Parsed;
   try {
@@ -457,19 +545,11 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     }
 
     const payload = body(parsed.flags);
-    const { api, tokenFile, delegationFile } = connectionOf(parsed.flags, env);
-    const businessKey = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
-    if (businessKey === undefined || businessKey === '') {
-      throw new UsageError('name the business with --business or OPS_ASTRO_BUSINESS');
-    }
-    const credential = env['OPS_ASTRO_TOKEN'] ?? readOptional(tokenFile);
-    if (credential === undefined || credential === '') {
-      throw new UsageError('no bearer: set OPS_ASTRO_TOKEN or run `login` first');
-    }
+    const connection = connectionOf(parsed.flags, env);
+    const { api, tokenFile, delegationFile } = connection;
+    const businessKey = businessOf(parsed.flags, env);
     const agent = parsed.flags['agent'] === true || env['OPS_ASTRO_AGENT'] === '1';
-    const delegation = agent
-      ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
-      : undefined;
+    const { credential, delegation } = credentialsOf(connection, env, agent, io);
     const saves = agent && (verb === 'task.pickup' || verb === 'run.delegate_child');
     if (saves) assertWritable(delegationFile, `${verb}'s credential`);
     // A logout that completes while this waits for its answer wins (`credentials.ts`).
@@ -623,9 +703,23 @@ async function readStdin(label = 'password'): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * The process entry: `main`, with a throw nothing else expected answered by
+ * one fixed line and exit 4. The error's text and stack never print: they can
+ * carry what the command line was handling.
+ */
+export async function run(argv: readonly string[], env: Environment, io: Io): Promise<number> {
+  try {
+    return await main(argv, env, io);
+  } catch {
+    io.err('cli: internal fault');
+    return EXIT.fault;
+  }
+}
+
 // The entry point by real path, so a link to it, or a checkout reached through one, still runs.
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(import.meta.filename)) {
-  process.exitCode = await main(process.argv.slice(2), process.env, {
+  process.exitCode = await run(process.argv.slice(2), process.env, {
     out: (line) => process.stdout.write(`${line}\n`),
     err: (line) => process.stderr.write(`${line}\n`),
     stdin: readStdin,

@@ -42,9 +42,11 @@ const NAMES = [
 const READ = ['task', 'get', 'T-1'];
 const WRITE = ['task', 'create', '--title', 'Synthetic task'];
 
+// eslint-disable-next-line max-lines-per-function -- one journey per preset, read top to bottom
 describe.each(['sandbox', 'production'])('under %s', (preset) => {
   const other = preset === 'sandbox' ? 'production' : 'sandbox';
 
+  // eslint-disable-next-line max-lines-per-function -- login, the verbs and logout, in order
   it.each(NAMES)('$name: login, the verbs and logout keep to the preset', async (names) => {
     const token = join(folder, names.token);
     const delegation = join(folder, names.delegation);
