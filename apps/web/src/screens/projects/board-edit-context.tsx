@@ -21,8 +21,9 @@ export function BoardEditProvider(props: {
   readonly children: ReactNode;
 }) {
   const generation = tabOwnerGeneration();
+  // No tab storage (site data blocked): recovery is kept in memory for this tab.
   const custody = useMemo(
-    () => new BoardEditCustody(props.client, props.grantKey, props.storage),
+    () => new BoardEditCustody(props.client, props.grantKey, props.storage, props.storage === null),
     [props.grantKey, props.storage, generation],
   );
   useLayoutEffect(() => custody.rebind(props.client), [custody, props.client]);
