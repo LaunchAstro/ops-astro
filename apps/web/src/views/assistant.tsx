@@ -49,7 +49,7 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
-import { sendProposal } from '../assistant/proposals.ts';
+import { keepBaseline, sendProposal, type Baseline } from '../assistant/proposals.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
@@ -88,7 +88,12 @@ export interface AssistantViewProps {
 /** The start, the join, and every write after them, each refusal shown in the tab. */
 function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
-  const resent = useRef(resends()).current;
+  const replays = {
+    resent: useRef(resends()).current,
+    keep: (reply: { readonly messageId: string; readonly body: string }, at: Baseline | null) => {
+      keepBaseline(props.grantKey, reply, at);
+    },
+  };
   const report = async (key: string, sent: Sent): Promise<boolean> => {
     const settled = settle(await sent);
     if (settled.kind !== 'ok') store.line(key, 'failed', settled.because);
@@ -99,7 +104,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
   const start = (opening: Omit<Opening, 'subject'>, on: Store): Promise<string | null> =>
-    startWith(props.client, on, { ...opening, subject }, report, resent);
+    startWith(props.client, on, { ...opening, subject }, report, replays);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
@@ -113,17 +118,18 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     // A tab not yet started joins what its last start made, or starts itself
     // only once that start is refused.
     let asked = false;
+    let baseline: Baseline | null = null;
     const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
     const turn = before.then(async (id) => {
-      await read;
+      baseline = await read;
       if (id !== null) return id;
       asked = true;
-      return await start(opening, on);
+      return await start({ ...opening, baseline }, on);
     });
     starts.current.set(key, turn);
     const known = await turn;
     if (asked || known === null) return;
-    await askAgain(props.client, on, key, { conversationId: known, body }, resent);
+    await askAgain(props.client, on, key, { conversationId: known, body, baseline }, replays);
   };
   return { report, send, starts: starts.current };
 }
