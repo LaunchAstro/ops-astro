@@ -415,11 +415,12 @@ const serveCommentChange =
 
 /**
  * The agent entry's authority asked again once the task or comment is locked,
- * as `authorise` asked it. The delegating person's covering grants, then the
- * delegation and, for a helper, its parent are held `for share` first, after
- * the task (the global order's delegation class): a `grant.revoke` or
- * `delegation.revoke` writes its row, so one that has not committed waits for
- * the write. A helper has no lease of its own and revoking it takes no task
+ * as `authorise` asked it. The delegation and, for a helper, its parent are
+ * held `for share` first, after the task (the global order's delegation
+ * class): a `delegation.revoke` writes the row, so one that has not committed
+ * waits for the change. The grants are read, not held: `grant.revoke` takes
+ * its grant before the task (`LOCK_ORDER`), so holding them here would invert
+ * that order. A helper has no lease of its own and revoking it takes no task
  * lock, so nothing else orders that revocation with this change.
  */
 async function askedAgain(
@@ -428,7 +429,6 @@ async function askedAgain(
   delegation: Delegation,
   task: { readonly id: string },
 ): Promise<CommandRefusal | undefined> {
-  await holdCoveringGrants(tx, await delegatingSubjects(tx, delegation), declaration.collection);
   const chain = [delegation.id, delegation.parentDelegationId].filter(
     (id): id is string => id !== null,
   );
