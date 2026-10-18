@@ -65,7 +65,16 @@ export interface Script {
   /** What `person.list` gives, were it asked. */
   readonly persons?: Answer;
   /** What `conversation.read` gives a kept tab. */
-  readonly kept?: { readonly body: string; readonly scope: Answer | null };
+  readonly kept?: {
+    readonly body: string;
+    readonly scope: Answer | null;
+    /** The reply's message id; absent, `REPLY`. */
+    readonly messageId?: string;
+    /** The reply's targets as the server gives them its owner; absent, none. */
+    readonly targets?: unknown;
+  };
+  /** What `task.read` gives for each task id named here; any other, `TASK` at `revision`. */
+  readonly tasks?: Readonly<Record<string, Answer>>;
   /** The task's revision as `task.read` gives it now. */
   readonly revision?: () => number;
 }
@@ -87,7 +96,13 @@ const keptRead = (kept: NonNullable<Script['kept']>): Answer =>
     },
     messages: [
       { id: 'q-1', role: 'person', body: 'Set it up', createdAt: '2026-10-12T00:00:00Z' },
-      { id: REPLY, role: 'agent', body: kept.body, createdAt: '2026-10-12T00:00:01Z' },
+      {
+        id: kept.messageId ?? REPLY,
+        role: 'agent',
+        body: kept.body,
+        createdAt: '2026-10-12T00:00:01Z',
+        ...(kept.targets === undefined ? {} : { targets: kept.targets }),
+      },
     ],
     wrapUp: null,
     wrapUpHistory: [],
@@ -107,6 +122,8 @@ function recorder(script: Script) {
     read: (name: string, body: Answer) => {
       reads.push({ name, body });
       order.push(name);
+      const named = script.tasks?.[String(body['recordId'])];
+      if (name === 'task.read' && named !== undefined) return Promise.resolve(named);
       if (name === 'task.read') {
         const revision = script.revision?.() ?? 7;
         return Promise.resolve(
