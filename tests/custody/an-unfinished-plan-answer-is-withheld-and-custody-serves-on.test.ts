@@ -87,3 +87,19 @@ it('withholds an over-deep answer without walking it, and serves on', () => {
     'plan answer withheld: too deep',
   );
 });
+
+it('reads the stream as a conforming event reader does', () => {
+  const done = stream(completed(['x']));
+  const failed = sse([{ type: 'response.failed', response: { status: 'failed' } }]);
+  withheldAs(answered(`${done.slice(0, -1)}\r${failed}`), 'plan answer withheld: malformed');
+  withheldAs(answered(done.slice(0, -1)), 'plan answer withheld: interrupted');
+  withheldAs(answered(`${done}data: {"type":"resp`), 'plan answer withheld: interrupted');
+  withheldAs(
+    answered(done.replace('event: response.completed', 'event: response.failed')),
+    'plan answer withheld: malformed',
+  );
+  for (const ending of ['\r\n', '\r'])
+    expect(planAnswer(answered(done.replaceAll('\n', ending)), SECRETS)).toMatchObject({
+      ok: true,
+    });
+});
