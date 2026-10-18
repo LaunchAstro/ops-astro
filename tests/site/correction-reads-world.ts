@@ -2,8 +2,8 @@
 //
 // #1694's world for `live_correction.list` and `live_correction.receipts`: C80's
 // command-layer world, one correction published under a person's own lease
-// with a receipt whose after capture is longer than the receipt text limit
-// and carries a planted marker, and Hal, who holds `run:write` across the
+// with a receipt whose live place is longer than the receipt text limit and
+// carries a planted marker, and Hal, who holds `run:write` across the
 // business and reads task B alone.
 
 import { randomUUID } from 'node:crypto';
@@ -131,8 +131,16 @@ export async function correctionReadsWorld(part: string): Promise<ReadsWorld> {
   const live = await published(w, {
     published_revision: { observed: 'commit-0123abc' },
     deployment_id: { observed: 'dpl_live1694' },
-    before_capture: { observed: 'We walk alongside you.' },
-    after_capture: { observed: LONG },
+    // A place longer than the receipt text limit, in the runner's own `live_occurrence`
+    // shape: no real place is this long (128 characters each side), so the cut is a guard.
+    live_occurrence: {
+      observed: JSON.stringify({
+        left: `${LONG} `,
+        right: ' you.',
+        index: 0,
+        observed: ['beside'],
+      }),
+    },
     refusals_raised: { observed: 'none recorded' },
   });
   const hal = await enrol(w.world.db.app, w.world.business, 'hal');

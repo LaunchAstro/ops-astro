@@ -111,42 +111,55 @@ interface ReceiptRow {
   readonly created_at: Date;
   readonly commit: string | null;
   readonly deployment_id: string | null;
-  readonly before_text: string | null;
-  readonly before_clipped: boolean | null;
-  readonly after_text: string | null;
-  readonly after_clipped: boolean | null;
+  /** The place as calibrated on the page before the send: the effect register's occurrence. */
+  readonly before_place: unknown;
+  /** The place as read live: the receipt's `live_occurrence`, JSON the runner wrote as text. */
+  readonly after_place: string | null;
 }
 
 /** An observation's text, cut to the limit in the query; `$9` is the limit. */
 const observed = (key: string): string => `left(x.observations -> '${key}' ->> 'observed', $9)`;
-const clipped = (key: string): string => `length(x.observations -> '${key}' ->> 'observed') > $9`;
 
-const textOf = (text: string | null, cut: boolean | null): ReceiptText | null =>
-  text === null ? null : { text, clipped: cut === true };
+const fromJson = (text: string | null): unknown => {
+  if (text === null) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+};
 
 /**
- * One correction's receipts, newest first, at most `RECEIPTS_LIMIT`, when both
- * grants reach it; or undefined: absent, in another business or not reached
- * are one answer. One statement judges the reach and reads the receipts, so
- * a grant revoked before it runs reads none. Each text the runner observed is
- * cut to `RECEIPT_TEXT_LIMIT` characters inside the query.
+ * The text of a place the runner stored (`Occurrence`, `core-connectors/src/site/reconcile.ts`):
+ * its left context, the word observed at its index, its right context, cut to
+ * `RECEIPT_TEXT_LIMIT` characters. Any other shape is no capture at all.
  */
-export async function readReadableReceipts(
-  tx: TenantQuery,
-  correctionId: string,
-  subjects: readonly Subject[],
-): Promise<
-  { readonly correctionId: string; readonly receipts: readonly ReadableReceipt[] } | undefined
-> {
-  const rows = await tx.query<ReceiptRow>(
-    `${EFFECTIVE_AT}
+function placeText(value: unknown): ReceiptText | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { left, right, index = 0, observed: words } = value as Record<string, unknown>;
+  const word = Array.isArray(words) && Number.isSafeInteger(index) ? words[index as number] : null;
+  if (typeof left !== 'string' || typeof right !== 'string' || typeof word !== 'string') {
+    return null;
+  }
+  const characters = Array.from(left + word + right);
+  const clipped = characters.length > RECEIPT_TEXT_LIMIT;
+  return { text: characters.slice(0, RECEIPT_TEXT_LIMIT).join(''), clipped };
+}
+
+/** The receipts statement: `$8` the correction, `$9` the text limit, `$10` the receipt limit. */
+const RECEIPTS_SQL = `${EFFECTIVE_AT}
      select x.id, x.step, x.outcome, x.created_at,
             ${observed('published_revision')} as commit,
             ${observed('deployment_id')} as deployment_id,
-            ${observed('before_capture')} as before_text,
-            ${clipped('before_capture')} as before_clipped,
-            ${observed('after_capture')} as after_text,
-            ${clipped('after_capture')} as after_clipped
+            x.observations -> 'live_occurrence' ->> 'observed' as after_place,
+            (select o.result -> 'detail' -> 'occurrence' from public.operations o
+              where x.step = 'publish' and o.business_id = c.business_id and o.record_id = c.id
+                and o.command = 'site.publish' and o.outcome = 'applied'
+                and o.operation_id = x.observations -> 'effect_operation_id' ->> 'observed'
+                and exists (select 1 from public.leases l
+                             where l.business_id = o.business_id and l.task_id = c.task_id
+                               and l.holder_actor_id = o.actor_id)
+              order by o.created_at, o.id limit 1) as before_place
        from ${REACHED}
        left join lateral (
          select x.id, x.step, x.outcome, x.created_at, x.observations
@@ -155,9 +168,33 @@ export async function readReadableReceipts(
           order by x.created_at desc, x.id desc
           limit $10) x on true
       where c.business_id = $1 and c.id = $8 and ${BOTH_GRANTS}
-      order by x.created_at desc, x.id desc`,
-    [tx.businessId, ...grantParameters(subjects), correctionId, RECEIPT_TEXT_LIMIT, RECEIPTS_LIMIT],
-  );
+      order by x.created_at desc, x.id desc`;
+
+/**
+ * One correction's receipts, newest first, at most `RECEIPTS_LIMIT`, when both
+ * grants reach it; or undefined: absent, in another business or not reached
+ * are one answer. One statement judges the reach and reads the receipts, so
+ * a grant revoked before it runs reads none. The commit and deployment are cut
+ * to `RECEIPT_TEXT_LIMIT` characters inside the query. The runner keeps no
+ * whole page: the captures are the place it checked on each, calibrated
+ * before the send (the effect register's entry this receipt names, written by
+ * a lease holder on the task, as `readCorrectionEffect` reads it) and read
+ * live (`live_occurrence`), each cut to the same limit.
+ */
+export async function readReadableReceipts(
+  tx: TenantQuery,
+  correctionId: string,
+  subjects: readonly Subject[],
+): Promise<
+  { readonly correctionId: string; readonly receipts: readonly ReadableReceipt[] } | undefined
+> {
+  const rows = await tx.query<ReceiptRow>(RECEIPTS_SQL, [
+    tx.businessId,
+    ...grantParameters(subjects),
+    correctionId,
+    RECEIPT_TEXT_LIMIT,
+    RECEIPTS_LIMIT,
+  ]);
   if (rows.length === 0) return undefined;
   const receipts = rows.flatMap((row) =>
     row.id === null
@@ -170,8 +207,8 @@ export async function readReadableReceipts(
             recordedAt: row.created_at.toISOString(),
             commit: row.commit,
             deploymentId: row.deployment_id,
-            beforeCapture: textOf(row.before_text, row.before_clipped),
-            afterCapture: textOf(row.after_text, row.after_clipped),
+            beforeCapture: placeText(row.before_place),
+            afterCapture: placeText(fromJson(row.after_place)),
           },
         ],
   );

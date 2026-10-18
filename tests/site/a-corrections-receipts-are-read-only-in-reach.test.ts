@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // #1694: `live_correction.receipts` answers a correction's receipts (the
-// outcome, commit, deployment id and the before and after captures, each cut
-// to the receipt text limit) to a reader holding `run:write` at its party and
+// outcome, commit, deployment id and the places the runner checked, cut to
+// the receipt text limit) to a reader holding `run:write` at its party and
 // `task:read` on its task, both judged inside the query. Every crossing is
 // compared byte for byte with the answer to an id that names nothing: another
 // business, another client party, a member without read on the task; an agent
@@ -36,7 +36,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('live_correction.receipts, in reach', () => {
-  it('answers the commit, deployment and captures, each cut to the limit', async () => {
+  it('answers the commit, deployment and live place, the place cut to the limit', async () => {
     expect(LONG.length).toBeGreaterThan(RECEIPT_TEXT_LIMIT);
     expect(await r.receiptsAs(r.w.ava, r.live.id)).toStrictEqual({
       ok: true,
@@ -49,8 +49,9 @@ describe.skipIf(serverUrl === undefined)('live_correction.receipts, in reach', (
           recordedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/u),
           commit: 'commit-0123abc',
           deploymentId: 'dpl_live1694',
-          beforeCapture: { text: 'We walk alongside you.', clipped: false },
-          afterCapture: { text: LONG.slice(0, RECEIPT_TEXT_LIMIT), clipped: true },
+          // No effect register entry was written for this receipt, so no before place.
+          beforeCapture: null,
+          afterCapture: { text: `${LONG} beside you.`.slice(0, RECEIPT_TEXT_LIMIT), clipped: true },
         },
       ],
     });
