@@ -184,3 +184,18 @@ describe('the history scan reads what a merge commit itself adds', () => {
     expect(scan(dir, 'pnpm-lock.yaml').status).not.toBe(0);
   });
 });
+
+describe('the lockfile step fails closed', () => {
+  it('passes a lockfile history that holds no key', () => {
+    const { dir, git } = repository('lockfile-clean');
+    commit(dir, git, 'pnpm-lock.yaml', "lockfileVersion: '9.0'\n");
+    commit(dir, git, 'pnpm-lock.yaml', "lockfileVersion: '9.0'\nimporters: {}\n");
+    const { status, out } = scan(dir, 'pnpm-lock.yaml');
+    expect(status, out).toBe(0);
+  });
+
+  it('fails when it finds no lockfile version to read', () => {
+    const { dir } = repository('lockfile-none');
+    expect(scan(dir, 'pnpm-lock.yaml').status).not.toBe(0);
+  });
+});
