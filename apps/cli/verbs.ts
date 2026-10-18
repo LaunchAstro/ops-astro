@@ -165,6 +165,9 @@ const KNOWN: ReadonlySet<string> = new Set([
   'operation',
 ]);
 
+/** Does verb flag `--name` take the next argument as its value? */
+export const takesValue = (name: string): boolean => KNOWN.has(name) && !SWITCHES.has(name);
+
 function parse(argv: readonly string[]): { words: string[]; flags: Flags } {
   const words: string[] = [];
   const flags: Record<string, string | true> = {};

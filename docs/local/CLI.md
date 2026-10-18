@@ -361,7 +361,9 @@ pnpm cli map list
 - Connection flags (`--business`, `--agent`, `--env`, `--api`), environment
   and exit codes are an operation's, in either form, `--env sandbox` or
   `--env=sandbox`. A flag no verb names is refused with exit 2, never dropped,
-  so a misspelt `--envv production` can't leave the line on `OPS_ASTRO_ENV`.
+  so a misspelt `--envv production` can't leave the line on `OPS_ASTRO_ENV`. A verb flag's value is
+  taken as given, even one that starts with `--`: in
+  `--description --env=production` it is the description, never the preset.
   Every refusal that needs no credential comes before one is read. A write
   prints `ok <operation> <id> r<revision>`; on no answer or a fault it prints
   its `operationId`, and the same line with `--operation <id>` replays it.

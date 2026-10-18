@@ -39,7 +39,7 @@ import {
 } from './client.ts';
 import { handoffOf } from '../../packages/core-wire/src/index.ts';
 import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
-import { createVerbCli, prepare, VERB_TABLE, verbHelp } from './verbs.ts';
+import { createVerbCli, prepare, takesValue, VERB_TABLE, verbHelp } from './verbs.ts';
 import { stepUp } from './second-factor.ts';
 import {
   beginSave,
@@ -429,7 +429,12 @@ export function isVerbLine(argv: readonly string[]): boolean {
   return group === 'help' || VERB_TABLE.some((row) => row.verb === `${group ?? ''} ${verb ?? ''}`);
 }
 
-/** A verb line's connection flags, in both forms and never empty; everything else is the verb's. */
+/**
+ * A verb line's connection flags, in both forms and never empty; everything
+ * else is the verb's. A verb flag's value goes to the verb with it, whatever it
+ * looks like, so `--description --env=production` is a description and never
+ * chooses the connection.
+ */
 const CONNECTION_FLAGS = new Set(['api', 'gotrue', 'web', 'env', 'business']);
 
 function connectionFlags(argv: readonly string[]): {
@@ -446,7 +451,14 @@ function connectionFlags(argv: readonly string[]): {
       const value = inline ?? argv[(at += 1)];
       if (value === undefined || value === '') throw new UsageError(`--${name} needs a value`);
       flags[name] = value;
-    } else rest.push(argument);
+    } else {
+      rest.push(argument);
+      const value = argv[at + 1];
+      if (inline === undefined && takesValue(name) && value !== undefined) {
+        rest.push(value);
+        at += 1;
+      }
+    }
   }
   return { flags, rest };
 }
