@@ -76,6 +76,13 @@ const LEDGER_AND_NOTE = [
       on conflict do nothing $$`,
 ];
 
+/** The list as an SQL array literal, each digest checked before it reaches SQL. */
+function guardList(signIns: readonly string[]): string {
+  if (signIns.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)))
+    throw new Error('made-up-install: a sign-in digest is not a sha256 hex digest');
+  return `array[${signIns.map((digest) => `'${digest}'`).join(', ')}]::text[]`;
+}
+
 // A write is the seed's when it tags its transaction on the session the seed
 // bound (`bindSeed`) and admitted, which installed that tag's digest for this
 // backend; it is a person's on staging when the role it runs as, an owner's
@@ -88,15 +95,14 @@ const LEDGER_AND_NOTE = [
 // address's digest is on the list. The list is part of the function's text,
 // so the guard reads no table for it, whichever role writes the sign-in. A
 // listed sign-in written, or moved to its address, is pended until `auth:seed`
-// vouches for it as one it created: an owner's row at a seed address is not.
+// or the seed vouches for it as one it created: an owner's row at a seed
+// address is not.
 function guardFunction(signIns: readonly string[]): string {
-  if (signIns.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)))
-    throw new Error('made-up-install: a sign-in digest is not a sha256 hex digest');
   const listed =
     signIns.length === 0
       ? ''
       : ` or encode(sha256(convert_to(lower(new.email), 'UTF8')), 'hex')
-            <> all (array[${signIns.map((digest) => `'${digest}'`).join(', ')}]::text[])`;
+            <> all (${guardList(signIns)})`;
   const pended =
     signIns.length === 0
       ? ''
@@ -194,8 +200,13 @@ export function installStatements(
     `delete from ${SEEDS} where pid not in (select pid from pg_stat_activity)`,
     `insert into ${SEEDS} select pid, backend_start, '${seedDigest}' from (${THIS_BACKEND}) b
       on conflict do nothing`,
-    `delete from ${ADMITTED}`,
-    ...signIns.map((digest) => `insert into ${ADMITTED} values ('${digest}')`),
+    // Added before the rest go, so a refresh reading the list meanwhile never finds it empty.
+    ...signIns.map(
+      (digest) => `insert into ${ADMITTED} values ('${digest}') on conflict do nothing`,
+    ),
+    signIns.length === 0
+      ? `delete from ${ADMITTED}`
+      : `delete from ${ADMITTED} where digest <> all (${guardList(signIns)})`,
     guardFunction(signIns),
     ...WATCH_AND_PROTECT,
   ];

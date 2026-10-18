@@ -12,7 +12,7 @@
 //   sign-in whose address is not a made-up `.local` one, and, while `db:admit`'s
 //   sign-in list stands (every later install keeps it), one whose address is
 //   not on it; one at a listed address waits, by its id's digest, until
-//   `auth:seed` vouches for it as one it created. Writes through the
+//   `auth:seed` or the seed vouches for it as one it created. Writes through the
 //   application's own role are what people typed on staging, and pass. The
 //   seed's tag is a secret its process makes at start and never stores: the
 //   guard holds only its digest, kept for the session the seed bound by
@@ -260,10 +260,10 @@ export async function admitMadeUp(
 /**
  * The local slice's admission before its first sign-in (`db:admit`, between
  * `auth:up` and `auth:seed`): the seed's admission, with the guard admitting
- * only `signIns`, `auth:seed`'s own addresses, then the mark with nothing made
+ * only `signIns`, the local slice's own addresses, then the mark with nothing made
  * yet, as the staging reset marks an emptied database. Any other sign-in
  * written after it is noted, and one at a listed address waits until
- * `auth:seed` vouches for it, so `db:seed` finds a marked database and refuses
+ * the step that created it vouches for it, so `db:seed` finds a marked database and refuses
  * one holding a sign-in `auth:seed` did not write. Every later install keeps
  * the list, so the next run's `db:admit` refuses one written between runs. A
  * marked database is judged and keeps its mark.

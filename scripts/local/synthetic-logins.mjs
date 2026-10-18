@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The synthetic logins `auth:seed` creates, in one place: auth-seed.mjs makes
-// them, and db-admit.mjs lets the made-up guard admit exactly these sign-ins
-// until `db:seed` has judged the database.
+// The local slice's synthetic sign-ins, in one place: the five auth-seed.mjs
+// makes, and the agents and external party local-seed.mjs makes. db-admit.mjs
+// lets the made-up guard admit exactly these sign-ins.
 
 /**
  * The contract's five. `business` is the contract's A/B label; `businessKey`
@@ -55,4 +55,22 @@ export const PEOPLE = [
     person: 'Bea Rivera',
     role: 'member',
   },
+];
+
+/**
+ * The local parts of the sign-ins `db:seed` makes itself: each business's agent
+ * and business A's external party, as local-seed.mjs builds them, so no
+ * synthetic address is a literal in a tracked file. If the two drift, the
+ * documented-order proofs fail: the seed's own sign-ins would be refused.
+ */
+const AGENT_LOCAL_PART = 'agent';
+const EXTERNAL_LOCAL_PART = 'ext';
+
+const businessKeys = [...new Set(PEOPLE.map((person) => person.businessKey))];
+
+/** Every sign-in address the local slice writes, `auth:seed`'s and `db:seed`'s. */
+export const SIGN_IN_ADDRESSES = [
+  ...PEOPLE.map((person) => person.email),
+  ...businessKeys.map((key) => `${AGENT_LOCAL_PART}@${key}.local`),
+  `${EXTERNAL_LOCAL_PART}@${businessKeys[0]}.local`,
 ];
