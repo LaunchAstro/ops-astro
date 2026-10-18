@@ -36,6 +36,7 @@ afterEach(async () => {
 describe.skipIf(serverUrl === undefined)('the local seed in the documented order', () => {
   seedsInOrder();
   refusesWhatTheOrderDidNotWrite();
+  refusesASignInAuthSeedDidNotWrite();
 });
 
 function seedsInOrder() {
@@ -108,6 +109,26 @@ function refusesWhatTheOrderDidNotWrite() {
     );
     expect(refused?.out).not.toContain(planted);
     expect(await mark(w)).toBeNull();
+    expect(await keys(w)).toEqual([]);
+  }, 600_000);
+}
+
+function refusesASignInAuthSeedDidNotWrite() {
+  it('a sign-in at a made-up address that auth:seed did not write, written before auth:seed, is refused', async () => {
+    world = await openWorld();
+    const w = world;
+    const planted = `shared-account.${randomUUID().slice(0, 8)}@company.local`;
+    const ran = await startAsDocumented(w, {
+      'auth:seed': () =>
+        w.db!.admin.execute('insert into auth.users (id, email) values ($1, $2)', [
+          randomUUID(),
+          planted,
+        ]),
+    });
+    const refused = failed(ran);
+    expect(refused?.script).toBe('db:seed');
+    expect(refused?.out).toMatch(/REFUSED, not provably made-up data: it holds a sign-in/u);
+    expect(refused?.out).not.toContain(planted);
     expect(await keys(w)).toEqual([]);
   }, 600_000);
 }
