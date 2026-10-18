@@ -71,8 +71,8 @@ async function prepare(s: Schedules): Promise<void> {
 }
 
 /**
- * The first hold spends 300 and reserves 200 it never sends; its lease ends,
- * the replacement spends the 200 the version has left and its worker is
+ * The first hold spends 300 and reserves 200 it never sends; its lease ends
+ * (the pickup's stop releases the 200, #1623 R1), the replacement spends the 200 the version has left and its worker is
  * stopped, so picking the first hold up again finds the version full and
  * stops on that closed hold.
  */
@@ -93,12 +93,13 @@ export async function stopped(s: Schedules): Promise<Stopped> {
   });
   const { runId, askId } = await askOf(s, first);
   const hold = (await holdsOf(s, work.proposal['versionId'])).find((h) => h.id === first);
+  // #1623 R1 (B2): the pickup that fenced the ended lease is a stop, which released the unsent call.
   expect({
     stopped: codeOf(claimed),
     asked: askId !== undefined,
     hold: hold?.state,
     call: await callState(s, unsent),
-  }).toEqual({ stopped: 'BUDGET_UNAVAILABLE', asked: true, hold: 'actual', call: 'reserved' });
+  }).toEqual({ stopped: 'BUDGET_UNAVAILABLE', asked: true, hold: 'actual', call: 'released' });
   return { work, first: String(first), unsent, runId, askId: String(askId) };
 }
 

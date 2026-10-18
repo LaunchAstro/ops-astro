@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { REPLAY_NOTHING_HAPPENED } from '../../packages/core-connectors/src/index.ts';
 import { reconcileProviderCalls } from '../../packages/core-custody/src/index.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -159,7 +160,9 @@ describe.skipIf(serverUrl === undefined)(
       // alone. The provider's proof that nothing happened reaches c2 as the
       // worker's late answer instead, which releases it the same way.
       const passed = await reconcileProviderCalls(s.db.app, s.business, LATE_BROKER);
-      await answerLate(s, work.picked, c2, { kind: 'nothing', reason: 'provider_proof' });
+      // #1623 R1 (B2): only a reason the operation declares proves nothing happened;
+      // any other is held unknown. The proof is the replay operation's own code.
+      await answerLate(s, work.picked, c2, { kind: 'nothing', reason: REPLAY_NOTHING_HAPPENED });
       const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
       expect({
         topped: codeOf(topped),
