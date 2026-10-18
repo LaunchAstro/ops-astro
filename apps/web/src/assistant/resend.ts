@@ -85,8 +85,27 @@ function joined<K extends { readonly operationId: string }>(
   return target;
 }
 
+/**
+ * Each tab's lost questions, and where each folded tab went: a send still out
+ * when its tab folds settles in the tab it folded into (S1917-2).
+ */
+function homes<K>() {
+  const kept = new Map<string, Map<string, K[]>>();
+  const moved = new Map<string, string>();
+  const home = (key: string): string => {
+    const into = moved.get(key);
+    return into === undefined ? key : home(into);
+  };
+  const lostIn = (key: string): Map<string, K[]> => {
+    const lost = kept.get(home(key)) ?? new Map<string, K[]>();
+    kept.set(home(key), lost);
+    return lost;
+  };
+  return { kept, moved, lostIn };
+}
+
 export function resends<C = unknown>(): Resends<C> {
-  const kept = new Map<string, Map<string, Kept<C>[]>>();
+  const { kept, moved, lostIn } = homes<Kept<C>>();
   const ended = new Set<string>();
   // The order each attempt was kept in: a fold keeps both tabs' attempts, oldest first.
   const born = new Map<string, number>();
@@ -100,19 +119,22 @@ export function resends<C = unknown>(): Resends<C> {
           one.command === 'conversation.start' && one.context !== undefined && which(one.context),
       ),
     fold(from, into) {
+      moved.set(from, into);
       const moving = kept.get(from);
       if (moving === undefined) return;
       kept.set(into, joined(kept.get(into) ?? new Map(), moving, born));
       kept.delete(from);
     },
     async send(key, asked, write) {
-      const lost = kept.get(key) ?? new Map<string, Kept<C>[]>();
-      kept.set(key, lost);
       const which = lostAs(asked);
-      const sending = lost.get(which)?.[0] ?? { ...asked, operationId: crypto.randomUUID() };
+      const sending = lostIn(key).get(which)?.[0] ?? {
+        ...asked,
+        operationId: crypto.randomUUID(),
+      };
       const result = await write(sending.request, sending.operationId, sending);
       // Each completion owns its own identity: an older send settling late
       // never clears, or takes the place of, another send's kept one.
+      const lost = lostIn(key);
       const now = lost.get(which) ?? [];
       if (!isUnavailable(result) && !isRefusal(result)) {
         ended.add(sending.operationId);
