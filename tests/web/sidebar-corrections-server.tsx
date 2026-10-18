@@ -7,10 +7,13 @@ import { SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { json } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
-import { V1, refusal } from './sidebar-corrections-support.tsx';
+import { CHECK_HOLDS_MS, TASK_A, TASK_B, V1, refusal } from './sidebar-corrections-support.tsx';
 
 export const CLIENT_A = '11111111-1111-4111-8111-111111111111';
 export const CLIENT_B = '44444444-4444-4444-8444-444444444444';
+
+/** Which client each task is for: the server finds the page and its party from the task. */
+const TASKS: Readonly<Record<string, string>> = { [TASK_A]: CLIENT_A, [TASK_B]: CLIENT_B };
 
 export interface Kept {
   readonly party: string;
@@ -29,13 +32,15 @@ interface World {
  * The server's answer to one call under `session`. A correction is read or
  * decided only under a session whose grant covers its party, and any other
  * is not found, as `live-corrections.ts` filters inside its query. A request
- * on a party the session holds no grant on is refused.
+ * names a task, never a party: the party is the task's, and a request on a
+ * task whose party the session holds no grant on is refused.
  */
 function answer(world: World, call: Call, nth: number): Response {
   const { path, session, body } = call;
   const covers = (party: string): boolean => (world.grants[session] ?? []).includes(party);
   if (path === '/live_correction/request') {
-    const party = String(body['partyId']);
+    const party = TASKS[String(body['taskId'])];
+    if (party === undefined) return refusal('NOT_FOUND', 404);
     if (!covers(party)) return refusal('SCOPE_NOT_GRANTED', 403);
     const correctionId = `c-${String(nth)}`;
     world.kept[correctionId] = { party, state: 'requested', approver: null, versionId: V1 };
@@ -50,7 +55,11 @@ function answer(world: World, call: Call, nth: number): Response {
   if (one === undefined || !covers(one.party)) return refusal('NOT_FOUND', 404);
   if (path === '/live_correction/read') {
     const { state, approver, versionId } = one;
-    return json({ ok: true, correction: { correctionId, state, approver, versionId } });
+    const check = { verifiedAt: '2026-10-19T00:00:00.000Z', verifiedForMs: CHECK_HOLDS_MS };
+    return json({
+      ok: true,
+      correction: { correctionId, state, approver, versionId, ...check, refusal: null },
+    });
   }
   if (path === '/live_correction/decide') return json({ recordId: correctionId, revision: 2 });
   return refusal('NOT_FOUND', 404);

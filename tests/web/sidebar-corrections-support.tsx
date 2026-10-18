@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Shared by the sidebar correction suites: the labelled mocks for the door's
-// port and the site read, the door's three fields, and readers for the card.
+// Shared by the sidebar correction suites: the labelled mock for the door's
+// port, the tasks a door is opened on, the door's three fields, and readers
+// for the card.
 
 import type { CorrectionAsk, ProposePort } from '../../apps/web/src/assistant/correction.ts';
-import type { CorrectionTarget } from '../../apps/web/src/assistant/correction-desks.ts';
 import { json, type mount } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 
 /**
- * MOCK: stands in for the sidebar's `site.source.propose` until that command
- * is on main. It answers each ask with the next made-up id, or the given code.
+ * MOCK: stands in for the door's `live_correction.request` port where a suite
+ * is about the card. It answers each ask with the next made-up id, or the
+ * given code.
  */
 export function mockPropose(refusal: string | null = null) {
   const asked: CorrectionAsk[] = [];
@@ -44,17 +45,13 @@ export const controls = (view: View): string[] =>
 export const card = (view: View): HTMLElement | null =>
   view.find('[data-correction-card]') as HTMLElement | null;
 
-/** MOCK: the site read that finds the About page's file, until one is on main. */
-export const ABOUT_FILE: CorrectionTarget = {
-  partyId: '11111111-1111-4111-8111-111111111111',
-  taskId: '22222222-2222-4222-8222-222222222222',
-  path: 'src/pages/about.md',
-  pageUrl: 'https://client.example.test/about',
-  baseRevision: 'abc123',
-  before: '# About\n\nWe work alongside the teams who run your website.\n',
-};
-export const aboutPage = (ask: CorrectionAsk): Promise<CorrectionTarget | null> =>
-  Promise.resolve(ask.page === 'About' ? ABOUT_FILE : null);
+/** A task on client A, whose site has the About page: the server finds the page from it. */
+export const TASK_A = '22222222-2222-4222-8222-222222222222';
+/** A task on client B, whose site has the Pricing page. */
+export const TASK_B = '55555555-5555-4555-8555-555555555555';
+
+/** How long a read's version check holds in these suites: longer than any of them runs. */
+export const CHECK_HOLDS_MS = 600_000;
 
 export const V1 = '11111111-1111-4111-8111-111111111111';
 export const V2 = '22222222-2222-4222-8222-222222222222';

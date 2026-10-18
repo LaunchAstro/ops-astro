@@ -10,6 +10,11 @@
 // it answered, so a refused or unanswered decision draws the state and version
 // the read answers now; its refusal is said in the same plain words.
 //
+// **When it was read.** Each read's answer is stamped with `performance.now()`
+// as it lands (`readAt`), beside how long its version's check holds
+// (`verifiedForMs`), so the card times its Approve from the answer and never
+// from the wall clock. The card reads again through `reread`.
+//
 // **Keyed on business and grant.** Everything is held under the business it
 // was asked in (`client.businessKey`) and the grant it was asked under (the
 // view's `grantKey`: business, person and session), and every answer lands
@@ -46,6 +51,8 @@ export interface Corrections {
   readonly request?: (ask: CorrectionAsk) => void;
   readonly decide: (correctionId: string, decision: 'approve' | 'reject') => void;
   readonly openReceipts: (correctionId: string) => void;
+  /** Read the correction again, under the business and grant it is held under. */
+  readonly reread: (correctionId: string) => void;
 }
 
 /** How often an approved or accepted card reads its correction again. */
@@ -111,8 +118,16 @@ async function readInto(
     amend(key, correctionId, { refusal: failureWords(settled) });
     return false;
   }
-  const { state, approver, versionId } = settled.value.correction;
-  amend(key, correctionId, { state: cardState(state), approver, versionId, refusal: null });
+  const { state, approver, versionId, verifiedForMs, refusal } = settled.value.correction;
+  amend(key, correctionId, {
+    state: cardState(state),
+    approver,
+    versionId,
+    verifiedForMs: Number.isFinite(verifiedForMs) && verifiedForMs > 0 ? verifiedForMs : 0,
+    readAt: performance.now(),
+    reason: typeof refusal === 'string' ? refusal : null,
+    refusal: null,
+  });
   return true;
 }
 
@@ -139,6 +154,9 @@ const listed = (item: CorrectionListItem): Correction => ({
   state: cardState(item.state),
   approver: item.approver,
   versionId: item.versionId,
+  verifiedForMs: 0,
+  readAt: null,
+  reason: null,
   refusal: null,
   receipts: null,
 });
@@ -150,6 +168,9 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   state: 'requested',
   approver: null,
   versionId: null,
+  verifiedForMs: 0,
+  readAt: null,
+  reason: null,
   refusal: null,
   receipts: null,
 });
@@ -292,6 +313,9 @@ export function useCorrections(
     },
     openReceipts: (id) => {
       tracked(change, at, receiptsInto(client, amend, at, id));
+    },
+    reread: (id) => {
+      void read(at, id);
     },
   };
 }
