@@ -17,8 +17,8 @@
 // after its own lock wait: the account (`signInVerdict`), then the
 // registration, then it writes the registration (a first sign-in only) and
 // the token record. Only `durable` counts as signed in. A store that did not
-// happen leaves no copy of the new tokens: its transient copies are swept and
-// its own uncommitted bytes removed, inside the same hold.
+// happen leaves no copy of the new tokens while its hold lives: its transient
+// copies are swept and its own uncommitted bytes removed, inside that hold.
 
 import { randomUUID } from 'node:crypto';
 import * as nodeFs from 'node:fs';
@@ -28,9 +28,11 @@ import {
   HOST_REGISTRATION_FILE,
   commitBytes,
   commitTokenFile,
+  committedDigest,
   encodeTokenFile,
   readBytesLocked,
   readTokenFileLocked,
+  sha256,
   tokenText,
   FIELD_MAX,
   type OnDisk,
@@ -188,18 +190,20 @@ function judgeRegistration(
 
 /**
  * Removes the new record's bytes when a store left them visible but
- * uncommitted. Under a live hold the locked read sweeps the transient copies
- * first. The hold may already be dead (its lock file replaced mid-commit), so
- * the visible file is then compared directly, never acted on: only this
- * sign-in wrote these exact bytes, so removing them removes no other record.
+ * uncommitted, and only under the live hold: the locked read sweeps the
+ * transient copies and proves the hold, and the bytes go only when they are
+ * this sign-in's and not the committed record (an identical pair already
+ * committed stays). A hold already dead (its lock file replaced mid-commit)
+ * removes nothing, since another holder may own the file by then; its bytes
+ * never match the committed digest, so they are never acted on.
  */
 function withdraw(held: HeldLock, file: string, bytes: Buffer, fs: Partial<TokenFs>): void {
-  readBytesLocked(held, file, fs);
+  const visible = readBytesLocked(held, file, fs);
+  if (!Buffer.isBuffer(visible) || !visible.equals(bytes)) return;
+  const digest = committedDigest(held, file);
+  if (digest === 'failed' || digest?.equals(sha256(bytes)) === true) return;
   try {
-    const seen = nodeFs.lstatSync(file);
-    if (!seen.isFile() || seen.size !== bytes.length) return;
-    if (nodeFs.readFileSync(file).equals(bytes))
-      ({ ...nodeFs, ...fs }).rmSync(file, { force: true });
+    ({ ...nodeFs, ...fs }).rmSync(file, { force: true });
   } catch {
     // The committed digest still refuses these bytes.
   }
