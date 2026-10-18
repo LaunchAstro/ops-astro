@@ -15,9 +15,6 @@ export const TASK: DataEffects = writing([
   ...client('records', 'record_unique_values'),
   ...MAP_READ_MODEL,
 ]);
-// A row of `records` alone (a comment, on its task); when that task is a ticket or a map, its
-// map's read model refreshes.
-export const TASK_ROW: DataEffects = writing([...client('records'), ...MAP_READ_MODEL]);
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(
   client(

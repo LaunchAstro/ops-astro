@@ -14,7 +14,6 @@ import {
   SETTINGS,
   SHARE,
   TASK,
-  TASK_ROW,
 } from './data-effects-shapes.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
@@ -45,10 +44,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.update': TASK,
   'task.complete': TASK,
   'task.reopen': TASK,
-  'task.comment': TASK_ROW,
+  // A comment names its task in `uuid_1`, not the parent slot (`uuid_4`) the map trigger reads,
+  // and leaves the task's row as it is, so a comment on a ticket or a map refreshes no map (S7).
+  'task.comment': writing(client('records')),
   // A comment's own edit and deletion (MP-4-5), on its record.
-  'task.edit_comment': TASK_ROW,
-  'task.delete_comment': TASK_ROW,
+  'task.edit_comment': writing(client('records')),
+  'task.delete_comment': writing(client('records')),
   // AW-09: the lease holder's revision of its output is the reviewed output too.
   // A restart opens a new lineage, which supersedes nothing, so it marks none.
   'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
@@ -81,8 +82,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
   'task.set_category': TASK,
-  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8), which
-  // refreshes the old one's map when it is a ticket.
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8), a ticket's too.
   'task.duplicate': writing([...TASK.writes, ...client('record_links')]),
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
