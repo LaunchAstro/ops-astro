@@ -17,6 +17,7 @@ import {
   clientContact,
   freeText,
   movesTo,
+  ownBody,
   requestOwn,
   SEAT,
   sends,
@@ -105,6 +106,15 @@ describe.skipIf(serverUrl === undefined)(
       },
       120_000,
     );
+
+    it('gets no stored receipt back on a replay once an agent has written on the task', async () => {
+      const picked = await workedBy('owner', 'Our about page, replayed');
+      const body = ownBody(picked);
+      expect(codeOf(await requestOwn(picked, body))).toBe('not-a-refusal');
+      await wrote(picked.taskId, w.world.agentActorId);
+      expect(codeOf(await requestOwn(picked))).toBe('CORRECTION_NOT_OWN_WORK');
+      expect(codeOf(await requestOwn(picked, body))).toBe('CORRECTION_NOT_OWN_WORK');
+    }, 120_000);
 
     it('started by staff, cannot request on the business’s own site', async () => {
       const picked = await workedBy('member', 'Our about page, staff');

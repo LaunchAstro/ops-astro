@@ -90,4 +90,27 @@ describe.skipIf(serverUrl === undefined)('at the agent’s request on our own si
     expect(waited).toBe(true);
     expect(await storedOn(picked.taskId)).toBe(0);
   }, 120_000);
+
+  it('sees a non-owner write committed while the request waits on the agent’s own standing, and stores nothing', async () => {
+    const picked = await workedBy('owner', 'Our about page, write during standing');
+    const holding = held(w, async (tx) => {
+      await tx.query(
+        'select 1 from public.actors where business_id = $1 and id = $2 for no key update',
+        [tx.businessId, w.world.agentActorId],
+      );
+    });
+    await holding.ready;
+    const request = requestOwn(picked);
+    let waited = false;
+    try {
+      waited = await seenWaiting(w, /select 1 from public\.actors.*for share/u);
+      await wrote(picked.taskId, w.world.agentActorId);
+    } finally {
+      holding.release();
+      await holding.done;
+    }
+    expect(codeOf(await request)).toBe('CORRECTION_NOT_OWN_WORK');
+    expect(waited).toBe(true);
+    expect(await storedOn(picked.taskId)).toBe(0);
+  }, 120_000);
 });
