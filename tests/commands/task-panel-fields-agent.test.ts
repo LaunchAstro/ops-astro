@@ -2,10 +2,10 @@
 //
 // MP-4-8 isolation, the third crossing: another person's task under a live
 // delegation. An agent picks up one task from its decider; the panel's edits
-// sent with its credential reach that task and nothing of another task. The
-// ticket's Permissions table gives an agent the name, the due date and the
-// estimate "inside its delegation" (SL08-ANS-ORCH31: follow the roadmap), so
-// on its own task they apply as a person's would.
+// sent with its credential reach that task and nothing of another person's
+// task. The ticket's Permissions table gives an agent the name, the due date
+// and the estimate "inside its delegation" (SL08-ANS-ORCH31: follow the
+// roadmap), so on its own task they apply as a person's would.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -46,7 +46,7 @@ const delegatingPersonOf = async (delegationId: string): Promise<string | undefi
 describe.skipIf(serverUrl === undefined)('MP-4-8 isolation', () => {
   it('another person under a live delegation: the agent’s edits reach its own task only', async () => {
     const decider = await world.decider('decider');
-    const maker = decider;
+    const maker = await world.decider('another person');
     const other = await world.asPerson(maker, {
       command: 'task.create',
       operationId: randomUUID(),
