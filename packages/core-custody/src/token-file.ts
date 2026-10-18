@@ -328,6 +328,7 @@ export function readTokenFileLocked(
   fs: Partial<TokenFs> = {},
 ): OnDisk {
   if (path !== held.path) return refused('SUBSCRIPTION_STORE_FAILED');
+  sweepTokenCopies(held, path, fs);
   const bytes = readBytesLocked(held, path, fs);
   if (!Buffer.isBuffer(bytes)) {
     // An absent file still fences this hold to the generation it saw.
@@ -398,6 +399,7 @@ export function commitBytes(
   fs: Partial<TokenFs> = {},
 ): Exclude<CommitOutcome, 'unconfirmed' | 'TOO_LARGE' | 'NOT_TOKENS'> {
   if (!governs(held, path)) return 'unwritten';
+  sweepTokenCopies(held, held.path, fs);
   const f = files(fs);
   const r = randomBytes(8).toString('hex');
   const next = `${path}.${r}.next`;
@@ -453,7 +455,7 @@ export function commitTokenFile(
   return commitDigest(held, path, bytes) ? 'durable' : 'unconfirmed';
 }
 
-/** Removes every transient `.next` and `.undo` copy of the token and host files; run at the start of each hold. */
+/** Removes every transient `.next` and `.undo` copy of the token and host files; every locked read and write runs it first. */
 export function sweepTokenCopies(held: HeldLock, path: string, fs: Partial<TokenFs> = {}): void {
   if (!holds(held, path)) return;
   const f = files(fs);

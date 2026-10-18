@@ -76,49 +76,76 @@ it.each(['unlink', 'rename-aside', 'replace-by-rename'] as const)(
   },
 );
 
-it('a lock swapped and swapped back between read and commit cannot commit over the newer record', async () => {
-  const w = tempDir();
-  const lock = `${w.file}.lock`;
+/** Swaps the lock aside, lets a second holder commit, then swaps it back; 0 when that commit was durable. */
+function second(dir: string, file: string): number {
+  const lock = `${file}.lock`;
+  renameSync(lock, join(dir, 'aside'));
+  let code = 1;
   try {
-    await seed(w.file, { state: 'ready', tokens: tokens('first', T0 + HOUR) });
-    let child = -1;
-    const fs: Partial<TokenFs> = {
-      renameSync: (from, to) => {
-        if (child === -1 && String(from).endsWith('.next')) {
-          renameSync(lock, join(w.dir, 'aside'));
-          try {
-            execFileSync(
-              process.execPath,
-              [join(import.meta.dirname, 'fixtures/lock-aba-child.ts'), w.file],
-              { stdio: 'pipe' },
-            );
-            child = 0;
-          } catch {
-            child = 1;
-          }
-          unlinkSync(lock);
-          renameSync(join(w.dir, 'aside'), lock);
-        }
-        renameSync(from, to);
+    execFileSync(
+      process.execPath,
+      [join(import.meta.dirname, 'fixtures/lock-aba-child.ts'), file],
+      {
+        stdio: 'pipe',
       },
-    };
-    const out = await withTokenLock(w.file, soon(), (held) => {
-      expect(readTokenFileLocked(held, w.file).state).toBe('ready');
-      return Promise.resolve(
-        commitTokenFile(
-          held,
-          w.file,
-          { state: 'pending', tokens: tokens('first', T0 + HOUR), since: T0 },
-          fs,
-        ),
-      );
-    });
-    expect(child).toBe(0);
-    expect(out).toEqual({ held: true, value: 'unconfirmed' });
-  } finally {
-    w.done();
+    );
+    code = 0;
+  } catch {
+    // The second holder's exit code says its commit was not durable.
   }
-});
+  unlinkSync(lock);
+  renameSync(join(dir, 'aside'), lock);
+  return code;
+}
+
+// The second holder sweeps copies at the start of its hold. Run before the
+// first holder's rename, it removes that holder's in-flight `.next`, so the
+// rename fails (`unwritten`); run after it, the first holder reaches the digest
+// and the generation fence refuses it (`unconfirmed`). Either way the second
+// holder's record is the one on disk.
+it.each([
+  ['before', 'unwritten'],
+  ['after', 'unconfirmed'],
+] as const)(
+  'a lock swapped and swapped back %s the rename cannot commit over the newer record',
+  async (when, outcome) => {
+    const w = tempDir();
+    try {
+      await seed(w.file, { state: 'ready', tokens: tokens('first', T0 + HOUR) });
+      let child = -1;
+      const fs: Partial<TokenFs> = {
+        renameSync: (from, to) => {
+          const first = child === -1 && String(from).endsWith('.next');
+          if (first && when === 'before') child = second(w.dir, w.file);
+          renameSync(from, to);
+          if (first && when === 'after') child = second(w.dir, w.file);
+        },
+      };
+      const out = await withTokenLock(w.file, soon(), (held) => {
+        expect(readTokenFileLocked(held, w.file).state).toBe('ready');
+        return Promise.resolve(
+          commitTokenFile(
+            held,
+            w.file,
+            { state: 'pending', tokens: tokens('first', T0 + HOUR), since: T0 },
+            fs,
+          ),
+        );
+      });
+      expect(child).toBe(0);
+      expect(out).toEqual({ held: true, value: outcome });
+      const after = await withTokenLock(w.file, soon(), (held) =>
+        Promise.resolve(readTokenFileLocked(held, w.file)),
+      );
+      expect(after).toEqual({
+        held: true,
+        value: { state: 'ready', tokens: tokens('child', T0 + HOUR) },
+      });
+    } finally {
+      w.done();
+    }
+  },
+);
 
 const host = Buffer.from('{"extAgentHostId":"synthetic-host-id"}');
 
