@@ -29,7 +29,8 @@
 // Opened at a client (CS-7.29: an inbox group head's door, `/clients/?client=`),
 // the panel marks that client above the book, by the name the read gives. A
 // client the read leaves out, gone or another business's, is said in a
-// sentence that names nothing of it.
+// sentence that names nothing of it. Opened at another client, the panel asks
+// `client.list` again and marks nothing until that read answers.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Icon, clientFacetId } from '@launchastro/ui';
@@ -244,10 +245,12 @@ export function ClientsScreen(props: ClientsProps): ReactElement {
 
 function ClientsOf(props: ClientsProps): ReactElement {
   const { client } = props;
-  const { state, reload } = useRead<ClientListResult>({
+  // A new opened client is read afresh: the book read for the last one may
+  // name a client whose grant has since gone (CS-7.29).
+  const { state, reload, own } = useRead<ClientListResult>({
     grantKey: props.grantKey,
     run: async () => listOrUnavailable(await client.read<ClientListResult>('client.list', {})),
-    deps: [client],
+    deps: [client, props.at],
   });
   return (
     <div className="clbook">
@@ -255,7 +258,7 @@ function ClientsOf(props: ClientsProps): ReactElement {
       <RecordState state={state} subject="clients" onRetry={reload} keep>
         {(listed) => (
           <>
-            {props.at === undefined ? null : (
+            {props.at === undefined || !own ? null : (
               <OpenedClient key={props.at} clients={listed.clients} clientId={props.at} />
             )}
             <Book clients={listed.clients} />
