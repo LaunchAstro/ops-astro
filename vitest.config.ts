@@ -223,6 +223,7 @@ const config: ViteUserConfig = defineConfig({
             'tests/web/preferences-save-order-api.test.tsx',
             'tests/web/older-client-save-cannot-overwrite-newer-preference.test.tsx',
             'tests/web/newest-preference-wins-when-answers-arrive-out-of-order.test.ts',
+            'tests/web/retrying-the-newest-choice-after-an-unavailable-repair-stores-it.test.ts',
             'tests/web/saved-flag-save-order.test.tsx',
             'tests/support/template-lock-and-clone-catalogue.test.ts',
             'tests/acceptance/credential-comment-represented-person.test.ts',
