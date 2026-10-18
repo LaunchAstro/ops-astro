@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#897: a resent start or later question, and a late lost replay, leave one durable question, reply, model call and provider send per question asked"
+}
