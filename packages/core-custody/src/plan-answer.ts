@@ -102,15 +102,16 @@ function terminal(event: Record<string, unknown>): Folded {
 const TERMINAL = /^(?:error|response\.(?:completed|failed|incomplete))$/u;
 
 /**
- * Each event a conforming reader dispatches (lines end in CRLF, LF or CR; a
- * blank line dispatches), its data and its `event:` name; undefined when the
- * stream stops inside a line or an event.
+ * Each event a conforming reader dispatches (one leading BOM ignored; lines
+ * end in CRLF, LF or CR; a blank line dispatches), its data and its `event:`
+ * name; undefined when the stream stops inside a line or an event.
  */
 function eventsOf(stream: string): { data: string; name?: string }[] | undefined {
   const out: { data: string; name?: string }[] = [];
   let data: string[] = [];
   let name: string | undefined;
-  const lines = stream.split(/\r\n|\r|\n/u);
+  // One leading BOM is not part of the stream (WHATWG, interpreting an event stream).
+  const lines = stream.replace(/^\uFEFF/u, '').split(/\r\n|\r|\n/u);
   if (lines.pop() !== '') return undefined;
   for (const line of lines) {
     if (line === '') {
