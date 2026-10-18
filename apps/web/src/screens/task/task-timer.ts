@@ -169,6 +169,9 @@ export class TaskTimer {
     if (outcome.kind !== 'ok') {
       this.put({
         ...this.state,
+        // A refused retry of a lost attempt is read again, so Stop waiting is
+        // judged against the timer as it is.
+        changed: this.state.changed + (attempt.uncertain && outcome.kind !== 'unknown' ? 1 : 0),
         attempt: {
           ...current,
           status: outcome.kind === 'unknown' || attempt.uncertain ? 'unknown' : 'refused',
