@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Review proof: run the PR's entire regression suite while observing the real
+// agent-to-custody boundary. Its three assertions pass without a single chat
+// reaching that boundary, so they cannot establish the #1667 chat behaviour.
+import { expect, it, vi } from 'vitest';
+import type { ModelAgentOptions } from '../../apps/model-agent/carrier.ts';
+
+const observed = vi.hoisted(() => ({ dispatch: vi.fn() }));
+
+vi.mock('../../apps/model-agent/carrier.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../apps/model-agent/carrier.ts')>();
+  return {
+    ...original,
+    startModelAgent: (options: ModelAgentOptions) =>
+      original.startModelAgent({
+        ...options,
+        custody: {
+          dispatch: async (...args) => {
+            observed.dispatch(...args);
+            return await options.custody.dispatch(...args);
+          },
+        },
+      }),
+  };
+});
+
+await import('./the-agent-logs-an-accept-only-once-realtime-took-it.test.ts');
+
+it('the accept-log suite exercises a chat request reaching the model boundary', () => {
+  expect(
+    observed.dispatch.mock.calls.length,
+    'All three supplied tests passed, but zero chat requests reached custody; no first Gemma message, follow-up model, or history was exercised',
+  ).toBeGreaterThan(0);
+});
