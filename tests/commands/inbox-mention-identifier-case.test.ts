@@ -16,8 +16,10 @@ describe('INB-1 mentions', () => {
         if (sql.includes('from public.records')) {
           return Promise.resolve([{ trashed: false, clientId: null }] as Row[]);
         }
-        if (sql.includes('from public.actors')) return Promise.resolve([]);
+        // The grant walk first: it reads `public.actors` too, for a subject
+        // whose grants count only while it is active (#1499).
         if (sql.includes('from effective e')) return Promise.resolve([{ id: 'grant-1' }] as Row[]);
+        if (sql.includes('from public.actors')) return Promise.resolve([]);
         throw new Error(`Unexpected query: ${sql}`);
       },
     };
