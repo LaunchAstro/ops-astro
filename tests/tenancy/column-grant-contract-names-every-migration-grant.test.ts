@@ -101,7 +101,6 @@ const READS: readonly (readonly [string, string, readonly string[]])[] = [
     "do $$ begin execute format('grant r to %I -- 100%%', current_user); end $$;",
     [],
   ],
-  ['a literal backslash in an E string', String.raw`select strpos(x, E'\\') from s.t;`, []],
   [
     'a set_config() of one literal setting',
     "do $$ begin perform set_config('app.business_id', 'x', true); end $$;",
@@ -172,6 +171,7 @@ const REFUSALS: readonly (readonly [string, string])[] = [
     String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
   ],
   ['an escaped quote in an E string', String.raw`select E'it\'s';`],
+  ['a literal backslash in an E string', String.raw`select strpos(x, E'\\') from s.t;`],
   ['a U& escape in a string that grants nothing', String.raw`select U&'\0067o';`],
   ['standard_conforming_strings turned off', 'set standard_conforming_strings = off;'],
   [
@@ -235,6 +235,32 @@ describe('format() placeholders that carry any SQL', () => {
     const version = '20261018000000_another';
     expect(() => migrationColumnGrants({ version, statements: splitStatements(revoke) })).toThrow(
       /placeholder %s/u,
+    );
+  });
+});
+
+describe('a literal backslash in an E string', () => {
+  const check = String.raw`alter table s.t add constraint c check (strpos(x, E'\\') = 0);`;
+
+  it('is read only in the migration named as read by hand', () => {
+    const version = '0094_conversation_page_scope';
+    expect(migrationColumnGrants({ version, statements: splitStatements(check) })).toStrictEqual(
+      [],
+    );
+  });
+
+  it('is refused in any other migration', () => {
+    const version = '20261018000000_another';
+    expect(() => migrationColumnGrants({ version, statements: splitStatements(check) })).toThrow(
+      /string escape/u,
+    );
+  });
+
+  it('is refused in the migration read by hand when it hides another escape', () => {
+    const version = '0094_conversation_page_scope';
+    const hex = String.raw`do $$ begin execute E'\\\x67rant update (a) on s.t to r'; end $$;`;
+    expect(() => migrationColumnGrants({ version, statements: splitStatements(hex) })).toThrow(
+      /string escape/u,
     );
   });
 });
