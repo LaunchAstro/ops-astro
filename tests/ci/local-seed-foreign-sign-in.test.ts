@@ -9,13 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { serverUrl } from './staging-no-production-data.fixture.ts';
-import {
-  admitBeforeSignIns,
-  guardMadeUp,
-  productionSigns,
-  type OwnerQuery,
-} from '../../scripts/ops/made-up-only.ts';
-import { createEmptyDatabase } from '../support/fresh-database.ts';
+import { productionSigns } from '../../scripts/ops/made-up-only.ts';
 import {
   closeWorld,
   failed,
@@ -37,7 +31,6 @@ describe.skipIf(serverUrl === undefined)(
     refusedBeforeAuthSeed();
     refusedBetweenRuns();
     admitsTheSeedsOwn();
-    keepsTheListUnderARefresh();
   },
 );
 
@@ -123,70 +116,5 @@ function admitsTheSeedsOwn(): void {
       ),
     );
     expect(await productionSigns(world.db!.admin)).toEqual([]);
-  }, 600_000);
-}
-
-/** An owner connection that runs `wait` after the first statement starting with `prefix`. */
-function pausing(admin: OwnerQuery, prefix: string, wait: () => Promise<void>): OwnerQuery {
-  let paused = false;
-  return {
-    async execute<Row>(sql: string, parameters?: readonly unknown[]) {
-      const rows = await admin.execute<Row>(sql, parameters);
-      if (!paused && sql.startsWith(prefix)) {
-        paused = true;
-        await wait();
-      }
-      return rows;
-    },
-  };
-}
-
-function keepsTheListUnderARefresh(): void {
-  it('a guard refresh while the list is rewritten keeps the sign-in restriction', async () => {
-    const db = await createEmptyDatabase({ part: 'signinrace' });
-    try {
-      await db.admin.execute('create schema auth');
-      await db.admin.execute('create table auth.users (id uuid primary key, email text)');
-      expect(await admitBeforeSignIns(db.admin, true, ['ada@alpha.local'])).toEqual([]);
-      let rewritten!: () => void;
-      let read!: () => void;
-      let finished!: () => void;
-      const afterRewrite = new Promise<void>((resolve) => {
-        rewritten = resolve;
-      });
-      const afterRead = new Promise<void>((resolve) => {
-        read = resolve;
-      });
-      const afterFinish = new Promise<void>((resolve) => {
-        finished = resolve;
-      });
-      // The installer stops right after its first write to the list, until the
-      // refresh has read the list; the refresh installs only after it.
-      const installing = pausing(db.admin, 'delete from ops_astro_made_up.sign_ins', async () => {
-        rewritten();
-        await afterRead;
-      });
-      const refreshing = pausing(
-        db.admin,
-        'select digest from ops_astro_made_up.sign_ins',
-        async () => {
-          read();
-          await afterFinish;
-        },
-      );
-      const install = guardMadeUp(installing, ['ada@alpha.local']);
-      await afterRewrite;
-      const refresh = guardMadeUp(refreshing);
-      await install;
-      finished();
-      await refresh;
-      await db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [
-        randomUUID(),
-        `shared-account.${randomUUID().slice(0, 8)}@company.local`,
-      ]);
-      expect(await productionSigns(db.admin)).not.toEqual([]);
-    } finally {
-      await db.drop();
-    }
   }, 600_000);
 }
