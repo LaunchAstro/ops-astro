@@ -155,6 +155,9 @@ describe.skipIf(serverUrl === undefined)(
                 fields: [],
               }
             : {}),
+          ...(declaration.name === 'definition.read'
+            ? { leaseId: randomUUID(), fence: 1, stepId: null, path: 'skills/brief/SKILL.md' }
+            : {}),
           ...AW_11_OPERANDS[declaration.name],
         });
         answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });

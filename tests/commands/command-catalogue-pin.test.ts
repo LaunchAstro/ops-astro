@@ -75,6 +75,8 @@
 // The eighteenth is #1623 R1's `run.end`: an untargeted lease write an agent
 // reaches under its delegation, its `leaseId` shaped by the runtime, one row
 // in each table that lists it, and a person handler that refuses.
+// The nineteenth is #1904's `definition.read`: an untargeted lease write an
+// agent reaches under its delegation, the same shape as the eighteenth.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -431,6 +433,7 @@ vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async 
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
   refuseRunEndAsPerson: recorder('refuseRunEndAsPerson'),
+  refuseDefinitionReadAsPerson: recorder('refuseDefinitionReadAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/child-work-person.ts', async (original) => ({
   ...(await original<object>()),
@@ -457,6 +460,7 @@ const PINNED_RUNTIME_SHAPED = {
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
   'run.end': 'leaseId',
+  'definition.read': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -514,6 +518,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'run.child_handback': [],
   'run.delegate_child': ['leaseId'],
   'run.end': ['leaseId'],
+  'definition.read': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
@@ -611,6 +616,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'credential.issue',
   'credential.revoke',
   'definition.attribution',
+  'definition.read',
   'definition.release',
   'delegation.revoke',
   'finance.agent_costs',
@@ -714,6 +720,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'definition.read',
   'live_correction.request',
   'model.call',
   'onboarding.step_result',
@@ -1014,6 +1021,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'conversation.set_model', operationId: 'op', conversationId: 'c', model: null },
   { command: 'model.call', operationId: 'op' },
   { command: 'run.end', operationId: 'op' },
+  { command: 'definition.read', operationId: 'op' },
   {
     command: 'run.top_up',
     operationId: 'op',
@@ -1222,6 +1230,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'conversation.set_model': ['setModel', 'request'],
   'model.call': ['refuseModelCallAsPerson', 'request'],
   'run.end': ['refuseRunEndAsPerson', 'request'],
+  'definition.read': ['refuseDefinitionReadAsPerson', 'request'],
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
   'run.revise_state': ['reviseStateOnRun', 'request'],
@@ -1276,7 +1285,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same ten commands', () => {
+  it('shapes the same runtime identifier for the same eleven commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 

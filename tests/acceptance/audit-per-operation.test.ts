@@ -2,19 +2,21 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 179 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 180 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 179; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 180; on
 // the two that are his own account (C23) he is refused for naming someone. For
-// the seven lease operations he names real work in his own business: an
+// the eight lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
-// own refusals of those seven are a case of their own below. `model.call`'s
+// own refusals of those eight are a case of their own below. `model.call`'s
 // applied row is the command's; the broker's settlement writes its own
 // `model.call_dispatched` event beside it, a different command. `run.end`
 // applies as the retained `RUN_ENDED`: refused in its row, its stop committed.
+// `definition.read` (#1904) on this world's runs, which pin no file, answers
+// `DEFINITION_UNAVAILABLE` past the lease and delegation checks, writing nothing.
 //
 // **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). An agent's call draws on
 // its approver's grant (`tasks-pickup.ts` `claim`, `delegations.ts:365-372`); once
@@ -68,7 +70,11 @@ const LEASE_WORK: readonly CommandName[] = [
   'task.observe',
   'task.check',
   'model.call',
+  'definition.read',
 ];
+
+/** A pinned read's own operands, beside its lease (#1904): a path no run of this world pins. */
+const READ = { stepId: null, path: 'skills/brief/SKILL.md' } as const;
 
 /** A check's own fields, beside the lease it is recorded under (MP-6-1). */
 const CHECK = { name: 'a check for the audit', outcome: 'passed' } as const;
@@ -336,6 +342,18 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return { ...agentCell(agent, 'run.end', body, p.credential, 'RUN_ENDED'), retained: true };
   }
 
+  /**
+   * The worker's read on a fresh agent's lease (#1904). This world's runs pin no
+   * file, so its answer is the read's own `DEFINITION_UNAVAILABLE`, past the lease
+   * and delegation checks, as the lease rows' refusals are audited and move nothing.
+   */
+  async function readCell(): Promise<Cell> {
+    const agent = await freshAgent();
+    const p = await pickUpBy(w.h.world.ada, agent, 'work whose worker reads a file');
+    const body = { leaseId: p.leaseId, fence: p.fence, ...READ };
+    return agentCell(agent, 'definition.read', body, p.credential, 'DEFINITION_UNAVAILABLE');
+  }
+
   /** AW-11's two, the take and the stop on an agent's own login; every other operation as `applied` builds it. */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
@@ -344,7 +362,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         ? await ownTake()
         : declaration.name === 'run.end'
           ? await endedCell()
-          : await applied(declaration);
+          : declaration.name === 'definition.read'
+            ? await readCell()
+            : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
@@ -456,6 +476,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'task.observe':
       case 'task.check':
       case 'model.call':
+      case 'definition.read':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
@@ -468,7 +489,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
                 ? { leaseId: lease.leaseId, fence: lease.fence, ...CHECK }
                 : name === 'model.call'
                   ? { leaseId: lease.leaseId, fence: lease.fence, ...callOn(randomUUID()) }
-                  : { leaseId: lease.leaseId, fence: lease.fence };
+                  : name === 'definition.read'
+                    ? { leaseId: lease.leaseId, fence: lease.fence, ...READ }
+                    : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
       default: {
@@ -497,6 +520,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'task.observe':
       case 'task.check':
       case 'model.call':
+      case 'definition.read':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);
@@ -511,7 +535,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
                 ? { ...lease, ...CHECK }
                 : name === 'model.call'
                   ? { ...lease, ...callOn(p.taskId) }
-                  : lease;
+                  : name === 'definition.read'
+                    ? { ...lease, ...READ }
+                    : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
       default:
@@ -587,12 +613,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 179 exported operations both ways', () => {
+  it('covered all 180 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(179);
+    expect(names).toHaveLength(180);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 179.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 180.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
@@ -621,6 +647,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
               ...lease,
               ...(name === 'task.handback' && { outcome: 'completed', report: {} }),
               ...(name === 'model.call' && callOn(randomUUID())),
+              ...(name === 'definition.read' && READ),
             };
       /* eslint-disable no-await-in-loop -- a first call learns the code, a distinct second is checked */
       const seen = await w.person(w.h.world.ada, name, pick);

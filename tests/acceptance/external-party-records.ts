@@ -91,6 +91,13 @@ export function revocationBodies(): Readonly<Record<string, Readonly<Record<stri
     // AW-11's hand-over and handback are the agent's too, read by type first.
     'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
     'run.child_handback': { outcome: 'completed' },
+    // The worker's read of a pinned file (#1904), well formed and naming a lease.
+    'definition.read': {
+      leaseId: randomUUID(),
+      fence: 1,
+      stepId: null,
+      path: 'skills/brief/SKILL.md',
+    },
     // The launched agent's take, named by its launch and never by a record.
     'task.take_launch': { launchId: randomUUID() },
   };
