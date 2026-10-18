@@ -25,7 +25,7 @@ import type { LookupAddress } from 'node:dns';
 import { request as httpRequest, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { presented, type StoredCredential } from './credentials.ts';
+import { presented, type Presentable } from './credentials.ts';
 import { answerOf, type OnChunk, type Outbound } from './egress-answer.ts';
 import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
 
@@ -257,7 +257,7 @@ async function exchange(
 export async function send(
   destinations: ReadonlyMap<string, Destination>,
   request: OutboundRequest,
-  credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
+  credential: Presentable | null,
   resolve: Resolve = resolveBySystem,
   onChunk?: OnChunk,
   gate?: SendGate,
