@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the made-up guard refuses a sign-in auth:seed did not write, even at a made-up .local address: one written before auth:seed, one at a seed address auth:seed did not create, and one written between documented runs"
+}

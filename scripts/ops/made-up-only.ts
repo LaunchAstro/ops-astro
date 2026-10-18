@@ -10,7 +10,9 @@
 //   superuser that the seed did not tag, as a restore or a hand-loaded file
 //   is, lands in the guard's ledger by table name, never by content. So does a
 //   sign-in whose address is not a made-up `.local` one, and, while `db:admit`'s
-//   sign-in list stands, one whose address is not on it. Writes through the
+//   sign-in list stands (every later install keeps it), one whose address is
+//   not on it; one at a listed address waits, by its id's digest, until
+//   `auth:seed` or the seed vouches for it as one it created. Writes through the
 //   application's own role are what people typed on staging, and pass. The
 //   seed's tag is a secret its process makes at start and never stores: the
 //   guard holds only its digest, kept for the session the seed bound by
@@ -30,6 +32,7 @@
 // can remove it on purpose, as the owner can write the mark by hand.
 import { createHash, randomBytes } from 'node:crypto';
 import { GUARD, GUARDED, installStatements, LEDGER, STANDS } from './made-up-install.ts';
+import { anyUnvouched, installedList } from './made-up-sign-ins.ts';
 
 /** The one call this needs from the owner connection. */
 export interface OwnerQuery {
@@ -57,6 +60,7 @@ const SIGNS: Readonly<Record<string, string>> = {
   guard: 'a made-up guard was switched off',
 };
 const RECORD = 'it holds a record the seed cannot vouch for';
+const UNVOUCHED_SIGN_IN = 'it holds a sign-in auth:seed did not write';
 const UNGUARDED = 'a table has no made-up guard';
 const OWNER = '(select datdba from pg_database where datname = current_database())';
 /**
@@ -75,7 +79,7 @@ const SPECIAL: Readonly<Record<string, string>> = {
   'a definer function runs as a role past row security': `exists (select from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace join pg_roles r on r.oid = p.proowner
      where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
-       and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'protect', 'watch'))
+       and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'pend', 'protect', 'watch'))
        and r.oid <> ${OWNER} and not (r.rolname = 'supabase_admin' and r.rolsuper)
        and (r.rolbypassrls or r.rolsuper or pg_has_role(r.oid, ${OWNER}, 'member')))`,
   // The name is split in this text, so another preflight's last query is not a match.
@@ -144,7 +148,7 @@ export async function madeUpSeedSigns(admin: OwnerQuery): Promise<string[]> {
 }
 
 /** What a marked database's guard says about its sign-ins, which no reset empties. */
-const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
+const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNVOUCHED_SIGN_IN, UNGUARDED]);
 
 /**
  * Whether the staging reset may empty this database: no tenant or sign-in
@@ -168,6 +172,7 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
     ))
       signs.add(SIGNS[relation ?? ''] ?? RECORD);
   else signs.add(UNGUARDED);
+  if (await anyUnvouched(admin)) signs.add(UNVOUCHED_SIGN_IN);
   const covered = `not exists (select from (${GUARDED}) g where not exists (select from pg_trigger t
       where t.tgrelid = g.oid and t.tgname = '${GUARD}' and ${STANDS}))
     and exists (select from pg_event_trigger where evtname = '${GUARD}' and evtenabled = 'A')`;
@@ -177,15 +182,15 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
 
 /**
  * Install, or refresh, the guard and the watch. It never clears the ledger.
- * `signIns` are the only sign-in addresses the guard admits until the next
- * install without them.
+ * `signIns` are the only sign-in addresses the guard admits from now on;
+ * without them, an install keeps the list installed before, if any.
  */
-export async function guardMadeUp(
-  admin: OwnerQuery,
-  signIns: readonly string[] = [],
-): Promise<void> {
+export async function guardMadeUp(admin: OwnerQuery, signIns?: readonly string[]): Promise<void> {
   // The guard and the watch, in order, for this process's seed tag.
-  const listed = signIns.map((address) => digest(address.toLowerCase()));
+  const listed =
+    signIns === undefined
+      ? await installedList(admin)
+      : signIns.map((address) => digest(address.toLowerCase()));
   const install = installStatements(digest(SEED_SECRET), listed);
   // In order: each statement builds on the one before.
   // oxlint-disable-next-line no-await-in-loop
@@ -244,7 +249,7 @@ async function writeMark(
 export async function admitMadeUp(
   admin: OwnerQuery,
   confirmed: boolean,
-  signIns: readonly string[] = [],
+  signIns?: readonly string[],
 ): Promise<string[]> {
   const signs = await productionSigns(admin, [], confirmed);
   if (signs.length > 0) return signs;
@@ -255,12 +260,13 @@ export async function admitMadeUp(
 /**
  * The local slice's admission before its first sign-in (`db:admit`, between
  * `auth:up` and `auth:seed`): the seed's admission, with the guard admitting
- * only `signIns`, `auth:seed`'s own addresses, then the mark with nothing made
+ * only `signIns`, the local slice's own addresses, then the mark with nothing made
  * yet, as the staging reset marks an emptied database. Any other sign-in
- * written after it is noted, so `db:seed` finds a marked database and refuses
- * one holding a sign-in `auth:seed` did not write. `db:seed`'s admission judges
- * that, then installs the guard without the list. A marked database is judged
- * and keeps its mark.
+ * written after it is noted, and one at a listed address waits until
+ * the step that created it vouches for it, so `db:seed` finds a marked database and refuses
+ * one holding a sign-in `auth:seed` did not write. Every later install keeps
+ * the list, so the next run's `db:admit` refuses one written between runs. A
+ * marked database is judged and keeps its mark.
  */
 export async function admitBeforeSignIns(
   admin: OwnerQuery,

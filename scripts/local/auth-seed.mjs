@@ -17,6 +17,11 @@
 // and its password is reset to the one recorded here so a reseed after a
 // forgotten file still signs in. A reset GoTrue refuses fails the seed before
 // any file is written.
+//
+// The made-up guard holds each sign-in written at one of these addresses
+// until this script vouches for it (scripts/ops/made-up-only.ts). It vouches
+// only for the logins it created: one already there may be a row someone
+// else wrote at the same address, so `db:seed` refuses it.
 
 import { randomUUID } from 'node:crypto';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -61,6 +66,28 @@ async function findByEmail(gotrue, token, email) {
   return users.find((user) => user.email === email);
 }
 
+/**
+ * Vouch for the logins this run created, through the database's owner login.
+ * A run that created none needs no database, so its modules load only here.
+ * Without the owner login nothing is vouched, and `db:seed` refuses them.
+ */
+async function vouch(env, subjects) {
+  if (subjects.length === 0) return;
+  const adminUrl = env.DATABASE_ADMIN_URL || readEnvFile(join(LOCAL, 'db.env')).DATABASE_ADMIN_URL;
+  if (!adminUrl) {
+    console.error('auth-seed: no DATABASE_ADMIN_URL, so no login is vouched; db:seed refuses them');
+    return;
+  }
+  const { connectAsAdmin } = await import('../../packages/core-records/src/tenancy/database.ts');
+  const { vouchSignIns } = await import('../ops/made-up-sign-ins.ts');
+  const admin = connectAsAdmin(adminUrl, { source: 'seed' });
+  try {
+    await vouchSignIns(admin, subjects);
+  } finally {
+    await admin.close();
+  }
+}
+
 async function main() {
   const env = { ...readEnvFile(join(LOCAL, 'auth.env')), ...process.env };
   const gotrue = env.GOTRUE_URL ?? 'http://127.0.0.1:54391';
@@ -71,6 +98,7 @@ async function main() {
     process.exit(1);
   }
   const seeded = [];
+  const minted = [];
 
   for (const person of PEOPLE) {
     const password = passwordFor(person.email);
@@ -106,6 +134,8 @@ async function main() {
         process.exit(1);
       }
       created = { status: 200, body: existing };
+    } else {
+      minted.push(subject);
     }
 
     seeded.push({ ...person, password, subject, provider: 'supabase' });
@@ -114,6 +144,7 @@ async function main() {
     );
   }
 
+  await vouch(env, minted);
   mkdirSync(LOCAL, { recursive: true });
   const file = join(LOCAL, 'synthetic-users.json');
   writeFileSync(file, `${JSON.stringify(seeded, undefined, 2)}\n`, { mode: 0o600 });

@@ -115,15 +115,19 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
   The seed's made-up guard (`scripts/ops/made-up-only.ts`) opens an unmarked
   database only while no tenant or sign-in table has ever held a row, so this
   step puts the guard on every tenant table and on `auth.users` and marks the
-  database. Until `db:seed` has judged it, the guard admits only the sign-ins
-  `auth:seed` makes (`scripts/local/synthetic-logins.mjs`), so `db:seed`
-  refuses a database holding any other sign-in, even at a `.local` address.
+  database. From then on the guard admits only sign-ins at the addresses
+  `auth:seed` and `db:seed` make (`scripts/local/synthetic-logins.mjs`), and
+  each of those only once the step that created it vouches for it. So
+  `db:seed`, and the next run's `db:admit`, refuse a database holding any
+  other sign-in, even at a `.local` address or at one of those addresses.
   `LOCAL_SEED_MADE_UP=confirm` is you saying the database is new and made-up;
   once it is marked, the step judges it again and keeps the mark. It refuses a
   database that has held a row, or whose guard has noted a write it cannot
   vouch for.
-- `auth:seed` mints the synthetic logins and writes `.local/synthetic-users.json`.
-- `db:seed` maps those subjects to people, memberships and grants. It seeds no
+- `auth:seed` mints the synthetic logins, vouches to the guard for each one it
+  created, and writes `.local/synthetic-users.json`.
+- `db:seed` maps those subjects to people, memberships and grants, and makes
+  and vouches for each business's agent and the external party. It seeds no
   task. Nobody would have created a seeded task, and it would make the
   acceptance cases pass without the product working.
 

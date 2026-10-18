@@ -35,6 +35,7 @@ import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
+import { vouchSignIns } from './ops/made-up-sign-ins.ts';
 import { GRANTS_BY_ROLE } from './local-seed-roles.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -444,6 +445,7 @@ if (placeholder) {
  * literal in a tracked file, and the whole record lands in gitignored
  * `.local/synthetic-agents.json` and nowhere else.
  */
+// scripts/local/synthetic-logins.mjs builds the same address for db:admit's list.
 const AGENT_LOCAL_PART = 'agent';
 
 function agentFor(businessKey) {
@@ -621,7 +623,7 @@ async function seedAgentUser(auth, agent) {
     body: JSON.stringify({ email: agent.email, password: agent.password, email_confirm: true }),
   });
   const body = await created.json().catch(() => {});
-  if (typeof body?.id === 'string') return { subject: body.id, reachable: true };
+  if (typeof body?.id === 'string') return { subject: body.id, reachable: true, created: true };
   // Already there: find it, keep the subject GoTrue already issued, and set its
   // password to the file's, so the credential written for it signs in.
   const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, {
@@ -670,6 +672,7 @@ function readAuthEnv(name) {
  * already existed under a password the rewritten file lost. It touches this
  * one user and nobody else.
  */
+// scripts/local/synthetic-logins.mjs builds the same address for db:admit's list.
 const EXTERNAL_LOCAL_PART = 'ext';
 
 function ensureExternalEntry(list) {
@@ -790,10 +793,13 @@ try {
   const { agents, fresh: agentsFresh } = readAgents();
   const auth = await authAdmin();
   let authReachable = 0;
+  // The sign-ins this run created: the made-up guard holds each until vouched.
+  const minted = [];
   for (const agent of agents) {
     // oxlint-disable-next-line no-await-in-loop
     const user = await seedAgentUser(auth, agent);
     if (user.reachable) authReachable += 1;
+    if (user.created) minted.push(user.subject);
     agent.subject = user.subject;
     const tag = Object.keys(BUSINESS_KEYS).find((key) => BUSINESS_KEYS[key] === agent.business);
     const businessId = businessIds[tag];
@@ -821,6 +827,9 @@ try {
   const external = ensureExternalEntry(users);
   const externalUser = await seedAgentUser(auth, external.entry);
   external.entry.subject = externalUser.subject;
+  if (externalUser.created) minted.push(externalUser.subject);
+  // Only the ones it created: one found already there may be someone else's row.
+  await vouchSignIns(admin, minted);
   writeFileSync(usersFile, `${JSON.stringify(users, undefined, 2)}\n`, { mode: 0o600 });
   console.log(
     `local-seed: external party ${external.entry.email} ` +
