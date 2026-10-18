@@ -43,6 +43,7 @@ import {
   DEFAULT_TITLE,
   holdsOwnConversations,
 } from '../commands/conversations.ts';
+import { targetsFor } from '../commands/conversation-targets.ts';
 import { doorOf, mayRead } from './conversation-door.ts';
 import {
   addressReader,
@@ -66,9 +67,10 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
-/** The body, oldest first. */
+/** The body, oldest first; each reply's kept targets only as `targetsFor` gives them to this reader (#1666). */
 async function messagesOf(
   tx: TenantQuery,
+  session: Session,
   conversationId: string,
 ): Promise<readonly ConversationMessageView[]> {
   const rows = await tx.query<{
@@ -82,12 +84,21 @@ async function messagesOf(
       order by created_at, id`,
     [tx.businessId, conversationId],
   );
-  return rows.map((message) => ({
-    id: message.id,
-    role: message.role,
-    body: message.body,
-    createdAt: message.created_at.toISOString(),
-  }));
+  const targets = await targetsFor(
+    tx,
+    session,
+    rows.filter((message) => message.role === 'agent').map((message) => message.id),
+  );
+  return rows.map((message) => {
+    const view: ConversationMessageView = {
+      id: message.id,
+      role: message.role,
+      body: message.body,
+      createdAt: message.created_at.toISOString(),
+    };
+    const kept = targets.get(message.id);
+    return kept === undefined ? view : Object.assign(view, { targets: kept });
+  });
 }
 
 /**
@@ -141,7 +152,7 @@ async function served(
   conversationId: string,
 ): Promise<ConversationReadResult> {
   // Before the row: a purge committing between them reads as purged, not as an empty body.
-  const body = await messagesOf(tx, conversationId);
+  const body = await messagesOf(tx, session, conversationId);
   const rows = await tx.query<ConversationRow>(
     `${EFFECTIVE_GRANTS}
      select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
