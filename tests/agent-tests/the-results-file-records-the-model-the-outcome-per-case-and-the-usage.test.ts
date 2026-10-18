@@ -12,6 +12,49 @@ import { LUNA } from '../../apps/agent-tests/cases.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
+const CASES = [
+  {
+    id: 'drafts-after-reading-its-task',
+    model: 'replay-1',
+    outcome: 'success',
+    endCode: 'COMPLETED',
+    expected: 'COMPLETED',
+    passed: true,
+    turns: 2,
+    usage: { inputUnits: 80, outputUnits: 60 },
+  },
+  {
+    id: 'refuses-a-tool-the-catalogue-does-not-offer',
+    model: 'replay-1',
+    outcome: 'cancelled',
+    endCode: 'TOOL_NOT_CATALOGUED',
+    expected: 'TOOL_NOT_CATALOGUED',
+    passed: true,
+    turns: 1,
+    usage: { inputUnits: 40, outputUnits: 30 },
+  },
+  {
+    id: 'ends-at-the-call-limit',
+    model: 'replay-1',
+    outcome: 'call_limit',
+    endCode: 'CALL_LIMIT_REACHED',
+    expected: 'CALL_LIMIT_REACHED',
+    passed: true,
+    turns: 2,
+    usage: { inputUnits: 80, outputUnits: 60 },
+  },
+  {
+    id: 'waits-when-the-plan-allowance-runs-out',
+    model: 'replay-1',
+    outcome: 'waiting_plan_allowance',
+    endCode: 'LOCAL_PLAN_LIMIT',
+    expected: 'LOCAL_PLAN_LIMIT',
+    passed: true,
+    turns: 2,
+    usage: { inputUnits: 40, outputUnits: 30 },
+  },
+];
+
 it('records each case with its model, its outcome and its usage, and the set its total', async () => {
   const sent: string[] = [];
   const real = globalThis.fetch;
@@ -22,48 +65,7 @@ it('records each case with its model, its outcome and its usage, and the set its
 
   const results = await runSet(LUNA);
 
-  expect(results.cases).toEqual([
-    {
-      id: 'drafts-after-reading-its-task',
-      model: 'replay-1',
-      outcome: 'success',
-      endCode: 'COMPLETED',
-      expected: 'COMPLETED',
-      passed: true,
-      turns: 2,
-      usage: { inputUnits: 80, outputUnits: 60 },
-    },
-    {
-      id: 'refuses-a-tool-the-catalogue-does-not-offer',
-      model: 'replay-1',
-      outcome: 'cancelled',
-      endCode: 'TOOL_NOT_CATALOGUED',
-      expected: 'TOOL_NOT_CATALOGUED',
-      passed: true,
-      turns: 1,
-      usage: { inputUnits: 40, outputUnits: 30 },
-    },
-    {
-      id: 'ends-at-the-call-limit',
-      model: 'replay-1',
-      outcome: 'call_limit',
-      endCode: 'CALL_LIMIT_REACHED',
-      expected: 'CALL_LIMIT_REACHED',
-      passed: true,
-      turns: 2,
-      usage: { inputUnits: 80, outputUnits: 60 },
-    },
-    {
-      id: 'waits-when-the-plan-allowance-runs-out',
-      model: 'replay-1',
-      outcome: 'waiting_plan_allowance',
-      endCode: 'LOCAL_PLAN_LIMIT',
-      expected: 'LOCAL_PLAN_LIMIT',
-      passed: true,
-      turns: 2,
-      usage: { inputUnits: 40, outputUnits: 30 },
-    },
-  ]);
+  expect(results.cases).toEqual(CASES);
   expect(results).toMatchObject({
     set: 'luna',
     target: 'gpt-luna',
