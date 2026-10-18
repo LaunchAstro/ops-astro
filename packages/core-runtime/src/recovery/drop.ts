@@ -9,7 +9,9 @@
 //   - `provider_unavailable`: the provider did not answer (the provider's);
 //   - `connection_lost`: the connection to it was lost (the network's);
 //   - `worker_lost`: our worker went silent and its lease ran out (ours).
-// A worker reports the first two by handing back `dropped` (`handback.ts`);
+// A worker reports the first two by handing back `dropped` (`handback.ts`), or
+// settlement's stop records them when it ends the attempt first
+// (`lockDropAtSettlement`, #1623 R1);
 // nothing reports the third, so the sweep names it when the lease's own
 // deadline passes (`sweepLostWorkers` below, the pass's sweep). A silent run is
 // running until then.
@@ -151,11 +153,12 @@ export async function lockDropAtSettlement(
   tx: TenantQuery,
   leaseId: string,
 ): Promise<((cause: DropCause) => Promise<void>) | undefined> {
-  const affected = await tx.query<Affected>(
-    `select ${AFFECTED_COLUMNS}, 'handback_completed' as cause, $2::text as cause_id
-       ${AFFECTED_JOINS}
-      where res.business_id = $1 and res.lease_id = $2`,
+  const found = await tx.query<Omit<Affected, 'cause' | 'cause_id'>>(
+    `select ${AFFECTED_COLUMNS} ${AFFECTED_JOINS} where res.business_id = $1 and res.lease_id = $2`,
     [tx.businessId, leaseId],
+  );
+  const affected: readonly Affected[] = found.map((row) =>
+    Object.assign({}, row, { cause: 'handback_completed' as const, cause_id: leaseId }),
   );
   if (affected.length === 0) return undefined;
   const locks = await acquire(tx, locksFor(affected));
