@@ -39,6 +39,45 @@ and a write that asks again after its last lock wait is refused by a
 deactivation that committed during that wait. The person's own grants are
 unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
 
+## Single-operator Launch, 18 October 2026
+
+Decision `R5-S1-20261018`, R5 in
+[Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
+recording seam S1 as the director settled it on 14 October 2026. It needs
+Nathan's acceptance before the pull request that carries it merges (#1689,
+owner question d).
+
+- An operator is an active member of the business in a staff role (owner,
+  administrator or member): the people who may be the configured approver.
+- Single-operator mode is a business setting, `single_operator_mode`, off by
+  default, set by `settings.set_single_operator` under `settings:manage`.
+  Turning it on is refused unless the business has exactly one operator.
+  Adding a second operator, or making a second person one, turns it off in
+  the same transaction, whatever wrote the membership.
+- While it is on, the configured approver may approve a live correction they
+  requested themselves, or one their own agent requested. This covers the
+  owner's own hand-typed request too, not only the agent's: flagged for
+  Nathan's acceptance. The decision re-reads the mode and the operator count
+  under its lock, so a second operator added while it waits is seen and the
+  approval refused with nothing written.
+- The business's first such approval also needs Astra's review recorded on
+  the correction, bound to its exact version digest and approving it. The
+  owner records it with `live_correction.record_review`, carrying Astra's
+  saved review and the digest, which the server checks against the stored
+  version (owner question c, the recommended answer). The server refuses
+  without it; hiding the button is not the control.
+- Every such approval is marked as a single-operator self-approval on the
+  correction's decision, which is never rewritten. The decision is the
+  correction's durable record, and its receipts are read with it. An agent
+  run's own event record is not written here.
+- The storage admits a decision by the requester only on a row carrying that
+  mark, and the command writes the mark only after its checks pass. With the
+  mode off, self-approval is refused as before, and another configured
+  approver decides as today.
+- The owner may also ask to revert a correction they requested, under the
+  same mark (owner question a, the recommended answer). A forward revert by
+  hand stays the fallback.
+
 ## Own-business site, 18 October 2026
 
 Decision `R6-S2-20261018`, the first part of R6 in
