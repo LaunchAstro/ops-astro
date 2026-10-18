@@ -8,10 +8,11 @@
 // directing every agent of the business, not only one's own (Assign to AI).
 // A key added to the catalogue is added here in the same change.
 //
-// Three keys are self-scoped: every signed-in person holds them on their own
-// account, credentials or preferences and nobody holds them on another's, so
-// they are never granted (`account:write`, `credential:write`,
-// `preference:write`).
+// Three keys are self-scoped, so they are never granted. Every signed-in person
+// holds `account:write` and `preference:write` on their own account and
+// preferences, never on another's. `credential:write`, an agent key of one's
+// own, is the owner's and administrators' only (owner decision, 1 October
+// 2026): it comes with that role on install, never through a grant.
 
 const CATALOGUE: Readonly<Record<string, readonly string[]>> = {
   access: ['manage', 'share'],
