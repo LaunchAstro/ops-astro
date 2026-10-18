@@ -43,6 +43,7 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  'run.end',
   'task.take_launch',
 ]);
 
