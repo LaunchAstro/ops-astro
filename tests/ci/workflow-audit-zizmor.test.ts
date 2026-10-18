@@ -122,7 +122,7 @@ describe('the workflow audit job', () => {
       inputs: '.github/workflows',
       'online-audits': false,
       'advanced-security': false,
-      token: '',
+      token: 'offline-no-token',
     });
     expect(read(`${WORKFLOWS}/ci.yml`)).toContain(`${ACTION} # v0.6.4`);
     expect(read('docs/supply-chain-pins.md')).toMatch(
