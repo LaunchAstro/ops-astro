@@ -129,8 +129,6 @@ export interface SendGate {
 }
 
 export interface OutboundRequest {
-  /** The party a GitHub App call is for, which picks the one repository it may reach. */
-  readonly party?: string;
   readonly destination: string;
   readonly path: string;
   readonly method: Method;
