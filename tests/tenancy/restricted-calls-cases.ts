@@ -72,10 +72,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
-  // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
-  ['si', 'run_states'],
-  // 20261018151500 (#1623 R1): an attempt's one outcome, written by its stop, never rewritten.
-  ['si', 'run_outcomes'],
+  // 0095 (MP-6-2) and #1623 R1: a run's state versions and an attempt's outcome, never rewritten.
+  ['si', 'run_states run_outcomes'],
   // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
   // edited) and its wrap-ups (append only, never purged).
   ['siu', 'conversations'],
