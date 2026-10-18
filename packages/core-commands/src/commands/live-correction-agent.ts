@@ -69,21 +69,26 @@ async function withinDelegation(
 }
 
 /**
- * Whether the task is the owner's own internal work, judged as the broker
- * judges a run's task (S2, owner line 72), read after the request's last lock
- * wait: the insert holds the task's row, so a write that names the task
- * without moving its row, committed during a wait, is read here too.
+ * On the business's own site (no party), the refusal unless the task is the
+ * owner's own internal work, judged as the broker judges a run's task (S2,
+ * owner line 72, R6 #1699). A request asks it last, after the agent's own
+ * standing waits (`lastCheck`), so a write that names the task without moving
+ * its row, committed during any wait, is read too; a replay asks it as well.
  */
-async function ownersWorkStill(tx: TenantQuery, taskId: string): Promise<boolean> {
-  const task = await readPage(tx, taskId);
-  return task !== undefined && task.clientId === null && ownersOwn(task.source);
+async function ownWorkRefusal(
+  tx: TenantQuery,
+  operands: RequestOperands,
+): Promise<CommandRefusal | undefined> {
+  if (operands.partyId !== null) return undefined;
+  const task = await readPage(tx, operands.taskId);
+  const own = task !== undefined && task.clientId === null && ownersOwn(task.source);
+  return own ? undefined : NOT_OWN_WORK;
 }
 
 /**
  * The request by an agent. The person recorded as the requester is the
- * delegating person, so they cannot approve it either. On the business's own
- * site (no party) the task must still be the owner's own work once the request
- * has waited (R6, #1699); otherwise its stored row rolls back with the refusal.
+ * delegating person, so they cannot approve it either. Its stored row rolls
+ * back with a refusal of its own-work check.
  */
 export async function requestAsAgent(
   tx: TenantQuery,
@@ -94,8 +99,8 @@ export async function requestAsAgent(
   const operands = await withinDelegation(tx, sent, delegation);
   if ('refusal' in operands) return refused(operands.refusal);
   const stored = await storeAsAgent(tx, agentActorId, operands, delegation);
-  if (isRefused(stored) || operands.partyId !== null) return stored;
-  return (await ownersWorkStill(tx, operands.taskId)) ? stored : refused(NOT_OWN_WORK);
+  if (isRefused(stored)) return stored;
+  return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, operands) };
 }
 
 async function storeAsAgent(
@@ -123,9 +128,10 @@ async function storeAsAgent(
  * A replay's answer under the delegation presented now: the refusal, or
  * undefined when the stored receipt may go back. A replay carries the same
  * body (`OPERATION_ID_REUSED` refuses another), so it names the stored
- * request's task and party, and the request's own check is asked again. A
- * later delegation for another task or client gets the refusal, never the
- * receipt.
+ * request's task and party, and the request's own checks are asked again,
+ * its own-work check included. A later delegation for another task or client,
+ * or a task that is no longer the owner's own work, gets the refusal, never
+ * the receipt.
  */
 export async function replayRefusal(
   tx: TenantQuery,
@@ -133,7 +139,7 @@ export async function replayRefusal(
   delegation: Delegation,
 ): Promise<CommandRefusal | undefined> {
   const within = await withinDelegation(tx, sent, delegation);
-  return 'refusal' in within ? within.refusal : undefined;
+  return 'refusal' in within ? within.refusal : await ownWorkRefusal(tx, within);
 }
 
 /** `live_correction.request`'s agent row: replayed only to a delegation that could make it now. */
