@@ -8,8 +8,11 @@
 // the message keep and the models offered all ask it, so they judge one page.
 // An added page naming no task of this business is judged as a task that is
 // gone, never told apart from one the caller may not read; any other page
-// leaves the task it was opened on. A conversation opened on a client's task,
-// or on one gone since, stays judged as that task whatever page is added.
+// leaves the task it was opened on. The stored page is then the only source of
+// the client judged (S1930-2): a conversation opened on client A given client
+// B's page is judged as B's. One opened on a client's task, or on one gone
+// since, is never judged as no client's: an internal page added to it is
+// judged as a task that is gone, so nothing is offered and nothing is asked.
 
 import { isUuid, slotOf, TASK_SPINE, taskPageRef } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -26,8 +29,6 @@ export async function pageTaskOf(
 ): Promise<string | null> {
   const named = taskPageRef(pageAddress);
   if (named === undefined) return scopeRecordId;
-  // Opened on a client's task, or one gone: still judged as it, so a page added since never lifts that.
-  if (scopeRecordId !== null && !(await internal(tx, scopeRecordId))) return scopeRecordId;
   if (named === null) return NO_TASK;
   const [task] = await tx.query<{ readonly id: string }>(
     `select r.id from public.records r
@@ -36,7 +37,10 @@ export async function pageTaskOf(
         and (r.${KEY} = $2 or ($3::uuid is not null and r.id = $3::uuid))`,
     [tx.businessId, named, isUuid(named) ? named : null],
   );
-  return task?.id ?? NO_TASK;
+  if (task === undefined) return NO_TASK;
+  // Opened on a client's task, or one gone: never judged as no client's, so an internal page is gone.
+  const lifts = scopeRecordId !== null && (await internal(tx, task.id));
+  return lifts && !(await internal(tx, scopeRecordId)) ? NO_TASK : task.id;
 }
 
 /** Whether task `id` is still this business's, and no client's. */
