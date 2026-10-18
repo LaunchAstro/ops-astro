@@ -139,26 +139,6 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.conversations where business_id = $1 order by id limit 1) c on true
      returning 1`,
-  // #1666: a reply's snapshot, on the business's first message, and one target on it naming
-  // the business's first record; bravo's name ids that key nothing.
-  'public.conversation_reply_snapshots': `insert into public.conversation_reply_snapshots
-       (business_id, message_id, created)
-     select $1, coalesce(m.id, gen_random_uuid()), 1
-       from (select 1) one
-       left join lateral (
-         select id from public.conversation_messages
-          where business_id = $1 order by id limit 1) m on true
-     returning 1`,
-  'public.conversation_reply_targets': `insert into public.conversation_reply_targets
-       (business_id, message_id, position, task_id, revision)
-     select $1, coalesce(s.message_id, gen_random_uuid()), 1, coalesce(r.id, gen_random_uuid()), 0
-       from (select 1) one
-       left join lateral (
-         select message_id from public.conversation_reply_snapshots
-          where business_id = $1 order by message_id limit 1) s on true
-       left join lateral (
-         select id from public.records where business_id = $1 order by id limit 1) r on true
-     returning 1`,
   // The journey records no check (MP-6-1), so one is written against the
   // business's own lease, run, version and attempt where it has one, as
   // `recordCheck` does; Bravo holds no lease, so its row names ids that key
@@ -708,6 +688,41 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        from made m
        join public.records r on r.business_id = m.business_id
       order by r.id limit 1 returning 1`,
+  // #1666: written with triggers on, so the own-business copy meets a row the guard admits. An
+  // agent reply in the business's seeded chat opened on no task, made in the same statement, and
+  // its snapshot; the guard sees the reply, inserted earlier in the statement.
+  'public.conversation_reply_snapshots': `with reply as (
+       insert into public.conversation_messages
+         (business_id, id, conversation_id, role, author_actor_id, body)
+       select c.business_id, gen_random_uuid(), c.id, 'agent', c.owner_actor_id,
+              'restricted calls seed'
+         from public.conversations c
+        where c.business_id = $1 and c.scope_record_id is null order by c.id limit 1
+       returning business_id, id)
+     insert into public.conversation_reply_snapshots (business_id, message_id, created)
+     select business_id, id, 1 from reply returning 1`,
+  // ...and one target on it: the business's first record, which an applied task.create naming
+  // that chat as its origin, written in the same statement, ties to the chat.
+  'public.conversation_reply_targets': `with snap as (
+       select s.business_id, s.message_id, m.conversation_id, m.author_actor_id
+         from public.conversation_reply_snapshots s
+         join public.conversation_messages m
+           on m.business_id = s.business_id and m.id = s.message_id
+        where s.business_id = $1 order by s.message_id limit 1),
+     made as (
+       insert into public.audit_events (business_id, id, actor_id, command, outcome,
+         payload_digest, subject_record_id, origin_conversation_id)
+       select s.business_id, gen_random_uuid(), s.author_actor_id, 'task.create', 'applied',
+              repeat('a', 64), r.id, s.conversation_id
+         from snap s
+         join lateral (select id from public.records
+                        where business_id = s.business_id order by id limit 1) r on true
+       returning business_id, subject_record_id)
+     insert into public.conversation_reply_targets
+       (business_id, message_id, position, task_id, revision)
+     select s.business_id, s.message_id, 1, m.subject_record_id, 0
+       from snap s join made m on m.business_id = s.business_id
+     returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

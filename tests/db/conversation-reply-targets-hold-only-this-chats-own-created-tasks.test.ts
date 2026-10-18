@@ -156,7 +156,8 @@ describe.skipIf(serverUrl === undefined)('reply snapshots hold their own chat’
          from public.conversation_reply_targets where message_id = $1 order by position`,
       [messageId],
     );
-    expect(targets).toStrictEqual([
+    // The driver's rows are not plain objects, so the comparison is by value.
+    expect([...targets]).toEqual([
       { position: 1, task: first.taskId, revision: String(first.revision) },
       { position: 2, task: second.taskId, revision: String(second.revision) },
     ]);
