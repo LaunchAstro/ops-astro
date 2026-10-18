@@ -113,6 +113,28 @@ const outcomeOf = async (w: Work) =>
     [s.business, w.attemptId],
   );
 
+/**
+ * The effect, then the cut: the call is held in flight while the effect applies, and is cut when
+ * it goes out. A call reserved after the effect is refused, never cut. Answers the money before
+ * the cut.
+ */
+const cutAfterTheEffect = async (w: Work): Promise<Awaited<ReturnType<typeof money>>> => {
+  world.provider.mode('answer');
+  const custody = gated();
+  const inFlight = call(w, {}, custody.broker);
+  try {
+    await until(async () => (await callsOn(w)).states.join() === 'dispatched');
+    await applied(w);
+    const unspent = await money(w);
+    world.provider.mode('cut');
+    return unspent;
+  } finally {
+    custody.open();
+    await inFlight;
+    world.provider.mode('answer');
+  }
+};
+
 // B2's order (register 87): the effect, then the cut, then the agent. A cut call's unknown
 // settlement ends the attempt and retires its delegation in the same transaction
 // (`broker-settle.ts:269-271`, `broker-stop.ts:122-133`; docs/current-decisions.md:79-81), so
@@ -121,13 +143,9 @@ const outcomeOf = async (w: Work) =>
 // "never settled" answer. The hold kept whole, the call held unknown and the money are kept.
 it('a model call lost mid-flight keeps the whole hold, and the agent cannot observe it', async () => {
   const w = await work();
-  await applied(w);
-  const unspent = await money(w);
-  world.provider.mode('cut');
-  await call(w);
-  world.provider.mode('answer');
+  const unspent = await cutAfterTheEffect(w);
   expect((await callsOn(w)).states).toStrictEqual(['liability_unknown']);
-  expect(await outcomeOf(w)).toStrictEqual([
+  expect(await outcomeOf(w)).toEqual([
     { outcome: 'unknown_provider_outcome', end_code: 'LIABILITY_UNKNOWN' },
   ]);
   const before = await money(w);
