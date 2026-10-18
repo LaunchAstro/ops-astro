@@ -22,6 +22,10 @@
 // the call is unattended: an agent is no person's own session. The model's
 // words are handed back once, on the call that made them, and are never
 // stored; a replay reports the call as the ledger has it now.
+//
+// On a carried deployment (#1703) the send is carried to the model agent on
+// the owner's machine, with the caller's own token as the line's bearer
+// (`task-carriage.ts`); with no token, nothing is carried.
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { isUuid } from '../../../core-records/src/index.ts';
@@ -36,6 +40,7 @@ import {
   sendReservedCall,
   type AuditNote,
   type Broker,
+  type Handoff,
   type ModelCaller,
   type ModelCallRequest,
   type ModelCallResult,
@@ -47,19 +52,24 @@ import { executeAgentOperation } from './agent-envelope.ts';
 import { modelCallRow } from './agent-operations.ts';
 import { writeAuditEvent } from './audit.ts';
 import { refused, refusedRetaining, type Refused } from './outcome.ts';
+import { taskHandoff } from './task-carriage.ts';
 import { isCommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 
 /** The broker as a deployment configures it. The audit is this layer's, per caller. */
 export type ModelBroker = Omit<Broker, 'audit'>;
 
-/** The agent prefix's executor for `model.call`, the composition root's to build. */
+/**
+ * The agent prefix's executor for `model.call`, the composition root's to
+ * build. `accessToken` is the bearer the caller presented at the door.
+ */
 export type ModelCallExecutor = (
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   credential: string | undefined,
   request: AgentRequest,
+  accessToken?: string,
 ) => Promise<CommandResult>;
 
 /** What the reserving transaction held, for the send after it commits. */
@@ -70,8 +80,27 @@ interface Held {
   readonly broker: Broker;
 }
 
+/** A carried deployment's handoff for the held call, made with the caller's own token; none elsewhere. */
+function carriedFor(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  accessToken: string | undefined,
+  held: Held,
+): ((callId: string) => Handoff) | undefined {
+  const { carrier } = held.broker;
+  if (carrier === undefined || accessToken === undefined) return undefined;
+  return taskHandoff(database, businessId, presented, accessToken, {
+    caller: held.caller,
+    request: held.request,
+    carrier,
+    broker: held.broker,
+    timeoutMs: held.reserved.operation.timeoutMs,
+  });
+}
+
 export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
-  return async (database, businessId, presented, credential, request) => {
+  return async (database, businessId, presented, credential, request, accessToken) => {
     let held: Held | undefined;
     const row = modelCallRow(async (tx, call, operands, delegation) => {
       const caller: ModelCaller = {
@@ -114,6 +143,7 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
       held.request,
       held.reserved,
       held.broker,
+      carriedFor(database, businessId, presented, accessToken, held),
     );
     return await answerFrom(database, businessId, admitted, callId, sent);
   };

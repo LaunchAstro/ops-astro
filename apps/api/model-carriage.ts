@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A carried deployment's answers (live chat route B): its conversation calls
-// go to the model agent on the owner's machine over Supabase Realtime, through
-// the carried custody, and the function holds no provider credential. It
+// A carried deployment's answers (live chat route B): its conversation calls,
+// and its tasks' model calls (#1703), go to the model agent on the owner's
+// machine over Supabase Realtime, through the carried custody, and the
+// function holds no provider credential. It
 // needs the carry key (and, during a rotation, the next one), the project's
 // secure Realtime address, and its publishable key; missing or malformed, the
 // deployment does not start, naming the setting and never its value.
 
 import {
   conversationExchange,
+  modelCallExecutor,
   type ConversationExchange,
   type ModelBroker,
+  type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 import {
   carriedCustody,
@@ -41,11 +44,14 @@ export const carriedBroker = (carried: CarriedSettings, custody: Custody): Model
   outsidePeople: carried.outsidePeople,
 });
 
-/** The carried exchange, or a throw naming the setting that is missing or malformed. */
+/** The carried exchange and executor, or a throw naming the setting that is missing or malformed. */
 export function carriedAnswers(
   environment: Settings,
   carried: CarriedSettings,
-): { readonly answerConversation: ConversationExchange } {
+): {
+  readonly answerConversation: ConversationExchange;
+  readonly executeModelCall: ModelCallExecutor;
+} {
   const keys = parseCarryKeys(environment[CARRY_KEY_SETTING], environment[CARRY_KEY_NEXT_SETTING]);
   if (!keys.ok) {
     throw new Error(
@@ -64,7 +70,11 @@ export function carriedAnswers(
     keys: keys.keys,
     key,
   });
-  return { answerConversation: conversationExchange(carriedBroker(carried, custody)) };
+  const broker = carriedBroker(carried, custody);
+  return {
+    answerConversation: conversationExchange(broker),
+    executeModelCall: modelCallExecutor(broker),
+  };
 }
 
 /**
@@ -74,6 +84,7 @@ export function carriedAnswers(
 export function carriedOption(environment: Settings): {
   readonly carrier?: Carrier;
   readonly answerConversation?: ConversationExchange;
+  readonly executeModelCall?: ModelCallExecutor;
 } {
   const carried = carrierSettings(environment);
   if (carried.kind === 'invalid') throw new Error(carried.problem);

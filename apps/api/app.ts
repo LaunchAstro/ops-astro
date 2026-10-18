@@ -510,12 +510,14 @@ export function createApi(options: ApiOptions): Hono {
       // included: the envelope asks `typeof` itself and refuses anything that
       // is not a string, so the rule lives in one place.
       const execute = executorFor(declaration.name, options, agentExecutor);
+      // The bearer goes on to `model.call` alone: a carried call's line is joined with it (#1703).
       const result = await execute(
         options.database,
         businessId,
         presented,
         context.req.header(DELEGATION_HEADER),
         { ...body, command: declaration.name },
+        execute === agentExecutor ? undefined : bearerOf(context.req),
       );
       if (isCommandRefusal(result)) return refuse(context, result);
       // An agent's read hands out records too (security line 9, download volume): its queue, a task.
