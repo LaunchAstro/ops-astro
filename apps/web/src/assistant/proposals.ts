@@ -165,7 +165,7 @@ export const STALE_EDIT =
   'This task changed after the answer, so nothing was applied. Ask again for a change to the task as it is now.';
 
 export const UNPICKED_EDIT =
-  'This change is not tied to a task this chat created, so it is not applied. Ask again to change the task.';
+  'This change is not tied to a task you picked in this tab, so it is not applied. Ask again to change the task.';
 
 export const UNBOUND_EDIT =
   'This change is not tied to a version of the task kept in this tab, so it is not applied. Ask again to change the task.';

@@ -1329,7 +1329,8 @@ picks the task on (`apps/web/src/assistant/targets.ts`): one task is named by
 its title and key, and more than one is a required pick, each row read live
 with `task.read`, 5 at a time. The click is `task.update` at the target's
 revision with operation id `task-proposal:<messageId>`, and the chosen task's
-id is kept in the tab by the reply, so a retry or a reload sends it again.
+id is kept in the tab by the reply, so a retry or a reload sends it again;
+no later choice pushes it out, and a choice the tab cannot keep is not sent.
 Malformed targets draw no card.
 No agent entry reaches any of them: the agent's side of an exchange is
 written by the product's exchange, never by an agent calling in. The message
