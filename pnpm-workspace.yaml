@@ -25,6 +25,12 @@ minimumReleaseAgeExclude:
 # jsdom's css-tree both pull it.
 overrides:
   'source-map-js@>=1.0.0 <1.2.2': 1.2.2
+  # The agent stack is held to one copy each (#1715): langchain's own ranges
+  # would let a second, newer langgraph and core in once they age.
+  '@langchain/langgraph': 1.4.21
+  '@langchain/core': 1.2.17
+  '@langchain/langgraph-checkpoint': 1.1.6
+  langsmith: 0.9.0
 # Refuse a version published with weaker trust evidence than an earlier one.
 trustPolicy: no-downgrade
 # A dependency of a dependency comes from the registry, never a git URL or tarball.
