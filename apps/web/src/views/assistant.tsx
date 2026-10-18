@@ -114,7 +114,7 @@ async function startWith(
   // default. A title, page or model chosen while it waits follows it in turn.
   const { title, page, model } = chat;
   const chosen = model === null ? {} : { model };
-  const start = { body, title, subject: subject.label, scope, ...chosen };
+  const start = { body, title, subject: subject.label, scope, ...chosen, ...(page && { page }) };
   const settled = settle(
     await withPieces(store, chat.key, (by) => client.mutate('conversation.start', start, by)),
   );
