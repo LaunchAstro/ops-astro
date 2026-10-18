@@ -2,8 +2,9 @@
 //
 // No tracing, inherited or explicit, and no verbose output (#1623 R4, design
 // R9). Pinned core adds a handler to a model call in four ways: an
-// environment flag, a run tree it inherits, callbacks in the call's options or
-// its inherited config, and a configure hook, whose registry is itself a
+// environment flag, a run tree it inherits, callbacks or verbose output in
+// the call's options, its inherited config or the model's own fields, and a
+// configure hook, whose registry is itself a
 // context variable in LangChain's async store. A hook installs its handler
 // when its context variable holds one, or when its own environment flag is
 // "true", so no list of flags is enough on its own.

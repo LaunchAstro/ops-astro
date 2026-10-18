@@ -11,9 +11,11 @@
 // - One count. Every call, the graph's, a direct `invoke` and every binding
 //   (`bindTools`, `withConfig`), takes its ordinal from the attempt's one
 //   state, so they share the server's one limit (TEST M3).
-// - No handlers. The constructor refuses callbacks, verbose output and
-//   tags or metadata, and `generate`, which every entry reaches before core
-//   configures callbacks, refuses anything `guard.ts` finds.
+// - No handlers. The constructor refuses callbacks (or core's
+//   `callbackManager` alias), verbose output and tags or metadata, and
+//   `generate`, which every entry reaches before core configures callbacks,
+//   refuses anything `guard.ts` finds in the call's options or in the
+//   model's own `callbacks` and `verbose`, however they were set (#1921).
 
 import type { CallbackManagerForLLMRun, Callbacks } from '@langchain/core/callbacks/manager';
 import {
@@ -67,7 +69,8 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     state: AttemptState,
     asked: Readonly<Record<string, unknown>> = {},
   ) {
-    if (['callbacks', 'verbose', 'tags', 'metadata'].some((key) => asked[key] !== undefined)) {
+    const handlerKeys = ['callbacks', 'callbackManager', 'verbose', 'tags', 'metadata'];
+    if (handlerKeys.some((key) => asked[key] !== undefined)) {
       throw refused(state);
     }
     super({ maxRetries: 0, verbose: false });
@@ -92,10 +95,15 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     options?: string[] | OpsAstroCallOptions,
     callbacks?: Callbacks,
   ): Promise<LLMResult> {
-    if (entryRefused(Array.isArray(options) ? {} : options, callbacks)) {
+    // Options are read once, so core configures the callbacks the guard saw.
+    const asked = Array.isArray(options) ? [...options] : { ...options };
+    if (
+      entryRefused(Array.isArray(asked) ? {} : asked, callbacks) ||
+      entryRefused({ callbacks: this.callbacks, verbose: this.verbose })
+    ) {
       throw refused(this.#state);
     }
-    return await super.generate(messages, options, callbacks);
+    return await super.generate(messages, asked, callbacks);
   }
 
   override withConfig(

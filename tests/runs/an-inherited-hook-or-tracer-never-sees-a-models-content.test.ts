@@ -6,13 +6,14 @@
 // context-variable hook, then through an environment-variable hook with its
 // own flag, each on a direct `invoke` and through a binding with empty
 // options; a model built or bound with callbacks, or built with core's
-// `callbackManager` alias; an `invoke` with callbacks or verbose output; a
-// `generate` whose options read empty first and a recorder after; the
+// `callbackManager` alias; an `invoke` with callbacks or verbose output; the
 // model's own `callbacks` set after it is built, after it is bound, or by a
 // subclass before it is built, and its own `verbose` set after (#1921); and
 // the runner with a hook planted. Each is refused
 // `TRACING_NOT_ALLOWED` before any callback, with nothing sent, or runs
-// isolated with the hook never called. The cases print booleans and counts,
+// isolated with the hook never called. A `generate` whose options read empty
+// first and a recorder after is read once, so the recorder is never
+// configured. The cases print booleans and counts,
 // so the planted marker is never printed.
 //
 // LangSmith makes no network call: a real listener stands in for its
@@ -91,13 +92,13 @@ const OPTIONS = [
   'none-invoke-verbose',
   'none-invoke-callbacks',
   'none-constructed-with-callback-manager',
-  'none-generate-callbacks-read-late',
   'none-own-callbacks-set-after-construction',
   'none-own-callbacks-set-after-binding',
   'none-own-callbacks-set-before-construction',
   'none-own-verbose-set-after-construction',
 ];
 
+// oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes
 describe('an inherited hook or tracer never sees an agent model content', () => {
   it.each(REFUSED)('a planted hook on %s is refused before any callback', async (kind) => {
     const run = await inFreshProcess(kind);
@@ -108,6 +109,12 @@ describe('an inherited hook or tracer never sees an agent model content', () => 
   it.each(OPTIONS)('%s is refused before any callback', async (kind) => {
     const run = await inFreshProcess(kind);
     expect(run).toMatchObject({ result: 'TRACING_NOT_ALLOWED', seen: 0, marked: false, sent: 0 });
+    expect(run.leaked).toBe(false);
+  });
+
+  it('generate reads its options once: callbacks that turn into a recorder later never see content', async () => {
+    const run = await inFreshProcess('none-generate-callbacks-read-late');
+    expect(run).toMatchObject({ seen: 0, marked: false });
     expect(run.leaked).toBe(false);
   });
 
