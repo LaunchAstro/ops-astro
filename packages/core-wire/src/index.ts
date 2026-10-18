@@ -258,3 +258,14 @@ export type {
   SkillUsageView,
   Unavailable,
 } from './cost-views.ts';
+
+export {
+  isWorkerEndCode,
+  outcomeOf,
+  RUN_OUTCOMES,
+  WORKER_END_CODES,
+  type EndCode,
+  type RunOutcome,
+  type RunOutcomeView,
+  type WorkerEndCode,
+} from './run-outcomes.ts';
