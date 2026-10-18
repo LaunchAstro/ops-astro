@@ -1324,7 +1324,13 @@ snapshot is kept with the reply (`conversation_reply_snapshots`,
 `conversation_reply_targets`) and given back unchanged on a retry, but only to
 the conversation's owner, each target only while they may read it and it is
 not trashed or a client's, never renumbered. The exchange's own reply carries
-the same field.
+the same field. The drawer draws such a reply's edit as a card the person
+picks the task on (`apps/web/src/assistant/targets.ts`): one task is named by
+its title and key, and more than one is a required pick, each row read live
+with `task.read`, 5 at a time. The click is `task.update` at the target's
+revision with operation id `task-proposal:<messageId>`, and the chosen task's
+id is kept in the tab by the reply, so a retry or a reload sends it again.
+Malformed targets draw no card.
 No agent entry reaches any of them: the agent's side of an exchange is
 written by the product's exchange, never by an agent calling in. The message
 text is stored in `conversation_messages` and nowhere else: the answer and the
