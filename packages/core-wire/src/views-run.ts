@@ -239,7 +239,7 @@ export interface LiveCorrectionListResult {
   readonly corrections: readonly CorrectionListItem[];
 }
 
-/** A page captured for a receipt, cut to the receipt text limit; `clipped` says it was cut. */
+/** The place the runner checked on a capture, cut to the receipt text limit; `clipped` says so. */
 export interface ReceiptCapture {
   readonly text: string;
   readonly clipped: boolean;
@@ -248,7 +248,9 @@ export interface ReceiptCapture {
 /**
  * One publish or revert receipt as its card reads it: the outcome observed,
  * the commit and deployment the runner saw, and the before and after
- * captures. A field the runner did not record is null.
+ * captures: the approved word's place with its context, as the page read
+ * before the send and once live (the runner keeps no whole page). A field
+ * the runner did not record is null.
  */
 export interface CorrectionReceiptView {
   readonly receiptId: string;
