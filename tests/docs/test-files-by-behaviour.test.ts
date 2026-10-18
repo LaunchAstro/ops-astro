@@ -382,6 +382,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'packages/core-custody/src/plan-token.ts',
     "#1620 P1's plan token holder; inert until P4 (#1702) wires it into the chatgpt-plan route",
   ],
+  [
+    'packages/core-custody/src/plan-answer.ts',
+    "#1620 P3's Responses fold and named plan results; inert until P4 (#1702) wires it into the chatgpt-plan route",
+  ],
 ]);
 
 const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file);

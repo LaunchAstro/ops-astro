@@ -13,7 +13,9 @@ export const SECRETS: readonly string[] = [ACCESS, REFRESH];
 
 /** One server-sent event per value, as the Responses stream writes them. */
 export const sse = (events: readonly Record<string, unknown>[]): string =>
-  events.map((event) => `event: ${String(event['type'])}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+  events
+    .map((event) => `event: ${String(event['type'])}\ndata: ${JSON.stringify(event)}\n\n`)
+    .join('');
 
 /** A completed response whose one message holds these output text parts, in order. */
 export function completed(
@@ -51,7 +53,10 @@ export function stream(
 }
 
 /** A 200 event stream as egress answers it. */
-export const answered = (body: string, mediaType = 'text/event-stream'): Outbound => ({
+export const answered = (
+  body: string,
+  mediaType = 'text/event-stream',
+): Extract<Outbound, { ok: true }> => ({
   ok: true,
   status: 200,
   body,
