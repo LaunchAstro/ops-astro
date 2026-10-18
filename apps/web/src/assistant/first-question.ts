@@ -110,6 +110,9 @@ export async function startWith(
   const reply = settled.kind === 'ok' ? settled.value.reply : undefined;
   if (sent === undefined) replied(store, chat.key, reply);
   else answeredFor(store, chat.key, reply, sent, replays);
+  // A lost start replayed after another question started the tab: its answer
+  // stays under its own question, and the tab keeps the conversation it is on.
+  if ((store.chat(chat.key)?.conversationId ?? null) !== null) return id;
   store.update((current) => started(current, chat.key, id));
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;

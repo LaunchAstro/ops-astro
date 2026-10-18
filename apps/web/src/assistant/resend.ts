@@ -49,16 +49,23 @@ export interface Resends {
       sending: Kept,
     ) => Promise<CallResult<T>>,
   ): Promise<CallResult<T>>;
+  /** Whether tab `key` keeps a lost `command` for this question as typed. */
+  holds(key: string, command: Asked['command'], question: string): boolean;
 }
+
+/** How a tab keeps a lost question: by command and question as typed. */
+const lostAs = (asked: Pick<Asked, 'command' | 'question'>): string =>
+  `${asked.command}\n${asked.question}`;
 
 export function resends(): Resends {
   const kept = new Map<string, Map<string, Kept>>();
   const ended = new Set<string>();
   return {
+    holds: (key, command, question) => kept.get(key)?.has(lostAs({ command, question })) === true,
     async send(key, asked, write) {
       const lost = kept.get(key) ?? new Map<string, Kept>();
       kept.set(key, lost);
-      const which = `${asked.command}\n${asked.question}`;
+      const which = lostAs(asked);
       const sending = lost.get(which) ?? { ...asked, operationId: crypto.randomUUID() };
       const result = await write(sending.request, sending.operationId, sending);
       // Each completion owns its own identity: an older send settling late

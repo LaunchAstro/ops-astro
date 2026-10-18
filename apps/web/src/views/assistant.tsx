@@ -131,15 +131,17 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     // Each question waits for the tab's writes so far and then its task's
     // read, in the tab's queue, so a model chosen after it lands after it.
     // A tab not yet started joins what its last start made, or starts itself
-    // only once that start is refused.
+    // only once that start is refused. A lost start resent goes as that start
+    // whatever the tab is on now, so it replays rather than asks again (#897).
     let asked = false;
     let baseline: Baseline | null = null;
     const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
     const turn = before.then(async (id) => {
       baseline = await read;
-      if (id !== null) return id;
+      if (id !== null && !replays.resent.holds(key, 'conversation.start', body)) return id;
       asked = true;
-      return await start({ ...opening, baseline }, on);
+      const made = await start({ ...opening, baseline }, on);
+      return id ?? made;
     });
     starts.current.set(key, turn);
     const known = await turn;
