@@ -54,7 +54,6 @@ export interface Opening {
 export interface Context {
   readonly page: AssistantPage | null;
   readonly scope: StandingScope;
-  readonly taskId: string | null;
 }
 
 type Attempt = Kept<Context>;
@@ -131,7 +130,6 @@ function replayOf(sent: Attempt, outcome: CommandOutcome, question: string): Rep
     model: typeof model === 'string' ? model : null,
     page: sent.context?.page ?? null,
     scope: sent.context?.scope ?? { client: null, task: null },
-    taskId: sent.context?.taskId ?? null,
     body: sent.question,
     questionId: typeof messageId === 'string' ? messageId : null,
     answerId: reply?.answered === true ? reply.messageId : null,
@@ -190,7 +188,7 @@ function startOf(opening: Opening, replays: Replays): Asked<Context> {
   const page = chat.page !== null && replays.resent.carries(chat.key, carried) ? null : chat.page;
   const chosen = model === null ? {} : { model };
   const request = { body, title, subject: subject.label, scope, ...chosen, ...(page && { page }) };
-  const context = { page, scope: chat.scope, taskId: chat.taskId ?? null };
+  const context = { page, scope: chat.scope };
   return { command: 'conversation.start', question: body, request, baseline, context };
 }
 

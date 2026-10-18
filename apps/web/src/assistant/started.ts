@@ -11,8 +11,8 @@
 // each field that differs from A's request is written after the replay. A tab
 // started meanwhile on another conversation keeps everything made since; A's
 // question and answer go to a tab on A, a new one carrying A's own title,
-// model, page, scope and task, or one already open on A, which is given only
-// what it lacks. Lines are matched by the server's message ids, so an answer
+// model, page and scope (with its task), or one already open on A, which is
+// given only what it lacks. Lines are matched by the server's message ids, so an answer
 // a reopened conversation already shows is never drawn twice, and one it was
 // missing lands straight after its question. A restore takes values only from
 // the tab's own kept attempt, so it never widens scope.
@@ -103,7 +103,6 @@ export interface Replay {
   readonly model: string | null;
   readonly page: AssistantPage | null;
   readonly scope: StandingScope;
-  readonly taskId: string | null;
   readonly body: string;
   /** The server's ids for its question and its answer; no answer id for a refusal. */
   readonly questionId: string | null;
@@ -161,14 +160,13 @@ const questionOf = (replay: Replay): AssistantMessage => ({
   cites: [],
 });
 
-/** Case 2a: a new tab on A, selected, with A's own title, model, page, scope and task. */
+/** Case 2a: a new tab on A, selected, with A's own title, model, page and scope (its task). */
 function apart(state: AssistantState, replay: Replay): Restored {
   const made: Chat = {
     ...blank(state.next, [], replay.scope),
     conversationId: replay.conversationId,
     title: replay.title,
     model: replay.model,
-    taskId: replay.taskId,
   };
   const paged = replay.page === null ? made : noted(made, replay.page);
   const question = questionOf(replay);
@@ -194,8 +192,7 @@ function joined(state: AssistantState, open: Chat, replay: Replay, from: string)
     const paged = chat.page === null && replay.page !== null ? noted(chat, replay.page) : chat;
     const bare = chat.scope.client === null && chat.scope.task === null;
     const scope = bare ? replay.scope : chat.scope;
-    const taskId = chat.taskId ?? replay.taskId;
-    return { ...paged, scope, taskId, model: chat.model ?? replay.model };
+    return { ...paged, scope, model: chat.model ?? replay.model };
   });
   const question = questionOf(replay);
   const asked = open.messages.some((line) => line.id === question.id);
