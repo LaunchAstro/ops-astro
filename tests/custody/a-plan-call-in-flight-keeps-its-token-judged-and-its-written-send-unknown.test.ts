@@ -38,7 +38,9 @@ async function open() {
       received();
     });
   });
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  await new Promise<void>((done) => {
+    server.listen(0, '127.0.0.1', done);
+  });
   const port = (server.address() as { port: number }).port;
   const custody = await startCustody({
     credentialsFile,
@@ -57,7 +59,9 @@ async function open() {
     close: async () => {
       await custody.stop();
       server.closeAllConnections();
-      await new Promise<void>((done) => server.close(() => done()));
+      await new Promise<void>((done) => {
+        server.close(() => done());
+      });
       dir.done();
     },
   };
@@ -112,6 +116,23 @@ it('a timeout after the request is written cannot claim nothing was sent', async
     await w.arrived;
     expect(written).toBe(true);
     expect(result).not.toMatchObject({ kind: 'refused', started: false });
+  } finally {
+    await w.close();
+  }
+}, 15000);
+
+it('a malformed answer after the request is written is withheld, never refused as unsent', async () => {
+  const w = await open();
+  try {
+    w.onRequest((res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+    const result = await w.custody.dispatchBefore('chatgpt_plan', planRequest(), {
+      deadlineAt: Date.now() + 3000,
+      onWritten: () => {},
+    });
+    expect(result).toStrictEqual({ kind: 'withheld', started: true, reason: 'malformed' });
   } finally {
     await w.close();
   }
