@@ -9,10 +9,12 @@
 //    each tool result after the call it answers and only once, arguments at
 //    most 16 KiB. Out of shape is `TURN_MALFORMED`, never a re-ask.
 // 2. Bind. Every part is a reference to something the broker owns, read here
-//    under the call's locks: a pinned file the run read (its kept bytes), the
-//    attempt's own task at its current revision, or an earlier answer of this
-//    attempt, matched by the digest its settlement kept. Anything else, or a
-//    mismatch, is `PROVENANCE_UNBOUND`, in the same bytes whoever's it was:
+//    under the call's locks: the attempt's own task at its current revision,
+//    or an earlier answer of this attempt, matched by the digest its
+//    settlement kept. A definition (a pinned file the run read) is refused:
+//    its kept copy is insert-only for the application (0086), and its read
+//    path waits on #1904. Anything else, or a mismatch, is
+//    `PROVENANCE_UNBOUND`, in the same bytes whoever's it was:
 //    the lookups are scoped to the business and the attempt, so a foreign row
 //    is never read.
 // 3. Check the tools. Only once the answers' bytes are bound: each tool
@@ -31,6 +33,9 @@ import { businessInternal, resolveFields } from './broker-sources.ts';
 import { readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
 import type { BrokerRefusal, ModelCallRequest, ResolvedField } from './broker-types.ts';
 
+/** What binding reads of the call's facts: its lease and its task as held. */
+type Bindings = Pick<Facts, 'leaseId' | 'source'>;
+
 /** The answer's digest: sha256 of the canonical JSON (RFC 8785's order) of its bytes. */
 export const answerDigest = (text: string, toolCalls: readonly ToolCall[]): string =>
   payloadDigest({ v: 1, text, toolCalls });
@@ -45,30 +50,7 @@ type Message =
 
 type Bound = { readonly message: Message; readonly source: FieldSource } | undefined;
 
-async function definitionOf(
-  tx: TenantQuery,
-  facts: Facts,
-  path: string,
-  digest: string,
-): Promise<Bound> {
-  const [file] = await tx.query<{ bytes: Buffer }>(
-    `select b.bytes from public.bootstrap_reads r
-       join public.bootstrap_bytes b
-         on b.business_id = r.business_id and b.content_digest = r.content_digest
-      where r.business_id = $1 and r.run_id = $2 and r.path = $3 and r.content_digest = $4
-      limit 1`,
-    [tx.businessId, facts.runId, path, digest],
-  );
-  if (file === undefined) return undefined;
-  try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(file.bytes);
-    return { message: { role: 'system', text }, source: 'business_internal' };
-  } catch {
-    return undefined;
-  }
-}
-
-function taskMessage(facts: Facts, part: TurnPart & { ref: 'task' }): Bound {
+function taskMessage(facts: Bindings, part: TurnPart & { ref: 'task' }): Bound {
   const task = facts.source;
   if (part.taskId !== task.id || !task.live || part.revision !== task.revision) return undefined;
   const shown = Object.fromEntries(
@@ -85,7 +67,7 @@ function taskMessage(facts: Facts, part: TurnPart & { ref: 'task' }): Bound {
 
 async function answerMessage(
   tx: TenantQuery,
-  facts: Facts,
+  facts: Bindings,
   part: TurnPart & { ref: 'answer' },
 ): Promise<Bound> {
   if (!isUuid(part.callId)) return undefined;
@@ -100,10 +82,8 @@ async function answerMessage(
   return { message, source: call.answer_source };
 }
 
-async function boundOf(tx: TenantQuery, facts: Facts, part: Part): Promise<Bound> {
+async function boundOf(tx: TenantQuery, facts: Bindings, part: Part): Promise<Bound> {
   switch (part.ref) {
-    case 'definition':
-      return await definitionOf(tx, facts, part.path, part.digest);
     case 'task':
       return taskMessage(facts, part);
     case 'answer':
@@ -122,7 +102,7 @@ export interface TurnField {
 /** Step 2: each part bound to what the broker owns, under the call's locks; undefined is `PROVENANCE_UNBOUND`. */
 export async function bindTurn(
   tx: TenantQuery,
-  facts: Facts,
+  facts: Bindings,
   turn: Turn,
 ): Promise<TurnField | undefined> {
   const messages: Message[] = [];
@@ -155,7 +135,7 @@ export async function fieldsOf(
   tx: TenantQuery,
   request: ModelCallRequest,
   operation: ModelOperation,
-  facts: Facts,
+  facts: Bindings,
   place?: number,
 ): Promise<RequestFields> {
   if ((operation.turn === true) !== (request.turn !== undefined)) return MALFORMED;

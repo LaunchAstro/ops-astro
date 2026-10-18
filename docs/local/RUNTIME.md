@@ -1643,8 +1643,9 @@ both tenancy-scoped with row security forced, and the fair share's count
   `callLimit`). The settlement of the limit-th call writes `call_limit /
 CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
   comes back marked terminal; the reserve refuses a hold past it, a backstop.
-  A turn's ordinal must be that place. Its parts are bound at the reserve and
-  again at the start: an answer by the digest its settlement kept
+  A turn's ordinal must be that place. Its parts are bound at the reserve,
+  again at the start, and again at a subscription's handoff against the task
+  held there (owner line 72): an answer by the digest its settlement kept
   (`answer_digest`, sha256 of the canonical JSON of `{v, text, toolCalls}`;
   the words are never stored), scoped to the business and the attempt. The
   turn's class is its strictest source's, kept on the answer as
