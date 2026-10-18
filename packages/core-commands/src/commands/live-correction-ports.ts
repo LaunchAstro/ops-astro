@@ -50,6 +50,8 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     transport: deps.transport,
     resolve: deps.resolve,
     credential: deps.credential,
+    // A credential answered by reference is sent by custody, never by this process.
+    ...(deps.custody === undefined ? {} : { custody: deps.custody }),
     wait: deps.wait,
     record: (code) => codes.push(code),
   };

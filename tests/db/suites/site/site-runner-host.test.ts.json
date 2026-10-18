@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1692) with real custody in front of the providers: custody alone sends the planted canary credentials and none of it reaches the runner's records, outcomes or output, the providers are reached only through custody's two catalogued destinations, and a runner stopped after its publish in a process of its own is followed by one on a new lease that observes again and never sends twice."
+}
