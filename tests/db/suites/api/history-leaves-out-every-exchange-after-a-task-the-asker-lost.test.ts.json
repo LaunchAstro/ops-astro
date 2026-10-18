@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "an exchange that carried a task the asker can no longer use leaves the model's history with every exchange after it"
+}
