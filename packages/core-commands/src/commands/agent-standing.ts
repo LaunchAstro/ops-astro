@@ -41,10 +41,13 @@ const NOT_LIVE_FIXES: readonly string[] = ['ask the authorising person for a cur
 
 /** What an agent call is judged on: the call, the bearer it presented, its row's authority. */
 export interface Judged {
-  readonly call: Pick<AgentCall, 'session' | 'credential'>;
+  readonly call: Pick<AgentCall, 'session' | 'credential' | 'declaration'>;
   readonly presented: VerifiedSubject;
   readonly authority: AgentOperation['authority'];
 }
+
+/** The two whose retained refusal is a stop that retired the caller's own work (#1623 R1). */
+const STOPS: ReadonlySet<string> = new Set(['model.call', 'run.end']);
 
 /**
  * The handler's work in its savepoint, judged again once it has applied. A
@@ -60,10 +63,11 @@ export async function workJudged(
   const standing: { ended: CommandRefusal | undefined } = { ended: undefined };
   const outcome = await inSavepoint(tx, async () => {
     const ran = await work();
-    // An ordinary refusal rolls back and has nothing to judge. A retained one
-    // keeps a stop that retired its own work (#1623 R1): it is judged too.
+    // An ordinary refusal rolls back and has nothing to judge, and so does one
+    // whose kept rows are a lapsed holder's (a late hand-back's report). A
+    // stop that retired its own work (#1623 R1) is judged too.
     const retained = isRefused(ran);
-    if (retained && ran.retains !== true) return ran;
+    if (retained && (ran.retains !== true || !STOPS.has(judged.call.declaration.name))) return ran;
     standing.ended = await agentStanding(
       tx,
       judged,
