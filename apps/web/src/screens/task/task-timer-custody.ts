@@ -1,16 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { isUuid, isRecord, type StorageLike } from '../../session/storage-slot.ts';
 import { taskTimerKey } from '../../session/token.ts';
-import type { TimerBinding, TimerState } from './task-timer.ts';
-
-export type TimerHold = Pick<TimerState, 'binding' | 'attempt'>;
-export type TimerDurability = 'none' | 'kept' | 'memory-only';
-export interface TimerCustody {
-  readonly restored: TimerHold | null;
-  /** Tab storage: a failed write can leave a copy behind. */
-  readonly durable: boolean;
-  readonly write: (hold: TimerHold) => TimerDurability;
-}
+import type { TimerBinding, TimerCustody, TimerHold } from './task-timer-types.ts';
 
 function bindingFrom(value: unknown): TimerBinding | null | undefined {
   if (value === null) return null;
