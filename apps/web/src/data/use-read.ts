@@ -18,6 +18,7 @@ import { dropsAnswer } from './read-breaks.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
 import { isRefusal, type CallResult } from '../operations/client.ts';
+import { useFollow } from './use-follow.ts';
 
 /**
  * What a run answers when it gave up because the tab was hidden: nothing
@@ -83,9 +84,6 @@ export interface UseReadLive<T> extends UseReadResult<T> {
   readonly breaks: number;
 }
 
-/** No read to wait for: a coalescing read's reload does its own waiting. */
-const IDLE = { current: null } as const;
-
 /** The states a projection starts from: a first read, not a re-read of one. */
 const opening = new WeakSet<ReadState<unknown>>();
 
@@ -118,26 +116,6 @@ async function offer<T>(
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
   }
-}
-
-/**
- * Re-read a live read that has no topic yet, its first answer unavailable: on
- * coming online, on being shown, and every 30 s while not hidden (C4), until a
- * re-read answers. The hub can only follow a topic, and the topic comes from an
- * answer.
- */
-function untilAnswered(reload: () => void): () => void {
-  const retry = (): void => {
-    if (document.visibilityState !== 'hidden') reload();
-  };
-  const floor = setInterval(retry, FLOOR_MS);
-  window.addEventListener('online', retry);
-  document.addEventListener('visibilitychange', retry);
-  return () => {
-    clearInterval(floor);
-    window.removeEventListener('online', retry);
-    document.removeEventListener('visibilitychange', retry);
-  };
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
@@ -256,7 +234,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // hold back from recovery (#397).
   useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
-  useRollup(options.rollup, coalesce ? IDLE : readRef, waitedFrom, reload);
+  useRollup(options.rollup, coalesce ? null : readRef, waitedFrom, reload);
 
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
@@ -287,18 +265,19 @@ const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS - FLOOR_MS / 2;
  * a read still in flight `ROLLUP_PATIENCE_MS` after a tick first found it is
  * superseded, and a revoke still draws. The wait is time on the monotonic
  * clock, so tab-shows do not shorten it, and every re-read (`waitedFrom` is
- * cleared by `reread`) starts it again.
+ * cleared by `reread`) starts it again. With no projection to wait on (a
+ * coalescing read, whose reload does its own waiting) every tick reloads.
  */
 function useRollup<T>(
   rollup: RollupFloor | undefined,
-  readRef: { readonly current: AuthorisedRead<T> | null },
+  readRef: { readonly current: AuthorisedRead<T> | null } | null,
   waitedFrom: { current: number | null },
   reload: () => void,
 ): void {
   useEffect(
     () =>
       rollup?.follow(() => {
-        if (readRef.current?.state.outcome === 'loading') {
+        if (readRef?.current?.state.outcome === 'loading') {
           const now = performance.now();
           waitedFrom.current ??= now;
           if (now - waitedFrom.current < ROLLUP_PATIENCE_MS) return;
@@ -312,53 +291,4 @@ function useRollup<T>(
 /** Whether two dependency lists match, compared the way React compares them. */
 function same(built: readonly unknown[], deps: readonly unknown[]): boolean {
   return built.length === deps.length && deps.every((each, at) => Object.is(each, built[at]));
-}
-
-/**
- * Follow the live topic for what the read shows: the last answer's topic,
- * kept while a re-read is in flight or denied, so a revoked page still hears
- * the channel that tells it so. Each change re-reads as a live one. A read
- * unanswered from an unavailable answer, with no topic of its own yet, re-reads
- * on the floor until one answers (`untilAnswered`); those re-reads are not live.
- */
-function useFollow<T>(
-  live: UseReadOptions<T>['live'],
-  state: ReadState<T>,
-  reread: (live: boolean) => void,
-  deps: readonly unknown[],
-): void {
-  const topicRef = useRef<string | null>(null);
-  // Whether that answer is this reader's and this record's: the last one's holds off no recovery.
-  const ownRef = useRef(false);
-  if (state.outcome === 'ready' || state.outcome === 'empty') {
-    topicRef.current = live?.topic(state.value) ?? null;
-    ownRef.current = true;
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the grant and the caller's dependency list.
-  useEffect(
-    () => () => {
-      ownRef.current = false;
-    },
-    deps,
-  );
-  const topic = topicRef.current;
-  const hub = live?.hub;
-
-  // Unanswered from an unavailable answer until a retry answers: a retry that stalls is still
-  // loading, and the floor and the listeners stay armed under it.
-  const waitingRef = useRef(false);
-  if (state.outcome === 'unavailable') waitingRef.current = true;
-  else if (state.outcome !== 'loading') waitingRef.current = false;
-  const unanswered = hub !== undefined && (topic === null || !ownRef.current) && waitingRef.current;
-  useEffect(() => {
-    if (unanswered) {
-      return untilAnswered(() => {
-        reread(false);
-      });
-    }
-    if (hub === undefined || topic === null) return;
-    return hub.follow(topic, () => {
-      reread(true);
-    });
-  }, [hub, topic, reread, unanswered]);
 }

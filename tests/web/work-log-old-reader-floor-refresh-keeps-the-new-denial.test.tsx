@@ -7,9 +7,8 @@ import { WorkLog } from '../../apps/web/src/screens/projects/WorkLog.tsx';
 import { mount, settle } from '../surfaces/mount.tsx';
 import { FIRST, held, json, refused } from './work-log-stand-in.tsx';
 
-it('an old reader’s queued floor refresh cannot erase the current reader’s denial', async () => {
-  vi.useFakeTimers();
-  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+/** The drawn reader's client, whose re-reads wait on `pending`, and a revoked reader's. */
+function clients() {
   const pending = held();
   let reads = 0;
   const first = new OperationsClient({
@@ -34,6 +33,13 @@ it('an old reader’s queued floor refresh cannot erase the current reader’s d
           : json({ ok: true, preferences: {} }),
       ),
   });
+  return { pending, first, second, reads: () => reads };
+}
+
+it('an old reader’s queued floor refresh cannot erase the current reader’s denial', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  const { pending, first, second, reads } = clients();
   const view = await mount(<WorkLog client={first} grantKey="alpha:ada" navigate={() => {}} />);
   try {
     await settle();
@@ -41,7 +47,7 @@ it('an old reader’s queued floor refresh cannot erase the current reader’s d
     await act(() => {
       window.dispatchEvent(new Event('online'));
     });
-    expect(reads).toBe(2);
+    expect(reads()).toBe(2);
     await act(() => {
       window.dispatchEvent(new Event('online'));
     });
