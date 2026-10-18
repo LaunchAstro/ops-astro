@@ -7,8 +7,13 @@
 // group leaves out, is proved against a real database in
 // tests/ci/db-conformance-timing-rule.test.ts.
 
-import { readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 import {
@@ -86,6 +91,50 @@ describe('a ticket read from the issues API', () => {
   });
   it('is unreadable with no answer', () => {
     expect(ticketState()).toBe('unreadable');
+  });
+});
+
+describe('prepare reads each ticket the committed file names', () => {
+  // The database shards hold no token (CQ-16); this public repository's issues need none.
+  it.each([
+    ['with no token, as on the database shards', '', undefined],
+    ['with a token, as on the nightly run', 'synthetic-token', 'Bearer synthetic-token'],
+  ])('%s', async (_name, token, authorization) => {
+    const seen: { url: string | undefined; authorization: string | undefined }[] = [];
+    const api = createServer((request, response) => {
+      seen.push({ url: request.url, authorization: request.headers.authorization });
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ state: 'open' }));
+    });
+    await new Promise<void>((listening) => api.listen(0, '127.0.0.1', listening));
+    const scratch = mkdtempSync(join(tmpdir(), 'timing-rule-'));
+    try {
+      const { stdout } = await promisify(execFile)(
+        process.execPath,
+        ['scripts/timing-rule.ts', 'prepare', '--nightly', '--out', join(scratch, 'plan.json')],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            GH_TOKEN: token,
+            GITHUB_API_URL: `http://127.0.0.1:${String((api.address() as AddressInfo).port)}`,
+            GITHUB_REPOSITORY: 'LaunchAstro/ops-astro',
+          },
+        },
+      );
+      const listed = JSON.parse(readFileSync(join(root, '.github/test-quarantine.json'), 'utf8'))
+        .tests as { ticket: number }[];
+      expect(seen).toStrictEqual(
+        listed.map(({ ticket }) => ({
+          url: `/repos/LaunchAstro/ops-astro/issues/${String(ticket)}`,
+          authorization,
+        })),
+      );
+      expect(stdout).not.toContain('could not be read');
+    } finally {
+      api.close();
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });
 
