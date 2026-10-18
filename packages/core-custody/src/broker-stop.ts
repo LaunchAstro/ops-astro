@@ -198,20 +198,41 @@ export const UNPROVEN_RELEASE: Failure & { readonly kind: 'unknown' } = {
  * Settlement's stop (transaction 3, after the reserve committed): a call's
  * end that ends its attempt, on work that still stands, records the outcome
  * and retires the work under settlement's locks on the lease and delegation.
- * Work already ended keeps the stop that ended it.
+ * Work already ended keeps the stop that ended it. It answers the settlement's
+ * own result.
  */
-export async function stopAtSettlement(
+export async function stopAtSettlement<Result>(
   tx: TenantQuery,
   leaseId: string,
   work: string,
   code: EndCode,
-): Promise<void> {
-  if (work !== 'stands') return;
+  result: Result,
+): Promise<Result> {
+  if (work !== 'stands') return result;
   const [lease] = await tx.query<{ delegation_id: string | null }>(
     'select delegation_id from public.leases where business_id = $1 and id = $2',
     [tx.businessId, leaseId],
   );
   await retireAttempt(tx, { leaseId, delegationId: lease?.delegation_id ?? null }, code);
+  return result;
+}
+
+/**
+ * A provider drop the worker could have reported, at settlement (ruling
+ * R1B-A): T3e1's locks are taken before custody's, in their order, and the
+ * writer this returns runs after the stop, so the drop is recorded and the
+ * work comes back.
+ */
+export async function dropAfterStop(
+  tx: TenantQuery,
+  settlement: { readonly kind: string; readonly cause?: Failure['cause'] },
+  leaseId: string,
+  broker: Broker,
+): Promise<(() => Promise<void>) | undefined> {
+  const cause = settlement.kind === 'unknown' ? settlement.cause : null;
+  if (cause !== 'provider_unavailable' && cause !== 'connection_lost') return undefined;
+  const writer = await broker.drops?.(tx, leaseId);
+  return writer === undefined ? undefined : async () => await writer(cause);
 }
 
 /**
