@@ -282,12 +282,12 @@ export async function c80AgentPickup(
   return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId, pageUrl };
 }
 
-/** D06's positive agent body for C80's request: the picked-up task, at its client. */
+/** D06's positive agent body for C80's request: the picked-up task and its client's page. */
 export const c80AgentBody = (
   operationId: string,
   held: { readonly taskId: string; readonly credential: string },
-  at: { readonly partyId: string; readonly pageUrl: string },
+  at: { readonly pageUrl: string },
 ): { body: Record<string, unknown>; credential: string } => ({
-  body: { operationId, ...C80_REQUEST, ...at, taskId: held.taskId },
+  body: { operationId, ...C80_REQUEST, page: at.pageUrl, taskId: held.taskId },
   credential: held.credential,
 });

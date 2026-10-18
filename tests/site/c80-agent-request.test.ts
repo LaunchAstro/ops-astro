@@ -13,8 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { c80World, requestBody, type C80World } from './c80-world.ts';
-import { B_FILE, B_PAGE } from './c80-sites.ts';
+import { c80World, pinFromBefore, requestBody, type C80World } from './c80-world.ts';
+import { B_PAGE } from './c80-sites.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { grantTo } from '../commands/fixture.ts';
 
@@ -72,7 +72,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request under a pickup’s r
     );
     expect(stored).toEqual([
       {
-        state: 'requested',
+        state: 'locating',
         actor: w.world.agentActorId,
         person: w.ava.personId,
         delegate: w.ava.personId,
@@ -121,24 +121,26 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, crossings under a r
 
 describe.skipIf(serverUrl === undefined)('C80 agent request, parties under a run reach', () => {
   it('reaches only the client parties the delegating person’s live grant covers', async () => {
-    // Picked up while the person holds run:write business-wide (the pickup
-    // mints run only then), then narrowed to party B: the delegation stays
-    // live, and the person's live grant, read at the request, covers B only.
+    // A task under each party, picked up while the person holds run:write
+    // business-wide (the pickup mints run only then), then narrowed to party
+    // B: both delegations stay live, and the person's live grant, read at the
+    // request at its task's client, covers B only.
     const before = Number(await agentRows());
     const fay = await w.world.decider('fay');
     const writeGrant = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
       return await grantTo(tx, fay, 'write', { kind: 'business', id: null }, false, 'run');
     });
+    const pickedOnA = await w.pickUpUnder(fay, 'client A’s page', w.partyA);
     const picked = await w.pickUpUnder(fay, 'a client’s page', w.partyB);
     await w.world.db.app.withBusiness(w.world.business, async (tx) => {
       await revokeGrant(tx, writeGrant);
       await grantTo(tx, fay, 'write', { kind: 'party', id: w.partyB }, false, 'run');
     });
-    const onA = await w.world.asAgent(body(w.partyA, picked.taskId), picked.credential);
+    const onA = await w.world.asAgent(body(w.partyA, pickedOnA.taskId), pickedOnA.credential);
     expect(codeOf(onA)).toBe('SCOPE_NOT_GRANTED');
     expect(await agentRows()).toBe(String(before));
     const onB = await w.world.asAgent(
-      { ...body(w.partyB, picked.taskId), pageUrl: B_PAGE, path: B_FILE },
+      { ...body(w.partyB, picked.taskId), page: B_PAGE },
       picked.credential,
     );
     expect(codeOf(onB)).toBe('not-a-refusal');
@@ -148,12 +150,14 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, parties under a run
   it('records the delegating person as the requester, who then cannot approve it', async () => {
     await w.setApprover(w.ava.personId);
     const picked = await w.pickUpUnder(w.ava, 'approved by another', w.partyA);
-    const asked = detailOf(await w.world.asAgent(body(w.partyA, picked.taskId), picked.credential));
-    const id = String(asked['correctionId']);
-    const approve = await w.approve(w.ava, id, String(asked['versionId']));
+    const made = await w.world.asAgent(body(w.partyA, picked.taskId), picked.credential);
+    const id = String(detailOf(made)['correctionId']);
+    // The agent's answer is the server's, `locating`: pinned here as the site runner would.
+    const asked = await pinFromBefore(w.world.db.admin, id);
+    const approve = await w.approve(w.ava, id, asked.versionId);
     expect(codeOf(approve)).toBe('SELF_APPROVAL_REFUSED');
     expect(await w.stateOf(id)).toBe('requested');
     await w.setApprover(w.ben.personId);
-    expect(codeOf(await w.approve(w.ben, id, String(asked['versionId'])))).toBe('not-a-refusal');
+    expect(codeOf(await w.approve(w.ben, id, asked.versionId))).toBe('not-a-refusal');
   });
 });
