@@ -43,6 +43,7 @@ import {
   stepOf,
   requestFor,
   callCount,
+  auditAs,
 } from './broker-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
@@ -86,7 +87,7 @@ async function hold(
         tx,
         callerOf(owner, work),
         requestFor(work, operation === undefined ? {} : { operation }),
-        with_,
+        { ...with_, audit: auditAs(owner.agentActorId) },
       ),
   );
 }
@@ -94,7 +95,16 @@ async function hold(
 const outcomeOf = (reservation: Reservation): string =>
   reservation.ok ? 'held' : reservation.code;
 
-const WAIT = { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: 5 };
+// #1623 R1 (B2): RATE_LIMITED is a recorded refusal that ends the attempt, with no retry.
+const WAIT = { ok: false, code: 'RATE_LIMITED', callId: expect.any(String) };
+
+/** The refusal's own row: refused, holding nothing. */
+async function holdsNothing(reservation: Reservation): Promise<void> {
+  const [row] = await s.db.admin.execute(`select * from public.model_calls where id = $1`, [
+    reservation.ok ? null : reservation.callId,
+  ]);
+  expect(row).toMatchObject({ state: 'refused', reserved_minor: 0, refusal_code: 'RATE_LIMITED' });
+}
 
 /** The refusal as the caller sees it, without the register's shape. */
 function answered(reservation: Reservation): unknown {
@@ -127,19 +137,23 @@ it('AW-01 rate limit: a hold not yet sent counts toward the ceiling', async () =
   const one = withRoutes([route('hold-counts', 10)]);
   expect(outcomeOf(await hold(s, work, one, ONE_AT_A_TIME.key))).toBe('held');
   const before = await callCount();
-  expect(answered(await hold(s, work, one, ONE_AT_A_TIME.key))).toEqual(WAIT);
-  expect(await callCount()).toBe(before);
+  const refused = await hold(s, work, one, ONE_AT_A_TIME.key);
+  expect(answered(refused)).toEqual(WAIT);
+  expect(await callCount()).toBe(before + 1);
+  await holdsNothing(refused);
 });
 
-it("AW-01 fair share: a route's ceiling holds across businesses, and the business past it is told to wait with nothing written", async () => {
+it("AW-01 fair share: a route's ceiling holds across businesses, and the business past it is refused, holding nothing", async () => {
   const full = withRoutes([route('share-full', 2)]);
   const alpha = await liveWork(s, 'alpha fills the route', 2_000);
   expect(outcomeOf(await hold(s, alpha, full))).toBe('held');
   expect(outcomeOf(await hold(s, alpha, full))).toBe('held');
   const theirs = await liveWork(bravo, 'bravo finds it full', 2_000);
   const before = await callCount();
-  expect(answered(await hold(bravo, theirs, full))).toEqual(WAIT);
-  expect(await callCount()).toBe(before);
+  const refused = await hold(bravo, theirs, full);
+  expect(answered(refused)).toEqual(WAIT);
+  expect(await callCount()).toBe(before + 1);
+  await holdsNothing(refused);
 });
 
 it('AW-01 fair share: with another business in flight, a business holds no more than its share', async () => {
