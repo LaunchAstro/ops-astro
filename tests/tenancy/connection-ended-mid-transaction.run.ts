@@ -32,11 +32,25 @@ async function terminate(pid: number): Promise<void> {
   await operator.execute('select pg_terminate_backend($1)', [pid]);
 }
 
-/** A promise's outcome as data, so a case can wait on a refusal without one escaping. */
-function settled(promise: Promise<unknown>): Promise<{ ok: boolean; code?: string }> {
+/**
+ * A promise's outcome as data, so a case can wait on a refusal without one
+ * escaping. `addressed` says whether a refusal's message names the server it
+ * lost, as postgres.js's own connection errors do.
+ */
+function settled(
+  promise: Promise<unknown>,
+): Promise<{ ok: boolean; code?: string; addressed?: boolean }> {
+  const server = new URL(url as string);
   return promise.then(
     () => ({ ok: true }),
-    (error: unknown) => ({ ok: false, code: String((error as { code?: unknown }).code) }),
+    (error: unknown) => {
+      const { code, message } = error as { code?: unknown; message?: unknown };
+      return {
+        ok: false,
+        code: String(code),
+        addressed: String(message).endsWith(`${server.hostname}:${server.port || '5432'}`),
+      };
+    },
   );
 }
 
