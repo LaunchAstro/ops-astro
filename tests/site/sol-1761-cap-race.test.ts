@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- Sol's proof keeps each case's schedule in one place */
 import { describe, expect, it } from 'vitest';
 import { approved, at, latch, serverUrl, useRegisterWorld, w } from './c80-register-world.ts';
 import { bound } from './c80-site-ports-bound.ts';
