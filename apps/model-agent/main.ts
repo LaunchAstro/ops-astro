@@ -70,8 +70,8 @@ export const destinationsOf = (settings: AgentSettings): readonly Destination[] 
  * and custody is asked nothing.
  */
 export const agentCustody = (
-  settings: Pick<AgentSettings, 'credentialRef' | 'openrouterCredentialRef'>,
-  custody: Pick<ProcessCustody, 'dispatchBefore'>,
+  settings: Pick<AgentSettings, 'credentialRef' | 'openrouterCredentialRef' | 'planTokenFile'>,
+  custody: Pick<ProcessCustody, 'dispatchBefore'> & Partial<Pick<ProcessCustody, 'prepare'>>,
 ): AgentCustody => ({
   dispatch: async (request, gate, onPiece) => {
     const ref =

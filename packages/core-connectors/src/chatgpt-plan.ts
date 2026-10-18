@@ -13,6 +13,9 @@
 // input turn is `{ role, content }`, the role `user` or `assistant`; the
 // instructions travel once, in `instructions`. Tools are not taken yet.
 
+import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
+import { CONVERSATION_ANSWER } from './replay.ts';
+
 /** The route's provider key and the destination custody sends it to. */
 export const CHATGPT_PLAN_PROVIDER = 'chatgpt_plan';
 
@@ -38,10 +41,64 @@ export interface PlanTurn {
   readonly content: string;
 }
 
+export interface PlanCall {
+  readonly type: 'function_call';
+  readonly call_id: string;
+  readonly name: string;
+  readonly arguments: string;
+}
+
+export interface PlanCallOutput {
+  readonly type: 'function_call_output';
+  readonly call_id: string;
+  readonly output: string;
+}
+
+export type PlanItem = PlanTurn | PlanCall | PlanCallOutput;
+
+export interface PlanTool {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+}
+
 export interface PlanAsk {
   readonly model: string;
   readonly instructions: string;
-  readonly input: readonly PlanTurn[];
+  readonly input: readonly PlanItem[];
+  readonly tools?: readonly PlanTool[];
+}
+
+/** The deepest and largest a tool's `parameters` may be. */
+export const CHATGPT_PLAN_PARAMETERS_DEPTH = 16;
+export const CHATGPT_PLAN_PARAMETERS_BYTES: number = 16 * 1024;
+
+/** A call the plan's model made, as the answer reader gives it back. */
+export interface PlanToolCall {
+  readonly callId: string;
+  readonly name: string;
+  readonly arguments: string;
+}
+
+export function chatgptPlanAdapter(
+  _values: Readonly<Record<string, string>>,
+  _operationId?: string,
+  _model?: string,
+): AdapterRequest {
+  return { path: CHATGPT_PLAN_PATH, method: 'POST', body: '' };
+}
+
+export const CHATGPT_PLAN_CONVERSATION: ModelOperationDeclaration = {
+  ...CONVERSATION_ANSWER,
+  key: 'model.chatgpt_plan_answer',
+};
+
+export function readChatgptPlanAnswer(_body: unknown): ModelAnswer | undefined {
+  return undefined;
+}
+
+export function readChatgptPlanToolCalls(_body: unknown): readonly PlanToolCall[] | undefined {
+  return undefined;
 }
 
 /** The pinned body, keys in their one order, each turn rebuilt as `{ role, content }`. */
@@ -49,7 +106,10 @@ export function chatgptPlanBody(ask: PlanAsk): string {
   return JSON.stringify({
     model: ask.model,
     instructions: ask.instructions,
-    input: ask.input.map((turn) => ({ role: turn.role, content: turn.content })),
+    input: ask.input.map((turn) => ({
+      role: (turn as PlanTurn).role,
+      content: (turn as PlanTurn).content,
+    })),
     store: false,
     stream: true,
   });

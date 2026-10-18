@@ -56,7 +56,11 @@ export interface Carrier {
 export interface CustodyConfig {
   readonly credentialsFile: string;
   readonly destinations: readonly Destination[];
+  /** The owner's ChatGPT plan: its token file and its issuer (#1620 P4). */
+  readonly plan?: { readonly tokenFile: string; readonly issuer: string };
 }
+
+export type Prepared = { readonly ok: true } | { readonly ok: false; readonly code: string };
 
 /**
  * A send admitted at the handoff, its transaction still open. At custody's
@@ -113,6 +117,8 @@ export interface ProcessCustody extends Custody {
     gate: Required<Pick<SendGate, 'deadlineAt' | 'onWritten'>>,
     onPiece?: (text: string) => void,
   ): Promise<CustodyOutcome>;
+  /** The plan's token made ready to present; never the token itself. */
+  prepare(): Promise<Prepared>;
 }
 
 function forkCustody(config: CustodyConfig): ChildProcess {
@@ -240,6 +246,7 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
         onPiece,
         admit,
       ),
+    prepare: async () => await Promise.resolve({ ok: false, code: 'CUSTODY_UNKNOWN_REQUEST' }),
     describe: async (credentialRef, destination) =>
       await describeCarrier(exchange, credentialRef, destination),
     stderr: () => errors,
