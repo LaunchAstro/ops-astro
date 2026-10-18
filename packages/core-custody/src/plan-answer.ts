@@ -12,17 +12,18 @@
 // The completed response is redacted against the holder's secrets
 // (`redactedValue`), so a whole echo in any spelling the redacter knows
 // becomes `[redacted]`. Then the split-fragment rule: the answer is withheld
-// whole when a run of FRAGMENT_RUN characters of any secret appears in any
+// whole when a run of FRAGMENT_RUN characters of any secret (of a signed
+// token, its signature: its header and claims are not secret) appears in any
 // one of its strings (each key, each value, each number's text), in that
 // string percent-decoded or base64-decoded, or in a join in document order
-// of all its strings, or of the values under one key name (every `text`).
-// A secret split in order is caught by a join, however short its pieces;
-// pieces in another order are caught one by one. Shorter pieces out of order
-// are not judged: no text rule catches a deliberate encoding, and the token
-// reaches only the request's header, never the model. No network code here.
+// of all its strings, all its values, or the values under one key name. A
+// secret split into strings that follow one another is caught by a join,
+// however short its pieces; pieces apart or out of order are caught one by
+// one. Shorter pieces apart are not judged: no text rule catches a deliberate
+// encoding, and the token reaches only the request's header, never the model.
 
 import type { Outbound } from './egress-answer.ts';
-import type { PlanRefusal } from './plan-token.ts';
+import { planRefused, type PlanCode, type PlanResult } from './plan-words.ts';
 import { redactedValue, redacterOf } from './redaction.ts';
 
 /** The shortest run of a secret that withholds an answer. */
@@ -31,16 +32,6 @@ export const FRAGMENT_RUN = 6;
 const MOST_DEPTH = 64;
 const USAGE_LIMIT = 'subscription_sharing_usage_limit_exceeded';
 
-export type PlanCode =
-  | PlanRefusal
-  | 'SUBSCRIPTION_PLAN_ALLOWANCE'
-  | 'SUBSCRIPTION_NOT_ELIGIBLE'
-  | 'SUBSCRIPTION_UNSUPPORTED_CAPABILITY'
-  | 'SUBSCRIPTION_PLAN_UNAVAILABLE'
-  | 'SUBSCRIPTION_ANSWER_WITHHELD';
-export type PlanResult =
-  | { readonly ok: true; readonly response: Readonly<Record<string, unknown>> }
-  | { readonly ok: false; readonly code: PlanCode; readonly words: string };
 export type PlanAnswerLog =
   | 'plan answer completed'
   | 'plan answer withheld: malformed'
@@ -56,35 +47,6 @@ export type PlanAnswerLog =
   | 'plan refused: sign in again'
   | 'plan refused: unavailable';
 type Log = (kind: PlanAnswerLog) => void;
-
-/** Words a task can show for each named result. */
-export const PLAN_WORDS: Readonly<Record<PlanCode, string>> = {
-  SUBSCRIPTION_SIGN_IN_NEEDED:
-    'The ChatGPT plan on the M5 needs the owner to sign in again. Nothing more is sent until then.',
-  SUBSCRIPTION_REFRESH_FAILED:
-    'The ChatGPT plan’s sign-in could not be renewed in time. Nothing was sent; restart the task.',
-  SUBSCRIPTION_STORE_FAILED:
-    'Custody could not keep the ChatGPT plan’s sign-in safely on the M5. Nothing was sent.',
-  SUBSCRIPTION_TOKEN_FILE_OPEN:
-    'The ChatGPT plan’s token file on the M5 is open to other users, so custody will not use it. Nothing was sent.',
-  SUBSCRIPTION_PLAN_ALLOWANCE:
-    'The ChatGPT plan has reached its usage allowance. Nothing was retried; restart the task once it resets.',
-  SUBSCRIPTION_NOT_ELIGIBLE:
-    'The ChatGPT plan refused this account or workspace. Nothing was retried.',
-  SUBSCRIPTION_UNSUPPORTED_CAPABILITY:
-    'The ChatGPT plan does not support what this call asked for. Nothing was retried.',
-  SUBSCRIPTION_PLAN_UNAVAILABLE:
-    'The ChatGPT plan is unavailable just now. Nothing was retried; the owner can restart the task.',
-  SUBSCRIPTION_ANSWER_WITHHELD:
-    'The ChatGPT plan’s answer did not finish cleanly, so custody withheld it. Nothing was retried.',
-};
-
-/** A holder's refusal from `prepare()`, as the caller is told it. */
-export const planRefused = (code: PlanCode): PlanResult => ({
-  ok: false,
-  code,
-  words: PLAN_WORDS[code],
-});
 
 const REFUSED_STATUS: ReadonlyMap<number, readonly [PlanCode, PlanAnswerLog]> = new Map([
   [429, ['SUBSCRIPTION_PLAN_ALLOWANCE', 'plan refused: usage allowance']],
@@ -120,16 +82,16 @@ function tooDeep(value: unknown): boolean {
   return false;
 }
 
-/** A failed response or error event that names the plan's usage limit. */
-const usageLimit = (event: Record<string, unknown>): boolean => {
-  const response = record(event['response']) ? event['response'] : {};
-  const error = record(response['error']) ? response['error'] : {};
-  return event['code'] === USAGE_LIMIT || error['code'] === USAGE_LIMIT;
-};
+const field = (value: unknown, key: string): unknown => (record(value) ? value[key] : undefined);
+
+/** An event that names the plan's usage limit: its own code, its error's, or its response's error's. */
+const usageLimit = (event: Record<string, unknown>): boolean =>
+  [event, field(event, 'error'), field(field(event, 'response'), 'error')].some(
+    (place) => field(place, 'code') === USAGE_LIMIT,
+  );
 
 /** The terminal event folded: the completed response, the allowance, or why it is withheld. */
 function terminal(event: Record<string, unknown>): Folded {
-  if (usageLimit(event)) return { kind: 'allowance' };
   const response = event['response'];
   if (event['type'] === 'error' || event['type'] === 'response.failed')
     return { kind: 'withheld', why: 'failed' };
@@ -142,21 +104,49 @@ function terminal(event: Record<string, unknown>): Folded {
 
 const TERMINAL = /^(?:error|response\.(?:completed|failed|incomplete))$/u;
 
+/**
+ * Each event a conforming reader dispatches (lines end in CRLF, LF or CR; a
+ * blank line dispatches), its data and its `event:` name; undefined when the
+ * stream stops inside a line or an event.
+ */
+function eventsOf(stream: string): { data: string; name?: string }[] | undefined {
+  const out: { data: string; name?: string }[] = [];
+  let data: string[] = [];
+  let name: string | undefined;
+  const lines = stream.split(/\r\n|\r|\n/u);
+  if (lines.pop() !== '') return undefined;
+  for (const line of lines) {
+    if (line === '') {
+      if (data.length > 0)
+        out.push({ data: data.join('\n'), ...(name === undefined ? {} : { name }) });
+      [data, name] = [[], undefined];
+      continue;
+    }
+    const colon = line.includes(':') ? line.indexOf(':') : line.length;
+    const value = line.slice(colon + 1).replace(/^ /u, '');
+    if (line.slice(0, colon) === 'data') data.push(value);
+    else if (line.slice(0, colon) === 'event') name = value;
+  }
+  return data.length > 0 ? undefined : out;
+}
+
 /** A whole Responses stream folded: its last event must be the one terminal event. */
 function folded(stream: string): Folded {
+  const events = eventsOf(stream);
+  if (events === undefined) return { kind: 'withheld', why: 'interrupted' };
   let end: Folded | undefined;
-  for (const block of stream.split(/\r?\n\r?\n/u)) {
-    const lines = block.split(/\r?\n/u).filter((line) => line.startsWith('data:'));
-    if (lines.length === 0) continue;
+  for (const { data, name } of events) {
     // Nothing may follow the terminal event.
     if (end !== undefined) return { kind: 'withheld', why: 'malformed' };
     let event: unknown;
     try {
-      event = JSON.parse(lines.map((line) => line.slice(5).replace(/^ /u, '')).join('\n'));
+      event = JSON.parse(data);
     } catch {
       return { kind: 'withheld', why: 'malformed' };
     }
-    if (!record(event)) return { kind: 'withheld', why: 'malformed' };
+    if (!record(event) || (name !== undefined && name !== event['type']))
+      return { kind: 'withheld', why: 'malformed' };
+    if (usageLimit(event)) return { kind: 'allowance' };
     if (typeof event['type'] === 'string' && TERMINAL.test(event['type'])) end = terminal(event);
   }
   return end ?? { kind: 'withheld', why: 'interrupted' };
@@ -164,36 +154,41 @@ function folded(stream: string): Folded {
 
 /**
  * What a reader can join from a parsed value: every key, string and number's
- * text alone, and, in document order, all of them together and the values
- * under each key name together (every `text`, every `arguments`).
+ * text alone, and, in document order, all of them together, the values
+ * together, and the values under each key name together (every `text`).
  */
 function textsOf(value: unknown): {
   readonly alone: readonly string[];
   readonly joined: readonly string[];
 } {
   const alone: string[] = [];
+  const values: string[] = [];
   const byKey = new Map<string, string[]>();
-  const pending: [unknown, string][] = [[value, '']];
+  // A key's own text is filed under null: it is no value.
+  const pending: [unknown, string | null][] = [[value, '']];
   for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
     const [item, key] = next;
     if (typeof item !== 'object' || item === null) {
       const text = typeof item === 'string' ? item : JSON.stringify(item);
       alone.push(text);
+      if (key === null) continue;
+      values.push(text);
       const same = byKey.get(key) ?? [];
       same.push(text);
       byKey.set(key, same);
       continue;
     }
-    const items: [unknown, string][] = Array.isArray(item)
+    const items: [unknown, string | null][] = Array.isArray(item)
       ? item.map((child) => [child, key])
       : Object.entries(item).flatMap(([name, child]) => [
-          [name, ''],
+          [name, null],
           [child, name],
         ]);
     // Reversed onto the list, so they come off it in document order.
-    for (let at = items.length - 1; at >= 0; at -= 1) pending.push(items[at] ?? [null, '']);
+    for (let at = items.length - 1; at >= 0; at -= 1) pending.push(items[at] ?? [null, null]);
   }
-  return { alone, joined: [alone.join(''), ...[...byKey.values()].map((texts) => texts.join(''))] };
+  const together = [alone, values, ...byKey.values()].map((texts) => texts.join(''));
+  return { alone, joined: together };
 }
 
 /** Percent escapes decoded, each byte as one character. */
@@ -212,9 +207,13 @@ function readingsOf(text: string): readonly string[] {
 }
 
 /** Whether a run of FRAGMENT_RUN characters of a secret (or a shorter secret whole) is in the texts. */
+/** The part of a secret a fragment is judged on: a signed token's signature, or the whole. */
+const secretPart = (secret: string): string =>
+  /^[\w-]+\.[\w-]+\.[\w-]+$/u.test(secret) ? secret.slice(secret.lastIndexOf('.') + 1) : secret;
+
 function holdsFragment(texts: ReturnType<typeof textsOf>, secrets: readonly string[]): boolean {
   const runs = new Set<string>();
-  for (const secret of secrets) {
+  for (const secret of secrets.map((whole) => secretPart(whole))) {
     const run = Math.min(FRAGMENT_RUN, secret.length);
     for (let at = 0; at + run <= secret.length; at += 1) runs.add(secret.slice(at, at + run));
   }
@@ -247,8 +246,7 @@ export function planAnswer(
   let out: Folded;
   try {
     if (!outcome.ok) {
-      const refused =
-        outcome.fault === 'status' ? REFUSED_STATUS.get(outcome.status ?? 0) : undefined;
+      const refused = REFUSED_STATUS.get(outcome.status ?? 0);
       if (refused !== undefined) {
         log(refused[1]);
         return planRefused(refused[0]);
