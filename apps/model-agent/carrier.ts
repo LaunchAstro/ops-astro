@@ -7,14 +7,15 @@
 //
 // Per call, under this process's `runner` (a restart is a new one):
 // `offered → accepted → running → done`. Accepted: it joined the call's line
-// and sent its sealed accept, stamped `A` on its own clock; the deadline is
-// `A + W`. Running: only from accepted, in one turn, by the first request
-// that opens (the broker's seal, this call and runner, unexpired), passes the
-// request check, and comes by the deadline on a machine not too busy. A
-// repeat finds it running and is ignored, or done and gets the last word
-// again. Done: answered or refused; a request after the deadline is refused
-// `SEND_LAPSED`, so the function knows nothing was written. A call is kept
-// 10 minutes, and a stopped agent accepts nothing more.
+// and sent its sealed accept, stamped `A` on its own clock (after custody
+// prepares the plan's token, where the plan is set: `prepare.ts`); the
+// deadline is `A + W`. Running: only from accepted, in one turn, by the first
+// request that opens (the broker's seal, this call and runner, unexpired),
+// passes the request check, and comes by the deadline on a machine not too
+// busy. A repeat finds it running and is ignored, or done and gets the last
+// word again. Done: answered or refused; a request after the deadline is
+// refused `SEND_LAPSED`, so the function knows nothing was written. A call is
+// kept 10 minutes, and a stopped agent, or a lapsed prepare, accepts nothing.
 //
 // Custody writes only before the deadline and says `written`. The answer is
 // custody's own outcome, sent again until `settled`. Custody lost mid-answer
@@ -43,6 +44,7 @@ import {
   type Sealed,
 } from '../../packages/core-custody/src/agent.ts';
 import { piecesFor } from './pieces.ts';
+import { preparedInTime } from './prepare.ts';
 import { chatOf, keysOf, same } from './request-check.ts';
 
 /** Above this one-minute load the machine is too busy to start a model. */
@@ -248,11 +250,11 @@ async function onOffer(agent: Agent, message: unknown): Promise<void> {
     callTopic(agent.options.business, k),
     await agent.options.token(),
   );
-  if (!joined.ok || agent.stopped) {
+  const ready = joined.ok && (await preparedInTime(agent.options.custody));
+  if (!ready || agent.stopped) {
     call.state = 'done';
-    // Stopped while joining: the line is left, and nothing is accepted.
     if (joined.ok) await joined.line.leave();
-    agent.log('call line refused');
+    agent.log(joined.ok && !agent.stopped ? 'prepare lapsed' : 'call line refused');
     return;
   }
   call.line = joined.line;
