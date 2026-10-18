@@ -7,7 +7,7 @@
 // carried archive and record of its receipt brought back (carried-archive.mjs).
 // restore-drill.mjs passes the drill itself in and re-exports each act.
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -25,7 +25,10 @@ import { recordDeployment } from './operator.ts';
 const HEX64 = /^[0-9a-f]{64}$/u;
 // The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
 const PART = 4 * 1024 * 1024;
+// A part as `read_part` hands it out, sealed under its own key, padded by at most a block.
+const SEALED = PART + 16;
 const PART_LINE = /^(\d+)\|([0-9a-f]{64})\|((?:[0-9a-f]{2})+)$/u;
+const KEY_LINE = /^[0-9a-f]{64}$/u;
 const same = (a, b) =>
   HEX64.test(a) && HEX64.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -51,41 +54,64 @@ async function latestHeader(storeUrl, reach, operator) {
   return header;
 }
 
-/** The script that reads part `seq` of `header`'s archive: one line. */
+/** The script that reads part `seq` of `header`'s archive, sealed under its own key: one line. */
 const partScript = (header, seq) =>
   `set role ${RESTORE_ROLE};\nselect ${seq} || '|' || part_sha256 || '|' || encode(part, 'hex') from backups.read_part(${value(header.id, 'uuid')}, ${seq});\n`;
+
+/** The script that has the store release that part's key, and log the part's read: one line. */
+const releaseScript = (header, seq) =>
+  `set role ${RESTORE_ROLE};\nselect encode(backups.release_part(${value(header.id, 'uuid')}, ${seq}), 'hex');\n`;
+
+/** `sealed` opened with the key the store released for it (backup-store-upgrade-3.sql). */
+function opened(sealed, key) {
+  try {
+    const decipher = createDecipheriv('aes-256-cbc', Buffer.from(key, 'hex'), Buffer.alloc(16));
+    return Buffer.concat([decipher.update(sealed), decipher.final()]);
+  } catch {
+    return Buffer.alloc(0);
+  }
+}
 
 /**
  * The newest backup, read as the restore identity (the store logs the read),
  * part by part into `file` (made here, mode 600, never over a file), each
  * part checked against the digest the store took of it and the whole against
- * the digest the store recorded; nothing is held whole. A part is a reach of
- * its own, after the last has ended, so a gated reach asks between parts. On
- * any failure the file is removed. `operator` is the gate's person and
- * business, which the store checks against its own appointment first.
+ * the digest the store recorded; nothing is held whole. Each part takes two
+ * reaches, each begun only once the one before it has ended: its read, which
+ * the store answers sealed under a key of its own and does not log, then its
+ * release, which hands out that key and logs the part's read. A gated reach
+ * asks between them, so an operator stopped before the release gets nothing
+ * they can open. On any failure the file is removed. `operator` is the gate's
+ * person and business, which the store checks against its own appointment
+ * first.
  */
 export async function fetchLatest(storeUrl, file, reach = stagingReach, operator = undefined) {
   const header = await latestHeader(storeUrl, reach, operator);
   const fd = openSync(file, 'wx', 0o600);
   const whole = createHash('sha256');
-  // One part's room, used for every part in turn.
-  const room = Buffer.allocUnsafe(PART);
+  // One sealed part's room, used for every part in turn.
+  const room = Buffer.allocUnsafe(SEALED);
   let [next, bytes] = [0, 0];
-  const onPart = (line) => {
-    const [, seq, digest, hex = ''] = PART_LINE.exec(line) ?? [];
-    const part = room.subarray(0, hex.length > 2 * PART ? 0 : room.write(hex, 'hex'));
-    const own = createHash('sha256').update(part).digest('hex');
-    if (Number(seq) !== next || part.length === 0 || !same(own, digest ?? '')) {
-      throw new Error('a part of the archive is not the one the store took');
-    }
-    whole.update(part);
-    writeSync(fd, part);
-    [next, bytes] = [next + 1, bytes + part.length];
+  const fetchPart = async (seq) => {
+    const [, at, digest, hex = ''] =
+      PART_LINE.exec(await reach(storeUrl, partScript(header, seq))) ?? [];
+    const sealed = room.subarray(0, hex.length > 2 * SEALED ? 0 : room.write(hex, 'hex'));
+    let part = Buffer.alloc(0);
+    await reach(storeUrl, releaseScript(header, seq), (key) => {
+      if (KEY_LINE.test(key) && sealed.length > 0) part = opened(sealed, key);
+      const own = createHash('sha256').update(part).digest('hex');
+      if (Number(at) !== seq || part.length === 0 || !same(own, digest ?? '')) {
+        throw new Error('a part of the archive is not the one the store took');
+      }
+      whole.update(part);
+      writeSync(fd, part);
+      [next, bytes] = [next + 1, bytes + part.length];
+    });
   };
   try {
     for (let seq = 0; seq < header.parts && next === seq; seq += 1)
       // oxlint-disable-next-line no-await-in-loop -- one part at a time, each ended before the next
-      await reach(storeUrl, partScript(header, seq), onPart);
+      await fetchPart(seq);
     if (
       next !== header.parts ||
       bytes !== header.bytes ||
