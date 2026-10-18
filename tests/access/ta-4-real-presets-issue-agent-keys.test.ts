@@ -71,30 +71,35 @@ async function credentialCount(): Promise<number> {
   });
 }
 
+/** The two people outside alpha's membership: an outside party and a client-portal person. */
+async function enrolOthers(): Promise<void> {
+  // The outside party: a login and a person, no membership, and the seed's
+  // `external` grants, which are none (a business grant without a
+  // membership is refused at resolution as a former member).
+  const outside = await enrolCaller(harness.world.db, harness.world.alpha, 'alpha', 'outside', {
+    membership: false,
+    actions: [],
+    collections: [],
+    extraPairs: GRANTS_BY_ROLE.external,
+  });
+  tokens['outside party'] = outside.token;
+  // The client-portal person: one task shared with them by the owner, nothing else.
+  const client = await shareWithClient(
+    harness.world.db.app,
+    harness.world.alpha,
+    harness.world.ada as unknown as Member,
+    harness.alphaTask.id,
+  );
+  tokens['client-portal person'] = await tokenFor(client.presented.subject);
+}
+
 describe.skipIf(serverUrl === undefined)('TA-4 presets: who may issue an agent key', () => {
   beforeAll(async () => {
     harness = await createHarness('ta4_presets');
     tokens['owner'] = await enrolWith('owner', 'admin', OWNER_GRANTS);
     tokens['administrator'] = await enrolWith('administrator', 'admin', GRANTS_BY_ROLE.admin);
     tokens['member'] = await enrolWith('member', 'member', GRANTS_BY_ROLE.member);
-    // The outside party: a login and a person, no membership, and the seed's
-    // `external` grants, which are none (a business grant without a
-    // membership is refused at resolution as a former member).
-    const outside = await enrolCaller(harness.world.db, harness.world.alpha, 'alpha', 'outside', {
-      membership: false,
-      actions: [],
-      collections: [],
-      extraPairs: GRANTS_BY_ROLE.external,
-    });
-    tokens['outside party'] = outside.token;
-    // The client-portal person: one task shared with them by the owner, nothing else.
-    const client = await shareWithClient(
-      harness.world.db.app,
-      harness.world.alpha,
-      harness.world.ada as unknown as Member,
-      harness.alphaTask.id,
-    );
-    tokens['client-portal person'] = await tokenFor(client.presented.subject);
+    await enrolOthers();
   }, 120_000);
 
   afterAll(async () => {
