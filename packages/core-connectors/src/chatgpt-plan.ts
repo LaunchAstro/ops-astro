@@ -14,9 +14,18 @@
 // `user` or `assistant`; the instructions travel once, in `instructions`. A
 // call that offers tools may also carry the model's earlier `function_call`
 // items and their `function_call_output`. Each tool is a strict function
-// tool, and its `parameters` are the one free JSON in the body.
+// tool, and its `parameters` are the one free JSON in the body. The answer is
+// custody's folded completed response, read for its words and, apart, for the
+// model's calls.
 
-import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
+import { conversationInstructions } from './conversation-prompt.ts';
+import { earlierTurns, pageTitle } from './ollama.ts';
+import {
+  readModelId,
+  type AdapterRequest,
+  type ModelAnswer,
+  type ModelOperationDeclaration,
+} from './operation.ts';
 import { CONVERSATION_ANSWER } from './replay.ts';
 
 /** The route's provider key and the destination custody sends it to. */
@@ -30,7 +39,8 @@ export const CHATGPT_PLAN_ORIGIN = 'https://api.openai.com';
 export const CHATGPT_PLAN_ISSUER = 'https://auth.openai.com';
 
 /** The plan's two models: the smaller for basic checks, the larger for harder ones (spec #1612 story 20). */
-export const CHATGPT_PLAN_MODELS: readonly string[] = ['gpt-6.1-luna', 'gpt-6.1-sol'];
+export const CHATGPT_PLAN_DEFAULT_MODEL = 'gpt-6.1-luna';
+export const CHATGPT_PLAN_MODELS: readonly string[] = [CHATGPT_PLAN_DEFAULT_MODEL, 'gpt-6.1-sol'];
 
 /** The most bytes one request body may hold. */
 export const CHATGPT_PLAN_BODY_LIMIT: number = 64 * 1024;
@@ -83,27 +93,6 @@ export interface PlanToolCall {
   readonly arguments: string;
 }
 
-export function chatgptPlanAdapter(
-  _values: Readonly<Record<string, string>>,
-  _operationId?: string,
-  _model?: string,
-): AdapterRequest {
-  return { path: CHATGPT_PLAN_PATH, method: 'POST', body: '' };
-}
-
-export const CHATGPT_PLAN_CONVERSATION: ModelOperationDeclaration = {
-  ...CONVERSATION_ANSWER,
-  key: 'model.chatgpt_plan_answer',
-};
-
-export function readChatgptPlanAnswer(_body: unknown): ModelAnswer | undefined {
-  return undefined;
-}
-
-export function readChatgptPlanToolCalls(_body: unknown): readonly PlanToolCall[] | undefined {
-  return undefined;
-}
-
 /** One input item rebuilt in its one key order: a turn, an earlier call, or that call's output. */
 function itemOf(item: PlanItem): Record<string, unknown> {
   if ('type' in item && item.type === 'function_call') {
@@ -137,3 +126,96 @@ export function chatgptPlanBody(ask: PlanAsk): string {
     stream: true,
   });
 }
+
+/**
+ * The adapter: a person's question in their conversation, as the pinned call
+ * for the model asked for (the smaller unless named), with any tools offered.
+ */
+export function chatgptPlanAdapter(
+  values: Readonly<Record<string, string>>,
+  _operationId?: string,
+  model: string = CHATGPT_PLAN_DEFAULT_MODEL,
+  tools?: readonly PlanTool[],
+): AdapterRequest {
+  const input: PlanTurn[] = [
+    ...earlierTurns(values['earlier']).flatMap((turn) =>
+      turn.role === 'system' ? [] : [{ role: turn.role, content: turn.content }],
+    ),
+    { role: 'user', content: values['message'] ?? '' },
+  ];
+  const instructions = conversationInstructions(pageTitle(values['page']));
+  return {
+    path: CHATGPT_PLAN_PATH,
+    method: 'POST',
+    body: chatgptPlanBody({ model, instructions, input, ...(tools ? { tools } : {}) }),
+  };
+}
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const count = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && Number(value) >= 0;
+
+/** A completed response's output items, when it has a list of them. */
+const outputOf = (body: unknown): readonly Record<string, unknown>[] | undefined =>
+  record(body) && Array.isArray(body['output']) && body['output'].every((item) => record(item))
+    ? (body['output'] as Record<string, unknown>[])
+    : undefined;
+
+/**
+ * The calls the model made, in order, from custody's folded completed
+ * response: none in an answer of words only, undefined when a call is out of
+ * shape. Read apart from the answer, which keeps its shape until #1715.
+ */
+export function readChatgptPlanToolCalls(body: unknown): readonly PlanToolCall[] | undefined {
+  const calls = outputOf(body)?.filter((item) => item['type'] === 'function_call');
+  const read = calls?.map((item) => ({
+    callId: item['call_id'],
+    name: item['name'],
+    arguments: item['arguments'],
+  }));
+  const shaped = read?.every((call) => Object.values(call).every((v) => typeof v === 'string'));
+  return shaped === true ? (read as PlanToolCall[]) : undefined;
+}
+
+/**
+ * The answer schema, custody's folded completed response: the output text
+ * joined, the usage counts and the model. Words or a call it must have.
+ */
+export function readChatgptPlanAnswer(body: unknown): ModelAnswer | undefined {
+  const output = outputOf(body);
+  const calls = readChatgptPlanToolCalls(body);
+  if (!record(body) || output === undefined || calls === undefined) return undefined;
+  const { usage } = body;
+  const model = readModelId(body['model']);
+  if (!record(usage) || !count(usage['input_tokens']) || !count(usage['output_tokens'])) return;
+  const parts = output.flatMap((item) =>
+    item['type'] === 'message' && Array.isArray(item['content']) ? item['content'] : [],
+  );
+  const text = parts
+    .flatMap((part) => (record(part) && part['type'] === 'output_text' ? [part['text']] : []))
+    .join('');
+  if (model === undefined || (text === '' && calls.length === 0)) return undefined;
+  const units = { inputUnits: usage['input_tokens'], outputUnits: usage['output_tokens'] };
+  return { text, model, usage: units, providerCode: null };
+}
+
+/**
+ * A person's question answered on the owner's ChatGPT plan. The plan is
+ * already paid for, so every answer costs nothing and the operation is unpriced.
+ */
+export const CHATGPT_PLAN_CONVERSATION: ModelOperationDeclaration = {
+  key: 'model.chatgpt_plan_answer',
+  provider: CHATGPT_PLAN_PROVIDER,
+  destination: CHATGPT_PLAN_PROVIDER,
+  fields: CONVERSATION_ANSWER.fields,
+  answer: readChatgptPlanAnswer,
+  timeoutMs: CHATGPT_PLAN_TIMEOUT_MS,
+  maxResponseBytes: CHATGPT_PLAN_ANSWER_BYTES,
+  maximumMinor: 0,
+  settlesAt: 'completed',
+  // The plan's refusals before any work: a capability it lacks, the sign-in, this account.
+  nothingHappened: ['http_400', 'http_401', 'http_403'],
+  billed: false,
+  concurrency: 1,
+};
