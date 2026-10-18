@@ -36,6 +36,13 @@ import { read, ROOT } from './merge-group-repo.ts';
 
 const temp = scratch();
 
+// RELAYSHARD1830 and #1478 (orchestrator, 18 October 2026): 3 and 3 shards, so two merge
+// groups fit the account's 60 runners, each job at most 20 minutes. A shard's measured items
+// plus what every shard repeats outside them: checkout, install, the cached build and the
+// summary, under a minute in run 38695912255. A plan past it needs more shards or a finer split.
+const SHARD_JOB_SECONDS = 20 * 60;
+const SHARD_SETUP_SECONDS = 60;
+
 it('the plan reads the measured times, and refuses a key it does not know or a value that is not seconds', () => {
   expect(Object.keys(plan.isolation).length).toBeGreaterThan(100);
   expect(Object.keys(plan.files).length).toBeGreaterThan(100);
@@ -70,6 +77,10 @@ describe('isolation tests', () => {
     for (const shard of shards) expect(shard.some((item) => items.includes(item))).toBe(true);
     const { heaviest, bound } = balance(shards, shardWeight(plan.isolation));
     expect(heaviest).toBeLessThanOrEqual(bound);
+    expect(
+      heaviest + SHARD_SETUP_SECONDS,
+      'the heaviest isolation shard, in seconds',
+    ).toBeLessThanOrEqual(SHARD_JOB_SECONDS);
     const added = 'tests/tenancy/named-later.test.ts';
     const later = isolationShards([...items, added], plan, ISOLATION_COUNT);
     expect(later.filter((shard) => shard.includes(added))).toHaveLength(1);
@@ -204,4 +215,8 @@ it('vitest’s sequencer splits the test files by measured time, every file in e
   );
   const total = loads.reduce((a, b) => a + b, 0);
   expect(Math.max(...loads)).toBeLessThanOrEqual((total / LOCAL_COUNT) * 1.1);
+  expect(
+    Math.max(...loads) + SHARD_SETUP_SECONDS,
+    'the heaviest local shard, in seconds',
+  ).toBeLessThanOrEqual(SHARD_JOB_SECONDS);
 });
