@@ -12,6 +12,7 @@ export const PINNED_SHAPE = {
   'chat.conversations': { spine: false, subject: false, authority: 'declared' },
   'chat.messages': { spine: false, subject: false, authority: 'declared' },
   'automation.registry': { spine: false, subject: false, authority: 'declared' },
+  'automation.history': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },

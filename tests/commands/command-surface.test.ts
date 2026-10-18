@@ -92,6 +92,7 @@ describe('the surface as a table', () => {
 const DECLARED_READS = [
   'access.read',
   'agent.mine',
+  'automation.history',
   'automation.registry',
   'chat.conversations',
   'chat.messages',
