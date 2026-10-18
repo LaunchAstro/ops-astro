@@ -16,6 +16,19 @@ afterAll(async () => {
   await s?.db.drop();
 });
 
+const ISSUE = `insert into public.agent_credentials
+  (business_id,id,agent_actor_id,issued_by_person_id,issued_by_actor_id,purpose,scope,
+   credential_hash,credential_scheme,credential_key_id,expires_at)
+  values ($1,$2,$3,$4,$5,'proof',array['task:read'],repeat('a',64),'hmac-sha256-v1','proof',now()+interval '1 day')`;
+
+const issueParams = (agent: string): unknown[] => [
+  s.business,
+  randomUUID(),
+  agent,
+  s.decider.personId,
+  s.decider.actorId,
+];
+
 it('an application transaction on a snapshot older than the credential cannot turn its agent into a worker', async () => {
   const agent = randomUUID();
   await s.db.app.withBusiness(s.business, async (tx) => {
@@ -32,13 +45,7 @@ it('an application transaction on a snapshot older than the credential cannot tu
         await tx.unsafe(`select set_config('app.business_id', $1, true)`, [s.business]);
         await tx.unsafe('select 1 from public.agent_credentials');
         await s.db.app.withBusiness(s.business, async (writer) => {
-          await writer.query(
-            `insert into public.agent_credentials
-          (business_id,id,agent_actor_id,issued_by_person_id,issued_by_actor_id,purpose,scope,
-           credential_hash,credential_scheme,credential_key_id,expires_at)
-          values ($1,$2,$3,$4,$5,'proof',array['task:read'],repeat('a',64),'hmac-sha256-v1','proof',now()+interval '1 day')`,
-            [s.business, randomUUID(), agent, s.decider.personId, s.decider.actorId],
-          );
+          await writer.query(ISSUE, issueParams(agent));
         });
         issued = true;
         await tx.unsafe(
