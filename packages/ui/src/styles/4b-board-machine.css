@@ -509,10 +509,11 @@ td[data-tight] {
 }
 
 /* Heads stick only where the table fits its card: a scroll container would
-   pin them to itself, so the wrap clips instead of scrolling there. Below
-   1279 the table can overflow and scrolls, and the heads do not stick. */
+   pin them to itself, so the wrap clips instead of scrolling there. A table
+   wider than its card (a narrow card or dock panel, and anything below 1279)
+   scrolls in the wrap, and its heads do not stick. */
 @media (min-width: 1279px) {
-  .cbd__wrap {
+  .cbd__wrap:not([data-overflows]) {
     overflow-x: clip;
   }
 
@@ -817,15 +818,16 @@ tr:focus-within .cbd__routes--pop {
 }
 
 /* The td lifts its clipping while an editor is open, or the menu would
-   vanish into it. The wrap lifts only where the table fits its card: below
-   1279 it scrolls, and lifting it would drop the scroll and spill the table
-   across the page, so there the menu stays inside the wrap's scroll. */
+   vanish into it. The wrap lifts only where the table fits its card: a wrap
+   that scrolls (below 1279, or a table wider than its card) would drop the
+   scroll and spill the table across the page, so there the menu stays
+   inside the wrap's scroll. */
 .cbd__tbl td:has(.cbd__cell.is-editing) {
   overflow: visible;
 }
 
 @media (min-width: 1279px) {
-  .cbd__wrap:has(.cbd__cell.is-editing) {
+  .cbd__wrap:not([data-overflows]):has(.cbd__cell.is-editing) {
     overflow: visible;
   }
 }
