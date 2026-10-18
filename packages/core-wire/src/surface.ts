@@ -66,6 +66,14 @@ const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
 const CHAT_COLLECTION = 'chat';
+/** The lease holder's own commands, asked of the lease (model.call, run.end). */
+const ASKED_OF_LEASE = {
+  targetsExistingRecord: false,
+  authorisedOn: 'claim',
+  untargetedIdentifiers: ['leaseId'],
+  runtimeShaped: 'leaseId',
+  agent: 'delegated',
+} as const;
 const GROUP_MANAGER =
   'a member of the group, then its creator or a holder of chat:manage (C71-G); else NOT_FOUND or SCOPE_NOT_GRANTED';
 const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
@@ -663,21 +671,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
   // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
-  declare('model.call', 'write', {
-    targetsExistingRecord: false,
-    authorisedOn: 'claim',
-    untargetedIdentifiers: ['leaseId'],
-    runtimeShaped: 'leaseId',
-    agent: 'delegated',
-  }),
+  declare('model.call', 'write', ASKED_OF_LEASE),
   // #1623 R1: the lease holder's stop, asked of the lease like model.call.
-  declare('run.end', 'write', {
-    targetsExistingRecord: false,
-    authorisedOn: 'claim',
-    untargetedIdentifiers: ['leaseId'],
-    runtimeShaped: 'leaseId',
-    agent: 'delegated',
-  }),
+  declare('run.end', 'write', ASKED_OF_LEASE),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work
   // controls. The runtime asks the same pair of the run's own task again under
