@@ -43,9 +43,9 @@ unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
 
 Decision `R6-S2-20261018`, the first part of R6 in
 [Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
-recording seam S2 as the director settled it on 14 October 2026. It needs
-Nathan's acceptance before the pull request that carries it merges (#1688,
-owner question d).
+recording seam S2 as the director settled it on 14 October 2026. Nathan
+accepted it on 18 October 2026 (owner question d; the round register, items
+10, 11 and 13).
 
 - A business's own site is bound to the business itself, not to a party. It
   is the business's one site row with no party. A client's site stays bound
