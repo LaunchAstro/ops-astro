@@ -10,7 +10,11 @@ import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { answerOf, type Outbound } from '../../packages/core-custody/src/egress-answer.ts';
-import { askPlanOnce, type PlanAnswerLog } from '../../packages/core-custody/src/plan-answer.ts';
+import {
+  askPlanOnce,
+  planAnswer,
+  type PlanAnswerLog,
+} from '../../packages/core-custody/src/plan-answer.ts';
 import { ACCESS, SECRETS, completed, runsIn, sse } from './fixtures/plan-answer-world.ts';
 
 interface Reply {
@@ -139,4 +143,21 @@ it('answers a completed stream after the same one request', async () => {
   const body = sse([{ type: 'response.completed', response: completed(['fine']) }]);
   const { result } = await asked({ status: 200, type: 'text/event-stream', body });
   expect(result).toMatchObject({ ok: true });
+});
+
+it('maps a usage limit wherever the stream names it to the plan allowance', () => {
+  const limit = 'subscription_sharing_usage_limit_exceeded';
+  const clean = sse([{ type: 'response.completed', response: completed(['fine']) }]);
+  const bodies = [
+    `${sse([{ type: 'response.in_progress', code: limit }])}${clean}`,
+    sse([{ type: 'error', error: { code: limit } }]),
+  ];
+  for (const body of bodies) {
+    expect(
+      planAnswer({ ok: true, status: 200, body, mediaType: 'text/event-stream' }, SECRETS),
+    ).toEqual(named('SUBSCRIPTION_PLAN_ALLOWANCE'));
+  }
+  expect(planAnswer({ ok: false, fault: 'too_large', status: 429 }, SECRETS)).toEqual(
+    named('SUBSCRIPTION_PLAN_ALLOWANCE'),
+  );
 });
