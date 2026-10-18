@@ -989,3 +989,21 @@ never updated (`party_site_pages_fixed`). The application may select and
 insert both, delete pages, and update the site's provider columns; no command
 writes them: the operator binds a site with `bindPartySite`. Tenancy-keyed
 with the restrictive policy.
+
+## The business's own site (20261018020000, R6 part 1)
+
+The business's own site is its one `party_sites` row with no party, bound to
+the business itself (decision R6-S2-20261018). Sites and pages are keyed by
+`holder`, kept equal to `coalesce(party_id, business_id)` by a trigger (`party_site_holder`) and a check: the primary key is
+`(business_id, holder)` and a page's site key names it. No client takes the
+business's identity (`clients_not_the_business`), and no page names it as a
+party (`party_site_pages_not_the_business`), so the two holders never meet.
+
+`live_corrections.party_id` is null for a correction on the business's own
+site. The insert reads the task's client in its own statement: a task with no
+client stores a request only on a page of the business's own site, and a
+client's task only on its client's. The grant filter reaches a correction
+with no party only through a business-wide grant, so a party-scoped grant,
+even one naming the business's identity, reaches none of it. The freeze
+functions (`party_site_under_correction`, `party_site_pages_held`) judge
+either holder.
