@@ -35,6 +35,26 @@ const ids = (answer: Answer): readonly unknown[] =>
     (one) => one.id,
   );
 
+/** A task linked to a new client, by its id. */
+async function aClientTask(): Promise<string> {
+  const clientId = randomUUID();
+  await w.fixture.db.app.withBusiness(
+    w.fixture.business,
+    async (tx) => await grantTo(tx, w.owner, 'share'),
+  );
+  await addClient(w.fixture.db.app, w.fixture.business, clientId, w.owner);
+  const made = await w.as(w.owner, 'task.create', { fields: { title: 'A client page' } });
+  expect(made.status).toBe(200);
+  const linked = await w.as(w.owner, 'task.set_party', {
+    operationId: randomUUID(),
+    recordId: made.body['recordId'],
+    expectedRevision: made.body['revision'],
+    fields: { client: clientId },
+  });
+  expect(linked.status).toBe(200);
+  return String(made.body['recordId']);
+}
+
 /** A conversation opened on an internal task, and a client's task page it can be given. */
 async function openedOnInternal(): Promise<{ conversationId: string; address: string }> {
   const original = await w.as(w.owner, 'task.create', { fields: { title: 'Internal opening' } });
@@ -43,22 +63,7 @@ async function openedOnInternal(): Promise<{ conversationId: string; address: st
     body: `Opening on the internal task ${randomUUID()}`,
     scope: { kind: 'task', id: String(original.body['recordId']) },
   });
-  const clientId = randomUUID();
-  await w.fixture.db.app.withBusiness(
-    w.fixture.business,
-    async (tx) => await grantTo(tx, w.owner, 'share'),
-  );
-  await addClient(w.fixture.db.app, w.fixture.business, clientId, w.owner);
-  const next = await w.as(w.owner, 'task.create', { fields: { title: 'A client page' } });
-  expect(next.status).toBe(200);
-  const linked = await w.as(w.owner, 'task.set_party', {
-    operationId: randomUUID(),
-    recordId: next.body['recordId'],
-    expectedRevision: next.body['revision'],
-    fields: { client: clientId },
-  });
-  expect(linked.status).toBe(200);
-  return { conversationId, address: `/task/${String(next.body['recordId'])}` };
+  return { conversationId, address: `/task/${await aClientTask()}` };
 }
 
 // eslint-disable-next-line max-lines-per-function -- Sol's proof for S1930-1 kept as written, and its models case
@@ -125,5 +130,32 @@ describe.skipIf(serverUrl === undefined)('after a page change, the stored page i
     const onClient = await w.as(w.owner, 'conversation.models', { conversationId });
     expect(onClient.status).toBe(200);
     expect(ids(onClient), 'a client whose egress is off is offered nothing').toStrictEqual([]);
+  });
+
+  it('a conversation opened on a client task stays refused after an internal page is added', async () => {
+    const clientTask = await aClientTask();
+    const onClient = await started(w, w.owner, {
+      body: `Opening on the client task ${randomUUID()}`,
+      scope: { kind: 'task', id: clientTask },
+    });
+    const inside = await w.as(w.owner, 'task.create', { fields: { title: 'An internal page' } });
+    expect(inside.status).toBe(200);
+    const changed = await w.as(w.owner, 'conversation.set_scope', {
+      conversationId: onClient,
+      page: { address: `/task/${String(inside.body['recordId'])}`, shows: 'An internal page' },
+    });
+    expect(changed.status).toBe(200);
+    const before = model.provider.seen.length;
+    const result = await w.as(w.owner, 'conversation.message', {
+      conversationId: onClient,
+      body: 'A question on the internal page',
+    });
+    expect(result.status).toBe(200);
+    expect(result.body['reply']).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(model.provider.seen.length, 'a page added since never lifts a client refusal').toBe(
+      before,
+    );
+    const offered = await w.as(w.owner, 'conversation.models', { conversationId: onClient });
+    expect(ids(offered)).toStrictEqual([]);
   });
 });
