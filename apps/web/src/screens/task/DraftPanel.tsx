@@ -29,6 +29,7 @@ import { useLayoutEffect, useState, type KeyboardEvent, type ReactElement } from
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
 import { useKeptDraft, type DraftEditorProps } from './draft-editor.ts';
+import { tell, useToldBy } from './draft-mounts.ts';
 export type { DraftScope } from './draft-editor.ts';
 import { draftProblem, dropDraft, newAttempt, stopTimer, type Attempt } from './task-draft.ts';
 import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
@@ -57,6 +58,28 @@ const flights = new WeakMap<
   DraftPanelProps['hold'],
   { readonly person: string; show: (settled: Settled) => void }
 >();
+
+/** This mount draws another mount's Create while it is out, and the held attempt as it is now. */
+function useTold(
+  props: DraftPanelProps,
+  kept: Kept,
+  show: (settled: Settled) => void,
+  out: (busy: boolean) => void,
+): void {
+  // A Create another mount sent is still out: its answer is shown here.
+  useLayoutEffect(() => {
+    const flight = flights.get(props.hold);
+    if (flight?.person !== props.person) return;
+    flight.show = (settled) => {
+      kept.reread();
+      show(settled);
+    };
+  }, []);
+  useToldBy(props.hold, () => {
+    kept.reread();
+    out(flights.get(props.hold)?.person === props.person);
+  });
+}
 
 export function DraftPanel(props: DraftPanelProps): ReactElement {
   const kept = useKeptDraft(props);
@@ -169,6 +192,7 @@ function LetGo(props: { readonly kept: Kept; readonly creating: Creating }): Rea
   const letGo = (): void => {
     kept.settled(held.id);
     creating.show({ refusal: null, missed: null });
+    creating.tell();
   };
   return (
     <button className="btn btn--secondary" type="button" data-draft="let-go" onClick={letGo}>
@@ -235,15 +259,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     missed: null,
   }));
   const show = (settled: Settled): void => setView({ busy: false, ...settled });
-  // A Create another mount sent is still out: its answer is shown here.
-  useLayoutEffect(() => {
-    const out = flights.get(props.hold);
-    if (out?.person !== props.person) return;
-    out.show = (settled) => {
-      kept.reread();
-      show(settled);
-    };
-  }, []);
+  useTold(props, kept, show, (busy) => setView((last) => ({ ...last, busy })));
   const create = async (): Promise<void> => {
     if (view.busy) return;
     const refusal = createRefusal(props, kept);
@@ -264,6 +280,7 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     const release = props.hold();
     const flight = { person: props.person, show };
     flights.set(props.hold, flight);
+    tell(props.hold);
     setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
@@ -274,6 +291,8 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       if (flights.get(props.hold) === flight) flights.delete(props.hold);
     }
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
+    // Every mount draws the answer as stored: settled, still held, or the task made.
+    tell(props.hold);
   };
-  return { ...view, create, show };
+  return { ...view, create, show, tell: () => tell(props.hold) };
 }
