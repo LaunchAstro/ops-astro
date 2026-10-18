@@ -22,7 +22,7 @@
 // `200` and no correction, so the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
-import type { HistoryOperands } from './automations.ts';
+import type { HistoryOperands } from './history-operands.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type { CostPeriodOperands } from './agent-costs.ts';
 import type {

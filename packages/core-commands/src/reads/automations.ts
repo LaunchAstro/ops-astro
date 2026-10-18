@@ -24,12 +24,7 @@ import type {
 import { invalid } from '../commands/operands.ts';
 import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { Parsed } from './read-row.ts';
-
-/** `automation.history`'s operands: the activation, and where the page starts. */
-export interface HistoryOperands {
-  readonly activationId: string;
-  readonly cursor?: ActivationHistoryCursor;
-}
+import type { HistoryOperands } from './history-operands.ts';
 
 export async function readAutomationRegistry(tx: TenantQuery): Promise<AutomationRegistryResult> {
   const { definitions, versions, activations } = await listRegistry(tx);
