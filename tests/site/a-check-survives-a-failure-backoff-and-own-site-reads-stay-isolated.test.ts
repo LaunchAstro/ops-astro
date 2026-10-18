@@ -68,6 +68,22 @@ describe.skipIf(serverUrl === undefined)('a check racing a failure, and own-site
   it('keeps own-site correction reads inside their business, client and person', async () => {
     const { readCoveredDecision } =
       await import('../../packages/core-records/src/site/correction-decisions.ts');
+    const { bindPartySite } = await import('../../packages/core-records/src/site/party-sites.ts');
+    // The business's own site, bound first, so the request reaches the reads below.
+    const bound = await w.world.db.app.withBusiness(w.world.business, (tx) =>
+      bindPartySite(
+        tx,
+        {
+          partyId: null,
+          repository: 'isolation/own',
+          defaultBranch: 'main',
+          project: 'prj_isolation_own',
+          pages: [{ pageUrl: 'https://sol1922.example/about/', path: 'src/pages/our-about.md' }],
+        },
+        w.admin.actorId,
+      ),
+    );
+    expect(bound).toEqual({ ok: true });
     const task = await w.as(w.ava, { command: 'task.create', fields: { title: 'Own separation' } });
     if ('code' in task) throw new Error('task refused');
     const answer = await w.asRaw(w.ava, {

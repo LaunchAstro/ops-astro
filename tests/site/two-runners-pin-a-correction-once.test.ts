@@ -171,7 +171,9 @@ describe.skipIf(serverUrl === undefined)('two runners pin a correction once', ()
       versionId,
       decision: 'approve',
     });
-    const waited = await seenWaiting(w, /from public\.live_corrections/u);
+    // pg_stat_activity keeps the first 1 kB of a statement, and the decision's locking read opens
+    // with the grants prefix, so the wait is matched on that, not on the table it locks.
+    const waited = await seenWaiting(w, /with recursive effective as/u);
     await sleep(4_000);
     holding.release();
     await holding.done;
