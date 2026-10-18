@@ -73,8 +73,10 @@ jobs:
     # skips, so every job behind it skips, and the three `always()` jobs carry
     # the same condition. A pull request that is open runs as before.
     if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
-    # Its slowest green run in the day to 1 October 2026: 5.2 min.
-    timeout-minutes: 15
+    # Its slowest green run in the day to 1 October 2026: 5.2 min. On a push to
+    # main its scope step may wait up to 40 minutes for the end of a batch
+    # (scripts/full-run.ts, #1485), so a push gets 45.
+    timeout-minutes: ${{ github.event_name == 'push' && 45 || 15 }}
     # `actions: read` lets the scope step below read the merge group runs on a
     # push to main; the merge queue is read with the same token. Both read only.
     permissions:
@@ -108,7 +110,8 @@ jobs:
         run: node scripts/queue-head-check.mjs
       # Queue hygiene (owner, 12 October 2026): a merge group always takes the
       # full set; a pull request only with the `ci-next` label; a push to main
-      # only when no green merge group tested its tree or the queue is empty.
+      # when no green merge group tested its tree, or when it is main's head at
+      # the end of a batch (#1485).
       - name: Which set this run takes, full or light
         id: scope
         env:
