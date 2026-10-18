@@ -117,3 +117,27 @@ it('withholds every answer when it is given no secret to judge against', () => {
   ).toMatchObject(withheld);
   expect(log).toEqual(['plan answer withheld: no secret to judge']);
 });
+
+it('withholds a secret split in order across differently named fields', () => {
+  const split = { ...completed(['plain']), a: ACCESS.slice(0, 4), b: ACCESS.slice(4, 9) };
+  expect(judged(stream(split)).result).toMatchObject(withheld);
+});
+
+it("judges a signed token by its signature, so another token's public header passes", () => {
+  // Built here, part by part, so no token-shaped text sits in the source.
+  const part = (text: string): string => Buffer.from(text).toString('base64url');
+  const header = part('{"alg":"RS256","typ":"JWT"}');
+  const signature = part('FOPwlLsrmsGWy5dVqzhbtbMZN8VAKxdmNpRt');
+  const signed = [header, part('{"https://api.openai.com/auth":{"user_id":"u"}}'), signature].join(
+    '.',
+  );
+  const another = [header, part('{"sub":"1234567890"}'), part('signature')].join('.');
+  const example = `${another} and ${Buffer.from('https://example.com/callback').toString('base64')}`;
+  expect(planAnswer(answered(stream(completed([example]))), [signed])).toMatchObject({ ok: true });
+  const piece = signature.slice(10, 10 + FRAGMENT_RUN);
+  expect(planAnswer(answered(stream(completed([`x ${piece} y`]))), [signed])).toMatchObject(
+    withheld,
+  );
+  const whole = planAnswer(answered(stream(completed([`echo ${signed}`]))), [signed]);
+  expect(JSON.stringify(whole)).not.toContain(signature.slice(0, FRAGMENT_RUN));
+});
