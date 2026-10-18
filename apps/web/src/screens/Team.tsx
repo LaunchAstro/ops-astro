@@ -17,6 +17,7 @@ import { TeamPanel, type AvailabilityChange, type Teammate } from '@launchastro/
 import type { TeamListResult, TeamMemberView } from '../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import type { StorageLike } from '../session/storage-slot.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
 import { availabilitySaver } from './team/availability-saves.ts';
@@ -59,6 +60,8 @@ export function TeamScreen(props: {
   readonly grantKey: string;
   /** The whole address the screen is drawn at: the page's, or the dock panel's place. */
   readonly address?: string;
+  /** Where the tab keeps unsent chat words across a reload; null keeps them in memory only. */
+  readonly storage?: StorageLike | null;
 }): ReactElement {
   const { client } = props;
   const { state, reload } = useRead<TeamListResult>({
