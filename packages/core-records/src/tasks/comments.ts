@@ -28,6 +28,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isLive, type FieldDefinition } from '../records/fields.ts';
+import { conversationClock } from '../team/conversation-clock.ts';
 
 export { COMMENT_SPINE } from './comment-spine.ts';
 
@@ -90,10 +91,11 @@ export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T
 
 /**
  * A conversation message's time and place, read under its lock (conversations.ts):
- * the wall clock, so a send that waited is stamped after the one before, and
- * `created_at`, a strict order of writes that ranks one millisecond's messages.
+ * the conversation's clock, so a send that waited is stamped after the one before
+ * even when the wall clock steps back, and `created_at`, a strict order of writes
+ * that ranks one millisecond's messages.
  */
-const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CLOCK_TEXT = `to_char(${conversationClock('$1', '($11::text)::uuid', '$3')} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
   from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 

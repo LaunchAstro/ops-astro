@@ -157,6 +157,11 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
       const answer = await as(world.mia, name, body);
       expect(answer.code, `${name} ${answer.text}`).toBe('SCOPE_NOT_GRANTED');
     }
+    // Her read never offered management, and her forged calls changed nothing.
+    const afterForged = await viewOf(world.mia);
+    expect(afterForged?.canManage).toBe(false);
+    expect(afterForged?.name).toBe(groupName);
+    expect(afterForged?.members).toContain(world.ada.personId);
     // Its creator renames it; an administrator in it renames it back.
     const byCreator = await as(chat.tess, 'chat.rename_group', {
       conversationId,

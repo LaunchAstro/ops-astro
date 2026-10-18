@@ -7,17 +7,17 @@
 //
 // **One conversation's writes take one lock.** Every message, read-marker
 // move, member change and leave holds the conversation's lock first
-// (`lockConversation`), and each reads the wall clock under it. A member's
-// window is cut on a millisecond boundary nothing else in the conversation
-// shares: the change reads the clock, then waits out that millisecond before it
-// commits. A message stamped before the change is at or before the boundary,
-// and one stamped after it is past it, so a member removed reads nothing
-// written after, and a member added reads nothing written before.
+// (`lockConversation`), and each reads the conversation's clock under it
+// (`conversation-clock.ts`), which never steps back. A member's window is cut
+// on a millisecond boundary at or past every message already written, and every
+// later message is stamped past it, so a member removed reads nothing written
+// after, and a member added reads nothing written before.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { lockConversation, type ConversationTypes } from './conversations.ts';
+import { conversationClock, messageTypeOf } from './conversation-clock.ts';
 
 /** The longest group name, after trimming. */
 export const GROUP_NAME_LIMIT = 80;
@@ -102,13 +102,14 @@ export async function renameGroup(
 }
 
 /**
- * The boundary a member change is cut on: the wall clock's millisecond, held
- * past before this returns, so no message in this conversation shares it.
+ * The boundary a member change is cut on: the conversation's clock, at or past
+ * every message already in it, while every later message is stamped past it.
  */
-async function boundary(tx: TenantQuery): Promise<string> {
+async function boundary(tx: TenantQuery, conversationId: string): Promise<string> {
   const rows = await tx.query<{ readonly at: string }>(
-    `select to_char(date_trunc('milliseconds', clock_timestamp()) at time zone 'utc',
-                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at, pg_sleep(0.002)`,
+    `select to_char(${conversationClock('$1', '$2::uuid', messageTypeOf('$1'))} at time zone 'utc',
+                    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`,
+    [tx.businessId, conversationId],
   );
   const at = rows[0]?.at;
   if (at === undefined) throw new Error('boundary: the clock answered no row');
@@ -125,7 +126,7 @@ export async function changeGroupMembers(
   conversationId: string,
   change: { readonly add: readonly string[]; readonly remove: readonly string[] },
 ): Promise<void> {
-  const at = await boundary(tx);
+  const at = await boundary(tx, conversationId);
   if (change.add.length > 0) {
     await tx.query(
       `insert into public.team_conversation_members

@@ -278,10 +278,10 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
   it('MP-14-8 the TTL countdown turns warning under an hour', async () => {
     const { page } = await open(signalBody(ALL));
     const soon = page.find('[data-grant="live"] [data-grant-ttl]') as HTMLElement | null;
-    expect(soon?.textContent).toBe('37m left');
+    expect(soon?.textContent).toBe('37 min left');
     expect(soon?.dataset['tone']).toBe('warn');
     const later = page.find('[data-grant="fleetx"] [data-grant-ttl]') as HTMLElement | null;
-    expect(later?.textContent).toBe('5h 0m left');
+    expect(later?.textContent).toBe('5 h left');
     expect(later?.dataset['tone']).toBe('plain');
     expect(later?.title).toContain('Issued');
     expect(text(page, '[data-grant="unused"] [data-grant-ttl]')).toBe('Ran out');
@@ -580,7 +580,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
       await tick();
       const ttl = (): HTMLElement | null =>
         page.find('[data-grant="soon"] [data-grant-ttl]') as HTMLElement | null;
-      expect(ttl()?.textContent).toBe('1h 1m left');
+      expect(ttl()?.textContent).toBe('1 h left');
       for (let refreshes = 1; refreshes <= 4; refreshes += 1) {
         vi.setSystemTime(NOW + refreshes * 30_000);
         // eslint-disable-next-line no-await-in-loop -- each floor read settles before the next
@@ -590,7 +590,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
         // eslint-disable-next-line no-await-in-loop -- as above
         await tick();
       }
-      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59m left', 'warn']);
+      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59 min left', 'warn']);
     } finally {
       vi.useRealTimers();
     }
@@ -630,7 +630,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
       await tick();
       const ttl = (): HTMLElement | null =>
         page.find('[data-grant="soon"] [data-grant-ttl]') as HTMLElement | null;
-      expect(ttl()?.textContent).toBe('1h 1m left');
+      expect(ttl()?.textContent).toBe('1 h left');
       await act(() => {
         for (const refresh of refreshers) refresh();
       });
@@ -638,7 +638,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
         vi.advanceTimersByTime(120_000);
       });
       await tick();
-      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59m left', 'warn']);
+      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59 min left', 'warn']);
     } finally {
       vi.useRealTimers();
     }
@@ -653,7 +653,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     const { page } = await open(signalBody([closing, passed, ...LIVE_ONLY]));
     const ttl = (id: string): HTMLElement | null =>
       page.find(`[data-grant="${id}"] [data-grant-ttl]`) as HTMLElement | null;
-    expect(ttl('closing')?.textContent).toBe('Under 1m left');
+    expect(ttl('closing')?.textContent).toBe('Under 1 min left');
     expect(ttl('closing')?.dataset['tone']).toBe('warn');
     expect(ttl('passed')?.textContent).not.toBe('Ran out');
     expect(ttl('passed')?.dataset['tone']).toBe('warn');
