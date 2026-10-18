@@ -8,8 +8,8 @@
 // process, and launchd starts it again.
 
 import { readFileSync, statSync } from 'node:fs';
-import { CHATGPT_PLAN_PROVIDER } from '../../packages/core-connectors/src/chatgpt-plan.ts';
 import { loadavg } from 'node:os';
+import { CHATGPT_PLAN_PROVIDER } from '../../packages/core-connectors/src/index.ts';
 import {
   parseCarryKeys,
   realtimeCarriage,
