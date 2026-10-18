@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A client link, a delegation revoked or expired, the calling agent's session ended or its lease moved, committed while the model agent prepares the plan's token, is judged at the send after that wait, and the task's request is never sent."
+}
