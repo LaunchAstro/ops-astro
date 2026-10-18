@@ -77,6 +77,16 @@ describe('S0-5 gate coverage: every command declares its data effects, and its c
   });
 });
 
+describe('S7 map read model: declaring it changes no class', () => {
+  it('every command declaring the map summary and frontier stays client-data', () => {
+    const classes = Object.entries(COMMAND_EFFECTS)
+      .filter(([, effects]) => effects.writes.some(({ kind }) => kind === 'map_frontier'))
+      .map(([name, effects]) => [name, classOf(effects)]);
+    expect(classes.length).toBeGreaterThan(0);
+    expect(classes.filter(([, kind]) => kind !== 'client-data')).toStrictEqual([]);
+  });
+});
+
 describe('S0-5 effect metadata names each table once', () => {
   it('no command declares the same written table twice', () => {
     const repeated = Object.entries(COMMAND_EFFECTS).flatMap(([name, effects]) => {

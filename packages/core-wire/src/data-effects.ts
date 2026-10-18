@@ -14,6 +14,7 @@ import {
   SETTINGS,
   SHARE,
   TASK,
+  TASK_ROW,
 } from './data-effects-shapes.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
@@ -44,10 +45,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.update': TASK,
   'task.complete': TASK,
   'task.reopen': TASK,
-  'task.comment': writing(client('records')),
+  'task.comment': TASK_ROW,
   // A comment's own edit and deletion (MP-4-5), on its record.
-  'task.edit_comment': writing(client('records')),
-  'task.delete_comment': writing(client('records')),
+  'task.edit_comment': TASK_ROW,
+  'task.delete_comment': TASK_ROW,
   // AW-09: the lease holder's revision of its output is the reviewed output too.
   // A restart opens a new lineage, which supersedes nothing, so it marks none.
   'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
@@ -70,7 +71,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ]),
   'task.start': TASK,
   // An assignment raises the assignee's item (INB-1).
-  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.assign': writing([...TASK.writes, ...client('inbox_items')]),
   // A run opened for the task's agent, with the delegation it acts under.
   ...LAUNCH_EFFECTS,
   'task.triage': TASK,
@@ -80,8 +81,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
   'task.set_category': TASK,
-  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
-  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8), which
+  // refreshes the old one's map when it is a ticket.
+  'task.duplicate': writing([...TASK.writes, ...client('record_links')]),
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
@@ -98,7 +100,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...TASK.writes,
     ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
     ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
-    ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
+    ...client('map_components', 'map_versions'),
   ]),
   'task.read': READ,
   'task.board': READ,
