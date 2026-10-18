@@ -414,11 +414,13 @@ const serveCommentChange =
   };
 
 /**
- * The agent entry's authority asked again once the comment is locked, as
- * `authorise` asked it. The delegation and, for a helper, its parent are held
- * `for share` first, after the task (the global order's delegation class): a
- * `delegation.revoke` writes the row, so one that has not committed waits for
- * the change. A helper has no lease of its own and revoking it takes no task
+ * The agent entry's authority asked again once the task or comment is locked,
+ * as `authorise` asked it. The delegation and, for a helper, its parent are
+ * held `for share` first, after the task (the global order's delegation
+ * class): a `delegation.revoke` writes the row, so one that has not committed
+ * waits for the change. The grants are read, not held: `grant.revoke` takes
+ * its grant before the task (`LOCK_ORDER`), so holding them here would invert
+ * that order. A helper has no lease of its own and revoking it takes no task
  * lock, so nothing else orders that revocation with this change.
  */
 async function askedAgain(
@@ -465,7 +467,7 @@ const serveOwnedWrite =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof setScores>) =>
-  async (tx, { request }, _operands, delegation, taskId) => {
+  async (tx, call, _operands, delegation, taskId) => {
     // `authorise` has held the delegation to this task and its `write` action
     // to the delegating person's live grant. The lock and the revision are the
     // person envelope's (`prepareCommand`), so the two entries refuse a stale
@@ -475,6 +477,10 @@ const serveOwnedWrite =
     const spine = await readTaskSpine(tx);
     const target = await lockTask(tx, spine.taskTypeId, taskId);
     if (target === undefined) return NOT_FOUND();
+    // A `grant.revoke` that committed while this waited for the task refuses it (#1506).
+    const narrowed = await askedAgain(tx, call, delegation, target);
+    if (narrowed !== undefined) return refused(narrowed);
+    const { request } = call;
     if (expectedRevisionOf(request) !== target.revision) {
       return refused(
         refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
