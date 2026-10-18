@@ -24,9 +24,32 @@ export const TOKEN_ANSWER_BYTES = 1_048_576;
 /** The resource every plan token is for, as OpenAI's open-source flow and #1634 send it. */
 const PLAN_RESOURCE = 'https://api.openai.com/v1';
 
-/** `https:`, or `http:` to a 127.0.0.1 test issuer only. */
-function allowed(url: URL): boolean {
-  return url.protocol === 'https:' || (url.protocol === 'http:' && url.hostname === '127.0.0.1');
+/** The plan token issuer's one origin (#1704). */
+export const PLAN_ISSUER_ORIGIN = 'https://auth.openai.com';
+
+const bare = (url: URL): boolean => url.username === '' && url.password === '';
+
+/** The plan issuer itself, with no credentials in the URL. */
+export function planIssuer(url: URL): boolean {
+  return url.origin === PLAN_ISSUER_ORIGIN && bare(url);
+}
+
+/** The plan issuer, or a 127.0.0.1 test issuer over `http:` or `https:`. */
+export function issuerAllowed(url: URL): boolean {
+  const loopback =
+    (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname === '127.0.0.1';
+  return planIssuer(url) || (loopback && bare(url));
+}
+
+/**
+ * A private copy of an allowed token URL, judged after copying, so the
+ * caller's later edit to its own URL cannot redirect the refresh.
+ */
+export function issuerCopy(url: URL): URL {
+  const copy = new URL(url.href);
+  if (!issuerAllowed(copy))
+    throw new TypeError('the token URL is not the plan issuer or a 127.0.0.1 test issuer');
+  return copy;
 }
 
 /** Classifies the issuer's answer, reading at most TOKEN_ANSWER_BYTES of a 200. */
@@ -76,7 +99,7 @@ export function refreshOnce(
   now: () => number = Date.now,
 ): Promise<{ readonly result: RefreshResult; readonly sentAt: number | undefined }> {
   const signal = deadline();
-  if (!allowed(tokenUrl) || signal.aborted)
+  if (!issuerAllowed(tokenUrl) || signal.aborted)
     return Promise.resolve({ result: { kind: 'not_sent' }, sentAt: undefined });
   const body = Buffer.from(
     new URLSearchParams({
