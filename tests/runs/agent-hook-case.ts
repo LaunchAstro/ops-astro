@@ -231,24 +231,27 @@ function hookAfterGuardCases(run: Run): Cases {
       setContextVariable(HOOK, new Recorder());
     };
   };
+  /** A message whose own type accessor plants a hook at its `nth` read. */
+  const typePlanted = (nth: number) => async () => {
+    const plantHook = plantAt(nth);
+    const message = new HumanMessage(MARKER);
+    const typeKey = '_getType';
+    const ownType = message[typeKey].bind(message);
+    Object.defineProperty(message, typeKey, {
+      get: () => {
+        plantHook();
+        return ownType;
+      },
+    });
+    return await model().generate([[message]], {});
+  };
   return {
+    'none-generate-message-type-getter-plants-a-hook': typePlanted(2),
+    'none-generate-message-type-getter-plants-a-hook-at-cores-last-read': typePlanted(3),
     'none-invoke-configurable-getter-plants-a-hook': async () =>
       await model().invoke([new HumanMessage(MARKER)], {
         configurable: Object.defineProperty({}, 'model', { enumerable: true, get: plantAt(1) }),
       }),
-    'none-generate-message-type-getter-plants-a-hook': async () => {
-      const message = new HumanMessage(MARKER);
-      const plantHook = plantAt(2);
-      const typeKey = '_getType';
-      const ownType = message[typeKey].bind(message);
-      Object.defineProperty(message, typeKey, {
-        get: () => {
-          plantHook();
-          return ownType;
-        },
-      });
-      return await model().generate([[message]], {});
-    },
   };
 }
 
