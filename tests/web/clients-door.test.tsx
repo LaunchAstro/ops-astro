@@ -153,9 +153,11 @@ describe('CS-7.29 Clients panel at a named client', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0]?.querySelector('.clbook__name')?.textContent).toBe('Zenith Physio');
     expect(marked[0]?.closest('.is-mock')).toBeNull();
-    // No made-up book draws below it: a sentence says where clients are added.
-    expect(page.find('.clbook__note')).toBeNull();
-    expect(page.text()).toContain('Clients are added from the command line for now.');
+    // The book draws below it, from the same read.
+    expect(page.all('.clbook__list .clbook__name').map((each) => each.textContent)).toEqual([
+      'Summit Allied',
+      'Zenith Physio',
+    ]);
   });
 
   it('says in a sentence when the named client is not in the book', async () => {
@@ -166,9 +168,9 @@ describe('CS-7.29 Clients panel at a named client', () => {
     );
   });
 
-  it('with no client named, reads nothing and marks nothing', async () => {
+  it('with no client named, reads only the book and marks nothing', async () => {
     const { page, calls } = await panelAt(undefined, [SUMMIT]);
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(['/api/b/alpha/client/list']);
     expect(page.find('.clbook__opened')).toBeNull();
   });
 
