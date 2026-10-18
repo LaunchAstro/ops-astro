@@ -22,7 +22,19 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { loadSiteEntry } from '../../scripts/m5/site-custody.ts';
+
+// A write that does not take, for the read-back's proof; the spawned runs use the real one.
+const writes = vi.hoisted(() => ({ dropped: false }));
+vi.mock('../../apps/cli/secret-file.ts', async (original) => {
+  const real = await original<typeof import('../../apps/cli/secret-file.ts')>();
+  return {
+    publishSecret: (file: string, value: string) => {
+      if (!writes.dropped) real.publishSecret(file, value);
+    },
+  };
+});
 
 const SCRIPT = join(import.meta.dirname, '../../scripts/m5/site-custody.ts');
 const canary = () => `canary-${randomBytes(18).toString('hex')}`;
@@ -171,4 +183,14 @@ it('two loads at once, as separate processes, never lose an entry either reporte
   if (source === 0) expect(held).toContain('source_control');
   if (hosting === 0) expect(held).toContain('hosting');
   expect(mode()).toBe(0o600);
+});
+
+it('says refused, never loaded, when the entry is not there to read back', () => {
+  writes.dropped = true;
+  try {
+    expect(loadSiteEntry(file, 'hosting', canary())).toBe('refused LOAD_NOT_READ_BACK');
+  } finally {
+    writes.dropped = false;
+  }
+  expect(readdirSync(folder)).toEqual([]);
 });
