@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two agent case sets (#1626). Luna's are the basic checkable ones: a
-// named outcome, a refusal, the call limit and the plan's allowance running
-// out. Sol's are the harder ones: the page with a hidden instruction, and the
-// full draft of the correction. Each case's `replies` are what the replay
-// fake answers, turn by turn; on the plan (R12) the model answers instead.
+// The two agent case sets (#1626). The first holds the basic checkable
+// cases: a named outcome, a refusal, the call limit and the plan's allowance
+// running out. The second holds the harder ones: the page with a hidden
+// instruction, and the full draft of the correction. Each case's `replies`
+// are what the replay fake answers, turn by turn; on the plan (R12) the model
+// answers instead.
 
 import type { CaseSet } from './harness.ts';
 
