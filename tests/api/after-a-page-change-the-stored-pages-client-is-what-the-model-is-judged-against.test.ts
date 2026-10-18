@@ -229,4 +229,35 @@ describe.skipIf(serverUrl === undefined)('after a page change, the stored page i
     expect(asked.body['reply']).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
     expect(model.provider.seen.length).toBe(before);
   });
+
+  it('a client-opened conversation given an internal page offers no model, refuses a selection and never calls the provider', async () => {
+    const onClient = await started(w, w.owner, {
+      body: `Opening on the client task ${randomUUID()}`,
+      scope: { kind: 'task', id: await aClientTask() },
+    });
+    const inside = await w.as(w.owner, 'task.create', { fields: { title: 'An internal page' } });
+    expect(inside.status).toBe(200);
+    const changed = await w.as(w.owner, 'conversation.set_scope', {
+      conversationId: onClient,
+      page: { address: `/task/${String(inside.body['recordId'])}`, shows: 'An internal page' },
+    });
+    expect(changed.status).toBe(200);
+    const offered = await w.as(w.owner, 'conversation.models', { conversationId: onClient });
+    expect(offered.status).toBe(200);
+    expect(ids(offered), 'an internal page never lifts a client conversation').toStrictEqual([]);
+    const chosen = await w.as(w.owner, 'conversation.set_model', {
+      conversationId: onClient,
+      model: 'replay-1',
+    });
+    expect(chosen.status, 'a model on an internal page of a client conversation is refused').toBe(
+      422,
+    );
+    const before = model.provider.seen.length;
+    const asked = await w.as(w.owner, 'conversation.message', {
+      conversationId: onClient,
+      body: 'A question on the internal page',
+    });
+    expect(asked.body['reply']).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(model.provider.seen.length, 'the provider is never called').toBe(before);
+  });
 });
