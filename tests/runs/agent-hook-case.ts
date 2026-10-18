@@ -65,13 +65,11 @@ async function attempt(step: () => Promise<unknown>): Promise<string> {
 }
 
 /** Call options whose callbacks read empty the first time and a recorder after. */
-function readLate(): { callbacks?: Recorder[] } {
-  let read = 0;
-  return Object.defineProperty({}, 'callbacks', {
+const readLate = (): { callbacks?: Recorder[] } =>
+  Object.defineProperty({}, 'callbacks', {
     enumerable: true,
-    get: () => ((read += 1) === 1 ? undefined : [new Recorder()]),
+    get: lateRead(undefined, [new Recorder()]),
   });
-}
 
 type Run = ReturnType<typeof scripted>;
 type Cases = Record<string, () => Promise<unknown>>;
@@ -127,11 +125,8 @@ function ownCases(run: Run): Cases {
         callbackManager: [new Recorder()],
       }).invoke(input),
     'none-generate-callbacks-read-late': async () => await model().generate([input], readLate()),
-    'none-own-callbacks-set-after-construction': async () => {
-      const built = model();
-      built.callbacks = [new Recorder()];
-      return await built.invoke(input, {});
-    },
+    'none-own-callbacks-set-after-construction': async () =>
+      await Object.assign(model(), { callbacks: [new Recorder()] }).invoke(input, {}),
     'none-own-callbacks-set-after-binding': async () => {
       const built = model();
       const binding = built.bindTools([readTool]);
@@ -144,11 +139,8 @@ function ownCases(run: Run): Cases {
       }
       return await new Preset(run.ports.broker, run.state).invoke(input, {});
     },
-    'none-own-verbose-set-after-construction': async () => {
-      const built = model();
-      built.verbose = true;
-      return await built.invoke(input, {});
-    },
+    'none-own-verbose-set-after-construction': async () =>
+      await Object.assign(model(), { verbose: true }).invoke(input, {}),
   };
 }
 
@@ -252,6 +244,14 @@ function hookAfterGuardCases(run: Run): Cases {
       await model().invoke([new HumanMessage(MARKER)], {
         metadata: Object.defineProperty({}, 'x', { enumerable: true, get: plantAt(1) }),
       }),
+    'none-inherited-manager-metadata-getter-plants-a-hook': async () => {
+      const manager = new CallbackManager();
+      manager.metadata = Object.defineProperty({}, 'x', { enumerable: true, get: plantAt(2) });
+      return await AsyncLocalStorageProviderSingleton.runWithConfig(
+        { callbacks: manager },
+        async () => await model().invoke([new HumanMessage(MARKER)]),
+      );
+    },
     'none-invoke-configurable-getter-plants-a-hook': async () =>
       await model().invoke([new HumanMessage(MARKER)], {
         configurable: Object.defineProperty({}, 'model', { enumerable: true, get: plantAt(1) }),
