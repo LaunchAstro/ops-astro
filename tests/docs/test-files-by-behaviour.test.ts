@@ -359,6 +359,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'the model agent process entry (`pnpm model-agent`), started by launchd rather than imported',
   ],
   [
+    'apps/automations/sweep.ts',
+    'the scheduled occurrence sweep entry (`pnpm automations:sweep`), started by launchd rather than imported',
+  ],
+  [
     'packages/core-records/src/identity/identifier-resolution.ts',
     'kept, tested, for its named callers MP-8-6 and C48 (docs/current-decisions.md, 28 September 2026)',
   ],

@@ -29,6 +29,16 @@ export const RUN_START: RegExp =
 /** The occurrence sweep: the one production caller, which the API runs on an interval. */
 export const SWEEP = 'packages/core-commands/src/commands/occurrence-sweep.ts';
 
+/**
+ * The shipped callers of the sweep's round: the API process's sweeper, the
+ * API process that starts it, and the scheduled entry launchd runs.
+ */
+export const SWEEP_CALLERS: readonly string[] = [
+  'apps/api/occurrence-sweeper.ts',
+  'apps/api/server.ts',
+  'apps/automations/sweep.ts',
+];
+
 // The two defining files, the third's own module, the barrels that re-export
 // each by its own name, and the sweep that calls them; beside it, the worker is
 // the one caller allowed.

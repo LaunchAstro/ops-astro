@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two scheduled sweep entries at once, then a third for the same minute, start the due run once"
+}

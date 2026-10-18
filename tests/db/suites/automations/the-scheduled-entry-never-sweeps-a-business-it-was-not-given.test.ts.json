@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the scheduled sweep entry never sweeps a business its keys do not name, though that business has a worker and a due activation"
+}
