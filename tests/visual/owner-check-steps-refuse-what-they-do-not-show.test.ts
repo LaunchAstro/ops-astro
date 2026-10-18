@@ -78,3 +78,43 @@ it('refuses an Executive page whose second chart is not drawn', async () => {
     await browser.close();
   }
 });
+
+// Copied from Sol's second review of #1809 (head 62dc339).
+
+it('refuses an Executive page whose second chart is visible but draws no marks', async () => {
+  const browser = await launchChromium();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      '<main><svg role="img" width="300" height="150"><rect width="300" height="150" fill="blue" /></svg><svg role="img" width="300" height="150"></svg><div role="tooltip">42</div></main>',
+    );
+    expect(await page.locator('svg').nth(1).isVisible()).toBe(true);
+    expect(
+      await page
+        .locator('svg')
+        .nth(1)
+        .evaluate((node) => (node as SVGGraphicsElement).getBBox().width),
+    ).toBe(0);
+    await expect(
+      FOUNDATION.find((c) => c.unit === 'U05')!.steps[0]![1](page, at),
+    ).rejects.toThrow();
+  } finally {
+    await browser.close();
+  }
+});
+
+it('refuses a named panel grip whose width does not change when dragged', async () => {
+  const browser = await launchChromium();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      '<div role="separator" aria-label="Panel width" aria-valuenow="400" style="position:absolute;left:400px;top:50px;width:8px;height:300px"></div>',
+    );
+    const step = SHELL.find((c) => c.unit === 'U08, U12')!.steps.find(([s]) =>
+      s.startsWith('Drag a panel grip'),
+    )!;
+    await expect(step[1](page, at)).rejects.toThrow();
+  } finally {
+    await browser.close();
+  }
+});
