@@ -51,7 +51,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.delete_comment': writing(client('records')),
   // AW-09: the lease holder's revision of its output is the reviewed output too.
   // A restart opens a new lineage, which supersedes nothing, so it marks none.
-  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
+  // A supersession records the outcome of the attempt it stops (#1623 R1).
+  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs', 'run_outcomes')]),
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
@@ -59,7 +60,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // its budget instead (AW-05): the ask, and after the run's last ask a person told on the task.
   'task.pickup': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
-    ...client('run_events'),
+    ...client('run_events', 'run_outcomes'),
     ...business('delegations'),
   ]),
   // A successor is a proposal on the lineage, and the reviewed output (AW-08).
@@ -205,9 +206,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // delegation retired, the run waiting; past the run's last ask, the run ended and a person told
   // on the task (`alerts`). The provider call goes through the credential broker; a client's task
   // never reaches a route (C60), so it is the business's own.
+  // Every stop records its attempt's outcome, and a provider drop at settlement records T3e1's drop
+  // (#1623 R1): the attempt's cause, the hold classified, the run's progress, the work back.
   'model.call': writing(
     [
       ...client('model_calls', 'alerts', 'budget_asks', 'leases', 'planned_runs'),
+      ...client('attempts', 'reservations', 'run_events', 'run_outcomes', 'task_envelopes'),
       ...business('copy_registrations', 'delegations'),
     ],
     [{ provider: 'model', forClient: false }],
@@ -274,11 +278,14 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'leases',
       'planned_runs',
       'reservations',
+      'run_outcomes',
       'task_envelopes',
     ),
     ...business('delegations'),
   ]),
-  'task.cancel': writing(client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages')),
+  'task.cancel': writing(
+    client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages', 'run_outcomes'),
+  ),
   'task.restart': PROPOSAL,
   'task.heartbeat': writing(client('leases')),
   'task.dispatch': writing(client('attempts', 'planned_steps')),
@@ -289,7 +296,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // calls spent whole, ends the lease and the delegation and stops the run at its budget (AW-05).
   'budget.record_outcome': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
-    ...client('reservations', 'task_envelopes'),
+    ...client('reservations', 'run_outcomes', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),

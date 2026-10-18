@@ -1596,7 +1596,9 @@ both tenancy-scoped with row security forced, and the fair share's count
   Settlement does it for an unknown hold (`LIABILITY_UNKNOWN`), a release for
   the declared `LOCAL_PLAN_LIMIT` (`waiting_plan_allowance`) or another
   declared code (`cancelled / PROVIDER_NOTHING_HAPPENED`), and a custody
-  refusal (`cancelled`); the reserve and the start for each refusal they record;
+  refusal (`cancelled`). For a provider drop a worker could report
+  (`provider_unavailable`, `connection_lost`) it also records T3e1's drop in
+  the same transaction, through the `drops` hook model.call gives the broker; the reserve and the start for each refusal they record;
   the budget stop, cancellation, supersession, authority loss and expiry in
   their own transactions; the worker through `run.end`. A call still
   dispatched or held unknown at the stop makes the row
