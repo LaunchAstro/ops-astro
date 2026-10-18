@@ -521,11 +521,6 @@ jobs:
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
-    # `issues: read` lets the timing-failure rule read its quarantine's
-    # tickets, which this public repository shows anyone (scripts/timing-rule.ts).
-    permissions:
-      contents: read
-      issues: read
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
@@ -583,11 +578,10 @@ jobs:
       # The timing-failure rule (register item 50a, scripts/timing-rule.ts): on a
       # merge group, which failures may run once more and which quarantined
       # suites sit out, in a plan the runner reads. It fails the shard on a
-      # malformed .github/test-quarantine.json. A step of its own, so GH_TOKEN
-      # is never in a suite's environment.
+      # malformed .github/test-quarantine.json. It reads the quarantine's
+      # tickets with no token: this repository is public, and no job here but
+      # the gate holds one (CQ-16).
       - name: What the timing-failure rule lets this run re-run and leave out
-        env:
-          GH_TOKEN: ${{ github.event_name == 'merge_group' && github.token || '' }}
         run: node scripts/timing-rule.ts prepare --out "$RUNNER_TEMP/timing-rule.json"
       # --without-isolation: the `isolation tests` shards run the isolation suites.
       - run: node scripts/ci-scope.ts 'database conformance' --shard "$SHARD" -- pnpm run db:conformance --shard "$SHARD" --without-isolation --timing-rule "$RUNNER_TEMP/timing-rule.json"
@@ -872,7 +866,7 @@ jobs:
       # runs. No step here carries a condition.
       # The timing-failure rule's plan, as in `database conformance`. An
       # isolation suite is never quarantined, so here it only re-runs, and the
-      # plan reads no ticket: these shards hold no token (CQ-15).
+      # plan reads no ticket (CQ-15).
       - name: What the timing-failure rule lets this run re-run
         run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/timing-rule.ts prepare --rerun-only --out "$RUNNER_TEMP/timing-rule.json"
       - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD" --timing-rule "$RUNNER_TEMP/timing-rule.json"

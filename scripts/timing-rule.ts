@@ -11,14 +11,15 @@
 // over-14-day, future-dated, duplicate, isolation-suite or unnamed entry fails
 // the shard, an unreadable ticket keeps its suite in, and a touched suite is
 // never re-run or left out. scripts/db-conformance.mjs reads only the plan
-// `prepare` writes, in a step of its own, so GH_TOKEN never reaches a suite.
+// `prepare` writes, in a step of its own.
 //
 // Usage: node scripts/timing-rule.ts prepare --out <file> [--nightly | --rerun-only]
 //   GITHUB_EVENT_NAME  merge_group re-runs and leaves out; any other event
 //                      neither. --nightly lists what sits out, for the nightly.
 //   --rerun-only       re-runs, leaves nothing out and reads no ticket: the
-//                      isolation shards, which hold no token (CQ-15).
-//   GH_TOKEN           reads each entry's ticket; without it none sits out.
+//                      isolation shards (CQ-15).
+//   Tickets are read with no token: this repository is public, and the
+//   database shards hold none (CQ-16). A GH_TOKEN in the environment is never sent.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -216,15 +217,14 @@ const repoRoot = resolve(import.meta.dirname, '..');
 
 /** Each entry's ticket, from the API. Any failure to read leaves it unreadable. */
 async function readTickets(entries: readonly QuarantineEntry[]): Promise<Map<number, TicketState>> {
-  const token = process.env['GH_TOKEN'] ?? '';
   const api = process.env['GITHUB_API_URL'] ?? 'https://api.github.com';
   const repository = process.env['GITHUB_REPOSITORY'] ?? '';
   const states = new Map<number, TicketState>();
   for (const { ticket } of entries) {
-    if (token === '' || repository === '') continue;
+    if (repository === '') continue;
     // eslint-disable-next-line no-await-in-loop
     const answer = await fetch(`${api}/repos/${repository}/issues/${String(ticket)}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+      headers: { accept: 'application/vnd.github+json' },
       redirect: 'error',
       signal: AbortSignal.timeout(15_000),
     })
