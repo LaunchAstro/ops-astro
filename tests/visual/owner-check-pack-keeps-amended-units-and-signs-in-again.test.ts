@@ -18,7 +18,6 @@ it('films every stage 1 unit the amended #1747 keeps', () => {
       'U02',
       'U03',
       'U04',
-      'U05',
       'U06',
       'U07',
       'U08',
@@ -55,26 +54,6 @@ it('runs the U07 sign-out and sign-in in the browser', async () => {
     );
     expect({ actions, outcome }).toMatchObject({ actions: expect.any(Number) });
     expect(actions, `U07 performed no browser actions: ${outcome}`).toBeGreaterThan(0);
-  } finally {
-    await browser.close();
-  }
-});
-
-it('refuses a chart whose marks are not painted', async () => {
-  const browser = await launchChromium();
-  try {
-    const page = await browser.newPage();
-    await page.setContent(
-      '<main><svg role="img" width="300" height="150"><rect width="300" height="150" fill="none" stroke="none" /></svg><div role="tooltip">42</div></main>',
-    );
-    expect(
-      await page
-        .locator('rect')
-        .evaluate((n) => ({ fill: getComputedStyle(n).fill, stroke: getComputedStyle(n).stroke })),
-    ).toEqual({ fill: 'none', stroke: 'none' });
-    await expect(
-      FOUNDATION.find((c) => c.unit === 'U05')!.steps[0]![1](page, at),
-    ).rejects.toThrow();
   } finally {
     await browser.close();
   }

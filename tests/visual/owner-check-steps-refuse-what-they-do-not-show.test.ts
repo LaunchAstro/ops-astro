@@ -3,7 +3,6 @@ import { expect, it } from 'vitest';
 import { Missed } from './owner-checks-steps.ts';
 import { sourceOf } from './owner-checks-source.ts';
 import { SHELL } from './owner-checks-shell.ts';
-import { FOUNDATION } from './owner-checks-foundation.ts';
 import { launchChromium } from '../support/chromium.ts';
 
 const at = { app: new URL('https://app.opsastro.com'), stamp: '070489fd921d' };
@@ -60,48 +59,7 @@ it('refuses a panel grip that does not resize', async () => {
   }
 });
 
-it('refuses an Executive page whose second chart is not drawn', async () => {
-  const check = FOUNDATION.find((one) => one.unit === 'U05')!;
-  const browser = await launchChromium();
-  try {
-    const page = await browser.newPage();
-    await page.setContent(
-      '<main><svg role="img" width="300" height="150"><rect width="300" height="150" fill="blue" /></svg><svg role="img" style="display:none"></svg><div role="tooltip">42</div></main>',
-    );
-    expect(await page.locator('svg').nth(1).isVisible()).toBe(false);
-    const result = await check.steps[0]![1](page, at).then(
-      () => 'ok',
-      () => 'red',
-    );
-    expect(result).toBe('red');
-  } finally {
-    await browser.close();
-  }
-});
-
 // Copied from Sol's second review of #1809 (head 62dc339).
-
-it('refuses an Executive page whose second chart is visible but draws no marks', async () => {
-  const browser = await launchChromium();
-  try {
-    const page = await browser.newPage();
-    await page.setContent(
-      '<main><svg role="img" width="300" height="150"><rect width="300" height="150" fill="blue" /></svg><svg role="img" width="300" height="150"></svg><div role="tooltip">42</div></main>',
-    );
-    expect(await page.locator('svg').nth(1).isVisible()).toBe(true);
-    expect(
-      await page
-        .locator('svg')
-        .nth(1)
-        .evaluate((node) => (node as SVGGraphicsElement).getBBox().width),
-    ).toBe(0);
-    await expect(
-      FOUNDATION.find((c) => c.unit === 'U05')!.steps[0]![1](page, at),
-    ).rejects.toThrow();
-  } finally {
-    await browser.close();
-  }
-});
 
 it('refuses a named panel grip whose width does not change when dragged', async () => {
   const browser = await launchChromium();

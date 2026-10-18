@@ -3,7 +3,8 @@
 /* oxlint-disable no-await-in-loop -- a step clicks, then looks, in order: the film shows one after the next */
 //
 // The owner checks of the hosting, tooling, backup and foundation units
-// (U01 to U05), as the owner checks issue (ops-astro#1750) words them.
+// (U01 to U04), as the owner checks issue (ops-astro#1750) words them. U05's
+// chart check is built in ops-astro#1822.
 import { BUILD_SELECTOR } from '../browser/served-build.ts';
 import {
   BEAT,
@@ -142,65 +143,6 @@ export const FOUNDATION: readonly Check[] = [
             await page.waitForTimeout(BEAT);
           }
         },
-      ],
-    ],
-  },
-  {
-    unit: 'U05',
-    issue: 675,
-    title: 'Foundations: type scale and chart primitives',
-    width: LAPTOP,
-    start: '/dashboard/executive/',
-    steps: [
-      [
-        'Every chart on the Executive page draws, and a hovered point shows its value',
-        async (page) => {
-          const charts = page.locator('main svg[role="img"], main figure svg, main [data-chart]');
-          if ((await charts.count()) === 0) throw red('no chart on the Executive page');
-          // A chart is drawn when it is visible and a visible mark has real extent:
-          // an empty frame, however wide, draws nothing to read.
-          const drawn = await charts.evaluateAll((all) =>
-            all.map((one) => {
-              const svg = one instanceof SVGSVGElement ? one : one.querySelector('svg');
-              if (svg === null || !one.checkVisibility()) return false;
-              const marks = svg.querySelectorAll<SVGGraphicsElement>(
-                'path, rect, circle, ellipse, polygon, line, polyline',
-              );
-              return [...marks].some((mark) => {
-                if (!mark.checkVisibility({ visibilityProperty: true, opacityProperty: true })) {
-                  return false;
-                }
-                // Painted: a fill, or a stroke with width; an unpainted outline draws nothing.
-                const style = getComputedStyle(mark);
-                const stroked = style.stroke !== 'none' && style.strokeWidth !== '0px';
-                if (style.fill === 'none' && !stroked) return false;
-                const box = mark.getBBox();
-                return mark.tagName === 'line' || mark.tagName === 'polyline'
-                  ? box.width + box.height > 0
-                  : box.width > 0 && box.height > 0;
-              });
-            }),
-          );
-          const undrawn = drawn.indexOf(false);
-          if (undrawn !== -1)
-            throw red(`chart ${String(undrawn + 1)} of ${String(drawn.length)} is not drawn`);
-          const box = await charts.first().boundingBox();
-          if (box === null) throw red('the first chart has no size');
-          // Only a value the hover brings counts, not one already on the page.
-          const tips = page.getByRole('tooltip').filter({ visible: true });
-          const before = await tips.count();
-          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          const shown = await tips
-            .nth(before)
-            .waitFor({ state: 'visible', timeout: 4000 })
-            .then(() => true)
-            .catch(() => false);
-          if (!shown) throw red('no value shown on hover');
-        },
-      ],
-      [
-        'Five pages side by side with the mockup: text sizes and weights the same',
-        notHere('the mockup is private; the look-parity job measures it (tests/visual/look.ts)'),
       ],
     ],
   },
