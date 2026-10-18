@@ -13,33 +13,32 @@
 // reader has seen them act on any page read here, earlier days included, so a
 // new answer cannot turn a person back into a word (`work-log-typed.ts`).
 //
-// `Load earlier days` asks for the page before the last day drawn and adds it
-// below. The earlier pages belong to the first page they continue: a reload or
-// a new reader starts again from the newest days, and a page that arrives for
-// a first page no longer drawn is dropped rather than drawn under it.
+// No topic reaches the ledger, so it re-reads on the tab's rollup floor (C4
+// CS-1.2): every day loaded, as one window (`work-log-window.ts`). A refusal or
+// an outage on any page withdraws every drawn day. `Load earlier days` asks for
+// the page before the last day drawn and adds it below; a new reader or search
+// starts again from the newest days.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { Button, Ledger, SearchBox } from '@launchastro/ui';
-import type {
-  LedgerDayView,
-  TaskLedgerResult,
-} from '../../../../../packages/core-wire/src/index.ts';
-import {
-  isRefusal,
-  isUnavailable,
-  type CallResult,
-  type OperationsClient,
-} from '../../operations/client.ts';
-import { useRead } from '../../data/use-read.ts';
-import { describeFailure } from '../../records/submit.ts';
+import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
+import type { ReadState } from '../../data/authorised-read.ts';
+import { tabRollupFloor } from '../../data/rollup-floor.ts';
+import { useRead, type UseReadLive } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
 import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
 import { usePeopleSeen, useTyped } from './work-log-typed.ts';
 import { NoMatch, SearchLines } from './work-log-lines.tsx';
-
-const UTC = 'UTC';
+import {
+  extend,
+  joins,
+  readPage,
+  readWindow,
+  type Asking,
+  type LedgerRead,
+} from './work-log-window.ts';
 
 /** The Work log's section tip (MP-9-1): a tab of the Projects page, named by that route. */
 export const WORK_LOG_TIP = {
@@ -48,23 +47,6 @@ export const WORK_LOG_TIP = {
   version: 1,
   text: 'Every change to a task you can see, newest day first. Search by a name, a kind of change or any words.',
 } as const;
-
-/** The first page, the zone it was read in, and the search words it was read for. */
-interface LedgerRead {
-  readonly zone: string;
-  readonly query: string | null;
-  readonly ledger: TaskLedgerResult;
-}
-
-/** The pages after the first, and the first page they continue. */
-interface Earlier {
-  readonly from: LedgerRead | null;
-  readonly days: readonly LedgerDayView[];
-  readonly earlier: boolean;
-  readonly failed: string | null;
-}
-
-const NONE: Earlier = { from: null, days: [], earlier: false, failed: null };
 
 const ownZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -76,24 +58,6 @@ const todayIn = (zone: string): string =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-
-const unknownZone = (result: CallResult<unknown>): boolean =>
-  isRefusal(result) && result.code === 'FIELD_VALUE_INVALID' && result.names.includes('timeZone');
-
-/** A page's body: `query` only when there are words to search for. */
-const pageBody = (zone: string, before: string | null, query: string | null) =>
-  query === null ? { timeZone: zone, before } : { timeZone: zone, before, query };
-
-async function readNewest(
-  client: OperationsClient,
-  zone: string,
-  query: string | null,
-): Promise<CallResult<LedgerRead>> {
-  const result = await client.read<TaskLedgerResult>('task.ledger', pageBody(zone, null, query));
-  if (zone !== UTC && unknownZone(result)) return readNewest(client, UTC, query);
-  if (isRefusal(result) || isUnavailable(result)) return result;
-  return { ok: true, value: { zone, query, ledger: result.value } };
-}
 
 export interface WorkLogProps {
   readonly client: OperationsClient;
@@ -113,17 +77,13 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   const people = usePeopleSeen(grantKey);
   const search = readSearch(typed, people.names, answer?.query ?? null);
   const query = queryOf(search);
-  const { state, reload } = useRead<LedgerRead>({
-    grantKey,
-    run: () => readNewest(client, ownZone(), query),
-    deps: [query],
-  });
+  const log = useWindow(client, grantKey, query);
+  const { state, reload } = log.read;
   const accepted = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
   if (accepted !== null && accepted !== answer) setAnswer(accepted);
-  const pages = useEarlierDays(client, answer);
+  const pages = useEarlierDays(client, log);
   // Only this reader's: `accepted` is always the current grant's read.
-  if (accepted !== null)
-    people.see([...accepted.ledger.days, ...(pages.more.from === accepted ? pages.more.days : [])]);
+  if (accepted !== null) people.see(accepted.ledger.days);
   const clear = (): void => {
     setTyped('');
   };
@@ -139,10 +99,10 @@ export function WorkLog(props: WorkLogProps): ReactElement {
         />
         <Button onClick={clear}>Clear</Button>
       </div>
-      <RecordState state={state} subject="work log" onRetry={reload}>
-        {(first) => (
+      <RecordState state={state} subject="work log" onRetry={reload} keep>
+        {(loaded) => (
           <LedgerPages
-            first={first}
+            loaded={loaded}
             pages={pages}
             search={search}
             onClear={clear}
@@ -154,67 +114,116 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   );
 }
 
-interface EarlierDays {
-  readonly more: Earlier;
-  /** The first page an earlier page is on its way for. */
-  readonly asking: LedgerRead | null;
-  readonly loadEarlier: (from: LedgerRead, days: readonly LedgerDayView[]) => void;
+interface WindowRead {
+  readonly read: UseReadLive<LedgerRead>;
+  /** The window's epoch, as committed: a new reader or search starts another. */
+  readonly epoch: { readonly current: number };
+  /** The reader and search committed, which the window on screen must belong to. */
+  readonly seen: { readonly current: { readonly grantKey: string; readonly query: string | null } };
+  /** The oldest day loaded, which a refresh reads down to. */
+  readonly through: { current: string | null };
+}
+
+/** The window, re-read on the tab's floor one run at a time. */
+function useWindow(client: OperationsClient, grantKey: string, query: string | null): WindowRead {
+  const through = useRef<string | null>(null);
+  const read = useRead<LedgerRead>({
+    grantKey,
+    run: () => readWindow(client, ownZone(), query, through.current),
+    deps: [query],
+    rollup: tabRollupFloor(),
+    coalesce: true,
+  });
+  return { read, ...useEpoch(grantKey, query, through), through };
 }
 
 /**
- * The pages after a first page, asked for one at a time: `Load earlier days`
- * is disabled while one is on its way. Each is kept against the first page it
- * continues, so one that arrives after the first page changed is never drawn.
+ * The window's epoch: a new reader or search starts another, from the first
+ * page. Moved once the change commits, before the new read starts, so a
+ * render that never commits (a suspended switch) moves nothing.
  */
-function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): EarlierDays {
-  const [more, setMore] = useState<Earlier>(NONE);
-  const [asking, setAsking] = useState<LedgerRead | null>(null);
-  const current = useRef(answer);
-  current.current = answer;
-
-  const loadEarlier = (from: LedgerRead, days: readonly LedgerDayView[]): void => {
-    const last = days.at(-1);
-    if (last === undefined) return;
-    setAsking(from);
-    void (async () => {
-      const result = await client.read<TaskLedgerResult>(
-        'task.ledger',
-        pageBody(from.zone, last.day, from.query),
-      );
-      setAsking((now) => (now === from ? null : now));
-      setMore((now) => {
-        // For a first page no longer current: dropped, and the current one's days kept.
-        if (current.current !== from) return now;
-        const kept = now.from === from ? now : { ...NONE, from };
-        if (isRefusal(result) || isUnavailable(result)) {
-          return { ...kept, failed: describeFailure(result) };
-        }
-        const { days: next, earlier } = result.value;
-        return { from, days: [...kept.days, ...next], earlier, failed: null };
-      });
-    })();
-  };
-  return { more, asking, loadEarlier };
+function useEpoch(grantKey: string, query: string | null, through: { current: string | null }) {
+  const epoch = useRef(0);
+  const seen = useRef({ grantKey, query });
+  useLayoutEffect(() => {
+    if (seen.current.grantKey === grantKey && seen.current.query === query) return;
+    seen.current = { grantKey, query };
+    through.current = null;
+    epoch.current += 1;
+  }, [grantKey, query, through]);
+  return { epoch, seen };
 }
 
+interface EarlierDays {
+  /** Whether an earlier page is on its way for the window drawn now. */
+  readonly loading: boolean;
+  readonly loadEarlier: (from: LedgerRead) => Promise<void>;
+}
+
+/**
+ * The page before the window, one at a time: `Load earlier days` is disabled
+ * while one is on its way, whatever a refresh does. A failure withdraws the
+ * window as a refresh's would, and retires the refresh in flight. A page joins
+ * only the window it left from, with no failure landed since; one that joins
+ * while a refresh is in flight starts the refresh again, since that one reads
+ * only the days before it.
+ */
+function useEarlierDays(client: OperationsClient, log: WindowRead): EarlierDays {
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const { read, epoch, seen, through } = log;
+
+  const loadEarlier = async (from: LedgerRead): Promise<void> => {
+    const boundary = from.ledger.days.at(-1)?.day;
+    // A window drawn for a reader or search no longer committed: its read is about to start again.
+    const { grantKey, query } = seen.current;
+    if (boundary === undefined || from.query !== query || read.now().state?.grantKey !== grantKey)
+      return;
+    const sent: Asking = {
+      epoch: epoch.current,
+      failures: read.now().failures,
+      zone: from.zone,
+      boundary,
+    };
+    setAsking(sent);
+    const result = await readPage(client, from.zone, boundary, from.query);
+    setAsking((held) => (held === sent ? null : held));
+    // The read as it stands, not as last drawn: an answer may have landed since.
+    const { state, failures } = read.now();
+    if (isRefusal(result) || isUnavailable(result)) {
+      if (sent.epoch === epoch.current) read.land(result);
+      return;
+    }
+    const drawn = state === null ? null : drawnOf(state);
+    if (drawn === null || !joins(sent, { epoch: epoch.current, failures }, drawn)) return;
+    through.current = result.value.days.at(-1)?.day ?? through.current;
+    read.land({ ok: true, value: extend(drawn, result.value) });
+    if (state?.outcome === 'loading') read.reload();
+  };
+  return { loading: asking?.epoch === epoch.current, loadEarlier };
+}
+
+/** The window on screen: the answer, or the one kept while its refresh is in flight. */
+const drawnOf = (state: ReadState<LedgerRead>): LedgerRead | null =>
+  state.outcome === 'loading' ? state.previous : state.value;
+
 function LedgerPages(props: {
-  readonly first: LedgerRead;
+  readonly loaded: LedgerRead;
   readonly pages: EarlierDays;
   readonly search: LedgerSearch;
   readonly onClear: () => void;
   readonly navigate: (path: string) => void;
 }): ReactElement {
-  const { first, pages, search, navigate } = props;
-  const continued = pages.more.from === first ? pages.more : NONE;
-  const days = [...first.ledger.days, ...continued.days];
-  const earlier = continued.days.length === 0 ? first.ledger.earlier : continued.earlier;
+  const { loaded, pages, search, navigate } = props;
+  const { days, earlier } = loaded.ledger;
   const shown = passing(days, search);
   const passed = shown.reduce((sum, day) => sum + day.events.length, 0);
   const inView = days.reduce((sum, day) => sum + day.events.length, 0);
   const reading = readingLine(search, passed);
-  const partial = first.query !== null && first.ledger.more === true;
-  const loading = pages.asking === first;
-  const loadEarlier = (): void => pages.loadEarlier(first, days);
+  const partial = loaded.query !== null && loaded.ledger.more === true;
+  const loading = pages.loading;
+  const loadEarlier = (): void => {
+    if (!loading) void pages.loadEarlier(loaded);
+  };
   return (
     <>
       <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
@@ -230,19 +239,14 @@ function LedgerPages(props: {
           days={shown}
           earlier={earlier}
           loading={loading}
-          today={todayIn(first.zone)}
-          timeZone={first.zone}
+          today={todayIn(loaded.zone)}
+          timeZone={loaded.zone}
           taskHref={(key) => pathTo('agency:task-detail', { key })}
           onOpenTask={(key) => {
             navigate(pathTo('agency:task-detail', { key }));
           }}
           onLoadEarlier={loadEarlier}
         />
-      )}
-      {continued.failed === null ? null : (
-        <p className="field__error" role="alert" data-ledger-more="failed">
-          The earlier days could not be read: {continued.failed}
-        </p>
       )}
     </>
   );
