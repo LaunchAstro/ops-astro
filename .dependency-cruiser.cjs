@@ -97,7 +97,7 @@ module.exports = {
         'database code never load in it (AW-01): its entry and every module it runs on ' +
         'import no other package.',
       from: {
-        path: '^packages/core-custody/src/(custody-main|egress|egress-answer|egress-routes|credentials|secret-spellings|redaction|stream-decode)\\.ts$',
+        path: '^packages/core-custody/src/(custody-main|egress|egress-answer|egress-routes|credentials|app-entry|session-token|github-app|secret-spellings|redaction|stream-decode)\\.ts$',
       },
       to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },

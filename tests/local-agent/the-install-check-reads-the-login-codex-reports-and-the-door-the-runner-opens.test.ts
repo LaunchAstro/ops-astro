@@ -89,13 +89,14 @@ it('the install check refuses a credential that cannot authenticate at the runne
   expect(parsed.ok).toBe(true);
   if (!parsed.ok) throw new Error(parsed.code);
   const credential = parsed.credentials.get('local_runner');
-  if (credential === undefined) throw new Error('no credential');
+  if (credential === undefined || credential.scheme === 'github_app') throw new Error('no key');
   const settings = readSettings(env);
   if (!settings.ok) throw new Error(settings.code);
   runner = await createRunner(settings.settings, () => {});
+  const sent = presented({ ...credential, scheme: credential.scheme });
   const reply = await fetch(`${runner.origin}${LOCAL_GPT_PATH}`, {
     method: 'POST',
-    headers: { [credential.header]: presented(credential), 'content-type': 'application/json' },
+    headers: { [credential.header]: sent, 'content-type': 'application/json' },
     body: JSON.stringify({ fields: { message: 'Synthetic install probe.' } }),
   });
   expect(reply.status).toBe(401);

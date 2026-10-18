@@ -69,14 +69,20 @@ const WITHHELD = {
   malformed: 'PROVIDER_RESPONSE_MALFORMED',
 } as const;
 
-/** The guarded call's custody port: a referenced call dispatched to the entry's own destination. */
+/**
+ * The guarded call's custody port: a referenced call dispatched to the
+ * entry's own destination, for the correction's party when one is named (an
+ * App entry mints only for that party's repository).
+ */
 export function siteCustody(
   custody: Pick<Custody, 'dispatch'>,
+  party?: string,
 ): NonNullable<CallDependencies['custody']> {
   return async (request, { ref }): Promise<CustodyAnswer> => {
     const method = request.method ?? 'GET';
     if (method === 'PATCH') return { kind: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' };
     const outcome = await custody.dispatch(ref, {
+      ...(party === undefined ? {} : { party }),
       destination: ref,
       path: `${request.url.pathname}${request.url.search}`,
       method,

@@ -16,13 +16,22 @@
 // A request on a template route is answered with its declared fields only,
 // or `withheld` whole: `malformed` when it is not JSON or does not fill them,
 // `echoed` when the caller could rebuild the credential from them.
-// A `deadlineAt` gates the write itself (`egress.ts`).
+// A `deadlineAt` gates the write itself (`egress.ts`). A GitHub App entry is
+// never sent: a call on it names its party, is refused before `started` unless
+// its path names that party's bound repository, and is sent with a token
+// minted for it alone (`github-app.ts`), refused when none is minted.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
 import { readFileSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
-import { described, parseCredentials, type StoredCredential } from './credentials.ts';
+import {
+  described,
+  parseCredentials,
+  type Presentable,
+  type StoredCredential,
+} from './credentials.ts';
+import { carriedByApp } from './github-app.ts';
 import {
   parseDestinations,
   send,
@@ -69,8 +78,11 @@ function load(): Loaded {
   return { credentials: credentials.credentials, destinations: destinations.destinations };
 }
 
-/** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
-const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
+/** Exactly these keys, a party optional: a request naming a header, an origin or anything else is refused whole. */
+const REQUEST_KEYS = new Set([
+  'body,destination,maxResponseBytes,method,path,timeoutMs',
+  'body,destination,maxResponseBytes,method,party,path,timeoutMs',
+]);
 
 /** The longest delay a timer keeps: past it, or below one, a deadline is no request. */
 const LONGEST_DEADLINE_MS = 2_147_483_647;
@@ -80,7 +92,8 @@ function isRequest(value: unknown): value is OutboundRequest {
   const shape = value as Record<string, unknown>;
   const deadline = shape['timeoutMs'];
   return (
-    Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
+    REQUEST_KEYS.has(Object.keys(shape).toSorted().join()) &&
+    (shape['party'] === undefined || typeof shape['party'] === 'string') &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
@@ -104,6 +117,9 @@ function sendGateOf(at: unknown, reply: (body: Message) => void) {
 
 const loaded = load();
 
+/** A credential custody sends as it is held, or one minted for the call. */
+type Carried = StoredCredential & Presentable;
+
 /**
  * A PUT its destination lists no route for, or a POST to a destination that
  * takes none or not at that path: custody never sends one, so it is no request.
@@ -125,7 +141,7 @@ const unrouted = (asked: OutboundRequest): boolean => {
  * from a presented key is redacted whole.
  */
 function streamingOf(
-  credential: StoredCredential,
+  credential: Carried,
   destination: string,
   piece: (text: string) => void,
 ): {
@@ -184,7 +200,7 @@ async function gateOf(id: string, deadlineMs: number): Promise<boolean> {
 async function answer(
   id: string,
   request: OutboundRequest,
-  credential: StoredCredential,
+  credential: Carried,
   gated: boolean,
   reply: (body: Message) => void,
   sendGate?: ReturnType<typeof sendGateOf>,
@@ -255,8 +271,18 @@ process.on('message', (message: unknown) => {
     reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
     return;
   }
+  const gated = shape['gated'] === true;
+  if (credential.scheme === 'github_app') {
+    void (async () => {
+      const carried = await carriedByApp(credential, request, loaded.destinations);
+      if (typeof carried === 'string') return reply({ type: 'refused', code: carried });
+      reply({ type: 'started' });
+      await answer(id, request, { ...credential, ...carried }, gated, reply, sendGate);
+    })();
+    return;
+  }
   reply({ type: 'started' });
-  void answer(id, request, credential, shape['gated'] === true, reply, sendGate);
+  void answer(id, request, { ...credential, scheme: credential.scheme }, gated, reply, sendGate);
 });
 
 process.send?.({ type: 'ready' });
