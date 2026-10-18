@@ -22,10 +22,15 @@ index 07f6716702ac888215c86ad6e0071aaf55ae519c..91bc5f49c2452f5baebaef39cd1807ba
      socket.removeListener('connect', connected)
      idleTimer.cancel()
 diff --git a/cjs/src/index.js b/cjs/src/index.js
-index f09c61c7e998f411560b95c9a8e1ed6a97972c11..c1f73963c106d97ed4881ef7ab3fa8b993e33bfe 100644
+index f09c61c7e998f411560b95c9a8e1ed6a97972c11..4057007082550b39c24dd1b616c69401ec238f43 100644
 --- a/cjs/src/index.js
 +++ b/cjs/src/index.js
-@@ -237,12 +237,19 @@ function Postgres(a, b) {
+@@ -234,15 +234,24 @@ function Postgres(a, b) {
+   async function begin(options, fn) {
+     !fn && (fn = options, options = '')
+     const queries = Queue()
++        // ops-astro #1774: `options` here is begin's mode; the refusal names the server from the pool's.
++        , refused = () => Errors.connection('CONNECTION_CLOSED', sql.options)
      let savepoints = 0
        , connection
        , prepare = null
@@ -40,18 +45,18 @@ index f09c61c7e998f411560b95c9a8e1ed6a97972c11..c1f73963c106d97ed4881ef7ab3fa8b9
 +          // ops-astro #1774: the session is over; nothing more of this transaction may be sent.
 +          gone = e
 +          while (queries.length)
-+            queries.shift().reject(Errors.connection('CONNECTION_CLOSED', options))
++            queries.shift().reject(refused())
 +          reject(e)
 +        })
        ])
      } catch (error) {
        throw error
-@@ -290,6 +297,8 @@ function Postgres(a, b) {
+@@ -290,6 +299,8 @@ function Postgres(a, b) {
  
        function handler(q) {
          q.catch(e => uncaughtError || (uncaughtError = e))
 +        if (gone)
-+          return q.reject(Errors.connection('CONNECTION_CLOSED', options))
++          return q.reject(refused())
          c.queue === full
            ? queries.push(q)
            : c.execute(q) || move(c, full)
@@ -79,10 +84,15 @@ index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..67d436f801e98e6174df3d2adb04ced6
      socket.removeListener('connect', connected)
      idleTimer.cancel()
 diff --git a/src/index.js b/src/index.js
-index c7fba3dace20173f4cb13f3f138bb6d213b43683..d6cdccfe1be59c51ebf7d5370ae286fad967862a 100644
+index c7fba3dace20173f4cb13f3f138bb6d213b43683..8d11bb6a77e6c3db148f5169811b72d3813c2239 100644
 --- a/src/index.js
 +++ b/src/index.js
-@@ -237,12 +237,19 @@ function Postgres(a, b) {
+@@ -234,15 +234,24 @@ function Postgres(a, b) {
+   async function begin(options, fn) {
+     !fn && (fn = options, options = '')
+     const queries = Queue()
++        // ops-astro #1774: `options` here is begin's mode; the refusal names the server from the pool's.
++        , refused = () => Errors.connection('CONNECTION_CLOSED', sql.options)
      let savepoints = 0
        , connection
        , prepare = null
@@ -97,18 +107,18 @@ index c7fba3dace20173f4cb13f3f138bb6d213b43683..d6cdccfe1be59c51ebf7d5370ae286fa
 +          // ops-astro #1774: the session is over; nothing more of this transaction may be sent.
 +          gone = e
 +          while (queries.length)
-+            queries.shift().reject(Errors.connection('CONNECTION_CLOSED', options))
++            queries.shift().reject(refused())
 +          reject(e)
 +        })
        ])
      } catch (error) {
        throw error
-@@ -290,6 +297,8 @@ function Postgres(a, b) {
+@@ -290,6 +299,8 @@ function Postgres(a, b) {
  
        function handler(q) {
          q.catch(e => uncaughtError || (uncaughtError = e))
 +        if (gone)
-+          return q.reject(Errors.connection('CONNECTION_CLOSED', options))
++          return q.reject(refused())
          c.queue === full
            ? queries.push(q)
            : c.execute(q) || move(c, full)
