@@ -115,7 +115,7 @@ overrides:
   langsmith: 0.9.0
 
 patchedDependencies:
-  postgres: 70fbb106cc2ce425312c474bd5ba8f640e213c34dfa6759cea9e6dfa68f57d0b
+  postgres: 25c0dba015057629ebf33a4579fe0c4dabb678d1f08849c5813f919b6168fc6a
 
 importers:
 
@@ -202,7 +202,7 @@ importers:
         version: 7.0.0
       postgres:
         specifier: 3.4.9
-        version: 3.4.9(patch_hash=70fbb106cc2ce425312c474bd5ba8f640e213c34dfa6759cea9e6dfa68f57d0b)
+        version: 3.4.9(patch_hash=25c0dba015057629ebf33a4579fe0c4dabb678d1f08849c5813f919b6168fc6a)
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -3030,7 +3030,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9(patch_hash=70fbb106cc2ce425312c474bd5ba8f640e213c34dfa6759cea9e6dfa68f57d0b): {}
+  postgres@3.4.9(patch_hash=25c0dba015057629ebf33a4579fe0c4dabb678d1f08849c5813f919b6168fc6a): {}
 
   prettier@3.9.6: {}
 

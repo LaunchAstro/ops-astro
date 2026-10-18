@@ -11,7 +11,11 @@
 // a timer, an uncaught TypeError that ended the process; after a reconnect it
 // wrote them into the new session, which could be another business's
 // transaction. Patched, a transaction whose connection closed sends nothing
-// more and each of its statements is refused with CONNECTION_CLOSED.
+// more and each of its statements is refused with CONNECTION_CLOSED. The
+// close also drops the statement that was in flight and the server's error for
+// it: kept, that error refused the next session's first statement, carrying
+// the ended statement's text and parameters, and `end()` waited on the
+// statement forever.
 // tests/tenancy/connection-ended-mid-transaction.test.ts holds it, and an
 // upgrade must keep that test green or carry the patch forward.
 
