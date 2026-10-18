@@ -32,7 +32,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('obscalls');
 
-const { work, applied, observeOf, money, auditsOf } = t2dHarness(() => s);
+const { work, applied, observeOf, money } = t2dHarness(() => s);
 
 const pause = async (ms: number): Promise<void> => {
   await new Promise<void>((resolve) => {
@@ -105,32 +105,41 @@ const keptWhole = (observed: Awaited<ReturnType<typeof observeOf>>): void => {
   expect(JSON.stringify(observed)).toContain('sent and never settled');
 };
 
-it('a model call lost mid-flight keeps the whole hold at observation', async () => {
+/** The stop's one recorded outcome for the attempt (`run_outcomes`). */
+const outcomeOf = async (w: Work) =>
+  await rows<{ outcome: string; end_code: string }>(
+    s,
+    `select outcome, end_code from public.run_outcomes where business_id = $1 and attempt_id = $2`,
+    [s.business, w.attemptId],
+  );
+
+// B2's order (register 87): the effect, then the cut, then the agent. A cut call's unknown
+// settlement ends the attempt and retires its delegation in the same transaction
+// (`broker-settle.ts:269-271`, `broker-stop.ts:122-133`; docs/current-decisions.md:79-81), so
+// the agent's observation never reaches the hold. Removed for that rule: the BUDGET_UNAVAILABLE
+// "sent and never settled" answer, the retained refusal's costMinor and the second observation's
+// "never settled" answer. The hold kept whole, the call held unknown and the money are kept.
+it('a model call lost mid-flight keeps the whole hold, and the agent cannot observe it', async () => {
   const w = await work();
+  await applied(w);
+  const unspent = await money(w);
   world.provider.mode('cut');
   await call(w);
   world.provider.mode('answer');
   expect((await callsOn(w)).states).toStrictEqual(['liability_unknown']);
-  await applied(w);
+  expect(await outcomeOf(w)).toStrictEqual([
+    { outcome: 'unknown_provider_outcome', end_code: 'LIABILITY_UNKNOWN' },
+  ]);
   const before = await money(w);
+  expect(before).toMatchObject({ state: 'held', held: unspent?.['held'], actual: null });
 
-  const observed = await observeOf(w, { usage: PRICED });
+  expect(codeOf(await observeOf(w, { usage: PRICED }))).toBe('DELEGATION_NOT_LIVE');
 
-  keptWhole(observed);
-  // The retained refusal keeps the attempt's own priced cost apart from the hold's total, so the
-  // person recording the outcome sees what the agent's work was priced at.
-  const retained = (await auditsOf('refused')).map((one) => one.attempted);
-  expect(retained).toContainEqual(expect.objectContaining({ costMinor: COMMENT_COST }));
-  // Observed again, the held attempt is refused in words that still name the open call.
-  const again = await observeOf(w, { usage: PRICED });
-  expect(codeOf(again)).toBe('BUDGET_UNAVAILABLE');
-  expect(JSON.stringify(again)).toContain('never settled');
-  expect(await money(w)).toMatchObject({
-    state: 'held',
-    actual: null,
+  expect(await money(w)).toStrictEqual(before);
+  expect(before).toMatchObject({
     attempt_state: 'liability_unknown',
-    envelope_held: before?.['envelope_held'],
-    envelope_actual: before?.['envelope_actual'],
+    envelope_held: unspent?.['envelope_held'],
+    envelope_actual: unspent?.['envelope_actual'],
   });
 });
 

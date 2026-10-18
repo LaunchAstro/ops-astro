@@ -7,7 +7,7 @@
 // the envelope and the cap.
 
 import { beforeAll, expect, it as vitestIt } from 'vitest';
-import { rows } from './schedules-harness.ts';
+import { codeOf, rows } from './schedules-harness.ts';
 import { t2dHarness } from './t2d-harness.ts';
 import { t3bHarness } from './t3b-harness.ts';
 import { openBilling, t3d1Harness } from './t3d1-harness.ts';
@@ -60,15 +60,29 @@ it("a present effect settles the hold at the book's price plus its settled model
 
 // A call on the hold that was never settled leaves the hold to a person even when the register
 // proves the effect present, and the pass says that is why, not that the book cannot price it.
+// B2's order (register 87): the effect, then the cut, then the sweep. The cut's unknown settlement
+// ends the attempt, releases its lease and retires its delegation (`broker-settle.ts:269-271`,
+// `broker-stop.ts:122-133`; docs/current-decisions.md:79-81), so the lease is no longer expired
+// here (removed `t3b.expire`: there is no live lease left to run out) and the agent is refused.
 it('a present effect on a hold with an unsettled model call is left whole, naming the call', async () => {
   const w = await synthetic.work();
+  await synthetic.applied(w);
+  const unspent = await synthetic.money(w);
   world.provider.mode('cut');
   await call(w);
   world.provider.mode('answer');
-  await synthetic.applied(w);
-  await t3b.expire(w);
   await t3b.sweep();
   const before = await synthetic.money(w);
+  expect(before).toMatchObject({ state: 'held', held: unspent?.['held'], actual: null });
+  expect(before).toMatchObject({ attempt_state: 'liability_unknown' });
+  expect(
+    await rows(
+      s,
+      `select outcome, end_code from public.run_outcomes where business_id = $1 and attempt_id = $2`,
+      [s.business, w.attemptId],
+    ),
+  ).toStrictEqual([{ outcome: 'unknown_provider_outcome', end_code: 'LIABILITY_UNKNOWN' }]);
+  expect(codeOf(await synthetic.observeOf(w))).toBe('DELEGATION_NOT_LIVE');
 
   const [answered] = await pass.reconcile(async () => await Promise.resolve(true));
 
