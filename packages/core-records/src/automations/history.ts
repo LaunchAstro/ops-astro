@@ -57,7 +57,9 @@ interface ActivationHistoryDbRow {
 }
 
 // An event's own id is never selected: an occurrence says only that an event
-// caused it (`due_at` null).
+// caused it (`due_at` null). The cursor's time is bound as text and cast here:
+// bound as a timestamp, the driver would pass it through a Date and drop its
+// microseconds, and a page boundary inside a tie would skip the rest of it.
 const HISTORY_SQL = `with entries as (
     select 'occurrence' as kind, o.id, o.recorded_at as at, o.due_at, o.outcome,
            d.outcome as dispatch, coalesce(d.run_id, o.run_id) as run_id,
@@ -82,7 +84,7 @@ const HISTORY_SQL = `with entries as (
   select kind, id, at, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_key,
          due_at, outcome, dispatch, run_id, command, actor_id, actor_kind, actor_name
     from entries
-   where $4::timestamptz is null or (at, id) < ($4::timestamptz, $5::uuid)
+   where $4::text is null or (at, id) < ($4::text::timestamptz, $5::uuid)
    order by at desc, id desc
    limit $6`;
 
