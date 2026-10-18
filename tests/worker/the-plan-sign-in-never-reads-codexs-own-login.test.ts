@@ -74,6 +74,7 @@ function command(args: readonly string[], env: NodeJS.ProcessEnv) {
   return { child, out: () => stdout, err: () => stderr, exited };
 }
 
+// oxlint-disable-next-line max-lines-per-function -- the command run three ways, each in its own process
 describe('the sign-in command', () => {
   it('refuses to start without the consent flag, and touches nothing', async () => {
     const { home: at, file } = home();

@@ -40,6 +40,7 @@ const world = () => {
 const FIRST = { hostId: HOST_ID, clientId: undefined };
 const LATER = { hostId: HOST_ID, clientId: ISSUED };
 
+// oxlint-disable-next-line max-lines-per-function -- every row of the start hold
 describe('the start hold', () => {
   it('makes the host id once, host-only, and reads it back after', async () => {
     const { file } = world();
@@ -104,6 +105,7 @@ describe('the start hold', () => {
   });
 });
 
+// oxlint-disable-next-line max-lines-per-function -- every row of the final hold and its races
 describe('the final hold', () => {
   it('a first sign-in on a host-only file registers its client id and writes its pair', async () => {
     const { file } = world();

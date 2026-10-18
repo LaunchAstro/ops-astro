@@ -57,6 +57,7 @@ async function presented(file: string): Promise<string> {
   return answer.ok ? answer.accessToken : answer.code;
 }
 
+// oxlint-disable-next-line max-lines-per-function -- every commit step a store can fail at
 describe('a failed sign-in store', () => {
   const steps: [FaultStep, boolean, string][] = [
     ['file-fsync', true, 'synthetic-access-old'],
