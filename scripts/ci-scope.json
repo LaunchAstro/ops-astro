@@ -25,6 +25,7 @@
     "tests/site/c80-catalogue.test.ts",
     "tests/site/c80-receipts.test.ts",
     "tests/sandbox/run-outcome-names-one-reason.test.ts",
+    "tests/worker/the-model-agent-admits-only-the-pinned-plan-request.test.ts",
     "tests/docs/c82-design-system-copy.test.ts",
     "tests/reads/repository-catalogue-and-migration-counts.test.ts",
     "tests/ci/structural-checks.test.ts",
