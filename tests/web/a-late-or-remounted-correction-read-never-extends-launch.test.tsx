@@ -2,8 +2,9 @@
 // @vitest-environment jsdom
 /* oxlint-disable no-await-in-loop, no-inline-comments, require-await, unicorn/prefer-dom-node-dataset -- Sol's proof, kept as written */
 //
-// Sol's proofs on #1923, round 1 (S1923-1 to 3), copied with their assertions unchanged: a
-// delayed answer, a remounted card and an older poll never extend or restore Launch.
+// Sol's proofs on #1923 (S1923-1 to 3), copied with their assertions unchanged: a delayed
+// answer, a remounted card and an older poll never extend or restore Launch, even when two
+// reads are sent on the same clock reading (#1928).
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -118,5 +119,37 @@ it('an older polling answer cannot resurrect a superseded correction', async () 
     view.find('[data-correction-card]')?.getAttribute('data-correction-state'),
     'a late snapshot must not undo the newer terminal state',
   ).toBe('superseded');
+  expect(approve(view)).toBeNull();
+});
+
+it('a same-tick older poll cannot undo the later decision read', async () => {
+  let deliverOld!: (r: Response) => void;
+  const c = client(async (nth) => {
+    if (nth === 1) return read('requested', 0);
+    if (nth === 2)
+      return new Promise<Response>((resolve) => {
+        deliverOld = resolve;
+      });
+    if (nth === 3) return json({ recordId: 'mock-correction-1', revision: 2 }); // decline mutation
+    return read('rejected', 0); // decision's authoritative follow-up read
+  });
+  const { view } = await ask(c);
+  await advance(10_000); // polling read starts and waits in transport
+  const sentAt = performance.now();
+  await view.click('[data-correction-decide="reject"]');
+  expect(performance.now()).toBe(sentAt); // distinct requests can share a clock reading
+  expect(view.find('[data-correction-card]')?.getAttribute('data-correction-state')).toBe(
+    'declined',
+  );
+  await act(async () => {
+    deliverOld(read('requested', 60_000));
+  });
+  await advance(0);
+  expect
+    .soft(
+      view.find('[data-correction-card]')?.getAttribute('data-correction-state'),
+      'the old poll must not undo the later decision read when timestamps tie',
+    )
+    .toBe('declined');
   expect(approve(view)).toBeNull();
 });
