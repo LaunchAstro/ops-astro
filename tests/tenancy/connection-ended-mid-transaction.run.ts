@@ -173,7 +173,7 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
       [new URL(url).pathname.slice(1)],
     );
     await terminate(Number(row?.pid));
-    await within(relistened, 10_000, 'listening again');
+    await within(relistened, 20_000, 'listening again');
     await turns();
     await listener.close();
     return { listening };

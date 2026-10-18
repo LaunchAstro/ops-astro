@@ -37,3 +37,5 @@ overrides:
 trustPolicy: no-downgrade
 # A dependency of a dependency comes from the registry, never a git URL or tarball.
 blockExoticSubdeps: true
+patchedDependencies:
+  postgres: patches/postgres.patch

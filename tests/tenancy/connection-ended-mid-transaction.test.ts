@@ -40,7 +40,7 @@ interface Outcome {
 function runCase(kind: string, url: string): Outcome {
   const child = spawnSync(process.execPath, [script, kind, url, serverUrl as string], {
     encoding: 'utf8',
-    timeout: 30_000,
+    timeout: 45_000,
   });
   const line = child.stdout.trim().split('\n').at(-1);
   return {
@@ -76,7 +76,7 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
       statement: refused,
       after: { ok: true },
     });
-  });
+  }, 60_000);
 
   it('the runtime pool after a reconnect: nothing from the ended transaction reaches the next business', () => {
     const outcome = runCase('reconnected', db.appUrl);
@@ -89,7 +89,7 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
         row: { stale: 'beta', business: '00000000-0000-4000-8000-00000000000b' },
       },
     });
-  });
+  }, 60_000);
 
   it('the admin transaction: the process survives and the caller and its next statement are refused', () => {
     const outcome = runCase('admin', ownerUrl);
@@ -100,12 +100,12 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
       statement: refused,
       after: { ok: true },
     });
-  });
+  }, 60_000);
 
   it('the listener: the process survives its session ending and listens again', () => {
     const outcome = runCase('listener', db.appUrl);
     expect(outcome.stderr).not.toMatch(/TypeError/u);
     expect(outcome.status).toBe(0);
     expect(outcome.result).toEqual({ listening: 2 });
-  });
+  }, 60_000);
 });

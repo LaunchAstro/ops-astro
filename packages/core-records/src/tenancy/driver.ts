@@ -4,6 +4,16 @@
 // postgres.js handle over a URL, with the statement log its traffic feeds and
 // the startup settings that log relies on. `database.ts` builds the wrapper's
 // connections on it; nothing else opens one.
+//
+// postgres.js 3.4.9 runs patched (patches/postgres.patch, #1774). When the
+// server ends a connection mid-transaction, 3.4.9 wrote the transaction's next
+// statement, or the rollback or commit `begin` adds, to the closed socket from
+// a timer, an uncaught TypeError that ended the process; after a reconnect it
+// wrote them into the new session, which could be another business's
+// transaction. Patched, a transaction whose connection closed sends nothing
+// more and each of its statements is refused with CONNECTION_CLOSED.
+// tests/tenancy/connection-ended-mid-transaction.test.ts holds it, and an
+// upgrade must keep that test green or carry the patch forward.
 
 import postgres from 'postgres';
 import { createStatementLog, type StatementLog } from './statements.ts';
