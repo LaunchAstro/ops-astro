@@ -108,6 +108,9 @@ settings:
 overrides:
   source-map-js@>=1.0.0 <1.2.2: 1.2.2
 
+patchedDependencies:
+  postgres: 69bf47d8a7454ab8fa5c9e2e046be3d3d6ecec7fe16f2d1fef423ab9246c58c0
+
 importers:
 
   .:
@@ -178,7 +181,7 @@ importers:
         version: 7.0.0
       postgres:
         specifier: 3.4.9
-        version: 3.4.9
+        version: 3.4.9(patch_hash=69bf47d8a7454ab8fa5c9e2e046be3d3d6ecec7fe16f2d1fef423ab9246c58c0)
       prettier:
         specifier: 3.9.6
         version: 3.9.6
@@ -2795,7 +2798,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=69bf47d8a7454ab8fa5c9e2e046be3d3d6ecec7fe16f2d1fef423ab9246c58c0): {}
 
   prettier@3.9.6: {}
 
