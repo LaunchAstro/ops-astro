@@ -117,7 +117,7 @@ async function measure(page: Page): Promise<{ lines: string[]; ground: string }>
   return { lines, ground };
 }
 
-describe('#1695 the correction cards at 390 in both themes', () => {
+describe('the correction cards at 390 in both themes', () => {
   it('Launch, Decline and a published card’s receipts sit inside the bottom sheet, light and dark', async () => {
     const seen: { theme: string; lines: string[]; ground: string; launch: string }[] = [];
     await onDockSides([WIDTH], ['light', 'dark'], async ({ side, packet, app, theme }) => {
