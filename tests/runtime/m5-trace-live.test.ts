@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 import { expect, it as vitestIt } from 'vitest';
+import { parse } from 'yaml';
 import { traceExportSettings } from '../../apps/api/trace-exporter.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
@@ -117,38 +118,60 @@ async function observationsOf(traceId: string): Promise<unknown[]> {
   return observations;
 }
 
-it('the existing M5 target is healthy at its pinned version', async () => {
-  const health = await read('/api/public/health');
-  if (
-    !object(health) ||
-    health['status'] !== 'OK' ||
-    typeof health['version'] !== 'string' ||
-    !/^\d+\.\d+\.\d+$/u.test(health['version'])
-  )
-    throw new Error('target is not healthy');
-  const images = execFileSync(
-    'docker',
-    [
-      'inspect',
-      'langfuse-langfuse-web-1',
-      'langfuse-langfuse-worker-1',
-      'langfuse-postgres-1',
-      'langfuse-redis-1',
-      'langfuse-clickhouse-1',
-      'langfuse-minio-1',
-      '--format',
-      '{{.Config.Image}}',
-    ],
-    { encoding: 'utf8', timeout: 10_000 },
-  )
+const PINS = parse(
+  readFileSync(new URL('../../deploy/m5/langfuse-pins.override.yml', import.meta.url), 'utf8'),
+) as { services: Record<string, { image: string }> };
+const SERVICES = Object.keys(PINS.services).toSorted();
+const containers = SERVICES.map((service) => `langfuse-${service}-1`);
+
+/** One line per container, by a format that names only fields holding no setting's value. */
+function inspect(names: readonly string[], format: string): string[] {
+  return execFileSync('docker', ['inspect', ...names, '--format', format], {
+    encoding: 'utf8',
+    timeout: 10_000,
+  })
     .trim()
     .split('\n');
-  const suffix = `:${health['version']}@sha256:`;
+}
+
+it('the existing M5 target is healthy at its pinned version', async () => {
+  const health = await read('/api/public/health');
+  if (!object(health) || health['status'] !== 'OK') throw new Error('target is not healthy');
   expect(
-    images.length === 6 &&
-      images.every((image) => /^[a-f0-9]{64}$/u.test(image.split('@sha256:')[1] ?? '')) &&
-      images.slice(0, 2).every((image) => image.includes(suffix)),
+    PINS.services['langfuse-web']?.image.includes(`:${String(health['version'])}@sha256:`),
   ).toBe(true);
+  expect(inspect(containers, '{{.Config.Image}}')).toEqual(
+    SERVICES.map((service) => PINS.services[service]?.image),
+  );
+});
+
+it('the existing M5 target listens on loopback only, restarts with Docker and keeps signup and media upload off', () => {
+  for (const line of inspect(
+    containers,
+    '{{.HostConfig.RestartPolicy.Name}} {{json .HostConfig.PortBindings}}',
+  )) {
+    const [restart = '', bindings = 'null'] = line.split(' ');
+    expect(['always', 'unless-stopped']).toContain(restart);
+    const published = Object.values((JSON.parse(bindings) ?? {}) as Record<string, unknown[]>);
+    for (const binding of published.flat())
+      expect(object(binding) && binding['HostIp'] === '127.0.0.1').toBe(true);
+  }
+  // Only these exact entries are printed, so no other setting leaves Docker.
+  const wanted = [
+    'AUTH_DISABLE_SIGNUP=true',
+    'LANGFUSE_MEDIA_UPLOAD_ENABLED=false',
+    'TELEMETRY_ENABLED=false',
+  ];
+  const picked = (name: string): string[] =>
+    inspect(
+      [name],
+      `{{range .Config.Env}}${wanted.map((entry) => `{{if eq . "${entry}"}}{{.}};{{end}}`).join('')}{{end}}`,
+    )[0]
+      ?.split(';')
+      .filter(Boolean)
+      .toSorted() ?? [];
+  expect(picked('langfuse-langfuse-web-1')).toEqual(wanted);
+  expect(picked('langfuse-langfuse-worker-1')).toEqual(wanted.slice(1));
 });
 
 it('the M5 replay trace shows timings, outcome and call usage with no content', async () => {

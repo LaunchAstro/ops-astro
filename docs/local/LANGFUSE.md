@@ -104,8 +104,12 @@ node scripts/local/m5-trace-acceptance.ts
 
 The command runs the isolated database export cases and read-only M5 target
 cases. It rejects missing prerequisites, load above 35, failed cases, and
-skipped cases. It checks both Langfuse versions and all image digests, retrieves the
-specified observations, and checks their timings, outcome, call counts, and
+skipped cases. It checks that all six containers run the exact references in
+`deploy/m5/langfuse-pins.override.yml`, that every published port binds to
+loopback, that each restart policy restarts with Docker, and that signup and
+media upload are off. It reads those settings with a Docker format that prints
+only the three expected entries, so no other setting leaves Docker. It
+retrieves the specified observations, and checks their timings, outcome, call counts, and
 absence of content. It never ingests or deletes traces, changes containers,
 or starts the parked worker. Passing these cases does not close the separate
 cold-boot, owner-machine access, and live stopped-target completion gates.
@@ -116,11 +120,13 @@ Record evidence for these checks before closing #1622:
 
 1. Confirm the person responsible for the September installation. File
    ownership identifies the `agencyastro` account, not the installer.
-2. Obtain owner approval to apply the staged image pins in
-   `deploy/m5/langfuse-pins.override.yml` to the existing deployment. The
-   running containers still use floating tags until then.
-3. Confirm Docker Desktop startup after a machine restart and user login.
-   `unless-stopped` is a container restart policy, not a cold-boot proof.
+2. Obtain owner approval to apply the staged image pins and settings in
+   `deploy/m5/langfuse-pins.override.yml` to the existing deployment, with
+   the command in the [installation inventory](../../deploy/m5/langfuse.md#image-pins).
+   The running containers still use floating tags until then.
+3. Install the [boot LaunchAgent](../../deploy/m5/langfuse.md#start-at-boot),
+   restart the M5, log in, and confirm Langfuse answers its health check.
+   `unless-stopped` alone is a container restart policy, not a cold-boot proof.
 4. Confirm the existing Tailscale Serve mapping on HTTPS port 8449 restricts
    access to the owner's machines. Its target is loopback port 3400, and
    Funnel is disabled. The owner-machine ACL and an actual remote connection

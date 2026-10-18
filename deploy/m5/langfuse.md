@@ -52,6 +52,13 @@ An unauthenticated request to `/api/public/projects` returns HTTP 401.
 The configured references above are floating tags, so the next pull can
 change the running version.
 
+A read-only `docker ps -a` on 18 October 2026 listed five containers in the
+project. `langfuse-minio-1` was absent; the other five reported up for 11
+days. Langfuse v4 writes raw events to that blob store, so ingestion and the
+replay acceptance are expected to fail until it is back. The Compose command
+under Image pins creates it again on the existing
+`langfuse_langfuse_minio_data` volume. That is an owner step.
+
 ## Image pins
 
 [`langfuse-pins.override.yml`](langfuse-pins.override.yml) pins each service
@@ -72,18 +79,48 @@ come from the running images and the registry:
 - MinIO reports `RELEASE.2026-07-17T12-07-51Z`. Its publisher's free tier has
   no version tag, so only the digest pins it.
 
+The file also sets three settings on web and worker: `AUTH_DISABLE_SIGNUP=true`
+on web, and `LANGFUSE_MEDIA_UPLOAD_ENABLED=false` and `TELEMETRY_ENABLED=false`
+on both. It changes nothing else, so ports, volumes, restart policies and the
+`.env` file stay the installation's own. The test
+`tests/runtime/m5-langfuse-pinned-setup.test.ts` holds it to that, and checks
+that it names only services of the installed vendor file.
+
 The running containers still use the floating references. The pins take
 effect only when the owner adds this file as the last `-f` file to the
 installation's Compose command, as in the following step. That step
-recreates the containers, so it is an owner step:
+recreates the web and worker containers with the new settings, and every
+container whose reference changes, so it is an owner step:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.override.yml \
-  -f <repository>/deploy/m5/langfuse-pins.override.yml up -d
+docker compose --project-name langfuse -f docker-compose.yml \
+  -f docker-compose.override.yml \
+  -f <repository>/deploy/m5/langfuse-pins.override.yml up --detach --no-build
 ```
 
-After that step, `docker inspect --format '{{.Config.Image}}'` must show a
-digest on all six containers.
+After that step, `docker inspect --format '{{.Config.Image}}'` must show the
+pinned reference on all six containers. Keep 4.30.0 for the run week. If the
+replay acceptance fails on it, move to the proof-matched 4.33.0 digests in
+[supply-chain pins](../../docs/supply-chain-pins.md), never to a 4.6x release.
+Upgrading past 4.37 needs #1722 first.
+
+## Start at boot
+
+`unless-stopped` restarts containers when Docker starts, but not containers
+someone stopped, and only if Docker Desktop itself starts. The LaunchAgent
+[`ops-astro-langfuse.plist`](ops-astro-langfuse.plist) runs
+[`scripts/m5/langfuse-up.sh`](../../scripts/m5/langfuse-up.sh) once at login.
+The script waits up to ten minutes for Docker, opening Docker Desktop once if
+it is not answering, then runs the Compose command above. It refuses an
+installation missing its Compose files or `.env`, never creates settings, and
+never stops, removes or recreates by itself. It prints a reason, never a
+setting.
+
+To install it, an owner step, replace the `@...@` placeholders: the
+repository checkout, a `PATH` that finds `docker` and `open`, the installation
+directory, and a log file. Then copy it to `~/Library/LaunchAgents/` and load
+it with `launchctl bootstrap gui/$(id -u)`. The M5 account must log in after a
+restart for a LaunchAgent to run.
 
 Read-only `tailscale serve status --json` confirms HTTPS port 8449 forwards
 to `http://127.0.0.1:3400`. Funnel is disabled on that port. The tailnet ACL
@@ -115,11 +152,13 @@ store volumes. No backup or restore proof was performed in this inspection.
 
 #1622 is partly met and requires owner input. The service exists, is healthy,
 has persistent stores, and uses loopback ports and container restart policies.
-Applying the staged image pins, machine-restart behaviour, owner-machine access,
-exporter activation, a retrieved no-content replay trace, and live outage
-recovery remain unverified or unmet. The repository now contains a runbook, an
-inactive exporter configuration example, and staged image pins. None of
-them changes runtime state.
+The repository now holds the pinned setup: the pins with their settings, the
+boot script and its LaunchAgent, and the live checks in
+`tests/runtime/m5-trace-live.test.ts`. Applying the pins, loading the
+LaunchAgent, a cold boot, owner-machine access, exporter activation, a
+retrieved no-content replay trace, live outage recovery and the production
+migration `20261014152243_run_event_written_at` remain owner steps. None of
+the repository files changes runtime state.
 
 The existing containers must remain running and unchanged. Do not start a
 second Langfuse stack. Log `BLOCKER` before any proposed container change.
