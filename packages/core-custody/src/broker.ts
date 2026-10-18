@@ -49,6 +49,7 @@ import { taskAdmission } from './broker-admission.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { sweepCarried } from './broker-carriage.ts';
+import { endCodeOfRefusal, retireAttempt } from './broker-stop.ts';
 import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
@@ -138,6 +139,8 @@ async function markStarted(
         refusalCode: checked.code,
         detail: { callId: reserved.callId, code: checked.code },
       });
+      // #1623 R1: a start-time refusal on live work ends its attempt (transaction 2).
+      if (facts.ok) await retireAttempt(tx, facts.facts, endCodeOfRefusal(checked.code));
       return checked.code;
     }
     if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';

@@ -19,6 +19,7 @@ import { carriesLocally, mayCarry } from './credentials.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
+import { endCodeOfRefusal, retireAttempt } from './broker-stop.ts';
 import { stopAtCeiling } from './broker-wait.ts';
 import type {
   Broker,
@@ -94,7 +95,7 @@ export type ReserveRefusal = Extract<ModelCallResult, { code: BrokerRefusal }> &
 export type Reservation = { readonly ok: true; readonly reserved: ReservedCall } | ReserveRefusal;
 
 const FIXES: Partial<Record<BrokerRefusal, readonly string[]>> = {
-  RATE_LIMITED: ['Wait, then send the call again with a new operation id.'],
+  RATE_LIMITED: ["The operation's ceiling was reached, so the run stopped here."],
   BUDGET_UNAVAILABLE: ["The run's reservation has no room for this call's priced maximum."],
   OPERATION_NOT_CATALOGUED: ['Name an operation the broker has registered.'],
   EFFECT_NOT_RECONCILABLE: [
@@ -141,12 +142,13 @@ export async function reserveModelCall(
   if (!checked.ok) return refusing(checked.code, null);
   const { facts } = checked;
   const operation = broker.operations.get(request.operation);
-  const refused = async (code: BrokerRefusal, words?: string): Promise<ReserveRefusal> =>
-    refusing(
-      code,
-      await recordRefusal(tx, facts, request.operation, code, broker),
-      words === undefined ? {} : { words },
-    );
+  // #1623 R1: a recorded refusal is definitive. It ends the attempt here, with its code;
+  // the budget stop's one transition (`stopAtBudget`) records its own.
+  const refused = async (code: BrokerRefusal, words?: string): Promise<ReserveRefusal> => {
+    const callId = await recordRefusal(tx, facts, request.operation, code, broker);
+    if (code !== 'BUDGET_UNAVAILABLE') await retireAttempt(tx, facts, endCodeOfRefusal(code));
+    return refusing(code, callId, words === undefined ? {} : { words });
+  };
   if (await heldUnknown(tx, facts.reservationId)) return await refused('LIABILITY_UNKNOWN');
   if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
@@ -160,9 +162,7 @@ export async function reserveModelCall(
   if (!resolved.ok) return await refused(resolved.code);
   const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
-  if (await atCeiling(tx, operation, route.route)) {
-    return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
-  }
+  if (await atCeiling(tx, operation, route.route)) return await refused('RATE_LIMITED');
   const spent = await committedMinor(tx, facts.reservationId);
   if (operation.maximumMinor > facts.heldMinor - spent) {
     // AW-05: the approved ceiling is the stop; the refusal commits with the wait.
