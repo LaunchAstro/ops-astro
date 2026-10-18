@@ -110,9 +110,11 @@ interface Sent {
  */
 function useBox(waiting: Waiting, onSend: (body: string) => void) {
   const [text, setText] = useState('');
-  const [held, setHeld] = useState<Unsent | null>(null);
+  const [held, setHeld] = useState<Pick<Unsent, 'id' | 'body'> | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
   const { unsent, onResend, onDiscard } = waiting;
+  // The held entry as the outbox has it now: its state moves on after a Resend.
+  const now = held === null ? undefined : unsent.find((one) => one.id === held.id);
   useEffect(() => {
     const mine =
       sent === null
@@ -126,28 +128,28 @@ function useBox(waiting: Waiting, onSend: (body: string) => void) {
       }
     }
     // Refused words emptied out of the box go back to the list, Edit and all.
-    if (held?.state === 'refused' && text === '') setHeld(null);
-    if (held !== null && !unsent.some((one) => one.id === held.id)) {
+    if (now?.state === 'refused' && text === '') setHeld(null);
+    if (held !== null && now === undefined) {
       setHeld(null);
       if (text === held.body) setText('');
     }
-  }, [unsent, sent, held, text]);
+  }, [unsent, sent, held, now, text]);
   const take = (one: Unsent): void => {
     setText(one.body);
     setHeld(one);
   };
   const send = (said: string): void => {
-    if (held?.state === 'unanswered' && said === held.body) {
-      onResend(held.id);
+    if (now?.state === 'unanswered' && said === now.body) {
+      onResend(now.id);
       return;
     }
-    if (held?.state === 'refused') onDiscard(held.id);
+    if (now?.state === 'refused') onDiscard(now.id);
     setHeld(null);
     setSent({ said, before: new Set(unsent.map((one) => one.id)) });
     onSend(said);
     setText('');
   };
-  const shown = unsent.filter((one) => one.id !== held?.id || one.state !== 'refused');
+  const shown = unsent.filter((one) => one.id !== now?.id || one.state !== 'refused');
   return { text, setText, take, send, shown };
 }
 
