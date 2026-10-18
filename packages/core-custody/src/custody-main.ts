@@ -31,7 +31,7 @@ import {
   type Presentable,
   type StoredCredential,
 } from './credentials.ts';
-import { carriedByApp } from './github-app.ts';
+import { carriedByApp, type PartyRequest } from './github-app.ts';
 import {
   parseDestinations,
   send,
@@ -87,7 +87,7 @@ const REQUEST_KEYS = new Set([
 /** The longest delay a timer keeps: past it, or below one, a deadline is no request. */
 const LONGEST_DEADLINE_MS = 2_147_483_647;
 
-function isRequest(value: unknown): value is OutboundRequest {
+function isRequest(value: unknown): value is PartyRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
   const deadline = shape['timeoutMs'];

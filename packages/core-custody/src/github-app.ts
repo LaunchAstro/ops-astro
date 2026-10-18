@@ -3,8 +3,8 @@
 // A GitHub App's call (#1793): custody holds only the App's private key and,
 // for each party, the one repository it may reach. A call names its party;
 // custody finds that party's binding and refuses, before anything is sent,
-// a call whose path names any other repository, or the same one spelt
-// otherwise. Admitted, custody signs a ten-minute App token and asks the
+// a call whose path is no route custody sends as written, or names any other
+// repository, or the same one spelt otherwise. Admitted, custody signs a ten-minute App token and asks the
 // App's installation for a token restricted to that one repository, with
 // Contents and Pull requests and nothing more. The answer must name that
 // repository alone and expire in the future, or nothing is sent with it.
@@ -18,6 +18,13 @@
 import { createPrivateKey, sign } from 'node:crypto';
 import type { AppBinding, GithubApp, Presentable, StoredCredential } from './credentials.ts';
 import { send, type Destination, type OutboundRequest } from './egress.ts';
+import { pathAllowed } from './egress-routes.ts';
+
+/**
+ * A call's request, naming the party an App call is for: that picks the one
+ * repository it may reach.
+ */
+export type PartyRequest = OutboundRequest & { readonly party?: string };
 
 /** The repository a source call's path names, `owner/name`, as written. */
 function repositoryOf(path: string): string | undefined {
@@ -26,7 +33,7 @@ function repositoryOf(path: string): string | undefined {
 }
 
 /** The call's party binding when its path names that party's repository byte for byte. */
-function bindingFor(app: GithubApp, request: OutboundRequest): AppBinding | undefined {
+function bindingFor(app: GithubApp, request: PartyRequest): AppBinding | undefined {
   const binding = app.bindings.find((one) => one.party === request.party);
   return binding !== undefined && repositoryOf(request.path) === binding.repository
     ? binding
@@ -106,15 +113,22 @@ async function mintFor(
  */
 export async function carriedByApp(
   credential: StoredCredential,
-  request: OutboundRequest,
+  request: PartyRequest,
   destinations: ReadonlyMap<string, Destination>,
-): Promise<Presentable | 'CUSTODY_REPOSITORY_NOT_BOUND' | 'CUSTODY_TOKEN_NOT_MINTED'> {
+): Promise<
+  | Presentable
+  | 'CUSTODY_REQUEST_MALFORMED'
+  | 'CUSTODY_REPOSITORY_NOT_BOUND'
+  | 'CUSTODY_TOKEN_NOT_MINTED'
+> {
   const { app } = credential;
-  const binding = app === undefined ? undefined : bindingFor(app, request);
   const destination = destinations.get(request.destination);
-  if (app === undefined || binding === undefined || destination === undefined) {
-    return 'CUSTODY_REPOSITORY_NOT_BOUND';
+  // Only a path custody would send as written: no step or escape can take it to another repository.
+  if (destination === undefined || !pathAllowed(destination, request.method, request.path)) {
+    return 'CUSTODY_REQUEST_MALFORMED';
   }
-  const token = await mintFor(app, credential.value, binding, destination);
+  const binding = app === undefined ? undefined : bindingFor(app, request);
+  if (app === undefined || binding === undefined) return 'CUSTODY_REPOSITORY_NOT_BOUND';
+  const token = await mintFor(app, credential.value, binding, destination).catch(() => null);
   return token ?? 'CUSTODY_TOKEN_NOT_MINTED';
 }

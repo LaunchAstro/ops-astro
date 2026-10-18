@@ -204,6 +204,23 @@ it.each([
   expect(seen).toEqual([]);
 });
 
+it.each([
+  ['a path stepping out of the bound repository', '/../../ClientCo/client-site'],
+  ['an escaped step out of it', '/%2e%2e/%2e%2e/ClientCo/client-site'],
+])('%s is refused before any request leaves custody', async (_case, step) => {
+  const outcome = await custody.dispatch('source_control', {
+    party: AGENCY.party,
+    destination: 'source_control',
+    path: `/repos/${AGENCY.repository}${step}/contents/src/pages/about.astro?ref=main`,
+    method: 'GET',
+    body: '',
+    timeoutMs: 5_000,
+    maxResponseBytes: 262_144,
+  });
+  expect(outcome).toMatchObject({ kind: 'refused', started: false });
+  expect(seen).toEqual([]);
+});
+
 it('the client party mints only for its own repository, under its own installation', async () => {
   expect((await readAbout(CLIENT.party, CLIENT.repository)).kind).toBe('ok');
   expect(seen[0]?.url).toBe(`/app/installations/${String(CLIENT.installation)}/access_tokens`);

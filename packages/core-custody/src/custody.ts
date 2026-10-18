@@ -29,6 +29,7 @@ import type { StorableKind } from './credentials.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { Handoff } from './carriage.ts';
 import type { Destination, Outbound, OutboundRequest, SendGate } from './egress.ts';
+import type { PartyRequest } from './github-app.ts';
 
 export type { SendGate } from './egress.ts';
 
@@ -76,7 +77,7 @@ export interface Custody {
   readonly pid: number;
   dispatch(
     credentialRef: string,
-    request: OutboundRequest,
+    request: PartyRequest,
     onPiece?: (text: string) => void,
     admit?: Admit,
     /** A carried call's handoff from the command layer (`carried-custody.ts`); process custody takes none. */
