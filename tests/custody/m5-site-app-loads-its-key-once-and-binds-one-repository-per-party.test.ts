@@ -102,6 +102,10 @@ it('binds a party to one repository, once; neither a party nor a repository is b
   for (const [other, code] of [
     [{ ...AGENCY, repository: 'LaunchAstro/other-site' }, 'PARTY_ALREADY_BOUND'],
     [{ ...AGENCY, party: 'party-client' }, 'REPOSITORY_ALREADY_BOUND'],
+    [
+      { ...AGENCY, party: 'party-client', repository: AGENCY.repository.toLowerCase() },
+      'REPOSITORY_ALREADY_BOUND',
+    ],
     [{ ...AGENCY, party: 'party-client', repository: 'Client/../x' }, 'CREDENTIAL_MALFORMED'],
     [
       { ...AGENCY, party: 'party-client', repository: 'Client/site', installation: '0' },

@@ -195,13 +195,19 @@ it('each call mints its own token: none is kept for the next', async () => {
 it.each([
   ['another party repository', AGENCY.party, CLIENT.repository],
   ['another repository of the same owner', AGENCY.party, 'LaunchAstro/website-template'],
-  ['the bound repository spelt in another case', AGENCY.party, 'launchastro/Agency-Astro-Astro'],
   ['a party with no binding', 'party-unknown', AGENCY.repository],
   ['no party at all', undefined, AGENCY.repository],
 ])('%s is refused before any request leaves custody', async (_case, party, repository) => {
   const result = await readAbout(party, repository);
   expect(result).toMatchObject({ kind: 'refused', code: 'CUSTODY_REPOSITORY_NOT_BOUND' });
   expect(seen).toEqual([]);
+});
+
+it('the bound repository spelt in another case is the same repository: it mints for it and sends', async () => {
+  const result = await readAbout(AGENCY.party, 'launchastro/Agency-Astro-Astro');
+  expect(result.kind).toBe('ok');
+  expect(seen.map((one) => one.method)).toEqual(['POST', 'GET']);
+  expect(JSON.parse(seen[0]?.body ?? '{}')).toMatchObject({ repositories: ['agency-astro-astro'] });
 });
 
 it.each([

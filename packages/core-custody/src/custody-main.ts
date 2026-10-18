@@ -19,7 +19,9 @@
 // A `deadlineAt` gates the write itself (`egress.ts`). A GitHub App entry is
 // never sent: a call on it names its party, is refused before `started` unless
 // its path names that party's bound repository, and is sent with a token
-// minted for it alone (`github-app.ts`), refused when none is minted.
+// minted for it alone (`github-app.ts`), refused when none is minted. The
+// mint spends the call's own time, and the token goes only while still in
+// date: one that expires while admission waits is refused, never sent.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -117,8 +119,8 @@ function sendGateOf(at: unknown, reply: (body: Message) => void) {
 
 const loaded = load();
 
-/** A credential custody sends as it is held, or one minted for the call. */
-type Carried = StoredCredential & Presentable;
+/** A credential custody sends as it is held, or one minted for the call, with its expiry. */
+type Carried = StoredCredential & Presentable & { readonly expiresAt?: number };
 
 /**
  * A PUT its destination lists no route for, or a POST to a destination that
@@ -209,6 +211,11 @@ async function answer(
     reply({ type: 'refused', code: 'CUSTODY_NOT_ADMITTED' });
     return;
   }
+  // A minted token is judged at the send, not at the mint: admission may outlast it.
+  if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) {
+    reply({ type: 'refused', code: 'CUSTODY_TOKEN_EXPIRED' });
+    return;
+  }
   const streaming = streamingOf(credential, request.destination, (text) =>
     reply({ type: 'piece', text }),
   );
@@ -277,7 +284,8 @@ process.on('message', (message: unknown) => {
       const carried = await carriedByApp(credential, request, loaded.destinations);
       if (typeof carried === 'string') return reply({ type: 'refused', code: carried });
       reply({ type: 'started' });
-      await answer(id, request, { ...credential, ...carried }, gated, reply, sendGate);
+      const minted = { ...credential, ...carried.presented, expiresAt: carried.expiresAt };
+      await answer(id, carried.request, minted, gated, reply, sendGate);
     })();
     return;
   }

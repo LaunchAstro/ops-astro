@@ -19,9 +19,11 @@
 // it back. `load-app` files the GitHub App's private key the same way as the
 // `source_control` entry (#1793), and `bind` gives one party its one site
 // repository under that App; custody then mints a token per call. `smoke`
-// checks only the file's kind, owner and mode, never its contents, then reads
-// the About page's source and the production deployment through custody's own
-// process, and nothing else. No origin is taken from the command line, so a
+// checks the file's kind, owner and mode, and for a named party reads only
+// that party's bound repository from it, never a value. It then reads the
+// About page's source from that repository (the agency's when no party is
+// named) and the production deployment through custody's own process, and
+// nothing else. No origin is taken from the command line, so a
 // token goes only to its provider. No line any command prints carries a
 // value: each names an entry, a repository, an operation or a code.
 
@@ -39,7 +41,9 @@ import {
   siteDestination,
   startCustody,
 } from '../../packages/core-custody/src/index.ts';
+import { sameRepository } from '../../packages/core-custody/src/github-app.ts';
 import {
+  boundRepository,
   changeUnderLock,
   fileOnce,
   openOwnerOnly,
@@ -129,7 +133,7 @@ export function bindSiteRepository(
     const { bindings } = entry.app;
     if (bindings.some((one) => isDeepStrictEqual(one, wanted))) return 'unchanged';
     if (bindings.some((one) => one['party'] === wanted.party)) return 'refused PARTY_ALREADY_BOUND';
-    if (bindings.some((one) => one['repository'] === wanted.repository))
+    if (bindings.some((one) => sameRepository(String(one['repository']), wanted.repository)))
       return 'refused REPOSITORY_ALREADY_BOUND';
     const filed = { ...entry, app: { ...entry.app, bindings: [...bindings, wanted] } };
     return { entries: entries.with(at, filed), filed };
@@ -138,23 +142,29 @@ export function bindSiteRepository(
 }
 
 export interface SmokeOptions {
-  /** The party whose repository the source read is for: needed once the entry is an App. */
+  /** The party whose bound repository the source read is for: needed once the entry is an App. */
   readonly party?: string;
   /** A test's stand-in origins; the command line never sets them. */
   readonly origins?: Readonly<Record<Entry, string>>;
   readonly resolve?: Resolver;
 }
 
-/** Reads the About source and the production deployment through custody: ok when both answer. */
+/**
+ * Reads the About source, from the party's bound repository when one is named,
+ * and the production deployment through custody: ok when both answer.
+ */
 export async function smokeSite(
   file: string,
   { party, origins = ORIGINS, resolve = systemResolver }: SmokeOptions = {},
 ): Promise<{ ok: boolean; lines: string[] }> {
-  // The file's kind, owner and mode only: its contents are custody's alone to read.
+  // The file's kind, owner and mode, and a named party's repository: its values are custody's alone.
   const fd = openOwnerOnly(file);
   if (fd === 'absent') return { ok: false, lines: ['refused LOAD_FILE_UNREADABLE'] };
   if (typeof fd === 'string') return { ok: false, lines: [fd] };
   closeSync(fd);
+  // An unbound party keeps the agency's repository, and custody refuses it before sending.
+  const repository =
+    (party === undefined ? undefined : boundRepository(file, party)) ?? ABOUT.repository;
   const custody = await startCustody({
     credentialsFile: file,
     destinations: (['source_control', 'hosting'] as const).map((entry) =>
@@ -176,7 +186,7 @@ export async function smokeSite(
   let lines: string[];
   try {
     // One after the other, so the lines read in the order the runbook gives.
-    const source = await read('site.source.read', ABOUT);
+    const source = await read('site.source.read', { ...ABOUT, repository });
     lines = [source, await read('site.deployment.current', PROJECT)];
   } finally {
     await custody.stop();

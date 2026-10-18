@@ -101,16 +101,21 @@ private key and, for each party, the one repository it may reach. For every
 call it mints a token for that one repository (`repositories` on the token
 request), with Contents and Pull requests and nothing else, sends the call
 with it and drops it: no token is kept, written down or logged. A call for a
-party that names any other repository, or the same one spelt otherwise, is
-refused `CUSTODY_REPOSITORY_NOT_BOUND` before anything leaves custody. No
-part of it belongs to a person's account.
+party that names any other repository is refused
+`CUSTODY_REPOSITORY_NOT_BOUND` before anything leaves custody. GitHub reads a
+repository's name in any case, and so does custody. The token request spends
+the call's own time, and a token that expires before the call goes is
+refused, never sent. No part of it belongs to a person's account.
 
 ### Owner: make and install the App, once
 
 1. On GitHub, in the LaunchAstro organisation's settings, Developer settings,
-   GitHub Apps, make a new App: no webhook, no callback, installable only on
-   this account. Repository permissions: Contents read and write, Pull
-   requests read and write, nothing else (Metadata read comes with them).
+   GitHub Apps, make a new App: no webhook, no callback, installable on any
+   account, so a client's own organisation can install it. Repository
+   permissions: Contents read and write, Pull requests read and write,
+   nothing else (Metadata read comes with them). Another account installing
+   it reaches nothing: custody mints only under an installation id bound to
+   a party.
 2. Note its App ID. Generate a private key; GitHub downloads a `.pem` file.
 3. File the key in Bitwarden as a secure note holding the whole `.pem` text,
    under `Ops Astro custody: LaunchAstro GitHub App private key`, and the App
@@ -120,7 +125,9 @@ part of it belongs to a person's account.
    its installation id (`.../installations/<id>`); note it.
 
 A client site whose repository is in the client's own organisation needs the
-App installed there, with its own installation id.
+App installed there, with its own installation id. The client installs it from
+the App's public page (`https://github.com/apps/<app name>`), choosing "Only
+select repositories" and the site's repository alone.
 
 ### Load the key, once
 
@@ -146,7 +153,8 @@ node scripts/m5/site-custody.ts bind --party <party id> \
 ```
 
 It prints `site custody: <repository> bound and read back`, or `already
-bound`. Then run the smoke with that party:
+bound`. Then run the smoke with that party; it reads the About page from that
+party's bound repository:
 
 ```sh
 node scripts/m5/site-custody.ts smoke --file ~/.ops-astro/custody/site.json --party <party id>
@@ -162,8 +170,9 @@ belongs to one party.
 | `PARTY_ALREADY_BOUND`          | That party has another repository. A move is "Revoke", then load and bind again.           |
 | `REPOSITORY_ALREADY_BOUND`     | Another party has that repository. Check the party id.                                     |
 | `CREDENTIAL_MALFORMED`         | The key is not an RSA private key, or the App ID, repository or installation is malformed. |
-| `CUSTODY_REPOSITORY_NOT_BOUND` | The smoke named no party, or one with no binding for that repository.                      |
-| `CUSTODY_TOKEN_NOT_MINTED`     | GitHub gave no token for that repository alone: check the App is installed on it.          |
+| `CUSTODY_REPOSITORY_NOT_BOUND` | The smoke named no party, or one with no binding.                                          |
+| `CUSTODY_TOKEN_NOT_MINTED`     | GitHub gave no token for that repository alone, in time: check the App is installed on it. |
+| `CUSTODY_TOKEN_EXPIRED`        | The minted token expired before the call went. Run it again.                               |
 
 ### Move the agency site off its token
 

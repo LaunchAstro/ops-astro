@@ -95,6 +95,19 @@ export function changeUnderLock(
 
 export const refOf = (one: unknown): unknown => (one as { ref?: unknown }).ref;
 
+/**
+ * The repository a party is bound to under the App entry, read only from a
+ * file custody would load; undefined when there is none. No value leaves here.
+ */
+export function boundRepository(file: string, party: string): string | undefined {
+  const entries = entriesIn(file);
+  if (typeof entries === 'string') return undefined;
+  const entry = entries.find((one) => refOf(one) === 'source_control') as
+    { app?: { bindings?: readonly { party?: unknown; repository?: unknown }[] } } | undefined;
+  const repository = entry?.app?.bindings?.find((one) => one.party === party)?.repository;
+  return typeof repository === 'string' ? repository : undefined;
+}
+
 /** Files `filed` once: the same entry again changes nothing, another under its name is refused. */
 export function fileOnce(
   file: string,
