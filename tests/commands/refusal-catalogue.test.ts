@@ -183,6 +183,11 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['SUBSCRIPTION_NOT_FOR_CLIENT_WORK', 403, 'caller'],
   ['RATE_LIMITED', 409, 'caller'],
   ['COPY_NOT_REGISTERED', 409, 'caller'],
+  // #1623 R3: the attempt's call limit and the model turn.
+  ['CALL_LIMIT_REACHED', 409, 'caller'],
+  ['TURN_MALFORMED', 422, 'caller'],
+  ['TURN_ORDINAL_STALE', 409, 'caller'],
+  ['PROVENANCE_UNBOUND', 422, 'caller'],
   ['LIABILITY_UNKNOWN', 409, 'caller'],
   // #1531: one call per message, and carried calls.
   ['STILL_ANSWERING', 409, 'caller'],
