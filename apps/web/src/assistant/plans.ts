@@ -17,7 +17,8 @@ import { useRef } from 'react';
 import type { AssistantPlan, PlanCardState } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../routes.ts';
-import { keyIn, replaced, type AssistantState, type Chat } from './chats.ts';
+import { keyIn, type AssistantState, type Chat } from './chats.ts';
+import { replaced } from './started.ts';
 
 function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat): AssistantState {
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };

@@ -7,13 +7,8 @@
 // claimed read.
 
 import { describe, expect, it } from 'vitest';
-import {
-  addPage,
-  initial,
-  said,
-  started,
-  type AssistantState,
-} from '../../apps/web/src/assistant/chats.ts';
+import { addPage, initial, said, type AssistantState } from '../../apps/web/src/assistant/chats.ts';
+import { started } from '../../apps/web/src/assistant/started.ts';
 import { taskPageRef } from '../../packages/core-records/src/index.ts';
 
 const OLD = { address: '/task/T-gone', shows: 'Task' };

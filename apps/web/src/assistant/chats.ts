@@ -20,7 +20,6 @@ import type {
   AssistantCitation,
   AssistantMessage,
   AssistantPage,
-  PlanCardState,
 } from '@launchastro/ui';
 import { noted, told, type Noted } from './page-note.ts';
 import type { ScopeInput } from './subject.ts';
@@ -65,7 +64,7 @@ export const TAB_TITLE_LIMIT = 40;
 
 const NO_SCOPE: StandingScope = { client: null, task: null };
 
-const blank = (number: number, messages: Chat['messages'], scope: StandingScope): Chat => ({
+export const blank = (number: number, messages: Chat['messages'], scope: StandingScope): Chat => ({
   key: `chat-${number}`,
   conversationId: null,
   title: `Chat ${number}`,
@@ -99,10 +98,14 @@ export function fresh(state: AssistantState): AssistantState {
   };
 }
 
-const has = (state: AssistantState, key: string): boolean =>
+export const has = (state: AssistantState, key: string): boolean =>
   state.chats.some((chat) => chat.key === key);
 
-function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat): AssistantState {
+export function change(
+  state: AssistantState,
+  key: string,
+  edit: (chat: Chat) => Chat,
+): AssistantState {
   if (!has(state, key)) return state;
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
 }
@@ -113,7 +116,7 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
  * another tab starts with neither: a client's words never reach a tab of
  * another scope.
  */
-function selecting(state: AssistantState, key: string): AssistantState {
+export function selecting(state: AssistantState, key: string): AssistantState {
   const scope = state.chats.find((chat) => chat.key === key)?.scope ?? NO_SCOPE;
   if (key === state.selected) return { ...state, scope };
   return { ...state, selected: key, scope, draft: '', citation: null };
@@ -175,66 +178,6 @@ export const READ_LINE = 'kept-';
 
 /** The tab a line for `key` lands in: `key`, or the tab it was folded into. */
 export const keyIn = (state: AssistantState, key: string): string => state.folded[key] ?? key;
-
-const staled = (plan: NonNullable<AssistantMessage['plan']>): PlanCardState =>
-  plan.state === 'unknown' ? 'unknown' : 'stale';
-
-/** The cards plan version `version` replaces: every one not approved. */
-export const replaced = (
-  messages: readonly AssistantMessage[],
-  version: number,
-): AssistantMessage[] =>
-  messages.map((each) =>
-    each.plan !== undefined && each.plan.state !== 'approved'
-      ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: version } }
-      : each,
-  );
-
-/**
- * A live tab's first question started its conversation; a closed tab takes nothing.
- * Its reopened twin folds into it, so the conversation is never open twice.
- * Read lines repeat the first question already here. Later lines follow, each
- * plan version replacing older ones; questions still out and lines on their
- * way to the twin belong to this tab.
- */
-export function started(
-  state: AssistantState,
-  key: string,
-  conversationId: string,
-): AssistantState {
-  if (!has(state, key)) return state;
-  const twin = state.chats.find(
-    (chat) => chat.key !== key && chat.conversationId === conversationId,
-  );
-  const since = twin?.messages.filter((message) => !message.id.startsWith(READ_LINE)) ?? [];
-  const single =
-    twin === undefined
-      ? state
-      : {
-          ...state,
-          chats: state.chats.filter((chat) => chat !== twin),
-          folded: { ...state.folded, [twin.key]: key },
-          answering: {
-            ...state.answering,
-            [twin.key]: 0,
-            [key]: (state.answering[key] ?? 0) + (state.answering[twin.key] ?? 0),
-          },
-        };
-  const chosen =
-    twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
-  return change(chosen, key, (chat) => ({
-    ...chat,
-    conversationId,
-    asked: { ...twin?.asked, ...chat.asked },
-    messages: since.reduce<readonly AssistantMessage[]>(
-      (lines, line) => [
-        ...(line.plan === undefined ? lines : replaced(lines, line.plan.version)),
-        line,
-      ],
-      chat.messages,
-    ),
-  }));
-}
 
 /** A question for tab `key` (or the tab it was folded into) went out (+1) or came back (-1). */
 export function asking(state: AssistantState, key: string, by: 1 | -1): AssistantState {

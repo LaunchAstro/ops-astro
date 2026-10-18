@@ -20,7 +20,14 @@ export interface Noted {
   readonly messages: readonly AssistantMessage[];
   /** Each question's line id, with the address of the page in scope when it was asked. */
   readonly asked?: Readonly<Record<string, string | null>>;
+  /** The page this tab gave up to a lost start, which a replay of it puts back (#897). */
+  readonly gave?: AssistantPage | null;
 }
+
+const noteOf = (page: AssistantPage): string =>
+  TASK_PAGE.test(page.address)
+    ? `Read this page into context — every widget on ${page.address}, and nothing else.`
+    : 'This page can’t be read into context, so nothing on it is sent.';
 
 /** Tab `chat` with `page` in scope; a second one replaces the first, and its note with it. */
 export const noted = <T extends Noted>(chat: T, page: AssistantPage): T => ({
@@ -28,14 +35,7 @@ export const noted = <T extends Noted>(chat: T, page: AssistantPage): T => ({
   page,
   messages: [
     ...chat.messages.filter((message) => message.id !== 'page'),
-    {
-      id: 'page',
-      role: 'note',
-      body: TASK_PAGE.test(page.address)
-        ? `Read this page into context — every widget on ${page.address}, and nothing else.`
-        : 'This page can’t be read into context, so nothing on it is sent.',
-      cites: [],
-    },
+    { id: 'page', role: 'note', body: noteOf(page), cites: [] },
   ],
 });
 
@@ -62,4 +62,28 @@ export const told = <T extends Noted>(chat: T, line: AssistantMessage, after?: s
       : chat.messages),
     line,
   ],
+});
+
+export const GAVE_UP =
+  'This page went with the question waiting for its answer. Add it again to ask with it here.';
+
+/**
+ * Tab `chat` without its page, which went with a start whose answer was lost: the page sends
+ * record content (every widget on it), so one add reaches one conversation (#897).
+ */
+export const gaveUp = <T extends Noted>(chat: T): T => ({
+  ...chat,
+  page: null,
+  gave: chat.page,
+  messages: chat.messages.map((each) => (each.id === 'page' ? { ...each, body: GAVE_UP } : each)),
+});
+
+/** Tab `chat` with the page it gave up back, its note where it was. */
+export const putBack = <T extends Noted>(chat: T, page: AssistantPage): T => ({
+  ...chat,
+  page,
+  gave: null,
+  messages: chat.messages.map((each) =>
+    each.id === 'page' ? { ...each, body: noteOf(page) } : each,
+  ),
 });
