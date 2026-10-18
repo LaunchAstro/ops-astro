@@ -8,6 +8,7 @@
 // found at the host's last pass, which asks a person once. No case sends the
 // publish twice. Every provider is a double: nothing reaches a live system.
 
+import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { APPROVED, MERGED, PAGE, SEAM, binding, line, proposed } from './c80-site-provider.ts';
 import { bound } from './c80-site-ports-bound.ts';
@@ -22,6 +23,7 @@ import {
 } from './c80-register-world.ts';
 import { mergeAndFind, revertForward } from '../../packages/core-connectors/src/index.ts';
 import { runLivePublish, type RunnerPorts } from '../../packages/core-commands/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 
 useRegisterWorld();
 
@@ -103,6 +105,50 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('two last passes at once', () => {
+  it('ask a person once about a deployment never found, on separate connections', async () => {
+    const id = await approved();
+    const { site, ports, raised } = await bound(id);
+    site.state.lookupMisses = 1_000;
+    expect(await pass(id, ports())).toMatchObject({ kind: 'recorded', state: 'accepted' });
+    // A connection each: on one connection the passes would queue, never race.
+    const wide = connect(w.world.db.appUrl, { source: 'runtime', max: 4 });
+    try {
+      const both = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+        await tx.query(
+          'select 1 from public.live_corrections where business_id = $1 and id = $2 for update',
+          [w.world.business, id],
+        );
+        const last = { lastPass: true };
+        const runs = [1, 2].map(async () => await runLivePublish(wide, at(id), ports(), last));
+        await queuedOnTheCorrection(2);
+        return runs;
+      });
+      for (const answer of await Promise.all(both))
+        expect(answer).toMatchObject({ code: 'DEPLOYMENT_NOT_FOUND', waitsOn: 'person' });
+    } finally {
+      await wide.close();
+    }
+    expect(raised).toEqual(['DEPLOYMENT_NOT_FOUND']);
+    expect(site.sent.map(line).filter((sent) => sent === WRITE)).toHaveLength(1);
+  });
+});
+
+/** Until `count` sessions wait on a lock to read a correction. */
+async function queuedOnTheCorrection(count: number): Promise<void> {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polling is sequential
+    const [row] = await w.world.db.admin.execute<{ readonly n: number }>(
+      `select count(*)::int as n from pg_stat_activity
+        where wait_event_type = 'Lock' and query like '%from public.live_corrections c%'`,
+    );
+    if ((row?.n ?? 0) >= count) return;
+    // oxlint-disable-next-line no-await-in-loop -- polling is sequential
+    await sleep(25);
+  }
+  throw new Error('the passes never queued on the correction');
+}
 
 describe('the publish binding', () => {
   it('answers a written commit with no deployment found yet without a deployment, not unknown', async () => {
