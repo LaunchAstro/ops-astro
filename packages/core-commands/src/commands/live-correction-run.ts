@@ -6,6 +6,7 @@
 // receipt, or waiting on a person asked once.
 
 import {
+  readCorrectionForRun,
   recordObservedResult,
   type Database,
   type LiveCorrection,
@@ -17,7 +18,7 @@ import type {
   PublishPorts,
   ReadBack,
 } from '../../../core-connectors/src/index.ts';
-import type { Observations } from './live-correction-observations.ts';
+import { observedIn, type Observations } from './live-correction-observations.ts';
 import { pageNotCatalogued } from './live-correction-capture.ts';
 import { askOnce, settleAsk } from './live-correction-effect.ts';
 
@@ -97,17 +98,26 @@ export async function unknownWaits(
   return { kind: 'refused', code: reason, waitsOn: 'person' };
 }
 
-/** Step 3: the observed result and its receipt, or a raised task when it cannot be written. */
+/**
+ * Step 3: the observed result and its receipt, or a raised task when it cannot be written. With
+ * `unlessAsked`, the publish's latest receipt is read under the correction's lock in the write's
+ * transaction: one a last pass asked (or is asking) a person about stays, and the run waits on
+ * that person under the reason, its task already raised once (#1761).
+ */
 export async function record(
   db: Database,
   run: CorrectionRun,
   result: Pick<ObservedResult, 'step' | 'outcome'> & { readonly observations: Observations },
   ports: RunnerPorts,
+  unlessAsked?: string,
 ): Promise<RunResult> {
-  const written = await db.withBusiness(
-    run.business,
-    async (tx) => await recordObservedResult(tx, { ...run, ...result }),
-  );
+  const written = await db.withBusiness(run.business, async (tx) => {
+    const read = unlessAsked === undefined ? undefined : await readCorrectionForRun(tx, run);
+    const asked = read?.ok === true ? observedIn(read.lastPublish, 'waits_on') : undefined;
+    if (unlessAsked !== undefined && (asked === 'person' || asked === 'asking')) return unlessAsked;
+    return await recordObservedResult(tx, { ...run, ...result });
+  });
+  if (typeof written === 'string') return { kind: 'refused', code: written, waitsOn: 'person' };
   if (written.ok) return { kind: 'recorded', state: written.state, receiptId: written.receiptId };
   await ports.raiseTask('RECEIPT_NOT_WRITTEN');
   return { kind: 'unrecorded', outcome: result.outcome, code: written.code };

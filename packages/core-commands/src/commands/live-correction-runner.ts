@@ -16,7 +16,8 @@
 //    holds the effect, so the next run observes it rather than sending it.
 //    An acceptance whose deployment the provider shows no record of yet is not
 //    published yet: it stays accepted, and each later pass looks the deployment
-//    up again by its commit until the host's last pass asks a person (#1696).
+//    up again by its commit until the host's last pass asks a person (#1696). A pass whose
+//    lookup ends after that ask leaves it standing (#1761).
 // No transaction is held open across a provider call.
 
 import {
@@ -87,6 +88,7 @@ async function recordSeen(
   correction: LiveCorrection,
   landed: Seen,
   ports: RunnerPorts,
+  unlessAsked?: string,
 ): Promise<RunResult> {
   const unserved = landed.state === 'unknown';
   const observations = {
@@ -95,7 +97,8 @@ async function recordSeen(
     ...(unserved ? { deployment_served: seen('not serving'), waits_on: seen('person') } : {}),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
   };
-  return await record(db, run, { step: 'publish', outcome: landed.state, observations }, ports);
+  const result = { step: 'publish', outcome: landed.state, observations } as const;
+  return await record(db, run, result, ports, unlessAsked);
 }
 
 /**
@@ -120,7 +123,10 @@ async function observe(
     const at = { step: 'publish', outcome: 'unknown' } as const;
     return await unknownWaits(db, run, at, ports, 'DEPLOYMENT_NOT_FOUND');
   }
-  if (found.value === undefined) return await recordSeen(db, run, correction, accepted, ports);
+  // Still not found before the last pass: accepted again, unless a last pass already asked.
+  if (found.value === undefined) {
+    return await recordSeen(db, run, correction, accepted, ports, 'DEPLOYMENT_NOT_FOUND');
+  }
   const landed = await observeLanded(
     { ...accepted, deploymentId: found.value },
     targetOf(correction),
