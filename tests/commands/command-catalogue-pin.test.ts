@@ -625,7 +625,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.draft_version',
   'legal.publish_version',
   'live_correction.decide',
+  'live_correction.list',
   'live_correction.read',
+  'live_correction.receipts',
   'live_correction.request',
   'live_correction.revert',
   'mandate.file',
@@ -1281,7 +1283,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-seven from an expected revision', () => {
+  it('exempts the same one hundred and thirty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -44,7 +44,9 @@ const PINNED_IDENTIFIERS = {
   'inbox.read': [],
   'inbox.unattended': [],
   'invitation.list': [],
+  'live_correction.list': [],
   'live_correction.read': ['correctionId'],
+  'live_correction.receipts': ['correctionId'],
   'map.frontier': ['recordId'],
   'map.list': [],
   'map.view': ['recordId'],
@@ -240,6 +242,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.unattended': BODIES.map(() => null),
   // C80's correction, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  // #1694: the list takes nothing; the receipts read takes the correction.
+  'live_correction.list': BODIES.map(() => null),
+  'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
@@ -255,7 +260,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-four reads', () => {
+  it('names the same forty-six reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

@@ -351,6 +351,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID() }),
       },
       {
+        op: 'live_correction.receipts',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+      {
         op: 'live_correction.revert',
         operand: 'correctionId',
         by: ada,
@@ -656,17 +664,17 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 116 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 117 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(116);
-    expect(names).toHaveLength(116);
+    expect(new Set(names).size, 'distinct operations').toBe(117);
+    expect(names).toHaveLength(117);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
     expect(
       names.toSorted(),
-      'every declaration outside the sixty-two target-free ones',
+      'every declaration outside the sixty-three target-free ones',
     ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {

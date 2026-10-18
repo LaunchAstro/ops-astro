@@ -46,6 +46,8 @@ const EMPTY: readonly CommandName[] = [
   'finance.skill_costs',
   // The caller's own agents (Assign to AI): no operand.
   'agent.mine',
+  // The corrections the admin's run:write and task:read reach (#1694): no operand.
+  'live_correction.list',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
@@ -94,7 +96,9 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
 export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name) || name === 'agent.create') return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
-  if (name === 'live_correction.read') return { correctionId: randomUUID() };
+  if (name === 'live_correction.read' || name === 'live_correction.receipts') {
+    return { correctionId: randomUUID() };
+  }
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
