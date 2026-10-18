@@ -9,7 +9,8 @@
 //
 // `url` is the connection the case opens (the application login, or the
 // database's owner for the admin cases). `server url` is the superuser the
-// case ends a backend with, as an operator's `pg_terminate_backend` would.
+// case ends a backend with, as an operator's `pg_terminate_backend` would, and
+// holds a lock with on the case's own database.
 
 import {
   connect,
@@ -17,6 +18,7 @@ import {
   connectListener,
   type BusinessId,
 } from '../../packages/core-records/src/tenancy/database.ts';
+import { connectOutbox } from '../../packages/core-records/src/tenancy/outbox.ts';
 
 const [kind, url, serverUrl] = process.argv.slice(2);
 if (kind === undefined || url === undefined || serverUrl === undefined) {
@@ -77,6 +79,21 @@ function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
       timer = setTimeout(() => reject(new Error(`${what} did not settle in ${ms} ms`)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
+}
+
+/** The backend of an outbox append that is waiting on the case's lock. */
+async function lockWaiter(
+  execute: <R>(text: string) => Promise<readonly R[]>,
+  tries: number,
+): Promise<number> {
+  const [row] = await execute<{ pid: number }>(
+    `select pid from pg_stat_activity
+      where wait_event_type = 'Lock' and query ilike 'insert into ops.api_events%'`,
+  );
+  if (row !== undefined) return row.pid;
+  if (tries === 0) throw new Error('the append never waited on the lock');
+  await turns();
+  return lockWaiter(execute, tries - 1);
 }
 
 const cases: Record<string, () => Promise<Record<string, unknown>>> = {
@@ -173,6 +190,33 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
     const after = await settled(admin.execute('select 1'));
     await admin.close();
     return { caller, statement, after };
+  },
+
+  /**
+   * The API's outbox: one insert outside any transaction. The append waits on
+   * a lock the case holds, its backend ends while it waits, and the outbox
+   * appends again on a new session.
+   */
+  async outbox() {
+    const outbox = connectOutbox(url);
+    const signal = { kind: 'sign-in-failed', scope: '', weight: 1 };
+    await outbox.append(signal);
+    const superuser = new URL(serverUrl as string);
+    superuser.pathname = new URL(url).pathname;
+    const holder = connectAsAdmin(superuser.toString(), { source: 'harness' });
+    let caller: { ok: boolean; code?: string } | undefined;
+    await holder.transaction(async (execute) => {
+      await execute('lock table ops.api_events in access exclusive mode');
+      const append = settled(outbox.append(signal));
+      const pid = await lockWaiter(execute, 50);
+      await terminate(pid);
+      caller = await within(append, 5_000, 'the append');
+    });
+    await turns();
+    const after = await settled(outbox.append(signal));
+    await holder.close();
+    await outbox.close();
+    return { caller, after };
   },
 
   /** The listener: its session ends between notifications; it listens again. */
