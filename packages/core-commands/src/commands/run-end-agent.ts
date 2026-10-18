@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `run.end` on the agent prefix (#1623 R1, design F1): the worker's own stop,
+// `run.end` on the agent prefix (#1623 R1): the worker's own stop,
 // on the lease its delegation holds. The runtime (`core-runtime/src/run-end.ts`)
 // records the outcome and retires the work under its locks; the answer is a
 // retained terminal refusal, `RUN_ENDED` naming the outcome and its code, so

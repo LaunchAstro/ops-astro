@@ -26,7 +26,7 @@ import type { CustodyOutcome } from './custody.ts';
 import { lockCall, lockedState } from './broker-facts.ts';
 import { giveBack } from './broker-give-back.ts';
 import { releaseEndOf, stopAtSettlement, UNPROVEN_RELEASE } from './broker-stop.ts';
-import type { EndCode } from '../../core-wire/src/run-outcomes.ts';
+import type { EndCode } from '../../core-wire/src/index.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,

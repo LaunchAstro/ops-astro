@@ -5,8 +5,8 @@
 // seven named outcomes, with a typed end code from one closed union. The
 // stop's own transaction writes it (`run_outcomes`, migration
 // 20261018063000), and the code is never a suffix or free text: `outcomeOf`
-// is the one place a code finds its outcome, and its `never` default makes a
-// new code fail the type check until it has a row here and in the
+// is the one place a code finds its outcome, and its table is keyed by every
+// code, so a new one fails the type check until it has a row here and in the
 // migration's per-outcome check.
 
 /** The seven outcomes an attempt can end in. */
@@ -76,62 +76,50 @@ export type EndCode =
   | 'LOCAL_PLAN_LIMIT'
   | WorkerEndCode;
 
-/** The outcome an end code belongs to. Total: a code with no row fails the type check. */
-export function outcomeOf(code: EndCode): RunOutcome {
-  switch (code) {
-    case 'COMPLETED':
-      return 'success';
-    case 'BUDGET_UNAVAILABLE':
-      return 'budget_wait';
-    case 'CALL_LIMIT_REACHED':
-      return 'call_limit';
-    case 'LEASE_EXPIRED':
-    case 'LEASE_NOT_OWNED':
-      return 'lease_lost';
-    case 'LIABILITY_UNKNOWN':
-    case 'OPEN_CALL_AT_STOP':
-    case 'ANSWER_LOST':
-    case 'STILL_ANSWERING':
-      return 'unknown_provider_outcome';
-    case 'LOCAL_PLAN_LIMIT':
-      return 'waiting_plan_allowance';
-    case 'TASK_CANCELLED':
-    case 'PLAN_SUPERSEDED':
-    case 'DECISION_STALE':
-    case 'AUTHORITY_LOST':
-    case 'OPERATION_NOT_CATALOGUED':
-    case 'EFFECT_NOT_RECONCILABLE':
-    case 'LOCAL_MODEL_REQUIRED':
-    case 'CLIENT_MODEL_USE_OFF':
-    case 'SOURCE_UNREADABLE':
-    case 'RATE_LIMITED':
-    case 'COPY_NOT_REGISTERED':
-    case 'CARRIAGE_UNAVAILABLE':
-    case 'PROMPT_TOO_LARGE':
-    case 'CUSTODY_NOT_ADMITTED':
-    case 'SUBSCRIPTION_UNATTENDED':
-    case 'SUBSCRIPTION_OTHER_TENANT':
-    case 'SUBSCRIPTION_NOT_OWN_WORK':
-    case 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK':
-    case 'PROVIDER_NOTHING_HAPPENED':
-    case 'TOOL_NOT_CATALOGUED':
-    case 'TOOL_REFUSED':
-    case 'TURN_MALFORMED':
-    case 'TRACING_NOT_ALLOWED':
-    case 'DEFINITION_MISMATCH':
-    case 'SCOPE_NOT_GRANTED':
-    case 'GATE_SHUT':
-    case 'DELEGATION_EXCLUDES_OPERATION':
-    case 'OPERATION_ID_REUSED':
-      return 'cancelled';
-    default:
-      return unreachable(code);
-  }
-}
-
-const unreachable = (code: never): never => {
-  throw new Error(`end code ${String(code)} has no outcome`);
+/** Each end code's outcome. Keyed by every code, so one with no row fails the type check. */
+const OUTCOME_OF: { readonly [Code in EndCode]: RunOutcome } = {
+  COMPLETED: 'success',
+  BUDGET_UNAVAILABLE: 'budget_wait',
+  CALL_LIMIT_REACHED: 'call_limit',
+  LEASE_EXPIRED: 'lease_lost',
+  LEASE_NOT_OWNED: 'lease_lost',
+  LIABILITY_UNKNOWN: 'unknown_provider_outcome',
+  OPEN_CALL_AT_STOP: 'unknown_provider_outcome',
+  ANSWER_LOST: 'unknown_provider_outcome',
+  STILL_ANSWERING: 'unknown_provider_outcome',
+  LOCAL_PLAN_LIMIT: 'waiting_plan_allowance',
+  TASK_CANCELLED: 'cancelled',
+  PLAN_SUPERSEDED: 'cancelled',
+  DECISION_STALE: 'cancelled',
+  AUTHORITY_LOST: 'cancelled',
+  OPERATION_NOT_CATALOGUED: 'cancelled',
+  EFFECT_NOT_RECONCILABLE: 'cancelled',
+  LOCAL_MODEL_REQUIRED: 'cancelled',
+  CLIENT_MODEL_USE_OFF: 'cancelled',
+  SOURCE_UNREADABLE: 'cancelled',
+  RATE_LIMITED: 'cancelled',
+  COPY_NOT_REGISTERED: 'cancelled',
+  CARRIAGE_UNAVAILABLE: 'cancelled',
+  PROMPT_TOO_LARGE: 'cancelled',
+  CUSTODY_NOT_ADMITTED: 'cancelled',
+  SUBSCRIPTION_UNATTENDED: 'cancelled',
+  SUBSCRIPTION_OTHER_TENANT: 'cancelled',
+  SUBSCRIPTION_NOT_OWN_WORK: 'cancelled',
+  SUBSCRIPTION_NOT_FOR_CLIENT_WORK: 'cancelled',
+  PROVIDER_NOTHING_HAPPENED: 'cancelled',
+  TOOL_NOT_CATALOGUED: 'cancelled',
+  TOOL_REFUSED: 'cancelled',
+  TURN_MALFORMED: 'cancelled',
+  TRACING_NOT_ALLOWED: 'cancelled',
+  DEFINITION_MISMATCH: 'cancelled',
+  SCOPE_NOT_GRANTED: 'cancelled',
+  GATE_SHUT: 'cancelled',
+  DELEGATION_EXCLUDES_OPERATION: 'cancelled',
+  OPERATION_ID_REUSED: 'cancelled',
 };
+
+/** The outcome an end code belongs to: the one place a code finds it. */
+export const outcomeOf = (code: EndCode): RunOutcome => OUTCOME_OF[code];
 
 /** What the execution read shows of a run's latest stop (`task.execution`). */
 export interface RunOutcomeView {

@@ -6,7 +6,7 @@
 
 import { recordStop } from '../../../core-custody/src/index.ts';
 import { revokeDelegation } from '../../../core-records/src/index.ts';
-import type { EndCode } from '../../../core-wire/src/run-outcomes.ts';
+import type { EndCode } from '../../../core-wire/src/index.ts';
 import type { TenantQuery, Subject } from '../../../core-records/src/index.ts';
 import { raiseAlert } from '../alerts.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
