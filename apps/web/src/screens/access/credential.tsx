@@ -15,14 +15,17 @@
 //
 // One operation id and one body per intent, held until an answer arrives, so
 // a retry after a lost answer replays the first issue (which derives the same
-// secret again) instead of making a second credential. A business or person
+// secret again) instead of making a second credential. A revocation holds its
+// operation id the same way, so its retry replays the revocation made; an
+// answer that it is revoked already (`CREDENTIAL_ALREADY_REVOKED`) shows it
+// revoked too, and either drops the secret. A business or person
 // switch answers the capabilities read loading, so the section unmounts and
 // the secret, the list and any answer still out go with it.
 
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Card, Chip, Select, TextField } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
-import { isUnavailable, type OperationsClient } from '../../operations/client.ts';
+import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import type { SubmitResult } from '../../records/submit.ts';
 import type { CapabilitiesResult } from '../../../../../packages/core-wire/src/index.ts';
 import { useAct } from './use-act.tsx';
@@ -89,6 +92,28 @@ function useIssue(client: OperationsClient) {
   };
 }
 
+/** One operation id per credential's revocation, kept until an answer arrives. */
+function useRevoke(client: OperationsClient) {
+  const intents = useRef(new Map<string, string>());
+  return (credentialId: string) => {
+    const id = intents.current.get(credentialId) ?? client.newOperationId();
+    intents.current.set(credentialId, id);
+    return async (): Promise<SubmitResult> => {
+      const answer = await client.mutate(
+        'credential.revoke',
+        { credentialId },
+        { operationId: id },
+      );
+      if (!isUnavailable(answer)) intents.current.delete(credentialId);
+      return answer;
+    };
+  };
+}
+
+/** The revocation applied, now or before: what the row and the secret follow. */
+const revokedBy = (result: SubmitResult): boolean =>
+  'ok' in result || (isRefusal(result) && result.code === 'CREDENTIAL_ALREADY_REVOKED');
+
 function Secret(props: { readonly secret: string; readonly onHide: () => void }): ReactElement {
   return (
     <div className="stack" data-credential-new>
@@ -143,6 +168,7 @@ function MadeRow(props: {
 function useCredentials(client: OperationsClient) {
   const { act, busy, outcome } = useAct(() => null);
   const issue = useIssue(client);
+  const revoking = useRevoke(client);
   const [secret, setSecret] = useState<string | null>(null);
   const [made, setMade] = useState<readonly Made[]>([]);
   /** True once the issue answered a credential, so the form may clear what was sent. */
@@ -156,10 +182,10 @@ function useCredentials(client: OperationsClient) {
   };
   const revoke = async (one: Made): Promise<void> => {
     const result = await act(
-      () => client.mutate('credential.revoke', { credentialId: one.credentialId }),
+      revoking(one.credentialId),
       `Revoked the agent credential for ${one.purpose}. Its next command is refused.`,
     );
-    if (result === null || !('ok' in result)) return;
+    if (result === null || !revokedBy(result)) return;
     setSecret(null);
     setMade((was) =>
       was.map((each) =>
