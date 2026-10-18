@@ -30,7 +30,7 @@ export const LIVE_CORRECTION_OPERANDS = {
 /**
  * Where the approval and the revert ask are asked: `gate:decide` at the
  * correction's own party (`prepare.ts`), never an agent's. Their rows in
- * `surface.ts`, which is at its line limit, take these whole.
+ * `surface-site.ts` take these whole.
  */
 export const DECIDE_AT_CORRECTION = {
   collection: 'gate',
