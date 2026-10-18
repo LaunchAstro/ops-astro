@@ -4,10 +4,11 @@
 // without the sign-in list. A refresh, an install given no list, must not
 // install a list it read before another install wrote one, and an install
 // that writes the list must not leave a moment a refresh could read it empty.
-// Sol's proofs from #1867 at 1f96df3 and #1881 at c9111fb, then every pause
-// point of each install against the whole of the other.
+// Sol's proofs from #1867 at 1f96df3 and #1881 at c9111fb and 94a02c6, then
+// every pause point of each install against the whole of the other.
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { serverUrl } from './staging-no-production-data.fixture.ts';
 import {
@@ -16,6 +17,8 @@ import {
   productionSigns,
   type OwnerQuery,
 } from '../../scripts/ops/made-up-only.ts';
+import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
+import { GUARD, installStatements } from '../../scripts/ops/made-up-install.ts';
 import { createEmptyDatabase } from '../support/fresh-database.ts';
 
 const LIST = ['ada@alpha.local'];
@@ -56,6 +59,7 @@ async function withAuthDatabase(part: string, body: (admin: OwnerQuery) => Promi
 describe.skipIf(serverUrl === undefined)('made-up guard installs at once', () => {
   staleRefresh();
   overlappingInstall();
+  overlappingTriggerCreation();
   refreshPauses();
   installPauses();
 });
@@ -129,6 +133,69 @@ function overlappingInstall(): void {
       expect(await productionSigns(admin)).not.toEqual([]);
     });
   }, 60_000);
+}
+
+/** The second installer's backend waits on a lock within five seconds. */
+async function waitsOnALock(monitor: OwnerQuery, pid: number): Promise<boolean> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    // oxlint-disable-next-line no-await-in-loop
+    const [activity] = await monitor.execute<{ waiting: boolean }>(
+      "select wait_event_type = 'Lock' as waiting from pg_stat_activity where pid = $1",
+      [pid],
+    );
+    if (activity?.waiting === true) return true;
+    // oxlint-disable-next-line no-await-in-loop
+    await delay(10);
+  }
+  return false;
+}
+
+function overlappingTriggerCreation(): void {
+  it('overlapping trigger creation commits both installers without a duplicate-name error', async () => {
+    const db = await createEmptyDatabase({ part: 'triggercreate' });
+    const url = new URL(serverUrl!);
+    url.pathname = `/${db.name}`;
+    const other = connectAsAdmin(url.toString());
+    const monitor = connectAsAdmin(url.toString());
+    try {
+      await guardMadeUp(db.admin);
+      await db.admin.execute(`drop event trigger ${GUARD}`);
+      const statements = installStatements('a'.repeat(64));
+      const drop = statements.findIndex((sql) => sql.startsWith('drop event trigger'));
+      expect(drop).toBeGreaterThan(0);
+      const tail = statements.slice(drop + 1);
+      const [backend] = await other.execute<{ pid: number }>('select pg_backend_pid() as pid');
+      let competitor!: Promise<{
+        error?: { code: string | undefined; message: string | undefined };
+      }>;
+      // Hold the first install just before its statement transaction commits.
+      // The second cannot see the uncommitted event trigger and also attempts CREATE.
+      await db.admin.transaction(async (execute) => {
+        // oxlint-disable-next-line no-await-in-loop
+        for (const sql of tail) await execute(sql);
+        competitor = (async () => {
+          try {
+            // oxlint-disable-next-line no-await-in-loop
+            for (const sql of tail) await other.execute(sql);
+            return {};
+          } catch (error) {
+            const caught = error as { code?: string; message?: string };
+            return { error: { code: caught.code, message: caught.message } };
+          }
+        })();
+        expect(
+          await waitsOnALock(monitor, backend!.pid),
+          'second installer reaches the uncommitted trigger',
+        ).toBe(true);
+      });
+      expect(await competitor, 'both installers must complete').toEqual({});
+    } finally {
+      await other.close();
+      await monitor.close();
+      await db.drop();
+    }
+  }, 30_000);
 }
 
 function refreshPauses(): void {
