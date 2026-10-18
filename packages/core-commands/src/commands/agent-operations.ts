@@ -66,9 +66,10 @@ import {
   serveDelegateChild,
 } from './agent-child.ts';
 import type { AgentCall, AgentRequest, LeaseOperands, NoOperands } from './agent-call.ts';
+import { DEFINITION_READ, type RowKeeping } from './definition-read-agent.ts';
 
 /** What every kind of agent operation carries, over its own operands `O`. */
-interface AgentOperationRow<O extends object> {
+interface AgentOperationRow<O extends object> extends RowKeeping {
   /**
    * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
    * so the two entries refuse the same stray field in the same words. Any
@@ -87,7 +88,8 @@ interface AgentOperationRow<O extends object> {
     | 'takeLaunch'
     | 'settledHandback'
     | 'childPickup'
-    | 'childHandback';
+    | 'childHandback'
+    | 'definitionRead';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -901,6 +903,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
   ],
   ['live_correction.request', row(CORRECTION_REQUEST)],
   ['run.end', row(RUN_END)],
+  ['definition.read', row(DEFINITION_READ)],
   [
     'model.call',
     modelCallRow(() =>

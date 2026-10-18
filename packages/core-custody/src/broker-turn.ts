@@ -13,19 +13,22 @@
 //    under the call's locks: the attempt's own task at its current revision,
 //    or an earlier answer of this attempt, matched by the digest its
 //    settlement kept, or a correction this attempt's delegation requested on
-//    that task (#1624 R7), shown as its id and state alone. A definition (a pinned file the run read) is refused:
-//    its kept copy is insert-only for the application (0086), and its read
-//    path waits on #1904. Anything else, or a mismatch, is
-//    `PROVENANCE_UNBOUND`, in the same bytes whoever's it was:
-//    the lookups are scoped to the business and the attempt, so a foreign row
-//    is never read.
+//    that task (#1624 R7), shown as its id and state alone, or a pinned file
+//    the run read (#1904): the text the worker carries, whose sha256 is the
+//    part's digest, and a ledger row of this business and the locked run for
+//    that path and digest. The kept copy stays insert-only for the application
+//    (0086) and is never read. Anything else, or a mismatch, is
+//    `PROVENANCE_UNBOUND`, in the same bytes whoever's it was: the lookups are
+//    scoped to the business and the run or attempt, so a foreign row is never
+//    read.
 // 3. Check the tools. Only once the answers' bytes are bound: each tool
 //    offered and asked for is the catalogue's, with arguments of its schema.
 //
 // The turn's class is its strictest source's. An answer's is the class its
 // call was made with, kept beside its digest, so a model's output never
-// becomes less strict on a later turn.
+// becomes less strict on a later turn. A definition's is the run's task's.
 
+import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../core-digest/src/index.ts';
 import type { FieldSource, ModelAnswer, ModelOperation } from '../../core-connectors/src/index.ts';
 import { isUuid, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
@@ -37,8 +40,8 @@ import { MALFORMED as ANSWER_MALFORMED } from './broker-fault.ts';
 import { answerCallsKept, readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
 import type { BrokerRefusal, ModelCallRequest, ResolvedField } from './broker-types.ts';
 
-/** What binding reads of the call's facts: its lease and its task as held. */
-type Bindings = Pick<Facts, 'leaseId' | 'source'>;
+/** What binding reads of the call's facts: its lease, its run and its task as held. */
+type Bindings = Pick<Facts, 'leaseId' | 'runId' | 'source'>;
 
 /** How deep an answer's tool calls may nest and still have a digest (#1623 R3, S1900-6). */
 const ANSWER_DEPTH = 64;
@@ -127,8 +130,34 @@ async function correctionMessage(
   return { message: { role: 'tool', toolCallId: part.toolCallId, text }, source };
 }
 
+/**
+ * A pinned file the run read (#1904): the text hashes to the digest, and the
+ * run's ledger holds that path at that digest. Read under the call's locks,
+ * after the lease's wait, so a read still open is waited for and one rolled
+ * back is not seen.
+ */
+async function definitionMessage(
+  tx: TenantQuery,
+  facts: Bindings,
+  part: TurnPart & { ref: 'definition' },
+): Promise<Bound> {
+  const digest = createHash('sha256').update(part.text, 'utf8').digest('hex');
+  if (digest !== part.digest) return undefined;
+  const read = await tx.query(
+    `select 1 from public.bootstrap_reads
+      where business_id = $1 and run_id = $2 and path = $3 and content_digest = $4
+      limit 1`,
+    [tx.businessId, facts.runId, part.path, part.digest],
+  );
+  if (read.length === 0) return undefined;
+  const source: FieldSource = businessInternal(facts.source) ? 'business_internal' : 'outside';
+  return { message: { role: 'system', text: part.text }, source };
+}
+
 async function boundOf(tx: TenantQuery, facts: Bindings, part: Part): Promise<Bound> {
   switch (part.ref) {
+    case 'definition':
+      return await definitionMessage(tx, facts, part);
     case 'task':
       return taskMessage(facts, part);
     case 'correction':
