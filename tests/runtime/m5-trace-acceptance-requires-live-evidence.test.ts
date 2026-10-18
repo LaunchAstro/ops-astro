@@ -41,6 +41,7 @@ it('a green report containing skipped cases cannot accept the M5 trace setup', (
 it('the trace proof report requires every named real-target and exporter case', () => {
   const names = [
     'the existing M5 target is healthy at its pinned version',
+    'the existing M5 target listens on loopback only, restarts with Docker and keeps signup and media upload off',
     'the M5 replay trace shows timings, outcome and call usage with no content',
     'terminal export shows the recorded outcome and call usage only from its business, run, lease and event time',
     'an exporter observed mid-run records the target outage while handback finishes and later catches up',
@@ -49,7 +50,7 @@ it('the trace proof report requires every named real-target and exporter case', 
     success: true,
     numFailedTests: 0,
     numPendingTests: 0,
-    numTotalTests: 4,
+    numTotalTests: names.length,
     testResults: [{ assertionResults: names.map((fullName) => ({ fullName, status: 'passed' })) }],
   };
   expect(acceptanceReportPasses(report)).toBe(true);
@@ -60,4 +61,14 @@ it('the trace proof report requires every named real-target and exporter case', 
     }),
   ).toBe(false);
   expect(acceptanceReportPasses({ ...report, numPendingTests: 1 })).toBe(false);
+  const withoutSettings = names.filter((name) => !name.includes('loopback only'));
+  expect(
+    acceptanceReportPasses({
+      ...report,
+      numTotalTests: withoutSettings.length,
+      testResults: [
+        { assertionResults: withoutSettings.map((fullName) => ({ fullName, status: 'passed' })) },
+      ],
+    }),
+  ).toBe(false);
 });
