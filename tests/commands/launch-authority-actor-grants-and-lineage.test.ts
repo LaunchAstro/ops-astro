@@ -6,12 +6,8 @@
 // Launch only, never for another lineage on the task, in the decision and
 // the inbox alike. Bodies kept as written for the PR's review. Settings ▸
 // Access shows such a Launch with what its agent may do.
-//
-// #1499 (owner decision on #804, 12 Oct 2026): a grant on the launcher's
-// acting identity counts only while that identity is active. Once it is
-// dormant a Launch resting on it alone is refused, Access shows it with
-// nothing, and a deactivation that commits while the agent's write waits on
-// a lock refuses the write.
+// #1499 (owner, #804): a grant on the launcher's acting identity counts only
+// while it is active, at the check, in Access and after a write's lock wait.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { configuredCredentialKeys } from '../../packages/core-records/src/index.ts';
@@ -81,10 +77,8 @@ const LAUNCH_ACTIONS = ['read', 'comment', 'write', 'assign'] as const;
 /** The Launch on `task` and the acting identity it was minted on. */
 async function launchOf(task: string): Promise<{ readonly id: string; readonly actor: string }> {
   const [row] = await w.world.db.admin.execute<{ id: string; actor: string }>(
-    `select d.id, d.minted_by_actor_id as actor
-       from public.task_launches l join public.delegations d
-         on d.business_id = l.business_id and d.id = l.delegation_id
-      where l.task_id = $1 and l.state = 'waiting'`,
+    `select d.id, d.minted_by_actor_id as actor from public.task_launches l
+       join public.delegations d on d.id = l.delegation_id where l.task_id = $1`,
     [task],
   );
   if (row === undefined) throw new Error('No Launch');
@@ -106,37 +100,25 @@ async function checkedAndShown(task: string, delegationId: string) {
   const checked = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
     const delegation = await resolveLiveById(tx, w.world.agentActorId, delegationId);
     if (delegation === undefined) throw new Error('Launch no longer live');
-    const scope = { kind: 'record', id: task } as const;
     const out: Record<string, string> = {};
     for (const action of LAUNCH_ACTIONS) {
+      const request = { collection: 'task', action, scope: { kind: 'record', id: task } } as const;
       // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
-      const decision = await checkDelegatedAuthority(tx, delegation, {
-        collection: 'task',
-        action,
-        scope,
-      });
+      const decision = await checkDelegatedAuthority(tx, delegation, request);
       out[action] = decision.ok ? 'ok' : decision.refusal.code;
     }
     return out;
   });
   const shown = answer.agents.find((agent) => agent.delegationId === delegationId);
-  return {
-    checked,
-    shown: (shown?.permissions ?? []).map((permission) => permission.action).toSorted(),
-  };
+  return { checked, shown: (shown?.permissions ?? []).map(({ action }) => action) };
 }
 
 it('a Launch resting only on a dormant launcher identity is refused, and Access shows it with nothing', async () => {
   const task = await launchedOn('actor');
   const launched = await launchOf(task);
 
-  // Active: the check answers ok, and Access shows exactly what it answers ok.
-  const active = await checkedAndShown(task, launched.id);
-  expect(active.checked['write']).toBe('ok');
-  expect(active.shown).toStrictEqual(
-    LAUNCH_ACTIONS.filter((action) => active.checked[action] === 'ok').toSorted(),
-  );
-
+  // Active, Access shows what the check answers ok (the case below, on actor).
+  expect((await checkedAndShown(task, launched.id)).checked['write']).toBe('ok');
   await w.world.db.admin.execute(DEACTIVATE, [launched.actor]);
 
   // Dormant: no grant left, so every action is narrowed, and Access shows none.
@@ -158,8 +140,7 @@ it("a launcher identity made dormant while the agent's proposal waits on the tas
   const launched = await launchOf(task);
   const body = await proposal(task);
   const credential = await credentialFor(task);
-  // The task row held: the proposal is admitted, then waits on it. The
-  // deactivation commits with the hold's release, inside the wait.
+  // Admitted, the proposal waits on the task; the deactivation commits in the wait.
   const held = await hold(
     w.world.db,
     async (execute) => {
@@ -173,7 +154,7 @@ it("a launcher identity made dormant while the agent's proposal waits on the tas
     const answer = w.world.asAgent(body, credential);
     await waiterOf(w.world.db, held);
     await held.letGo();
-    expect(codeOf(await answer)).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await answer)).toBe('DELEGATION_NARROWED');
   } finally {
     await held.letGo();
   }

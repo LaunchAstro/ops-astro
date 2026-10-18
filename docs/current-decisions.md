@@ -28,6 +28,17 @@ its full page and frozen stored identifier remain. Retain real operation,
 ownership and authority behaviour. The director owns integration and merging.
 Implementation and verification details are in [visual parity](../VISUAL-PARITY.md).
 
+## A dormant launcher identity grants a Launch nothing, 12 October 2026
+
+Owner decision on #804 (its F4, comment 6125140111). A Launch draws on its
+delegating person's grants and on those of the acting identity it was minted
+on. A grant on that identity counts only while the identity is active:
+dormant means inactive. A Launch backed only by a dormant launcher identity
+is refused `DELEGATION_NARROWED`, the Access preview shows it with nothing,
+and a write that asks again after its last lock wait is refused by a
+deactivation that committed during that wait. The person's own grants are
+unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
+
 ## Selected foundation
 
 | Area                   | Decision                                                      | Proof still required                                             |
