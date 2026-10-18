@@ -62,7 +62,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across busine
     const underOwnTask = await sameAsMadeUp(alpha, alpha.decider, a1.work.taskId, b1);
     const underTheirTask = await sameAsMadeUp(alpha, alpha.decider, b1.work.taskId, b1);
     expect([...underOwnTask, ...underTheirTask]).toEqual(four('NOT_FOUND'));
-    expect(await callState(bravo, b1.unsent)).toBe('reserved');
+    expect(await callState(bravo, b1.unsent)).toBe('released');
     expect(await ledgerOf(bravo, b1.work.taskId)).toStrictEqual(before);
   });
 });
@@ -92,7 +92,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across client
       underOwnTask: ['NOT_FOUND', 'NOT_FOUND'],
       underTheirTask: ['SCOPE_NOT_GRANTED', 'SCOPE_NOT_GRANTED'],
     });
-    expect(await callState(alpha, clientB.unsent)).toBe('reserved');
+    expect(await callState(alpha, clientB.unsent)).toBe('released');
     expect(await ledgers()).toStrictEqual(before);
   });
 });
@@ -109,7 +109,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, across people
       ...(await answerCodes(alpha, nobody, clientA)),
     ];
     expect(codes).toEqual(four('SCOPE_NOT_GRANTED'));
-    expect(await callState(alpha, clientA.unsent)).toBe('reserved');
+    expect(await callState(alpha, clientA.unsent)).toBe('released');
     expect(await ledgerOf(alpha, clientA.work.taskId)).toStrictEqual(before);
   });
 });
@@ -124,7 +124,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, answered by a
       commands: ['DELEGATION_EXCLUDES_OPERATION', 'DELEGATION_EXCLUDES_OPERATION'],
       runtime: 'DELEGATION_EXCLUDES_DECISION',
     });
-    expect(await callState(alpha, agentStop.unsent)).toBe('reserved');
+    expect(await callState(alpha, agentStop.unsent)).toBe('released');
     expect(await ledgerOf(alpha, agentStop.work.taskId)).toStrictEqual(before);
   });
 });
@@ -145,7 +145,7 @@ describe.skipIf(serverUrl === undefined)('a stop on a closed hold, named by a fo
     expect({
       own: await callState(alpha, clientA.unsent),
       other: await callState(alpha, clientB.unsent),
-    }).toEqual({ own: 'reserved', other: 'reserved' });
+    }).toEqual({ own: 'released', other: 'released' });
     expect(await ledgers()).toStrictEqual(before);
   });
 });
