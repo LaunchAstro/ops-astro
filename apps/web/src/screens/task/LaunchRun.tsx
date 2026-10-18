@@ -71,7 +71,7 @@ export function LaunchRun(props: LaunchRunProps): ReactElement | null {
   const { sending, words, launch } = useLaunch(props);
   const held = task.agent;
   if (held === null) return null;
-  if (held.run !== null) {
+  if (held.run !== null && held.run.state !== 'unanswered') {
     return (
       <p className="card__sub" data-run-state={held.run.state}>
         {held.run.state === 'waiting' ? 'Run waiting for the runner' : 'Run in progress'}
@@ -83,6 +83,11 @@ export function LaunchRun(props: LaunchRunProps): ReactElement | null {
   }
   return (
     <>
+      {held.run === null ? null : (
+        <p className="card__sub" data-run-state="unanswered">
+          No runner picked this run up. Launch it again.
+        </p>
+      )}
       <button
         type="button"
         className="btn"

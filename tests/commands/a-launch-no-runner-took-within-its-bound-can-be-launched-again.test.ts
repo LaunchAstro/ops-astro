@@ -65,7 +65,7 @@ const runOn = async (taskId: string) =>
 live('within the bound the run waits, and Launch again is refused while it is open', async () => {
   const task = await launchedTask(w, 'A runner may still come');
   await aged(task, 14);
-  expect(await runOn(task)).toMatchObject({ state: 'waiting', unanswered: false });
+  expect(await runOn(task)).toMatchObject({ state: 'waiting' });
   expect(codeOf(await launch(task))).toBe('RUN_ALREADY_OPEN');
   expect((await launchesOf(task)).map((one) => one.state)).toStrictEqual(['waiting']);
 });
@@ -75,7 +75,7 @@ live(
   async () => {
     const task = await launchedTask(w, 'No runner answered');
     await aged(task, 16);
-    expect(await runOn(task)).toMatchObject({ state: 'waiting', unanswered: true });
+    expect(await runOn(task)).toMatchObject({ state: 'unanswered' });
 
     expect(codeOf(await launch(task))).toBe(APPLIED);
 
@@ -83,7 +83,7 @@ live(
       { state: 'ended', cause: 'work_retired' },
       { state: 'waiting', cause: null },
     ]);
-    expect(await runOn(task)).toMatchObject({ state: 'waiting', unanswered: false });
+    expect(await runOn(task)).toMatchObject({ state: 'waiting' });
   },
 );
 
@@ -92,7 +92,7 @@ live('a run a runner took is unaffected by the bound', async () => {
   const [launched] = await launchesOf(task);
   expect(takenAs(await take(w, launched?.id))).toMatchObject({ state: 'started' });
   await aged(task, 60);
-  expect(await runOn(task)).toMatchObject({ state: 'started', unanswered: false });
+  expect(await runOn(task)).toMatchObject({ state: 'started' });
   expect(codeOf(await launch(task))).toBe('RUN_ALREADY_OPEN');
   expect((await launchesOf(task)).map((one) => one.state)).toStrictEqual(['started']);
 });

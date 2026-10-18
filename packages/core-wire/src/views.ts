@@ -261,9 +261,9 @@ export interface AgentAssigneeView {
   readonly run: TaskRunView | null;
 }
 
-/** An open run of the task's agent: `waiting` until the runner takes it. */
+/** An open run: `waiting` for a runner, `unanswered` once none took it in its bound (#1710). */
 export interface TaskRunView {
-  readonly state: 'waiting' | 'started';
+  readonly state: 'waiting' | 'unanswered' | 'started';
   readonly launchedAt: string;
 }
 
