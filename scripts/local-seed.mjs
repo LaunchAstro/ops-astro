@@ -35,6 +35,7 @@ import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
+import { GRANTS_BY_ROLE } from './local-seed-roles.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 // The staging reset names a new owner-only folder of its own (OPS_SEED_DIR), so
@@ -66,124 +67,6 @@ const CAST = [
 ];
 
 const BUSINESS_KEYS = { A: 'alpha', B: 'bravo' };
-
-/** What a role may do when the file names no grants of its own. */
-const GRANTS_BY_ROLE = {
-  admin: [
-    ['task', 'read'],
-    ['task', 'write'],
-    ['task', 'assign'],
-    ['task', 'comment'],
-    ['task', 'share'],
-    ['task', 'manage'],
-    ['person', 'read'],
-    // The settings commands took `manage` on the `settings` collection
-    // (`core-wire/src/surface.ts`), and the admin had six task actions and
-    // `person:read`, so as seeded nobody could write either setting: WEB-COMMENTS
-    // observed `POST /settings/set_four_eyes_threshold` as the admin answering
-    // 403 SCOPE_NOT_GRANTED against the live stack. A setting that decides who
-    // must agree before money moves is an authority change, and an
-    // administrator is who the model means by whoever may make it.
-    ['settings', 'manage'],
-    // A decision draws on the business's budget cap and signs a link into the
-    // append-only decision chain, which is the same class of act as the
-    // `settings` grant above. `core-wire/src/surface.ts` declares `task.decide`
-    // with the action `decide`, and `authority/grants.ts` matches the
-    // collection and the action exactly -- there is no implication, so
-    // `task:manage` never covered it. As seeded before this line no identity
-    // held `task:decide` at all, so `task.decide` answered 403
-    // SCOPE_NOT_GRANTED for every synthetic user and the runtime journey could
-    // not be walked over HTTP: the same shape as the `settings:manage` gap.
-    ['task', 'decide'],
-    // AW-05's answers at the budget stop (`core-wire/src/surface.ts`): a
-    // top-up is `decide` on `billing` (T2e's pair, below) and the one-click
-    // end `decide` on `gate`, each a person's act. The same gap as the two
-    // above: without it no synthetic user could end a run waiting at its ceiling.
-    ['gate', 'decide'],
-    // Settings are business facts, and a reader is not a writer. The write
-    // stays `manage` above; this is the half that lets a screen show the
-    // four-eyes band instead of guessing at it.
-    ['settings', 'read'],
-    // A top-up is a money decision on `billing` (T2e, the permission
-    // catalogue's `billing:decide`): the owner and administrators hold it.
-    ['billing', 'decide'],
-    // Custody (C31): the key catalogue gives `custody:manage` to the owner and
-    // administrators, never an agent. Without it no seeded identity could set
-    // or clear a key on Settings ▸ Keys.
-    ['custody', 'manage'],
-    // The connector fleet on Connections & signal (MP-14-7a).
-    ['connection', 'read'],
-    // What agent runs cost (MP-14-9, MP-14-6): the key catalogue's `finance:read`.
-    ['finance', 'read'],
-    // Standing mandates and graduation (MP-14-10a): filing, revoking,
-    // promoting and demoting are `mandate:manage`, the owner's and
-    // administrators' and never an agent's; a money key, so C59's step-up.
-    ['mandate', 'manage'],
-    // A person's own conversations with the agent (AW-03): the owner and
-    // administrators hold `conversation:write` (the permission key catalogue).
-    // `conversation:read`, the read-any grant, is seeded to nobody: it is given
-    // to a named person on purpose, never held by a role on install.
-    ['conversation', 'write'],
-    // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
-    // and an agent's inside its delegation; the owner and administrators hold it.
-    ['run', 'write'],
-    // Client access (MP-4-10) shares a task with its client's people under
-    // `access:share`, which the key catalogue gives the owner and
-    // administrators and never an agent.
-    ['access', 'share'],
-    // Time tracking (MP-4-6) asks `time:write`: the owner's and
-    // administrators', and a member's only where granted.
-    ['time', 'write'],
-    // Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary.
-    ['tag', 'write'],
-    // Settings ▸ Access (C32): the owner and administrators hold
-    // `access:manage` on install (the key catalogue's default holders).
-    ['access', 'manage'],
-    // The operations view and the privacy incident record (C55): the owner
-    // and administrators hold both on install, and no agent ever does.
-    // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
-    // other people's items.
-    ['operations', 'read'],
-    ['privacy', 'manage'],
-    // An agent credential of their own (API-2): the owner and administrators
-    // hold `credential:write` on install.
-    ['credential', 'write'],
-    // The client record (C32): the owner and administrators make clients.
-    ['record', 'write'],
-    // The four-eyes threshold is a money action (MP-2-11, owner line 71):
-    // `spend:decide`, so C59's step-up judges it. Client sign-off and the
-    // step-up switch stay `settings:manage` above.
-    ['spend', 'decide'],
-    // Team conversations (C71-D): `chat:comment`, an agency member's key;
-    // within a conversation the query holds it to its members.
-    ['chat', 'comment'],
-    // Group conversations (C71-G): `chat:manage`, a group's creator's and the
-    // owner's and administrators', renames one and changes its members.
-    ['chat', 'manage'],
-    // Settings ▸ Workflow triggers (C33): releasing a definition version is
-    // `automation:manage`, the owner's and administrators' and never an agent's.
-    ['automation', 'manage'],
-  ],
-  member: [
-    ['task', 'read'],
-    ['task', 'write'],
-    ['task', 'assign'],
-    ['person', 'read'],
-    // Every member may see what the business decided about itself. A member
-    // who cannot read the four-eyes band cannot tell a refusal from a bug when
-    // their own work stops at a second approver. The write is the admin's:
-    // `settings:manage` is not widened by this line.
-    ['settings', 'read'],
-    // Team conversations (C71-D): `chat:comment` is every agency member's
-    // key (the catalogue's default holders), not the administrators' alone.
-    ['chat', 'comment'],
-  ],
-  none: [],
-  // The external party holds no business grant, and must not: a person with no
-  // membership and a live business grant is refused at resolution as a former
-  // member. What it may read is what `shareRecord` shares with it, below.
-  external: [],
-};
 
 function placeholderUsers() {
   return CAST.map((member) => {

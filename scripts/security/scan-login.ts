@@ -11,7 +11,7 @@ import { databaseProject, Refusal } from '../ops/staging-reset.ts';
 
 export const SCAN_BUSINESS = 'alpha';
 export const SCAN_PERSON = 'Scan Alpha';
-/** The local seed's `member` grants (`scripts/local-seed.mjs`, GRANTS_BY_ROLE). */
+/** The local seed's `member` grants (`scripts/local-seed-roles.ts`, GRANTS_BY_ROLE). */
 export const SCAN_GRANTS: readonly (readonly [string, string])[] = [
   ['task', 'read'],
   ['task', 'write'],

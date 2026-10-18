@@ -9,30 +9,17 @@
 // lines). The matrix grants from tests/acceptance/cast.ts, not from the seed,
 // so nothing in the suite read the seed's table. This reads it.
 //
-// The seed runs on import, so its table is read from the source text, and the
-// case below fails loudly if that text stops parsing as one object literal.
+// The seed runs on import, so its table lives in scripts/local-seed-roles.ts,
+// which declares it and runs nothing, and is imported from there.
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { GRANTS_BY_ROLE } from '../../scripts/local-seed-roles.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, ADMIN_EXTRA_PAIRS, MEMBER_ACTIONS } from './cast.ts';
 
 type Pair = readonly [collection: string, action: string];
 
-function seededRoles(): Readonly<Record<string, readonly Pair[]>> {
-  const source = readFileSync(resolve(import.meta.dirname, '../../scripts/local-seed.mjs'), 'utf8');
-  const start = source.indexOf('const GRANTS_BY_ROLE = {');
-  const end = source.indexOf('\n};\n', start);
-  if (start === -1 || end === -1)
-    throw new Error('GRANTS_BY_ROLE is not in scripts/local-seed.mjs');
-  const literal = source.slice(start + 'const GRANTS_BY_ROLE = '.length, end + 2);
-  // The literal is data: arrays of string pairs and comments, nothing else.
-  // oxlint-disable-next-line no-new-func
-  return new Function(`return (${literal});`)() as Record<string, readonly Pair[]>;
-}
-
-const roles = seededRoles();
+const roles: Readonly<Record<string, readonly Pair[]>> = GRANTS_BY_ROLE;
 const held = (role: string): readonly string[] =>
   (roles[role] ?? []).map(([collection, action]) => `${collection}:${action}`).toSorted();
 

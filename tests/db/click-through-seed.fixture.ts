@@ -131,7 +131,12 @@ export async function openCast(part: string): Promise<Cast> {
   const db = await createFreshDatabase({ part });
   const root = mkdtempSync(join(tmpdir(), 'sr1-seed-'));
   for (const dir of ['scripts', 'scripts/local', '.local']) mkdirSync(join(root, dir));
-  for (const file of ['scripts/local-seed.mjs', 'scripts/local/signing-key.mjs']) {
+  const files = [
+    'scripts/local-seed.mjs',
+    'scripts/local-seed-roles.ts',
+    'scripts/local/signing-key.mjs',
+  ];
+  for (const file of files) {
     copyFileSync(join(repo, file), join(root, file));
   }
   for (const link of ['scripts/ops', 'packages', 'node_modules']) {

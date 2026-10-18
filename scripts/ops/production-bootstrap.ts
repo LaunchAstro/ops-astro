@@ -34,7 +34,7 @@ export interface Owner {
 }
 
 /**
- * The local seed's admin grants (`scripts/local-seed.mjs`, `GRANTS_BY_ROLE.admin`,
+ * The local seed's admin grants (`scripts/local-seed-roles.ts`, `GRANTS_BY_ROLE.admin`,
  * in its order; a test holds the two equal), then the operator's one grant
  * (`staging-reset.ts`).
  */

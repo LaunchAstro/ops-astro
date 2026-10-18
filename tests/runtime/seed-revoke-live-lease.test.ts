@@ -124,11 +124,11 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
     adminUrl = admin.toString();
 
     root = mkdtempSync(join(tmpdir(), 'fr1-seed-'));
-    mkdirSync(join(root, 'scripts'));
+    mkdirSync(join(root, 'scripts/local'), { recursive: true });
     mkdirSync(join(root, '.local'));
-    copyFileSync(join(repo, 'scripts/local-seed.mjs'), join(root, 'scripts/local-seed.mjs'));
+    for (const file of ['scripts/local-seed.mjs', 'scripts/local-seed-roles.ts'])
+      copyFileSync(join(repo, file), join(root, file));
     symlinkSync(join(repo, 'scripts/ops'), join(root, 'scripts/ops'));
-    mkdirSync(join(root, 'scripts/local'));
     const signer = 'scripts/local/signing-key.mjs';
     copyFileSync(join(repo, signer), join(root, signer));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
