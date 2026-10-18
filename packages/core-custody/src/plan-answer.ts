@@ -194,6 +194,8 @@ function againstSecrets(response: Record<string, unknown>, secrets: readonly str
   if (secrets.length === 0) return { kind: 'withheld', why: 'no secret to judge' };
   const redacted = redactedValue(response, redacterOf(secrets)) as Record<string, unknown>;
   if (holdsSecret(redacted, secrets)) return { kind: 'withheld', why: 'secret fragment' };
+  // Redaction turns a count that spells a secret into text; the answer keeps its shape or is withheld.
+  if (!wellShaped(redacted)) return { kind: 'withheld', why: 'secret fragment' };
   return { kind: 'completed', response: redacted };
 }
 
