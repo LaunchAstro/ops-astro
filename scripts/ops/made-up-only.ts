@@ -233,6 +233,21 @@ export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promis
 }
 
 /**
+ * The local slice's admission before its first sign-in (`db:admit`, between
+ * `auth:up` and `auth:seed`): the seed's admission, then the mark with nothing
+ * made yet, as the staging reset marks an emptied database. Every sign-in
+ * `auth:seed` writes after it is the guard's to judge, so `db:seed` finds a
+ * marked database instead of an unmarked one that has held a row. A marked
+ * database is judged and keeps its mark.
+ */
+export async function admitBeforeSignIns(admin: OwnerQuery, confirmed: boolean): Promise<string[]> {
+  const wasMarked = await marked(admin);
+  const signs = await admitMadeUp(admin, confirmed);
+  if (signs.length === 0 && !wasMarked) await markMadeUp(admin, []);
+  return signs;
+}
+
+/**
  * A FROM item that tags the statement's transaction as the seed's, so the guard
  * lets the seed's own write through the owner connection pass.
  */

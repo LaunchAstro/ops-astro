@@ -66,6 +66,7 @@
     "db:up": "bash scripts/local/db-up.sh",
     "db:down": "bash scripts/local/db-down.sh",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "db:admit": "node scripts/local/db-admit.mjs",
     "db:seed": "node scripts/local-seed.mjs",
     "seed:click-through": "node scripts/ops/click-through-seed.mjs",
     "fixture:snapshot": "bash scripts/local/fixture-snapshot.sh build",
