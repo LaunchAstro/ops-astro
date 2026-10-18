@@ -1592,7 +1592,20 @@ both tenancy-scoped with row security forced, and the fair share's count
   adapter a lookup, else `person`). The hold also marks the run's step as one
   that may have acted (`markStepActed`), so the hand-back, the sweep and the
   pass stop on it. A status the operation declared in `nothingHappened`
-  (replay: `http_429`) releases the hold whole. The reconciliation pass's
+  (replay: `http_429`) releases the hold whole, and so does custody's own
+  refusal before a send. A release for any other reason proves nothing and is
+  held unknown, the maximum kept (#1623 R1).
+- Outcomes (#1623 R1, `core-custody/src/broker-stop.ts`): the transaction that
+  stops an attempt records its one `run_outcomes` row and retires its work.
+  Settlement does it for an unknown hold (`LIABILITY_UNKNOWN`), a release for
+  the declared `LOCAL_PLAN_LIMIT` (`waiting_plan_allowance`) or another
+  declared code (`cancelled / PROVIDER_NOTHING_HAPPENED`), and a custody
+  refusal (`cancelled`); the reserve and the start for each refusal they record;
+  the budget stop, cancellation, supersession, authority loss and expiry in
+  their own transactions; the worker through `run.end`. A call still
+  dispatched or held unknown at the stop makes the row
+  `unknown_provider_outcome`, the stop's own code kept as `stop_cause`. The
+  first writer wins; the row never changes. The reconciliation pass's
   provider phase (`reconcileProviderCalls`, `core-custody/src/broker-reconcile.ts`,
   run per business by `passDeployment` after the sweep) asks the provider, through
   custody and by the call's id (the operation id every call sends, a
