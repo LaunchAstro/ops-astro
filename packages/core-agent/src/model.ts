@@ -18,18 +18,23 @@
 //   model's own `callbacks` and `verbose`, however they were set (#1921),
 //   including a getter or proxy that would read differently to core (#1925).
 //   Core then runs a model of its own (`BrokerTurns`), built here and never
-//   handed out, with no callbacks, on messages rebuilt from their stored
-//   form, and checks again just before it configures callbacks: nothing a
-//   caller sets on this model, or runs after the guard, reaches them.
+//   handed out, with no callbacks, on a batch copied by index into messages
+//   of this module's own, and checks again just before it configures
+//   callbacks: nothing a caller sets on this model, or runs after the
+//   guard, reaches them.
 
 import type { Callbacks } from '@langchain/core/callbacks/manager';
 import { BaseChatModel, type BindToolsInput } from '@langchain/core/language_models/chat_models';
 import {
   type AIMessageChunk,
   type BaseMessage,
+  type BaseMessageLike,
+  AIMessage,
+  ChatMessage,
   coerceMessageLikeToMessage,
-  mapChatMessagesToStoredMessages,
-  mapStoredMessagesToChatMessages,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import type { ChatResult, LLMResult } from '@langchain/core/outputs';
 import { BrokerTurns, refused, type BrokerPort, type OpsAstroCallOptions } from './broker-turns.ts';
@@ -37,6 +42,56 @@ import { entryRefused, ownRefused } from './guard.ts';
 import { RunEnd, type AttemptState } from './turn.ts';
 
 export type { BrokerPort, Turn, TurnAnswer } from './broker-turns.ts';
+
+/**
+ * One message as the plain fields a turn reads (#1925): its type, id, tool
+ * call and status, and its text. Each is read once, and a new core message
+ * is built from them, so core never holds the caller's object.
+ */
+function plainMessage(like: BaseMessageLike): BaseMessage {
+  const message = coerceMessageLikeToMessage(like) as BaseMessage & {
+    tool_call_id?: unknown;
+    status?: unknown;
+  };
+  const type = String(message.getType());
+  const text: unknown = message.content;
+  const id: unknown = message.id;
+  const fields = {
+    content: typeof text === 'string' ? text : '',
+    ...(id === undefined ? {} : { id: String(id) }),
+  };
+  if (type === 'human') return new HumanMessage(fields);
+  if (type === 'ai') return new AIMessage(fields);
+  if (type === 'system') return new SystemMessage(fields);
+  if (type !== 'tool') return new ChatMessage({ ...fields, role: type });
+  const callId: unknown = message.tool_call_id;
+  const status: unknown = message.status;
+  return new ToolMessage({
+    ...fields,
+    tool_call_id: String(callId),
+    status: status === 'error' ? 'error' : 'success',
+  });
+}
+
+/**
+ * The batch copied by index: each length and element read once, never
+ * through the caller's `map`, iterator or spread, which an array subclass or
+ * a proxy could run again inside core (#1925).
+ */
+function plainBatch(messages: readonly (readonly BaseMessageLike[])[]): BaseMessage[][] {
+  const batch: BaseMessage[][] = [];
+  const lists = Number(messages.length);
+  // oxlint-disable-next-line unicorn/no-for-loop -- a for-of runs the caller's iterator
+  for (let i = 0; i < lists; i += 1) {
+    const list = messages[i] ?? [];
+    const size = Number(list.length);
+    const copy: BaseMessage[] = [];
+    // oxlint-disable-next-line unicorn/no-for-loop -- a for-of runs the caller's iterator
+    for (let j = 0; j < size; j += 1) copy.push(plainMessage(list[j] as BaseMessageLike));
+    batch.push(copy);
+  }
+  return batch;
+}
 
 export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
   readonly #turns: BrokerTurns;
@@ -73,13 +128,9 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
     options?: string[] | OpsAstroCallOptions,
     callbacks?: Callbacks,
   ): Promise<LLMResult> {
-    // Messages and options are read once, before the guard: each message is
-    // rebuilt from its stored form, so core reads none of the caller's own.
-    const turns = messages.map((list) =>
-      mapStoredMessagesToChatMessages(
-        mapChatMessagesToStoredMessages(list.map((message) => coerceMessageLikeToMessage(message))),
-      ),
-    );
+    // Messages and options are read once, before the guard, into core
+    // messages of this module's own, so core reads none of the caller's.
+    const turns = plainBatch(messages);
     const asked = Array.isArray(options) ? { stop: options } : { ...options };
     // Core is handed plain copies of the only options a turn uses, never the
     // caller's own objects.
