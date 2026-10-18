@@ -24,7 +24,7 @@ import { ollamaBroker, says, standInOllama, type StandIn } from './ollama-stand-
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 
 /** Rejects after `ms`, so a case that would hang fails instead. */
 const within = async <T>(ms: number, work: Promise<T>): Promise<T> =>
