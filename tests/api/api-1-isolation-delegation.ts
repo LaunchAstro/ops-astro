@@ -122,6 +122,8 @@ const bodies = (claim: Claim): Record<string, Body> => ({
     knowledge: ['made-up'],
     unknowns: [],
   }),
+  // The worker's own stop (#1623 R1), at the claim's lease.
+  'run.end': () => ({ ...claim.lease, endCode: 'TOOL_REFUSED' }),
   // No crossing target: the helper's handback answers to its own child credential.
   'run.child_handback': () => ({ outcome: 'completed' }),
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
@@ -181,6 +183,9 @@ export function delegationCrossing(): void {
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
+      // Asked of the lease as `model.call` is; left out of the control below, which
+      // would end the agent's own run (its own-lease stop is d06-agent's control).
+      'run.end': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
