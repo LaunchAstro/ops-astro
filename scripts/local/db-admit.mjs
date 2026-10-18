@@ -6,14 +6,16 @@
 // only while no tenant or sign-in table has ever held a row, and `auth:seed`
 // writes `auth.users` rows through GoTrue. So this runs between `auth:up` and
 // `auth:seed` (docs/local/README.md): the seed's own admission, then the mark.
-// From then on the guard judges each sign-in as it is written, and `db:seed`
-// finds a marked database. Run again, it judges the marked database and keeps
-// its mark. It reads no tenant or sign-in row and writes none.
+// From then on the guard judges each sign-in as it is written, admitting only
+// `auth:seed`'s own addresses until `db:seed` has judged the database, and
+// `db:seed` finds a marked database. Run again, it judges the marked database
+// and keeps its mark. It reads no tenant or sign-in row and writes none.
 
 import { fileURLToPath } from 'node:url';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { admitBeforeSignIns } from '../ops/made-up-only.ts';
+import { PEOPLE } from './synthetic-logins.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const local = process.env['OPS_SEED_DIR'] || `${root}.local`;
@@ -26,7 +28,12 @@ if (!adminUrl) {
 
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 try {
-  const signs = await admitBeforeSignIns(admin, process.env['LOCAL_SEED_MADE_UP'] === 'confirm');
+  const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
+  const signs = await admitBeforeSignIns(
+    admin,
+    confirmed,
+    PEOPLE.map((person) => person.email),
+  );
   if (signs.length > 0) {
     console.error(`db-admit: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
     console.error('db-admit: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
