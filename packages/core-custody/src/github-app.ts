@@ -4,14 +4,17 @@
 // for each party, the one repository it may reach. A call names its party;
 // custody finds that party's binding and refuses, before anything is sent,
 // a call whose path is no route custody sends as written, or names any other
-// repository, or the same one spelt otherwise. Admitted, custody signs a ten-minute App token and asks the
+// repository. GitHub reads a repository's name in any case, so custody compares
+// names so too. Admitted, custody signs a ten-minute App token and asks the
 // App's installation for a token restricted to that one repository, with
 // Contents and Pull requests and nothing more. The answer must name that
 // repository alone and expire in the future, or nothing is sent with it.
-// The minted token carries this one call and is then dropped: none is kept,
-// so none outlives its expiry, and none is ever written to a log or passed
-// back. The token request goes to the destination's own origin, through the
-// same checked egress as the call itself.
+// The token request spends the call's own time, and the call keeps only what
+// is left. The minted token carries this one call and is then dropped: none
+// is kept, it is sent only while still in date, however long admission took,
+// and it is never written to a log or passed back. The token request goes to
+// the destination's own origin, through the same checked egress as the call
+// itself.
 //
 // Custody's process loads this file, so it imports no connector or database code.
 
@@ -32,10 +35,15 @@ function repositoryOf(path: string): string | undefined {
   return match === null ? undefined : `${match[1] ?? ''}/${match[2] ?? ''}`;
 }
 
-/** The call's party binding when its path names that party's repository byte for byte. */
+/** Whether two `owner/name` spellings are one repository: GitHub reads names in any case. */
+export const sameRepository = (one: string, other: string): boolean =>
+  one.toLowerCase() === other.toLowerCase();
+
+/** The call's party binding when its path names that party's repository. */
 function bindingFor(app: GithubApp, request: PartyRequest): AppBinding | undefined {
   const binding = app.bindings.find((one) => one.party === request.party);
-  return binding !== undefined && repositoryOf(request.path) === binding.repository
+  const named = repositoryOf(request.path);
+  return binding !== undefined && named !== undefined && sameRepository(named, binding.repository)
     ? binding
     : undefined;
 }
@@ -51,11 +59,19 @@ function appToken(app: GithubApp, key: string, now: number): string {
   return `${unsigned}.${signature.toString('base64url')}`;
 }
 
-const MINT_LIMITS = { timeoutMs: 10_000, maxResponseBytes: 65_536 } as const;
+/** The longest a token request may take, whatever time the call has left. */
+const MINT_TIMEOUT_MS = 10_000;
+const MINT_MAX_RESPONSE_BYTES = 65_536;
 const TOKEN = /^[!-~]{8,512}$/u;
 
-/** The minted token if the answer is one for exactly this repository, still in date. */
-function tokenOf(body: string, repository: string, now: number): string | undefined {
+/** A token minted for one call, as the call presents it, and when it expires. */
+export interface Minted {
+  readonly presented: Presentable;
+  readonly expiresAt: number;
+}
+
+/** The minted token and its expiry if the answer is one for exactly this repository, still in date. */
+function tokenOf(body: string, repository: string, now: number): Minted | undefined {
   let answer: unknown;
   try {
     answer = JSON.parse(body);
@@ -65,21 +81,26 @@ function tokenOf(body: string, repository: string, now: number): string | undefi
   const { token, expires_at: expires, repositories } = (answer ?? {}) as Record<string, unknown>;
   const only = Array.isArray(repositories) && repositories.length === 1 ? repositories[0] : null;
   const named = (only as Record<string, unknown> | null)?.['full_name'];
-  if (typeof token !== 'string' || !TOKEN.test(token) || named !== repository) return undefined;
-  return typeof expires === 'string' && Date.parse(expires) > now ? token : undefined;
+  if (typeof token !== 'string' || !TOKEN.test(token)) return undefined;
+  if (typeof named !== 'string' || !sameRepository(named, repository)) return undefined;
+  const expiresAt = typeof expires === 'string' ? Date.parse(expires) : Number.NaN;
+  return expiresAt > now
+    ? { presented: { header: 'authorization', scheme: 'bearer', value: token }, expiresAt }
+    : undefined;
 }
 
 /**
  * A token minted for this one call, on the binding's installation and
- * repository, as the call presents it; undefined when the App gave none.
+ * repository, within `timeoutMs`; undefined when the App gave none.
  */
 async function mintFor(
   app: GithubApp,
   key: string,
   binding: AppBinding,
   destination: Destination,
+  timeoutMs: number,
   now: () => number = Date.now,
-): Promise<Presentable | undefined> {
+): Promise<Minted | undefined> {
   const path = `/app/installations/${String(binding.installation)}/access_tokens`;
   const name = binding.repository.split('/')[1];
   // The token request alone: no route of the call's, and a POST to this one path.
@@ -95,32 +116,34 @@ async function mintFor(
         repositories: [name],
         permissions: { contents: 'write', pull_requests: 'write' },
       }),
-      ...MINT_LIMITS,
+      timeoutMs,
+      maxResponseBytes: MINT_MAX_RESPONSE_BYTES,
     },
     { header: 'authorization', scheme: 'bearer', value: appToken(app, key, now()) },
   );
   if (!outcome.ok || outcome.status !== 201) return undefined;
-  const token = tokenOf(outcome.body, binding.repository, now());
-  return token === undefined
-    ? undefined
-    : { header: 'authorization', scheme: 'bearer', value: token };
+  return tokenOf(outcome.body, binding.repository, now());
 }
 
 /**
- * How a call on an App entry is carried: the token minted for it alone, or
- * why nothing may be sent. Both refusals come before anything reaches the
- * repository, and an unbound repository before anything leaves custody.
+ * How a call on an App entry is carried: the token minted for it alone and
+ * the call with the time the mint left it, or why nothing may be sent. Every
+ * refusal comes before anything reaches the repository, and an unbound
+ * repository before anything leaves custody. A mint that leaves the call no
+ * time is no token.
  */
 export async function carriedByApp(
   credential: StoredCredential,
   request: PartyRequest,
   destinations: ReadonlyMap<string, Destination>,
+  now: () => number = Date.now,
 ): Promise<
-  | Presentable
+  | (Minted & { readonly request: PartyRequest })
   | 'CUSTODY_REQUEST_MALFORMED'
   | 'CUSTODY_REPOSITORY_NOT_BOUND'
   | 'CUSTODY_TOKEN_NOT_MINTED'
 > {
+  const deadline = now() + request.timeoutMs;
   const { app } = credential;
   const destination = destinations.get(request.destination);
   // Only a path custody would send as written: no step or escape can take it to another repository.
@@ -129,6 +152,11 @@ export async function carriedByApp(
   }
   const binding = app === undefined ? undefined : bindingFor(app, request);
   if (app === undefined || binding === undefined) return 'CUSTODY_REPOSITORY_NOT_BOUND';
-  const token = await mintFor(app, credential.value, binding, destination).catch(() => null);
-  return token ?? 'CUSTODY_TOKEN_NOT_MINTED';
+  const timeoutMs = Math.min(MINT_TIMEOUT_MS, request.timeoutMs);
+  const minted = await mintFor(app, credential.value, binding, destination, timeoutMs, now).catch(
+    () => null,
+  );
+  const left = deadline - now();
+  if (minted === undefined || minted === null || left < 1) return 'CUSTODY_TOKEN_NOT_MINTED';
+  return { ...minted, request: { ...request, timeoutMs: left } };
 }
