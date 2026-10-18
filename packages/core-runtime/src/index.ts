@@ -148,6 +148,7 @@ export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.t
 export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
 export {
   DROP_FAULT,
+  lockDropAtSettlement,
   recordDrop,
   REPORTED_DROP_CAUSES,
   sweepLostWorkers,
