@@ -21,7 +21,8 @@ vi.mock('node:child_process', () => ({
     // A Docker container with NetworkMode=host has no published-port bindings.
     // Langfuse can listen on the host's 0.0.0.0:3000 with these inspect values.
     if (format.includes('NetworkMode')) return 'host\n';
-    if (format.includes('RestartPolicy')) return Array(6).fill('always null').join('\n');
+    if (format.includes('RestartPolicy'))
+      return Array.from({ length: 6 }, () => 'always null').join('\n');
     if (format.includes('.Config.Env'))
       return args.includes('langfuse-langfuse-web-1')
         ? 'AUTH_DISABLE_SIGNUP=true;LANGFUSE_MEDIA_UPLOAD_ENABLED=false;TELEMETRY_ENABLED=false;\n'

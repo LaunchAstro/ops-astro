@@ -143,18 +143,10 @@ describe('the M5 Langfuse boot script', () => {
     expect(code).not.toBe(0);
     expect(output).not.toContain('started');
   });
+});
 
-  it('never stops, removes, recreates or pulls by itself', () => {
-    const script = readFileSync(SCRIPT, 'utf8');
-    for (const word of [
-      ' down',
-      ' rm ',
-      ' stop',
-      ' kill',
-      ' pull ',
-      '--volumes',
-      '--force-recreate',
-    ])
-      expect(script.replace(/^#.*$/gmu, ''), word).not.toContain(word);
-  });
+it('the M5 Langfuse boot script never stops, removes, recreates or pulls by itself', () => {
+  const script = readFileSync(SCRIPT, 'utf8');
+  for (const word of [' down', ' rm ', ' stop', ' kill', ' pull ', '--volumes', '--force-recreate'])
+    expect(script.replaceAll(/^#.*$/gmu, ''), word).not.toContain(word);
 });
