@@ -195,10 +195,9 @@ export type CommandName =
   | 'conversation.models'
   | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
-  // broker (AW-01). The grant is the run's delegation, one of the six facts
-  // the broker verifies from rows; no person grant carries it.
+  // broker (AW-01), and the holder's own stop (#1623 R1). The grant is the run's
+  // delegation, one of six facts the broker verifies from rows; no person grant carries it.
   | 'model.call'
-  // #1623 R1: the lease holder's own stop, recorded as its attempt's outcome.
   | 'run.end'
   // A person's two answers to a run waiting at its approved ceiling (AW-05):
   // a top-up under four eyes above the business's threshold, or one click

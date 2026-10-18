@@ -23,7 +23,7 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
-import { RUN_END_EFFECTS } from './data-effects-runs.ts';
+import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS } from './data-effects-runs.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -203,21 +203,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
   'conversation.set_model': writing(client('conversations')),
-  // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
-  // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
-  // delegation retired, the run waiting; past the run's last ask, the run ended and a person told
-  // on the task (`alerts`). The provider call goes through the credential broker; a client's task
-  // never reaches a route (C60), so it is the business's own.
-  // Every stop records its attempt's outcome, and a provider drop at settlement records T3e1's drop
-  // (#1623 R1): the attempt's cause, the hold classified, the run's progress, the work back.
-  'model.call': writing(
-    [
-      ...client('model_calls', 'alerts', 'budget_asks', 'leases', 'planned_runs'),
-      ...client('attempts', 'reservations', 'run_events', 'run_outcomes', 'task_envelopes'),
-      ...business('copy_registrations', 'delegations'),
-    ],
-    [{ provider: 'model', forClient: false }],
-  ),
+  'model.call': MODEL_CALL_EFFECTS,
   'run.end': RUN_END_EFFECTS,
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
   // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
