@@ -60,15 +60,17 @@ function cssToken(css: string, at: number): CssToken {
 const preprocessed = (source: string): string =>
   source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
 
-// What an inline style's `display` may read without hiding its element. A value this reader cannot
-// decide (a variable, `revert-layer` to a sheet, a function, an unknown word) counts as `none`, so
-// a correction inside it never certifies live. Only the inline style is read: a page's sheets can
-// hide an element too (by class, id or media query), and their cascade is not computed here.
+// What an inline style's `display` may read without hiding its element. A column box draws none of
+// its contents, and `contents` reads as `none` on some elements (a textarea, an object, most SVG), so
+// those are left out. A value this reader cannot decide (a variable, `revert-layer` to a sheet, a
+// function, an unknown word) counts as `none`, so a correction inside it never certifies live. Only
+// the inline style is read: a page's sheets can hide an element too (by class, id or media query),
+// and their cascade is not computed here.
 const SHOWN = new Set(
   (
-    'block inline run-in flow flow-root table flex grid ruby math list-item contents ' +
+    'block inline run-in flow flow-root table flex grid ruby math list-item ' +
     'inline-block inline-table inline-flex inline-grid table-row-group table-header-group ' +
-    'table-footer-group table-row table-cell table-column-group table-column table-caption ' +
+    'table-footer-group table-row table-cell table-caption ' +
     'ruby-base ruby-text ruby-base-container ruby-text-container inherit initial unset'
   ).split(' '),
 );
