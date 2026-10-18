@@ -11,7 +11,8 @@
 // 2. The offer judgement (`handoff.offer`); passing, the database rings the
 //    agent's doorbell. Refused: nothing offered.
 // 3. The first sealed accept within the accept window, or the call is
-//    released: only a request sends, and none was sent.
+//    released: only a request sends, and none was sent. A plan call's window
+//    also holds the agent's prepare before its accept (#1620 P4).
 // 4. The send judgement (`handoff.fence`), whose transaction holds every lock
 //    the call's authority rests on until the request is written or can no
 //    longer be: `written`, a sealed refusal, or W after the accept was heard.
@@ -27,6 +28,7 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
   ACCEPT_WINDOW_MS,
+  PLAN_ACCEPT_WINDOW_MS,
   callTopic,
   deadlineOf,
   SEAL_LIFE_MS,
@@ -38,6 +40,7 @@ import {
   type Handoff,
   type Line,
 } from './carriage.ts';
+import { PLAN_PROVIDER } from './carry-rule.ts';
 import { sealed, type CarryKeys } from './carry-seal.ts';
 import { listen, type Heard, type Next, type Skew } from './carried-line.ts';
 import type { Custody, CustodyOutcome } from './custody.ts';
@@ -159,7 +162,9 @@ async function carry(
   if (!offer.ok) return refused(offer.code);
   // Read once the offer has committed: its judgement's wait is this side's, not the agent's clock.
   const offeredAt = carrying.now();
-  const accept = await next((heard) => heard.event === 'accept', carrying.now() + ACCEPT_WINDOW_MS);
+  const plan = asked.request.destination === PLAN_PROVIDER;
+  const window = plan ? PLAN_ACCEPT_WINDOW_MS : ACCEPT_WINDOW_MS;
+  const accept = await next((heard) => heard.event === 'accept', carrying.now() + window);
   const heardAt = carrying.now();
   const acceptedAt = Number((accept?.body as { acceptedAt?: unknown } | null)?.acceptedAt);
   if (accept === undefined || !Number.isSafeInteger(acceptedAt))
