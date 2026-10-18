@@ -37,10 +37,11 @@ import { read, ROOT } from './merge-group-repo.ts';
 const temp = scratch();
 
 // RELAYSHARD1830 and #1478 (orchestrator, 18 October 2026): 3 and 3 shards, so two merge
-// groups fit the account's 60 runners, each job at most 20 minutes. A shard's measured items
-// plus what every shard repeats outside them: checkout, install, the cached build and the
-// summary, under a minute in run 38695912255. A plan past it needs more shards or a finer split.
-const SHARD_JOB_SECONDS = 20 * 60;
+// groups fit the account's 60 runners, each job at most 25 minutes, which every measured full
+// run meets (#1753 takes it to ten). A shard's measured items plus what every shard repeats
+// outside them: checkout, install, the cached build and the summary, under a minute in run
+// 38695912255. A plan past it needs more shards or a finer split.
+const SHARD_JOB_SECONDS = 25 * 60;
 const SHARD_SETUP_SECONDS = 60;
 
 /** Whether a shard of `load` measured seconds, plus the setup every shard repeats, fits its job. */
