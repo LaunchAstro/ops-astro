@@ -26,15 +26,7 @@ import {
   topUpAtBudgetStop,
 } from '../../packages/core-runtime/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
-import {
-  asAgent,
-  codeOf,
-  liveWork,
-  pickup,
-  racer,
-  rows,
-  type Work,
-} from '../runtime/schedules-harness.ts';
+import { asAgent, codeOf, liveWork, racer, rows, type Work } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
 import {
   broker,
@@ -86,46 +78,36 @@ async function stoppedUnsent(): Promise<Unsent> {
   return { work, before, request, reserved: reserving.reserved };
 }
 
-const topUp = async (work: Work, amountMinor = 1_000) =>
+const topUp = async (work: Work) =>
   await s.db.app.withBusiness(
     s.business,
     async (tx) =>
       await topUpAtBudgetStop(tx, {
         ...decider(s, await runOf(work)),
-        amountMinor,
+        amountMinor: 1_000,
         currency: 'AUD',
       }),
   );
 
 /**
- * #1623 R1 (B2): a stop releases the unsent calls its hold never counted, so a
- * counted unsent call is one a later stop leaves on a hold a top-up already
- * counted (`releaseNeverSent`). 400 holds no call at 500, so the first stops the
- * run; a top-up of 550 makes the hold 950; the work picked up again holds one
- * call reserved at 500, never sent, and the next stops the run again.
+ * #1623 R1 (B2): every stop releases the unsent calls its hold never counted
+ * (`broker-stop.ts:86-89`; docs/current-decisions.md:94), and a pickup after a
+ * top-up re-holds on a fresh reservation no top-up counted (`budget-answer.ts:21-23`),
+ * so no product path leaves a reserved call for a count any more (#1937). The
+ * stop's own released call is seeded back to reserved, as
+ * `counted-call-release-race-locks.test.ts` seeds its count's call. Removed for
+ * that rule: the fix round's second stop on a topped-up hold and its "left
+ * reserved by the stop" check, since that stop releases its call too.
  */
 async function countedUnsent(): Promise<Unsent> {
-  const first = await liveWork(s, `giveback counted ${randomUUID()}`, 400);
-  world.provider.mode('answer');
-  expect(await call(first)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
-  expect(await topUp(first, 550)).toMatchObject({ ok: true, value: { heldMinor: '950' } });
-  // The pickup re-holds on a fresh reservation (`budget-answer.ts`): the call is read on that one.
-  const picked = await pickup(s, reservationOf(first));
-  const decision = { ...first.decision, reservationId: picked['reservationId'] };
-  const work: Work = { ...first, decision, picked };
-  await stepOf(work);
-  const request = requestFor(work);
-  const reserving = await s.db.app.withBusiness(
-    s.business,
-    async (tx) => await reserveModelCall(tx, caller(work), request, broker),
+  const unsent = await stoppedUnsent();
+  expect(await calls(unsent.work), 'released by the stop').toMatchObject([{ state: 'released' }]);
+  await s.db.admin.execute(
+    `update public.model_calls set state = 'reserved', ended_at = null where id = $1`,
+    [unsent.reserved.callId],
   );
-  if (!reserving.ok) throw new Error(`reserve refused: ${reserving.code}`);
-  const before = await envelopeActual(work);
-  expect(await call(work)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
-  expect(await calls(work), 'left reserved by the stop').toMatchObject([
-    { state: 'reserved', reserved: '500' },
-  ]);
-  return { work, before, request, reserved: reserving.reserved };
+  expect(await calls(unsent.work)).toMatchObject([{ state: 'reserved', reserved: '500' }]);
+  return unsent;
 }
 
 const end = async (work: Work) =>
@@ -143,7 +125,7 @@ const sweepCalls = async (): Promise<void> => {
 };
 
 it('a counted call released at its retried start gives its maximum back once', async () => {
-  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  // #1623 R1 (B2): the counted unsent call is the stop's own, seeded back (`countedUnsent`).
   const { work, before, request, reserved } = await countedUnsent();
   expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
   const picked = await asAgent(s, {
@@ -173,7 +155,7 @@ it('a counted call released at its retried start gives its maximum back once', a
 });
 
 it('a counted call the model-call sweep releases gives its maximum back once', async () => {
-  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  // #1623 R1 (B2): the counted unsent call is the stop's own, seeded back (`countedUnsent`).
   const { work, before, request, reserved } = await countedUnsent();
   expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
@@ -209,7 +191,7 @@ const held = async (work: Work): Promise<{ readonly hold: number; readonly envel
 };
 
 it('a counted call released at its start while its topped-up hold is still held gives back onto that hold', async () => {
-  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  // #1623 R1 (B2): the counted unsent call is the stop's own, seeded back (`countedUnsent`).
   const { work, before, request, reserved } = await countedUnsent();
   expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
@@ -244,7 +226,7 @@ it('a call released before any top-up or end gives nothing back, and a later top
 });
 
 it('a counted call whose hold another transaction holds is left to the next sweep, which gives back once', async () => {
-  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  // #1623 R1 (B2): the counted unsent call is the stop's own, seeded back (`countedUnsent`).
   const { work, before } = await countedUnsent();
   expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   const other = racer(s);
