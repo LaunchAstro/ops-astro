@@ -144,8 +144,7 @@ database from empty: `tests/support/migrated-template.ts` migrates
 `migrated_<digest>` from empty once (the conformance runner builds it before
 its first counter read, locking in `postgres`, and a suite's global setup only
 reads it beside the configured database, so rule 7's counter does not move,
-even with `postgres` configured:
-`tests/ci/database-free-suite-refused-on-postgres.proof.test.mjs`), and
+even with `postgres` configured, as `pnpm db:cases` proves), and
 `createFreshDatabase` clones it.
 `tests/support/migrated-template.test.ts` proves a clone equals a database
 migrated from empty, catalogue and privileges alike, and
