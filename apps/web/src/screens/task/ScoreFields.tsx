@@ -47,7 +47,7 @@ interface RecoveryProps {
   readonly id: string;
 }
 function ScoreRecovery(props: RecoveryProps): ReactElement {
-  const { hold, custody, id } = props;
+  const { hold } = props;
   return (
     <>
       {hold.failure === null ? null : (
@@ -65,14 +65,26 @@ function ScoreRecovery(props: RecoveryProps): ReactElement {
       ) : null}
       {!hold.kept && !hold.ephemeral ? (
         <p role="alert">
-          {hold.pending === null
-            ? 'The stored answer is confirmed, but this tab could not clear recovery. No further score change was sent.'
-            : hold.uncertain
-              ? 'This tab could not keep score recovery. No retry was sent.'
-              : 'This tab could not keep score recovery. No score change was sent.'}
+          {hold.abandoned
+            ? 'This change was let go, but this browser could not clear its saved copy yet.'
+            : hold.pending === null
+              ? 'The stored answer is confirmed, but this tab could not clear recovery. No further score change was sent.'
+              : hold.uncertain
+                ? 'This tab could not keep score recovery. No retry was sent.'
+                : 'This tab could not keep score recovery. No score change was sent.'}
         </p>
       ) : null}
-      {hold.pending !== null || (!hold.kept && !hold.ephemeral) ? (
+      <ScoreRecoveryControls {...props} />
+    </>
+  );
+}
+/** Retry (or clear a saved copy), Stop waiting once a held retry was refused, or send unkept. */
+function ScoreRecoveryControls(props: RecoveryProps): ReactElement {
+  const { hold, custody, id } = props;
+  const held = hold.pending;
+  return (
+    <>
+      {held !== null || (!hold.kept && !hold.ephemeral) ? (
         <button
           type="button"
           className="btn"
@@ -80,10 +92,26 @@ function ScoreRecovery(props: RecoveryProps): ReactElement {
           disabled={hold.busy}
           onClick={() => custody.retry(id)}
         >
-          {hold.pending === null ? 'Retry score recovery cleanup' : 'Retry score change'}
+          {hold.abandoned
+            ? 'Clear saved copy'
+            : held === null
+              ? 'Retry score recovery cleanup'
+              : 'Retry score change'}
         </button>
       ) : null}
-      {hold.pending !== null && !hold.kept && !hold.uncertain && !hold.ephemeral ? (
+      {held === null ||
+      !hold.uncertain ||
+      (hold.failure?.kind ?? 'unknown') === 'unknown' ? null : (
+        <button
+          type="button"
+          className="btn"
+          disabled={hold.busy}
+          onClick={() => custody.letGo(id, held.operationId)}
+        >
+          Stop waiting for this change
+        </button>
+      )}
+      {held !== null && !hold.kept && !hold.uncertain && !hold.ephemeral ? (
         <button
           type="button"
           className="btn"
