@@ -2,18 +2,15 @@
 //
 // MP-7-11: the drawer's open conversations and the ask seam.
 //
-// Pure moves over the drawer's session state, so each is tested without a
-// document. A tab is a conversation the person has open; one with no
-// `conversationId` has not been started, because a conversation begins with its
-// first message (`conversation.start`), and nothing is stored before that.
+// Pure moves over the drawer's session state, so each is tested without a document. A tab is a
+// conversation the person has open; one with no `conversationId` has not been started, because a
+// conversation begins with its first message (`conversation.start`); nothing is stored before it.
 //
-// **The ask seam** is one move, `ask`: an entry names the widget it came from,
-// the drafted question and the scope. It opens a fresh tab, drafts the
-// question, and cites the widget; a second ask replaces the first citation
-// rather than adding to it. A direct open from the edge tab (`openDirect`)
-// carries the route's standing scope only, with no citation and no draft.
-// Which panels are open is the dock's (the gesture law, MP-3-4); this file
-// never opens anything.
+// **The ask seam** is one move, `ask`: an entry names the widget it came from, the drafted question
+// and the scope. It opens a fresh tab, drafts the question, and cites the widget; a second ask
+// replaces the first citation rather than adding to it. A direct open from the edge tab
+// (`openDirect`) carries the route's standing scope only, with no citation and no draft. Which
+// panels are open is the dock's (the gesture law, MP-3-4); this file never opens anything.
 
 import type {
   AssistantChat,
@@ -107,10 +104,9 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
 }
 
 /**
- * The tab `key` selected, with the scope its conversation was asked under. A
- * drafted question and its citation belong to the tab they were drafted in, so
- * another tab starts with neither: a client's words never reach a tab of
- * another scope.
+ * The tab `key` selected, with the scope its conversation was asked under. A drafted question and
+ * its citation belong to the tab they were drafted in, so another tab starts with neither: a
+ * client's words never reach a tab of another scope.
  */
 function selecting(state: AssistantState, key: string): AssistantState {
   const scope = state.chats.find((chat) => chat.key === key)?.scope ?? NO_SCOPE;
@@ -173,13 +169,19 @@ export const openDirect = (state: AssistantState): AssistantState => ({
   answering: {},
 });
 
-/** A line added to a tab's transcript. */
-export const said = (
-  state: AssistantState,
-  key: string,
-  message: AssistantMessage,
-): AssistantState =>
-  change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
+/** The page note once a question is refused for its page (`conversation-replies.ts`'s words). */
+const unclaimed = (line: AssistantMessage, refusal: AssistantMessage): AssistantMessage =>
+  line.id === 'page' && refusal.role === 'failed' && refusal.body.startsWith('Models are off for')
+    ? { ...line, body: 'This page couldn’t be read into context, so nothing on it was sent.' }
+    : line;
+
+/** A line added to a tab's transcript; a refusal for its page takes back the page note's claim. */
+export function said(state: AssistantState, key: string, line: AssistantMessage): AssistantState {
+  return change(state, key, (chat) => ({
+    ...chat,
+    messages: [...chat.messages.map((each) => unclaimed(each, line)), line],
+  }));
+}
 
 /** A line `conversation.read` gave a tab carries this before the server's id. */
 export const READ_LINE = 'kept-';
@@ -202,11 +204,10 @@ export const replaced = (
   );
 
 /**
- * A live tab's first question started its conversation; a closed tab takes nothing.
- * Its reopened twin folds into it, so the conversation is never open twice.
- * Read lines repeat the first question already here. Later lines follow, each
- * plan version replacing older ones; questions still out and lines on their
- * way to the twin belong to this tab.
+ * A live tab's first question started its conversation; a closed tab takes nothing. Its reopened
+ * twin folds into it, so the conversation is never open twice. Read lines repeat the first
+ * question already here. Later lines follow, each plan version replacing older ones; questions
+ * still out and lines on their way to the twin belong to this tab.
  */
 export function started(
   state: AssistantState,
@@ -261,9 +262,8 @@ export type Reopened = Pick<Chat, 'title' | 'messages' | 'reading' | 'taskId'> &
 };
 
 /**
- * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation
- * already open is selected, never opened twice; the rest open after the tabs
- * there are, the last one selected.
+ * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation already open is selected,
+ * never opened twice; the rest open after the tabs there are, the last one selected.
  */
 export function reopened(
   state: AssistantState,
