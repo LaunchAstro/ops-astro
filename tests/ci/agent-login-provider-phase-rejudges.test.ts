@@ -12,15 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { signBearer } from '../support/sign-in.ts';
-import {
-  actsOf,
-  agentOf,
-  makeArgs,
-  makeWorld,
-  runAct,
-  waitingOnTheLock,
-  type World,
-} from './agent-login.fixture.ts';
+import { actsOf, agentOf, makeArgs, makeWorld, runAct, type World } from './agent-login.fixture.ts';
 import { providerUsers } from './agent-login-provider.fixture.ts';
 
 await import(new URL('../support/pooler-at-loopback.mjs', import.meta.url).href);
@@ -70,23 +62,43 @@ async function bearerUntil(exp: number): Promise<string> {
   });
 }
 
+/** Resolves once a backend of this database waits on an advisory lock the backend `holder` holds. */
+async function blockedBy(holder: number): Promise<void> {
+  for (let tries = 0; tries < 400; tries += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polled until the operator waits
+    const [row] = await world.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock'
+          and wait_event = 'advisory' and $1 = any(pg_blocking_pids(pid))`,
+      [holder],
+    );
+    if ((row?.n ?? 0) > 0) return;
+    // oxlint-disable-next-line no-await-in-loop -- polled until the operator waits
+    await delay(25);
+  }
+  throw new Error("the operator never waited on the holder's agent lock");
+}
+
 async function expiredAtTheAgentLock(): Promise<void> {
   const agent = await agentOf(world);
-  const exp = Math.floor(Date.now() / 1000) + 3;
-  const token = await bearerUntil(exp);
   const holder = connectAsAdmin(
     (world.env['DATABASE_ADMIN_URL'] ?? '').replace(/sslmode=require/u, 'sslmode=disable'),
   );
   let pending: ReturnType<typeof runAct> | undefined;
   try {
     await holder.transaction(async (execute) => {
+      const [held] = await execute<{ pid: number }>('select pg_backend_pid() as pid');
       await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `agent-login:${world.alpha}:${agent}`,
       ]);
+      // Minted once the lock is held and the tool is loaded, so the bearer's
+      // seconds run out at the lock, not before the gate admits the operator.
+      const exp = Math.ceil(Date.now() / 1000) + 3;
+      const token = await bearerUntil(exp);
       pending = runAct(world, { args: makeArgs(agent), env: { OPS_ASTRO_TOKEN: token } });
       const reached = await Promise.race([
-        waitingOnTheLock(world).then(() => 'waiting'),
-        pending.then(() => 'finished'),
+        blockedBy(held?.pid ?? 0).then(() => 'waiting'),
+        pending.then(({ printed }) => `finished before waiting: ${printed}`),
       ]);
       expect(reached, 'the operator must actually wait on this database lock').toBe('waiting');
       await delay(Math.max(0, (exp + 1) * 1000 - Date.now()));
@@ -178,6 +190,9 @@ describe.skipIf(serverUrl === undefined)('agent login: the provider phase judges
   beforeAll(async () => {
     world = await makeWorld(serverUrl ?? '', users.handle);
     users.world = world;
+    // Loaded before any case mints a short-lived bearer: a cold load under a
+    // busy runner took the bearer's whole lifetime (#1798).
+    await import('../../scripts/ops/agent-login.ts');
   }, 60_000);
   afterAll(async () => await world?.close());
 
