@@ -16,20 +16,19 @@
 // `core-custody/src/broker-give-back.ts`), so the step has that room again.
 //
 // When the spend used the whole hold nothing is left to hold, and the run
-// stops at its budget and asks a person: the same ask a call reaching its
-// ceiling raises (AW-05, `core-custody/src/broker-wait.ts`), with the ceiling
-// and the spend the stopped hold carried, never a refusal nothing answers.
-// After the consolidated ask there is no other to raise: the run ends there
-// and a person is told on the task.
+// stops at its budget and asks a person: the one stop a call reaching its
+// ceiling makes (AW-05, `stopAtBudget` in `core-custody/src/broker-wait.ts`),
+// with the ceiling and the spend the stopped hold carried, never a refusal
+// nothing answers. After the consolidated ask there is no other to raise: the
+// run ends there and a person is told on the task.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
   COUNTED_CAUSES,
   countedHold,
-  raiseBudgetWait,
+  stopAtBudget,
   stopWords,
 } from '../../core-custody/src/index.ts';
-import { raiseAlert } from './alerts.ts';
 import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -250,9 +249,9 @@ export async function remainingOf(tx: TenantQuery, reservationId: string): Promi
  * The run stops at its budget and asks (AW-05). Under the caller's locks on
  * the run, the stopped hold's lease and its reservation. A run put back to
  * `planned` is claimed for the stop, which 0193 enters from `claimed` only.
- * When its asks are spent the run ends, as a person's end does, with no hold
- * left to release, and a person is told on the task. Returns the words for
- * the refusal or the resume's note.
+ * When its asks are spent the run ends, with no hold left to release, and a
+ * person is told on the task (`stopAtBudget`). Returns the words for the
+ * refusal or the resume's note.
  */
 export async function stopAtSpentHold(
   tx: TenantQuery,
@@ -272,7 +271,7 @@ export async function stopAtSpentHold(
       where business_id = $1 and id = $2 and state = 'planned'`,
     [tx.businessId, stop.runId],
   );
-  const wait = await raiseBudgetWait(tx, {
+  const stopped = await stopAtBudget(tx, {
     runId: stop.runId,
     leaseId,
     delegationId: stop.delegationId,
@@ -281,20 +280,5 @@ export async function stopAtSpentHold(
     ceilingMinor: heldMinor,
     spentMinor,
   });
-  if (wait.raised) return stopWords(wait);
-  const [run] = await tx.query<{ readonly task_id: string }>(
-    `update public.planned_runs set state = 'cancelled'
-      where business_id = $1 and id = $2 returning task_id`,
-    [tx.businessId, stop.runId],
-  );
-  if (run === undefined) throw new Error('budget stop: the stopped run is gone');
-  await raiseAlert(tx, {
-    taskId: run.task_id,
-    causeId: stop.reservationId,
-    raised: { kind: 'awaiting_person', waitingReason: 'needs_approval' },
-  });
-  return LAST_ASK_SPENT;
+  return stopWords(stopped);
 }
-
-const LAST_ASK_SPENT =
-  "The consolidated decision was this run's last ask, so the run ends here and a person is told on the task.";

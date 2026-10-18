@@ -6,7 +6,7 @@
 // Every item is made as the cast's own person or seeded agent through the
 // product's command entries (`executeCommand`, `executeAgentCommand`), so the
 // history, audit and receipts rows are the product's own. Two steps have no
-// command: the stop at the cap is the broker's `raiseBudgetWait`, called as
+// command: the stop at the cap is the broker's `stopAtBudget`, called as
 // its `stopAtCeiling` calls it, and the unknown outcome is the lease sweep's
 // (`sweepExpiredLeases`) after a dispatched run's lease runs out. The helper
 // agent is an actor and a login, inserted as local-seed inserts the agent.

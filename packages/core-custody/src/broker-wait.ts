@@ -9,24 +9,30 @@
 // calls on one run reaching the ceiling at once ask once: the second waits on
 // the run and then finds its lease over.
 //
+// One transition (S2, #438): the reserve's stop and pickup's stop at a spent
+// hold (`core-runtime/src/budget-stop.ts`) both call `stopAtBudget`, so a run
+// ends the same way whichever path saw the final unanswered ask.
+//
 // - The ask records the ceiling (the reservation's hold), the spend to date
 //   (what the reservation has committed), the currency, and the decision that
 //   approved the plan, so the question can be put in the terms approved. Its
 //   place in the conversation where the plan was approved is AW-04's origin.
 // - The rows are the persisted count. A run asks three times at most, and the
-//   third ask is the consolidated decision (execution decisions 15.2); a stop
-//   after it raises no fourth ask and is refused like any other call past the
-//   ceiling.
-// - The lease ends and its delegation is retired, so nothing can spend while
-//   the run waits. The reservation stays held: the approved ceiling is
+//   third ask is the consolidated decision (execution decisions 15.2). A stop
+//   after it raises no fourth ask: the run ends (`cancelled`) and a person is
+//   told on the task (`awaiting_person`, `needs_approval`).
+// - Either way the lease ends and its delegation is retired, so nothing can
+//   spend. A waiting run's reservation stays held: the approved ceiling is
 //   reserved for the person's answer, and restart recovery leaves a waiting
-//   run's hold alone (`core-runtime/src/recovery/classifier.ts`).
+//   run's hold alone (`core-runtime/src/recovery/classifier.ts`). An ended
+//   run's hold is recovery's to settle at its calls' spend, as for any ended
+//   lease and retired delegation.
 // - The run is `waiting_budget`. Migration 0087 lets nothing take it out of
 //   the wait; 0088 lets only a person's answer to the latest ask do so
 //   (`core-runtime/src/budget-answer.ts`).
 
 import { randomUUID } from 'node:crypto';
-import { revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
+import { raiseAlert, revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
 import type { Facts } from './broker-facts.ts';
 
 /** The most asks one run may raise; the last is the consolidated decision. */
@@ -43,36 +49,53 @@ export interface BudgetStop {
   readonly spentMinor: number;
 }
 
-export type BudgetWait =
-  | { readonly raised: true; readonly askNumber: number; readonly consolidated: boolean }
-  | { readonly raised: false };
+/** What the stop came to: the run waits on its ask, or its last ask was spent and it ended. */
+export type BudgetStopped =
+  | { readonly kind: 'waiting'; readonly askNumber: number; readonly consolidated: boolean }
+  | { readonly kind: 'last_ask_exhausted' };
 
 /**
- * Stop the run at its ceiling and ask. Under the caller's locks on the run,
- * lease, delegation and reservation. A run past its third ask is not asked
- * again, and nothing is written.
+ * The one budget-exhaustion transition, for the reserve and pickup alike. Under
+ * the caller's locks on the run's task, the run, the lease, the delegation and
+ * the reservation. The lease ends and its delegation is retired; within the
+ * bound the run asks and waits, and past its consolidated ask it ends and a
+ * person is told on the task.
  */
-export async function raiseBudgetWait(tx: TenantQuery, stop: BudgetStop): Promise<BudgetWait> {
+export async function stopAtBudget(tx: TenantQuery, stop: BudgetStop): Promise<BudgetStopped> {
   const [asked] = await tx.query<{ n: number }>(
     `select count(*)::int as n from public.budget_asks where business_id = $1 and run_id = $2`,
     [tx.businessId, stop.runId],
   );
   const askNumber = (asked?.n ?? 0) + 1;
-  if (askNumber > MAX_BUDGET_ASKS) return { raised: false };
+  const asks = askNumber <= MAX_BUDGET_ASKS;
   const consolidated = askNumber === MAX_BUDGET_ASKS;
-  await insertAsk(tx, stop, askNumber, consolidated);
+  if (asks) await insertAsk(tx, stop, askNumber, consolidated);
   await tx.query(
     `update public.leases set state = 'released', released_at = now()
       where business_id = $1 and id = $2 and state = 'live'`,
     [tx.businessId, stop.leaseId],
   );
   if (stop.delegationId !== null) await revokeDelegation(tx, stop.delegationId, 'work_retired');
-  await tx.query(
-    `update public.planned_runs set state = 'waiting_budget'
-      where business_id = $1 and id = $2 and state = 'claimed'`,
+  if (asks) {
+    await tx.query(
+      `update public.planned_runs set state = 'waiting_budget'
+        where business_id = $1 and id = $2 and state = 'claimed'`,
+      [tx.businessId, stop.runId],
+    );
+    return { kind: 'waiting', askNumber, consolidated };
+  }
+  const [run] = await tx.query<{ readonly task_id: string }>(
+    `update public.planned_runs set state = 'cancelled'
+      where business_id = $1 and id = $2 returning task_id`,
     [tx.businessId, stop.runId],
   );
-  return { raised: true, askNumber, consolidated };
+  if (run === undefined) throw new Error('budget stop: the stopped run is gone');
+  await raiseAlert(tx, {
+    taskId: run.task_id,
+    causeId: stop.reservationId,
+    raised: { kind: 'awaiting_person', waitingReason: 'needs_approval' },
+  });
+  return { kind: 'last_ask_exhausted' };
 }
 
 /**
@@ -125,15 +148,15 @@ const WAITING_WORDS =
   'The approved ceiling is reached. The run waits for a person to top it up or end it, and nothing spends until they answer.';
 /** A stop after the consolidated decision asks no fourth time (execution decisions 15.2). */
 const LAST_ASK_WORDS =
-  "The approved ceiling is reached, and the consolidated decision was this run's last ask. Hand the work back.";
+  "The consolidated decision was this run's last ask, so the run ends here and a person is told on the task.";
 
-/** The reserve's stop: the run stops and asks, and the refusal says which. Under the reserve's locks. */
+/** The reserve's stop: the run stops and asks or ends, and the refusal says which. Under the reserve's locks. */
 export async function stopAtCeiling(
   tx: TenantQuery,
   facts: Facts,
   spentMinor: number,
 ): Promise<string> {
-  const wait = await raiseBudgetWait(tx, {
+  const stopped = await stopAtBudget(tx, {
     runId: facts.runId,
     leaseId: facts.leaseId,
     delegationId: facts.delegationId,
@@ -142,9 +165,9 @@ export async function stopAtCeiling(
     ceilingMinor: facts.heldMinor,
     spentMinor,
   });
-  return stopWords(wait);
+  return stopWords(stopped);
 }
 
-/** What a stop tells the caller: the run waits for a person, or its last ask is spent. */
-export const stopWords = (wait: BudgetWait): string =>
-  wait.raised ? WAITING_WORDS : LAST_ASK_WORDS;
+/** What a stop tells the caller: the run waits for a person, or it ended at its last ask. */
+export const stopWords = (stopped: BudgetStopped): string =>
+  stopped.kind === 'waiting' ? WAITING_WORDS : LAST_ASK_WORDS;

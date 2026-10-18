@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#438: a call past the run's last budget ask, at the broker or at pickup, ends the run through the one stop: lease over, delegation retired, run cancelled, a person told; nothing spends after it and recovery settles the hold at its calls' spend."
+}

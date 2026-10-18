@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// #438 (OW-016.4, S2 of the engine sweep): one budget-exhaustion transition.
+// #438, S2 of the engine sweep: one budget-exhaustion transition.
 // After the run's three asks, the third the consolidated decision, a call the
 // reservation cannot hold raises no fourth ask. The broker's wait path and the
 // pickup stop path both end the run there through the one stop operation
@@ -22,7 +22,7 @@ import { call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
-useBrokerWorld('ow016last');
+useBrokerWorld('lastask');
 
 /** The replay operation's priced maximum is 500 minor units: a 400 ceiling cannot hold one call. */
 const UNDER_ONE_CALL = 400;
@@ -100,8 +100,8 @@ const ENDED = {
   asks: 3,
 };
 
-it('Sol proof, criterion 1: a broker budget stop after the third ask ends the run and alerts a person', async () => {
-  const work = await liveWork(s, `ow016 broker ${randomUUID()}`, UNDER_ONE_CALL);
+it('a broker budget stop after the third ask ends the run and alerts a person', async () => {
+  const work = await liveWork(s, `lastask broker ${randomUUID()}`, UNDER_ONE_CALL);
   await asksSpent(work);
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
@@ -114,11 +114,11 @@ it('Sol proof, criterion 1: a broker budget stop after the third ask ends the ru
 });
 
 it('the broker and pickup end a run past its last ask with the same record and alert', async () => {
-  const atCall = await liveWork(s, `ow016 both broker ${randomUUID()}`, UNDER_ONE_CALL);
+  const atCall = await liveWork(s, `lastask both broker ${randomUUID()}`, UNDER_ONE_CALL);
   await asksSpent(atCall);
   const byBroker = await call(atCall);
 
-  const atPickup = await spentWhole(`ow016 both pickup ${randomUUID()}`);
+  const atPickup = await spentWhole(`lastask both pickup ${randomUUID()}`);
   await asksSpent(atPickup);
   const byPickup = await pickupOf(atPickup);
 
@@ -133,9 +133,20 @@ it('the broker and pickup end a run past its last ask with the same record and a
 });
 
 it('M2 and M9 after the final ask: nothing spends, no fourth ask, and recovery settles the hold at its spend', async () => {
-  const work = await liveWork(s, `ow016 after ${randomUUID()}`, UNDER_ONE_CALL);
+  // Room for a call of the replay maximum (500) and some: the calls answered
+  // settle below it, until the next cannot be held and stops the run past its
+  // last ask.
+  const work = await liveWork(s, `lastask after ${randomUUID()}`, 600);
   await asksSpent(work);
-  await call(work);
+  world.provider.mode('answer');
+  const answered: boolean[] = [];
+  for (let at = 0; at < 20 && !answered.includes(false); at += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    answered.push((await call(work)).ok);
+  }
+  expect(answered[0]).toBe(true);
+  expect(answered.at(-1)).toBe(false);
+  expect(await endOf(work)).toEqual(ENDED);
   const seen = world.provider.seen.length;
 
   // Another call on the ended run refuses and sends nothing.
@@ -144,14 +155,18 @@ it('M2 and M9 after the final ask: nothing spends, no fourth ask, and recovery s
   expect(world.provider.seen.length).toBe(seen);
 
   // Restart recovery finds the hold of a run that ended with its lease over
-  // and its delegation retired, and settles it at what its calls spent (none
-  // here); the run stays ended, with no fourth ask and no second alert.
+  // and its delegation retired, and settles it at what its calls spent, never
+  // at nothing; the run stays ended, with no fourth ask and no second alert.
   await s.db.app.withBusiness(s.business, async (tx) => await replayRecordedTransitions(tx));
   expect(await endOf(work)).toEqual(ENDED);
-  const [hold] = await rows<{ state: string; actual: string | null }>(
+  const [hold] = await rows<{ state: string; actual: string | null; spent: string }>(
     s,
-    `select state, actual_minor::text as actual from public.reservations where id = $1`,
+    `select r.state, r.actual_minor::text as actual,
+            (select sum(c.actual_minor)::text from public.model_calls c
+              where c.reservation_id = r.id and c.state = 'settled') as spent
+       from public.reservations r where r.id = $1`,
     [work.decision['reservationId']],
   );
-  expect(hold).toEqual({ state: 'actual', actual: '0' });
+  expect(hold?.spent).toMatch(/^[1-9]/u);
+  expect(hold).toEqual({ state: 'actual', actual: hold?.spent, spent: hold?.spent });
 });
