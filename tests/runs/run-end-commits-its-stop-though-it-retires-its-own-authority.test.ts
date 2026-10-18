@@ -43,7 +43,7 @@ import {
   world,
   type Sent,
   type SignedIn,
-} from './sol-1623-door-world.ts';
+} from './run-stop-door-world.ts';
 import { attemptOfLease } from './run-outcomes-read.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -77,7 +77,7 @@ async function settledOnce(title: string, as: SignedIn): Promise<Work> {
 const runOf = async (work: Work): Promise<string> =>
   (await attemptOfLease(s.db.admin, s.business, leaseOf(work))).runId;
 
-it('Sol 1623 F1: run.end TOOL_REFUSED after a settled call answers RUN_ENDED, and its stop commits once', async () => {
+it('run.end TOOL_REFUSED after a settled call answers RUN_ENDED, and its stop commits once', async () => {
   const as = await signedIn();
   const work = await settledOnce('ends on a refused tool', as);
   const audit = await auditFromHere();
@@ -177,7 +177,7 @@ const CHANGES: readonly (readonly [Change, string])[] = [
 const ORDERS: readonly Order[] = ['while it waits on the run', 'queued ahead of it'];
 
 it.each(CHANGES.flatMap(([change, code]) => ORDERS.map((order) => [change, order, code] as const)))(
-  'Sol 1623 F1: run.end whose %s %s commits no stop',
+  'run.end whose %s %s commits no stop',
   async (change, order, code) => {
     const as = await signedIn();
     const work = await settledOnce(`ends, ${change}`, as);
@@ -200,7 +200,7 @@ it.each(CHANGES.flatMap(([change, code]) => ORDERS.map((order) => [change, order
   },
 );
 
-it('Sol 1623 F1 control: run.end that waited on the run with nothing changed commits its stop', async () => {
+it('control: run.end that waited on the run with nothing changed commits its stop', async () => {
   const as = await signedIn();
   const work = await settledOnce('ends after a wait', as);
   const body = endBody(work, 'TOOL_REFUSED');
@@ -225,7 +225,7 @@ it('Sol 1623 F1 control: run.end that waited on the run with nothing changed com
   });
 });
 
-it('Sol 1623 F1 control: an ordinary permitted call by a live attempt commits normally', async () => {
+it('control: an ordinary permitted call by a live attempt commits normally', async () => {
   const as = await signedIn();
   const work = await liveWork(s, 'an ordinary call', 2_000);
   world.provider.mode('answer');

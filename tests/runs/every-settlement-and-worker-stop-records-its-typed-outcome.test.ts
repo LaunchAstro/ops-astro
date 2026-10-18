@@ -55,7 +55,7 @@ import {
   shapeOf,
   useStopWorld,
   world,
-} from './sol-1623-stop-world.ts';
+} from './run-stop-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -121,7 +121,7 @@ async function expectEndedOnce(work: Work, expected: ReturnType<typeof named>): 
   expect(await runState(work)).not.toBe('handed_back');
 }
 
-it('sol-1623 an accepted call whose answer has no usage records unknown with the maximum held', async () => {
+it('an accepted call whose answer has no usage records unknown with the maximum held', async () => {
   const work = await fresh('usage missing');
   world.provider.mode('answer');
   const answer = await modelCall(work, door(s.db.app, brokerOver(usageMissing())));
@@ -133,7 +133,7 @@ it('sol-1623 an accepted call whose answer has no usage records unknown with the
   expect(await callsOf(work)).toMatchObject([{ state: 'liability_unknown', reserved: '500' }]);
 });
 
-it('sol-1623 a settled answer whose reply was lost ends ANSWER_LOST with its observed cost kept', async () => {
+it('a settled answer whose reply was lost ends ANSWER_LOST with its observed cost kept', async () => {
   const work = await fresh('answer lost');
   world.provider.mode('answer');
   // The call settles; its reply never reaches the worker, which ends the run.
@@ -150,7 +150,7 @@ it('sol-1623 a settled answer whose reply was lost ends ANSWER_LOST with its obs
   ]);
 });
 
-it('sol-1623 a release for the declared LOCAL_PLAN_LIMIT waits for the plan allowance', async () => {
+it('a release for the declared LOCAL_PLAN_LIMIT waits for the plan allowance', async () => {
   const work = await fresh('plan limit');
   world.provider.mode('nothing_happened');
   const answer = await modelCall(work, door(), modelCallBody(work, PLAN_LIMITED.key));
@@ -163,7 +163,7 @@ it('sol-1623 a release for the declared LOCAL_PLAN_LIMIT waits for the plan allo
   expect(await callsOf(work)).toMatchObject([{ state: 'released' }]);
 });
 
-it('sol-1623 a release for a declared nothing-happened code (replay http_429) is cancelled PROVIDER_NOTHING_HAPPENED', async () => {
+it('a release for a declared nothing-happened code (replay http_429) is cancelled PROVIDER_NOTHING_HAPPENED', async () => {
   const work = await fresh('rate limited');
   world.provider.mode('rate_limited');
   const answer = await modelCall(work);
@@ -176,7 +176,7 @@ it('sol-1623 a release for a declared nothing-happened code (replay http_429) is
   expect(await callsOf(work)).toMatchObject([{ state: 'released' }]);
 });
 
-it('sol-1623 an undeclared release reason is held unknown with the maximum, never a refusal', async () => {
+it('an undeclared release reason is held unknown with the maximum, never a refusal', async () => {
   const work = await fresh('undeclared reason');
   const undeclared = `NOT_A_DECLARED_REASON_${randomUUID().slice(0, 8).toUpperCase()}`;
   await modelCall(work, door(s.db.app, brokerOver(refusingWith(undeclared))));
@@ -226,7 +226,7 @@ async function pinThenChange(work: Work, folder: string): Promise<void> {
   writeFileSync(join(folder, path), '# Changed after approval\n');
 }
 
-it('sol-1623 run.end DEFINITION_MISMATCH before call 1 is cancelled with that code', async () => {
+it('run.end DEFINITION_MISMATCH before call 1 is cancelled with that code', async () => {
   const work = await fresh('definition mismatch');
   const folder = mkdtempSync(join(tmpdir(), 'sol1623-pin-'));
   const before = process.env[INSTRUCTION_ROOT_VARIABLE];
@@ -243,7 +243,7 @@ it('sol-1623 run.end DEFINITION_MISMATCH before call 1 is cancelled with that co
   }
 });
 
-it('sol-1623 run.end TRACING_NOT_ALLOWED before call 1 is cancelled with that code', async () => {
+it('run.end TRACING_NOT_ALLOWED before call 1 is cancelled with that code', async () => {
   const work = await fresh('tracing refused');
   const ended = await runEnd(work, 'TRACING_NOT_ALLOWED');
   await expectEndedOnce(work, named('cancelled', 'TRACING_NOT_ALLOWED'));
@@ -251,7 +251,7 @@ it('sol-1623 run.end TRACING_NOT_ALLOWED before call 1 is cancelled with that co
   expect(await callsOf(work)).toEqual([]);
 });
 
-it('sol-1623 a door refusal of task.read, ended with its door code, is cancelled with that code', async () => {
+it('a door refusal of task.read, ended with its door code, is cancelled with that code', async () => {
   const work = await fresh('door refusal');
   // The worker reads its own task, then sends another read under that same
   // operation id: the door refuses the reuse while the delegation is live.
@@ -290,7 +290,7 @@ async function expectCleanTwin(app: Hono, operation: string): Promise<void> {
   expect(await runState(work)).toBe('handed_back');
 }
 
-it('sol-1623 control: clean twins complete and record no stop', async () => {
+it('control: clean twins complete and record no stop', async () => {
   await expectCleanTwin(door(), REPLAY_COMPOSE.key);
   await expectCleanTwin(door(), PLAN_LIMITED.key);
 });
