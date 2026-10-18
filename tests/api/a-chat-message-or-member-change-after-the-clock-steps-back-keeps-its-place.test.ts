@@ -16,6 +16,7 @@ import {
   changeGroupMembers,
   lockConversation,
   moveReadMarker,
+  readPositionOf,
   readConversationTypes,
   writeComment,
 } from '../../packages/core-records/src/index.ts';
@@ -204,9 +205,10 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       const shown = (read.body['messages'] as ChatMessageView[]).map((m) => m.at);
       expect(shown).toHaveLength(2);
       expect((await g.viewOf(g.chat.tess, id))?.unread).toBe(2);
-      // Tess saw both; her marker moves while the clock still reads a second behind them.
+      // Tess saw both; her marker moves to the last while the clock still reads a second behind them.
       await aSecondBefore(at, id, async (tx) => {
-        const upTo = { at: new Date(Date.parse(at)), seen: shown.length };
+        const upTo = readPositionOf(shown.at(-1));
+        if (upTo === undefined) throw new Error('the last message has no read position');
         expect(await moveReadMarker(tx, id, g.chat.tess.personId!, upTo)).toBe(true);
       });
       expect((await g.viewOf(g.chat.tess, id))?.unread).toBe(0);
