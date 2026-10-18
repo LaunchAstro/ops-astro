@@ -6,6 +6,9 @@
 // bound client's repository, and the runbook's App can be installed where it
 // promises.
 
+import { fork } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { exchangeWith } from '../../packages/core-custody/src/custody-exchange.ts';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -272,3 +275,69 @@ it.each([agency.repository, agency.repository.toLowerCase()])(
     }
   },
 );
+
+it('a token expiring during DNS is never sent', async () => {
+  const f = await fixture(agency, true);
+  const bootstrap = join(f.file, '..', 'delayed-dns.mjs');
+  const entry = pathToFileURL(
+    join(import.meta.dirname, '../../packages/core-custody/src/custody-main.ts'),
+  ).href;
+  // Resolve to the actual local stand-in; only the second lookup (repository send) waits.
+  writeFileSync(
+    bootstrap,
+    `
+import dns from 'node:dns/promises';
+import { syncBuiltinESMExports } from 'node:module';
+let calls = 0;
+dns.lookup = async () => {
+  if (++calls === 2) await new Promise(resolve => setTimeout(resolve, 1200));
+  return [{ address: '127.0.0.1', family: 4 }];
+};
+syncBuiltinESMExports();
+await import(${JSON.stringify(entry)});
+`,
+  );
+  const origin = f.origin.replace('127.0.0.1', 'sol-custody.invalid');
+  const child = fork(bootstrap, [], {
+    execArgv: [],
+    env: {
+      CUSTODY_CREDENTIALS_FILE: f.file,
+      CUSTODY_DESTINATIONS: JSON.stringify([siteDestination('source_control', origin)]),
+    },
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+  });
+  const exchange = exchangeWith(child);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      child.on('message', (message: any) => {
+        if (message.type === 'ready') resolve();
+      });
+      child.once('exit', (code) => reject(new Error(`child exited ${code}`)));
+    });
+    const result = await exchange({
+      type: 'dispatch',
+      credentialRef: 'source_control',
+      request: {
+        party: agency.party,
+        destination: 'source_control',
+        method: 'GET',
+        path: `/repos/${agency.repository}/contents/src/pages/about.astro?ref=main`,
+        body: '',
+        timeoutMs: 5000,
+        maxResponseBytes: 262144,
+      },
+    });
+    expect(Date.now()).toBeGreaterThan(f.expires());
+    expect(
+      f.seen.filter((path) => path.startsWith('GET /repos/')),
+      'expired installation token must not be written after DNS wait',
+    ).toEqual([]);
+    expect(result).toMatchObject({ type: 'refused' });
+  } finally {
+    await new Promise<void>((resolve) => {
+      child.once('exit', () => resolve());
+      child.kill();
+    });
+    await f.close();
+  }
+}, 10000);
