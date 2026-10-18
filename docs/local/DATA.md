@@ -961,7 +961,9 @@ and lets the revocation be set once. An after-insert trigger
 an actor of kind agent and the issuer the person actor of
 `issued_by_person_id`, so no person, the issuer included, holds a credential
 as its agent, and an actor a credential names keeps that kind and person
-(`actors_hold_their_credentials`). The application may select, insert and update; nothing deletes
+(`actors_hold_their_credentials`; a change of an actor's kind or person is
+asked only at read committed and refused at any other isolation, where an
+older snapshot could miss a credential). The application may select, insert and update; nothing deletes
 a row. Tenancy-keyed with the restrictive policy.
 
 ## Automations (20261005003850, C33)

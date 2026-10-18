@@ -16,7 +16,10 @@
 -- `agent_credentials_written_once` already fixes both columns. And an actor a
 -- credential names, as its agent or its issuer, keeps the kind and person it
 -- was issued against: a before-update trigger on `actors` refuses the change
--- (the product never changes either column of any actor).
+-- (the product never changes either column of any actor). It reads the
+-- credentials only at read committed, where the statement sees every
+-- credential committed before it; at any other isolation a snapshot older
+-- than a credential would miss it, so the change is refused there outright.
 --
 -- An activation's change moves its revision one step, at the database's
 -- clock. 20261005003850 granted the application role `revision` and
@@ -76,10 +79,18 @@ create function public.actors_hold_their_credentials() returns trigger
   set search_path = pg_catalog, public
   as $$
 begin
-  if (new.kind, new.person_id) is distinct from (old.kind, old.person_id)
-     and exists (select 1 from public.agent_credentials c
-                  where c.business_id = old.business_id
-                    and old.id in (c.agent_actor_id, c.issued_by_actor_id)) then
+  if (new.kind, new.person_id) is not distinct from (old.kind, old.person_id) then
+    return new;
+  end if;
+  -- Read committed reads the credentials afresh for this statement; an older
+  -- snapshot could miss one committed since, so it is refused outright.
+  if current_setting('transaction_isolation') <> 'read committed' then
+    raise exception 'actors: actor %''s kind and person change only at read committed', old.id
+      using errcode = 'check_violation', constraint = 'actors_hold_their_credentials';
+  end if;
+  if exists (select 1 from public.agent_credentials c
+              where c.business_id = old.business_id
+                and old.id in (c.agent_actor_id, c.issued_by_actor_id)) then
     raise exception 'actors: actor % holds or issued an agent credential; its kind and person stay',
       old.id
       using errcode = 'check_violation', constraint = 'actors_hold_their_credentials';
