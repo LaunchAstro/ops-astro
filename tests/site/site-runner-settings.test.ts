@@ -98,7 +98,7 @@ describe('the site runner, its heartbeat', () => {
 describe('the site runner, its plist', () => {
   it('keeps the runner alive from the build, under the label park and stop name', () => {
     const plist = readFileSync('deploy/m5/ops-astro-site-runner.plist', 'utf8');
-    const runbook = readFileSync('apps/site-runner/RUNBOOK.md', 'utf8');
+    const runbook = readFileSync('docs/local/SITE-RUNNER-RUNBOOK.md', 'utf8');
     expect(plist).toMatch(/<key>Label<\/key>\s*<string>ops-astro-site-runner<\/string>/u);
     expect(plist).toMatch(/<key>KeepAlive<\/key>\s*<true\/>/u);
     expect(plist).toMatch(/<string>apps\/site-runner\/main\.ts<\/string>/u);

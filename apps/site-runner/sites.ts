@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The site runner's provider ports, bound to custody (`DESIGN.md`,
+// The site runner's provider ports, bound to custody (`docs/local/SITE-RUNNER.md`,
 // "Credentials and egress"). Every catalogued call is handed to custody by its
 // entry's name (`siteCustody`), so this process never holds a site token, and
 // its own transport sends nothing: a call that tried to leave any other way is

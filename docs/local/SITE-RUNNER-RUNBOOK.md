@@ -1,6 +1,6 @@
 # Site runner runbook
 
-How the site runner (`DESIGN.md`) is installed on the M5, parked and stopped.
+How the site runner ([SITE-RUNNER.md](SITE-RUNNER.md)) is installed on the M5, parked and stopped.
 Every step here is the owner's, or an agent's with the owner's yes. Starting
 it in production is the owner's daylight go. No value below is ever pasted
 into chat, a ticket or a file other than the one named. Bitwarden holds each

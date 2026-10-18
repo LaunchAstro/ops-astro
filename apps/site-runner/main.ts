@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The site runner process (`DESIGN.md`): `node apps/site-runner/main.ts`, run
+// The site runner process (`docs/local/SITE-RUNNER.md`): `node apps/site-runner/main.ts`, run
 // by launchd on the M5 from a deployed main build
 // (`deploy/m5/ops-astro-site-runner.plist`). It signs in as its own agent
 // actor, starts custody with the two site destinations, opens its own
