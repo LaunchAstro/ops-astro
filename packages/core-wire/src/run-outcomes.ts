@@ -24,6 +24,7 @@ export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 
 /** The codes the worker may end its own run with (`run.end`): what only it can see. */
 export const WORKER_END_CODES = [
+  'CALL_LIMIT_REACHED',
   'TOOL_NOT_CATALOGUED',
   'TOOL_REFUSED',
   'TURN_MALFORMED',

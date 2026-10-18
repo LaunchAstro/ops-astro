@@ -53,17 +53,22 @@ export function handlersIn(callbacks: unknown): number {
   return own + inherited;
 }
 
+const flagged = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  TRACING_FLAGS.some((flag) => env[flag] !== undefined);
+
 /** Before the graph is built and before each invoke: a flag set, or any store at all. */
 export function runRefused(env: Readonly<Record<string, string | undefined>>): boolean {
-  return TRACING_FLAGS.some((flag) => env[flag] !== undefined) || store() !== undefined;
+  return flagged(env) || store() !== undefined;
 }
 
 /**
- * At a model entry: explicit or inherited handlers, verbose output, a context
+ * At a model entry, even with no runner: a flag set, explicit or inherited
+ * handlers, verbose output, a context
  * variable of any key (the hook registry or a hook's handler), or a run tree
  * that traces.
  */
 export function entryRefused(options: unknown, callbacks?: unknown): boolean {
+  if (flagged(process.env)) return true;
   const asked = (options ?? {}) as { callbacks?: unknown; verbose?: unknown };
   if (asked.verbose !== undefined && asked.verbose !== false) return true;
   if (handlersIn(asked.callbacks) > 0 || handlersIn(callbacks) > 0) return true;

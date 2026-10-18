@@ -85,8 +85,8 @@ export async function endRun(
 }
 
 /**
- * Whether the server's own records show the claimed code. Two need proof: a
- * lost answer is one whose call settled, its cost observed; a definition
+ * Whether the server's own records show the claimed code. Three need proof: a
+ * lost answer or a worker's call limit follows a settled call; a definition
  * mismatch is the pinned read's own typed mismatch, read again here. The rest
  * are facts only the worker sees, and the open-call precedence decides them.
  */
@@ -96,7 +96,7 @@ async function shown(
   runId: string,
   leaseId: string,
 ): Promise<boolean> {
-  if (code === 'ANSWER_LOST') {
+  if (code === 'ANSWER_LOST' || code === 'CALL_LIMIT_REACHED') {
     const settled = await tx.query(
       `select 1 from public.model_calls
         where business_id = $1 and lease_id = $2 and state = 'settled' limit 1`,
