@@ -204,11 +204,10 @@ export const VERB_TABLE: readonly VerbRow[] = [
     verb: 'map graduate',
     command: 'map.graduate',
     usage: '<id> --revision n --patch <id> --body-file <path>',
-    body: (id, flags) => ({
-      ...operationBody({ 'body-file': need(flags, 'body-file') }),
-      ...revised(id, flags),
-      patchId: need(flags, 'patch'),
-    }),
+    body: (id, flags) => {
+      const line = { ...revised(id, flags), patchId: need(flags, 'patch') };
+      return { ...operationBody({ 'body-file': need(flags, 'body-file') }), ...line };
+    },
   },
   {
     verb: 'map view',
@@ -329,9 +328,10 @@ export interface Prepared {
 }
 
 /**
- * A verb line made ready to send, or its usage refusal. It reads no file and
- * sends nothing, so `verbLine` (`apps/cli/main.ts`) gives every refusal here
- * before it reads a credential.
+ * A verb line made ready to send, or its usage refusal. It reads no file but a
+ * verb's `--body-file`, after the line's other checks, and sends nothing, so
+ * `verbLine` (`apps/cli/main.ts`) gives every refusal here before it reads a
+ * credential. The operation id is the line's, never one the body file holds.
  */
 export function prepare(argv: readonly string[], agent: boolean): Prepared | VerbAnswer {
   try {
@@ -341,7 +341,8 @@ export function prepare(argv: readonly string[], agent: boolean): Prepared | Ver
     const row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
     if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
     if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
-    return { row, flags, request: { ...operationOf(row, flags, agent), ...row.body(id, flags) } };
+    const operation = operationOf(row, flags, agent);
+    return { row, flags, request: { ...row.body(id, flags), ...operation } };
   } catch (cause) {
     if (!(cause instanceof UsageError)) throw cause;
     return { exit: EXIT.usage, out: `usage: ${cause.message}` };

@@ -373,6 +373,10 @@ pnpm cli map list
   Every refusal that needs no credential comes before one is read. A write
   prints `ok <operation> <id> r<revision>`; on no answer or a fault it prints
   its `operationId`, and the same line with `--operation <id>` replays it.
+- `task block --blocked-by ''` clears every blocker. `map chart` sends its body
+  file as the `map.chart` body; `map graduate` sends its body file (the
+  `tickets`) with the id, `--revision` and `--patch`, which win over the same
+  keys in the file. The operation id is always the line's.
 - `brief` is id, title and state; `standard` (default) adds the summary,
   description, blockers and latest five comments; `full` is everything. An
   external party gets the same levels of its shared view. Unreadable blockers

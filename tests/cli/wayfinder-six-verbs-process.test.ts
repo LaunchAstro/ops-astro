@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// The six Wayfinder verbs (#1648) run as a real CLI process over loopback HTTP:
+// each sends its owning command's body in one request, prints the operation's
+// answer, and prints a permission refusal in one line naming the key.
 /* eslint-disable max-lines-per-function, no-await-in-loop -- sequential process calls share one HTTP fixture */
 
 import { randomUUID } from 'node:crypto';
