@@ -45,6 +45,8 @@ export { callModelInConversation } from './broker-priced.ts';
 export type { ConversationCallRequest, ConversationScope } from './broker-conversation-types.ts';
 export type { PaidCaller, PaidSeams } from './broker-types.ts';
 export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
+export { readPage } from './broker-task.ts';
+export { ownersOwn } from './broker-sources.ts';
 export {
   callModelForPlanning,
   readPlanningAllowance,

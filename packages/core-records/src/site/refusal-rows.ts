@@ -48,4 +48,11 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: 'The person who asked for the correction no longer holds run:write at its client',
     source: 'C80, the approval checks',
   },
+  {
+    code: 'CORRECTION_NOT_OWN_WORK',
+    status: 409,
+    meaning:
+      "An agent asks on the business's own site only from a task its owner started that no client, agent or worker has written",
+    source: 'R6 part 2, #1699',
+  },
 ] as const;
