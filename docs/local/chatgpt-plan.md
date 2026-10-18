@@ -78,7 +78,9 @@ email offline_access resource.invoke chatgpt.tokens.use.direct` and the
 6. **Check the port is free.** The sign-in uses port 1455 unless you pass
    `--port`. A running `codex login` holds 1455 on either machine. If
    `lsof -nP -iTCP:1455` on the M5 or the laptop shows anything, finish or
-   stop that first, or use another port (say 1457) in both steps below.
+   stop that first, or use another port, say 1457, in both places:
+   `ssh -L 127.0.0.1:1457:127.0.0.1:1457 <m5>`, and `--port 1457` on the
+   command.
 
 ## Sign in once (SSH tunnel, recommended)
 
@@ -110,23 +112,24 @@ M5's own browser.
 
 ## What a refusal means
 
-| Refusal                                                                                                     | What to do                                                                                     |
-| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `SIGN_IN_CONSENT_NEEDED`                                                                                    | Add `--consent-background-use` (step 2 of "Before you start").                                 |
-| `SIGN_IN_PORT_BUSY`                                                                                         | Something holds the port. See step 6 of "Before you start".                                    |
-| `SIGN_IN_DECLINED`                                                                                          | The approval was declined, or plan use isn't enabled on the account. Enable it, run again.     |
-| `SIGN_IN_PLAN_USE_NOT_GRANTED`                                                                              | The grant didn't include plan use. Check the plan (Plus or Pro), run again.                    |
-| `SIGN_IN_IDENTITY_INVALID`                                                                                  | The ID token didn't check out. Nothing was stored. Tell the orchestrator; don't keep retrying. |
-| `SIGN_IN_ACCOUNT_CHANGED`                                                                                   | Another ChatGPT account than the stored one. To switch accounts, see "Rules".                  |
-| `SIGN_IN_REGISTRATION_CHANGED`                                                                              | Another sign-in registered or changed `chatgpt-host.json` meanwhile. Run again.                |
-| `SIGN_IN_FILE_NEEDS_OWNER`                                                                                  | The token file is unreadable, open to others, or half-written. Remove it (below), run again.   |
-| `SIGN_IN_HOST_FILE_NEEDS_OWNER`                                                                             | `chatgpt-host.json` is unreadable or open to others. Remove it, run again (this registers).    |
-| `SIGN_IN_TOKENS_UNUSABLE`                                                                                   | OpenAI returned values custody can't store. Nothing was stored. Tell the orchestrator.         |
-| `SIGN_IN_STORE_FAILED`                                                                                      | The write failed; no copy of the new tokens is left. Check disk space, run again.              |
-| `SIGN_IN_STATE_MISMATCH`, `SIGN_IN_REGISTRATION_INCOMPLETE`, `SIGN_IN_EXCHANGE_FAILED`, `SIGN_IN_TIMED_OUT` | Run again from step 2.                                                                         |
+| Refusal                                                                                                     | What to do                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SIGN_IN_CONSENT_NEEDED`                                                                                    | Add `--consent-background-use` (step 2 of "Before you start").                                                                                         |
+| `SIGN_IN_PORT_BUSY`                                                                                         | Something holds the port. See step 6 of "Before you start".                                                                                            |
+| `SIGN_IN_DECLINED`                                                                                          | The approval was declined, or plan use isn't enabled on the account. Enable it, run again.                                                             |
+| `SIGN_IN_PLAN_USE_NOT_GRANTED`                                                                              | The grant didn't include plan use. Check the plan (Plus or Pro), run again.                                                                            |
+| `SIGN_IN_IDENTITY_INVALID`                                                                                  | The ID token didn't check out. Nothing was stored. Tell the orchestrator; don't keep retrying.                                                         |
+| `SIGN_IN_ACCOUNT_CHANGED`                                                                                   | Another ChatGPT account than the stored one. To switch accounts, see "Rules".                                                                          |
+| `SIGN_IN_REGISTRATION_CHANGED`                                                                              | Another sign-in registered meanwhile, or the two files name different registrations. Run again; if it repeats, remove both files (below).              |
+| `SIGN_IN_FILE_NEEDS_OWNER`                                                                                  | The token file is unreadable, open to others, or half-written. Remove it (below), run again.                                                           |
+| `SIGN_IN_HOST_FILE_NEEDS_OWNER`                                                                             | `chatgpt-host.json` is unreadable or open to others. Remove both files (below), run again (this registers).                                            |
+| `SIGN_IN_TOKENS_UNUSABLE`                                                                                   | OpenAI returned values custody can't store. Nothing was stored. Tell the orchestrator.                                                                 |
+| `SIGN_IN_STORE_FAILED`                                                                                      | The write failed and the new tokens were removed. Check disk space, run again. If it is followed by `SIGN_IN_FILE_NEEDS_OWNER`, remove the token file. |
+| `SIGN_IN_STATE_MISMATCH`, `SIGN_IN_REGISTRATION_INCOMPLETE`, `SIGN_IN_EXCHANGE_FAILED`, `SIGN_IN_TIMED_OUT` | Run again from step 2.                                                                                                                                 |
 
-To remove a token file custody refuses: `rm ~/.ops-astro/chatgpt-plan.json`.
-Don't copy it anywhere first.
+To remove the token file custody refuses: `rm ~/.ops-astro/chatgpt-plan.json`.
+To remove both files: `rm ~/.ops-astro/chatgpt-plan.json ~/.ops-astro/chatgpt-host.json`.
+Don't copy either anywhere first.
 
 ## What to record on #1705
 

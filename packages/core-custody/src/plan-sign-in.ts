@@ -33,6 +33,7 @@ import {
   readTokenFileLocked,
   tokenText,
   FIELD_MAX,
+  type OnDisk,
   type PlanTokens,
   type TokenFs,
 } from './token-file.ts';
@@ -161,13 +162,21 @@ export async function beginSignIn(
 /**
  * The registration judged under the final hold: a host-only file permits the
  * first sign-in's own grant for its host id; a registered file permits only
- * its own client id. Answers the record to write, if any.
+ * its own client id; and a pair already held (`ready` or `pending`) must carry
+ * the grant's client id, so the host file and the token record never name
+ * two registrations. Answers the record to write, if any.
  */
 function judgeRegistration(
   host: Registration | 'absent' | 'unusable',
+  onDisk: OnDisk,
   ask: SignInAsk,
   clientId: string,
 ): Registration | 'unchanged' | Refused {
+  if (
+    (onDisk.state === 'ready' || onDisk.state === 'pending') &&
+    onDisk.tokens.clientId !== clientId
+  )
+    return refuse('SIGN_IN_REGISTRATION_CHANGED');
   if (host === 'unusable') return refuse('SIGN_IN_HOST_FILE_NEEDS_OWNER');
   if (host === 'absent' || host.extAgentHostId !== ask.hostId)
     return refuse('SIGN_IN_REGISTRATION_CHANGED');
@@ -177,13 +186,20 @@ function judgeRegistration(
   return { extAgentHostId: host.extAgentHostId, clientId };
 }
 
-/** Removes the new record's bytes when a store left them visible but uncommitted. */
+/**
+ * Removes the new record's bytes when a store left them visible but
+ * uncommitted. Under a live hold the locked read sweeps the transient copies
+ * first. The hold may already be dead (its lock file replaced mid-commit), so
+ * the visible file is then compared directly, never acted on: only this
+ * sign-in wrote these exact bytes, so removing them removes no other record.
+ */
 function withdraw(held: HeldLock, file: string, bytes: Buffer, fs: Partial<TokenFs>): void {
-  // The locked read sweeps the transient copies on its way in.
-  const visible = readBytesLocked(held, file, fs);
-  if (!Buffer.isBuffer(visible) || !visible.equals(bytes)) return;
+  readBytesLocked(held, file, fs);
   try {
-    ({ ...nodeFs, ...fs }).rmSync(file, { force: true });
+    const seen = nodeFs.lstatSync(file);
+    if (!seen.isFile() || seen.size !== bytes.length) return;
+    if (nodeFs.readFileSync(file).equals(bytes))
+      ({ ...nodeFs, ...fs }).rmSync(file, { force: true });
   } catch {
     // The committed digest still refuses these bytes.
   }
@@ -205,10 +221,11 @@ export async function storeSignIn(
   if (!Buffer.isBuffer(bytes) || !issuedClientId(tokens.clientId))
     return refuse('SIGN_IN_TOKENS_UNUSABLE');
   return await hold(options, (held) => {
-    const verdict = signInVerdict(readTokenFileLocked(held, file, fs), tokens.subject);
+    const onDisk = readTokenFileLocked(held, file, fs);
+    const verdict = signInVerdict(onDisk, tokens.subject);
     if (verdict === 'SIGN_IN_OTHER_ACCOUNT') return refuse('SIGN_IN_ACCOUNT_CHANGED');
     if (verdict !== 'write') return refuse(verdict);
-    const registration = judgeRegistration(readHost(held, file, fs), ask, tokens.clientId);
+    const registration = judgeRegistration(readHost(held, file, fs), onDisk, ask, tokens.clientId);
     if (registration !== 'unchanged' && 'ok' in registration) return registration;
     if (
       registration !== 'unchanged' &&
