@@ -26,7 +26,15 @@ import {
   topUpAtBudgetStop,
 } from '../../packages/core-runtime/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
-import { asAgent, codeOf, liveWork, racer, rows, type Work } from '../runtime/schedules-harness.ts';
+import {
+  asAgent,
+  codeOf,
+  liveWork,
+  pickup,
+  racer,
+  rows,
+  type Work,
+} from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
 import {
   broker,
@@ -78,16 +86,44 @@ async function stoppedUnsent(): Promise<Unsent> {
   return { work, before, request, reserved: reserving.reserved };
 }
 
-const topUp = async (work: Work) =>
+const topUp = async (work: Work, amountMinor = 1_000) =>
   await s.db.app.withBusiness(
     s.business,
     async (tx) =>
       await topUpAtBudgetStop(tx, {
         ...decider(s, await runOf(work)),
-        amountMinor: 1_000,
+        amountMinor,
         currency: 'AUD',
       }),
   );
+
+/**
+ * #1623 R1 (B2): a stop releases the unsent calls its hold never counted, so a
+ * counted unsent call is one a later stop leaves on a hold a top-up already
+ * counted (`releaseNeverSent`). 400 holds no call at 500, so the first stops the
+ * run; a top-up of 550 makes the hold 950; the work picked up again holds one
+ * call reserved at 500, never sent, and the next stops the run again.
+ */
+async function countedUnsent(): Promise<Unsent> {
+  const first = await liveWork(s, `giveback counted ${randomUUID()}`, 400);
+  world.provider.mode('answer');
+  expect(await call(first)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
+  expect(await topUp(first, 550)).toMatchObject({ ok: true, value: { heldMinor: '950' } });
+  const work: Work = { ...first, picked: await pickup(s, reservationOf(first)) };
+  await stepOf(work);
+  const request = requestFor(work);
+  const reserving = await s.db.app.withBusiness(
+    s.business,
+    async (tx) => await reserveModelCall(tx, caller(work), request, broker),
+  );
+  if (!reserving.ok) throw new Error(`reserve refused: ${reserving.code}`);
+  const before = await envelopeActual(work);
+  expect(await call(work)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
+  expect(await calls(work), 'left reserved by the stop').toMatchObject([
+    { state: 'reserved', reserved: '500' },
+  ]);
+  return { work, before, request, reserved: reserving.reserved };
+}
 
 const end = async (work: Work) =>
   await s.db.app.withBusiness(
@@ -104,7 +140,8 @@ const sweepCalls = async (): Promise<void> => {
 };
 
 it('a counted call released at its retried start gives its maximum back once', async () => {
-  const { work, before, request, reserved } = await stoppedUnsent();
+  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  const { work, before, request, reserved } = await countedUnsent();
   expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
   const picked = await asAgent(s, {
     command: 'task.pickup',
@@ -133,7 +170,8 @@ it('a counted call released at its retried start gives its maximum back once', a
 });
 
 it('a counted call the model-call sweep releases gives its maximum back once', async () => {
-  const { work, before, request, reserved } = await stoppedUnsent();
+  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  const { work, before, request, reserved } = await countedUnsent();
   expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
 
@@ -168,7 +206,8 @@ const held = async (work: Work): Promise<{ readonly hold: number; readonly envel
 };
 
 it('a counted call released at its start while its topped-up hold is still held gives back onto that hold', async () => {
-  const { work, before, request, reserved } = await stoppedUnsent();
+  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  const { work, before, request, reserved } = await countedUnsent();
   expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
   const topped = await held(work);
@@ -202,7 +241,8 @@ it('a call released before any top-up or end gives nothing back, and a later top
 });
 
 it('a counted call whose hold another transaction holds is left to the next sweep, which gives back once', async () => {
-  const { work, before } = await stoppedUnsent();
+  // #1623 R1 (B2): the counted unsent call now comes from a second stop on a topped-up hold.
+  const { work, before } = await countedUnsent();
   expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   const other = racer(s);
   let locked: (() => void) | undefined;
