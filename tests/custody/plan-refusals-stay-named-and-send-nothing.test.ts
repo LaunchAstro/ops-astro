@@ -93,3 +93,24 @@ it('a plan that echoes the token in its answer has it judged out, and nothing cu
   expect(world.sent).toHaveLength(1);
   tokenNowhere(world, outcome);
 }, 15_000);
+
+it('custody’s own reply to a refused or echoing plan call carries no token, read before the agent’s side', async () => {
+  world = await openPlanRouteWorld();
+  await world.custody.prepare();
+  const echo = world.token;
+  const replies: unknown[] = [];
+  for (const reply of [
+    { status: 429, body: '{}' },
+    { status: 200, type: 'text/event-stream', body: stream(completed([`Token ${echo}.`])) },
+  ]) {
+    world.reply = () => reply;
+    const request = planRequest();
+    // oxlint-disable-next-line no-await-in-loop -- one call at a time
+    replies.push(await world.custody.raw({ type: 'dispatch', credentialRef: 'x', request }));
+  }
+  expect(replies.map((reply) => (reply as { type?: unknown }).type)).toStrictEqual([
+    'refused',
+    'answer',
+  ]);
+  tokenNowhere(world, ...replies);
+}, 15_000);
