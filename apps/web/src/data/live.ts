@@ -55,6 +55,12 @@ export interface LiveHub {
   watch(onStatus: () => void): () => void;
 }
 
+/** A read's live channel: the hub, and the topic named from the read's last answer. */
+export interface LiveRead<T> {
+  readonly hub: LiveHub;
+  readonly topic: (value: T) => string | undefined;
+}
+
 const wait = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);

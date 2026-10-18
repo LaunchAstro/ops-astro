@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
 import { dropsAnswer } from './read-breaks.ts';
-import { FLOOR_MS, type LiveHub } from './live.ts';
+import { FLOOR_MS, type LiveRead } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
 import { isRefusal, isUnavailable, type CallResult } from '../operations/client.ts';
 import { useFollow } from './use-follow.ts';
@@ -39,7 +39,7 @@ export interface UseReadOptions<T> {
    * unsaved edit included: the edit lives above the read and is never read
    * over, and the rest of the page keeps updating (C4 live-sync 4).
    */
-  readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
+  readonly live?: LiveRead<T>;
   /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
   readonly rollup?: RollupFloor;
   /** Which published answers break what the host admits; refused or out when absent. */

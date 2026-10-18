@@ -6,8 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { ReadState } from './authorised-read.ts';
-import { FLOOR_MS } from './live.ts';
-import type { UseReadOptions } from './use-read.ts';
+import { FLOOR_MS, type LiveRead } from './live.ts';
 
 /**
  * Re-read a live read that has no topic yet, its first answer unavailable: on
@@ -37,7 +36,7 @@ function untilAnswered(reload: () => void): () => void {
  * on the floor until one answers (`untilAnswered`); those re-reads are not live.
  */
 export function useFollow<T>(
-  live: UseReadOptions<T>['live'],
+  live: LiveRead<T> | undefined,
   state: ReadState<T>,
   reread: (live: boolean) => void,
   deps: readonly unknown[],
