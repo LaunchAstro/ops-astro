@@ -73,13 +73,21 @@ const OWNER_RAN = `exists (select 1 from public.proposal_versions v
                  and d.decision = 'approve'
                  and d.decided_by_owner is not true)`;
 
+/** The person who proposed the run's version: its starter (#1703), or null for an agent or a schedule. */
+const STARTER = `(select pa.person_id::text from public.proposal_versions v
+                join public.actors pa on pa.business_id = v.business_id
+                                     and pa.id = v.proposed_by_actor_id
+               where v.business_id = run.business_id and v.id = run.version_id
+                 and pa.kind = 'person')`;
+
 /**
  * What S3 reads of the task, in a statement of its own after the lock: a
  * statement that waits on the lock rereads the task's row but keeps its
  * earlier view of the operations, so an edit committed during the wait would
  * be read without the write that made it.
  */
-const READ_TASK = `select ${OWNER_RAN} as owner_ran, ${TASK_SOURCE} ${TASK_OF_LEASE}`;
+const READ_TASK = `select ${OWNER_RAN} as owner_ran, ${STARTER} as starter,
+            ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
 /** A task by its id, as a conversation's page: `$2` the task. */
 const READ_PAGE = `select ${TASK_SOURCE}
@@ -118,6 +126,8 @@ export interface TaskFacts {
 /** A run's task: its facts, and whether the owner proposed and approved the run (`OWNER_RAN`). */
 export interface RunTaskFacts extends TaskFacts {
   readonly ownerRan: boolean;
+  /** The person who proposed the run (`STARTER`). */
+  readonly starter: string | null;
 }
 
 /**
@@ -144,14 +154,18 @@ export async function readTask(
   tx: TenantQuery,
   leaseId: string,
 ): Promise<RunTaskFacts | undefined> {
-  const [task] = await tx.query<TaskRow & { owner_ran: boolean }>(READ_TASK, [
-    tx.businessId,
-    leaseId,
-    LEAVES_ROW_DATA,
-  ]);
+  const [task] = await tx.query<TaskRow & { owner_ran: boolean; starter: string | null }>(
+    READ_TASK,
+    [tx.businessId, leaseId, LEAVES_ROW_DATA],
+  );
   return task === undefined
     ? undefined
-    : { clientId: task.client, source: sourceOf(task), ownerRan: task.owner_ran };
+    : {
+        clientId: task.client,
+        source: sourceOf(task),
+        ownerRan: task.owner_ran,
+        starter: task.starter,
+      };
 }
 
 /** The run's task held (`shareTask`), then read (`readTask`): for a caller with no later wait. */
