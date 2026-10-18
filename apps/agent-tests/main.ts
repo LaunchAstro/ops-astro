@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The agent test commands (#1626 R11), on the replay fake:
-//   node apps/agent-tests/main.ts <luna|sol> [--out <file>]
-//     runs the set and writes its results file, by default under
-//     `agent-test-results/`; exits 1 when a case fails.
+//   node apps/agent-tests/main.ts <set> [--out <file>]
+//     runs the named set (`cases.ts`) and writes its results file, by
+//     default under `agent-test-results/`; exits 1 when a case fails.
 //   node apps/agent-tests/main.ts review <results file> <review file>
 //     saves Astra's review beside the results file, as
 //     `<results>.astra-review.md`, never over one already saved.
