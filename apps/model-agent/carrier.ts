@@ -55,6 +55,8 @@ export interface AgentCustody {
     gate: { readonly deadlineAt: number; readonly onWritten: () => void },
     onPiece: (text: string) => void,
   ): Promise<CustodyOutcome>;
+  /** The plan's token made ready, before an accept; present only when the plan is set. */
+  prepare?(): Promise<unknown>;
 }
 
 export interface ModelAgentOptions {
