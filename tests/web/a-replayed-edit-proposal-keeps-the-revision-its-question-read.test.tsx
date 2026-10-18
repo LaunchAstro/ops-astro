@@ -40,3 +40,25 @@ it('a replayed edit proposal keeps the task revision its first attempt read', as
     revision: 7,
   });
 });
+
+it('a replayed edit proposal whose first attempt read no task stays unbound, never bound to a later read', async () => {
+  let revision = -1;
+  const api = standIn(
+    { 'conversation.start': ['drop'] },
+    {},
+    {
+      revision: () => revision,
+      reply: () => ({ answered: true, messageId: REPLY, body: EDIT, cites: [] }),
+    },
+  );
+  const ask = await drawer(api.client);
+  await ask('Tighten the brief');
+  revision = 8;
+  await ask('Tighten the brief');
+  const starts = identities(api.sent, 'conversation.start');
+  expect(starts[1], 'the resend replays the first attempt').toBe(starts[0]);
+  const kept = JSON.parse(
+    sessionStorage.getItem('ops-astro:proposal-baselines:resend-proof') ?? '{}',
+  ) as Record<string, unknown>;
+  expect(kept[REPLY], 'no revision the question never read').toBeUndefined();
+});

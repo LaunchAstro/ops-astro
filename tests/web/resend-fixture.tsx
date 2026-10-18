@@ -60,7 +60,12 @@ function responder({ register, sent, committed, held, queues }: Stage, { revisio
     const command = String(url).split('/').slice(-2).join('.');
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (command === 'conversation.models') return answer({ models: [{ id: 'model-a' }] });
-    if (command === 'task.read') return answer({ task: { ...TASK, revision: revision() } });
+    if (command === 'task.read') {
+      // A negative revision stands for a read that failed.
+      const at = revision();
+      if (at < 0) return answer({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+      return answer({ task: { ...TASK, revision: at } });
+    }
     const operationId = body['operationId'];
     if (typeof operationId !== 'string') {
       return answer({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
