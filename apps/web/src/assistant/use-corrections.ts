@@ -11,9 +11,10 @@
 // the read answers now; its refusal is said in the same plain words.
 //
 // **When it was read.** Each read's answer is stamped with `performance.now()`
-// as it lands (`readAt`), beside how long its version's check holds
-// (`verifiedForMs`), so the card times its Approve from the answer and never
-// from the wall clock. The card reads again through `reread`.
+// as the read was sent (`readAt`), beside how long its version's check holds
+// (`verifiedForMs`), so the card times its Approve from the read and never
+// from the wall clock, and a slow answer grants no extra time. The card reads
+// again through `reread`.
 //
 // **Keyed on business and grant.** Everything is held under the business it
 // was asked in (`client.businessKey`) and the grant it was asked under (the
@@ -100,8 +101,9 @@ const failureWords = (failed: Failure): string => refusalWords(failedCode(failed
 
 /**
  * The correction's decision as `live_correction.read` answers it now, under
- * `key`; false where the read failed, its failure then the card's refusal.
- * `lands` says whether its answer may still land; an overtaken one is dropped.
+ * `key`; false where the read failed, its failure then the card's refusal. The
+ * answer is timed from when the read was sent, so a slow answer grants no extra
+ * time. `lands` says whether its answer may still land; an overtaken one is dropped.
  */
 async function readInto(
   client: OperationsClient,
@@ -110,6 +112,7 @@ async function readInto(
   correctionId: string,
   lands: () => boolean,
 ): Promise<boolean> {
+  const sentAt = performance.now();
   const settled = settle(
     await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
   );
@@ -124,7 +127,7 @@ async function readInto(
     approver,
     versionId,
     verifiedForMs: Number.isFinite(verifiedForMs) && verifiedForMs > 0 ? verifiedForMs : 0,
-    readAt: performance.now(),
+    readAt: sentAt,
     reason: typeof refusal === 'string' ? refusal : null,
     refusal: null,
   });

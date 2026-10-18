@@ -18,9 +18,9 @@ export interface Correction {
   readonly approver: string | null;
   /** The version a decision names; null until a read names one. */
   readonly versionId: string | null;
-  /** How long the version's check holds from when the read answered, in ms; 0 for none. */
+  /** How long the version's check holds from when the read was sent, in ms; 0 for none. */
   readonly verifiedForMs: number;
-  /** `performance.now()` when the last read answered, or null before one has. */
+  /** `performance.now()` when the read now shown was sent, or null before one has answered. */
   readonly readAt: number | null;
   /** The refusal code the last read names (why it is unlocated or superseded), or null. */
   readonly reason: string | null;

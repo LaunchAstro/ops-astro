@@ -60,7 +60,10 @@ export function useLaunchClock(correction: Correction, reread: () => void): Laun
       clearTimeout(timer);
     };
   }, [holds, readAt, verifiedForMs]);
-  const launchable = holds && aged !== readAt;
+  // Checked against the clock as well as the timer: a card shown again after its time has passed
+  // offers nothing before the timer's first turn.
+  const launchable =
+    holds && aged !== readAt && readAt !== null && performance.now() - readAt < verifiedForMs;
   const polling = state === 'locating' || (state === 'requested' && !launchable);
   // When the card came to its state: the re-reads stop once its time is up.
   const began = useRef<{ readonly state: CardState; readonly at: number } | null>(null);
