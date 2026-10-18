@@ -7,8 +7,8 @@ import { line } from './c80-site-provider.ts';
 import { runLivePublish } from '../../packages/core-commands/src/index.ts';
 
 useRegisterWorld();
-describe.skipIf(serverUrl === undefined)('Sol cap proofs', () => {
-  it('Sol proof, criterion 2: a deployment-less effect stays within its business, client and lease holder', async () => {
+describe.skipIf(serverUrl === undefined)('the cap survives a late observation', () => {
+  it('a deployment-less effect stays within its business, client and lease holder', async () => {
     const id = await approved();
     const { site, ports } = await bound(id);
     site.state.lookupMisses = 1000;
@@ -32,7 +32,7 @@ describe.skipIf(serverUrl === undefined)('Sol cap proofs', () => {
     expect(otherClient.site.sent).toEqual([]);
     expect(await w.stateOf(id)).toBe('accepted');
   });
-  it('Sol proof, criterion 1: an earlier observation cannot erase the cap and cause a second person task', async () => {
+  it('an earlier observation cannot erase the cap and cause a second person task', async () => {
     const id = await approved();
     const { site, ports, raised } = await bound(id);
     site.state.lookupMisses = 1000;
