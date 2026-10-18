@@ -50,6 +50,9 @@ export function serving(
     // The drawer's model offer (CS-7.30) is a read, never a command sent: none offered here.
     if (where.endsWith('/conversation/models'))
       return Promise.resolve(json({ ok: true, models: [], chosen: null }));
+    // The drawer's correction desks (#1695) are a read: none held here.
+    if (where.endsWith('/live_correction/list'))
+      return Promise.resolve(json({ ok: true, corrections: [] }));
     if (where.endsWith('/task/queue')) {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
