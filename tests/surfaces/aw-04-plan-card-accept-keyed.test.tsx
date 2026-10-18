@@ -41,6 +41,29 @@ const ok = (value: Readonly<Record<string, unknown>>) => ({
 const refusal = (code: string) => ({ ok: false, refused: true, code, names: [], fixes: [code] });
 const LOST = { unavailable: true, because: 'The network dropped the answer.' };
 
+/** Accept answers: sent at once until `hold`, then each waits for `release` by index. */
+function heldAnswers() {
+  let holding = false;
+  const held: ((lost: boolean) => void)[] = [];
+  const hold = (): void => {
+    holding = true;
+  };
+  const send = (answer: unknown, lost: boolean): Promise<unknown> => {
+    if (!holding) return Promise.resolve(lost ? LOST : answer);
+    // Committed now, answered when the test releases it.
+    return new Promise((resolve) => {
+      held.push((drop) => {
+        resolve(drop ? LOST : answer);
+      });
+    });
+  };
+  /** Answers held accept `index`: its committed answer, or none if `lost`. */
+  const release = (index: number, lost: boolean): void => {
+    held[index]?.(lost);
+  };
+  return { hold, send, release };
+}
+
 /** Each start answers the next conversation id with version 1's plan; `spent` ids hold another body. */
 function registerClient(conversations: readonly string[], spent: readonly string[] = []) {
   const register = new Map<string, { readonly digest: string; readonly answer: unknown }>(
@@ -48,10 +71,9 @@ function registerClient(conversations: readonly string[], spent: readonly string
   );
   const queue = [...conversations];
   const ids: (string | undefined)[] = [];
+  const answers = heldAnswers();
   let decided = false;
   let lose = false;
-  let hold = false;
-  const held: ((lost: boolean) => void)[] = [];
   let minted = 0;
   const accept = (body: unknown, id: string): unknown => {
     const digest = JSON.stringify(body);
@@ -75,9 +97,7 @@ function registerClient(conversations: readonly string[], spent: readonly string
         const answer = accept(body, options?.operationId ?? '');
         const lost = lose;
         lose = false;
-        if (!hold) return Promise.resolve(lost ? LOST : answer);
-        // Committed now, answered when the test releases it.
-        return new Promise((resolve) => held.push((drop) => resolve(drop ? LOST : answer)));
+        return answers.send(answer, lost);
       }
       const reply = { answered: true, messageId: 'm-1', body: 'Here is the plan.', plan: OFFER };
       if (name === 'conversation.message') return Promise.resolve(ok({ reply }));
@@ -88,13 +108,7 @@ function registerClient(conversations: readonly string[], spent: readonly string
   const loseNext = (): void => {
     lose = true;
   };
-  const holdAccepts = (): void => {
-    hold = true;
-  };
-  /** Answers held accept `index`: its committed answer, or none if `lost`. */
-  const release = (index: number, lost: boolean): void => {
-    held[index]?.(lost);
-  };
+  const { hold: holdAccepts, release } = answers;
   return { client, ids, loseNext, holdAccepts, release, minted: () => minted };
 }
 
