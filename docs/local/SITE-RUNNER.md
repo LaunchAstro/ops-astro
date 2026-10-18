@@ -44,7 +44,8 @@ Each pass starts with the locate (`locate.ts`), then takes the claims. The two
 parts run apart, so a failure in one leaves the other and the heartbeat going.
 
 - It takes up to 20 waiting corrections (`locating` or `requested`) of the
-  business in turn: those never checked first, then the oldest.
+  configured site's holder in turn: those never checked first, then the
+  oldest. Another client's corrections are left for that client's own runner.
 - Before any provider call, a correction bound to another site is refused. A
   `locating` one settles `unlocated SITE_NOT_CONFIGURED`. A `requested` one is
   put behind the rest, unstamped. A page and file that are not a configured
@@ -60,9 +61,11 @@ parts run apart, so a failure in one leaves the other and the heartbeat going.
   site's, checked in the writing statement.
 - A failed or timed-out read backs its corrections off 30 s, 60 s, then 120 s.
   A `locating` correction still unread 120 s after its request settles
-  `unlocated SITE_UNREACHABLE`. An answer not in the provider's shape settles a
-  `locating` correction `PROVIDER_RESPONSE_MALFORMED` and counts as a failure
-  for a `requested` one.
+  `unlocated SITE_UNREACHABLE`. An answer not in the provider's shape (a field
+  missing or of another type, a body that is not JSON, a commit or blob that is
+  not a hash, content that is not canonical base64) settles a `locating`
+  correction `PROVIDER_RESPONSE_MALFORMED` and counts as a failure for a
+  `requested` one.
 
 Before its first write, the proposal reads the head again and the file at it.
 If the file no longer holds the pinned pre-image, the proposal refuses

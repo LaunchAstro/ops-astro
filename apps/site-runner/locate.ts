@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The site runner's locate (#1693): each pass takes this business's due
-// corrections in turn (`dueCorrections`, 20 at most) and checks each against
-// the file at the default branch's head, read through custody.
+// The site runner's locate (#1693): each pass takes the configured site's
+// holder's due corrections in turn (`dueCorrections`, 20 at most) and checks
+// each against the file at the default branch's head, read through custody.
+// Another holder's corrections are left for its own runner.
 //
 // - Before any provider call, a correction bound to any site but the
 //   configured one is refused: a `locating` one settles `unlocated
@@ -17,9 +18,10 @@
 //   still holds the pinned bytes, else superseded.
 // - A head or file read that fails backs its corrections off (`checksFailed`),
 //   and healthy paths go on. An answer not in the provider's own shape (a
-//   commit or blob that is not a hash, content that is not canonical base64)
-//   settles a `locating` correction `unlocated PROVIDER_RESPONSE_MALFORMED` and
-//   counts as a failure for a `requested` one.
+//   field missing or of another type, a body that is not JSON, a commit or
+//   blob that is not a hash, content that is not canonical base64) settles a
+//   `locating` correction `unlocated PROVIDER_RESPONSE_MALFORMED` and counts as
+//   a failure for a `requested` one.
 // Each correction's write is its own transaction, never held across a call.
 // What is logged is the correction's id and a code, never a word, path,
 // content, token or address.
@@ -82,15 +84,23 @@ type Read<T> =
   | { readonly kind: 'malformed' };
 
 const MALFORMED_READ = { kind: 'malformed' } as const;
+const FAILED_READ = { kind: 'failed' } as const;
+
+/** The guarded call's codes for an answer it got but could not take: a field off schema, or no JSON. */
+const OUT_OF_SHAPE: ReadonlySet<string> = new Set(['PROVIDER_RESPONSE_SCHEMA', MALFORMED]);
+
+/** A read with no value: malformed when the provider answered out of shape, else failed. */
+const unread = (read: ProviderResult<ProviderValue>) =>
+  read.kind === 'refused' && OUT_OF_SHAPE.has(read.code) ? MALFORMED_READ : FAILED_READ;
 
 const headFrom = (read: ProviderResult<ProviderValue>): Read<string> => {
-  if (read.kind !== 'ok') return { kind: 'failed' };
+  if (read.kind !== 'ok') return unread(read);
   const sha = read.value['object.sha'];
   return typeof sha === 'string' && HASH.test(sha) ? { kind: 'ok', value: sha } : MALFORMED_READ;
 };
 
 const fileFrom = (read: ProviderResult<ProviderValue>): Read<string> => {
-  if (read.kind !== 'ok') return { kind: 'failed' };
+  if (read.kind !== 'ok') return unread(read);
   const { sha, encoding, content } = read.value;
   if (typeof sha !== 'string' || !HASH.test(sha) || encoding !== 'base64') return MALFORMED_READ;
   const text = typeof content === 'string' ? decoded(content) : undefined;
