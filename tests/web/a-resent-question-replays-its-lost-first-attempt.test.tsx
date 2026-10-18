@@ -9,10 +9,12 @@
 // or one asked again after its answer, goes afresh. The production client
 // runs the real send path over a stand-in API; this proves the identities
 // sent, and the real-register suite proves the rows. A lost start replayed
-// after another question started the tab answers under itself, and the tab
-// stays on the conversation it is on.
+// after another question started the tab answers in a tab on its own
+// conversation, and the asking tab stays on the conversation it is on.
 
+import { act } from 'react';
 import { afterEach, expect, it } from 'vitest';
+import { APART } from '../../apps/web/src/assistant/first-question.ts';
 import { settle } from '../surfaces/mount.tsx';
 import { unmountAll } from '../surfaces/mp-7-11-drawer-fixtures.tsx';
 import { drawer, identities, standIn } from './resend-fixture.tsx';
@@ -100,17 +102,33 @@ it('the same question asked again after its answer came goes under a fresh ident
   expect(messages[1]).not.toBe(messages[0]);
 });
 
-it('a lost first question replayed after another question started the tab answers under itself and leaves the tab on that conversation', async () => {
-  const api = standIn({ 'conversation.start': ['drop'] });
-  await (
-    await drawer(api.client)
-  )('Question A', 'Question B', 'Question A');
-  // The stand-in numbers conversations as they commit: A's is 1, B's is 2.
-  const address = document.querySelector('[data-assistant="address"]')?.getAttribute('href');
-  expect(address).toBe('/agent/c0000000-0000-4000-8000-000000000002');
-  const lines = [...document.querySelectorAll<HTMLElement>('[data-message-role]')].map(
+/** The drawer's tabs, the selected tab's address, and its lines as role and text. */
+const tabs = (): HTMLElement[] => [
+  ...document.querySelectorAll<HTMLElement>('[role="tab"][data-chat]'),
+];
+const address = (): string | null | undefined =>
+  document.querySelector('[data-assistant="address"]')?.getAttribute('href');
+const lines = (): string[] =>
+  [...document.querySelectorAll<HTMLElement>('[data-message-role]')].map(
     (line) => `${line.dataset['messageRole'] ?? ''}: ${line.textContent ?? ''}`,
   );
-  expect(lines.slice(-2)).toEqual(['user: Question A', 'ai: ']);
+
+it('a lost first question replayed after another question started the tab answers in a tab on its own conversation, and the asking tab stays on its own', async () => {
+  const api = standIn({ 'conversation.start': ['drop'] });
+  const ask = await drawer(api.client);
+  await ask('Question A', 'Question B');
+  const before = tabs().length;
+  const asking = tabs().find((tab) => tab.getAttribute('aria-selected') === 'true');
+  await ask('Question A');
   expect(api.committed).toEqual(['conversation.start', 'conversation.start']);
+  // The stand-in numbers conversations as they commit: A's is 1, B's is 2.
+  expect(address()).toBe('/agent/c0000000-0000-4000-8000-000000000001');
+  expect(lines()).toEqual(['user: Question A', 'ai: ']);
+  expect(tabs()).toHaveLength(before + 1);
+  await act(() => {
+    asking?.click();
+  });
+  await settle();
+  expect(address()).toBe('/agent/c0000000-0000-4000-8000-000000000002');
+  expect(lines().slice(-2)).toEqual(['user: Question A', `note: ${APART}`]);
 });
