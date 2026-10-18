@@ -15,10 +15,21 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
+import { callModel } from '../../packages/core-custody/src/index.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
-import { codeOf, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
+import { codeOf, liveWork, racer, rows, type Work } from '../runtime/schedules-harness.ts';
 import { pickupOf, spentWhole } from '../runtime/resume-sizing-world.ts';
-import { call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
+import {
+  broker,
+  call,
+  caller,
+  noDatabase,
+  requestFor,
+  s,
+  stepOf,
+  useBrokerWorld,
+  world,
+} from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -109,6 +120,28 @@ it('a broker budget stop after the third ask ends the run and alerts a person', 
   const result = await call(work);
 
   expect(result.ok ? null : result.code).toBe('BUDGET_UNAVAILABLE');
+  expect(world.provider.seen.length).toBe(seen);
+  expect(await endOf(work)).toEqual(ENDED);
+});
+
+it('two calls past the last ask at once end the run once, with one alert', async () => {
+  const work = await liveWork(s, `lastask two at once ${randomUUID()}`, UNDER_ONE_CALL);
+  await stepOf(work);
+  await asksSpent(work);
+  const seen = world.provider.seen.length;
+  // Two connections of their own: the second waits on the run the first holds
+  // and then finds its lease over, so it is refused before any stop.
+  const [first, second] = [racer(s), racer(s)];
+  try {
+    const answers = await Promise.all(
+      [first, second].map(
+        async (db) => await callModel(db, s.business, caller(work), requestFor(work), broker),
+      ),
+    );
+    expect(answers.map((answer) => answer.ok)).toEqual([false, false]);
+  } finally {
+    await Promise.all([first.close(), second.close()]);
+  }
   expect(world.provider.seen.length).toBe(seen);
   expect(await endOf(work)).toEqual(ENDED);
 });
