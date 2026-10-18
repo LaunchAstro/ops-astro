@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// A plan call in flight, through the real custody process and a loopback
+// endpoint (#1620 P4, Sol's proofs on #1916, assertions unchanged). A prepare
+// that takes on a replacement pair meanwhile leaves the call judged against
+// the token it went out under, so an echo of that token never leaves custody.
+// A timeout after the request was written is never told as nothing sent.
+
+import { randomBytes } from 'node:crypto';
+import { createServer, type ServerResponse } from 'node:http';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import { startCustody } from '../../packages/core-custody/src/custody.ts';
+import { seed, tempDir, tokens, HOUR } from './fixtures/plan-token-world.ts';
+import { planRequest } from './fixtures/plan-route-world.ts';
+import { completed, stream } from './fixtures/plan-answer-world.ts';
+
+async function open() {
+  const dir = tempDir();
+  const old = {
+    ...tokens('before', Date.now() + 2 * HOUR),
+    accessToken: randomBytes(48).toString('base64url'),
+    refreshToken: randomBytes(48).toString('base64url'),
+  };
+  await seed(dir.file, { state: 'ready', tokens: old });
+  const credentialsFile = join(dir.dir, 'credentials.json');
+  writeFileSync(credentialsFile, '[]', { mode: 0o600 });
+  let respond!: (response: ServerResponse) => void;
+  let received!: () => void;
+  const arrived = new Promise<void>((done) => {
+    received = done;
+  });
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      respond(res);
+      received();
+    });
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const port = (server.address() as { port: number }).port;
+  const custody = await startCustody({
+    credentialsFile,
+    destinations: [{ key: 'chatgpt_plan', origin: `http://127.0.0.1:${port}` }],
+    plan: { tokenFile: dir.file, issuer: 'https://auth.openai.com' },
+  });
+  expect(await custody.prepare()).toEqual({ ok: true });
+  return {
+    custody,
+    dir,
+    old,
+    arrived,
+    onRequest: (fn: (response: ServerResponse) => void) => {
+      respond = fn;
+    },
+    close: async () => {
+      await custody.stop();
+      server.closeAllConnections();
+      await new Promise<void>((done) => server.close(() => done()));
+      dir.done();
+    },
+  };
+}
+
+it('a concurrent prepare cannot expose the token of an in-flight call', async () => {
+  const w = await open();
+  try {
+    let pending!: ServerResponse;
+    w.onRequest((res) => {
+      pending = res;
+    });
+    const dispatch = w.custody.dispatchBefore('chatgpt_plan', planRequest(), {
+      deadlineAt: Date.now() + 3000,
+      onWritten: () => {},
+    });
+    await w.arrived;
+    // A same-account sign-in commits a replacement pair while the first call is in flight.
+    await seed(w.dir.file, {
+      state: 'ready',
+      tokens: {
+        ...tokens('after', Date.now() + 2 * HOUR),
+        accessToken: randomBytes(48).toString('base64url'),
+        refreshToken: randomBytes(48).toString('base64url'),
+      },
+    });
+    expect(await w.custody.prepare()).toEqual({ ok: true });
+    pending.writeHead(200, { 'content-type': 'text/event-stream' });
+    pending.end(stream(completed([`Echo ${w.old.accessToken}.`])));
+    const result = await dispatch;
+    expect(JSON.stringify(result).includes(w.old.accessToken)).toBe(false);
+  } finally {
+    await w.close();
+  }
+}, 15000);
+
+it('a timeout after the request is written cannot claim nothing was sent', async () => {
+  const w = await open();
+  try {
+    w.onRequest(() => {});
+    let written = false;
+    const result = await w.custody.dispatchBefore(
+      'chatgpt_plan',
+      { ...planRequest(), timeoutMs: 100 },
+      {
+        deadlineAt: Date.now() + 3000,
+        onWritten: () => {
+          written = true;
+        },
+      },
+    );
+    await w.arrived;
+    expect(written).toBe(true);
+    expect(result).not.toMatchObject({ kind: 'refused', started: false });
+  } finally {
+    await w.close();
+  }
+}, 15000);
