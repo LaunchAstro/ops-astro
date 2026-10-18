@@ -84,7 +84,7 @@ const operationsSent = (api: ReturnType<typeof server>): unknown[] =>
   api.sent.map((send) => send.body['operationId']);
 
 // eslint-disable-next-line max-lines-per-function -- one screen, the ticket's lines
-describe('#1339 a failed chat send keeps the person’s words', () => {
+describe('a failed chat send keeps the person’s words', () => {
   it('a refused direct send keeps its words under the conversation, out of the composer and the transcript', async () => {
     const { api, m } = await team();
     api.state.refuse = {
