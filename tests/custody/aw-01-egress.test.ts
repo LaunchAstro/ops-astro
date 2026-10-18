@@ -80,6 +80,9 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   // #1620 P1b:
   'packages/core-custody/src/token-refresh.ts':
     "the plan token's one refresh request, to the token URL its holder was built with; no redirect (pinned by #1704)",
+  // #1620 P2:
+  'apps/model-agent/chatgpt-sign-in.ts':
+    "the owner's plan sign-in on the M5: listens on 127.0.0.1 for its one callback, and fetches only its issuer's origin (pinned to https://auth.openai.com by the command); no redirect",
 };
 
 const MODULES =
