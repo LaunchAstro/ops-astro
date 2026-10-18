@@ -109,6 +109,8 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
       figure: { kind: 'none' },
       soloTotal: '0',
     });
+    // Taken back after the reads, so the agent may pick up the next case's run.
+    await w.controls.asPerson('delegation.revoke', { delegationId: ran.picked['delegationId'] });
   });
 
   it('F3 a run with an open call is unpriced in every agent’s row and adds to no total', async () => {
