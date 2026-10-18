@@ -175,6 +175,7 @@ export {
   revertCorrection,
   type Accepted,
   type GateDecision,
+  type Observed,
   type PublishJob,
   type PublishOutcome,
   type PublishPorts,
@@ -183,6 +184,7 @@ export {
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
   bindingRefuses,
+  findDeployment,
   mergeAndFind,
   partySiteRefuses,
   readServed,

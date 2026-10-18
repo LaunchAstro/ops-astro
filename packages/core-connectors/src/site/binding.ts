@@ -12,7 +12,8 @@
 //   precondition, so a concurrent file edit refuses the write atomically.
 //   The request remains the human review screen and is never merged.
 // - The deployment is found by the written commit, a bounded number of tries.
-//   Not found, or found for another commit, is unknown after the write.
+//   Found for another commit is unknown after the write; not found yet is not
+//   published yet, accepted without it and looked up again when observed.
 // - The revert writes the pre-image back on the default branch, only over the
 //   published change and at the blob just read, and finds its deployment the
 //   same way.
@@ -30,9 +31,10 @@ import { callConnector, type CallDependencies, type ProviderResult } from '../ca
 import { siteOperation } from './operations.ts';
 import type { Published, PublishPorts } from './publish.ts';
 import { checkEnvelope } from './envelope.ts';
+import { findDeployment } from './serving.ts';
 import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
-export { readServed } from './serving.ts';
+export { findDeployment, readServed } from './serving.ts';
 
 /** One party's site: its providers, and each catalogued page with its source file. */
 export interface PartySite {
@@ -197,24 +199,15 @@ export async function readSiteSource(
   return ok({ content, revision: String(read.value['sha']) });
 }
 
-/** `site.deployment.lookup` by commit, tried until found or the attempts run out. */
+/** `findDeployment`, tried until found or the attempts run out. */
 async function deploymentOf(
   binding: SiteBinding,
   commit: string,
   deps: BindingDependencies,
   attempt = 1,
-): Promise<ProviderResult<Deployed>> {
-  const found = await call(
-    'site.deployment.lookup',
-    { project: binding.project, sha: commit },
-    deps,
-  );
-  if (found.kind === 'ok') {
-    if (found.value['deployments.0.meta.githubCommitSha'] !== commit)
-      return stop('unknown', 'DEPLOYMENT_COMMIT_MISMATCH', deps);
-    return ok({ revision: commit, deploymentId: String(found.value['deployments.0.uid']) });
-  }
-  if (attempt >= LOOKUP_ATTEMPTS) return stop('unknown', 'DEPLOYMENT_NOT_FOUND', deps);
+): Promise<ProviderResult<string | undefined>> {
+  const found = await findDeployment(binding, commit, deps);
+  if (found.kind !== 'ok' || found.value !== undefined || attempt >= LOOKUP_ATTEMPTS) return found;
   await deps.wait(LOOKUP_WAIT_MS);
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
@@ -256,9 +249,12 @@ export async function mergeAndFind(
     deps,
   );
   if (written.kind !== 'ok') return written;
-  const deployed = await deploymentOf(binding, String(written.value['commit.sha']), deps);
+  const revision = String(written.value['commit.sha']);
+  const deployed = await deploymentOf(binding, revision, deps);
   if (deployed.kind !== 'ok') return deployed;
-  return ok({ ...deployed.value, liveUrl: binding.pageUrl });
+  // None found yet is not published yet: accepted, its deployment looked up again when observed.
+  const deploymentId = deployed.value === undefined ? {} : { deploymentId: deployed.value };
+  return ok({ revision, ...deploymentId, liveUrl: binding.pageUrl });
 }
 
 /** `site.source.revert`: the pre-image back over the published change, then its deployment. */
@@ -285,5 +281,9 @@ export async function revertForward(
     deps,
   );
   if (written.kind !== 'ok') return written;
-  return await deploymentOf(binding, String(written.value['commit.sha']), deps);
+  const revision = String(written.value['commit.sha']);
+  const deployed = await deploymentOf(binding, revision, deps);
+  if (deployed.kind !== 'ok') return deployed;
+  if (deployed.value === undefined) return stop('unknown', 'DEPLOYMENT_NOT_FOUND', deps);
+  return ok({ revision, deploymentId: deployed.value });
 }

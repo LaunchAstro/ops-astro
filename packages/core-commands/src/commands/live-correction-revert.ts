@@ -39,7 +39,7 @@ import {
   readCorrectionEffect,
   registerCorrectionEffect,
   latestRevert,
-  type RegisteredEffect,
+  type RegisteredRevert,
 } from './live-correction-effect.ts';
 import {
   leaseRefused,
@@ -50,7 +50,7 @@ import {
   type CorrectionRun,
   type RunnerPorts,
   type RunResult,
-} from './live-correction-runner.ts';
+} from './live-correction-run.ts';
 
 type RevertPorts = Parameters<typeof revertCorrection>[1];
 
@@ -115,7 +115,7 @@ function parsed(text: string): unknown {
 function revertPorts(
   db: Database,
   run: CorrectionRun,
-  held: { readonly correction: LiveCorrection; readonly reverted: RegisteredEffect | undefined },
+  held: { readonly correction: LiveCorrection; readonly reverted: RegisteredRevert | undefined },
   decidedAt: string,
   ports: RunnerPorts,
 ): RevertPorts {

@@ -38,6 +38,24 @@ export async function readServed(
   };
 }
 
+const NONE_YET = { kind: 'ok', value: undefined } as const;
+
+/** `site.deployment.lookup` by commit, once: its id, none yet (undefined), or another commit's. */
+export async function findDeployment(
+  site: { readonly project: string },
+  commit: string,
+  deps: CallDependencies,
+): Promise<ProviderResult<string | undefined>> {
+  const params = { project: site.project, sha: commit };
+  const found = await call('site.deployment.lookup', params, deps);
+  if (found.kind !== 'ok') return NONE_YET;
+  if (found.value['deployments.0.meta.githubCommitSha'] !== commit) {
+    deps.record('DEPLOYMENT_COMMIT_MISMATCH');
+    return { kind: 'unknown', code: 'DEPLOYMENT_COMMIT_MISMATCH' };
+  }
+  return { kind: 'ok', value: String(found.value['deployments.0.uid']) };
+}
+
 /**
  * Each observation's deployment read for the bound page: served only while the deployment is also the
  * project's production deployment now and the page's host is assigned to it; else unknown.
@@ -71,16 +89,19 @@ export function readServing(
 
 /**
  * The page captured between two deployment reads, each served at this revision: `pending`
- * while the first finds it not served yet, `unserved` when either is unknown or the second
- * finds it no longer served (another deployment promoted while the page was read).
+ * while the first finds it not served yet (or no deployment is found yet), `unserved` when
+ * either is unknown or the second finds it no longer served (another deployment promoted
+ * while the page was read).
  */
 export async function whileServed<T extends object>(
   read: ReadDeployment,
-  deployed: { readonly deploymentId: string; readonly revision: string },
+  deployed: { readonly deploymentId?: string; readonly revision: string },
   capture: () => Promise<T>,
 ): Promise<T | 'pending' | 'unserved'> {
+  const { deploymentId } = deployed;
+  if (deploymentId === undefined) return 'pending';
   const served = async () => {
-    const answer = await read(deployed.deploymentId);
+    const answer = await read(deploymentId);
     // A read that fails, refused or unknown, is unserved: a person is asked, never a wait.
     if (answer.kind !== 'ok') return 'unserved';
     const ok = answer.kind === 'ok' && answer.value.served;
