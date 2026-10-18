@@ -268,3 +268,6 @@ export interface LiveCorrectionReceiptsResult {
   readonly correctionId: string;
   readonly receipts: readonly CorrectionReceiptView[];
 }
+
+/** #1694's two answers, as one member of the read results. */
+export type LiveCorrectionReads = LiveCorrectionListResult | LiveCorrectionReceiptsResult;

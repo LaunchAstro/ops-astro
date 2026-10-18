@@ -109,11 +109,6 @@ export type {
   InboxReadResult,
   UnattendedView,
   LiveCorrectionReadResult,
-  LiveCorrectionListResult,
-  LiveCorrectionReceiptsResult,
-  CorrectionListItem,
-  CorrectionReceiptView,
-  ReceiptCapture,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,
@@ -172,6 +167,15 @@ export type {
   TimeEntryView,
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
+// #1694's correction reads, straight from their module: `views.ts` is at its line cap.
+export type {
+  CorrectionListItem,
+  CorrectionReceiptView,
+  LiveCorrectionListResult,
+  LiveCorrectionReads,
+  LiveCorrectionReceiptsResult,
+  ReceiptCapture,
+} from './views-run.ts';
 export type * from './views-chat.ts';
 export type {
   MapComponentView,

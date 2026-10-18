@@ -46,6 +46,8 @@ const EMPTY: readonly CommandName[] = [
   'finance.skill_costs',
   // The caller's own agents (Assign to AI): no operand.
   'agent.mine',
+  // The corrections the admin's run:write and task:read reach (#1694): no operand.
+  'live_correction.list',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
