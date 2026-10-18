@@ -223,6 +223,7 @@ export {
   LAUNCH_HOURS,
   launchPurpose,
   launchRun,
+  UNANSWERED_MINUTES,
   type LaunchRequest,
   type LaunchResult,
 } from './authority/launches.ts';

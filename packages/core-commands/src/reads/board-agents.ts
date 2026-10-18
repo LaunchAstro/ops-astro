@@ -14,6 +14,7 @@ import {
   personSubjects,
   readableTaskIds,
   readableTaskParams,
+  UNANSWERED_MINUTES,
   type Subject,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
@@ -57,6 +58,15 @@ export async function readBoardAgents(
   return found;
 }
 
+/**
+ * SQL: the open launch `run`'s state, `unanswered` while it still waits once
+ * `$5` minutes have passed since it was launched (#1710), judged when the
+ * read's statement runs.
+ */
+const RUN_STATE = `case when run.state = 'waiting'
+                        and run.launched_at <= statement_timestamp() - make_interval(mins => $5)
+                       then 'unanswered' else run.state end`;
+
 /** The agent holding each row, and whether a run of it is in progress there. */
 async function heldAgents(
   tx: TenantQuery,
@@ -70,7 +80,7 @@ async function heldAgents(
     readonly owner_id: string | null;
     readonly owner_name: string | null;
     readonly live: boolean;
-    readonly run_state: 'waiting' | 'started' | null;
+    readonly run_state: 'waiting' | 'unanswered' | 'started' | null;
     readonly launched_at: Date | null;
   }>(
     `select r.id as task_id, a.id as agent_id, ${AGENT_NAME_SQL} as name,
@@ -78,7 +88,7 @@ async function heldAgents(
             exists (select 1 from public.delegations d
                      where d.business_id = r.business_id and d.agent_actor_id = a.id
                        and d.purpose_scope_id = r.id and ${DELEGATION_STANDS}) as live,
-            run.state as run_state, run.launched_at
+            ${RUN_STATE} as run_state, run.launched_at
        from public.records r
        join public.actors a on a.business_id = r.business_id and a.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = a.business_id and p.id = a.owner_person_id
@@ -89,7 +99,7 @@ async function heldAgents(
           where l.business_id = r.business_id and l.task_id = r.id and l.agent_actor_id = a.id
             and l.state <> 'ended' and ${DELEGATION_STANDS}) run on true
       where r.business_id = $1 and r.id = any(${readableTaskIds('$2::uuid[]', 3)})`,
-    [tx.businessId, taskIds, ...readableTaskParams(readers)],
+    [tx.businessId, taskIds, ...readableTaskParams(readers), UNANSWERED_MINUTES],
   );
   return rows.map((row) => [
     row.task_id,

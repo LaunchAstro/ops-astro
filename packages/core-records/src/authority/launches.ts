@@ -15,16 +15,26 @@
 // The caller holds the task's lock, so two Launches of one task run one after
 // the other and the second sees the first. The partial index is the backstop.
 // An open launch whose delegation lapsed, or was revoked or settled, is ended
-// here, and a new one opens; a live one refuses.
+// here, and a new one opens; a live one refuses. So does one still waiting
+// once `UNANSWERED_MINUTES` have passed since it was launched with no runner
+// taking it (#1710): it is ended, its delegation retired (`work_retired`), and
+// the fresh run opens. Nothing ends it by itself, and nothing retries.
+//
+// The launch row is locked first and judged after, at `clock_timestamp()`,
+// as a take judges it (`launch-take.ts`): a take that moved it to `started`
+// while Launch waited is the state read, and that run is left open.
 
 import { randomUUID } from 'node:crypto';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Subject } from './grants.ts';
-import { mintDelegation } from './delegations.ts';
+import { mintDelegation, revokeDelegation } from './delegations.ts';
 
 /** How long a launch's delegation lives: the runner takes it, and works, inside it. */
 export const LAUNCH_HOURS = 8;
+
+/** How long a launch waits for a runner before Launch may open a fresh one (#1710). */
+export const UNANSWERED_MINUTES = 15;
 
 export interface LaunchRequest {
   readonly taskId: string;
@@ -49,18 +59,34 @@ export const launchPurpose = (taskId: string): string =>
  * stands, else ended here so a fresh one may open. None, undefined.
  */
 async function closeLapsed(tx: TenantQuery, taskId: string): Promise<CommandRefusal | undefined> {
-  const open = await tx.query<{ readonly id: string; readonly live: boolean }>(
-    `select l.id, (d.revoked_at is null and d.settled_at is null
-                   and d.expires_at > clock_timestamp()) as live
+  const locked = await tx.query<{ readonly id: string }>(
+    `select id from public.task_launches
+      where business_id = $1 and task_id = $2 and state <> 'ended'
+      for update`,
+    [tx.businessId, taskId],
+  );
+  if (locked[0] === undefined) return undefined;
+  const open = await tx.query<{
+    readonly id: string;
+    readonly delegation_id: string;
+    readonly live: boolean;
+    readonly unanswered: boolean;
+  }>(
+    `select l.id, l.delegation_id,
+            (d.revoked_at is null and d.settled_at is null
+             and d.expires_at > clock_timestamp()) as live,
+            (l.state = 'waiting'
+             and l.launched_at <= clock_timestamp() - make_interval(mins => $4)) as unanswered
        from public.task_launches l
        join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
-      where l.business_id = $1 and l.task_id = $2 and l.state <> 'ended'
-      for update of l`,
-    [tx.businessId, taskId],
+      where l.business_id = $1 and l.task_id = $2 and l.id = $3 and l.state <> 'ended'`,
+    [tx.businessId, taskId, locked[0].id, UNANSWERED_MINUTES],
   );
   const held = open[0];
   if (held === undefined) return undefined;
-  if (held.live) {
+  if (held.live && held.unanswered) {
+    await revokeDelegation(tx, held.delegation_id, 'work_retired');
+  } else if (held.live) {
     return refuseCommand(
       'RUN_ALREADY_OPEN',
       [],
