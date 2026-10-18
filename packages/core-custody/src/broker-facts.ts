@@ -8,7 +8,7 @@
 import { isUuid, type TenantQuery } from '../../core-records/src/index.ts';
 import { holdsWork } from './broker-holds.ts';
 import type { TaskSource } from './broker-sources.ts';
-import { lockTask } from './broker-task.ts';
+import { readTask, shareTask } from './broker-task.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
 export interface Facts {
@@ -149,19 +149,22 @@ export async function lockFacts(
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  const task = await lockTask(tx, request.leaseId);
-  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  await lockRun(tx, task.runId);
+  const runId = await shareTask(tx, request.leaseId);
+  if (runId === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  await lockRun(tx, runId);
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;
   // The task held is the lease's run's: a lease moved to another run between
   // the two reads is refused, never decided on the other task's client.
-  if (lease.run_id !== task.runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.run_id !== runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const delegation = await lockDelegation(tx, lease.delegation_id);
   if (!delegation.ok) return delegation;
   const held = await lockHeld(tx, lease, request.stepId);
   if (!held.ok) return held;
+  // Source and party after the last wait (R6): the task row is held, its register is not.
+  const task = await readTask(tx, request.leaseId);
+  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return {
     ok: true,
     facts: {

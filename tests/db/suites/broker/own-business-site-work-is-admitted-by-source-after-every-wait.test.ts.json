@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R6 part 2: an owner-started task with no client takes the owner's subscription and its agent requests a correction on the business's own site; a client-typed field stays local; a client's task is refused before any send; a client's or agent's write, or a staff-started task, keeps the text local and refuses the agent's own-site request; a replay of a stored own-site request after an agent's write gets the refusal, never the receipt."
+}

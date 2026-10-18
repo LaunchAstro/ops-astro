@@ -202,12 +202,12 @@ export const seenWaiting = async (w: C80World, statement: RegExp): Promise<boole
  * waits at its site row, or at its page's delete behind it.
  */
 export const UNBIND: RegExp =
-  /delete from public\.party_site_pages|from public\.party_sites\s+where business_id = \$1 and party_id = \$2::uuid\s+for no key update/u;
+  /delete from public\.party_site_pages|from public\.party_sites\s+where business_id = \$1 and holder = coalesce\(\$2::uuid, \$1\)\s+for no key update/u;
 export const BIND: RegExp = /insert into public\.party_sites/u;
 export const PAGE_BIND: RegExp = /insert into public\.party_site_pages/u;
 /** A request waits at its client's site row, or at its insert behind it. */
 export const REQUEST: RegExp =
-  /insert into public\.live_corrections|from public\.party_sites\s+where business_id = \$1 and party_id = \$2::uuid\s+for share/u;
+  /insert into public\.live_corrections|from public\.party_sites\s+where business_id = \$1 and holder = coalesce\(\$2::uuid, \$1\)\s+for share/u;
 export const APPROVER: RegExp = /from public\.business_settings/u;
 
 /** Whether a request's answer is a stored correction. */

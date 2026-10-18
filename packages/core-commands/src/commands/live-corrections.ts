@@ -170,7 +170,7 @@ export async function storeRequest(
 async function endedSince(
   tx: TenantQuery,
   requester: Requester,
-  partyId: string,
+  partyId: string | null,
 ): Promise<ReturnType<typeof refused> | undefined> {
   if (!(await approverConfigured(tx))) return refused(UNCONFIGURED);
   const { delegationId } = requester;
@@ -280,20 +280,20 @@ export function requestOperands(
 export function typedOperands(
   operands: Readonly<Record<string, unknown>>,
 ): RequestOperands | ReturnType<typeof refused> {
-  const wrong = OPERAND_NAMES.filter((name) =>
-    name === 'partyId' || name === 'taskId'
-      ? !isUuid(operands[name])
-      : typeof operands[name] !== 'string',
-  );
+  const wrong = OPERAND_NAMES.filter((name) => {
+    if (name === 'partyId') return operands[name] !== null && !isUuid(operands[name]);
+    return name === 'taskId' ? !isUuid(operands[name]) : typeof operands[name] !== 'string';
+  });
   if (wrong.length > 0) {
     return refused(
       refuseCommand('FIELD_VALUE_INVALID', wrong, [
-        'Send partyId and taskId as identifiers, and the rest as text.',
+        'Send taskId as an identifier, partyId as one or null, and the rest as text.',
       ]),
     );
   }
   const unstorable = unstorableOperands(operands, OPERAND_NAMES);
   if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
   const typed = operands as unknown as RequestOperands;
-  return { ...typed, partyId: typed.partyId.toLowerCase(), taskId: typed.taskId.toLowerCase() };
+  const partyId = typed.partyId?.toLowerCase() ?? null;
+  return { ...typed, partyId, taskId: typed.taskId.toLowerCase() };
 }

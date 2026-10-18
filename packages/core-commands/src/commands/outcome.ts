@@ -95,6 +95,12 @@ export interface Applied {
    * which alone knows whose access it ended.
    */
   readonly endsOwnAccess?: true;
+  /**
+   * A judgement the agent path asks last, after its own standing waits
+   * (`agent-standing.ts`): what the handler read before them may have changed
+   * while they waited. A refusal rolls the work back. Set by the handler.
+   */
+  readonly lastCheck?: () => Promise<CommandRefusal | undefined>;
 }
 
 export interface Refused {

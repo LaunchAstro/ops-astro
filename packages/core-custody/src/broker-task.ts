@@ -16,8 +16,8 @@ const TASK_OF_LEASE = `
        join public.records t on t.business_id = run.business_id and t.id = run.task_id
       where l.business_id = $1 and l.id = $2`;
 
-/** The run's task, taken `for share` before anything of it is read. */
-const LOCK_TASK = `select t.id ${TASK_OF_LEASE} for share of t`;
+/** The run's task, taken `for share` before anything of it is read, and its run. */
+const LOCK_TASK = `select run.id::text as run_id ${TASK_OF_LEASE} for share of t`;
 
 /** An applied operation on the task by an actor, `o` joined to `a`. */
 const APPLIED_ON_TASK = `select 1 from public.operations o
@@ -61,7 +61,7 @@ const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
  * earlier view of the operations, so an edit committed during the wait would
  * be read without the write that made it.
  */
-const READ_TASK = `select run.id::text as run_id, ${TASK_SOURCE} ${TASK_OF_LEASE}`;
+const READ_TASK = `select ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
 /** A task by its id, as a conversation's page: `$2` the task. */
 const READ_PAGE = `select ${TASK_SOURCE}
@@ -93,39 +93,44 @@ function sourceOf(task: TaskRow): TaskSource {
   };
 }
 
+/** The task's client link (C60) and what a bound field reads of it (S3). */
+export interface TaskFacts {
+  readonly clientId: string | null;
+  readonly source: TaskSource;
+}
+
 /**
  * The run's task, first in the lock order (`task` comes before `lease`), held
  * `for share` so a `task.set_party` cannot move its client while the call is
- * decided, and answering the task's client link (C60) and what a bound
- * field reads of it (S3): a link or an edit in flight is waited on, never
- * missed. The lease names the run and the run its
- * task, read here before the lease's own lock; the run's task is fixed once
- * written (the application may update a run's state only, 0086), and the
- * lease's run is compared again under the lease's lock (`lockFacts`).
- * Unknown to this business answers nothing, refused as a made-up lease is.
+ * decided: a link or an edit in flight is waited on, never missed. The lease
+ * names the run and the run its task, read here before the lease's own lock;
+ * the run's task is fixed once written (the application may update a run's
+ * state only, 0086), and the lease's run is compared again under the lease's
+ * lock (`lockFacts`). Unknown to this business answers nothing, refused as a
+ * made-up lease is.
  */
-export async function lockTask(
-  tx: TenantQuery,
-  leaseId: string,
-): Promise<
-  | { readonly runId: string; readonly clientId: string | null; readonly source: TaskSource }
-  | undefined
-> {
-  await tx.query(LOCK_TASK, [tx.businessId, leaseId]);
-  const [task] = await tx.query<TaskRow & { run_id: string }>(READ_TASK, [
-    tx.businessId,
-    leaseId,
-    LEAVES_ROW_DATA,
-  ]);
-  if (task === undefined) return undefined;
-  return { runId: task.run_id, clientId: task.client, source: sourceOf(task) };
+export async function shareTask(tx: TenantQuery, leaseId: string): Promise<string | undefined> {
+  const [task] = await tx.query<{ run_id: string }>(LOCK_TASK, [tx.businessId, leaseId]);
+  return task?.run_id;
+}
+
+/**
+ * The held task's client and source, read after the caller's last lock wait
+ * (R6, #1699): a write that names the task without moving its row, committed
+ * while a later lock was waited on, is read with it.
+ */
+export async function readTask(tx: TenantQuery, leaseId: string): Promise<TaskFacts | undefined> {
+  const [task] = await tx.query<TaskRow>(READ_TASK, [tx.businessId, leaseId, LEAVES_ROW_DATA]);
+  return task === undefined ? undefined : { clientId: task.client, source: sourceOf(task) };
+}
+
+/** The run's task held (`shareTask`), then read (`readTask`): for a caller with no later wait. */
+export async function lockTask(tx: TenantQuery, leaseId: string): Promise<TaskFacts | undefined> {
+  return (await shareTask(tx, leaseId)) === undefined ? undefined : await readTask(tx, leaseId);
 }
 
 /** A conversation's page task, as a source, and its client link; undefined when there is none. */
-export async function readPage(
-  tx: TenantQuery,
-  taskId: string,
-): Promise<{ readonly clientId: string | null; readonly source: TaskSource } | undefined> {
+export async function readPage(tx: TenantQuery, taskId: string): Promise<TaskFacts | undefined> {
   const [task] = await tx.query<TaskRow>(READ_PAGE, [tx.businessId, taskId, LEAVES_ROW_DATA]);
   return task === undefined ? undefined : { clientId: task.client, source: sourceOf(task) };
 }

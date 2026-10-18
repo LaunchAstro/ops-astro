@@ -136,6 +136,36 @@ and a write that asks again after its last lock wait is refused by a
 deactivation that committed during that wait. The person's own grants are
 unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
 
+## Own-business site, 18 October 2026
+
+Decision `R6-S2-20261018`, the first part of R6 in
+[Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
+recording seam S2 as the director settled it on 14 October 2026. Nathan
+accepted it on 18 October 2026 (owner question d; the round register, items
+10, 11 and 13).
+
+- A business's own site is bound to the business itself, not to a party. It
+  is the business's one site row with no party. A client's site stays bound
+  to that client.
+- No party record is the business. A client can never take the business's
+  own identity, and no label on a client admits anything; the storage
+  refuses a client whose identity is the business's.
+- A task with no client may request a live correction only on a page of its
+  own business's site. A task with a client may request one only on a page of
+  that client's site. Any other pairing stores nothing. The task's client is
+  read in the request's own statement, after its lock wait, so a client set
+  on the task while the request waits is seen and refused.
+- A correction on the business's own site carries no party. Only a
+  business-wide grant reaches it; a grant scoped to a client never does.
+- The proposal reads the correction's site through the same binding.
+- Admitting own-business work on a subscription route, judged by the task's
+  source, is the second part of R6 (#1699). Client-party work never gains
+  plan eligibility. The broker reads the run's task's client and source after
+  its last lock wait at admission, and again at custody's handoff. An agent
+  asks on the business's own site only while its task is still the owner's
+  own work, read after the request's lock wait by the broker's own reader
+  (`CORRECTION_NOT_OWN_WORK`).
+
 ## Selected foundation
 
 | Area                   | Decision                                                      | Proof still required                                             |
