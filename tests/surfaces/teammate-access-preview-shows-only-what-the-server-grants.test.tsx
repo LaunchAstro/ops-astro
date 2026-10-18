@@ -81,7 +81,9 @@ describe('preview of a teammate on Settings ▸ Access', () => {
     expect(preview(view)).toContain('a client not listed here');
     expect(view.host.innerHTML).not.toContain(HIDDEN);
   });
+});
 
+describe('preview of a teammate on Settings ▸ Access: what it sends and when it goes', () => {
   it('sends nothing and asks no other read', async () => {
     const api = server([json(access([ADA, MIA_ON_ACME]))]);
     const view = await open(api.fetch);
@@ -91,9 +93,6 @@ describe('preview of a teammate on Settings ▸ Access', () => {
     expect(api.calls.length).toBe(before);
     expect(preview(view)).toContain(ACME.name);
   });
-});
-
-describe('preview of a teammate on Settings ▸ Access: when it goes', () => {
   it('goes when the teammate leaves the list', async () => {
     const api = server([json(access([ADA, MIA_ON_ACME])), json(access([ADA]))]);
     const view = await open(api.fetch);
