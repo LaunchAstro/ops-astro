@@ -54,6 +54,7 @@ function saysNothingSecret(lines: readonly string[], answer: unknown): void {
 const run = (file: string, issuer: SignInIssuer, b = browser(issuer)) =>
   signIn({ issuer: issuer.origin, tokenFile: file, port: 0, timeoutMs: 10_000, say: b.say });
 
+// oxlint-disable-next-line max-lines-per-function -- one sign-in flow, end to end
 describe('the owner signs in', () => {
   it('a first sign-in registers, exchanges by the published flow, and stores a pair a holder presents', async () => {
     const { file, dir, issuer } = await world();
@@ -112,6 +113,7 @@ describe('the owner signs in', () => {
   });
 });
 
+// oxlint-disable-next-line max-lines-per-function -- every way an ID token can fail, one table
 describe('nothing is stored unless the ID token validates', () => {
   const cases: [string, (i: SignInIssuer, form: URLSearchParams) => unknown][] = [
     [
@@ -143,7 +145,7 @@ describe('nothing is stored unless the ID token validates', () => {
         return `${head}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${sig}`;
       },
     ],
-    ['no ID token', () => undefined],
+    ['a null ID token', () => null],
     ['a token that is not a JWT', () => 'synthetic.not-a-jwt'],
   ];
   it.each(cases)(
@@ -193,6 +195,7 @@ describe('nothing is stored unless the ID token validates', () => {
   });
 });
 
+// oxlint-disable-next-line max-lines-per-function -- every callback and exchange refusal, one table
 describe('the callback and the exchange', () => {
   const callbacks: [string, (asked: URL) => Record<string, string | undefined>, string][] = [
     [

@@ -37,6 +37,7 @@ async function world() {
   return { ...made, issuer: opened };
 }
 
+// oxlint-disable-next-line max-lines-per-function -- each race runs its processes in order, step by step
 describe('a sign-in and a refresh', () => {
   it('a sign-in that reaches the lock mid-refresh waits it out, and its pair is the one held', async () => {
     const { file, issuer } = await world();
