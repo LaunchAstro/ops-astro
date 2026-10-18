@@ -52,11 +52,16 @@ function runCase(kind: string, url: string): Outcome {
 
 const refused = { ok: false, code: 'CONNECTION_CLOSED', addressed: true };
 
-/** The process ran to its end, the transaction and its next statement were refused, and the connection serves again. */
-function expectSurvivedAndRefused(outcome: Outcome): void {
+/** The process ran to its end, with no TypeError, and printed `result`. */
+function expectRan(outcome: Outcome, result: Record<string, unknown>): void {
   expect(outcome.stderr).not.toMatch(/TypeError/u);
   expect(outcome.status).toBe(0);
-  expect(outcome.result).toEqual({ caller: refused, statement: refused, after: { ok: true } });
+  expect(outcome.result).toEqual(result);
+}
+
+/** The transaction and its next statement were refused, and the connection serves again. */
+function expectSurvivedAndRefused(outcome: Outcome): void {
+  expectRan(outcome, { caller: refused, statement: refused, after: { ok: true } });
 }
 
 describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction', () => {
@@ -95,17 +100,15 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction', (
     expectSurvivedAndRefused(runCase('admin', ownerUrl));
   }, 60_000);
 
+  it('a statement in flight when the backend ends: it is refused and the handle still ends', () => {
+    expectRan(runCase('inFlight', ownerUrl), { caller: refused, ended: { ok: true } });
+  }, 60_000);
+
   it('the outbox: the process survives, the append in flight is refused and the next one lands', () => {
-    const outcome = runCase('outbox', db.appUrl);
-    expect(outcome.stderr).not.toMatch(/TypeError/u);
-    expect(outcome.status).toBe(0);
-    expect(outcome.result).toEqual({ caller: refused, after: { ok: true } });
+    expectRan(runCase('outbox', db.appUrl), { caller: refused, after: { ok: true } });
   }, 60_000);
 
   it('the listener: the process survives its session ending and listens again', () => {
-    const outcome = runCase('listener', db.appUrl);
-    expect(outcome.stderr).not.toMatch(/TypeError/u);
-    expect(outcome.status).toBe(0);
-    expect(outcome.result).toEqual({ listening: 2 });
+    expectRan(runCase('listener', db.appUrl), { listening: 2 });
   }, 60_000);
 });
