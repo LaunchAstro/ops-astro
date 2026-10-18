@@ -378,6 +378,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'packages/core-records/src/tenancy/privileges.ts',
     "the tenancy wrapper's default-deny conformance check, part of that protected component",
   ],
+  [
+    'packages/core-custody/src/token-file.ts',
+    "#1620 P1a's plan token file; inert until P1b's holder imports it (and P4, #1702, wires the holder)",
+  ],
 ]);
 
 const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file);
