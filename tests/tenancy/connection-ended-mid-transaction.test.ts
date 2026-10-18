@@ -50,7 +50,7 @@ function runCase(kind: string, url: string): Outcome {
   };
 }
 
-const refused = { ok: false, code: 'CONNECTION_CLOSED' };
+const refused = { ok: false, code: 'CONNECTION_CLOSED', addressed: true };
 
 describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1774)', () => {
   let db: FreshDatabase;
