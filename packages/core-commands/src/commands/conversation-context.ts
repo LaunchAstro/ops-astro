@@ -46,6 +46,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
+import { ownsAsked, type Asked } from './conversation-owner.ts';
 
 /** A record the answer read, with the product's own address for it. */
 export interface Cite {
@@ -139,8 +140,6 @@ function earlierOf(
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
 const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [] };
-
-type Asked = { readonly conversationId: string; readonly messageId: string };
 
 /** Whether this message was ever refused for its page, its ids in any case. */
 async function markedRefused(tx: TenantQuery, asked: Asked): Promise<boolean> {
@@ -268,6 +267,7 @@ export async function contextOf(
   asked: Asked & { readonly body: string },
   scopeRecordId: string | null,
 ): Promise<Context> {
+  if (!(await ownsAsked(tx, session, asked))) return REFUSED;
   const page = scopeRecordId === null ? null : await pageOf(tx, session, scopeRecordId);
   // Asked once the page is held, so a twin's refusal committed while this waited is seen.
   const marked = await markedRefused(tx, asked);
