@@ -40,6 +40,16 @@ it.each([
   expect(await capturedText(html)).toBe('Shown text stays.');
 });
 
+// A column box draws none of its contents, and `contents` reads as `none` on a textarea, select,
+// object or most SVG, so these display values hide text too.
+it.each(['table-column', 'table-column-group', 'contents'])(
+  'display: %s hides its text from the capture',
+  async (value) => {
+    const html = `<div style="display: ${value}">We walk alongside you.</div><p>Shown text stays.</p>`;
+    expect(await capturedText(html)).toBe('Shown text stays.');
+  },
+);
+
 it.each([
   ['a shown display', 'display: block'],
   ['display named in a string', `content: 'display:none'`],
