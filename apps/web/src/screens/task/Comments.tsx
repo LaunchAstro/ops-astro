@@ -253,15 +253,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
             : () => custody.letGo(props.recordId, held.operationId)
         }
       />
-      {hold.kept ? null : (
-        <p role="status" className="card__sub" data-comment="recovery-storage">
-          {letGo
-            ? 'This change was let go, but this browser could not clear its saved copy yet.'
-            : pending === null
-              ? 'The answer arrived, but the recovery copy could not be cleared. Retry clears that copy before another comment can be sent.'
-              : 'The recovery copy could not be updated. The held attempt stays locked.'}
-        </p>
-      )}
+      {hold.kept ? null : <RecoveryStorageNote letGo={letGo} answered={pending === null} />}
 
       <form
         id={scoped('task-comment')}
@@ -306,20 +298,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
           </p>
         ) : null}
         {picking ? <PickNote /> : null}
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-comment="post"
-          disabled={cannotPost}
-        >
-          {busy
-            ? 'Posting…'
-            : letGo
-              ? 'Clear saved copy'
-              : !hold.kept && pending === null
-                ? 'Retry recovery cleanup'
-                : 'Send'}
-        </button>
+        <PostButton busy={busy} letGo={letGo} cleanup={cleanup} disabled={cannotPost} />
         {closed ? <ClosedNote /> : null}
       </form>
       {props.scope === 'panel' ? null : (
@@ -459,6 +438,47 @@ function useCommentDraft(props: CommentsProps, held: PendingComment | null) {
 }
 
 /** On All nobody has said who may read a post. */
+/** The recovery copy could not be written or cleared: what that holds back. */
+function RecoveryStorageNote(props: {
+  readonly letGo: boolean;
+  readonly answered: boolean;
+}): ReactElement {
+  return (
+    <p role="status" className="card__sub" data-comment="recovery-storage">
+      {props.letGo
+        ? 'This change was let go, but this browser could not clear its saved copy yet.'
+        : props.answered
+          ? 'The answer arrived, but the recovery copy could not be cleared. Retry clears that copy before another comment can be sent.'
+          : 'The recovery copy could not be updated. The held attempt stays locked.'}
+    </p>
+  );
+}
+
+/** Send, or the cleanup a recovery copy still owes before the next comment. */
+function PostButton(props: {
+  readonly busy: boolean;
+  readonly letGo: boolean;
+  readonly cleanup: boolean;
+  readonly disabled: boolean;
+}): ReactElement {
+  return (
+    <button
+      className="btn btn--primary"
+      type="submit"
+      data-comment="post"
+      disabled={props.disabled}
+    >
+      {props.busy
+        ? 'Posting…'
+        : props.letGo
+          ? 'Clear saved copy'
+          : props.cleanup
+            ? 'Retry recovery cleanup'
+            : 'Send'}
+    </button>
+  );
+}
+
 function PickNote(): ReactElement {
   return (
     <p className="card__sub" data-comment="pick">
