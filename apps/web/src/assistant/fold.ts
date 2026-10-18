@@ -86,7 +86,10 @@ function chosen(source: Chat, twin: Chat | undefined, landing: Landing, field: F
   const value = (pick ?? mine ?? theirs)?.value ?? sent;
   // Both queued, in an order unknown here: the write after them settles it.
   if (landing.queued && mine !== null && theirs !== null) return { value, write: true };
-  const holds = landing.queued && mine !== null ? mine.value : (theirs?.value ?? sent);
+  // A fresh start sends its page again once it lands, over the twin's (`first-question.ts`).
+  const again = landing.queued && field === 'page' && sent !== null;
+  const holds =
+    landing.queued && mine !== null ? mine.value : again ? sent : (theirs?.value ?? sent);
   return { value, write: !same(field, value, holds) };
 }
 
