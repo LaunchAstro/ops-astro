@@ -15,9 +15,9 @@ import { TASK, type Body, type Sent } from './replay-drawer.tsx';
 /**
  * What the stand-in does with a write: answer it, lose its answer, hold it,
  * hold it and then lose its answer, refuse it, or commit the question, hold,
- * then commit the answer and lose it.
+ * then commit the answer and lose it; a late write reaches the server only on release.
  */
-export type Turn = 'answer' | 'drop' | 'hold' | 'hold-drop' | 'refuse' | 'split-drop';
+export type Turn = 'answer' | 'drop' | 'hold' | 'hold-drop' | 'late' | 'refuse' | 'split-drop';
 
 type Page = { readonly address: string; readonly shows: string } | null;
 
@@ -202,6 +202,7 @@ async function mutate(stage: Stage, command: string, body: Record<string, unknow
     stage.register.set(operationId, refusal());
     return refusal();
   }
+  if (turn === 'late') await waiting(stage.held);
   const { response, later } = applied(stage, command, body, turn);
   stage.register.set(operationId, response.clone());
   if (turn === 'hold' || turn === 'hold-drop' || turn === 'split-drop') {
