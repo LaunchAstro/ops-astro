@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 
 const REQUIRED = [
   'the existing M5 target is healthy at its pinned version',
+  'the existing M5 target listens on loopback only, restarts with Docker and keeps signup and media upload off',
   'the M5 replay trace shows timings, outcome and call usage with no content',
   'terminal export shows the recorded outcome and call usage only from its business, run, lease and event time',
   'an exporter observed mid-run records the target outage while handback finishes and later catches up',

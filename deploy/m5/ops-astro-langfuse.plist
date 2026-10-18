@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ops-astro-langfuse</string>
+  <key>WorkingDirectory</key>
+  <string>@LANGFUSE_REPO_DIR@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>scripts/m5/langfuse-up.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@LANGFUSE_PATH@</string>
+    <key>LANGFUSE_INSTALL_DIR</key>
+    <string>@LANGFUSE_INSTALL_DIR@</string>
+    <key>LANGFUSE_REPO_DIR</key>
+    <string>@LANGFUSE_REPO_DIR@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>@LANGFUSE_LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@LANGFUSE_LOG@</string>
+</dict>
+</plist>
