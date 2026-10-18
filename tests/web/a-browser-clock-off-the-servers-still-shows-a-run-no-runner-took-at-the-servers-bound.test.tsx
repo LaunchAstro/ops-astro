@@ -5,7 +5,7 @@
 // browser's clock is from the server's. The read answers how long its bound
 // had left (`boundLeftMs`, judged by the server's clock), and the panel counts
 // from when that answer arrived, so it never sets the server's `launchedAt`
-// against its own clock. From Sol's review of 15412d9.
+// against its own clock. From Sol's review.
 import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { panel, serving } from './panel-fields-support.tsx';

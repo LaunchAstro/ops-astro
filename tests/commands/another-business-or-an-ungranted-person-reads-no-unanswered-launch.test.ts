@@ -2,7 +2,7 @@
 //
 // #1710: a launch past its bound, read as `unanswered`, is shown to nobody
 // the task read does not admit: another business and a person with no grant
-// on the task see no agent and no run. From Sol's review of 7f17a06.
+// on the task see no agent and no run. From Sol's review.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';

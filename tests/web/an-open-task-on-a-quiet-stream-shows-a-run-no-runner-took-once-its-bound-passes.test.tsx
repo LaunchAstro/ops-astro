@@ -3,7 +3,7 @@
 //
 // #1710: an open task whose live stream stays quiet still shows a run no
 // runner took once its bound passes, sending no launch or restart itself.
-// From Sol's review of 7f17a06; the fake clock starts before the panel
+// From Sol's review; the fake clock starts before the panel
 // mounts, so the timer the panel sets is on it.
 import { act } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
