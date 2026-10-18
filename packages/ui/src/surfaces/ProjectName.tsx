@@ -4,8 +4,9 @@
 // completes or reopens through the page's one completion transition; on a
 // task the reader's agent holds it says it sends the work to review. A plain
 // click opens the task after 500ms, the window a double-click needs; a second
-// click inside it, however slow, renames in place instead, Enter or blur
-// saving, Escape cancelling, a blank or unchanged name saving nothing. The hover box holds the timer (only
+// plain click inside it, however slow, renames in place instead, Enter or blur
+// saving, Escape cancelling, a blank or unchanged name saving nothing. A
+// Shift-click opens it beside at once. The hover box holds the timer (only
 // when the page can start one), add subtask, and the door to where the work
 // lives with its in-app or external mark. Modified clicks keep the link's own
 // behaviour, so middle-click still opens the page.
