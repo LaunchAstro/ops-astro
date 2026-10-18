@@ -29,7 +29,7 @@ const RECOVERY = 'The saved board change could not be recovered. No stored chang
 export class BoardEditCustody {
   readonly #owner: string;
   readonly #storage: StorageLike | null;
-  readonly #memoryOnly: boolean;
+  readonly #lenient: boolean;
   readonly #generation = tabOwnerGeneration();
   readonly #listeners = new Set<() => void>();
   readonly #settlements = new Set<(entry: BoardEditEntry, answer: Settlement) => void>();
@@ -37,16 +37,21 @@ export class BoardEditCustody {
   #client: OperationsClient;
   #alive = true;
   #epoch = 0;
+  /**
+   * With no storage (site data blocked) edits are kept in memory for this tab and checked as
+   * usual. `lenient` is for isolated mounts with no App owner: it also skips the task id,
+   * revision and receipt checks.
+   */
   constructor(
     client: OperationsClient,
     owner: string,
     storage: StorageLike | null,
-    memoryOnly = false,
+    lenient = false,
   ) {
     this.#client = client;
     this.#owner = owner;
     this.#storage = storage;
-    this.#memoryOnly = memoryOnly;
+    this.#lenient = lenient;
     try {
       const raw = storage?.getItem(BOARD_EDIT_KEY) ?? null;
       if (raw === null) return;
@@ -118,7 +123,8 @@ export class BoardEditCustody {
   #save(): boolean {
     if (!this.#current() || this.#state.problem !== null) return false;
     return (
-      this.#memoryOnly ||
+      this.#lenient ||
+      this.#storage === null ||
       verifiedJsonWrite(this.#storage, BOARD_EDIT_KEY, {
         version: 1,
         owner: this.#owner,
@@ -146,7 +152,7 @@ export class BoardEditCustody {
       [...this.#state.holds.values()].some((hold) => !hold.kept)
     )
       return false;
-    if (!this.#memoryOnly && (!isUuid(id) || !revision(expectedRevision))) return false;
+    if (!this.#lenient && (!isUuid(id) || !revision(expectedRevision))) return false;
     const operationId = this.#client.newOperationId();
     if (
       !validOperationId(operationId) ||
@@ -207,7 +213,7 @@ export class BoardEditCustody {
     const answer = settle(
       await this.#client.mutate(attempt.command, attempt.body, {
         operationId: attempt.operationId,
-        ...(attempt.expectedRevision === 0 && this.#memoryOnly
+        ...(attempt.expectedRevision === 0 && this.#lenient
           ? {}
           : { expectedRevision: attempt.expectedRevision }),
       }),
@@ -215,7 +221,7 @@ export class BoardEditCustody {
     if (!this.#current() || epoch !== this.#epoch || this.#state.holds.get(id)?.entry !== entry)
       return;
     const result: Settlement =
-      answer.kind === 'ok' && !this.#memoryOnly && !boardEditReceipt(answer.value, id)
+      answer.kind === 'ok' && !this.#lenient && !boardEditReceipt(answer.value, id)
         ? { kind: 'unknown', because: 'The API did not return a valid board change receipt.' }
         : answer;
     this.#settled(id, entry, result, uncertain);
