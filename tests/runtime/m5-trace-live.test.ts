@@ -146,6 +146,10 @@ it('the existing M5 target is healthy at its pinned version', async () => {
 });
 
 it('the existing M5 target listens on loopback only, restarts with Docker and keeps signup and media upload off', () => {
+  // A container on the host's network, or sharing another's, publishes no bindings to check.
+  const modes = inspect(containers, '{{.HostConfig.NetworkMode}}');
+  expect(modes).toHaveLength(containers.length);
+  for (const mode of modes) expect(mode !== 'host' && !mode.startsWith('container:')).toBe(true);
   for (const line of inspect(
     containers,
     '{{.HostConfig.RestartPolicy.Name}} {{json .HostConfig.PortBindings}}',

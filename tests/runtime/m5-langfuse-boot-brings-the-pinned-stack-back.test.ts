@@ -138,7 +138,8 @@ describe('the M5 Langfuse boot script', () => {
   });
 
   it('reports a failed start instead of claiming the stack is up', () => {
-    const { code, output } = boot({ composeFails: true });
+    const { code, output, docker, install } = boot({ composeFails: true });
+    expect(docker.at(-1)).toBe(UP(install));
     expect(code).not.toBe(0);
     expect(output).not.toContain('started');
   });
