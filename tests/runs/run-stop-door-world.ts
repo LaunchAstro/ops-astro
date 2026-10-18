@@ -140,7 +140,7 @@ export const callBody = (work: Work, operation: string = REPLAY_COMPOSE.key): Se
 
 /** A POST on the agent prefix, under the work's delegation and the session's bearer. */
 export async function asAgent(
-  path: '/model/call' | '/run/end',
+  path: '/model/call' | '/run/end' | '/definition/read',
   work: Work,
   body: Readonly<Record<string, unknown>>,
   as: SignedIn,

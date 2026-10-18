@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P15: a marker planted in a run's instruction file reaches the provider's request and nowhere else: not the agent door's register row for the read or its replay, any audit event, the API's output or stderr, or a refusal body; the read leaves exactly one audit event for its operation id and its replay none."
+}
