@@ -8,8 +8,7 @@ import {
 } from '../../apps/site-runner/runner.ts';
 import { approved, lease, serverUrl, w } from './c80-register-world.ts';
 import { detailOf } from '../commands/agent-fixture.ts';
-import { requestBody } from './c80-world.ts';
-import { B_PAGE, B_FILE } from './c80-sites.ts';
+import { B_PAGE } from './c80-sites.ts';
 import { building, time, useRunnerWorld, world, writes } from './site-runner-world.ts';
 
 useRunnerWorld();
@@ -65,13 +64,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(await w.receiptsOf(id)).toBe(0);
     });
     it('another client correction cannot use the lease', async () => {
-      const detail = detailOf(
-        await w.request(w.ava, {
-          ...requestBody(w.partyB, w.taskB),
-          pageUrl: B_PAGE,
-          path: B_FILE,
-        }),
-      );
+      const detail = detailOf(await w.request(w.ava, { taskId: w.taskB, page: B_PAGE }));
       const id = String(detail['correctionId']);
       expect(id).not.toBe('undefined');
       await w.approve(w.ben, id, String(detail['versionId']));
