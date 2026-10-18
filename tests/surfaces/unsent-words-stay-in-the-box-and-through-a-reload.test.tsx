@@ -106,3 +106,17 @@ it('stored words are never read by another business, person or session', () => {
   expect(new ChatOutbox('alpha:bea@example.test:0', kept).snapshot()).toEqual([]);
   expect(new ChatOutbox('alpha:ana@example.test:1', kept).snapshot()).toEqual([]);
 });
+
+it('a Resend refused after no answer gives its words back to the list, Edit and all, once the box is emptied', async () => {
+  const api = server();
+  api.state.unanswered = 'before';
+  const m = await screen(api, storage());
+  await send(m, WORDS);
+  api.state.unanswered = null;
+  api.state.refuse = { refused: true, code: 'FIELD_VALUE_INVALID', names: ['body'], fixes: [] };
+  await m.click('[data-unsent-resend]');
+  await until(() => api.sent.length === 2 && m.find('[role="alert"]') !== null);
+  await m.type('.composer input', '');
+  expect(m.all('[data-unsent-words]').map((el) => el.textContent)).toContain(WORDS);
+  expect(m.find('[data-unsent-edit]')).not.toBeNull();
+});
