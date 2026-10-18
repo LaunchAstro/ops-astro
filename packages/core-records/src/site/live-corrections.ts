@@ -5,7 +5,8 @@
 // Every read here filters by the caller's grant inside the query, at the
 // correction's own party, so a party-scoped grant on one client's site reaches
 // no other client's correction and a caller with no grant meets the same
-// answer as a correction that does not exist. The writes lock the row they
+// answer as a correction that does not exist. A correction on the business's
+// own site has no party (R6, #1688), and only a business-wide grant reaches it. The writes lock the row they
 // judge, and the approval reads the configured approver under a share lock on
 // its setting, so an approver changed at the same moment is either seen or
 // waited for, never half-read.
@@ -43,7 +44,8 @@ export type CorrectionState =
 
 export interface LiveCorrection {
   readonly id: string;
-  readonly partyId: string;
+  /** The task's client, whose site it is; null for the business's own site. */
+  readonly partyId: string | null;
   readonly taskId: string;
   readonly requestedByActorId: string;
   readonly requestedByPersonId: string;
@@ -76,7 +78,7 @@ const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.request
 
 interface Row {
   readonly id: string;
-  readonly party_id: string;
+  readonly party_id: string | null;
   readonly task_id: string;
   readonly requested_by_actor_id: string;
   readonly requested_by_person_id: string;
@@ -121,8 +123,8 @@ function correctionFrom(row: Row): LiveCorrection {
 }
 
 /**
- * A request's refusals: its party is not the client of a live task, or its page and file are not
- * one pair the client's own site holds.
+ * A request's refusals: its party is not the client of a live task (null: the task has a client),
+ * or its page and file are not one pair that site holds.
  */
 export type PartyRefused = {
   readonly ok: false;
@@ -132,8 +134,9 @@ export type PartyRefused = {
 /**
  * Store a request at its task's own client (the `client` link), read in the insert under a share
  * lock on the task: a party the task does not carry, a record that is no task, or a trashed task
- * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. The page and file are joined in the same
- * statement as one pair of that client's site, key-share locked so an unbind waits for the
+ * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. A null party names a task with no
+ * client, whose site is the business's own (R6). The page and file are joined in the same
+ * statement as one pair of that site (its holder: the client, or the business), key-share locked so an unbind waits for the
  * request, and the site row share-locked so a move of its providers waits too (and the request
  * for a move in flight); any other spelling, another client's page or none is
  * `PAGE_OUTSIDE_PARTY_SITE`. The version id is minted here. The site row is
@@ -156,11 +159,12 @@ export async function insertLiveCorrection(
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
        join public.party_site_pages p
-         on p.business_id = r.business_id and p.party_id = r.uuid_7
+         on p.business_id = r.business_id and p.holder = coalesce(r.uuid_7, r.business_id)
         and p.page_url = $11::text and p.path = $8::text
-       join public.party_sites s on s.business_id = p.business_id and s.party_id = p.party_id
-      where r.business_id = $1 and r.id = $4::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-        and r.deleted_at is null for share of r for key share of p for share of s
+       join public.party_sites s on s.business_id = p.business_id and s.holder = p.holder
+      where r.business_id = $1 and r.id = $4::uuid and t.key = 'task'
+        and r.uuid_7 is not distinct from $3::uuid and r.deleted_at is null
+        for share of r for key share of p for share of s
      returning ${COLUMNS}`,
     [
       tx.businessId,

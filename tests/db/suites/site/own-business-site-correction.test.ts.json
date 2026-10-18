@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R6 part 1: the business's own site is bound to the business, not a party. A task with no client requests only on its own business's site and a client's task only on its client's; another business's own site never satisfies a request; a client set during the request's lock wait is seen and refused; no client is the business, and a party-scoped grant naming it reaches nothing."
+}

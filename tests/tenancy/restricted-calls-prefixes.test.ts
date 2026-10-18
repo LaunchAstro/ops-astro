@@ -101,6 +101,9 @@ function installationUnique(table: string, business: string): Record<string, str
   return {};
 }
 
+const SEED_PARTY = randomUUID();
+const SEED_PAGE_PARTY = randomUUID();
+
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
@@ -178,14 +181,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     version_id: randomUUID(),
     version_digest: 'sha256:seed',
   },
-  // C80: a client's site and one page of it; nothing the journey does binds one.
+  // C80: a client's site and one page of it; nothing the journey does binds one. Each names
+  // its holder (R6) as its trigger keeps it, for the prefixes that have the column.
   'public.party_sites': {
-    party_id: randomUUID(),
+    party_id: SEED_PARTY,
+    holder: SEED_PARTY,
     default_branch: 'main',
     changed_by_actor_id: randomUUID(),
   },
   'public.party_site_pages': {
-    party_id: randomUUID(),
+    party_id: SEED_PAGE_PARTY,
+    holder: SEED_PAGE_PARTY,
     page_url: 'https://agency.example/about/',
     path: 'src/pages/about.md',
   },

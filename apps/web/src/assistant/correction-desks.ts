@@ -47,7 +47,8 @@ export function desksOf(corrections: readonly Correction[]): readonly Desk[] {
 
 /** Where the word sits on the site: what `live_correction.request` takes beside the words. */
 export interface CorrectionTarget {
-  readonly partyId: string;
+  /** The task's client, or null on a task with no client: the business's own site (R6). */
+  readonly partyId: string | null;
   readonly taskId: string;
   readonly path: string;
   readonly pageUrl: string;

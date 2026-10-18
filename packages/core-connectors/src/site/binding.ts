@@ -34,9 +34,12 @@ import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
 export { readServed } from './serving.ts';
 
-/** One party's site: its providers, and each catalogued page with its source file. */
+/**
+ * One party's site, or the business's own (party null, R6): its providers, and each catalogued
+ * page with its source file.
+ */
 export interface PartySite {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly repository: string;
   readonly defaultBranch: string;
   readonly project: string;
@@ -45,7 +48,7 @@ export interface PartySite {
 
 /** One correction's proposal on its party's providers. */
 export interface SiteBinding {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly repository: string;
   readonly path: string;
   readonly defaultBranch: string;
@@ -73,7 +76,7 @@ export interface BindingDependencies extends CallDependencies {
 
 /** The stored correction a binding is made from and checked against. */
 export interface BoundCorrection {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly pageUrl: string;
   readonly targetPath: string;
   readonly seam: string;

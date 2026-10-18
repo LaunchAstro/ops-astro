@@ -50,10 +50,12 @@ async function withinDelegation(
   if (!carries) return { refusal: OUTSIDE_DELEGATION };
   const operands = typedOperands(sent);
   if ('refusal' in operands) return operands;
+  // A request on the business's own site (no party) is asked of the business (R6).
+  const { partyId } = operands;
   const covered = await checkAuthority(tx, [{ kind: 'person', id: delegation.delegatePersonId }], {
     collection: RUN_COLLECTION,
     action: 'write',
-    scope: { kind: 'party', id: operands.partyId },
+    scope: partyId === null ? { kind: 'business', id: null } : { kind: 'party', id: partyId },
   });
   return covered.ok ? operands : { refusal: covered.refusal };
 }
