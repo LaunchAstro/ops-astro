@@ -151,8 +151,38 @@ describe.skipIf(serverUrl === undefined)('a task page added to context, read rev
   });
 });
 
+/** Trash `taskId` an hour ago and purge it, as its owner; the answer names it. */
+async function purged(taskId: string): Promise<void> {
+  const { db, business } = w.fixture;
+  const [row] = await db.admin.execute<{ revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [taskId],
+  );
+  const trashed = await w.as(w.owner, 'task.trash', {
+    operationId: randomUUID(),
+    recordId: taskId,
+    expectedRevision: Number(row?.revision),
+  });
+  expect(trashed.status).toBe(200);
+  await db.admin.execute(
+    "update public.records set deleted_at = now() - interval '1 hour' where business_id = $1 and id = $2",
+    [business, taskId],
+  );
+  const purge = await w.as(w.owner, 'task.purge', { operationId: randomUUID() });
+  expect(purge.body['detail']).toMatchObject({ purgedIds: [taskId] });
+}
+
+/** The conversation's added page and its context epoch. */
+async function pageAndEpoch(conversationId: string) {
+  const [row] = await w.fixture.db.admin.execute<{ address: string | null; epoch: number }>(
+    'select page_address as address, context_epoch as epoch from public.conversations where id = $1',
+    [conversationId],
+  );
+  return row;
+}
+
 describe.skipIf(serverUrl === undefined)('a task page added to context, purged', () => {
-  it('a purge clears the page and cuts what was said on it from later questions', async () => {
+  beforeAll(async () => {
     const { db, business } = w.fixture;
     // Read again (a case above revoked it), the purge's own `manage`, and trash purged at once.
     await db.app.withBusiness(business, async (tx) => {
@@ -164,31 +194,32 @@ describe.skipIf(serverUrl === undefined)('a task page added to context, purged',
         value: 0,
       });
     });
+  });
+
+  it('a purge clears the page and cuts what was said on it from later questions', async () => {
     const page = await task(`to be purged ${randomUUID()}`);
     const conversationId = await withPage(`/task/${page.key}`);
     const said = `on the page ${randomUUID()}`;
     expect(replyOf(await say(conversationId, said))).toMatchObject({ answered: true });
-    const [row] = await db.admin.execute<{ revision: string }>(
-      'select revision::text as revision from public.records where id = $1',
-      [page.id],
-    );
-    const trashed = await w.as(w.owner, 'task.trash', {
-      operationId: randomUUID(),
-      recordId: page.id,
-      expectedRevision: Number(row?.revision),
+    await purged(page.id);
+    expect((await pageAndEpoch(conversationId))?.address).toBeNull();
+    expect(replyOf(await say(conversationId, 'and now?'))).toMatchObject({ answered: true });
+    expect(lastFields()['page']).toBeUndefined();
+    expect(lastFields()['earlier'] ?? '').not.toContain(said);
+  });
+
+  it('a purge clears an added page spelt with an upper-case id, and advances its epoch', async () => {
+    const page = await task(`upper-case id ${randomUUID()}`);
+    const conversationId = await withPage(`/task/${page.id.toUpperCase()}`);
+    const said = `on the upper-case page ${randomUUID()}`;
+    expect(replyOf(await say(conversationId, said))).toMatchObject({ answered: true });
+    expect(lastFields()['page']).toContain(page.id);
+    const before = await pageAndEpoch(conversationId);
+    await purged(page.id);
+    expect(await pageAndEpoch(conversationId)).toEqual({
+      address: null,
+      epoch: Number(before?.epoch) + 1,
     });
-    expect(trashed.status).toBe(200);
-    await db.admin.execute(
-      "update public.records set deleted_at = now() - interval '1 hour' where business_id = $1 and id = $2",
-      [business, page.id],
-    );
-    const purged = await w.as(w.owner, 'task.purge', { operationId: randomUUID() });
-    expect(purged.body['detail']).toMatchObject({ purgedIds: [page.id] });
-    const [after] = await db.admin.execute<{ address: string | null }>(
-      'select page_address as address from public.conversations where id = $1',
-      [conversationId],
-    );
-    expect(after?.address).toBeNull();
     expect(replyOf(await say(conversationId, 'and now?'))).toMatchObject({ answered: true });
     expect(lastFields()['page']).toBeUndefined();
     expect(lastFields()['earlier'] ?? '').not.toContain(said);
