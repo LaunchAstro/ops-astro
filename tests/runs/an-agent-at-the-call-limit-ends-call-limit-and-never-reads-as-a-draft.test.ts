@@ -53,14 +53,14 @@ it('a final answer below the limit succeeds', async () => {
   expect(run.sent).toHaveLength(2);
 });
 
-it("LangChain's limit raises before a send past it, and the run ends through run.end, not as a draft", async () => {
+it("LangChain's limit raises before a send past it, and the run ends call_limit through run.end, not as a draft", async () => {
   // The server here never ends it, so only the local limit can stop it.
   const run = scripted((n) => reads(n));
   const end = await runAttempt(run.state, run.ports, LIMIT, undefined, 'The task.');
   expect(end.outcome).not.toBe('success');
-  expect(end).toEqual({ outcome: 'cancelled', endCode: 'TURN_MALFORMED' });
+  expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
   expect(run.sent, 'no send past the limit').toHaveLength(LIMIT);
-  expect(run.ended).toEqual(['TURN_MALFORMED']);
+  expect(run.ended).toEqual(['CALL_LIMIT_REACHED']);
 });
 
 it('a stop the broker recorded is the outcome, and the worker records nothing more', async () => {

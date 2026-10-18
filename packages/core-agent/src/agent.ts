@@ -116,11 +116,11 @@ function stopOf(state: AttemptState, error: unknown): RunEnd {
   if (state.ended !== undefined) return state.ended;
   if (error instanceof RunEnd) return error;
   const name = (error as { name?: unknown } | undefined)?.name;
-  // A local limit stop is not success. The server's equal limit records
-  // `call_limit` at the limit-th settlement, so a local one firing first is a
-  // turn past its bound: one answer asking for more tools than the limit.
+  // A local limit stop is the call limit, never success. The server's equal
+  // limit records it first, so one firing first (one answer asking for more
+  // tools than the limit) is the worker's to record, through `run.end`.
   if (typeof name === 'string' && LIMIT_ERRORS.has(name))
-    return new RunEnd('TURN_MALFORMED', false);
+    return new RunEnd('CALL_LIMIT_REACHED', false);
   return new RunEnd('ANSWER_LOST', false);
 }
 
