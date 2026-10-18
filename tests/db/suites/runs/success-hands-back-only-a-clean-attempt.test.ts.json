@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R2: success through the review handback is refused for an attempt with an outcome already recorded, a call reserved, dispatched or of unknown liability, or a step-level unknown; a clean attempt writes exactly one success row."
+}

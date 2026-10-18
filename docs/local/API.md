@@ -1627,9 +1627,19 @@ successor (`task.handback`'s `successor`), and that version is the reviewed
 output. Its accept, by `task.decide` or `task.accept_plan`, is the launch, and
 only a lease on a reviewed output may `task.dispatch`. Any other approved
 version is `LAUNCH_NOT_DECIDED` 409 before any mark, and nothing is written.
-The worker (`apps/worker`) answers that refusal by handing the work back as
-its successor (outcome `handedBack`, with the successor's gate and version);
-the next pass after a person's accept picks up the launch and applies it.
+The worker (`apps/worker`) answers that refusal by running its step runner's
+compute under the plan's lease (#1623 R3, `apps/worker/step-runner.ts`; the
+synthetic runner computes nothing). A success hands the work back as its
+successor (outcome `handedBack`, with the successor's gate and version), and
+the next pass after a person's accept picks up the launch and applies it. Any
+other end (outcome `ended`, with its outcome and code) hands nothing back: the
+stop that ended it already recorded the attempt's outcome.
+
+A completed `task.handback` records its attempt's `success / COMPLETED` in the
+same transaction. Under its locks, before it writes anything, it refuses
+`TRANSITION_NOT_PERMITTED` 409 an attempt that already has an outcome, has a
+model call `reserved`, `dispatched` or `liability_unknown`, or has a marked
+step: none of those is a success.
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
