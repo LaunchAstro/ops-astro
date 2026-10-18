@@ -20,7 +20,8 @@
 // whose host is the API's place (one source, so no setting can swap it);
 // OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST and OPS_EGRESS_AUTH_HOST (the
 // sign-in service the worker renews its login at; https, port 443),
-// OPS_EGRESS_POOLER_HOST and OPS_EGRESS_POOLER_PORT (the Supabase pooler). The
+// OPS_EGRESS_POOLER_HOST and OPS_EGRESS_POOLER_PORT (the Supabase pooler), and,
+// only where the mail unit runs, OPS_EGRESS_MAIL_HOST (the mail provider). The
 // relay also takes OPS_EGRESS_API_ALIAS, the name it answers to for the API,
 // and refuses to start unless it is that host. The worker unit and the dump
 // check their own addresses against the same host settings when they start
@@ -47,7 +48,11 @@ function apiHost(env) {
   return url.hostname;
 }
 
-/** The allow-list: exactly five destinations, each from its setting. */
+/**
+ * The allow-list: five destinations, each from its setting, and a sixth, the
+ * mail provider's API host, only where the mail unit runs and
+ * OPS_EGRESS_MAIL_HOST names it. Unset, the five stand alone.
+ */
 export function allowList(env) {
   const host = (name) => {
     const value = env[name] ?? '';
@@ -58,13 +63,16 @@ export function allowList(env) {
   if (!Number.isInteger(port) || port < 1 || port > 65_535 || port === 443) {
     throw new Error('OPS_EGRESS_POOLER_PORT is not a port other than 443.');
   }
-  return [
+  const five = [
     [apiHost(env), 443],
     [host('OPS_EGRESS_POOLER_HOST'), port],
     [host('OPS_EGRESS_HEARTBEAT_HOST'), 443],
     [host('OPS_EGRESS_SINK_HOST'), 443],
     [host('OPS_EGRESS_AUTH_HOST'), 443],
   ];
+  return (env['OPS_EGRESS_MAIL_HOST'] ?? '') === ''
+    ? five
+    : [...five, [host('OPS_EGRESS_MAIL_HOST'), 443]];
 }
 
 const listed = (list, host, port) => list.some(([h, p]) => h === host && p === port);
