@@ -12,7 +12,8 @@
 //
 // - the models this install's conversation operation runs, from the code
 //   catalogue (`conversation-models.ts` in core-connectors), the default first;
-// - on a conversation opened on a client's task, only those the client's
+// - on a conversation on a client's task (its stored page's task, else the one
+//   it opened on: `conversation-page-task.ts`), only those the client's
 //   model-egress setting allows (CS-7.40, `checkClientModelUse`): egress off,
 //   nothing; a providers list, those providers only, each assessed; a model
 //   no setting names (Ollama's) never, so it serves internal work only;
@@ -41,6 +42,7 @@ import {
   TASK_SPINE,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
 /** What the offer turns on, from the caller's own conversation row. */
@@ -74,21 +76,26 @@ export async function modelFacts(
 ): Promise<ModelFacts | undefined> {
   const [found] = await tx.query<{
     readonly model_id: string | null;
-    readonly client_id: string | null;
     readonly scope_record_id: string | null;
-    readonly unseen: boolean;
+    readonly page_address: string | null;
   }>(
-    `select c.model_id, t.${CLIENT}::text as client_id, c.scope_record_id,
-            (c.scope_record_id is not null and t.id is null) as unseen
-       from conversations c
-       left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
-      where c.business_id = $1 and c.id = $2 and c.owner_actor_id = $3`,
+    `select model_id, scope_record_id, page_address from conversations
+      where business_id = $1 and id = $2 and owner_actor_id = $3`,
     [tx.businessId, conversationId, session.actorId],
   );
   if (found === undefined) return undefined;
-  // Asked as the exchange asks it: a task this session may no longer read is unseen.
-  const unseen = found.unseen || !(await readsTask(tx, session, found.scope_record_id));
-  return { model: found.model_id, clientId: found.client_id, unseen };
+  // The task the exchange judges: the stored page's, else the one it opened on (S1930-1).
+  const task = await pageTaskOf(tx, found.scope_record_id, found.page_address);
+  const [row] =
+    task === null
+      ? []
+      : await tx.query<{ readonly client_id: string | null }>(
+          `select ${CLIENT}::text as client_id from records where business_id = $1 and id = $2`,
+          [tx.businessId, task],
+        );
+  // Asked as the exchange asks it: a task gone, or one this session may no longer read, is unseen.
+  const unseen = (task !== null && row === undefined) || !(await readsTask(tx, session, task));
+  return { model: found.model_id, clientId: row?.client_id ?? null, unseen };
 }
 
 /** Whether the caller is on this install's outside people list for this business (#1508). */
