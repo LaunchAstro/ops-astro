@@ -8,7 +8,9 @@
 // PostgreSQL does (scanToken) and fails closed: a column grant it cannot read,
 // or one made from quoted SQL, is an error, never skipped. It reads grants
 // only, so a column grant a later migration revokes still needs its contract
-// line here.
+// line here. Text cannot see every grant SQL can build (a keyword split across
+// a concatenation), so the database suites stay the gate and this is the early
+// warning.
 
 import {
   leadingVerb,
