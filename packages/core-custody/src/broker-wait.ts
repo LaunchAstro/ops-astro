@@ -22,7 +22,8 @@
 //   after it raises no fourth ask: the run ends (`cancelled`) and a person is
 //   told on the task (`awaiting_person`, `needs_approval`).
 // - Either way the lease ends and its delegation is retired, so nothing can
-//   spend. A waiting run's reservation stays held: the approved ceiling is
+//   spend, and the attempt's outcome is `budget_wait / BUDGET_UNAVAILABLE`
+//   (`broker-stop.ts`). A waiting run's reservation stays held: the approved ceiling is
 //   reserved for the person's answer, and restart recovery leaves a waiting
 //   run's hold alone (`core-runtime/src/recovery/classifier.ts`). An ended
 //   run's hold is recovery's to settle at its calls' spend, as for any ended
@@ -32,8 +33,9 @@
 //   (`core-runtime/src/budget-answer.ts`).
 
 import { randomUUID } from 'node:crypto';
-import { raiseAlert, revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
+import { raiseAlert, type TenantQuery } from '../../core-records/src/index.ts';
 import type { Facts } from './broker-facts.ts';
+import { retireAttempt } from './broker-stop.ts';
 
 /** The most asks one run may raise; the last is the consolidated decision. */
 export const MAX_BUDGET_ASKS = 3;
@@ -70,12 +72,9 @@ export async function stopAtBudget(tx: TenantQuery, stop: BudgetStop): Promise<B
   const asks = askNumber <= MAX_BUDGET_ASKS;
   const consolidated = askNumber === MAX_BUDGET_ASKS;
   if (asks) await insertAsk(tx, stop, askNumber, consolidated);
-  await tx.query(
-    `update public.leases set state = 'released', released_at = now()
-      where business_id = $1 and id = $2 and state = 'live'`,
-    [tx.businessId, stop.leaseId],
-  );
-  if (stop.delegationId !== null) await revokeDelegation(tx, stop.delegationId, 'work_retired');
+  // Both ends record the attempt's outcome here (#1623 R1): a stop past the
+  // last ask ends the run, but the attempt stopped at its budget all the same.
+  await retireAttempt(tx, stop, 'BUDGET_UNAVAILABLE');
   if (asks) {
     await tx.query(
       `update public.planned_runs set state = 'waiting_budget'
