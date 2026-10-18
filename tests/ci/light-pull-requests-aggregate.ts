@@ -16,6 +16,16 @@ export const condition = (value: unknown): unknown =>
 
 const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
 
+/** One run's event, gate result, shards results, scope and batch flag (`true` or `false`). */
+type Run = {
+  event: string;
+  gate: string;
+  shards: string;
+  isolation: string;
+  scope: string;
+  batch: string;
+};
+
 /**
  * The aggregate's script, run under GitHub's bash with each event, gate result, shards result,
  * isolation shards result, scope and batch flag. Where the shards ran, it passes only when the
@@ -48,21 +58,7 @@ export function aggregateProblems(step: { run?: string; env?: Env } | undefined)
 function aggregateRun(
   run: string,
   stepEnv: Env,
-  {
-    event,
-    gate,
-    shards,
-    isolation,
-    scope,
-    batch,
-  }: {
-    event: string;
-    gate: string;
-    shards: string;
-    isolation: string;
-    scope: string;
-    batch: string;
-  },
+  { event, gate, shards, isolation, scope, batch }: Run,
 ): string[] {
   const problems: string[] = [];
   const env: Env = { PATH: process.env['PATH'] ?? '' };

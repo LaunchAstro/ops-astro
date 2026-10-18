@@ -11,7 +11,10 @@ on:
     # is reported, not limited. The triggers stay as they were. One label
     # event changes a result (CI-SPEED): adding `sent-back` cancels the run on
     # a head sent back for fixes and fails the gate there
-    # (scripts/sent-back-hold.mjs). No other label changes any check.
+    # (scripts/sent-back-hold.mjs). Two labels widen what runs and never skip
+    # a check: `ci-next` takes the full set (scripts/full-run.ts), and
+    # `precheck-batch` on a branch of this repository runs the merge-group set
+    # (#1918, the database conformance shards). No other label changes any check.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -489,7 +492,12 @@ jobs:
     # aggregate below passes that skip on a pull request whose contamination
     # gate passed, and nowhere else. This never
     # skips a group (tests/ci/merge-group-jobs.test.ts).
-    if: github.event_name != 'pull_request'
+    # #1918: a pre-check batch, a pull request labelled `precheck-batch` whose
+    # head is a branch of this repository, runs them too, hosted, so a batch's
+    # green covers what the queue runs; scripts/ci-scope.ts reads the same
+    # label and runs every suite. A fork's pull request never does. With
+    # `ci-next` alone a pull request skips them as before.
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'precheck-batch') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
@@ -583,7 +591,7 @@ jobs:
     # check means. The isolation suites are named suites the `isolation tests`
     # shards run, not these shards (`--without-isolation`), so a group runs
     # each once; outside a pull request this passes only when those shards
-    # succeeded too.
+    # succeeded too, and so on a pre-check batch (#1918), whose shards run.
     name: database conformance
     needs: [gate, full, database-shard, isolation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
@@ -599,8 +607,10 @@ jobs:
           # The event reaches the script as a value, never as script text.
           EVENT: ${{ github.event_name }}
           SCOPE: ${{ needs.gate.outputs.scope }}
+          # `true` on a pre-check batch, the shards' own condition.
+          BATCH: ${{ contains(github.event.pull_request.labels.*.name, 'precheck-batch') && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          echo "database conformance shards: $SHARDS, isolation shards: $ISOLATION, contamination gate: $GATE, scope: $SCOPE"
+          echo "database conformance shards: $SHARDS, isolation shards: $ISOLATION, contamination gate: $GATE, scope: $SCOPE, batch: $BATCH"
           if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             if [ "$EVENT" = push ]; then
               echo "database conformance: a green merge group tested this tree"
@@ -609,7 +619,7 @@ jobs:
             echo "database conformance: the full set waits for the ci-next label; a run that started before it was added stays light, so add it again"
             exit 1
           fi
-          if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+          if [ "$EVENT" = pull_request ] && [ "$BATCH" != true ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             echo "database conformance: the shards run in the merge queue, the only way into main"
             exit 0
           fi

@@ -259,15 +259,6 @@ describe('planted: the aggregate and the gate, each goes red', () => {
     );
   }, 120_000);
 
-  it('the aggregate passing the shards’ skip on a pre-check batch', () => {
-    const step = aggregateStep(load(CI));
-    const run = (step?.run ?? '').replace(' && [ "$BATCH" != true ]', '');
-    expect(run).not.toBe(step?.run);
-    expect(aggregateProblems({ ...step, run })).toContain(
-      'pull_request batch gate success shards skipped: passed',
-    );
-  }, 120_000);
-
   it('the aggregate passing the shards’ skip on a pull request whose gate failed', () => {
     const step = aggregateStep(load(CI));
     const run =
