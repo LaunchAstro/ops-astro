@@ -80,11 +80,7 @@ const TASK_ABSENT = refuseCommand(
   ['taskId'],
   ['Name a task in this business for the correction to be worked under.'],
 );
-const PARTY = refuseCommand(
-  'CORRECTION_PARTY_MISMATCH',
-  ['partyId'],
-  ['Name the task’s client, or null for a task with no client.'],
-);
+const PARTY = refuseCommand('CORRECTION_PARTY_MISMATCH', ['partyId'], ['Name the task’s client.']);
 const STORE_REFUSALS = {
   CORRECTION_PARTY_MISMATCH: PARTY,
   PAGE_OUTSIDE_PARTY_SITE: refuseCommand(
@@ -298,6 +294,6 @@ export function typedOperands(
   const unstorable = unstorableOperands(operands, OPERAND_NAMES);
   if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
   const typed = operands as unknown as RequestOperands;
-  const partyId = typed.partyId === null ? null : typed.partyId.toLowerCase();
+  const partyId = typed.partyId?.toLowerCase() ?? null;
   return { ...typed, partyId, taskId: typed.taskId.toLowerCase() };
 }

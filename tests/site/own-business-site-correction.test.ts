@@ -63,31 +63,35 @@ beforeAll(async () => {
   const own = randomUUID().slice(0, 8);
   ownPage = `https://own-${own}.example/about`;
   betaOwnPage = `https://beta-own-${own}.example/about`;
-  const ours = await w.world.db.app.withBusiness(w.world.business, async (tx) =>
-    bindPartySite(
-      tx,
-      {
-        partyId: null,
-        repository: `own/site-${own}`,
-        defaultBranch: 'main',
-        project: `prj_own_${own}`,
-        pages: [{ pageUrl: ownPage, path: OWN_FILE }],
-      },
-      w.admin.actorId,
-    ),
+  const ours = await w.world.db.app.withBusiness(
+    w.world.business,
+    async (tx) =>
+      await bindPartySite(
+        tx,
+        {
+          partyId: null,
+          repository: `own/site-${own}`,
+          defaultBranch: 'main',
+          project: `prj_own_${own}`,
+          pages: [{ pageUrl: ownPage, path: OWN_FILE }],
+        },
+        w.admin.actorId,
+      ),
   );
-  const theirs = await w.world.db.app.withBusiness(w.beta, async (tx) =>
-    bindPartySite(
-      tx,
-      {
-        partyId: null,
-        repository: `beta-own/site-${own}`,
-        defaultBranch: 'main',
-        project: `prj_beta_own_${own}`,
-        pages: [{ pageUrl: betaOwnPage, path: OWN_FILE }],
-      },
-      w.eve.actorId,
-    ),
+  const theirs = await w.world.db.app.withBusiness(
+    w.beta,
+    async (tx) =>
+      await bindPartySite(
+        tx,
+        {
+          partyId: null,
+          repository: `beta-own/site-${own}`,
+          defaultBranch: 'main',
+          project: `prj_beta_own_${own}`,
+          pages: [{ pageUrl: betaOwnPage, path: OWN_FILE }],
+        },
+        w.eve.actorId,
+      ),
   );
   expect([ours, theirs]).toEqual([{ ok: true }, { ok: true }]);
 });
@@ -117,8 +121,9 @@ describe.skipIf(serverUrl === undefined)("a request on the business's own site",
   });
 
   it("reads the business's own site through the same binding, never another business's", async () => {
-    const ours = await w.world.db.app.withBusiness(w.world.business, async (tx) =>
-      readPartySite(tx, null),
+    const ours = await w.world.db.app.withBusiness(
+      w.world.business,
+      async (tx) => await readPartySite(tx, null),
     );
     expect(ours?.pages).toEqual([{ pageUrl: ownPage, path: OWN_FILE }]);
     expect(ours?.partyId).toBeNull();
