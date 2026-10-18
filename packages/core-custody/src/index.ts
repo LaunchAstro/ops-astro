@@ -7,11 +7,15 @@
 
 export {
   carriesLocally,
+  carriesOnPlan,
   LOCAL_SESSION_PROVIDER,
   mayCarry,
-  parseCredentials,
+  PLAN_PROVIDER,
   type CarryContext,
   type CarryRefusal,
+} from './carry-rule.ts';
+export {
+  parseCredentials,
   type CredentialKind,
   type CredentialRefusal,
   type StorableKind,

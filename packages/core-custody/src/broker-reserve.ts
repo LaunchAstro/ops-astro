@@ -15,7 +15,7 @@ import {
   LOCAL_MODEL_REQUIRED_WORDS,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import { carriesLocally, mayCarry } from './credentials.ts';
+import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
@@ -126,10 +126,9 @@ function refusing(
 }
 
 /**
- * Step 1 in the caller's transaction, so the command layer commits the hold,
- * the copy registration and its own register row as one: a repeat of the
- * operation finds the row, and two at once cannot both hold. A refusal with a
- * `callId` wrote its step; one without wrote nothing.
+ * Step 1 in the caller's transaction, so the command layer commits the hold, the copy
+ * registration and its own register row as one: a repeat of the operation finds the row, and
+ * two at once cannot both hold. A refusal with a `callId` wrote its step; one without wrote nothing.
  */
 export async function reserveModelCall(
   tx: TenantQuery,
@@ -208,6 +207,8 @@ function routeFor(
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
     clientWork: facts.clientId !== null,
+    planRoute: carriesOnPlan(route),
+    ownerStarted: facts.source.ownerWork,
   });
   if (!carry.ok) return { ok: false, code: carry.code };
   return { ok: true, route };
@@ -238,12 +239,11 @@ export async function atCeiling(
 }
 
 /**
- * The fair share: whether this business may hold one more call on the route,
- * given every business's calls in flight there. Only the broker's role may ask
- * (migration 0085, `model_route_room`); the application takes it for this one
- * statement and gives it back, transaction-local as the wrapper sets the
- * business (`set_config(..., true)`: no `set` statement is sent). A failed
- * statement aborts the transaction, which undoes the role with the rest.
+ * The fair share: whether this business may hold one more call on the route, given every
+ * business's calls in flight there. Only the broker's role may ask (migration 0085,
+ * `model_route_room`); the application takes it for this one statement and gives it back,
+ * transaction-local as the wrapper sets the business (`set_config(..., true)`: no `set`
+ * statement is sent). A failed statement aborts the transaction, which undoes the role too.
  */
 async function routeHasRoom(tx: TenantQuery, route: BrokerRoute): Promise<boolean> {
   await advisoryLock(tx, `model_route:${route.key}`);
