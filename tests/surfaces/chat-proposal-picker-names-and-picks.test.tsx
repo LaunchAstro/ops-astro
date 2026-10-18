@@ -51,8 +51,9 @@ describe('chat proposal picker card', () => {
     expect(page.find('[data-proposal="option"]')).toBeNull();
     await click();
     expect(writes().at(-1)).toStrictEqual(update(FIRST, 2));
-    expect(page.find('[data-proposal="done"]')?.textContent).toContain('Task updated');
-    expect(page.find('[data-proposal="task"]')?.getAttribute('href')).toBe('/task/T-31');
+    // The create's card is first; the edit's is the last.
+    expect(page.all('[data-proposal="done"]').at(-1)?.textContent).toContain('Task updated');
+    expect(page.all('[data-proposal="task"]').at(-1)?.getAttribute('href')).toBe('/task/T-31');
   });
 
   it('two created tasks make the person pick: nothing is chosen and Apply stays disabled until they do', async () => {

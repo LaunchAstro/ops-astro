@@ -4,7 +4,9 @@
 // piece 2), in the plan card's look. It shows exactly what the click sends:
 // the title, the description, the due day and the estimate for a new task,
 // which goes to whoever clicks, or
-// the changes to the task the chat is open on. The one click is "Create task" or "Apply to this task";
+// the changes to the task the chat is open on, or, in a chat opened on no
+// task, to the task the person picks among those it created
+// (`proposal-pick.tsx`), the click disabled until then. The one click is "Create task" or "Apply to this task";
 // after it the card links the task, or quotes the server's refusal and offers
 // the click again; an edit whose task changed since says so and offers none.
 // Nothing is written by the card being drawn, and every word on it is text:
@@ -12,11 +14,13 @@
 
 import type { ReactElement } from 'react';
 import { dayWords, timeWords } from '../../board/project-words.ts';
-import type { AssistantProposal } from './types.ts';
+import { picked, ProposalPick } from './proposal-pick.tsx';
+import type { AssistantPickMove, AssistantProposal } from './types.ts';
 
 const SEND = { create: 'Create task', edit: 'Apply to this task' } as const;
 const KEPT = { create: 'Task created', edit: 'Task updated' } as const;
 const HEAD = { create: 'Proposed task', edit: 'Proposed change to this task' } as const;
+const PICK_HEAD = 'Proposed change to a task this chat created';
 /** Said until the click lands: a reply's words saying it was done never made it so. */
 const PENDING = {
   create: 'Only proposed: no task exists until you click Create task.',
@@ -76,11 +80,14 @@ function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement
 export function ProposalCard(props: {
   readonly proposal: AssistantProposal;
   readonly onSend: (() => void) | undefined;
+  readonly onPick?: ((move: AssistantPickMove) => void) | undefined;
 }): ReactElement {
   const { proposal, onSend } = props;
+  const { pick } = proposal;
   return (
     <div className="aip__plan" data-proposal="card" data-action={proposal.action}>
-      <span className="aip__plan-k">{HEAD[proposal.action]}</span>
+      <span className="aip__plan-k">{pick === undefined ? HEAD[proposal.action] : PICK_HEAD}</span>
+      {pick === undefined ? null : <ProposalPick pick={pick} onPick={props.onPick} />}
       <Proposed proposal={proposal} />
       {proposal.state === 'made' ? null : (
         <p className="aip__plan-meta" data-proposal="pending">
@@ -100,7 +107,7 @@ export function ProposalCard(props: {
             className="btn btn--primary btn--sm"
             type="button"
             data-proposal="send"
-            disabled={proposal.state === 'sending'}
+            disabled={proposal.state === 'sending' || !picked(pick)}
             onClick={onSend}
           >
             {proposal.state === 'unknown' ? 'Send again' : SEND[proposal.action]}
