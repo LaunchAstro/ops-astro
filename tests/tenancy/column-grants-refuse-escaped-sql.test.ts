@@ -19,7 +19,7 @@ it('refuses a column grant spelt with an octal escape PostgreSQL truncates to a 
 });
 
 it('refuses a literal-backslash escape in an E string in any migration not read by hand', () => {
-  const slash = String.fromCharCode(92);
+  const slash = String.fromCodePoint(92);
   const sql = `select strpos(x, E'${slash}${slash}') from s.t;`;
   const migration = {
     version: '20261018120000_sol_literal_escape',

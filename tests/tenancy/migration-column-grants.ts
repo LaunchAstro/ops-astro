@@ -11,8 +11,8 @@
 // line here.
 //
 // Quoted SQL is read as the server reads it, and an escape in an E'' or U&''
-// string other than a literal backslash is refused, never decoded
-// (sql-tokens.ts), as is any setting that changes how the server reads strings.
+// string is refused, never decoded (sql-tokens.ts), outside a migration read by
+// hand, as is any setting that changes how the server reads strings.
 // SQL built at run time cannot be read from text, so it is
 // refused: every EXECUTE in a function or DO body takes a literal, or format()
 // of a literal whose only placeholder is %I, with nothing joined to it; and a
@@ -27,14 +27,21 @@ import { isWord, tokens, type Token } from './sql-tokens.ts';
 
 const COLUMN_PRIVILEGES = ['SELECT', 'INSERT', 'UPDATE', 'REFERENCES'] as const;
 
+/** What a migration read by hand may hold: format() with any placeholder, a literal backslash. */
+interface ByHand {
+  readonly anyFormat?: boolean;
+  readonly literalBackslash?: boolean;
+}
+
 /**
- * Migrations whose format() strings carry %s, read by hand: none makes a
- * column grant. Migrations never change once on main
- * (scripts/migrations-unchanged.mjs), so a version names fixed text.
+ * Migrations read by hand, none of which makes a column grant. Migrations never
+ * change once on main (scripts/migrations-unchanged.mjs), so a version names fixed text.
  */
-const FORMATS_READ_BY_HAND: ReadonlySet<string> = new Set([
-  // Revokes each identity role membership it reads from pg_auth_members.
-  '20261004102910_identity_roles_hold_no_membership',
+const READ_BY_HAND: ReadonlyMap<string, ByHand> = new Map([
+  // format() with %s: revokes each identity role membership read from pg_auth_members.
+  ['20261004102910_identity_roles_hold_no_membership', { anyFormat: true }],
+  // E'\\': a check constraint refuses a backslash in a page address.
+  ['0094_conversation_page_scope', { literalBackslash: true }],
 ]);
 
 /** Split at top-level commas, refusing an unbalanced parenthesis. */
@@ -239,13 +246,13 @@ function refuseStringSettings(list: readonly Token[]): void {
  * column list, a `%s` or `%L`, or a grant cut short for a concatenation, is
  * refused, as is SQL built at run time.
  */
-function refuseQuoted(sql: string, anyFormat: boolean): void {
+function refuseQuoted(sql: string, byHand: ByHand): void {
   for (const piece of splitStatements(sql)) {
-    const list = tokens(piece);
+    const list = tokens(piece, byHand.literalBackslash === true);
     refuseStringSettings(list);
     refuseLanguage(list);
-    refuseDynamic(list, anyFormat);
-    for (const token of list) if (token.kind === 'quoted') refuseQuoted(token.text, anyFormat);
+    refuseDynamic(list, byHand.anyFormat === true);
+    for (const token of list) if (token.kind === 'quoted') refuseQuoted(token.text, byHand);
     const grant = list.findIndex((t) => isWord(t, 'grant'));
     if (grant < 0) continue;
     const rest = list.slice(grant + 1);
@@ -264,19 +271,16 @@ function refuseQuoted(sql: string, anyFormat: boolean): void {
 
 /**
  * Every column grant in one migration's statements, or an error naming the
- * statement. `anyFormat` lets format() carry %s and %L, for a migration read by hand.
+ * statement. `byHand` lets format() carry %s and %L, or an E'' string hold a
+ * literal backslash, for a migration read by hand.
  */
-export function columnGrants(
-  statements: readonly string[],
-  options: { readonly anyFormat?: boolean } = {},
-): string[] {
+export function columnGrants(statements: readonly string[], byHand: ByHand = {}): string[] {
   return statements.flatMap((statement, at) => {
     try {
-      const list = tokens(statement);
+      const list = tokens(statement, byHand.literalBackslash === true);
       refuseStringSettings(list);
       refuseLanguage(list);
-      for (const token of list)
-        if (token.kind === 'quoted') refuseQuoted(token.text, options.anyFormat === true);
+      for (const token of list) if (token.kind === 'quoted') refuseQuoted(token.text, byHand);
       return leadingVerb(statement) === 'GRANT' ? grantLines(list) : [];
     } catch (error) {
       const head = statement.replaceAll(/\s+/gu, ' ').slice(0, 80);
@@ -292,7 +296,5 @@ export function migrationColumnGrants(migration: {
   readonly version: string;
   readonly statements: readonly string[];
 }): string[] {
-  return columnGrants(migration.statements, {
-    anyFormat: FORMATS_READ_BY_HAND.has(migration.version),
-  });
+  return columnGrants(migration.statements, READ_BY_HAND.get(migration.version));
 }

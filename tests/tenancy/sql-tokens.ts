@@ -3,10 +3,10 @@
 // SQL text as tokens, read the way PostgreSQL reads it (statements.ts
 // scanToken), for migration-column-grants.ts: comments dropped, unquoted words
 // folded to lower case, and every string's value read. Escapes are refused,
-// not decoded: in an E'' or U&'' string any backslash but `\\` (one literal
-// backslash, which spells nothing) is an error, so text cannot be spelt with
-// escapes past the reader. A setting that changes how strings read is refused
-// by migration-column-grants.ts.
+// not decoded: in an E'' or U&'' string any backslash is an error, so text
+// cannot be spelt with escapes past the reader. Only a migration read by hand
+// may hold `\\`, one literal backslash (migration-column-grants.ts). A setting
+// that changes how strings read is refused by migration-column-grants.ts.
 
 import { scanToken } from '../../packages/core-records/src/tenancy/statements.ts';
 
@@ -27,10 +27,10 @@ const GAP = /(?:[ \t\n\r\f\v]|--[^\n\r]*)*/uy;
 /**
  * A string's value: each quoted part, quotes undoubled, continuations joined.
  * Each part is read from where the last one ended, past the gap, so a quote in
- * a comment between parts is not paired. In an E'' or U&'' string, `\\` is
- * one backslash and any other escape is refused.
+ * a comment between parts is not paired. In an E'' or U&'' string any escape
+ * is refused, except `\\` as one backslash when `literalBackslash` is set.
  */
-function stringValue(text: string, escapes: boolean): string {
+function stringValue(text: string, escapes: boolean, literalBackslash: boolean): string {
   // A backslash escapes a quote only in an E'' string.
   const part = /^[Ee]'/u.test(text) ? /'((?:[^'\\]|''|\\[\s\S])*)'/uy : /'((?:[^']|'')*)'/uy;
   const runs: string[] = [];
@@ -55,13 +55,14 @@ function stringValue(text: string, escapes: boolean): string {
   const joined = runs.map((run) => run.replaceAll("''", "'")).join('');
   if (!escapes) return joined;
   for (const escape of joined.matchAll(/\\[\s\S]?/gu)) {
-    if (escape[0] !== '\\\\')
+    if (escape[0] !== '\\\\' || !literalBackslash)
       throw new Error(`a string escape ${escape[0]}, which this reader refuses`);
   }
   return joined.replaceAll('\\\\', '\\');
 }
 
-export function tokens(sql: string): Token[] {
+/** `literalBackslash` reads `\\` in an E'' or U&'' string as one backslash, for a migration read by hand. */
+export function tokens(sql: string, literalBackslash = false): Token[] {
   const found: Token[] = [];
   for (let at = 0; at < sql.length;) {
     const token = scanToken(sql, at);
@@ -81,7 +82,10 @@ export function tokens(sql: string): Token[] {
       found.push({ kind: 'quoted', text: /^(\$[^$]*\$)([\s\S]*)\1$/u.exec(text)?.[2] ?? '' });
     } else if (token.kind === 'quoted') {
       if (unicode) found.splice(-2, 2);
-      found.push({ kind: 'quoted', text: stringValue(text, unicode || /^[Ee]'/u.test(text)) });
+      found.push({
+        kind: 'quoted',
+        text: stringValue(text, unicode || /^[Ee]'/u.test(text), literalBackslash),
+      });
     } else found.push({ kind: token.kind, text });
   }
   return found;
