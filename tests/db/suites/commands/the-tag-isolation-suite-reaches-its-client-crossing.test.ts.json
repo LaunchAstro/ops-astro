@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "runs the tag isolation suite's client crossing (two stored clients in one business) and fails if its setup stops before either client is linked"
+}
