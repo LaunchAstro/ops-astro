@@ -10,8 +10,9 @@
 // the credential file. The stream is read whole, no piece passed on, and
 // judged once (`askPlanOnce`) against the pair it went out under and any the
 // holder took on meanwhile: the completed response, or a named refusal. Once
-// written, an answer withheld is the send's failure or withheld, never a
-// refusal, since the plan may have run it.
+// written, the plan may have run it, so anything short of that completed
+// response is the send's failure or withheld, held as unknown: never a
+// refusal, a named one included (#1926).
 
 import { isAbsolute } from 'node:path';
 import { PLAN_PROVIDER } from './carry-rule.ts';
@@ -59,7 +60,7 @@ export async function prepared(holder: TokenHolder | undefined): Promise<Reply> 
   return out.ok ? { type: 'prepared' } : { type: 'refused', code: out.code };
 }
 
-/** Past the write, an answer withheld proves nothing unsent: its failure, or withheld, never refused. */
+/** Past the write nothing proves the plan did not run it: its failure, or withheld, never refused. */
 function afterWrite(sent: Outbound | undefined, why: string | undefined): Reply {
   if (sent !== undefined && !sent.ok) {
     const outcome = { ok: false, fault: sent.fault, status: sent.status };
@@ -101,8 +102,7 @@ export async function planDispatch(
   // Past its deadline nothing was written: a refusal, as any lapsed send is.
   if (sent?.ok === false && sent.fault === 'lapsed')
     return { type: 'refused', code: 'SEND_LAPSED' };
-  if (!result.ok && written && result.code === 'SUBSCRIPTION_ANSWER_WITHHELD')
-    return afterWrite(sent, why);
+  if (!result.ok && written) return afterWrite(sent, why);
   if (!result.ok) return { type: 'refused', code: result.code };
   const body = JSON.stringify(result.response);
   const outcome = { ok: true, status: 200, body, mediaType: 'application/json' };

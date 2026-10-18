@@ -3,12 +3,12 @@
 // Each way a plan call can end short of an answer is named, and sends no
 // more than P3 allows (#1620 P3, P4): the holder's refusal at prepare and at
 // `present()` send nothing; the plan's 429 (its usage allowance) and 403 (this
-// account refused) are one request each, never retried. The access token
+// account refused) are one request each, never retried, and since the request
+// was written they are held as unknown, never refused (#1926). The access token
 // never appears in custody's stderr, in any reply, or in a refusal, even when
 // the plan echoes it back.
 
 import { afterEach, expect, it } from 'vitest';
-import { PLAN_WORDS } from '../../packages/core-custody/src/plan-words.ts';
 import { completed, stream } from './fixtures/plan-answer-world.ts';
 import {
   openPlanRouteWorld,
@@ -58,18 +58,18 @@ it('custody’s answer to prepare is the word and nothing else', async () => {
   tokenNowhere(world, reply);
 }, 15_000);
 
-it.each([
-  [429, 'SUBSCRIPTION_PLAN_ALLOWANCE'],
-  [403, 'SUBSCRIPTION_NOT_ELIGIBLE'],
-] as const)(
-  'a %s from the plan is refused %s after one request, never retried',
-  async (status, code) => {
+it.each([429, 403] as const)(
+  'a %s from the plan is one request, never retried, and held as unknown rather than refused',
+  async (status) => {
     world = await openPlanRouteWorld();
     await world.custody.prepare();
     world.reply = () => ({ status, body: JSON.stringify({ error: { message: 'no' } }) });
     const outcome = await world.dispatch(planRequest());
-    expect(outcome).toMatchObject({ kind: 'refused', code });
-    expect(PLAN_WORDS[code]).toMatch(/Nothing was retried/u);
+    expect(outcome).toMatchObject({
+      kind: 'answered',
+      started: true,
+      outbound: { ok: false, fault: 'status', status },
+    });
     // A moment for any retry to arrive.
     await new Promise((done) => {
       setTimeout(done, 300);
@@ -109,7 +109,7 @@ it('custody’s own reply to a refused or echoing plan call carries no token, re
     replies.push(await world.custody.raw({ type: 'dispatch', credentialRef: 'x', request }));
   }
   expect(replies.map((reply) => (reply as { type?: unknown }).type)).toStrictEqual([
-    'refused',
+    'answer',
     'answer',
   ]);
   tokenNowhere(world, ...replies);
