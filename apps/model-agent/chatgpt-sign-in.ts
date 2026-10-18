@@ -30,8 +30,8 @@ import {
   storeSignIn,
   type SignInAsk,
   type SignInStoreRefusal,
-} from '../../packages/core-custody/src/plan-sign-in.ts';
-import type { TokenFs } from '../../packages/core-custody/src/token-file.ts';
+  type TokenFs,
+} from '../../packages/core-custody/src/agent.ts';
 import { claimsHold, sameIssuer, validatedSubject } from './id-token.ts';
 
 /** The plan's scopes: identity, then plan use. */
