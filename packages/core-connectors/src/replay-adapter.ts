@@ -9,6 +9,7 @@ import {
   type AdapterRequest,
   type ModelAnswer,
   type ModelOperationDeclaration,
+  type ModelToolCall,
 } from './operation.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
@@ -45,6 +46,23 @@ export function replayAdapter(
 const whole = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The tools asked for, each `{ id, name, args }` and nothing else; absent, none; else undefined. */
+function toolCallsOf(value: unknown): readonly ModelToolCall[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return undefined;
+  const calls: ModelToolCall[] = [];
+  for (const call of value) {
+    if (!isObject(call) || Object.keys(call).length !== 3) return undefined;
+    const { id, name, args } = call;
+    if (typeof id !== 'string' || typeof name !== 'string' || !isObject(args)) return undefined;
+    calls.push({ id, name, args });
+  }
+  return calls;
+}
+
 /** The answer schema: exactly the shape below, or nothing. */
 export function readReplayAnswer(body: unknown): ModelAnswer | undefined {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
@@ -58,8 +76,11 @@ export function readReplayAnswer(body: unknown): ModelAnswer | undefined {
   if (code !== undefined && code !== null && typeof code !== 'string') return undefined;
   const model = readModelId(shape['model']);
   if (model === undefined) return undefined;
+  const toolCalls = toolCallsOf(shape['tool_calls']);
+  if (toolCalls === undefined) return undefined;
   return {
     text: shape['text'],
+    ...(shape['tool_calls'] === undefined ? {} : { toolCalls }),
     model,
     usage: { inputUnits: units['input'], outputUnits: units['output'] },
     providerCode: typeof code === 'string' ? code : null,
@@ -97,6 +118,17 @@ export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
   // text: local routes only, or LA-1's laptop carve-out. The stand-in prices every answer
   // (`replayCostMinor`), so it keeps the compose's priced maximum, and the seam refuses it (#1508).
   fields: { page: 'free_text', earlier: 'free_text', message: 'free_text' },
+};
+
+/**
+ * A model turn over the replay provider (#1623 R3): the broker materialises the
+ * turn's parts into its one field, and finds its class from their sources.
+ */
+export const REPLAY_TURN: ModelOperationDeclaration = {
+  ...REPLAY_COMPOSE,
+  key: 'model.replay_turn',
+  fields: { turn: 'business_internal' },
+  turn: true,
 };
 
 /** The price of an answer, in minor units, from what the provider says it used. Never above the maximum. */

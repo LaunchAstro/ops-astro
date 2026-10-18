@@ -10,6 +10,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import {
   SETTLE_LEVELS,
+  type FieldSource,
   type ModelAnswer,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
@@ -26,6 +27,7 @@ import type { CustodyOutcome } from './custody.ts';
 import { lockCall, lockedState } from './broker-facts.ts';
 import { giveBack } from './broker-give-back.ts';
 import { dropAfterStop, releaseEndOf, stopAtSettlement, UNPROVEN_RELEASE } from './broker-stop.ts';
+import { settledAnswer } from './broker-limit.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,
@@ -257,6 +259,7 @@ export async function settle(
   reserved: ReservedCall,
   settlement: Settlement,
   broker: Broker,
+  turn?: FieldSource,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
     const drop = await dropAfterStop(tx, settlement, request.leaseId, broker);
@@ -287,13 +290,6 @@ export async function settle(
     await settlePriced(tx, reserved, settlement, broker);
     await giveBack(tx, callId);
     if (work !== 'stands') return { ok: false, code: work, callId };
-    return {
-      ok: true,
-      callId,
-      text: settlement.answer.text,
-      reservedMinor,
-      actualMinor: costMinor,
-      releasedMinor: reservedMinor - costMinor,
-    };
+    return await settledAnswer(tx, request.leaseId, reserved, settlement, turn);
   });
 }

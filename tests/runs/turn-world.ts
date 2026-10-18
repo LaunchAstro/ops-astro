@@ -13,21 +13,14 @@ import {
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
-  type ModelOperationDeclaration,
+  REPLAY_TURN,
 } from '../../packages/core-connectors/src/index.ts';
 import type { Answer } from '../api/fixture.ts';
 import { CLOUD, LOCAL } from '../broker/broker-world.ts';
 import { revisionOf, type Schedules, type Work } from '../runtime/schedules-harness.ts';
 import { asAgent, leaseOf, s, signedIn, world, type SignedIn } from './run-stop-door-world.ts';
 
-export const TURN = 'model.replay_turn';
-
-const REPLAY_TURN = {
-  ...REPLAY_COMPOSE,
-  key: TURN,
-  fields: { turn: 'business_internal' },
-  turn: true,
-} as ModelOperationDeclaration;
+export const TURN: string = REPLAY_TURN.key;
 
 /** The door's broker for turns: a cloud route first, a local one for what may not leave. */
 export const turnBroker = (callLimit: number) => (): ModelBroker =>

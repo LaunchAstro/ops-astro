@@ -127,6 +127,31 @@ export const EFFECT_ROWS = [
     meaning: 'A copy of business content was not registered before it was made',
     source: 'AW-01',
   },
+  // #1623 R3: the run attempt's calls, and the model turn the broker reads and binds.
+  {
+    code: 'CALL_LIMIT_REACHED',
+    status: 409,
+    meaning: 'The run attempt made every model call its limit allows, so it stopped',
+    source: '#1623',
+  },
+  {
+    code: 'TURN_MALFORMED',
+    status: 422,
+    meaning: 'The model turn is out of shape or out of order, so the run stopped',
+    source: '#1623',
+  },
+  {
+    code: 'TURN_ORDINAL_STALE',
+    status: 409,
+    meaning: "The model turn's ordinal is not the run attempt's count of calls, so the run stopped",
+    source: '#1623',
+  },
+  {
+    code: 'PROVENANCE_UNBOUND',
+    status: 422,
+    meaning: 'A part of the model turn is not bound to what this run may send, so the run stopped',
+    source: '#1623',
+  },
   {
     code: 'LIABILITY_UNKNOWN',
     status: 409,

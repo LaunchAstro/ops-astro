@@ -205,6 +205,15 @@ interface LedgerRow {
 const minor = (value: string | null | undefined): number | null =>
   value === null || value === undefined ? null : Number(value);
 
+/** The model's words, a turn's tools asked for, and whether the call ended its attempt at its limit. */
+function answerOf(sent: Extract<ModelCallResult, { ok: true }>): Readonly<Record<string, unknown>> {
+  return {
+    text: sent.text,
+    ...(sent.toolCalls === undefined ? {} : { toolCalls: sent.toolCalls }),
+    ...(sent.terminal === undefined ? {} : { terminal: sent.terminal }),
+  };
+}
+
 /** The call as its ledger row has it now, with the model's words only when this request made them. */
 async function answerFrom(
   database: Database,
@@ -224,7 +233,7 @@ async function answerFrom(
         [tx.businessId, callId],
       ),
   );
-  const words = sent === undefined ? {} : sent.ok ? { text: sent.text } : { outcome: sent.code };
+  const words = sent === undefined ? {} : sent.ok ? answerOf(sent) : { outcome: sent.code };
   return {
     ...admitted,
     detail: {
