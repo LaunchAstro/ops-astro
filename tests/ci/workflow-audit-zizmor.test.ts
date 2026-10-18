@@ -55,9 +55,9 @@ const ACTION = 'zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
 const VERSION = '1.30.1';
 
 describe('the two classes zizmor found stay fixed in every workflow', () => {
-  it('every checkout leaves no token in .git/config (#1840)', () => {
+  it('every checkout leaves no token in .git/config', () => {
     const checkouts = files
-      .flatMap(steps)
+      .flatMap((file) => steps(file))
       .filter(([, step]) => step.uses?.startsWith('actions/checkout@') === true);
     expect(checkouts.length).toBeGreaterThan(20);
     const keeping = checkouts
@@ -66,9 +66,9 @@ describe('the two classes zizmor found stay fixed in every workflow', () => {
     expect(keeping).toStrictEqual([]);
   });
 
-  it('no run: script expands a ${{ }} expression; each value arrives through env: (#1841)', () => {
+  it('no run: script expands a ${{ }} expression; each value arrives through env:', () => {
     const expanding = files
-      .flatMap(steps)
+      .flatMap((file) => steps(file))
       .filter(([, step]) => step.run?.includes('${{') === true)
       .map(([where]) => where);
     expect(expanding).toStrictEqual([]);

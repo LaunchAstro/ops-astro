@@ -34,8 +34,9 @@ describe('the wiring', () => {
     expect(job).not.toHaveProperty('if');
     const steps = job?.steps ?? [];
     // merge-group.mjs walks a group's first parents to the base tip: a depth-1 head has none.
+    // Its fetches read a public repository, so the checkout keeps no token (#1840).
     const checkout = steps.find((s) => String(s['uses']).startsWith('actions/checkout@'));
-    expect(checkout?.['with']).toStrictEqual({ 'fetch-depth': 0 });
+    expect(checkout?.['with']).toStrictEqual({ 'fetch-depth': 0, 'persist-credentials': false });
     const runs = steps.filter((s) => String(s['run']).includes('named-suites.ts kept'));
     expect(runs).toHaveLength(1);
     const step = runs[0] ?? {};
