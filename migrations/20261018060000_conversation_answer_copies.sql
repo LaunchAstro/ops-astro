@@ -10,25 +10,28 @@
 -- conversation's row lock, never asking the model again.
 --
 -- The copy is transient. The keep that turns it into the reply deletes it in
--- the same transaction, and it goes with the message when the conversation's
--- body is purged (the cascade below). It names the call and the message only:
--- its conversation is the message's, so the settlement never takes the
--- conversation's row, which the purge and the keep take first.
+-- the same transaction, and the purge deletes it with the conversation's
+-- body. The settlement holds the conversation's row for its key, after the
+-- call's row as custody takes them, and copies only into a body not purged:
+-- a purge waits for a copy being made and deletes it, or the copy is not
+-- made. There is no foreign key to the message: a lock on a message would
+-- then hold up its call's settlement (20261013010000).
 
 create table public.conversation_answer_copies (
-  business_id uuid        not null,
-  call_id     uuid        not null,
-  message_id  uuid        not null,
-  body        text        not null,
-  copied_at   timestamptz not null default now(),
+  business_id     uuid        not null,
+  call_id         uuid        not null,
+  conversation_id uuid        not null,
+  message_id      uuid        not null,
+  body            text        not null,
+  copied_at       timestamptz not null default now(),
   constraint conversation_answer_copies_pkey primary key (business_id, call_id),
   constraint conversation_answer_copies_message_key unique (business_id, message_id),
   constraint conversation_answer_copies_business_fkey foreign key (business_id, business_id)
     references public.businesses (business_id, id),
   constraint conversation_answer_copies_call_fkey foreign key (business_id, call_id)
     references public.model_calls (business_id, id),
-  constraint conversation_answer_copies_message_fkey foreign key (business_id, message_id)
-    references public.conversation_messages (business_id, id) on delete cascade,
+  constraint conversation_answer_copies_conversation_fkey foreign key (business_id, conversation_id)
+    references public.conversations (business_id, id),
   constraint conversation_answer_copies_body_bounded check (char_length(body) between 1 and 20000)
 );
 

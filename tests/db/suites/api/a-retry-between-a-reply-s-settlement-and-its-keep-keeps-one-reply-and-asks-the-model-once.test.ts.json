@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": true,
-  "why": "A retry from another process before, during or after the gap between a conversation call's settlement and its reply's keep leaves the message one reply and the model asked once; the settled answer's transient copy goes with the reply it became or the purged body, and only the conversation's owner turns it into a reply. Each side on its own connection against a real migrated database."
+  "why": "A retry from another process before, during or after the gap between a conversation call's settlement and its reply's keep leaves the message one reply and the model asked once; the settled answer's transient copy goes with the reply it became or the purged body, and is not made into a body a purge holds, and only the conversation's owner turns it into a reply. Each side on its own connection against a real migrated database."
 }

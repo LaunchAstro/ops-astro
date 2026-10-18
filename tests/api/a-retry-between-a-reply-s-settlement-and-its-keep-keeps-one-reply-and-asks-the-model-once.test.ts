@@ -7,13 +7,13 @@
 // and the other finds that reply. Each side runs on a connection of its own,
 // stopped at a named statement, and the steps are ordered by what the database
 // reports, never by a sleep. The copy goes with the reply it became, and with
-// the conversation's body when that is purged, and only the conversation's
-// owner can turn it into a reply.
+// the conversation's body when that is purged, even one being purged as it is
+// made, and only the conversation's owner can turn it into a reply.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { purgeConversation, writeWrapUp } from '../../packages/core-commands/src/index.ts';
-import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
+import { writeBusinessSetting, type Database } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { waitingOn } from '../support/lock-waits.ts';
 import { detail, setConversationWindow } from './aw-03-fixture.ts';
@@ -173,8 +173,8 @@ async function rolledBack(q: Asked): Promise<void> {
   }
 }
 
-/** The conversation's body purged, a week's window over this world's work window passed. */
-async function purgedBody(conversationId: string) {
+/** The conversation's body purged on `database`, a week's window over its work window passed. */
+async function purgedBody(conversationId: string, database: Database = c.fixture.db.app) {
   await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
     const work = await writeBusinessSetting(tx, {
       key: 'retention_window_days',
@@ -185,7 +185,7 @@ async function purgedBody(conversationId: string) {
     await setConversationWindow(tx, 7);
   });
   await c.w.age(conversationId, 8);
-  return await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
+  return await database.withBusiness(c.fixture.business, async (tx) => {
     const wrapped = await writeWrapUp(tx, { conversationId, codeRevision: 'answer-copy' });
     expect(wrapped).toMatchObject({ ok: true });
     return await purgeConversation(tx, { conversationId, operationId: randomUUID() });
@@ -222,5 +222,40 @@ describe.skipIf(serverUrl === undefined)('an answer copy whose reply rolled back
     const before = asked();
     expect(await retried(q)).toBeNull();
     expect(asked()).toBe(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('an answer copy and a purge at once', () => {
+  it('a settlement waiting on a purge that holds the conversation copies nothing', async () => {
+    const q = await question();
+    const before = asked();
+    const settling = stepped(c.fixture.db.appUrl, SETTLE, 'hold-after');
+    const purging = stepped(
+      c.fixture.db.appUrl,
+      'delete from conversation_answer_copies',
+      'hold-after',
+    );
+    try {
+      const replying = c.model.exchange(
+        settling.database,
+        c.fixture.business,
+        c.w.owner.presented,
+        q,
+      );
+      await settling.reached;
+      const purged = purgedBody(q.conversationId, purging.database);
+      await purging.reached;
+      settling.release();
+      // The settlement's copy waits on the purge's hold of the conversation, then reads its body.
+      await waitingOn(c.fixture.db.admin, 'transactionid', 'for key share of v');
+      purging.release();
+      expect(await purged).toStrictEqual({ ok: true, replayed: false, messagesPurged: 1 });
+      expect(await replying).toBeNull();
+      expect(asked()).toBe(before + 1);
+      expect(await rowsOf(q.messageId)).toEqual({ replies: [], calls: ['settled'], copies: 0 });
+    } finally {
+      await settling.close();
+      await purging.close();
+    }
   });
 });

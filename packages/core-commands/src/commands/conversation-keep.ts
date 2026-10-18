@@ -91,11 +91,29 @@ export const keptReply =
     const reply = await replyTo(tx, asked);
     if (reply !== undefined) return reply;
     const [copy] = await tx.query<{ readonly body: string }>(
-      `select a.body from conversation_answer_copies a
-         join conversation_messages m on m.business_id = a.business_id and m.id = a.message_id
-        where a.business_id = $1 and a.message_id = $2 and m.conversation_id = $3`,
+      `select body from conversation_answer_copies
+        where business_id = $1 and message_id = $2 and conversation_id = $3`,
       [tx.businessId, asked.messageId, asked.conversationId],
     );
     if (copy === undefined || !usableReply(copy.body)) return undefined;
+    if (!(await keepable(tx, session, asked))) return undefined;
     return await keep(tx, session, asked, copy.body);
   };
+
+/**
+ * Whether this read may wait on the conversation's row to keep the copy: the
+ * row free, or held for update, as a keep or a purge holds it, whose outcome
+ * the wait reads. A row held by a write of its fields or for share, which a
+ * keep of this copy may be queued behind, is not waited on: the caller is
+ * told the answer is on its way (`messageCall`), never stopped behind it.
+ */
+async function keepable(tx: TenantQuery, session: Session, asked: Asked): Promise<boolean> {
+  const row = async (lock: 'key share' | 'update') =>
+    await tx.query(
+      `select 1 from conversations where business_id = $1 and id = $2 and owner_actor_id = $3
+        for ${lock} skip locked`,
+      [tx.businessId, asked.conversationId, session.actorId],
+    );
+  if ((await row('key share')).length === 0) return true;
+  return (await row('update')).length > 0;
+}

@@ -127,10 +127,11 @@ const copyable = (text: string): boolean =>
  * A settled call's answer, copied in its settling transaction (#1563): a
  * retry of the message keeps its reply from the copy, never from a second
  * call. Registered first, as every copy is (0085); invalidated when the
- * reply is kept, and gone with the message when its body is purged. The copy
- * is a savepoint of its own: a message a purge took first fails its foreign
- * key, and then nothing is copied and the settlement stands. Nor is text no
- * reply could hold copied.
+ * reply is kept, and deleted with the body when it is purged. The
+ * conversation's row is held for its key after the call's, and its body read
+ * after that wait: a body a purge took first is not copied into, and the
+ * settlement stands. The message's row is never taken (20261013010000). The
+ * copy is a savepoint of its own, and text no reply could hold is not copied.
  */
 export async function copyAnswer(
   tx: TransactionQuery,
@@ -138,13 +139,17 @@ export async function copyAnswer(
   text: string,
 ): Promise<void> {
   if (!copyable(text)) return;
-  const [call] = await tx.query<{ readonly message: string | null }>(
-    `select conversation_message_id as message from public.model_calls
-      where business_id = $1 and id = $2`,
+  const [call] = await tx.query<{ readonly conversation: string; readonly message: string }>(
+    `select c.conversation_id as conversation, c.conversation_message_id as message
+       from public.model_calls c
+       join public.conversations v on v.business_id = c.business_id and v.id = c.conversation_id
+      where c.business_id = $1 and c.id = $2 and c.conversation_message_id is not null
+        and v.body_purged_at is null
+      for key share of v`,
     [tx.businessId, callId],
   );
-  if (call?.message === undefined || call.message === null) return;
-  const { message } = call;
+  if (call === undefined) return;
+  const { conversation, message } = call;
   await tx.savepoint(async (inner) => {
     await inner.query(
       `insert into public.copy_registrations
@@ -153,9 +158,10 @@ export async function copyAnswer(
       [inner.businessId, randomUUID(), `model_call:${callId}`],
     );
     await inner.query(
-      `insert into public.conversation_answer_copies (business_id, call_id, message_id, body)
-       values ($1, $2, $3, $4)`,
-      [inner.businessId, callId, message, text],
+      `insert into public.conversation_answer_copies
+         (business_id, call_id, conversation_id, message_id, body)
+       values ($1, $2, $3, $4, $5)`,
+      [inner.businessId, callId, conversation, message, text],
     );
   });
 }

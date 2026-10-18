@@ -142,8 +142,10 @@ const UNREACHED: Readonly<Record<string, string>> = {
               'm5_ollama', 'local', 'api_key', now()
          from message m
        returning business_id, id)
-     insert into public.conversation_answer_copies (business_id, call_id, message_id, body)
-     select call.business_id, call.id, m.id, 'restricted calls seed' from call, message m
+     insert into public.conversation_answer_copies
+       (business_id, call_id, conversation_id, message_id, body)
+     select call.business_id, call.id, m.conversation_id, m.id, 'restricted calls seed'
+       from call, message m
      returning 1`,
   'public.conversation_wrap_ups': `insert into public.conversation_wrap_ups
        (business_id, id, conversation_id, version, written_by_operation, code_revision,
