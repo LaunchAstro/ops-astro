@@ -357,7 +357,8 @@ a group out and rebuilt every group behind it.
   the run's plan in a step of its own, and the runner reads it with
   `--timing-rule`. A suite that failed only on its tests (vitest exited 1 on a
   readable report of that suite alone, nothing skipped, nothing raised outside
-  a test, its counter read), and that the group's diff does not reach through
+  a test, unhandled errors included, which `scripts/vitest-unhandled-errors.mjs`
+  counts because vitest's JSON report leaves them out, and its counter read), and that the group's diff does not reach through
   `scripts/import-closure.ts`, runs once more in the same job. A pass is logged
   as timing in the job summary and as a warning: suite, failed tests, run id
   and the group's pull requests. A second failure blocks. Every rule above
@@ -367,6 +368,7 @@ a group out and rebuilt every group behind it.
   two runs its timing failures were seen in. While its ticket is open and its
   entry unexpired, a merge group that does not touch it leaves it out, and
   `.github/workflows/quarantine-nightly.yml` runs it each night on Postgres 17.
+  A shard whose whole share is left out passes, as there is nothing left to run.
   A closed ticket or a passed expiry puts it back; the fix's pull request
   removes the entry.
 - **Fails closed.** A malformed, unticketed, over-14-day, future-dated,
