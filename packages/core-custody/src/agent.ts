@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The model agent's entry into custody (`apps/model-agent/`): the carriage,
-// its seals and custody's process, nothing of the broker, so it reaches no
-// database (`tests/worker/model-agent-boundary.test.ts`; cruiser `index-only`).
+// its seals, custody's process and the owner's plan sign-in, nothing of the
+// broker, so it reaches no database (`tests/worker/model-agent-boundary.test.ts`;
+// cruiser `index-only`).
 
 export {
   ACCEPT_WINDOW_MS,
@@ -34,3 +35,11 @@ export {
   type SendGate,
 } from './custody.ts';
 export type { Destination, OutboundRequest } from './egress.ts';
+export {
+  beginSignIn,
+  issuedClientId,
+  storeSignIn,
+  type SignInAsk,
+  type SignInStoreRefusal,
+} from './plan-sign-in.ts';
+export type { TokenFs } from './token-file.ts';
