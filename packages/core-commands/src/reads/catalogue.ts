@@ -64,7 +64,11 @@ import { parseBreachNotices, readBreachNotices, readOperations } from './operati
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { listInvitations } from './invitations.ts';
 import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
-import { readAutomationRegistry } from './automations.ts';
+import {
+  parseHistoryOperands,
+  readAutomationHistory,
+  readAutomationRegistry,
+} from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
@@ -959,6 +963,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => await readAutomationRegistry(tx),
+  },
+  // One activation's history (#1741), asked as the registry is. Another
+  // business's activation is NOT_FOUND on `activationId` like a made-up one.
+  'automation.history': {
+    identifiers: ['activationId'],
+    parse: parseHistoryOperands,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, _session, operands) => await readAutomationHistory(tx, operands),
   },
 };
 

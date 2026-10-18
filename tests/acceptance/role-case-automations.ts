@@ -99,6 +99,8 @@ export async function laterBody(
   switch (name) {
     case 'automation.registry':
       return {};
+    case 'automation.history':
+      return { activationId: (await pinnedFirst(context))['activationId'] };
     case 'definition.release':
       return { ...RELEASE };
     case 'activation.change':

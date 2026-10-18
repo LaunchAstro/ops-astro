@@ -142,19 +142,26 @@ const clientOf = (fetch: typeof globalThis.fetch): OperationsClient =>
 
 const HISTORY = '[data-history="a-1"]';
 
+/** The entries drawn, in order, by the id each row's time carries. */
+const entries = (page: Awaited<ReturnType<typeof mount>>): (string | null)[] =>
+  page
+    .all(`${HISTORY} tbody tr`)
+    .map((row) => row.querySelector<HTMLElement>('[data-entry]')?.dataset['entry'] ?? null);
+
+// eslint-disable-next-line max-lines-per-function -- one stub, the cases that share it
 describe('an activation history on Workflow triggers', () => {
   it('opens from its row, newest first, with each outcome worded, each actor named and the run shown', async () => {
     const stub = server();
     const page = await mount(<TriggersPanel client={clientOf(stub.fetch)} />);
     await tick();
-    expect(page.find(HISTORY)).toBeNull();
+    expect(page.find(`${HISTORY}`)).toBeNull();
     await page.click('[data-activation="a-1"] [data-control="history"]');
     await tick();
     expect(stub.asked.map(({ activationId, cursor }) => [activationId, cursor])).toStrictEqual([
       ['a-1', undefined],
     ]);
     const rows = page.all(`${HISTORY} tbody tr`);
-    expect(rows.map((row) => row.getAttribute('data-entry'))).toStrictEqual(['e-3', 'o-2', 'o-1']);
+    expect(entries(page)).toStrictEqual(['e-3', 'o-2', 'o-1']);
     expect(rows[0]?.textContent).toContain('Turned off');
     expect(rows[0]?.textContent).toContain('Nathan Mulligan');
     expect(rows[1]?.textContent).toContain('Not approved for this version');
@@ -175,13 +182,13 @@ describe('an activation history on Workflow triggers', () => {
     await page.click(`${HISTORY} [data-control="history-older"]`);
     await tick();
     expect(stub.asked.map(({ cursor }) => cursor)).toStrictEqual([undefined, 'cursor-2']);
-    expect(
-      page.all(`${HISTORY} tbody tr`).map((row) => row.getAttribute('data-entry')),
-    ).toStrictEqual(['e-3', 'o-2', 'o-1', 'e-1']);
-    expect(page.find(`${HISTORY} [data-entry="e-1"]`)?.textContent).toContain('Adopted a version');
+    expect(entries(page)).toStrictEqual(['e-3', 'o-2', 'o-1', 'e-1']);
+    expect(page.find(`${HISTORY} [data-entry="e-1"]`)?.closest('tr')?.textContent).toContain(
+      'Adopted a version',
+    );
     expect(page.find(`${HISTORY} [data-control="history-older"]`)).toBeNull();
     await page.click('[data-activation="a-1"] [data-control="history"]');
-    expect(page.find(HISTORY)).toBeNull();
+    expect(page.find(`${HISTORY}`)).toBeNull();
     await page.unmount();
   });
 
@@ -190,7 +197,7 @@ describe('an activation history on Workflow triggers', () => {
     await tick();
     await page.click('[data-activation="a-1"] [data-control="history"]');
     await tick();
-    expect(page.find(HISTORY)?.textContent).toContain('Ask an owner.');
+    expect(page.find(`${HISTORY}`)?.textContent).toContain('Ask an owner.');
     expect(page.all(`${HISTORY} tbody tr`)).toHaveLength(0);
     await page.unmount();
   });

@@ -230,6 +230,7 @@ describe('C33 Workflow triggers panel look', () => {
       'adopt',
       'roll-back',
       'turn-off',
+      'history',
     ]);
     await page.unmount();
   });

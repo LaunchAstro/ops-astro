@@ -134,7 +134,7 @@ describe.skipIf(serverUrl === undefined)('an activation history', () => {
     expect(changes[0]).toStrictEqual({
       kind: 'change',
       id: audit[0]?.id,
-      at: new Date(String(audit[0]?.at)).toISOString(),
+      at: new Date(audit[0]?.at ?? 0).toISOString(),
       command: 'activation.turn_off',
       actorId: w.admin.actorId,
       actorKind: 'person',
@@ -163,7 +163,7 @@ describe.skipIf(serverUrl === undefined)('an activation history', () => {
     expect(all.find((entry) => entry.id === firedId)).toStrictEqual({
       kind: 'occurrence',
       id: firedId,
-      at: new Date(String(row?.at)).toISOString(),
+      at: new Date(row?.at ?? 0).toISOString(),
       cause: { kind: 'scheduled', dueAt: DUE.toISOString() },
       outcome: 'approved',
       dispatch: 'started',

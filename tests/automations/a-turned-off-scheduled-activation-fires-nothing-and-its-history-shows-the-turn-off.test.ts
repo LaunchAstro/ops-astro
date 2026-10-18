@@ -17,6 +17,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 const hour = (h: number): Date => new Date(Date.UTC(2026, 10, 5, h));
 
+// eslint-disable-next-line max-lines-per-function -- one world, the case and its helpers
 describe.skipIf(serverUrl === undefined)('a turned-off scheduled activation', () => {
   let w: RegistryWorld;
   let worker: string;
@@ -83,7 +84,7 @@ describe.skipIf(serverUrl === undefined)('a turned-off scheduled activation', ()
     expect(entries[0]).toStrictEqual({
       kind: 'change',
       id: turnOff?.id,
-      at: new Date(String(turnOff?.at)).toISOString(),
+      at: new Date(turnOff?.at ?? 0).toISOString(),
       command: 'activation.turn_off',
       actorId: w.admin.actorId,
       actorKind: 'person',

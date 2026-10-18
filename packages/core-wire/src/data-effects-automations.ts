@@ -9,6 +9,7 @@ import { business, writing, type DataEffects } from './data-effects-types.ts';
 type AutomationCommand = Extract<
   CommandName,
   | 'automation.registry'
+  | 'automation.history'
   | 'activation.change'
   | 'definition.release'
   | 'activation.adopt'
@@ -21,6 +22,8 @@ export const AUTOMATION_EFFECTS: { readonly [Name in AutomationCommand]: DataEff
   // Settings ▸ Workflow triggers (C33): a definition carries no client, so its
   // versions and activations are the business's own rows.
   'automation.registry': writing([]),
+  // One activation's history (#1741): read only.
+  'automation.history': writing([]),
   'activation.change': writing(business('activations')),
   'definition.release': writing(business('automation_definitions', 'definition_versions')),
   // C52-A: an adoption pins and approves; a revocation is its own row.

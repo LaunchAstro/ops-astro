@@ -54,3 +54,41 @@ export interface StandingApprovalView {
   readonly decidedBy: string;
   readonly revoked: boolean;
 }
+
+/**
+ * One activation's history (`automation.history`): its occurrences and the
+ * changes people made to it, newest first, 50 a page. `next` is the cursor
+ * that reads the page after this one, or null when nothing older is left.
+ */
+export interface AutomationHistoryResult {
+  readonly ok: true;
+  readonly entries: readonly AutomationHistoryEntry[];
+  readonly next: string | null;
+}
+
+export type AutomationHistoryEntry = OccurrenceHistoryEntry | ChangeHistoryEntry;
+
+/** What fired or was refused: a due time or an event, never the event's own id. */
+export interface OccurrenceHistoryEntry {
+  readonly kind: 'occurrence';
+  readonly id: string;
+  readonly at: string;
+  readonly cause:
+    { readonly kind: 'scheduled'; readonly dueAt: string } | { readonly kind: 'event' };
+  /** The occurrence's outcome code (`approved`, `no_standing_approval`, ...), worded by the page. */
+  readonly outcome: string;
+  /** What dispatch found, or null when nothing was dispatched. */
+  readonly dispatch: string | null;
+  readonly runId: string | null;
+}
+
+/** A change a person made: the command, and the actor who sent it. */
+export interface ChangeHistoryEntry {
+  readonly kind: 'change';
+  readonly id: string;
+  readonly at: string;
+  readonly command: string;
+  readonly actorId: string;
+  readonly actorKind: string | null;
+  readonly actorName: string | null;
+}

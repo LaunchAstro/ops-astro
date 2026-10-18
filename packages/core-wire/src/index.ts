@@ -197,9 +197,13 @@ export type {
 export type {
   ActivationView,
   AutomationDefinitionView,
+  AutomationHistoryEntry,
+  AutomationHistoryResult,
   AutomationRegistryResult,
   DefinitionVersionView,
   StandingApprovalView,
+  ChangeHistoryEntry,
+  OccurrenceHistoryEntry,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet and the per-client graduation region as Connections & signal reads

@@ -902,7 +902,8 @@ privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
 
 Settings ▸ Workflow triggers (C33) reads the business's automations under
-`settings:read` (`automation.registry`), changes an activation under
+`settings:read` (`automation.registry`), and one activation's occurrences and
+changes under the same key (`automation.history`, #1741), changes an activation under
 `settings:manage` (`activation.change`) and releases a definition version under
 `automation:manage` (`definition.release`), each asked of the whole business
 and none ever an agent's. A definition carries no client, so a grant at one
