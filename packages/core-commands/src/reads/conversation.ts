@@ -35,6 +35,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationListResult,
   ConversationMessageView,
+  ConversationTargetsView,
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -67,18 +68,34 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
+interface MessageRow {
+  readonly id: string;
+  readonly role: 'person' | 'agent';
+  readonly body: string;
+  readonly created_at: Date;
+}
+
+/** One message as the wire carries it, with the targets kept with it where the reader has them. */
+function viewOf(
+  message: MessageRow,
+  kept: ConversationTargetsView | undefined,
+): ConversationMessageView {
+  const view = {
+    id: message.id,
+    role: message.role,
+    body: message.body,
+    createdAt: message.created_at.toISOString(),
+  };
+  return kept === undefined ? view : { ...view, targets: kept };
+}
+
 /** The body, oldest first; each reply's kept targets only as `targetsFor` gives them to this reader (#1666). */
 async function messagesOf(
   tx: TenantQuery,
   session: Session,
   conversationId: string,
 ): Promise<readonly ConversationMessageView[]> {
-  const rows = await tx.query<{
-    id: string;
-    role: 'person' | 'agent';
-    body: string;
-    created_at: Date;
-  }>(
+  const rows = await tx.query<MessageRow>(
     `select id, role, body, created_at from conversation_messages
       where business_id = $1 and conversation_id = $2
       order by created_at, id`,
@@ -89,16 +106,7 @@ async function messagesOf(
     session,
     rows.filter((message) => message.role === 'agent').map((message) => message.id),
   );
-  return rows.map((message) => {
-    const view: ConversationMessageView = {
-      id: message.id,
-      role: message.role,
-      body: message.body,
-      createdAt: message.created_at.toISOString(),
-    };
-    const kept = targets.get(message.id);
-    return kept === undefined ? view : Object.assign(view, { targets: kept });
-  });
+  return rows.map((message) => viewOf(message, targets.get(message.id)));
 }
 
 /**
