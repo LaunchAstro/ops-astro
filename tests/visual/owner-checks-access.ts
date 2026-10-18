@@ -12,6 +12,7 @@ import {
   red,
   type Check,
 } from './owner-checks-steps.ts';
+import { loginOf } from './owner-checks-source.ts';
 
 export const ACCESS: readonly Check[] = [
   {
@@ -68,7 +69,20 @@ export const ACCESS: readonly Check[] = [
       ],
       [
         'Give the teammate one client, check the preview, end access: their session signs out',
-        notHere('needs the made-up teammate login and a real session to end'),
+        async (page) => {
+          if (loginOf('TEAMMATE') === undefined) {
+            throw red(
+              'no made-up teammate login in OWNER_CHECK_TEAMMATE_EMAIL and _PASSWORD; waits on ops-astro#1808',
+            );
+          }
+          const give = page.getByRole('heading', { name: 'Give access' });
+          if ((await give.count()) === 0) throw red('no Give access section on Settings > Access');
+          await give.scrollIntoViewIfNeeded();
+          await expectVisible('a preview of what the teammate may see', () =>
+            page.getByRole('button', { name: /preview/iu }),
+          );
+          throw red('the preview and the session end are not filmed yet; ops-astro#1814');
+        },
       ],
     ],
   },
@@ -141,7 +155,17 @@ export const ACCESS: readonly Check[] = [
       ],
       [
         'Make a task-only credential, the agent adds a task, revoke: the next command refused',
-        notHere('needs a real API and agent command; the owner runs it on app.opsastro.com'),
+        async (page) => {
+          const agents = page.getByRole('heading', { name: 'Agents' });
+          if ((await agents.count()) === 0) throw red('no Agents section on Settings > Access');
+          await agents.scrollIntoViewIfNeeded();
+          await expectVisible('a control to make an agent credential', () =>
+            page.getByRole('button', { name: /credential|agent key/iu }),
+          );
+          throw red(
+            'the agent command and the refusal after revoking are not filmed yet; ops-astro#1814',
+          );
+        },
       ],
     ],
   },

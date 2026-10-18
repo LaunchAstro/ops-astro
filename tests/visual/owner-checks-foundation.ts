@@ -157,7 +157,7 @@ export const FOUNDATION: readonly Check[] = [
         async (page) => {
           const charts = page.locator('main svg[role="img"], main figure svg, main [data-chart]');
           if ((await charts.count()) === 0) throw red('no chart on the Executive page');
-          // A chart is drawn when it is visible and its marks have real extent:
+          // A chart is drawn when it is visible and a visible mark has real extent:
           // an empty frame, however wide, draws nothing to read.
           const drawn = await charts.evaluateAll((all) =>
             all.map((one) => {
@@ -167,6 +167,9 @@ export const FOUNDATION: readonly Check[] = [
                 'path, rect, circle, ellipse, polygon, line, polyline',
               );
               return [...marks].some((mark) => {
+                if (!mark.checkVisibility({ visibilityProperty: true, opacityProperty: true })) {
+                  return false;
+                }
                 const box = mark.getBBox();
                 return mark.tagName === 'line' || mark.tagName === 'polyline'
                   ? box.width + box.height > 0
