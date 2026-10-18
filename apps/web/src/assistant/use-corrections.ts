@@ -16,8 +16,13 @@
 // under the key its call went out for. A late answer never draws in another
 // business's or another person's desks, even on a drawer that is not
 // remounted, and the hook hands out the active key's corrections only.
+//
+// **In order.** A desk reads `live_correction.list` each time it is drawn,
+// and an approved card reads its correction again until a final state. Each
+// answer lands unless one sent after it landed first (`correction-order.ts`),
+// and the list counts as a read of every correction it carries.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   CorrectionListItem,
   LiveCorrectionListResult,
@@ -28,6 +33,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../records/use-command.ts';
 import { cardState, refusalWords, type CorrectionAsk, type ProposePort } from './correction.ts';
 import type { Correction } from './correction-desks.ts';
+import { useOrder, type Order } from './correction-order.ts';
 
 export interface Corrections {
   readonly list: readonly Correction[];
@@ -57,9 +63,15 @@ const EMPTY: Held = { list: [], refusal: null, listRefusal: null, busy: 0 };
 type Change = (key: string, move: (desk: Held) => Held) => void;
 type Amend = (key: string, correctionId: string, patch: Partial<Correction>) => void;
 
-/** Every desk (business and grant), each changed under its own key only. */
-function useHeld(): { readonly held: ReadonlyMap<string, Held>; change: Change; amend: Amend } {
+/** Every desk (business and grant), each changed under its own key only, and its answers' order. */
+function useHeld(): {
+  readonly held: ReadonlyMap<string, Held>;
+  change: Change;
+  amend: Amend;
+  order: Order;
+} {
   const [held, setHeld] = useState<ReadonlyMap<string, Held>>(new Map());
+  const order = useOrder();
   const change: Change = (key, move) => {
     setHeld((now) => new Map(now).set(key, move(now.get(key) ?? EMPTY)));
   };
@@ -69,7 +81,7 @@ function useHeld(): { readonly held: ReadonlyMap<string, Held>; change: Change; 
       list: desk.list.map((each) => (each.correctionId === id ? { ...each, ...patch } : each)),
     }));
   };
-  return { held, change, amend };
+  return { held, change, amend, order };
 }
 
 /** A failure's code; an answer of the wrong shape is no answer. */
@@ -82,20 +94,19 @@ const failureWords = (failed: Failure): string => refusalWords(failedCode(failed
 /**
  * The correction's decision as `live_correction.read` answers it now, under
  * `key`; false where the read failed, its failure then the card's refusal.
- * `newest` says whether this read is still the latest sent for it; an
- * overtaken answer is dropped.
+ * `lands` says whether its answer may still land; an overtaken one is dropped.
  */
 async function readInto(
   client: OperationsClient,
   amend: Amend,
   key: string,
   correctionId: string,
-  newest: () => boolean,
+  lands: () => boolean,
 ): Promise<boolean> {
   const settled = settle(
     await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
   );
-  if (!newest()) return settled.kind === 'ok';
+  if (!lands()) return settled.kind === 'ok';
   if (settled.kind !== 'ok') {
     amend(key, correctionId, { refusal: failureWords(settled) });
     return false;
@@ -112,6 +123,14 @@ function tracked(change: Change, key: string, work: Promise<void>): void {
     change(key, (desk) => ({ ...desk, busy: desk.busy - 1 }));
   });
 }
+
+/** Where a listed correction stands, as the list answered it. */
+const standing = (item: CorrectionListItem): Partial<Correction> => ({
+  state: cardState(item.state),
+  approver: item.approver,
+  versionId: item.versionId,
+  refusal: null,
+});
 
 /** A listed correction as its card holds it; the page is named by its address. */
 const listed = (item: CorrectionListItem): Correction => ({
@@ -135,21 +154,27 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   receipts: null,
 });
 
-/** The desk with the listed corrections it does not hold yet; one it holds is newer. */
+/** The desk with `items` as listed: a card it holds takes the listed state, a new one is added. */
 const withListed = (desk: Held, items: readonly CorrectionListItem[]): Held => {
-  const held = new Set(desk.list.map((each) => each.correctionId));
-  const fresh = items.filter((item) => !held.has(item.correctionId)).map((item) => listed(item));
-  return { ...desk, listRefusal: null, list: [...desk.list, ...fresh] };
+  const byId = new Map(items.map((item) => [item.correctionId, item]));
+  const held = desk.list.map((each) => {
+    const item = byId.get(each.correctionId);
+    return item === undefined ? each : { ...each, ...standing(item) };
+  });
+  const known = new Set(desk.list.map((each) => each.correctionId));
+  const fresh = items.filter((item) => !known.has(item.correctionId)).map((item) => listed(item));
+  return { ...desk, listRefusal: null, list: [...held, ...fresh] };
 };
 
 /** The key a desk is held under: the business, then the grant on top. */
 const deskKey = (business: string, grantKey: string | undefined): string =>
   JSON.stringify([business, grantKey ?? null]);
 
-/** Fills the desk under `at` from `live_correction.list` once, when it is first drawn. */
-function useListed(client: OperationsClient, at: string, change: Change): void {
+/** Fills the desk under `at` from `live_correction.list` each time it is drawn. */
+function useListed(client: OperationsClient, at: string, change: Change, order: Order): void {
   useEffect(() => {
     const listing = async (): Promise<void> => {
+      const nth = order.next();
       const settled = settle(
         await client.read<LiveCorrectionListResult>('live_correction.list', {}),
       );
@@ -157,14 +182,15 @@ function useListed(client: OperationsClient, at: string, change: Change): void {
       if (settled.kind === 'closed') return;
       // An answer without a list is said as no answer, never drawn or thrown on.
       const items = settled.kind === 'ok' ? settled.value.corrections : null;
-      change(at, (desk) =>
-        Array.isArray(items)
-          ? withListed(desk, items)
-          : { ...desk, listRefusal: refusalWords(failedCode(settled)) },
-      );
+      if (!Array.isArray(items)) {
+        change(at, (desk) => ({ ...desk, listRefusal: refusalWords(failedCode(settled)) }));
+        return;
+      }
+      const landing = items.filter((item) => order.lands(at, item.correctionId, nth));
+      change(at, (desk) => withListed(desk, landing));
     };
     void listing();
-    // Read once for each desk; `change` only sets state, so the first one serves.
+    // Read each time the desk is drawn; `change` and `order` only set state, so the first serve.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [at]);
 }
@@ -211,30 +237,24 @@ async function receiptsInto(
   );
 }
 
-/** `readInto`, counting the reads sent for each desk and correction so only the newest lands. */
-function useNewestRead(
-  client: OperationsClient,
-  amend: Amend,
-): (key: string, id: string) => Promise<boolean> {
-  const sent = useRef(new Map<string, number>());
-  return (key, id) => {
-    const which = JSON.stringify([key, id]);
-    const nth = (sent.current.get(which) ?? 0) + 1;
-    sent.current.set(which, nth);
-    return readInto(client, amend, key, id, () => sent.current.get(which) === nth);
+/** `readInto`, in `order`: an answer overtaken by a newer one already landed is dropped. */
+const orderedRead =
+  (client: OperationsClient, amend: Amend, order: Order) =>
+  (key: string, id: string): Promise<boolean> => {
+    const nth = order.next();
+    return readInto(client, amend, key, id, () => order.lands(key, id, nth));
   };
-}
 
 export function useCorrections(
   client: OperationsClient,
   propose: ProposePort | undefined,
   grantKey?: string,
 ): Corrections {
-  const { held, change, amend } = useHeld();
+  const { held, change, amend, order } = useHeld();
   const at = deskKey(client.businessKey, grantKey);
   const mine = held.get(at) ?? EMPTY;
-  const read = useNewestRead(client, amend);
-  useListed(client, at, change);
+  const read = orderedRead(client, amend, order);
+  useListed(client, at, change, order);
   useFollowing(mine.list, at, read);
   const request = async (key: string, ask: CorrectionAsk, port: ProposePort): Promise<void> => {
     const answer = await port(ask);
