@@ -1435,14 +1435,18 @@ A model turn (#1623 R3) is the same route with `kind: 'turn'`, `turnOrdinal`,
 (`model.replay_turn`). Each part is a reference the broker reads under the
 call's locks, never free text: `{ ref: 'task', taskId, revision }` (the
 attempt's own task at its current revision, with `toolCallId` as a tool
-result), and `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
-this attempt, carried back with the bytes it returned). `turnOrdinal` must be
+result), `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
+this attempt, carried back with the bytes it returned) and, as part 0 only,
+`{ ref: 'definition', path, digest, text }` (a pinned file as `definition.read`
+returned it, below: lowercase sha256 digest, no lone surrogate, at most
+262,144 UTF-8 bytes; it binds only when the text hashes to the digest and the
+run's read ledger holds that path at that digest, and becomes the system
+message, of the task's class). `turnOrdinal` must be
 the attempt's count of calls. Before any hold, a turn out of shape or order is
 refused `TURN_MALFORMED`, a wrong ordinal `TURN_ORDINAL_STALE`, and a part the
 broker cannot bind (an altered answer, another attempt's or business's answer,
-another task, a stale revision, free text, and for now any `{ ref:
-'definition', path, digest }`, whose read path waits on #1904)
-`PROVENANCE_UNBOUND`, in the same bytes whoever's it was; each records its step and ends the attempt `cancelled`
+another task, a stale revision, free text, or a definition altered, unread,
+read by another run or business, or under another path) `PROVENANCE_UNBOUND`, in the same bytes whoever's it was; each records its step and ends the attempt `cancelled`
 ([RUNTIME.md](RUNTIME.md), "The model call's ledger"). A settled turn also
 answers `toolCalls`, and the call that reached the attempt's limit answers
 `terminal: 'call_limit'`.
@@ -1540,6 +1544,26 @@ or a session ended while it waited is refused (`DELEGATION_NOT_LIVE`,
 (`SCOPE_NOT_GRANTED`); a person stops work with `task.cancel`. The task's
 execution read gives each run its latest attempt's `runOutcome`
 (`{ attemptId, outcome, endCode }`, or null).
+
+### A pinned file's read, `definition.read`
+
+`POST /api/a/b/<business>/definition/read`, on the agent prefix only, under the
+delegation the pickup minted (#1904). The body is exactly `{ operationId,
+leaseId, fence, stepId, path }`; any other key, `runId` included, is
+`COMMAND_BODY_INVALID`. Under the model call's lock path (task, run, lease at
+its fence and held by this caller under this delegation or a live child of it,
+delegation, reservation, step) it reads the file at its pinned identity from
+the deployment's instruction root, which must be in the run's manifest
+(`DEFINITION_DIGEST_MISMATCH`; no pin or no root is `DEFINITION_UNAVAILABLE`)
+and UTF-8 that encodes back to itself, a BOM kept. It writes the run's read
+ledger row, the audit copy and one audit event, then, after the door's standing
+check and its waits, checks the lease again on the database clock: one that
+ended in any wait is `LEASE_EXPIRED` and nothing is kept. The answer's `detail`
+is `{ path, digest, size, sequence, leaseId, fence, stepId, runId, text }`; the
+register keeps it without `text`. The same operation id is read again as a
+fresh call on the stored lease, fence, step and run, against the stored digest
+and size, and writes nothing. A person has no `definition.read`
+(`SCOPE_NOT_GRANTED`).
 
 ## The answers at the budget stop
 
