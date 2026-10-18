@@ -29,6 +29,13 @@ export interface Subject {
    * for an agent credential's call (API-2); absent, every key it holds.
    */
   readonly within?: readonly string[];
+  /**
+   * An acting identity whose grants count only while it is active, judged in
+   * the statement that reads them (#1499): a delegation's minting identity
+   * (`delegatingSubjects`). A dormant identity grants nothing, as
+   * `heldPermissions` shows it.
+   */
+  readonly whileActive?: true;
 }
 
 /** `id` is null exactly at business scope, which is the whole tenant. */
@@ -113,6 +120,10 @@ export async function effectiveGrants(
         and e.action = $2
         and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
                      where s.kind = e.subject_kind and s.id = e.subject_id)
+        and (e.subject_kind <> 'actor' or not (e.subject_id = any($7::uuid[]))
+             or exists (select 1 from public.actors a
+                         where a.business_id = e.business_id and a.id = e.subject_id
+                           and a.active))
         and (e.scope_kind = 'business'
              or (e.scope_kind = $5 and e.scope_id = $6::uuid))`,
     [
@@ -122,6 +133,7 @@ export async function effectiveGrants(
       subjects.map((subject) => subject.id),
       request.scope.kind,
       request.scope.id,
+      subjects.filter((subject) => subject.whileActive === true).map((subject) => subject.id),
     ],
   );
 }

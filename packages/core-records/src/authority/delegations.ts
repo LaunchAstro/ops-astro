@@ -759,7 +759,10 @@ export async function isLaunchDelegation(tx: TenantQuery, delegationId: string):
  * A helper stands on its parent's, whose person and minting actor it carries.
  * Every other delegation stands on its person alone. What a check asks of
  * these, a write that rests on it holds (`holdCoveringGrants`), so revoking
- * any of them waits for the write.
+ * any of them waits for the write. The minting identity's grants count only
+ * while it is active (`whileActive`, owner decision on #804, #1499): each
+ * check reads that in its own statement, so a write that asks again after its
+ * last wait is refused by a deactivation that committed during it.
  */
 export async function delegatingSubjects(
   tx: TenantQuery,
@@ -771,7 +774,7 @@ export async function delegatingSubjects(
   const person = { kind: 'person', id: delegation.delegatePersonId } as const;
   const root = delegation.parentDelegationId ?? delegation.id;
   if (!(await isLaunchDelegation(tx, root))) return [person];
-  return [person, { kind: 'actor', id: delegation.mintedByActorId }];
+  return [person, { kind: 'actor', id: delegation.mintedByActorId, whileActive: true }];
 }
 
 export async function checkDelegatedAuthority(
