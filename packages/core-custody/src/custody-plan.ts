@@ -8,12 +8,20 @@
 // or refresh, or is refused `SUBSCRIPTION_REFRESH_FAILED` with nothing sent.
 // It goes through egress with the token as a bearer, so nothing is filed in
 // the credential file. The stream is read whole, no piece passed on, and
-// judged once (`askPlanOnce`) against the holder's secrets: the completed
-// response, or a named refusal.
+// judged once (`askPlanOnce`) against the pair it went out under and any the
+// holder took on meanwhile: the completed response, or a named refusal. Once
+// written, an answer withheld is the send's failure or withheld, never a
+// refusal, since the plan may have run it.
 
 import { isAbsolute } from 'node:path';
 import { PLAN_PROVIDER } from './carry-rule.ts';
-import { send, type Destination, type OutboundRequest, type SendGate } from './egress.ts';
+import {
+  send,
+  type Destination,
+  type Outbound,
+  type OutboundRequest,
+  type SendGate,
+} from './egress.ts';
 import { askPlanOnce } from './plan-answer.ts';
 import type { TokenHolder } from './plan-token.ts';
 
@@ -51,6 +59,15 @@ export async function prepared(holder: TokenHolder | undefined): Promise<Reply> 
   return out.ok ? { type: 'prepared' } : { type: 'refused', code: out.code };
 }
 
+/** Past the write, an answer withheld proves nothing unsent: its failure, or withheld, never refused. */
+function afterWrite(sent: Outbound | undefined, why: string | undefined): Reply {
+  if (sent !== undefined && !sent.ok) {
+    const outcome = { ok: false, fault: sent.fault, status: sent.status };
+    return { type: 'answer', outcome, kind: 'subscription', account: null };
+  }
+  return { type: 'withheld', reason: why === 'secret fragment' ? 'echoed' : 'malformed' };
+}
+
 /** One plan dispatch, sent at most once: the folded answer, or a named refusal. */
 export async function planDispatch(
   holder: TokenHolder,
@@ -60,18 +77,32 @@ export async function planDispatch(
 ): Promise<Reply> {
   const token = holder.present();
   if (!token.ok) return { type: 'refused', code: token.code };
+  // The pair the call goes out under: a prepare meanwhile may take on another.
+  const held = holder.secrets();
   const bearer = { header: 'authorization', scheme: 'bearer', value: token.accessToken } as const;
-  let lapsed = false;
-  const result = await askPlanOnce(
-    async () => {
-      const outcome = await send(destinations, request, bearer, undefined, undefined, gate);
-      lapsed = !outcome.ok && outcome.fault === 'lapsed';
-      return outcome;
+  // With no gate, egress does not say when it wrote, so the request may have gone.
+  let written = gate === undefined;
+  const noted = gate && {
+    ...gate,
+    onWritten: () => {
+      written = true;
+      gate.onWritten?.();
     },
-    () => holder.secrets(),
+  };
+  let sent: Outbound | undefined;
+  let why: string | undefined;
+  const result = await askPlanOnce(
+    async () => (sent = await send(destinations, request, bearer, undefined, undefined, noted)),
+    () => [...new Set([...held, ...holder.secrets()])],
+    (kind) => {
+      why = kind.split('plan answer withheld: ')[1];
+    },
   );
   // Past its deadline nothing was written: a refusal, as any lapsed send is.
-  if (lapsed) return { type: 'refused', code: 'SEND_LAPSED' };
+  if (sent?.ok === false && sent.fault === 'lapsed')
+    return { type: 'refused', code: 'SEND_LAPSED' };
+  if (!result.ok && written && result.code === 'SUBSCRIPTION_ANSWER_WITHHELD')
+    return afterWrite(sent, why);
   if (!result.ok) return { type: 'refused', code: result.code };
   const body = JSON.stringify(result.response);
   const outcome = { ok: true, status: 200, body, mediaType: 'application/json' };
