@@ -36,7 +36,8 @@ beforeAll(async () => {
   await openBilling(bravo);
 }, 120_000);
 
-const WAITED = { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: 5 };
+// #1623 R1 (B2): RATE_LIMITED is a recorded refusal that ends the attempt, with no retry.
+const WAITED = { ok: false, code: 'RATE_LIMITED', callId: expect.any(String) };
 
 it("a lookup in flight takes the route's last slot: a model call on the same route waits", async () => {
   const route = onRoute('slot-last', 1);
@@ -54,7 +55,9 @@ it("a lookup in flight takes the route's last slot: a model call on the same rou
   await passing;
   expect((await callsOf(s, run.work))[0]).toMatchObject({ state: 'released' });
   // The lookup ended: its slot is back and the call goes.
-  expect(await callIn(s, mine, route)).toMatchObject({ ok: true });
+  // The wait ended that attempt (B2): fresh work takes the place it waited for.
+  const next = await liveWork(s, 'slot goes', 2_000);
+  expect(await callIn(s, next, route)).toMatchObject({ ok: true });
 });
 
 it('two lookups racing for the last slot: one goes, one waits', async () => {
@@ -98,7 +101,9 @@ it('a lookup that throws gives its slot back', async () => {
     state: 'liability_unknown',
     reconcile_note: 'could establish nothing: custody could not ask the provider',
   });
-  expect(await callIn(s, mine, route)).toMatchObject({ ok: true });
+  // The wait ended that attempt (B2): fresh work takes the place it waited for.
+  const next2 = await liveWork(s, 'slot goes', 2_000);
+  expect(await callIn(s, next2, route)).toMatchObject({ ok: true });
 });
 
 it("a lookup in flight counts against the business's own ceiling for the operation", async () => {
@@ -117,7 +122,9 @@ it("a lookup in flight counts against the business's own ceiling for the operati
   held.end('go');
   await passing;
   await free(s, 'slot-own-other');
-  expect(await callIn(s, mine, roomy)).toMatchObject({ ok: true });
+  // The wait ended that attempt (B2): fresh work takes the place it waited for.
+  const next3 = await liveWork(s, 'slot goes', 2_000);
+  expect(await callIn(s, next3, roomy)).toMatchObject({ ok: true });
 });
 
 it("a crashed lookup's slot stops counting after its bound", async () => {
@@ -147,5 +154,7 @@ it("a crashed lookup's slot stops counting after its bound", async () => {
       where lease_id = $1`,
     [lease],
   );
-  expect(await callIn(s, mine, route)).toMatchObject({ ok: true });
+  // The wait ended that attempt (B2): fresh work takes the place it waited for.
+  const next4 = await liveWork(s, 'slot goes', 2_000);
+  expect(await callIn(s, next4, route)).toMatchObject({ ok: true });
 });
