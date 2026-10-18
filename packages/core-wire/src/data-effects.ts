@@ -66,11 +66,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('run_events', ...STOP),
     ...business('delegations'),
   ]),
-  // A successor is a proposal on the lineage, and the reviewed output (AW-08).
+  // A successor is a proposal on the lineage, and the reviewed output (AW-08). A completed
+  // handback records its attempt's success (#1623 R3).
   'task.handback': writing([
     ...client('alerts', 'attempts', 'evidence_packs', 'gates', 'handback_reports', 'inbox_items'),
     ...client('leases', 'planned_runs', 'planned_steps', 'proposal_versions', 'reservations'),
-    ...client('reviewed_outputs', 'run_events', 'task_envelopes'),
+    ...client('reviewed_outputs', 'run_events', 'run_outcomes', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'task.start': TASK,
