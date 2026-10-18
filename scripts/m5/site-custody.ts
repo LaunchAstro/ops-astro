@@ -12,8 +12,9 @@
 //
 // `load` takes the value on standard input alone, never an argument or a
 // setting, adds the entry once to the owner-only file under a lock, and reads
-// it back. `smoke` reads the About page's source and the production
-// deployment through custody's own process, and nothing else. No origin is
+// it back. `smoke` checks only the file's kind, owner and mode, never its
+// contents, then reads the About page's source and the production deployment
+// through custody's own process, and nothing else. No origin is
 // taken from the command line, so a token goes only to its provider. No line
 // either prints carries a value: each names an entry, an operation or a code.
 
@@ -65,24 +66,31 @@ const PROJECT = { project: 'prj_ZP8jeokQCN6SJsyuzkz4ISihdlHm' };
 const isEntry = (name: string): name is Entry => Object.hasOwn(ORIGINS, name);
 
 /**
- * The file's entries, none when it is absent. Refused unless it is a plain
- * file of this user's that no one else can read, opened without following a
- * link, whose list custody would load.
+ * The file, opened without following a link, if it is a plain file of this
+ * user's that no one else can read: its descriptor, `absent`, or why it is
+ * refused. Nothing of its contents is read here.
  */
-function entriesIn(file: string): unknown[] | Refusal {
+function openOwnerOnly(file: string): number | 'absent' | Refusal {
   let fd: number;
   try {
     fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (cause) {
     const code = (cause as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return [];
+    if (code === 'ENOENT') return 'absent';
     return code === 'ELOOP' ? 'refused LOAD_FILE_NOT_OWNER_ONLY' : 'refused LOAD_FILE_UNREADABLE';
   }
+  const stat = fstatSync(fd);
+  if (stat.isFile() && stat.uid === process.getuid?.() && (stat.mode & 0o777) === 0o600) return fd;
+  closeSync(fd);
+  return 'refused LOAD_FILE_NOT_OWNER_ONLY';
+}
+
+/** The owner-only file's entries, none when it is absent, refused unless custody would load them. */
+function entriesIn(file: string): unknown[] | Refusal {
+  const fd = openOwnerOnly(file);
+  if (fd === 'absent') return [];
+  if (typeof fd === 'string') return fd;
   try {
-    const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600) {
-      return 'refused LOAD_FILE_NOT_OWNER_ONLY';
-    }
     const entries: unknown = JSON.parse(readFileSync(fd, 'utf8'));
     const parsed = parseCredentials(entries);
     return parsed.ok ? (entries as unknown[]) : `refused ${parsed.code}`;
@@ -148,8 +156,11 @@ export async function smokeSite(
   file: string,
   { origins = ORIGINS, resolve = systemResolver }: SmokeOptions = {},
 ): Promise<{ ok: boolean; lines: string[] }> {
-  const entries = entriesIn(file);
-  if (typeof entries === 'string') return { ok: false, lines: [entries] };
+  // The file's kind, owner and mode only: its contents are custody's alone to read.
+  const fd = openOwnerOnly(file);
+  if (fd === 'absent') return { ok: false, lines: ['refused LOAD_FILE_UNREADABLE'] };
+  if (typeof fd === 'string') return { ok: false, lines: [fd] };
+  closeSync(fd);
   const custody = await startCustody({
     credentialsFile: file,
     destinations: (['source_control', 'hosting'] as const).map((entry) =>
