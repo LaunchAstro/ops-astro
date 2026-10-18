@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation opened on an internal task and given a client's task page is judged against the stored page's client: no model call, and the client's models offered"
+}
