@@ -165,6 +165,93 @@ describe('a client’s project board, at the address the app writes for it', () 
   });
 });
 
+/** A server whose project read steers (`at`), with the tab's live stream. */
+function projectServer() {
+  const server = new OrderedCreateServer();
+  const inner = server.fetch;
+  const at = { client: CLIENT, name: 'Client A', refused: false };
+  const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
+  server.fetch = async (url, init) => {
+    const path = new URL(String(url), 'http://fixture.test').pathname;
+    if (path.endsWith('/live'))
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streams.add(controller);
+            init?.signal?.addEventListener('abort', () => streams.delete(controller));
+          },
+        }),
+      );
+    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+      recordId?: unknown;
+    };
+    if (!path.endsWith('/task/read') || body.recordId !== BOARD) return await inner(url, init);
+    return at.refused
+      ? json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] })
+      : json({
+          ok: true,
+          task: task({
+            id: BOARD,
+            key: 'WEB-PROJECT',
+            title: 'Website rebuild',
+            client: at.client,
+            clientSummary: { kind: 'readable', name: at.name },
+          }),
+          states: [],
+        });
+  };
+  return { server, at, streams };
+}
+
+/** The App on Client A's empty project, at the address the app writes for it. */
+async function onEmptyProject() {
+  const { server, at, streams } = projectServer();
+  const app = await open(server, draftTab(), `/projects/?board=${BOARD}`);
+  await drain(app);
+  const door = () => app.view.host.querySelector<HTMLElement>('[data-projects-new-task]');
+  const invalidate = async () => {
+    await app.act(() => {
+      for (const stream of streams)
+        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: board\n\n'));
+    });
+    await drain(app);
+  };
+  expect(streams.size, 'the App must hold the tab’s live stream').toBeGreaterThan(0);
+  expect(door()?.dataset['newTaskClient']).toBe(CLIENT);
+  expect(door()?.dataset['newTaskClientName']).toBe('Client A');
+  return { app, server, at, door, invalidate };
+}
+
+describe('a client’s empty project board, after a live change or a board denial', () => {
+  const CLIENT_B = '33333333-3333-4333-8333-333333333333';
+
+  it('a board denial withdraws the project’s client from New task, and a later live change keeps it withdrawn', async () => {
+    const { app, server, at, door, invalidate } = await onEmptyProject();
+    server.boardDenied = true;
+    at.refused = true;
+    await invalidate();
+    expect(app.view.host.textContent).toContain('You are not permitted to see this board.');
+    expect(door()?.dataset['newTaskClient']).toBeUndefined();
+    expect(door()?.dataset['newTaskClientName']).toBeUndefined();
+    // The board admits again but the project's own read still refuses: nothing names Client A.
+    server.boardDenied = false;
+    await invalidate();
+    expect(door()?.dataset['newTaskClient']).toBeUndefined();
+    expect(door()?.dataset['newTaskClientName']).toBeUndefined();
+  });
+
+  it('a live change of the project’s client moves New task onto the new client', async () => {
+    const { app, at, door, invalidate } = await onEmptyProject();
+    Object.assign(at, { client: CLIENT_B, name: 'Client B' });
+    await invalidate();
+    expect(door()?.dataset['newTaskClient']).toBe(CLIENT_B);
+    expect(door()?.dataset['newTaskClientName']).toBe('Client B');
+    await file(app);
+    await app.view.type('#panel-draft-name', 'Filed on the project’s new client');
+    expect(readDraft(app.storage, PERSON)).toMatchObject({ clientId: CLIENT_B, boardId: BOARD });
+  });
+});
+
 describe('Core 04 4: the draft offers only projects its client’s work may join', () => {
   it('another client’s project is not offered; the agency’s and the client’s own are', async () => {
     const OTHER = '33333333-3333-4333-8333-333333333333';
