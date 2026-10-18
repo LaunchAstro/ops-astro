@@ -195,20 +195,24 @@ async function recordLive(world: Pick<World, 'db' | 'ada'>, correctionId: string
   );
 }
 
-/** C80's five operations, whose positive bodies are the matrix's from here. */
+/** C80's seven operations (with #1694's two reads), whose positive bodies are the matrix's from here. */
 export const C80_NAMES: ReadonlySet<string> = new Set([
   'settings.set_live_correction_approver',
   'live_correction.request',
   'live_correction.decide',
   'live_correction.read',
+  'live_correction.list',
+  'live_correction.receipts',
   'live_correction.revert',
 ]);
 
-/** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
+/** The matrix's positive bodies for C80's operations (`role-case-positive-body.ts`). */
 export async function c80PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (name === 'settings.set_live_correction_approver') {
     return { body: { value: context.assigneePersonId } };
   }
+  // #1694: the corrections the admin's run:write and task:read reach; it names none.
+  if (name === 'live_correction.list') return { body: {} };
   if (name === 'live_correction.request') {
     // A task under a client the admin makes, named with that client.
     const task = await context.freshTask('a task a live correction is worked under');
@@ -234,7 +238,9 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   if (name === 'live_correction.revert') return await revertBody(context);
   const correction = await context.seedCorrection();
   // The decision read: that request, read back under the admin's run:write.
-  if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
+  if (name === 'live_correction.read' || name === 'live_correction.receipts') {
+    return { body: { correctionId: correction.correctionId } };
+  }
   const named = await context.asPerson('settings.set_live_correction_approver', {
     value: context.adminPersonId,
   });

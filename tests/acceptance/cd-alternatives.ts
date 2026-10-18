@@ -62,6 +62,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.request': ['taskId', 'liveCorrection'],
   'live_correction.decide': ['correctionId', 'liveCorrection'],
   'live_correction.read': ['correctionId', 'liveCorrection'],
+  'live_correction.receipts': ['correctionId', 'liveCorrection'],
   'live_correction.revert': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],

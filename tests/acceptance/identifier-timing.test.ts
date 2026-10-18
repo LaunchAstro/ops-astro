@@ -351,6 +351,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID() }),
       },
       {
+        op: 'live_correction.receipts',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+      {
         op: 'live_correction.revert',
         operand: 'correctionId',
         by: ada,
@@ -666,7 +674,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       .toSorted();
     expect(
       names.toSorted(),
-      'every declaration outside the sixty-two target-free ones',
+      'every declaration outside the sixty-three target-free ones',
     ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
