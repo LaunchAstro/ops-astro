@@ -41,7 +41,7 @@ import {
   siteDestination,
   startCustody,
 } from '../../packages/core-custody/src/index.ts';
-import { sameRepository } from '../../packages/core-custody/src/github-app.ts';
+import { sameRepository } from '../../packages/core-custody/src/app-entry.ts';
 import {
   boundRepository,
   changeUnderLock,
