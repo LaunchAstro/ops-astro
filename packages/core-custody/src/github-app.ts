@@ -19,6 +19,7 @@
 // Custody's process loads this file, so it imports no connector or database code.
 
 import { createPrivateKey, sign } from 'node:crypto';
+import { sameRepository } from './app-entry.ts';
 import type { AppBinding, GithubApp, Presentable, StoredCredential } from './credentials.ts';
 import { send, type Destination, type OutboundRequest } from './egress.ts';
 import { pathAllowed } from './egress-routes.ts';
@@ -34,10 +35,6 @@ function repositoryOf(path: string): string | undefined {
   const match = /^\/repos\/([^/?#]+)\/([^/?#]+)(?:[/?]|$)/u.exec(path);
   return match === null ? undefined : `${match[1] ?? ''}/${match[2] ?? ''}`;
 }
-
-/** Whether two `owner/name` spellings are one repository: GitHub reads names in any case. */
-export const sameRepository = (one: string, other: string): boolean =>
-  one.toLowerCase() === other.toLowerCase();
 
 /** The call's party binding when its path names that party's repository. */
 function bindingFor(app: GithubApp, request: PartyRequest): AppBinding | undefined {

@@ -287,6 +287,13 @@ it('custody refuses an App entry it could not mint with', () => {
       ...entry,
       app: { id: APP_ID, bindings: [AGENCY, { ...CLIENT, repository: AGENCY.repository }] },
     },
+    {
+      ...entry,
+      app: {
+        id: APP_ID,
+        bindings: [AGENCY, { ...CLIENT, repository: AGENCY.repository.toLowerCase() }],
+      },
+    },
     { ...entry, app: { id: APP_ID, bindings: [{ ...AGENCY, repository: 'LaunchAstro/../x' }] } },
     { ...entry, app: { id: APP_ID, bindings: [{ ...AGENCY, installation: 0 }] } },
     { ...entry, app: { id: APP_ID, bindings: [AGENCY] }, extra: true },

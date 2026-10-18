@@ -3,7 +3,8 @@
 // A GitHub App entry in custody's credential list (`scheme: 'github_app'`,
 // #1793): the App's RSA private key, its id, and for each party the one site
 // repository it may reach with the installation that covers it. No party
-// reaches two repositories and no repository belongs to two parties. Custody
+// reaches two repositories and no repository belongs to two parties, in any
+// spelling: GitHub reads a repository's name in any case. Custody
 // never presents the key: it mints a token per call (`github-app.ts`).
 // Custody's process loads this file, so it imports no connector or database code.
 
@@ -28,6 +29,10 @@ const APP_ID = /^[1-9][0-9]{0,11}$/u;
 const PARTY = /^[A-Za-z0-9_-]{1,128}$/u;
 /** GitHub's own spelling of an owner and a name; never `.` or `..` as the name. */
 const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/u;
+
+/** Whether two `owner/name` spellings are one repository: GitHub reads names in any case. */
+export const sameRepository = (one: string, other: string): boolean =>
+  one.toLowerCase() === other.toLowerCase();
 
 /** Whether a value is an RSA private key, the only kind an App signs with. */
 function isRsaKey(value: unknown): value is string {
@@ -55,7 +60,7 @@ function bindingsOf(listed: unknown): readonly AppBinding[] | undefined {
       typeof installation !== 'number' ||
       !Number.isSafeInteger(installation) ||
       installation < 1 ||
-      bindings.some((one) => one.party === party || one.repository === repository)
+      bindings.some((one) => one.party === party || sameRepository(one.repository, repository))
     ) {
       return undefined;
     }
