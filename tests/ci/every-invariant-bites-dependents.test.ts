@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // REV257C ruling: a part's unwire may turn red only the parts built on its
-// code, its declared `dependents` in parts.json. The exact list is proven
-// locally (unwire-dependents-exact.test.mjs); here, each declared dependent's
-// suite, with the test modules it imports, names a symbol the part's own
-// commits added to product code.
+// code, its declared `dependents` in parts.json. The exact list was proven
+// once at that review, running every part's suite under each unwire. Here,
+// each declared dependent's suite, with the test modules it imports, names a
+// symbol the part's own commits added to product code.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';

@@ -40,7 +40,7 @@ export interface Part {
    * The parts built on this part's code, which its unwire turns red:
    * each names a symbol the part's own commits added to product code, which
    * the dependent's suite reaches, and why. Under the unwire no other part
-   * goes red or skips (tests/ci/unwire-dependents-exact.test.mjs).
+   * goes red or skips (proven once at the REV257C review).
    */
   readonly dependents?: readonly {
     readonly part: string;
