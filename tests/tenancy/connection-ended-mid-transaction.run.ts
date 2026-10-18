@@ -193,6 +193,23 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
   },
 
   /**
+   * The admin connection with a statement in flight when its backend ends.
+   * The server's own error for that statement arrives before the socket
+   * closes; nothing of the ended session may be left behind, so the handle
+   * still ends without sending anything more.
+   */
+  async inFlight() {
+    const admin = connectAsAdmin(url);
+    const [row] = await admin.execute<{ pid: number }>('select pg_backend_pid() as pid');
+    const sleeping = settled(admin.execute('select pg_sleep(30)'));
+    await turns();
+    await terminate(Number(row?.pid));
+    const caller = await within(sleeping, 5_000, 'the statement');
+    const ended = await settled(within(admin.close(), 5_000, 'ending the handle'));
+    return { caller, ended };
+  },
+
+  /**
    * The API's outbox: one insert outside any transaction. The append waits on
    * a lock the case holds, its backend ends while it waits, and the outbox
    * appends again on a new session.
