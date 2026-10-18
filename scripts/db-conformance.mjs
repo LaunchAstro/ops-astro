@@ -241,7 +241,9 @@ for (const item of leftOut) {
   summarise(`- ${item}: ${why}; it runs nightly.`);
 }
 
-if (named.length > 0 && toRun.length === 0) {
+// A shard whose whole share is quarantined and left out has nothing to run,
+// and that is the rule working: its suites run nightly (S1862-2).
+if (named.length > 0 && toRun.length === 0 && leftOut.length === 0) {
   failures.push(
     `${shardLabel}was given no suite. A shard that runs nothing proves nothing;\n` +
       '        use fewer shards than the manifest has suites.',
@@ -268,6 +270,13 @@ if (missing.length > 0) {
       '\n        A suite that cannot be found does not run, and a run that did\n' +
       '        not happen must not report green.',
   );
+}
+
+if (failures.length === 0 && toRun.length === 0 && leftOut.length > 0) {
+  console.log(
+    `db-conformance: ${shardLabel}left out all ${String(leftOut.length)} of its suite(s) as quarantined; they run nightly.`,
+  );
+  process.exit(0);
 }
 
 /** The first line of a message, for a failure list that stays readable. */
@@ -410,6 +419,36 @@ const readReport = (reportPath, suite, part) => {
 };
 
 /**
+ * vitest over one suite alone: its JSON report to `reportPath`, and the count
+ * of errors raised outside any test to `unhandledPath`.
+ */
+const vitestRun = (suite, part, reportPath, unhandledPath) =>
+  spawnSync(
+    process.execPath,
+    [
+      vitestBin,
+      'run',
+      '--reporter=json',
+      `--reporter=${join(repoRoot, 'scripts/vitest-unhandled-errors.mjs')}`,
+      `--outputFile=${reportPath}`,
+      ...siblingsOf(suite).map((path) => `--exclude=${path}`),
+      suite,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DATABASE_URL: url,
+        CI: 'true',
+        SUITE_PART: part ?? '',
+        UNHANDLED_ERRORS_FILE: unhandledPath,
+      },
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+
+/**
  * One vitest run over one named suite, with the database's counter read
  * either side of it. Running the suites together made rule 7 a whole-run
  * number that no suite owned; running them one at a time is what gives each
@@ -419,6 +458,7 @@ const runSuite = async (suite, part) => {
   // vitest's JSON reporter writes to a file, never to stdout, so the report
   // is collected from one and removed afterwards.
   const reportPath = join(mkdtempSync(join(tmpdir(), 'hub-db-conformance-')), 'report.json');
+  const unhandledPath = join(reportPath, '..', 'unhandled-errors');
   // A read that fails is not a measurement. Copilot on PR A: substituting
   // zero for a failed pre-suite read turned the cumulative counter into a
   // movement, and a suite that never touched the database passed rule 7.
@@ -430,23 +470,7 @@ const runSuite = async (suite, part) => {
   } catch (error) {
     readError = error;
   }
-  const run = spawnSync(
-    process.execPath,
-    [
-      vitestBin,
-      'run',
-      '--reporter=json',
-      `--outputFile=${reportPath}`,
-      ...siblingsOf(suite).map((path) => `--exclude=${path}`),
-      suite,
-    ],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: url, CI: 'true', SUITE_PART: part ?? '' },
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
+  const run = vitestRun(suite, part, reportPath, unhandledPath);
   let after = before;
   if (readError === undefined) {
     try {
@@ -455,6 +479,10 @@ const runSuite = async (suite, part) => {
       readError = error;
     }
   }
+  // Read before readReport removes the folder; absent is unknown, never zero.
+  const unhandled = existsSync(unhandledPath)
+    ? Number(readFileSync(unhandledPath, 'utf8'))
+    : undefined;
   const report = readReport(reportPath, suite, part);
   return {
     suite,
@@ -463,6 +491,7 @@ const runSuite = async (suite, part) => {
     moved: after.transactions - before.transactions,
     clientSessions: after.sessions - before.sessions,
     readError,
+    unhandled,
   };
 };
 
@@ -470,13 +499,15 @@ const results = [];
 
 /**
  * A failure its tests alone own: vitest exited 1 on a readable report of this
- * suite only, with failed tests and nothing skipped, raised outside a test or
- * unmeasured. Only this is re-run; any other failure is not timing.
+ * suite only, with failed tests and nothing skipped, raised outside a test
+ * (its JSON report or, for unhandled errors, scripts/vitest-unhandled-errors.mjs)
+ * or unmeasured. Only this is re-run; any other failure is not timing.
  */
-const failedOnItsTests = ({ suite, run, report, readError }) => {
+const failedOnItsTests = ({ suite, run, report, readError, unhandled }) => {
   const files = Array.isArray(report?.testResults) ? report.testResults : [];
   return (
     readError === undefined &&
+    unhandled === 0 &&
     (run.error ?? undefined) === undefined &&
     run.signal === null &&
     run.status === 1 &&
