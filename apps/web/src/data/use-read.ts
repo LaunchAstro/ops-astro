@@ -12,17 +12,24 @@
 // Nor may it see them for one render: until the new projection publishes, the
 // hook answers a first read's loading state, never the old grant's state.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
 import { dropsAnswer } from './read-breaks.ts';
-import { FLOOR_MS, type LiveHub } from './live.ts';
+import { FLOOR_MS, type LiveRead } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
-import { isRefusal, type CallResult } from '../operations/client.ts';
+import { isRefusal, isUnavailable, type CallResult } from '../operations/client.ts';
+import { useFollow } from './use-follow.ts';
+
+/**
+ * What a run answers when it gave up because the tab was hidden: nothing
+ * lands and nothing fails, and the floor's next tick, on being shown, reads again.
+ */
+export const RETIRED = Symbol('retired');
 
 export interface UseReadOptions<T> {
   readonly grantKey: string;
   /** Called with a generation; whatever it resolves to is offered back. */
-  readonly run: () => Promise<CallResult<T>>;
+  readonly run: () => Promise<CallResult<T> | typeof RETIRED>;
   readonly isEmpty?: (value: T) => boolean;
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
@@ -32,11 +39,17 @@ export interface UseReadOptions<T> {
    * unsaved edit included: the edit lives above the read and is never read
    * over, and the rest of the page keeps updating (C4 live-sync 4).
    */
-  readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
+  readonly live?: LiveRead<T>;
   /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
   readonly rollup?: RollupFloor;
   /** Which published answers break what the host admits; refused or out when absent. */
   readonly breaks?: (state: ReadState<T>) => boolean;
+  /**
+   * One read at a time: a reload, the rollup floor's included, that finds a
+   * read in flight starts one more when it ends, and never supersedes it. For
+   * a run that bounds its own time, so a read slower than the floor still lands.
+   */
+  readonly coalesce?: boolean;
 }
 
 export interface UseReadResult<T> {
@@ -48,6 +61,13 @@ export interface UseReadResult<T> {
 export interface UseReadLive<T> extends UseReadResult<T> {
   /** Re-read a live dependency while the host keeps its current editor mounted. */
   readonly refresh: () => void;
+  /**
+   * Offer an answer the screen read itself as the newest generation: the read
+   * in flight is retired, and a refusal raises the floor as one of its own would.
+   */
+  readonly land: (result: CallResult<T>) => void;
+  /** The read now, ahead of the render that draws it, and how many refusals or outages it has had. */
+  readonly now: () => { readonly state: ReadState<T> | null; readonly failures: number };
   /**
    * True while the read in flight was started by the live channel, so a host
    * can keep its last answer drawn through an ordinary live change (MP-6-3).
@@ -84,37 +104,18 @@ function opened<T>(grantKey: string): ReadState<T> {
 async function offer<T>(
   projection: AuthorisedRead<T>,
   generation: number,
-  run: () => Promise<CallResult<T>>,
+  run: () => Promise<CallResult<T> | typeof RETIRED>,
   grantKey: string,
-  refusedLate: () => void,
+  late: (result: CallResult<T>) => void,
 ): Promise<void> {
   try {
     const result = await run();
-    if (!projection.accept(generation, result, grantKey) && isRefusal(result)) refusedLate();
+    if (result === RETIRED) return;
+    if (!projection.accept(generation, result, grantKey)) late(result);
   } catch {
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
   }
-}
-
-/**
- * Re-read a live read that has no topic yet, its first answer unavailable: on
- * coming online, on being shown, and every 30 s while not hidden (C4), until a
- * re-read answers. The hub can only follow a topic, and the topic comes from an
- * answer.
- */
-function untilAnswered(reload: () => void): () => void {
-  const retry = (): void => {
-    if (document.visibilityState !== 'hidden') reload();
-  };
-  const floor = setInterval(retry, FLOOR_MS);
-  window.addEventListener('online', retry);
-  document.addEventListener('visibilitychange', retry);
-  return () => {
-    clearInterval(floor);
-    window.removeEventListener('online', retry);
-    document.removeEventListener('visibilitychange', retry);
-  };
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
@@ -124,7 +125,10 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   breaksRef.current = options.breaks ?? dropsAnswer;
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
-  runRef.current = options.run;
+  // The run as last committed: a render that never commits must not be what a re-read runs.
+  useLayoutEffect(() => {
+    runRef.current = options.run;
+  });
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
   const first = useMemo(() => opened<T>(grantKey), [grantKey]);
@@ -135,11 +139,28 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const waitedFrom = useRef<number | null>(null);
   /** The grant and dependencies the projection in `readRef` was built for. */
   const built = useRef<readonly unknown[]>([]);
-  const refusedLate = useCallback(
-    (projection: AuthorisedRead<T>) => () => {
-      if (readRef.current === projection) setBreaks((count) => count + 1);
+  /** The read in flight, until it ends, and its generation; and the generation `land` retired. */
+  const flight = useRef<Promise<void> | null>(null);
+  const started = useRef(0);
+  const displaced = useRef<number | null>(null);
+  const start = useCallback(
+    (projection: AuthorisedRead<T>) => {
+      const generation = projection.begin();
+      // A read `land` retired still withdraws on a refusal or outage: what landed read less.
+      const late = (result: CallResult<T>): void => {
+        if (readRef.current !== projection) return;
+        if (displaced.current === generation && (isRefusal(result) || isUnavailable(result)))
+          projection.accept(projection.begin(), result, grantKey);
+        else if (isRefusal(result)) setBreaks((count) => count + 1);
+      };
+      const running = offer(projection, generation, runRef.current, grantKey, late);
+      flight.current = running;
+      started.current = generation;
+      void running.finally(() => {
+        if (flight.current === running) flight.current = null;
+      });
     },
-    [],
+    [grantKey],
   );
   const reread = useCallback(
     (live: boolean) => {
@@ -147,21 +168,46 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
       if (projection === null) return;
       liveRef.current = live;
       waitedFrom.current = null;
-      const generation = projection.begin();
-      void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
+      start(projection);
     },
-    [grantKey, refusedLate],
+    [start],
   );
+  const coalesce = options.coalesce === true;
   const reload = useCallback(() => {
-    reread(false);
-  }, [reread]);
-
+    const running = flight.current;
+    const projection = readRef.current;
+    if (!coalesce || running === null) {
+      reread(false);
+      return;
+    }
+    // Once it ends, unless another read has begun or the projection is another reader's.
+    void running.finally(() => {
+      if (flight.current === null && readRef.current === projection) reread(false);
+    });
+  }, [reread, coalesce]);
   const refresh = useCallback(() => {
     reread(true);
   }, [reread]);
+  const land = useCallback(
+    (result: CallResult<T>) => {
+      const projection = readRef.current;
+      if (projection === null) return;
+      liveRef.current = false;
+      waitedFrom.current = null;
+      displaced.current = flight.current === null ? null : started.current;
+      projection.accept(projection.begin(), result, grantKey);
+    },
+    [grantKey],
+  );
+  const failures = useRef(0);
+  const now = useCallback(
+    () => ({ state: readRef.current?.state ?? null, failures: failures.current }),
+    [],
+  );
 
   useEffect(() => {
     const onState = (next: ReadState<T>): void => {
+      if (next.outcome === 'denied' || next.outcome === 'unavailable') failures.current += 1;
       setState(next);
       if (breaksRef.current(next)) setBreaks((count) => count + 1);
     };
@@ -172,10 +218,10 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     built.current = [grantKey, ...options.deps];
     liveRef.current = false;
     waitedFrom.current = null;
+    displaced.current = null;
     opening.add(projection.state);
     setState(projection.state);
-    const generation = projection.begin();
-    void offer(projection, generation, runRef.current, grantKey, refusedLate(projection));
+    start(projection);
     return () => {
       // Retire it, do not merely forget it. Clearing the reference stops the
       // next `reload` from finding it and stops nothing else: the read this
@@ -194,7 +240,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // hold back from recovery (#397).
   useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
-  useRollup(options.rollup, readRef, waitedFrom, reload);
+  useRollup(options.rollup, coalesce ? null : readRef, waitedFrom, reload);
 
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
@@ -203,6 +249,8 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     state,
     reload,
     refresh,
+    land,
+    now,
     own,
     live: own && liveRef.current && state.outcome === 'loading',
     breaks,
@@ -223,18 +271,19 @@ const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS - FLOOR_MS / 2;
  * a read still in flight `ROLLUP_PATIENCE_MS` after a tick first found it is
  * superseded, and a revoke still draws. The wait is time on the monotonic
  * clock, so tab-shows do not shorten it, and every re-read (`waitedFrom` is
- * cleared by `reread`) starts it again.
+ * cleared by `reread`) starts it again. With no projection to wait on (a
+ * coalescing read, whose reload does its own waiting) every tick reloads.
  */
 function useRollup<T>(
   rollup: RollupFloor | undefined,
-  readRef: { readonly current: AuthorisedRead<T> | null },
+  readRef: { readonly current: AuthorisedRead<T> | null } | null,
   waitedFrom: { current: number | null },
   reload: () => void,
 ): void {
   useEffect(
     () =>
       rollup?.follow(() => {
-        if (readRef.current?.state.outcome === 'loading') {
+        if (readRef?.current?.state.outcome === 'loading') {
           const now = performance.now();
           waitedFrom.current ??= now;
           if (now - waitedFrom.current < ROLLUP_PATIENCE_MS) return;
@@ -248,53 +297,4 @@ function useRollup<T>(
 /** Whether two dependency lists match, compared the way React compares them. */
 function same(built: readonly unknown[], deps: readonly unknown[]): boolean {
   return built.length === deps.length && deps.every((each, at) => Object.is(each, built[at]));
-}
-
-/**
- * Follow the live topic for what the read shows: the last answer's topic,
- * kept while a re-read is in flight or denied, so a revoked page still hears
- * the channel that tells it so. Each change re-reads as a live one. A read
- * unanswered from an unavailable answer, with no topic of its own yet, re-reads
- * on the floor until one answers (`untilAnswered`); those re-reads are not live.
- */
-function useFollow<T>(
-  live: UseReadOptions<T>['live'],
-  state: ReadState<T>,
-  reread: (live: boolean) => void,
-  deps: readonly unknown[],
-): void {
-  const topicRef = useRef<string | null>(null);
-  // Whether that answer is this reader's and this record's: the last one's holds off no recovery.
-  const ownRef = useRef(false);
-  if (state.outcome === 'ready' || state.outcome === 'empty') {
-    topicRef.current = live?.topic(state.value) ?? null;
-    ownRef.current = true;
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the grant and the caller's dependency list.
-  useEffect(
-    () => () => {
-      ownRef.current = false;
-    },
-    deps,
-  );
-  const topic = topicRef.current;
-  const hub = live?.hub;
-
-  // Unanswered from an unavailable answer until a retry answers: a retry that stalls is still
-  // loading, and the floor and the listeners stay armed under it.
-  const waitingRef = useRef(false);
-  if (state.outcome === 'unavailable') waitingRef.current = true;
-  else if (state.outcome !== 'loading') waitingRef.current = false;
-  const unanswered = hub !== undefined && (topic === null || !ownRef.current) && waitingRef.current;
-  useEffect(() => {
-    if (unanswered) {
-      return untilAnswered(() => {
-        reread(false);
-      });
-    }
-    if (hub === undefined || topic === null) return;
-    return hub.follow(topic, () => {
-      reread(true);
-    });
-  }, [hub, topic, reread, unanswered]);
 }
