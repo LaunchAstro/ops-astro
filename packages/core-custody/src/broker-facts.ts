@@ -151,6 +151,8 @@ export async function lockFacts(
   }
   const runId = await shareTask(tx, request.leaseId);
   if (runId === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  const task = await readTask(tx, request.leaseId);
+  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   await lockRun(tx, runId);
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
@@ -162,9 +164,6 @@ export async function lockFacts(
   if (!delegation.ok) return delegation;
   const held = await lockHeld(tx, lease, request.stepId);
   if (!held.ok) return held;
-  // Source and party after the last wait (R6): the task row is held, its register is not.
-  const task = await readTask(tx, request.leaseId);
-  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return {
     ok: true,
     facts: {
