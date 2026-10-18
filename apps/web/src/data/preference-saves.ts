@@ -18,8 +18,9 @@
 // while a newer one is out, the newest value of that key is sent again through
 // the newest client once both have answered (an answer lost on the way counts:
 // the save may be stored). It goes as a new intent with its own operation id,
-// since the old id would only replay its stored outcome. A save waiting in a
-// client's queue when the tab's owner changes is never sent.
+// since the old id would only replay its stored outcome, and the same choice
+// retried while the repair's answer is unknown reuses the repair's id. A save
+// waiting in a client's queue when the tab's owner changes is never sent.
 
 import {
   isRefusal,
@@ -84,7 +85,7 @@ export function savePreference(
   preference: string,
   value: unknown,
   tag: Tag,
-  operationId?: string,
+  renew = false,
 ): Promise<CallResult<CommandOutcome>> {
   const ledger = ledgerOf(tag);
   const mine: Newest = { client, value, tag, answered: false, overtaken: false };
@@ -92,7 +93,9 @@ export function savePreference(
   ledger.unsettledUntil.set(preference, Number.POSITIVE_INFINITY);
   const sent = (tails.get(client) ?? Promise.resolve()).then(async () => {
     if (tag.tab !== tabOwnerGeneration()) return LEFT_BEHIND;
-    const id = operationId ?? ledger.intents.idFor(preference, value);
+    const id = renew
+      ? ledger.intents.renew(preference, value)
+      : ledger.intents.idFor(preference, value);
     const result = await client.mutate(
       'preference.save',
       { preference, value },
@@ -123,5 +126,5 @@ export function savePreference(
 function repair(last: Newest, preference: string): void {
   last.overtaken = false;
   const tag = { ...last.tag, request: nextRequest() };
-  void savePreference(last.client, preference, last.value, tag, crypto.randomUUID());
+  void savePreference(last.client, preference, last.value, tag, true);
 }
