@@ -62,9 +62,9 @@ export function operationFor(model: string | undefined | null): string {
 async function stillAsked(
   tx: TenantQuery,
   session: Session,
-  ask: Pick<PaidAsk, 'asked' | 'page' | 'model'>,
+  ask: Pick<PaidAsk, 'asked' | 'page' | 'sources' | 'model'>,
 ): Promise<boolean> {
-  const { asked, page } = ask;
+  const { asked, page, sources } = ask;
   if ((await hearingAt(tx, session, asked, 'share')) === undefined) return false;
   const [now] = await tx.query<{
     readonly page: string | null;
@@ -77,10 +77,15 @@ async function stillAsked(
   );
   if (now === undefined || now.model !== ask.model) return false;
   if ((await pageTaskOf(tx, now.page, now.address)) !== page) return false;
-  if (page === null) return true;
+  if (page === null && sources.length === 0) return true;
   // The task grants held too, so a revocation of the read waits for the send, as the conversation's do.
   await holdCoveringGrants(tx, subjectsOf(session), 'task', 'nowait');
-  return typeof (await pageOf(tx, session, page, 'share nowait')) !== 'string';
+  // The page, then each task the earlier exchanges sent may carry (#1666), in id order.
+  for (const task of [...(page === null ? [] : [page]), ...sources.toSorted()]) {
+    // eslint-disable-next-line no-await-in-loop -- one lock after another, in order
+    if (typeof (await pageOf(tx, session, task, 'share nowait')) === 'string') return false;
+  }
+  return true;
 }
 
 export interface PaidAsk {
@@ -90,6 +95,8 @@ export interface PaidAsk {
   readonly asked: Asked;
   /** The page task the context read, if any. */
   readonly page: string | null;
+  /** The tasks the earlier exchanges sent may carry (#1666): each still the caller's to use at the handoff. */
+  readonly sources: readonly string[];
   /** The paid model the conversation was asked on: still its model at the handoff. */
   readonly model: string | undefined | null;
   /** Who wrote the asked message and each earlier person turn read. */
