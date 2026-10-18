@@ -78,6 +78,7 @@ alter table public.live_corrections
   );
 
 -- The mark is set only with its decision, only while the mode is on, and kept.
+-- A row is never inserted carrying it: a request is stored undecided.
 create or replace function public.live_corrections_self_approval_kept()
   returns trigger
   language plpgsql
@@ -85,6 +86,12 @@ create or replace function public.live_corrections_self_approval_kept()
   set search_path = pg_catalog, public
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if new.single_operator_self_approval then
+      raise exception 'live_corrections_self_approval_kept: a request is stored unmarked';
+    end if;
+    return new;
+  end if;
   if new.single_operator_self_approval is distinct from old.single_operator_self_approval then
     if old.decided_at is not null or new.decided_at is null or not new.single_operator_self_approval then
       raise exception 'live_corrections_self_approval_kept: correction % keeps its mark', old.id;
@@ -102,7 +109,7 @@ $$;
 revoke all on function public.live_corrections_self_approval_kept() from public;
 
 create trigger live_corrections_self_approval_kept
-  before update on public.live_corrections
+  before insert or update on public.live_corrections
   for each row execute function public.live_corrections_self_approval_kept();
 
 -- Astra's review, recorded by a person from Astra's saved review.

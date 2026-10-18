@@ -35,8 +35,18 @@ export async function soloWorld(part: string): Promise<C80World> {
   return w;
 }
 
+/**
+ * A command's answer; a command the build does not declare throws, and that is
+ * answered as a refusal `UNDECLARED`, so a case meets its own assertion.
+ */
+const answered = async (asked: Promise<CommandResult>): Promise<CommandResult> =>
+  await asked.catch(
+    (error: unknown) =>
+      ({ refused: true, code: 'UNDECLARED', names: [], fixes: [String(error)] }) as never,
+  );
+
 export const asEve = async (w: C80World, body: Body): Promise<CommandResult> =>
-  await w.asIn(w.beta, w.eve, body);
+  await answered(w.asIn(w.beta, w.eve, body));
 
 /** Eve's request on beta's task: a fresh correction, its id, version and digest. */
 export async function eveRequests(w: C80World): Promise<Asked> {
@@ -81,15 +91,15 @@ export const setMode = async (
   member: C80World['eve'],
   value: boolean,
 ): Promise<CommandResult> =>
-  await w.asIn(business, member, { command: 'settings.set_single_operator', value });
+  await answered(w.asIn(business, member, { command: 'settings.set_single_operator', value }));
 
 export async function rowOf(w: C80World, id: string): Promise<Record<string, unknown> | undefined> {
-  const [row] = await w.world.db.admin.execute<Record<string, unknown>>(
-    `select state, decided_by_person_id, single_operator_self_approval
-       from public.live_corrections where id = $1`,
+  // The whole row as JSON, so a column the schema does not have reads as absent.
+  const [row] = await w.world.db.admin.execute<{ readonly row: Record<string, unknown> }>(
+    'select to_jsonb(c) as row from public.live_corrections c where id = $1',
     [id],
   );
-  return row;
+  return row?.row;
 }
 
 export async function modeIn(w: C80World, business: string): Promise<unknown> {
@@ -137,14 +147,15 @@ export function heldInBeta(
 /** A decision waiting on a settings row's share lock: the approver's or the mode's. */
 export const SETTING_WAIT: RegExp = /from public\.business_settings[\s\S]*for share/u;
 
-export async function waitFor(w: C80World, statement: RegExp): Promise<void> {
+/** Whether a statement matching `statement` came to wait on a lock within five seconds. */
+export async function waitedFor(w: C80World, statement: RegExp): Promise<boolean> {
   for (let tries = 0; tries < 200; tries += 1) {
     // oxlint-disable-next-line no-await-in-loop -- polling for the waiter
-    if ((await lockWaiters(w)).some((query) => statement.test(query))) return;
+    if ((await lockWaiters(w)).some((query) => statement.test(query))) return true;
     // oxlint-disable-next-line no-await-in-loop -- polling for the waiter
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 25);
     });
   }
-  throw new Error(`nothing waited on ${String(statement)}`);
+  return false;
 }

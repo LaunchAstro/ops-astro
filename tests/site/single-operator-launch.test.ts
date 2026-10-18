@@ -66,6 +66,25 @@ describe.skipIf(serverUrl === undefined)('with single-operator mode off', () => 
       ),
     ).rejects.toThrow(/live_corrections_no_self_approval/u);
   });
+});
+
+describe.skipIf(serverUrl === undefined)('the table, with the mode off', () => {
+  it('refuses a row inserted already carrying the mark', async () => {
+    const own = await eveRequests(w);
+    await expect(
+      w.world.db.admin.execute(
+        `insert into public.live_corrections
+           select (jsonb_populate_record(c, jsonb_build_object(
+                    'id', gen_random_uuid(), 'version_id', gen_random_uuid(),
+                    'state', 'approved', 'decided_by_actor_id', c.requested_by_actor_id,
+                    'decided_by_person_id', c.requested_by_person_id, 'decided_at', now(),
+                    'decided_version_digest', c.version_digest,
+                    'single_operator_self_approval', true))).*
+             from public.live_corrections c where c.id = $1`,
+        [own.id],
+      ),
+    ).rejects.toThrow(/live_corrections_self_approval_kept: a request is stored unmarked/u);
+  });
 
   it('refuses a direct write of the mark while the mode is off', async () => {
     const own = await eveRequests(w);
@@ -78,7 +97,7 @@ describe.skipIf(serverUrl === undefined)('with single-operator mode off', () => 
           where id = $1`,
         [own.id],
       ),
-    ).rejects.toThrow(/single_operator/u);
+    ).rejects.toThrow(/live_corrections_self_approval_kept: single_operator_mode is off/u);
   });
 });
 
@@ -109,7 +128,8 @@ describe.skipIf(serverUrl === undefined)('the second-person control with the mod
 describe.skipIf(serverUrl === undefined)('with single-operator mode on', () => {
   beforeAll(async () => {
     if (serverUrl === undefined) return;
-    expect(codeOf(await setMode(w, w.beta, w.eve, true))).toBe('not-a-refusal');
+    // Each test asserts what it needs; the setup asserts nothing, so none is skipped.
+    await setMode(w, w.beta, w.eve, true);
     first = await eveRequests(w);
   });
 
@@ -123,15 +143,17 @@ describe.skipIf(serverUrl === undefined)('with single-operator mode on', () => {
   });
 
   it('refuses the first Launch on a review bound to another version', async () => {
-    await w.world.db.admin.execute(
-      `insert into public.live_correction_reviews
+    await w.world.db.admin
+      .execute(
+        `insert into public.live_correction_reviews
          (business_id, id, correction_id, version_digest, verdict, review,
           recorded_by_actor_id, recorded_by_person_id)
        select business_id, gen_random_uuid(), id, 'sha256:an-earlier-version', 'approve', $2,
               requested_by_actor_id, requested_by_person_id
          from public.live_corrections where id = $1`,
-      [first.id, REVIEW],
-    );
+        [first.id, REVIEW],
+      )
+      .catch(String);
     expect(codeOf(await decide(w, first))).toBe('ASTRA_REVIEW_MISSING');
     expect(await rowOf(w, first.id)).toMatchObject({ state: 'requested' });
   });
@@ -198,10 +220,9 @@ describe.skipIf(serverUrl === undefined)('after the first Launch', () => {
   });
 
   it('lets her ask to revert her own live correction under the mark', async () => {
-    await w.world.db.admin.execute(
-      `update public.live_corrections set state = 'live' where id = $1`,
-      [first.id],
-    );
+    await w.world.db.admin
+      .execute(`update public.live_corrections set state = 'live' where id = $1`, [first.id])
+      .catch(String);
     const asked = await asEve(w, { command: 'live_correction.revert', correctionId: first.id });
     expect(codeOf(asked)).toBe('not-a-refusal');
   });

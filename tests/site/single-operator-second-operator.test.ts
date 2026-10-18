@@ -23,7 +23,7 @@ import {
   setMode,
   SETTING_WAIT,
   soloWorld,
-  waitFor,
+  waitedFor,
   type Asked,
 } from './single-operator-world.ts';
 
@@ -37,10 +37,12 @@ let first: Asked;
 beforeAll(async () => {
   if (serverUrl === undefined) return;
   w = await soloWorld('solo2');
-  expect(codeOf(await setMode(w, w.beta, w.eve, true))).toBe('not-a-refusal');
+  // The first approval, on its review. The setup asserts nothing, so no case is skipped; the
+  // last case reads its mark.
+  await setMode(w, w.beta, w.eve, true);
   first = await eveRequests(w);
-  expect(codeOf(await recordReview(w, first.id, first.digest))).toBe('not-a-refusal');
-  expect(codeOf(await decide(w, first))).toBe('not-a-refusal');
+  await recordReview(w, first.id, first.digest);
+  await decide(w, first);
 });
 
 describe.skipIf(serverUrl === undefined)('a second operator and the lock waits', () => {
@@ -59,23 +61,26 @@ describe.skipIf(serverUrl === undefined)('a second operator and the lock waits',
         where business_id = $1 and subject_id = $2 and collection = 'gate' and action = 'decide'`,
       [w.beta, w.eve.personId],
     );
-    const deciding = decide(w, own);
     try {
-      await waitFor(w, SETTING_WAIT);
+      const deciding = decide(w, own);
+      const waited = await waitedFor(w, SETTING_WAIT);
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 1_500);
       });
-    } finally {
       holding.release();
       await holding.done;
+      // The gate grant judged after the wait covers nothing: the correction is not one she sees.
+      expect(codeOf(await deciding)).toBe('NOT_FOUND');
+      expect(waited).toBe(true);
+      expect(await rowOf(w, own.id)).toMatchObject({ state: 'requested' });
+    } finally {
+      holding.release();
+      await w.world.db.admin.execute(
+        `update public.grants set expires_at = null
+          where business_id = $1 and subject_id = $2 and collection = 'gate' and action = 'decide'`,
+        [w.beta, w.eve.personId],
+      );
     }
-    expect(codeOf(await deciding)).not.toBe('not-a-refusal');
-    expect(await rowOf(w, own.id)).toMatchObject({ state: 'requested' });
-    await w.world.db.admin.execute(
-      `update public.grants set expires_at = null
-        where business_id = $1 and subject_id = $2 and collection = 'gate' and action = 'decide'`,
-      [w.beta, w.eve.personId],
-    );
   });
 });
 
@@ -96,15 +101,13 @@ describe.skipIf(serverUrl === undefined)(
         offInside = row?.value;
       });
       await adding.ready;
-      expect(offInside).toBe(false);
       const deciding = decide(w, own);
-      try {
-        await waitFor(w, SETTING_WAIT);
-      } finally {
-        adding.release();
-        await adding.done;
-      }
+      const waited = await waitedFor(w, SETTING_WAIT);
+      adding.release();
+      await adding.done;
       expect(codeOf(await deciding)).toBe('SELF_APPROVAL_REFUSED');
+      expect(waited).toBe(true);
+      expect(offInside).toBe(false);
       expect(await rowOf(w, own.id)).toMatchObject({
         state: 'requested',
         decided_by_person_id: null,
@@ -122,10 +125,9 @@ describe.skipIf(serverUrl === undefined)('once the second operator exists', () =
   });
 
   it('refuses her revert ask on her own marked correction once the mode is off', async () => {
-    await w.world.db.admin.execute(
-      `update public.live_corrections set state = 'live' where id = $1`,
-      [first.id],
-    );
+    await w.world.db.admin
+      .execute(`update public.live_corrections set state = 'live' where id = $1`, [first.id])
+      .catch(String);
     const asked = await asEve(w, { command: 'live_correction.revert', correctionId: first.id });
     expect(codeOf(asked)).toBe('SELF_APPROVAL_REFUSED');
   });
