@@ -141,3 +141,28 @@ it("judges a signed token by its signature, so another token's public header pas
   const whole = planAnswer(answered(stream(completed([`echo ${signed}`]))), [signed]);
   expect(JSON.stringify(whole)).not.toContain(signature.slice(0, FRAGMENT_RUN));
 });
+
+it('withholds three-character pieces scattered through one string, and two-character pieces encoded one by one', () => {
+  const pieces = scrambled(REFRESH, 3);
+  expect(judged(stream(completed([`notes: ${pieces.join(', ')}.`]))).result).toMatchObject(
+    withheld,
+  );
+  const encoded = Array.from({ length: REFRESH.length / 2 }, (_, at) =>
+    Buffer.from(REFRESH.slice(at * 2, at * 2 + 2)).toString('base64'),
+  );
+  expect(judged(stream(completed(encoded))).result).toMatchObject(withheld);
+  const scattered = pieces.map((piece) => Buffer.from(piece).toString('base64'));
+  expect(judged(stream(completed(scattered))).result).toMatchObject(withheld);
+});
+
+it('passes a long ordinary answer whatever chance pieces of a secret it holds', () => {
+  const prose = Array.from(
+    { length: 400 },
+    (_, at) =>
+      `Step ${at}: run pnpm test, read the log at line ${at * 7}, then fix it (id ${(at * 7919).toString(36)}).`,
+  );
+  const code = Array.from({ length: 200 }, (_, at) => `const v${at} = f${at % 9}(x, ${at});`);
+  expect(planAnswer(answered(stream(completed([...prose, ...code]))), SECRETS)).toMatchObject({
+    ok: true,
+  });
+});
