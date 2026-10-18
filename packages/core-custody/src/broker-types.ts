@@ -11,7 +11,8 @@ import type {
   ModelOperation,
   RouteReach,
 } from '../../core-connectors/src/index.ts';
-import type { CarryRefusal, CredentialKind } from './credentials.ts';
+import type { CarryRefusal } from './carry-rule.ts';
+import type { CredentialKind } from './credentials.ts';
 import type { Custody } from './custody.ts';
 
 /**
