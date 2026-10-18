@@ -226,7 +226,7 @@ export async function contextOf(
   const created = await createdOf(tx, asked.conversationId, scopeRecordId !== null, (id) =>
     pageOf(tx, session, id),
   );
-  const rows = await earlierRows(tx, asked, created.cut);
+  const rows = await earlierRows(tx, session, asked, created.cut);
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];
   if (page !== null) {

@@ -6,12 +6,11 @@
 // runner's request bytes, and none at or after the history cut (#1666).
 
 import { LOCAL_GPT_BODY_LIMIT, localGptAdapter } from '../../../core-connectors/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Asked } from './conversation-owner.ts';
 
 export const EARLIER_COUNT = 10;
 export const EARLIER_LIMIT = 8_000;
-
-type Asked = { readonly conversationId: string; readonly messageId: string };
 
 /** Whether the whole GPT request, as the adapter writes it, fits the runner's body limit. */
 const fits = (fields: Readonly<Record<string, string>>): boolean =>
@@ -37,6 +36,8 @@ export function earlierOf(
  * epoch, which a purge of the task it was opened on bumps under the row lock
  * every message write takes. A reply counts only when its question does too,
  * so one kept after the purge to a question from before it is cut with it.
+ * The statement asks the owner itself, so the rows are the session's own at
+ * the one instant it reads them (#1483).
  */
 interface EarlierRow {
   readonly role: string;
@@ -46,6 +47,7 @@ interface EarlierRow {
 
 export async function earlierRows(
   tx: TenantQuery,
+  session: Session,
   asked: Asked,
   cut: string | null,
 ): Promise<readonly EarlierRow[]> {
@@ -60,6 +62,7 @@ export async function earlierRows(
            on q.business_id = m.business_id and q.id = m.answers_message_id
         where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
           and m.role in ('person', 'agent') and m.created_at < a.created_at
+          and c.owner_actor_id = $6 and c.body_purged_at is null
           and m.context_epoch = c.context_epoch
           and coalesce(q.context_epoch, m.context_epoch) = c.context_epoch
           and ($5::uuid is null or (m.created_at, m.id) < (
@@ -72,6 +75,6 @@ export async function earlierRows(
         order by m.created_at desc, m.id desc
         limit $4) last
       order by created_at, id`,
-    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT, cut],
+    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT, cut, session.actorId],
   );
 }

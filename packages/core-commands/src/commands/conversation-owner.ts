@@ -14,10 +14,12 @@ export interface Asked {
 }
 
 /**
- * Whether the session owns the asked message's conversation, its body kept:
- * `contextOf` asks it before it reads anything (#1483). The owner is written
- * once and never changed, so this takes no row lock, which there would come
- * before the page task's, the reverse of a purge's order.
+ * Whether the session owns the asked message's conversation, its body kept.
+ * `contextOf` asks it before it reads anything (#1483). It takes no lock: the
+ * application role may change a conversation's owner (0092), so the earlier
+ * messages are read in a statement that asks the owner again itself
+ * (`earlierRows` in `conversation-earlier.ts`), and a session that no longer
+ * owns the conversation at that instant reads none.
  */
 export async function ownsAsked(tx: TenantQuery, session: Session, asked: Asked): Promise<boolean> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return false;
