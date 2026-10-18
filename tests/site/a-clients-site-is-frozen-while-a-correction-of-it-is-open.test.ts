@@ -97,7 +97,7 @@ describe.skipIf(serverUrl === undefined)('unbinding a page', () => {
     });
     expect(codeOf(rejected)).toBe('not-a-refusal');
     expect(await unbind(client, page.pageUrl)).toEqual({ ok: true });
-    expect(codeOf(await requestOn(client, page))).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    expect(codeOf(await requestOn(client, page))).toBe('NOT_FOUND');
   });
 });
 
@@ -135,7 +135,7 @@ describe.skipIf(serverUrl === undefined)('an unbind holding the page a request n
       await aLockWait();
       release.open();
       expect(await unbinding).toEqual({ ok: true });
-      expect(codeOf(await request)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+      expect(codeOf(await request)).toBe('NOT_FOUND');
     } finally {
       await second.close();
     }
