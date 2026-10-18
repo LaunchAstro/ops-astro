@@ -60,7 +60,9 @@ it('a redirect with a real Location never receives token text or a second reques
     res.writeHead(302, { location: target.url.href });
     res.end();
   });
-  await new Promise<void>((resolve) => redirect.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    redirect.listen(0, '127.0.0.1', resolve);
+  });
   try {
     await seed(w.file, { state: 'ready', tokens: tokens('redirect', T0 + 240_000) });
     const url = new URL(`http://127.0.0.1:${(redirect.address() as AddressInfo).port}/token`);
@@ -71,7 +73,9 @@ it('a redirect with a real Location never receives token text or a second reques
     expect(target.count()).toBe(0);
   } finally {
     redirect.closeAllConnections();
-    await new Promise<void>((resolve) => redirect.close(() => resolve()));
+    await new Promise<void>((resolve) => {
+      redirect.close(() => resolve());
+    });
     await target.close();
     w.done();
   }

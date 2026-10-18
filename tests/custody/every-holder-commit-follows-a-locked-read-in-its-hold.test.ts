@@ -60,14 +60,13 @@ function commitsAfterFencedReads(): string[] {
   const fenced = new Set<object>();
   const committed: string[] = [];
   for (const call of calls) {
-    if (call.op !== 'commitTokenFile') fenced.add(call.held);
-    else {
+    if (call.op === 'commitTokenFile') {
       expect(
         fenced.has(call.held),
         `the ${call.state} commit follows a locked read in its hold`,
       ).toBe(true);
       committed.push(call.state ?? '');
-    }
+    } else fenced.add(call.held);
   }
   return committed;
 }
