@@ -14,12 +14,13 @@
 // - The first writer wins by the primary key. A later stop finds the row,
 //   writes nothing and reads the stored one; the row never changes.
 
-import { outcomeOf, type EndCode, type RunOutcome } from '../../core-wire/src/run-outcomes.ts';
+import { outcomeOf, type EndCode, type RunOutcome } from '../../core-wire/src/index.ts';
 import { revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import type { Failure } from './broker-fault.ts';
-import { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
-import type { BrokerRefusal } from './broker-types.ts';
+import { COUNTED_CAUSES, countedHold, giveBack } from './broker-give-back.ts';
+import type { Checked } from './broker-facts.ts';
+import type { Broker, BrokerRefusal } from './broker-types.ts';
 
 /** The stored stop of one attempt. */
 export interface StoppedAs {
@@ -165,7 +166,7 @@ const CUSTODY_UNSENT: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * `CALL_RELEASED`, normalised (design F2): a release reason is a custody code
+ * `CALL_RELEASED`, normalised: a release reason is a custody code
  * or one of the operation's declared nothing-happened provider codes, and each
  * maps to one end code. A reason in neither set is no proof that nothing
  * happened: `undefined`, which settlement holds as unknown.
@@ -182,8 +183,8 @@ export function releaseEndOf(reason: string, operation: ModelOperation): EndCode
 }
 
 /**
- * A release reason nobody declared: held as unknown, the maximum kept (design
- * F2). Custody answered it, so the fault is ours; it is no provider's code.
+ * A release reason nobody declared: held as unknown, the maximum kept.
+ * Custody answered it, so the fault is ours; it is no provider's code.
  */
 export const UNPROVEN_RELEASE: Failure & { readonly kind: 'unknown' } = {
   kind: 'unknown',
@@ -211,4 +212,26 @@ export async function stopAtSettlement(
     [tx.businessId, leaseId],
   );
   await retireAttempt(tx, { leaseId, delegationId: lease?.delegation_id ?? null }, code);
+}
+
+/**
+ * A call released at its start: what a count took of it given back, the
+ * release audited, and, on work that still stands, its attempt ended with the
+ * refusal's code (#1623 R1, transaction 2).
+ */
+export async function refusedAtStart(
+  tx: TenantQuery,
+  callId: string,
+  code: BrokerRefusal,
+  facts: Checked,
+  broker: Broker,
+): Promise<void> {
+  await giveBack(tx, callId);
+  await broker.audit(tx, {
+    action: 'model.call_released',
+    outcome: 'refused',
+    refusalCode: code,
+    detail: { callId, code },
+  });
+  if (facts.ok) await retireAttempt(tx, facts.facts, endCodeOfRefusal(code));
 }

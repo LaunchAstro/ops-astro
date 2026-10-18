@@ -61,7 +61,7 @@ export async function workJudged(
   const outcome = await inSavepoint(tx, async () => {
     const ran = await work();
     // An ordinary refusal rolls back and has nothing to judge. A retained one
-    // keeps a stop that retired its own work (#1623 R1, F1): it is judged too.
+    // keeps a stop that retired its own work (#1623 R1): it is judged too.
     const retained = isRefused(ran);
     if (retained && ran.retains !== true) return ran;
     standing.ended = await agentStanding(
