@@ -52,6 +52,13 @@ function runCase(kind: string, url: string): Outcome {
 
 const refused = { ok: false, code: 'CONNECTION_CLOSED', addressed: true };
 
+/** The process ran to its end, the transaction and its next statement were refused, and the connection serves again. */
+function expectSurvivedAndRefused(outcome: Outcome): void {
+  expect(outcome.stderr).not.toMatch(/TypeError/u);
+  expect(outcome.status).toBe(0);
+  expect(outcome.result).toEqual({ caller: refused, statement: refused, after: { ok: true } });
+}
+
 describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1774)', () => {
   let db: FreshDatabase;
   let ownerUrl: string;
@@ -68,14 +75,7 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
   });
 
   it('the runtime pool: the process survives and the caller and its next statement are refused', () => {
-    const outcome = runCase('runtime', db.appUrl);
-    expect(outcome.stderr).not.toMatch(/TypeError/u);
-    expect(outcome.status).toBe(0);
-    expect(outcome.result).toEqual({
-      caller: refused,
-      statement: refused,
-      after: { ok: true },
-    });
+    expectSurvivedAndRefused(runCase('runtime', db.appUrl));
   }, 60_000);
 
   it('the runtime pool after a reconnect: nothing from the ended transaction reaches the next business', () => {
@@ -92,14 +92,7 @@ describe.skipIf(serverUrl === undefined)('a connection ended mid-transaction (#1
   }, 60_000);
 
   it('the admin transaction: the process survives and the caller and its next statement are refused', () => {
-    const outcome = runCase('admin', ownerUrl);
-    expect(outcome.stderr).not.toMatch(/TypeError/u);
-    expect(outcome.status).toBe(0);
-    expect(outcome.result).toEqual({
-      caller: refused,
-      statement: refused,
-      after: { ok: true },
-    });
+    expectSurvivedAndRefused(runCase('admin', ownerUrl));
   }, 60_000);
 
   it('the listener: the process survives its session ending and listens again', () => {

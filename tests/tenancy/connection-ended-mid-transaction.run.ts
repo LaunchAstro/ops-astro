@@ -54,8 +54,20 @@ function settled(
   );
 }
 
+/** A promise a case opens by hand once it has seen a step happen. */
+function latch(): { readonly wait: Promise<void>; readonly open: () => void } {
+  let open!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { wait, open };
+}
+
 /** Some turns of the event loop, so a write postgres.js put off with setImmediate has run. */
-const turns = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 200));
+const turns = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 200);
+  });
 
 function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -75,18 +87,17 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
    */
   async runtime() {
     const db = connect(url, { max: 1 });
-    let ended!: () => void;
-    const closedSeen = new Promise<void>((resolve) => (ended = resolve));
+    const callEnded = latch();
     let statement: { ok: boolean; code?: string } | undefined;
     const call = db.withBusiness(ALPHA, async (tx) => {
       const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
       await terminate(Number(row?.pid));
-      await closedSeen;
+      await callEnded.wait;
       const next = tx.query('select 1');
       statement = await settled(next);
       await next;
     });
-    const outcome = settled(call).finally(ended);
+    const outcome = settled(call).finally(callEnded.open);
     const caller = await within(outcome, 5_000, 'the transaction');
     await turns();
     const after = await settled(db.withBusiness(BETA, (tx) => tx.query('select 1')));
@@ -103,31 +114,28 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
    */
   async reconnected() {
     const db = connect(url, { max: 1 });
-    let ended!: () => void;
-    const closedSeen = new Promise<void>((resolve) => (ended = resolve));
-    let betaHolding!: () => void;
-    const betaInside = new Promise<void>((resolve) => (betaHolding = resolve));
-    let alphaDone!: () => void;
-    const alphaFinished = new Promise<void>((resolve) => (alphaDone = resolve));
+    const callEnded = latch();
+    const betaInside = latch();
+    const alphaFinished = latch();
     let statement: { ok: boolean; code?: string } | undefined;
 
     const alpha = db.withBusiness(ALPHA, async (tx) => {
       const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
       await terminate(Number(row?.pid));
-      await closedSeen;
-      await betaInside;
+      await callEnded.wait;
+      await betaInside.wait;
       statement = await settled(tx.query(`select set_config('app.stale', 'alpha', true)`));
       // postgres.js commits once this returns; give that its turns too.
-      setTimeout(alphaDone, 200);
+      setTimeout(alphaFinished.open, 200);
       return 'alpha finished';
     });
-    const alphaOutcome = settled(alpha).finally(ended);
+    const alphaOutcome = settled(alpha).finally(callEnded.open);
 
-    await closedSeen;
+    await callEnded.wait;
     const beta = db.withBusiness(BETA, async (tx) => {
       await tx.query(`select set_config('app.stale', 'beta', true)`);
-      betaHolding();
-      await alphaFinished;
+      betaInside.open();
+      await alphaFinished.wait;
       const [row] = await tx.query<{ stale: string; business: string }>(
         `select current_setting('app.stale') as stale,
                 current_setting('app.business_id') as business`,
@@ -149,18 +157,17 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
   /** The admin connection's transaction, which migrations and the harness use. */
   async admin() {
     const admin = connectAsAdmin(url);
-    let ended!: () => void;
-    const closedSeen = new Promise<void>((resolve) => (ended = resolve));
+    const callEnded = latch();
     let statement: { ok: boolean; code?: string } | undefined;
     const call = admin.transaction(async (execute) => {
       const [row] = await execute<{ pid: number }>('select pg_backend_pid() as pid');
       await terminate(Number(row?.pid));
-      await closedSeen;
+      await callEnded.wait;
       const next = execute('select 1');
       statement = await settled(next);
       await next;
     });
-    const outcome = settled(call).finally(ended);
+    const outcome = settled(call).finally(callEnded.open);
     const caller = await within(outcome, 5_000, 'the transaction');
     await turns();
     const after = await settled(admin.execute('select 1'));
@@ -172,14 +179,13 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
   async listener() {
     const listener = connectListener(url);
     let listening = 0;
-    let again!: () => void;
-    const relistened = new Promise<void>((resolve) => (again = resolve));
+    const relistened = latch();
     await listener.listen(
       'connection_ended_probe',
       () => {},
       () => {
         listening += 1;
-        if (listening === 2) again();
+        if (listening === 2) relistened.open();
       },
     );
     const [row] = await operator.execute<{ pid: number }>(
@@ -188,7 +194,7 @@ const cases: Record<string, () => Promise<Record<string, unknown>>> = {
       [new URL(url).pathname.slice(1)],
     );
     await terminate(Number(row?.pid));
-    await within(relistened, 20_000, 'listening again');
+    await within(relistened.wait, 20_000, 'listening again');
     await turns();
     await listener.close();
     return { listening };
