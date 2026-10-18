@@ -57,36 +57,72 @@ export interface Resends<C = unknown> {
   holds(key: string, command: Asked['command'], question: string): boolean;
   /** Whether a lost start tab `key` keeps was sent with a context `which` picks. */
   carries(key: string, which: (context: C) => boolean): boolean;
+  /**
+   * Tab `from`'s lost questions moved to tab `into`, which it folded into: a
+   * resend there replays its own identity. Where both keep the same question,
+   * both stay, oldest first, and a resend replays the oldest still kept.
+   */
+  fold(from: string, into: string): void;
 }
 
 /** How a tab keeps a lost question: by command and question as typed. */
 const lostAs = (asked: Pick<Asked, 'command' | 'question'>): string =>
   `${asked.command}\n${asked.question}`;
 
+/** Two tabs' lost questions as one, each question's attempts oldest first. */
+function joined<K extends { readonly operationId: string }>(
+  target: Map<string, K[]>,
+  moving: Map<string, K[]>,
+  born: ReadonlyMap<string, number>,
+): Map<string, K[]> {
+  const order = (one: K): number => born.get(one.operationId) ?? 0;
+  for (const [which, list] of moving) {
+    target.set(
+      which,
+      [...(target.get(which) ?? []), ...list].toSorted((one, other) => order(one) - order(other)),
+    );
+  }
+  return target;
+}
+
 export function resends<C = unknown>(): Resends<C> {
-  const kept = new Map<string, Map<string, Kept<C>>>();
+  const kept = new Map<string, Map<string, Kept<C>[]>>();
   const ended = new Set<string>();
+  // The order each attempt was kept in: a fold keeps both tabs' attempts, oldest first.
+  const born = new Map<string, number>();
+  const all = (key: string): Kept<C>[] => [...(kept.get(key)?.values() ?? [])].flat();
   return {
-    holds: (key, command, question) => kept.get(key)?.has(lostAs({ command, question })) === true,
+    holds: (key, command, question) =>
+      (kept.get(key)?.get(lostAs({ command, question }))?.length ?? 0) > 0,
     carries: (key, which) =>
-      [...(kept.get(key)?.values() ?? [])].some(
+      all(key).some(
         (one) =>
           one.command === 'conversation.start' && one.context !== undefined && which(one.context),
       ),
+    fold(from, into) {
+      const moving = kept.get(from);
+      if (moving === undefined) return;
+      kept.set(into, joined(kept.get(into) ?? new Map(), moving, born));
+      kept.delete(from);
+    },
     async send(key, asked, write) {
-      const lost = kept.get(key) ?? new Map<string, Kept<C>>();
+      const lost = kept.get(key) ?? new Map<string, Kept<C>[]>();
       kept.set(key, lost);
       const which = lostAs(asked);
-      const sending = lost.get(which) ?? { ...asked, operationId: crypto.randomUUID() };
+      const sending = lost.get(which)?.[0] ?? { ...asked, operationId: crypto.randomUUID() };
       const result = await write(sending.request, sending.operationId, sending);
       // Each completion owns its own identity: an older send settling late
       // never clears, or takes the place of, another send's kept one.
-      const now = lost.get(which);
+      const now = lost.get(which) ?? [];
       if (!isUnavailable(result) && !isRefusal(result)) {
         ended.add(sending.operationId);
-        if (now?.operationId === sending.operationId) lost.delete(which);
-      } else if (isUnavailable(result) && now === undefined && !ended.has(sending.operationId)) {
-        lost.set(which, sending);
+        lost.set(
+          which,
+          now.filter((one) => one.operationId !== sending.operationId),
+        );
+      } else if (isUnavailable(result) && now.length === 0 && !ended.has(sending.operationId)) {
+        born.set(sending.operationId, born.size);
+        lost.set(which, [sending]);
       }
       return result;
     },

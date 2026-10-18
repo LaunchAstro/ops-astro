@@ -147,6 +147,7 @@ async function replayIn(
   const { client, store, report, replays } = sending;
   const { sent, question } = replay;
   const restored = replayed(store.now(), key, replayOf(sent, outcome, question));
+  keptInto(sending, key, String(outcome.detail?.['conversationId']));
   store.update(() => restored.state);
   if (restored.apart) store.line(key, 'note', APART);
   bound(outcome.reply, sent, replays);
@@ -157,6 +158,20 @@ async function replayIn(
   for (const write of restored.writes) {
     // oxlint-disable-next-line no-await-in-loop -- each write in turn, as the tab made them
     await report(key, written(client, id, write));
+  }
+}
+
+/**
+ * A twin reopened on conversation `id` folds into unstarted tab `key` as its
+ * start lands (`started`), so its lost questions move with it: a resend from
+ * the folded tab replays its own identity (S1917-1).
+ */
+function keptInto(sending: Sending, key: string, id: string): void {
+  const { chats } = sending.store.now();
+  const source = chats.find((chat) => chat.key === key);
+  const twin = chats.find((chat) => chat.key !== key && chat.conversationId === id);
+  if (source?.conversationId === null && twin !== undefined) {
+    sending.replays.resent.fold(twin.key, key);
   }
 }
 
@@ -226,6 +241,7 @@ export async function startWith(
   const reply = settled.kind === 'ok' ? settled.value.reply : undefined;
   bound(reply, sent, replays);
   replied(on, chat.key, reply);
+  keptInto(sending, chat.key, id);
   store.update((current) => started(current, chat.key, id));
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
