@@ -48,4 +48,16 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: 'The person who asked for the correction no longer holds run:write at its client',
     source: 'C80, the approval checks',
   },
+  {
+    code: 'VERSION_NOT_READY',
+    status: 409,
+    meaning: 'The correction has no version to decide: it is locating, unlocated or superseded',
+    source: '#1693, the guard order',
+  },
+  {
+    code: 'VERSION_UNVERIFIED',
+    status: 409,
+    meaning: "The site runner has not checked the correction's page in the last 60 seconds",
+    source: '#1693, register 65',
+  },
 ] as const;

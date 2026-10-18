@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { c80World, type C80World } from './c80-world.ts';
+import { REV, c80World, type C80World } from './c80-world.ts';
 import { held, seenWaiting } from './party-site-races.ts';
 import { B_FILE, B_PAGE, PAGE, ABOUT } from './c80-sites.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -115,7 +115,7 @@ describe.skipIf(serverUrl === undefined)("a request on the business's own site",
          from public.live_corrections where id = $1`,
       [detailOf(stored)['correctionId']],
     );
-    expect(row).toMatchObject({ party_id: null, base_revision: 'rev-1', state: 'requested' });
+    expect(row).toMatchObject({ party_id: null, base_revision: REV, state: 'requested' });
     expect(row?.['version_id']).toBe(detailOf(stored)['versionId']);
     expect(row?.['version_digest']).toBe(detailOf(stored)['versionDigest']);
     expect(await calls()).toBe(callsBefore);

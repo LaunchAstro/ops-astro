@@ -14,6 +14,7 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import { insertLiveCorrection } from '../../packages/core-records/src/site/live-corrections.ts';
+import { pinAsRunner } from '../site/located.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { enrol } from '../commands/fixture.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
@@ -24,15 +25,11 @@ import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
-/** C80's one-word request, less the party and the task each recipe names. */
+/** C80's one-word request, less the task each recipe names (#1693: the page as typed). */
 export const C80_REQUEST = {
-  path: 'src/pages/about.md',
+  page: 'about',
   word: 'friendly',
   replacement: 'welcoming',
-  pageUrl: 'https://agency.example/about/',
-  baseRevision: 'rev-1',
-  before: 'We are a friendly studio.\n',
-  after: 'We are a welcoming studio.\n',
 };
 
 /** Who asks for a seeded correction, and who makes the task it is worked under. */
@@ -118,25 +115,22 @@ export async function seedLiveCorrection(
     if (!granted.ok) throw new Error(`seedLiveCorrection: grant refused ${granted.refusal.code}`);
     const stored = await insertLiveCorrection(tx, {
       ...C80_REQUEST_ROW,
-      ...at,
-      pageUrl,
+      taskId: at.taskId,
+      page: pageUrl,
       requestedByActorId: requester.actorId as string,
       requestedByPersonId: requester.personId as string,
       seam: `seam-${randomUUID()}`,
     });
     if ('code' in stored) throw new Error(`seedLiveCorrection: refused ${stored.code}`);
-    return { correctionId: stored.id, versionId: stored.versionId };
+    const { versionId } = await pinAsRunner(tx, stored.id);
+    return { correctionId: stored.id, versionId };
   });
 }
 
 const C80_REQUEST_ROW = {
   delegationId: null,
-  targetPath: C80_REQUEST.path,
   word: C80_REQUEST.word,
   replacement: C80_REQUEST.replacement,
-  preImageDigest: 'sha256:matrix',
-  baseRevision: C80_REQUEST.baseRevision,
-  versionDigest: 'sha256:matrix',
 };
 
 /**
@@ -225,7 +219,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
       return { exception: 'this harness binds no client site (C80)' };
     }
     const pageUrl = await context.bindClientSite(partyId);
-    return { body: { ...C80_REQUEST, partyId, taskId: task.id, pageUrl } };
+    return { body: { ...C80_REQUEST, taskId: task.id, page: pageUrl } };
   }
   // Another member's request, and the admin named as the approver just
   // before: the requester never approves, and only the configured one does.

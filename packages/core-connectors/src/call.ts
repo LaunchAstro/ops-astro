@@ -48,13 +48,14 @@ export interface CallDependencies {
   readonly custody?: (request: TransportRequest, to: CredentialReference) => ReturnType<Send>;
   /** Every refusal and unknown on the path, by code (Receipt L field 14). */
   readonly record: (code: string) => void;
+  /** The caller's own refusal of a call, checked before all else (#1693): a code sends nothing. */
+  readonly admit?: (op: string, params: Readonly<Record<string, string>>) => string | undefined;
 }
 
 const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 
-function validSegment(value: string): boolean {
-  return SEGMENT.test(value) && value !== '.' && value !== '..';
-}
+const validSegment = (value: string): boolean =>
+  SEGMENT.test(value) && value !== '.' && value !== '..';
 
 /** A many-segment slot with a fixed shape: a repository is its owner and name, nothing deeper. */
 export const SLOT_SEGMENTS: ReadonlyMap<string, number> = new Map([['repository', 2]]);
@@ -137,26 +138,26 @@ function requestFor(
   };
 }
 
-/** Everything checked before a byte leaves: host, credential binding, release, parameters, address. */
+/** Everything checked before a byte leaves: admission, host, credential, release, parameters, address. */
 async function prepare(
   registration: OperationRegistration,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
 ): Promise<Prepared> {
   const { connector, declaration } = registration;
+  const refused = deps.admit?.(declaration.operation_name, params);
+  if (refused !== undefined) return { refused };
   if (!CONNECTOR_HOSTS.includes(connector.host)) return { refused: 'DESTINATION_NOT_LISTED' };
   if (!credentialHostMatches(connector)) return { refused: 'CREDENTIAL_HOST_MISMATCH' };
-  if (connectorRelease(connector) !== declaration.connector_release) {
+  if (connectorRelease(connector) !== declaration.connector_release)
     return { refused: 'CONNECTOR_RELEASE_UNAVAILABLE' };
-  }
   const built = buildPath(connector.pathTemplate, params, connector.bodyParams);
   if ('code' in built) return { refused: built.code };
   let address: string;
   try {
     const answers = await deps.resolve(connector.host);
-    if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer))) {
+    if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer)))
       return { refused: 'DESTINATION_ADDRESS_DENIED' };
-    }
     address = answers[0] ?? '';
   } catch {
     return { refused: 'PROVIDER_UNREACHABLE' };
@@ -195,9 +196,8 @@ function readAnswer(registration: OperationRegistration, answer: TransportAnswer
   if (answer.status >= 300 && answer.status < 400)
     return { unreadable: 'PROVIDER_REDIRECT_REFUSED' };
   const proof = connector.refusalProofs[String(answer.status)];
-  if (proof !== undefined && declaration.nothing_happened_proof.includes(proof)) {
+  if (proof !== undefined && declaration.nothing_happened_proof.includes(proof))
     return { refused: 'PROVIDER_REFUSED', proof };
-  }
   if (answer.status < 200 || answer.status >= 300)
     return { unreadable: 'PROVIDER_STATUS_UNEXPECTED' };
   const type = (answer.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();

@@ -6,7 +6,7 @@
 // size cap. One check answers the request and its replay, so a stored receipt
 // goes back only to a delegation that could make that request now.
 
-import { checkAuthority, RUN_COLLECTION } from '../../../core-records/src/index.ts';
+import { checkAuthority, RUN_COLLECTION, taskClient } from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -32,7 +32,7 @@ const OUTSIDE_DELEGATION = refuseCommand(
 /**
  * The request inside `delegation`: worked under the delegation's own task,
  * the delegation carrying `run` and `write`, and the delegating person's live
- * grant covering `run:write` at the named party now. Another task is outside
+ * grant covering `run:write` at the task's client now. Another task is outside
  * the purpose whatever the delegation carries, and the operands' shape is
  * judged after both, so a caller holding nothing is told that first.
  */
@@ -50,8 +50,8 @@ async function withinDelegation(
   if (!carries) return { refusal: OUTSIDE_DELEGATION };
   const operands = typedOperands(sent);
   if ('refusal' in operands) return operands;
-  // A request on the business's own site (no party) is asked of the business (R6).
-  const { partyId } = operands;
+  // Asked at the task's client; a task with no client is the business's own site (R6).
+  const partyId = (await taskClient(tx, operands.taskId)) ?? null;
   const covered = await checkAuthority(tx, [{ kind: 'person', id: delegation.delegatePersonId }], {
     collection: RUN_COLLECTION,
     action: 'write',
