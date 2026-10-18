@@ -28,6 +28,7 @@ import { detachTaskTime } from './time.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
+const KEY = slotOf(TASK_SPINE, 'key');
 const COMMENT_TASK = slotOf(COMMENT_SPINE, 'task');
 
 export type RetentionClass = 'work' | 'evidence' | 'runtime';
@@ -585,6 +586,17 @@ export async function purgeTrashedRecords(
             title = case when title = subject then 'New conversation' else title end
       where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
+  );
+  // A conversation whose added page names a purged task (#1467, `/task/<key or id>`) loses the
+  // page and its context epoch the same way, so nothing said on that page reaches a model later.
+  await tx.query(
+    `update public.conversations set page_address = null, page_shows = null,
+            context_epoch = context_epoch + 1
+      where business_id = $1 and page_address in (
+        select '/task/' || r.${KEY} from records r
+         where r.business_id = $1 and r.id = any ($2::uuid[]) and r.${KEY} is not null
+        union all select '/task/' || id::text from unnest ($2::uuid[]) id)`,
+    [tx.businessId, ids],
   );
   // Time entries (0078) and task tags (0081) key to `records` with no cascade:
   // left naming the task, they fault the delete below and roll back the whole

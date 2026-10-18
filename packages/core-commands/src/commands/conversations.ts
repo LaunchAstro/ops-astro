@@ -264,7 +264,7 @@ export async function messageConversation(
     readonly scope_record_id: string | null;
     readonly page_address: string | null;
   }>(
-    `select owner_actor_id, body_purged_at, scope_record_id, page_address from conversations
+    `select owner_actor_id, page_address, body_purged_at, scope_record_id from conversations
       where business_id = $1 and id = $2
       for update`,
     [tx.businessId, fields.conversationId],

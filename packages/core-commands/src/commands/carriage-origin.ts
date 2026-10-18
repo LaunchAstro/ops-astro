@@ -40,6 +40,7 @@ import {
 import { lockedInstant } from '../../../core-runtime/src/index.ts';
 import { holdGrants, readsPage } from './carriage-grants.ts';
 import { holdsOwnConversations } from './conversations.ts';
+import { pageTaskOf } from './conversation-page-task.ts';
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
 
@@ -106,19 +107,21 @@ async function heldCall(
     readonly own: boolean;
     readonly purged: boolean;
     readonly page: string | null;
+    readonly address: string | null;
     readonly model: string | null;
   }>(
     `select owner_actor_id = $3 as own, body_purged_at is not null as purged,
-            scope_record_id as page, model_id as model
+            scope_record_id as page, page_address as address, model_id as model
        from public.conversations where business_id = $1 and id = $2 for share`,
     [tx.businessId, call.conversation_id, session.actorId],
   );
   if (conversation === undefined || !conversation.own || conversation.purged) return LOST;
-  const held = { ...call, model: conversation.model, page: conversation.page };
-  if (conversation.page === null) return held;
+  const pageTask = await pageTaskOf(tx, conversation.page, conversation.address);
+  const held = { ...call, model: conversation.model, page: pageTask };
+  if (pageTask === null) return held;
   const [page] = await tx.query<{ readonly client: string | null }>(
     `select ${CLIENT} as client from public.records where business_id = $1 and id = $2 for share`,
-    [tx.businessId, conversation.page],
+    [tx.businessId, pageTask],
   );
   if (page === undefined) return LOST;
   return page.client === null ? held : { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
