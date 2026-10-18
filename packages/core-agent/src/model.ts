@@ -15,7 +15,8 @@
 //   `callbackManager` alias), verbose output and tags or metadata, and
 //   `generate`, which every entry reaches before core configures callbacks,
 //   refuses anything `guard.ts` finds in the call's options or in the
-//   model's own `callbacks` and `verbose`, however they were set (#1921).
+//   model's own `callbacks` and `verbose`, however they were set (#1921),
+//   including a getter or proxy that would read differently to core (#1925).
 
 import type { CallbackManagerForLLMRun, Callbacks } from '@langchain/core/callbacks/manager';
 import {
@@ -26,7 +27,7 @@ import {
 import { AIMessage, type AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
 import type { ChatResult, LLMResult } from '@langchain/core/outputs';
 import type { EndCode, RunOutcome, ToolCall, TurnPart } from '../../core-wire/src/index.ts';
-import { entryRefused } from './guard.ts';
+import { entryRefused, ownRefused } from './guard.ts';
 import { keepAnswer, partsOf, RunEnd, type AttemptState } from './turn.ts';
 
 /** One turn as the broker is sent it. */
@@ -97,10 +98,7 @@ export class OpsAstroChatModel extends BaseChatModel<OpsAstroCallOptions> {
   ): Promise<LLMResult> {
     // Options are read once, so core configures the callbacks the guard saw.
     const asked = Array.isArray(options) ? [...options] : { ...options };
-    if (
-      entryRefused(Array.isArray(asked) ? {} : asked, callbacks) ||
-      entryRefused({ callbacks: this.callbacks, verbose: this.verbose })
-    ) {
+    if (entryRefused(Array.isArray(asked) ? {} : asked, callbacks) || ownRefused(this)) {
       throw refused(this.#state);
     }
     return await super.generate(messages, asked, callbacks);
