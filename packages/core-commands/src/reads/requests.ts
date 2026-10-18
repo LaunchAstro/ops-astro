@@ -23,6 +23,7 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { HistoryOperands } from './history-operands.ts';
+import type { CorrectionReadOperands, CorrectionReadResult } from './correction-read-operands.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
@@ -37,8 +38,6 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
-  LiveCorrectionReadResult,
-  LiveCorrectionReads,
   InvitationListResult,
   PersonListResult,
   TagListResult,
@@ -91,7 +90,7 @@ export type {
  * serving are typed on these and never on the wire body, so a field a read
  * uses is a field its `parse` checked.
  */
-export interface ReadOperands {
+export interface ReadOperands extends CorrectionReadOperands {
   readonly 'task.read': { readonly recordId: string; readonly historyEventId?: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': ({ readonly board: string | null } | { readonly mode: 'aggregate' }) & {
@@ -222,10 +221,6 @@ export interface ReadOperands {
   readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
-  /** One live correction's decision, read again for its card (C80). */
-  readonly 'live_correction.read': { readonly correctionId: string };
-  readonly 'live_correction.list': NoOperands;
-  readonly 'live_correction.receipts': { readonly correctionId: string };
   readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
@@ -285,8 +280,7 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | LiveCorrectionReadResult
-  | LiveCorrectionReads
+  | CorrectionReadResult
   | InvitationListResult
   | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }

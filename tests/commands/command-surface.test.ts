@@ -144,10 +144,9 @@ describe('the surface as a table', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
-      // A read has nothing to be stale against. It does not always take the
-      // `read` action: `preset.plan` writes nothing and still asks for
-      // `manage` on presets, which is why the action is on the declaration
-      // rather than assumed from the kind.
+      // A read has nothing to be stale against. It does not always take the `read` action:
+      // `preset.plan` writes nothing and still asks for `manage` on presets, which is why the
+      // action is on the declaration rather than assumed from the kind.
       if (command.kind === 'read') {
         expect(command.targetsExistingRecord, command.name).toBe(false);
       }
