@@ -218,10 +218,7 @@ export interface CallDrop {
   readonly reconcileMode: string | null;
   /** How far the call got: held only, or sent to the provider. */
   readonly reached: 'accepted' | 'started';
-  /**
-   * The run's last event written before the call was held: where the work got
-   * to. By the write instant, so a drop the settlement records comes after it.
-   */
+  /** The run's last event before the call was held: where the work got to. */
   readonly afterEvent: number | null;
   /** What the pass last established. */
   readonly note: string | null;
