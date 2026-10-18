@@ -52,7 +52,8 @@ import {
   type Fenced,
   type Fetched,
 } from './fence.ts';
-import { importsOf, named, readDocument, resolved, type CaptureOptions } from './page.ts';
+import { importsOf } from './css.ts';
+import { named, readDocument, resolved, type CaptureOptions } from './page.ts';
 import { admittedTree } from './tree.ts';
 
 /** One request the browser made, as the port describes it. */

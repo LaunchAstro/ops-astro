@@ -5,7 +5,7 @@
 // check (reconcile.ts) places the approved occurrence on this render.
 
 import { html as markup, type DefaultTreeAdapterTypes as Tree } from 'parse5';
-import { readDocument } from '../capture/page.ts';
+import { hiddenElement, readDocument } from '../capture/page.ts';
 import { admittedTree } from '../capture/tree.ts';
 import { closingFence } from './fence.ts';
 // Elements that start a rendered block of their own.
@@ -15,9 +15,6 @@ const BLOCK = new Set(
     'hr li main nav p section td th'
   ).split(' '),
 );
-// Elements whose text the capture never reads (capture/page.ts): these and any marked `hidden` in
-// HTML, and script and style anywhere.
-const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
 export const visible = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim();
 
 type Step = { readonly node: Tree.Node; readonly hidden: boolean } | { readonly block: boolean };
@@ -44,12 +41,9 @@ function rendered(html: string): string[] | undefined {
     if (!('childNodes' in node)) continue;
     let hides = hidden;
     if ('tagName' in node) {
-      const html5 = node.namespaceURI === markup.NS.HTML;
-      const name = node.tagName;
-      const marked = HIDDEN.has(name) || node.attrs.some((one) => one.name === 'hidden');
-      hides ||= html5 ? marked : name === 'script' || name === 'style';
+      hides ||= hiddenElement(node);
       // An element breaks the text where it opens and closes, a block element into a new block.
-      const block = html5 && BLOCK.has(name);
+      const block = node.namespaceURI === markup.NS.HTML && BLOCK.has(node.tagName);
       if (block) blocks.push('');
       else blocks[blocks.length - 1] += ' ';
       stack.push({ block });
