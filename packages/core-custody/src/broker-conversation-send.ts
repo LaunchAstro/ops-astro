@@ -9,7 +9,7 @@
 
 import type { BusinessId, Database, TransactionQuery } from '../../core-records/src/index.ts';
 import { WORKER_LOST } from './broker-fault.ts';
-import { copyAnswer } from './broker-message-call.ts';
+import { copyAnswer, copyTarget } from './broker-message-call.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import { hold, release, settlementOf, settlePriced, type Settlement } from './broker-settle.ts';
 import type { Broker, ModelCallResult, ResolvedField } from './broker-types.ts';
@@ -86,6 +86,9 @@ async function settledFor(
     'select state from public.model_calls where business_id = $1 and id = $2 for update',
     [tx.businessId, callId],
   );
+  const { text } = settlement.answer;
+  // The answer's copy target is held now, before the settlement audits (#1563).
+  const target = call?.state === 'dispatched' ? await copyTarget(tx, callId, text) : undefined;
   // A carried call settles only through its fence: the runner sent to, before its `answer_by`.
   const fenced = broker.custody.fenceIn === undefined || (await broker.custody.fenceIn(tx, callId));
   if (call?.state === 'dispatched' && !fenced) {
@@ -98,8 +101,7 @@ async function settledFor(
   ) {
     return { ok: false, code: 'DECISION_STALE', callId };
   }
-  const { text } = settlement.answer;
   // Copied as it settles, so a reply keep that fails after this commits can be made good once.
-  await copyAnswer(tx, callId, text);
+  await copyAnswer(tx, callId, target, text);
   return { ok: true, callId, text, reservedMinor: 0, actualMinor: 0, releasedMinor: 0 };
 }

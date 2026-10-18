@@ -123,23 +123,28 @@ const copyable = (text: string): boolean =>
   !text.includes('\0') &&
   !UNPAIRED_SURROGATE.test(text);
 
+/** Where a settled call's answer is copied: its conversation and message. */
+export interface CopyTarget {
+  readonly conversation: string;
+  readonly message: string;
+}
+
 /**
- * A settled call's answer, copied in its settling transaction (#1563): a
- * retry of the message keeps its reply from the copy, never from a second
- * call. Registered first, as every copy is (0085); invalidated when the
- * reply is kept, and deleted with the body when it is purged. The
- * conversation's row is held for its key after the call's, and its body read
- * after that wait: a body a purge took first is not copied into, and the
- * settlement stands. The message's row is never taken (20261013010000). The
- * copy is a savepoint of its own, and text no reply could hold is not copied.
+ * The copy's target, held for a settled call's answer (#1563): the
+ * conversation's row for its key, taken after the call's and before the
+ * settlement's audit, which custody takes last, so a purge holding the row
+ * (and then the audit's lock) is waited on here and never in a cycle. The
+ * body is read after that wait: a body a purge took first gets no copy. The
+ * message's row is never taken (20261013010000). Text no reply could hold
+ * gets none either.
  */
-export async function copyAnswer(
+export async function copyTarget(
   tx: TransactionQuery,
   callId: string,
   text: string,
-): Promise<void> {
-  if (!copyable(text)) return;
-  const [call] = await tx.query<{ readonly conversation: string; readonly message: string }>(
+): Promise<CopyTarget | undefined> {
+  if (!copyable(text)) return undefined;
+  const [target] = await tx.query<CopyTarget>(
     `select c.conversation_id as conversation, c.conversation_message_id as message
        from public.model_calls c
        join public.conversations v on v.business_id = c.business_id and v.id = c.conversation_id
@@ -148,8 +153,24 @@ export async function copyAnswer(
       for key share of v`,
     [tx.businessId, callId],
   );
-  if (call === undefined) return;
-  const { conversation, message } = call;
+  return target;
+}
+
+/**
+ * A settled call's answer, copied in its settling transaction into the
+ * target held for it (#1563): a retry of the message keeps its reply from the
+ * copy, never from a second call. Registered first, as every copy is (0085);
+ * invalidated when the reply is kept, and deleted with the body when it is
+ * purged. The copy is a savepoint of its own.
+ */
+export async function copyAnswer(
+  tx: TransactionQuery,
+  callId: string,
+  target: CopyTarget | undefined,
+  text: string,
+): Promise<void> {
+  if (target === undefined) return;
+  const { conversation, message } = target;
   await tx.savepoint(async (inner) => {
     await inner.query(
       `insert into public.copy_registrations
