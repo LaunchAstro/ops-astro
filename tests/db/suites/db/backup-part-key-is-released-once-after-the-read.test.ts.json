@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#742: read_part hands a part out sealed with no receipt; release_part writes the receipt and hands its key out once, to the login that read it, while it is still appointed, in read committed, within the key's life"
+}
