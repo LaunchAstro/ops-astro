@@ -6,6 +6,8 @@
 // carry `credential:write`: the catalogue has no `credential` key and access.write refuses a
 // self-scoped collection, so a member, a client-portal person or an outside party never gets one.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import {
   GRANTABLE_KEYS,
@@ -33,4 +35,30 @@ it('TA-4 presets: no grant carries credential:write, so no other person can be g
   expect(GRANTABLE_KEYS.filter((key) => key.startsWith('credential:'))).toStrictEqual([]);
   // access.write refuses a grant on any of these collections (access-write.ts).
   expect(SELF_SCOPED_COLLECTIONS).toContain('credential');
+});
+
+/** The leading comment of a source file, its `//` lines joined into one line of text. */
+function headerComment(file: string): string {
+  const lines = readFileSync(resolve(import.meta.dirname, '../..', file), 'utf8').split('\n');
+  const end = lines.findIndex((line) => !line.startsWith('//'));
+  return lines
+    .slice(0, end)
+    .map((line) => line.replace(/^\/\/ ?/u, ''))
+    .join(' ')
+    .replaceAll(/\s+/gu, ' ');
+}
+
+it('TA-4 comment: the permission keys say agent keys are the owner’s and administrators’ only', () => {
+  const header = headerComment('packages/core-wire/src/permission-keys.ts');
+  const sentences = header.split(/(?<=\.)\s+/u);
+  // No sentence gives `credential:write` to every signed-in person (the stale claim, #869).
+  for (const sentence of sentences.filter((s) => /every signed-in person/iu.test(s)))
+    expect(sentence, sentence).not.toContain('credential:write');
+  // And one says whose it is.
+  expect(
+    sentences.some(
+      (s) => s.includes('`credential:write`') && /owner.{0,20}administrators.{0,10}only/iu.test(s),
+    ),
+    header,
+  ).toBe(true);
 });
