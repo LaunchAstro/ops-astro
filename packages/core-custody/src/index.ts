@@ -111,6 +111,12 @@ export {
   type ReserveRefusal,
 } from './broker.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
+export {
+  judgeCarriedTask,
+  lockCarriedTask,
+  type CarriedTask,
+  type HeldTask,
+} from './broker-carried-task.ts';
 export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
 export {
   ACCEPT_WINDOW_MS,

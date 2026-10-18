@@ -2,7 +2,8 @@
 //
 // A conversation call carried to the model agent on the owner's machine
 // (#1531, live chat route B), as the broker records it: the agent must be an
-// open member of the conversation, the call is written with its carriers row,
+// open member of the conversation (a task's call, #1703: an active agent of the
+// business), the call is written with its carriers row,
 // and the lost-call sweep ends a carried call by what that row proves.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
@@ -30,6 +31,16 @@ export async function carriedIn(
     [tx.businessId, conversationId, carrier.agent],
   );
   return member.length > 0;
+}
+
+/** The carrier's agent is an active agent of this business, held for share until the call is written. */
+export async function carriesHere(tx: TenantQuery, carrier: Carrier): Promise<boolean> {
+  const agent = await tx.query(
+    `select 1 from public.actors
+      where business_id = $1 and id = $2 and kind = 'agent' and active for share`,
+    [tx.businessId, carrier.agent],
+  );
+  return agent.length > 0;
 }
 
 /** The carriers row, written with its call: ids only, every time still unset. */

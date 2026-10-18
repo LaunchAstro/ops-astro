@@ -86,7 +86,14 @@ const OWNER_RAN = `exists (select 1 from public.proposal_versions v
                  and d.decision = 'approve'
                  and not ${OWNER_AT('d.decided_by_person_id', 'd.decided_at')})`;
 
-const READ_TASK = `select run.id::text as run_id, ${OWNER_RAN} as owner_ran,
+/** The person who proposed the run's version: its starter (#1703), or null for an agent or a schedule. */
+const STARTER = `(select pa.person_id::text from public.proposal_versions v
+                join public.actors pa on pa.business_id = v.business_id
+                                     and pa.id = v.proposed_by_actor_id
+               where v.business_id = run.business_id and v.id = run.version_id
+                 and pa.kind = 'person')`;
+
+const READ_TASK = `select run.id::text as run_id, ${OWNER_RAN} as owner_ran, ${STARTER} as starter,
             ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
 /** A task by its id, as a conversation's page: `$2` the task. */
@@ -138,11 +145,15 @@ export async function lockTask(
       readonly source: TaskSource;
       /** The owner proposed and approved the run (`OWNER_RAN`). */
       readonly ownerRan: boolean;
+      /** The person who proposed the run (`STARTER`). */
+      readonly starter: string | null;
     }
   | undefined
 > {
   await tx.query(LOCK_TASK, [tx.businessId, leaseId]);
-  const [task] = await tx.query<TaskRow & { run_id: string; owner_ran: boolean }>(READ_TASK, [
+  const [task] = await tx.query<
+    TaskRow & { run_id: string; owner_ran: boolean; starter: string | null }
+  >(READ_TASK, [
     tx.businessId,
     leaseId,
     LEAVES_ROW_DATA,
@@ -153,6 +164,7 @@ export async function lockTask(
     clientId: task.client,
     source: sourceOf(task),
     ownerRan: task.owner_ran,
+    starter: task.starter,
   };
 }
 

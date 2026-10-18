@@ -48,7 +48,8 @@ import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { taskAdmission } from './broker-admission.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
-import { sweepCarried } from './broker-carriage.ts';
+import { carriesHere, sweepCarried, writeCarriers } from './broker-carriage.ts';
+import type { Handoff } from './carriage.ts';
 import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
@@ -58,6 +59,7 @@ import { settle, settlementOf } from './broker-settle.ts';
 import type {
   Broker,
   BrokerRefusal,
+  Carrier,
   ModelCaller,
   ModelCallRequest,
   ModelCallResult,
@@ -102,7 +104,9 @@ export {
  * update moved one: a retried or concurrent send of the same hold, or one the
  * sweep released meanwhile, finds none and sends nothing
  * (`EFFECT_NOT_RECONCILABLE`). A release that moved nothing records nothing
- * and gives nothing back.
+ * and gives nothing back. A task's call carried to the model agent (#1703)
+ * needs its carrier to be an active agent here, or is released unsent
+ * (`CARRIAGE_UNAVAILABLE`), and is written with its carriers row.
  */
 async function markStarted(
   database: Database,
@@ -111,15 +115,19 @@ async function markStarted(
   request: ModelCallRequest,
   reserved: ReservedCall,
   broker: Broker,
-  account: string | null,
+  sending: { readonly account: string | null; readonly carrier: Carrier | undefined },
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
+  const { account, carrier } = sending;
   return await database.withBusiness(businessId, async (tx) => {
     const { key, reach, credentialKind, provider, credentialRef } = reserved.route;
     const route = [key, reach, credentialKind, provider, credentialRef, account];
     await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
-    const checked = startable(facts, request, reserved, unknown);
+    const here = carrier === undefined || (await carriesHere(tx, carrier));
+    const checked = here
+      ? startable(facts, request, reserved, unknown)
+      : ({ ok: false, code: 'CARRIAGE_UNAVAILABLE' } as const);
     if (!checked.ok) {
       const released = await tx.query(
         `update public.model_calls
@@ -151,6 +159,7 @@ async function markStarted(
       [tx.businessId, reserved.callId, ...route],
     );
     if (started.length === 0) return 'EFFECT_NOT_RECONCILABLE';
+    if (carrier !== undefined) await writeCarriers(tx, reserved.callId, carrier);
     return { fields: checked.fields };
   });
 }
@@ -203,7 +212,12 @@ export async function callModel(
   return await sendReservedCall(database, businessId, caller, request, reserving.reserved, broker);
 }
 
-/** Steps 2 to 4, after the hold has committed: start, send through custody, settle. */
+/**
+ * Steps 2 to 4, after the hold has committed: start, send through custody,
+ * settle. With `carry`, on a broker with a carrier, the call is carried to
+ * the model agent (#1703): custody is given the call's handoff, whose two
+ * judgements stand in for the subscription's admission.
+ */
 export async function sendReservedCall(
   database: Database,
   businessId: BusinessId,
@@ -211,19 +225,16 @@ export async function sendReservedCall(
   request: ModelCallRequest,
   reserved: ReservedCall,
   broker: Broker,
+  carry?: (callId: string) => Handoff,
 ): Promise<ModelCallResult> {
   // The account custody will present, recorded before the send: the only
   // proof a later lookup asks the account that carried it (broker-reconcile.ts).
   const account = await sendingAccount(broker, reserved.route, reserved.operation.destination);
-  const started = await markStarted(
-    database,
-    businessId,
-    caller,
-    request,
-    reserved,
-    broker,
+  const carrier = carry === undefined ? undefined : broker.carrier;
+  const started = await markStarted(database, businessId, caller, request, reserved, broker, {
     account,
-  );
+    carrier,
+  });
   if (typeof started === 'string') return { ok: false, code: started, callId: reserved.callId };
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
@@ -240,10 +251,12 @@ export async function sendReservedCall(
       maxResponseBytes: reserved.operation.maxResponseBytes,
     },
     undefined,
-    // Owner line 72: a subscription send is judged again at the handoff, the task held.
-    reserved.route.credentialKind === 'subscription'
+    // Owner line 72: a subscription send is judged again at the handoff, the task held; a
+    // carried call's handoff judges it again after the agent's accept instead.
+    reserved.route.credentialKind === 'subscription' && carrier === undefined
       ? taskAdmission(database, businessId, request, reserved)
       : undefined,
+    carrier === undefined ? undefined : carry?.(reserved.callId),
   );
   const settlement = settlementOf(outcome, reserved.operation, adapter);
   return await settle(database, businessId, caller, request, reserved, settlement, broker);
