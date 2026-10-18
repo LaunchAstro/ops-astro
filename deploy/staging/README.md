@@ -222,8 +222,9 @@ the part, within ten minutes of the read, and logs the part's read. A sign-in
 that ends before that ask leaves the command with nothing it can open, and it
 keeps nothing. The operator's grant is held from that ask until the key
 arrives, so a revocation of it cannot land in between. A sign-in that ends in
-that moment is ordered after the release, as for a drill's receipt; the ask
-after the key then refuses the part and the command keeps nothing.
+that moment is not held: the store cannot see it, so it still hands out the
+key and logs the part's read. The ask after the key then refuses the part
+and the command keeps nothing.
 
 A revoked operator could still reach the store with their store login without
 this command at all. The store's own authority is `backups.appointed`, checked
