@@ -94,8 +94,9 @@ describe('the agent’s instructions', () => {
     expect(system?.content).toContain(
       'Most messages are conversation: answer them in words, with no task block.',
     );
+    // A chat on no task that created none is offered a create only (#1666).
     expect(system?.content).toContain(
-      'Only when the person plainly asks you to create a task, or to change the task they have open,',
+      'Only when the person plainly asks you to create a task, say in one short sentence',
     );
   });
 
