@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": true,
-  "why": "#1483: the earlier messages are read in one statement that asks the owner itself, so an ownership change committed after the check is seen and the former owner reads none of the words"
-}

@@ -258,7 +258,7 @@
     },
     {
       "files": [
-        "tests/api/a-conversations-owner-cannot-change-between-its-check-and-the-earlier-messages-read.test.ts"
+        "tests/api/a-conversations-owner-is-held-from-its-check-through-the-earlier-messages-read.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
