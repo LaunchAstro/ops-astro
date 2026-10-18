@@ -6,7 +6,7 @@ import { withTokenLock } from '../../packages/core-custody/src/token-lock.ts';
 import { tempDir } from './fixtures/plan-token-world.ts';
 
 it.each([false, true])(
-  'Sol proof, criterion 7: writable probe crossing deadline=%s runs no late work',
+  'a lock whose writable probe crosses its deadline (slow=%s) runs no late work',
   async (slow) => {
     const w = tempDir();
     const original = DatabaseSync.prototype.exec;
