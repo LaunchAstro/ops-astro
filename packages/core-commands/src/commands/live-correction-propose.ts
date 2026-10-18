@@ -32,7 +32,7 @@ import {
 } from '../../../core-connectors/src/index.ts';
 import { targetOf } from './live-correction-observations.ts';
 import { askOnce, settleAsk } from './live-correction-effect.ts';
-import type { CorrectionRun } from './live-correction-runner.ts';
+import type { CorrectionRun } from './live-correction-run.ts';
 
 type Read<T> = (at: string) => Promise<ProviderResult<T>>;
 

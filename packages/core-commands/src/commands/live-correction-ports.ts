@@ -21,6 +21,7 @@
 
 import {
   bindingRefuses,
+  findDeployment,
   mergeAndFind,
   readServing,
   readSiteSource,
@@ -30,7 +31,7 @@ import {
   type ReadBack,
   type SiteBinding,
 } from '../../../core-connectors/src/index.ts';
-import type { RunnerPorts } from './live-correction-runner.ts';
+import type { RunnerPorts } from './live-correction-run.ts';
 
 export interface SitePortDependencies extends Omit<BindingDependencies, 'record'> {
   /** The fence's inputs for `site.capture`: the catalogue pool, a resolver, the pinned transport. */
@@ -69,6 +70,7 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     publish: async (input) => await mergeAndFind(binding, input, guarded),
     // Served only while it serves the bound page; the page's host is read once for these ports.
     readDeployment: readServing(binding, guarded),
+    findDeployment: async (revision) => await findDeployment(binding, revision, guarded),
     capture: {
       ...deps.capture,
       record: (refusal) => {
