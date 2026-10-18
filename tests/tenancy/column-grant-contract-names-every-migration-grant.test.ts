@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { splitStatements } from '../../packages/core-records/src/tenancy/statements.ts';
 import { APPLICATION_ROLE } from '../../scripts/migrated-template.ts';
-import { columnGrants } from './migration-column-grants.ts';
+import { columnGrants, migrationColumnGrants } from './migration-column-grants.ts';
 import { columnUpdatesAt, roleColumnGrantsAt } from './restricted-calls-catalogue.ts';
 
 const migrations = readMigrations(new URL('../../migrations', import.meta.url).pathname);
@@ -17,13 +17,11 @@ const contract = new Set([
   ...columnUpdatesAt().map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
   ...roleColumnGrantsAt(),
 ]);
-const uncontracted = (statements: readonly string[]): string[] =>
-  columnGrants(statements).filter((line) => !contract.has(line));
 const read = (sql: string): string[] => columnGrants(splitStatements(sql));
 
 describe('the column-grant contract, against the migrations', () => {
   it('names every column grant a migration makes', () => {
-    const found = migrations.flatMap((migration) => columnGrants(migration.statements));
+    const found = migrations.flatMap((migration) => migrationColumnGrants(migration));
     // Non-vacuous: the reader finds the grants the contract was written from.
     expect(found).toContain('ops_astro_lookup SELECT public.businesses.key');
     expect(found).toContain(`${APPLICATION_ROLE} UPDATE public.leases.state`);
@@ -33,10 +31,16 @@ describe('the column-grant contract, against the migrations', () => {
 
   it('fails on a new migration whose column grants the contract does not name', () => {
     const planted = [
-      ...migrations.flatMap((migration) => migration.statements),
-      'grant select (message_digest), insert (message_digest) on ops.auth_hook_messages to ops_astro_app',
+      ...migrations,
+      {
+        version: '20261018033724_planted',
+        statements: [
+          'grant select (message_digest), insert (message_digest) on ops.auth_hook_messages to ops_astro_app',
+        ],
+      },
     ];
-    expect(uncontracted(planted)).toStrictEqual([
+    const found = planted.flatMap((migration) => migrationColumnGrants(migration));
+    expect(found.filter((line) => !contract.has(line))).toStrictEqual([
       'ops_astro_app SELECT ops.auth_hook_messages.message_digest',
       'ops_astro_app INSERT ops.auth_hook_messages.message_digest',
     ]);
@@ -91,6 +95,17 @@ const READS: readonly (readonly [string, string, readonly string[]])[] = [
     "do $$ begin execute 'grant execute on function s.f(text) to r'; end $$;",
     [],
   ],
+  ['an EXECUTE of a literal with USING', "do $$ begin execute 'select $1' using 1; end $$;", []],
+  [
+    'format with %I and %%',
+    "do $$ begin execute format('grant r to %I -- 100%%', current_user); end $$;",
+    [],
+  ],
+  [
+    'escapes in a string that grants nothing',
+    String.raw`do $$ begin raise notice E'\x67o\n'; end $$;`,
+    [],
+  ],
 ];
 
 /** What the reader refuses rather than skips: each is a column grant it cannot vouch for. */
@@ -127,6 +142,30 @@ const REFUSALS: readonly (readonly [string, string])[] = [
     'a grant cut short for a concatenation',
     "do $$ begin execute 'grant update ' || '(a) on s.t to r'; end $$;",
   ],
+  [
+    'an octal escape in an E string',
+    String.raw`do $$ begin execute E'\147rant update (a) on s.t to r'; end $$;`,
+  ],
+  ['a U& escape', String.raw`do $$ begin execute U&'\0067rant update (a) on s.t to r'; end $$;`],
+  [
+    'a U& escape with UESCAPE',
+    "do $$ begin execute U&'!0067rant update (a) on s.t to r' uescape '!'; end $$;",
+  ],
+  [
+    'an escape across a string continuation',
+    "do $$ begin execute E'\\x67'\n'rant update (a) on s.t to r'; end $$;",
+  ],
+  [
+    'a keyword split across a concatenation',
+    "do $$ begin execute 'gr' || 'ant update (a) on s.t to r'; end $$;",
+  ],
+  [
+    'SQL decoded at run time',
+    "do $$ begin execute convert_from(decode('6772616e74', 'hex'), 'utf8'); end $$;",
+  ],
+  ['SQL held in a variable', 'do $$ declare q text; begin execute q; end $$;'],
+  ['a format() with %L', "do $$ begin execute format('select %L', 'x'); end $$;"],
+  ['a body in another language', "do language plpython3u $$ plpy.execute('select 1') $$;"],
 ];
 
 describe('reading a column grant the way PostgreSQL does', () => {
@@ -136,5 +175,23 @@ describe('reading a column grant the way PostgreSQL does', () => {
 
   it.each(REFUSALS)('refuses %s', (_, sql) => {
     expect(() => read(sql)).toThrow(/statement 1/u);
+  });
+});
+
+describe('format() placeholders that carry any SQL', () => {
+  const revoke = "do $$ begin execute format('revoke %s from %s', 'a', 'b'); end $$;";
+
+  it('are read only in the migration named as read by hand', () => {
+    const version = '20261004102910_identity_roles_hold_no_membership';
+    expect(migrationColumnGrants({ version, statements: splitStatements(revoke) })).toStrictEqual(
+      [],
+    );
+  });
+
+  it('are refused in any other migration', () => {
+    const version = '20261018000000_another';
+    expect(() => migrationColumnGrants({ version, statements: splitStatements(revoke) })).toThrow(
+      /placeholder %s/u,
+    );
   });
 });

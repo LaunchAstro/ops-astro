@@ -8,50 +8,32 @@
 // PostgreSQL does (scanToken) and fails closed: a column grant it cannot read,
 // or one made from quoted SQL, is an error, never skipped. It reads grants
 // only, so a column grant a later migration revokes still needs its contract
-// line here. Text cannot see every grant SQL can build (a keyword split across
-// a concatenation), so the database suites stay the gate and this is the early
-// warning.
+// line here.
+//
+// Quoted SQL is read as the server reads it: escapes in E'' and U&'' strings
+// are decoded first. SQL built at run time cannot be read from text, so it is
+// refused: every EXECUTE in a function or DO body takes a literal, or format()
+// of a literal whose only placeholder is %I, with nothing joined to it; and a
+// function body is SQL or PL/pgSQL. The database suites stay the gate in the
+// merge queue.
 
 import {
-  leadingVerb,
-  scanToken,
   splitStatements,
+  leadingVerb,
 } from '../../packages/core-records/src/tenancy/statements.ts';
+import { isWord, tokens, type Token } from './sql-tokens.ts';
 
-interface Token {
-  /** `word` is folded to lower case; `name` is a quoted identifier, unquoted. */
-  readonly kind: 'word' | 'name' | 'quoted' | 'other';
-  readonly text: string;
-}
-
-const SPACE = /^[ \t\n\r\f\v]$/u;
 const COLUMN_PRIVILEGES = ['SELECT', 'INSERT', 'UPDATE', 'REFERENCES'] as const;
 
-function tokens(sql: string): Token[] {
-  const found: Token[] = [];
-  for (let at = 0; at < sql.length;) {
-    const token = scanToken(sql, at);
-    const text = sql.slice(at, token.end);
-    at = token.end;
-    if (token.unterminated === true) throw new Error('an unterminated block comment');
-    if (token.kind === 'comment' || SPACE.test(text)) continue;
-    if (token.kind === 'word') found.push({ kind: 'word', text: text.toLowerCase() });
-    else if (token.kind === 'quoted' && text.startsWith('"'))
-      found.push({ kind: 'name', text: text.slice(1, -1).replaceAll('""', '"') });
-    else found.push({ kind: token.kind, text });
-  }
-  return found;
-}
-
-/** The SQL a string or dollar-quoted body holds, as the server would run it from `execute`. */
-function inner(quoted: string): string {
-  const dollar = /^(\$[^$]*\$)([\s\S]*)\1$/u.exec(quoted);
-  if (dollar !== null) return dollar[2] ?? '';
-  return quoted.replaceAll(/^[EeBbXxNn]?'|'$/gu, '').replaceAll("''", "'");
-}
-
-const isWord = (token: Token | undefined, text: string): boolean =>
-  token?.kind === 'word' && token.text === text;
+/**
+ * Migrations whose format() strings carry %s, read by hand: none makes a
+ * column grant. Migrations never change once on main
+ * (scripts/migrations-unchanged.mjs), so a version names fixed text.
+ */
+const FORMATS_READ_BY_HAND: ReadonlySet<string> = new Set([
+  // Revokes each identity role membership it reads from pg_auth_members.
+  '20261004102910_identity_roles_hold_no_membership',
+]);
 
 /** Split at top-level commas, refusing an unbalanced parenthesis. */
 function commaSeparated(list: readonly Token[]): Token[][] {
@@ -158,17 +140,81 @@ function onlyNames(list: readonly Token[]): boolean {
   );
 }
 
+/** Where the parenthesis opened at `open` closes, or -1. */
+function closing(list: readonly Token[], open: number): number {
+  let depth = 0;
+  for (let at = open; at < list.length; at += 1) {
+    if (list[at]?.text === '(') depth += 1;
+    if (list[at]?.text === ')') depth -= 1;
+    if (depth === 0) return at;
+  }
+  return -1;
+}
+
+/** A format() string's placeholders: %I and %% alone, or any for a migration read by hand. */
+function refuseFormat(text: string, anyFormat: boolean): void {
+  for (const [, type] of text.matchAll(/%(?:\d+\$)?-?(?:\d+|\*(?:\d+\$)?)?([\s\S]?)/gu)) {
+    if (type !== 'I' && type !== '%' && !anyFormat)
+      throw new Error(`a format() placeholder %${type ?? ''}, which can carry any SQL`);
+  }
+}
+
+/**
+ * Refuse SQL built at run time: a PL/pgSQL EXECUTE takes a literal, or
+ * format() of a literal, and nothing is joined to it before USING or INTO.
+ * EXECUTE as a privilege (GRANT EXECUTE ON) or a trigger's EXECUTE FUNCTION
+ * runs nothing.
+ */
+function refuseDynamic(list: readonly Token[], anyFormat: boolean): void {
+  for (const [at, token] of list.entries()) {
+    const before = list[at - 1];
+    if (!isWord(token, 'execute') || isWord(before, 'grant') || isWord(before, 'revoke')) continue;
+    if (
+      before?.text === ',' ||
+      ['on', 'function', 'procedure'].some((w) => isWord(list[at + 1], w))
+    )
+      continue;
+    let next = isWord(list[at + 1], 'pg_catalog') && list[at + 2]?.text === '.' ? at + 3 : at + 1;
+    if (isWord(list[next], 'format') && list[next + 1]?.text === '(') {
+      const literal = list[next + 2];
+      if (literal?.kind !== 'quoted') throw new Error('an EXECUTE of format() with no literal');
+      refuseFormat(literal.text, anyFormat);
+      next = closing(list, next + 1);
+      if (next < 0) throw new Error('an unbalanced parenthesis');
+    } else if (list[next]?.kind !== 'quoted') {
+      throw new Error('an EXECUTE of SQL built at run time, which text cannot read');
+    }
+    const follow = list[next + 1];
+    if (follow !== undefined && !isWord(follow, 'using') && !isWord(follow, 'into'))
+      throw new Error('an EXECUTE with SQL joined to its literal, which text cannot read');
+  }
+}
+
+/** A function or DO body in a language other than SQL or PL/pgSQL, which this reader cannot read. */
+function refuseLanguage(list: readonly Token[]): void {
+  const body =
+    isWord(list[0], 'do') || list.some((t) => isWord(t, 'function') || isWord(t, 'procedure'));
+  if (!body) return;
+  for (const [at, token] of list.entries()) {
+    const language = list[at + 1]?.text.toLowerCase();
+    if (isWord(token, 'language') && language !== 'sql' && language !== 'plpgsql')
+      throw new Error(`a body in language ${language ?? 'unnamed'}, which this reader cannot read`);
+  }
+}
+
 /**
  * Refuse a grant made from quoted SQL (an `execute` of a string, or a function
  * body that runs one) unless the string alone shows it names no column: it
  * reaches TO, and what it grants and to whom are names, commas and `%I`. A
  * column list, a `%s` or `%L`, or a grant cut short for a concatenation, is
- * refused.
+ * refused, as is SQL built at run time.
  */
-function refuseQuoted(sql: string): void {
+function refuseQuoted(sql: string, anyFormat: boolean): void {
   for (const piece of splitStatements(sql)) {
     const list = tokens(piece);
-    for (const token of list) if (token.kind === 'quoted') refuseQuoted(inner(token.text));
+    refuseLanguage(list);
+    refuseDynamic(list, anyFormat);
+    for (const token of list) if (token.kind === 'quoted') refuseQuoted(token.text, anyFormat);
     const grant = list.findIndex((t) => isWord(t, 'grant'));
     if (grant < 0) continue;
     const rest = list.slice(grant + 1);
@@ -185,12 +231,20 @@ function refuseQuoted(sql: string): void {
   }
 }
 
-/** Every column grant in one migration's statements, or an error naming the statement. */
-export function columnGrants(statements: readonly string[]): string[] {
+/**
+ * Every column grant in one migration's statements, or an error naming the
+ * statement. `anyFormat` lets format() carry %s and %L, for a migration read by hand.
+ */
+export function columnGrants(
+  statements: readonly string[],
+  options: { readonly anyFormat?: boolean } = {},
+): string[] {
   return statements.flatMap((statement, at) => {
     try {
       const list = tokens(statement);
-      for (const token of list) if (token.kind === 'quoted') refuseQuoted(inner(token.text));
+      refuseLanguage(list);
+      for (const token of list)
+        if (token.kind === 'quoted') refuseQuoted(token.text, options.anyFormat === true);
       return leadingVerb(statement) === 'GRANT' ? grantLines(list) : [];
     } catch (error) {
       const head = statement.replaceAll(/\s+/gu, ' ').slice(0, 80);
@@ -198,5 +252,15 @@ export function columnGrants(statements: readonly string[]): string[] {
         cause: error,
       });
     }
+  });
+}
+
+/** Every column grant one migration makes. */
+export function migrationColumnGrants(migration: {
+  readonly version: string;
+  readonly statements: readonly string[];
+}): string[] {
+  return columnGrants(migration.statements, {
+    anyFormat: FORMATS_READ_BY_HAND.has(migration.version),
   });
 }
