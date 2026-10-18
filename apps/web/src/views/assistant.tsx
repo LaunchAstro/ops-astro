@@ -86,6 +86,21 @@ export interface AssistantViewProps {
 }
 
 /** The start, the join, and every write after them, each refusal shown in the tab. */
+/**
+ * The answers' store, except that an answer's edit is bound by the attempt
+ * that carried it, to what that attempt first read (`first-question.ts`),
+ * never to this send's read.
+ */
+function boundByAttempt(
+  heard: { readonly on: Store; readonly read: Promise<Baseline | null> },
+  store: Store,
+  question: string,
+): { readonly on: Store; readonly read: Promise<Baseline | null> } {
+  const answer: Store['answer'] = (at, reply, _after, cites) =>
+    store.answer(at, reply, question, cites);
+  return { on: { ...heard.on, answer }, read: heard.read };
+}
+
 function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
   const replays = {
@@ -112,7 +127,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     // The asking tab's scope, as the question is asked: a tab selected while
     // its task is read changes neither the start nor the card.
     const opening = { chat, body, scope: scope() };
-    const { on, read } = answersTo(props, store, chat, question);
+    const { on, read } = boundByAttempt(answersTo(props, store, chat, question), store, question);
     // Each question waits for the tab's writes so far and then its task's
     // read, in the tab's queue, so a model chosen after it lands after it.
     // A tab not yet started joins what its last start made, or starts itself

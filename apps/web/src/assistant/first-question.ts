@@ -46,7 +46,7 @@ export interface Replays {
   ) => void;
 }
 
-/** The answer as `replied` places it, then any edit it proposes bound to the attempt's own read. */
+/** The answer as `replied` places it, then any edit it proposes bound to the attempt's own read; none read, none bound. */
 function answeredFor(
   store: Store,
   key: string,
