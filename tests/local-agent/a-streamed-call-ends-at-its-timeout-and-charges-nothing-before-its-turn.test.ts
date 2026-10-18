@@ -12,7 +12,7 @@ import { expect, it } from 'vitest';
 import { createRunner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { makeWorld, RUNNER_KEY } from './world.ts';
+import { FAKE_CODEX, firstRun, makeWorld, RUNNER_KEY } from './world.ts';
 
 const message = { fields: { message: 'Say hello.' }, stream: true };
 
@@ -26,6 +26,7 @@ it('a timed-out streamed child cannot block the runner on an inherited stdout pi
   writeFileSync(
     wrapper,
     `#!/usr/bin/env node
+if (process.argv[2] === '--version') process.exit(0);
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
@@ -36,6 +37,7 @@ setInterval(() => {}, 1000);
 `,
     { mode: 0o700 },
   );
+  firstRun(wrapper);
   const settings = readSettings({ ...w.env, OPS_LOCAL_AGENT_CODEX_BIN: wrapper }, w.userHome);
   if (!settings.ok) throw new Error(settings.code);
   const r = await createRunner({ ...settings.settings, timeoutMs: 200 }, () => {});
@@ -74,6 +76,7 @@ setInterval(() => {}, 1000);
 it('a preparation timeout charges no tokens when turn/start was never sent', async () => {
   const w = makeWorld();
   w.knobs({ prepMs: 10_000 });
+  firstRun(FAKE_CODEX);
   const settings = readSettings(w.env, w.userHome);
   if (!settings.ok) throw new Error(settings.code);
   const r = await createRunner({ ...settings.settings, timeoutMs: 200 }, () => {});
