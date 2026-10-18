@@ -21,14 +21,37 @@ export interface Token {
 
 const SPACE = /^[ \t\n\r\f\v]$/u;
 
+/** Between the parts of a continued string: whitespace and line comments (statements.ts continuationAt). */
+const GAP = /(?:[ \t\n\r\f\v]|--[^\n\r]*)*/uy;
+
 /**
- * A string's value: each quoted run, quotes undoubled, continuations joined.
- * In an E'' or U&'' string, `\\` is one backslash and any other escape is refused.
+ * A string's value: each quoted part, quotes undoubled, continuations joined.
+ * Each part is read from where the last one ended, past the gap, so a quote in
+ * a comment between parts is not paired. In an E'' or U&'' string, `\\` is
+ * one backslash and any other escape is refused.
  */
 function stringValue(text: string, escapes: boolean): string {
   // A backslash escapes a quote only in an E'' string.
-  const quotedRun = /^[Ee]'/u.test(text) ? /'((?:[^'\\]|''|\\[\s\S])*)'/gu : /'((?:[^']|'')*)'/gu;
-  const runs = [...text.matchAll(quotedRun)].map((match) => match[1] ?? '');
+  const part = /^[Ee]'/u.test(text) ? /'((?:[^'\\]|''|\\[\s\S])*)'/uy : /'((?:[^']|'')*)'/uy;
+  const runs: string[] = [];
+  let end = text.indexOf("'");
+  for (let next = end; ; next = GAP.lastIndex) {
+    part.lastIndex = next;
+    const match = part.exec(text);
+    if (match === null) {
+      // A part that never closes runs to the end of the text, as the scanner reads it.
+      if (text[next] === "'") {
+        runs.push(text.slice(next + 1));
+        end = text.length;
+      }
+      break;
+    }
+    runs.push(match[1] ?? '');
+    end = part.lastIndex;
+    GAP.lastIndex = end;
+    GAP.exec(text);
+  }
+  if (end !== text.length) throw new Error('a string this reader cannot split into its parts');
   const joined = runs.map((run) => run.replaceAll("''", "'")).join('');
   if (!escapes) return joined;
   for (const escape of joined.matchAll(/\\[\s\S]?/gu)) {
