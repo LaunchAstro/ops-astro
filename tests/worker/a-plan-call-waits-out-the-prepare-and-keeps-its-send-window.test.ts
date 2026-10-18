@@ -6,12 +6,16 @@
 // and the request it sends must still be written by the accept plus W (3 s).
 // Any other call keeps its 5 s accept window: an Ollama call whose accept
 // waits on a slow prepare is released, and nothing is sent. The prepare here
-// takes 6 s, past the 5 s window and well inside 35 s.
+// takes 6 s, past the 5 s window and well inside 35 s. The agent's clock is
+// learnt from when it joined the call's line, before the prepare, so the
+// function's seals are good on that clock for one seal's life, never that
+// plus the prepare.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, expect, it } from 'vitest';
 import {
+  SEAL_LIFE_MS,
   SEND_WINDOW_MS,
   agentTopic,
   parseCarryKeys,
@@ -35,6 +39,8 @@ interface Seen {
   preparedAt?: number;
   deadlineAt?: number;
   acceptedAt?: number;
+  /** The function's request seal's expiry, on the agent's clock. */
+  requestExpiresAt?: number;
 }
 
 /** One call carried by the function's custody to an agent whose prepare takes 6 s. */
@@ -89,6 +95,9 @@ async function carriedAfterSlowPrepare(request: OutboundRequest): Promise<{
   };
   try {
     const outcome = await custody.dispatch('ollama_key', request, undefined, undefined, handoff);
+    const sent = world.carriage.said.find((said) => said.event === 'request');
+    const expiresAt = (sent?.message as { expiresAt?: unknown } | undefined)?.expiresAt;
+    if (typeof expiresAt === 'number') seen.requestExpiresAt = expiresAt;
     return { outcome, seen };
   } finally {
     await bell.line.leave();
@@ -100,6 +109,13 @@ it('a plan call accepted after a 6 s prepare is taken, and its request is due by
   expect(outcome.kind).toBe('answered');
   expect(seen.acceptedAt).toBeGreaterThanOrEqual(seen.preparedAt ?? Number.POSITIVE_INFINITY);
   expect((seen.deadlineAt ?? 0) - (seen.acceptedAt ?? 0)).toBe(SEND_WINDOW_MS);
+}, 15_000);
+
+it("after a 6 s prepare, the function's request seal is good for one seal's life past the accept, not that plus the prepare", async () => {
+  const { outcome, seen } = await carriedAfterSlowPrepare(planRequest());
+  expect(outcome.kind).toBe('answered');
+  const life = (seen.requestExpiresAt ?? Number.POSITIVE_INFINITY) - (seen.acceptedAt ?? 0);
+  expect(life).toBeLessThanOrEqual(SEAL_LIFE_MS + 1_000);
 }, 15_000);
 
 it('an Ollama call whose accept waits on a 6 s prepare keeps its 5 s window: released, nothing sent', async () => {
