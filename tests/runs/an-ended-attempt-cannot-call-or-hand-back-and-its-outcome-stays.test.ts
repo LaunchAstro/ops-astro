@@ -2,28 +2,27 @@
 //
 // #1623 R1, `sol-1623-ended-attempt-cannot-call-or-handback`: once a stop has
 // written an attempt's outcome and retired its work, the old holder's
-// credential can neither read, dispatch nor hand back on that lease, and none
+// credential can neither read, dispatch, make a model call through the real
+// broker door nor hand back on that lease, and none
 // of its late calls writes a second outcome or changes the first (design R1,
 // R2: the outcome row is an immutable observation of the stop, first writer
 // wins). The control is a live attempt, which reads and hands back as before.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   appliedDetail,
   asAgent,
   asPerson,
   handbackBody,
   liveWork,
-  openSchedules,
-  type Schedules,
   type Work,
 } from '../runtime/schedules-harness.ts';
 import { attemptOfLease, outcomesOfAttempt } from './run-outcomes-read.ts';
+import { callsOf, modelCall, noDatabase, s, useStopWorld } from './run-stop-world.ts';
 
-const outcomesOf = async (s: Schedules, work: Work) => {
+const outcomesOf = async (work: Work) => {
   const { attemptId } = await attemptOfLease(
     s.db.admin,
     s.business,
@@ -33,7 +32,7 @@ const outcomesOf = async (s: Schedules, work: Work) => {
 };
 
 /** The old holder's three late calls on its own lease, each under its own credential. */
-const lateCalls = (s: Schedules, work: Work) => {
+const lateCalls = (work: Work) => {
   const credential = String(work.picked['credential']);
   const lease = { leaseId: work.picked['leaseId'], fence: work.picked['fence'] };
   return [
@@ -60,14 +59,9 @@ const lateCalls = (s: Schedules, work: Work) => {
 };
 
 // eslint-disable-next-line max-lines-per-function -- one world, a stop and its control
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('an ended attempt', () => {
-  let s: Schedules;
-  beforeAll(async () => {
-    s = await openSchedules('r1ended', 100_000);
-  }, 120_000);
-  afterAll(async () => {
-    await s?.db.drop();
-  });
+describe.skipIf(noDatabase)('an ended attempt', () => {
+  // The broker's world, so a late model call crosses the real door and broker.
+  useStopWorld('r1ended');
 
   it('after a cancel records its outcome, the old credential cannot read, dispatch or hand back, and the one outcome row stays as the cancel wrote it', async () => {
     const work = await liveWork(s, 'cancelled, then called late', 1_000);
@@ -81,25 +75,33 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('an ended attempt', 
       }),
       'cancel',
     );
-    const recorded = await outcomesOf(s, work);
+    const recorded = await outcomesOf(work);
     expect(recorded.map((row) => [row.outcome, row.end_code])).toStrictEqual([
       ['cancelled', 'TASK_CANCELLED'],
     ]);
 
-    for (const [name, late] of lateCalls(s, work)) {
+    for (const [name, late] of lateCalls(work)) {
       // eslint-disable-next-line no-await-in-loop -- one late call at a time, each checked
       const answer = await late();
       expect(isCommandRefusal(answer), `${name} on an ended attempt`).toBe(true);
       // eslint-disable-next-line no-await-in-loop -- the row after each call
-      expect(await outcomesOf(s, work), `${name} leaves the outcome as written`).toStrictEqual(
+      expect(await outcomesOf(work), `${name} leaves the outcome as written`).toStrictEqual(
         recorded,
       );
     }
+
+    // A late model call on the old credential, through the real door and broker.
+    const late = await modelCall(work);
+    expect(late.status, 'model.call on an ended attempt').not.toBe(200);
+    expect(await callsOf(work), 'the late call holds nothing').toEqual([]);
+    expect(await outcomesOf(work), 'model.call leaves the outcome as written').toStrictEqual(
+      recorded,
+    );
   });
 
   it('control: a live attempt reads its task and hands back, and nothing in R1 stops it', async () => {
     const work = await liveWork(s, 'live, reads and hands back', 1_000);
-    const [read, , handback] = lateCalls(s, work);
+    const [read, , handback] = lateCalls(work);
     expect(isCommandRefusal(await read[1]()), 'live read').toBe(false);
     expect(isCommandRefusal(await handback[1]()), 'live handback').toBe(false);
   });
