@@ -73,7 +73,7 @@ type Called = Parameters<typeof standsOutside>[1] & {
 };
 
 /** The token's `exp`, in milliseconds; the door verified the token, this reads it. */
-function expiresAt(token: string): number {
+export function expiresAt(token: string): number {
   try {
     const { exp } = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
       exp?: unknown;
@@ -167,7 +167,7 @@ async function judgeCarriage(
 }
 
 /** Grant contention under the `nowait` hold: nothing was sent, so the call is released. */
-const busy = (cause: unknown): { readonly ok: false; readonly code: string } => {
+export const busy = (cause: unknown): { readonly ok: false; readonly code: string } => {
   if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
   return { ok: false, code: 'AUTHORITY_BUSY' };
 };
@@ -188,7 +188,7 @@ async function offer(database: Database, businessId: BusinessId, asked: Asked): 
 }
 
 /** The send recorded, committed: the runner, `request_at`, `send_by` (the agent's) and `answer_by`. */
-async function recordSend(
+export async function recordSend(
   database: Database,
   businessId: BusinessId,
   callId: string,
@@ -220,20 +220,22 @@ async function recordSend(
 
 type Fenced = Awaited<ReturnType<Handoff['fence']>>;
 
-/** The send judgement, whose transaction holds its locks until released or W after `heardAt`. */
-function holdSend(
-  database: Database,
-  businessId: BusinessId,
-  asked: Asked,
-  accept: { readonly runner: string; readonly heardAt: number },
+/**
+ * The send judgement, whose transaction (`open`, handing its work whatever the
+ * judgement is made by) holds its locks until released or W after `heardAt`.
+ */
+export function holdSend<By>(
+  open: (work: (tx: TenantQuery, by: By) => Promise<void>) => Promise<unknown>,
+  judge: (tx: TenantQuery, by: By) => Promise<Judged>,
+  heardAt: number,
 ): Promise<Fenced> {
   return new Promise<Fenced>((ready) => {
     let letGo = nothing;
     const released = new Promise<void>((resolve) => {
       letGo = resolve;
     });
-    const running = withSession(database, businessId, asked.presented, async (tx, session) => {
-      const passed = await judgeCarriage(tx, session, asked, { runner: accept.runner });
+    const running = open(async (tx, by) => {
+      const passed = await judge(tx, by);
       if (!passed.ok) {
         ready(passed);
         return;
@@ -246,7 +248,7 @@ function holdSend(
           await running;
         },
       });
-      const left = Math.max(0, accept.heardAt + SEND_WINDOW_MS - Date.now());
+      const left = Math.max(0, heardAt + SEND_WINDOW_MS - Date.now());
       await Promise.race([
         released,
         new Promise((resolve) => {
@@ -293,7 +295,11 @@ export function carriageHandoff(
         if (!(await recordSend(database, businessId, callId, accept))) {
           return { ok: false, code: 'DECISION_STALE' };
         }
-        return await holdSend(database, businessId, asked, { runner, heardAt });
+        return await holdSend<Session>(
+          async (work) => await withSession(database, businessId, presented, work),
+          async (tx, session) => await judgeCarriage(tx, session, asked, { runner }),
+          heardAt,
+        );
       },
     };
   };
