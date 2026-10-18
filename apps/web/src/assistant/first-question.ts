@@ -12,7 +12,7 @@ import type {
   OperationsClient,
 } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
-import { started, type Chat } from './chats.ts';
+import { reopened, started, type Chat } from './chats.ts';
 import { citesOf } from './cites.ts';
 import type { Baseline } from './proposals.ts';
 import type { Kept, Resends } from './resend.ts';
@@ -21,6 +21,8 @@ import type { Subject } from './subject.ts';
 import { withPieces } from './writing.ts';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
+
+export const APART = 'Already asked in a conversation of its own: its answer is in that tab.';
 
 export type Sent = Promise<CallResult<CommandOutcome>>;
 
@@ -59,6 +61,36 @@ function answeredFor(
     replays.keep(reply, sent.baseline ?? null);
 }
 
+/**
+ * A lost start replayed after another question started the tab: its question
+ * and answer go to a tab on its own conversation, so what the answer offers
+ * acts from that conversation; the asking tab stays on its own and says so.
+ * A tab already open on it is selected and given nothing again.
+ */
+function answeredApart(
+  store: Store,
+  from: Chat,
+  apart: { readonly id: string; readonly body: string; readonly sent: Kept },
+  answer: (key: string) => void,
+): void {
+  const { id, body, sent } = apart;
+  store.line(from.key, 'note', APART);
+  const open = store.now().chats.some((chat) => chat.conversationId === id);
+  const title = sent.request['title'];
+  const tab = {
+    conversationId: id,
+    title: typeof title === 'string' ? title : from.title,
+    messages: [],
+    reading: false,
+    taskId: from.taskId ?? null,
+  };
+  store.update((current) => reopened(current, [tab]));
+  const into = store.now().chats.find((chat) => chat.conversationId === id)?.key;
+  if (open || into === undefined) return;
+  store.line(into, 'user', body);
+  answer(into);
+}
+
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
 export function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
@@ -66,6 +98,14 @@ export function replied(store: Store, key: string, reply: ConversationReply | un
   else if (reply.answered) store.answer(key, reply, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
+
+/** How an answer is placed in a tab: as `replied` places it, or bound by the attempt that carried it. */
+const answering =
+  (store: Store, reply: ConversationReply | undefined, sent: Kept | undefined, replays: Replays) =>
+  (key: string): void => {
+    if (sent === undefined) replied(store, key, reply);
+    else answeredFor(store, key, reply, sent, replays);
+  };
 
 /** The tab's first question with its model, its answer, a reopened twin's later lines, then its page. */
 export async function startWith(
@@ -108,11 +148,12 @@ export async function startWith(
     return null;
   }
   const reply = settled.kind === 'ok' ? settled.value.reply : undefined;
-  if (sent === undefined) replied(store, chat.key, reply);
-  else answeredFor(store, chat.key, reply, sent, replays);
-  // A lost start replayed after another question started the tab: its answer
-  // stays under its own question, and the tab keeps the conversation it is on.
-  if ((store.chat(chat.key)?.conversationId ?? null) !== null) return id;
+  const answer = answering(store, reply, sent, replays);
+  if (sent !== undefined && (store.chat(chat.key)?.conversationId ?? null) !== null) {
+    answeredApart(store, chat, { id, body, sent }, answer);
+    return id;
+  }
+  answer(chat.key);
   store.update((current) => started(current, chat.key, id));
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
