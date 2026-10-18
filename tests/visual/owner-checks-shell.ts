@@ -101,7 +101,44 @@ export const SHELL: readonly Check[] = [
       ],
       [
         'Both settings stick after signing out and in',
-        notHere('needs a real sign-in; the made-up reads do not keep a write'),
+        async (page, at) => {
+          const me = page.getByRole('button', { name: /signed in$/u });
+          if ((await me.count()) === 0) throw red('not signed in, so there is no session to end');
+          await me.click();
+          await page
+            .getByRole('menuitem', { name: /sign out/iu })
+            .or(page.getByRole('button', { name: /sign out/iu }))
+            .first()
+            .click();
+          await expectVisible('the sign-in form', () =>
+            page.getByRole('form', { name: 'Sign in' }),
+          );
+          const login = loginOf('OWNER');
+          if (login === undefined) {
+            throw red('no made-up owner login in OWNER_CHECK_OWNER_EMAIL to sign in again');
+          }
+          await signIn(page, at, login);
+          await page.waitForURL((url) => url.pathname !== '/sign-in', { timeout: 15_000 });
+          await go(page, at, '/settings');
+          for (const [group, name] of [
+            ['Appearance', 'Dark'],
+            ['Guided tips', 'Off'],
+          ] as const) {
+            const button = page.getByRole('group', { name: group }).getByRole('button', { name });
+            if ((await button.getAttribute('aria-pressed')) !== 'true') {
+              throw red(`${group} is not ${name} after signing in again`);
+            }
+          }
+          // The made-up owner's settings go back as they were.
+          await page
+            .getByRole('group', { name: 'Appearance' })
+            .getByRole('button', { name: 'System' })
+            .click();
+          await page
+            .getByRole('group', { name: 'Guided tips' })
+            .getByRole('button', { name: 'On' })
+            .click();
+        },
       ],
       [
         'Inside a client, press Client then Agency: the teal strip',

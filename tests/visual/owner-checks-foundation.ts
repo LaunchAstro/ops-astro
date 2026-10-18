@@ -170,6 +170,10 @@ export const FOUNDATION: readonly Check[] = [
                 if (!mark.checkVisibility({ visibilityProperty: true, opacityProperty: true })) {
                   return false;
                 }
+                // Painted: a fill, or a stroke with width; an unpainted outline draws nothing.
+                const style = getComputedStyle(mark);
+                const stroked = style.stroke !== 'none' && style.strokeWidth !== '0px';
+                if (style.fill === 'none' && !stroked) return false;
                 const box = mark.getBBox();
                 return mark.tagName === 'line' || mark.tagName === 'polyline'
                   ? box.width + box.height > 0
@@ -182,8 +186,16 @@ export const FOUNDATION: readonly Check[] = [
             throw red(`chart ${String(undrawn + 1)} of ${String(drawn.length)} is not drawn`);
           const box = await charts.first().boundingBox();
           if (box === null) throw red('the first chart has no size');
+          // Only a value the hover brings counts, not one already on the page.
+          const tips = page.getByRole('tooltip').filter({ visible: true });
+          const before = await tips.count();
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await expectVisible('a value on hover', () => page.getByRole('tooltip'));
+          const shown = await tips
+            .nth(before)
+            .waitFor({ state: 'visible', timeout: 4000 })
+            .then(() => true)
+            .catch(() => false);
+          if (!shown) throw red('no value shown on hover');
         },
       ],
       [
