@@ -24,7 +24,12 @@ import type { TenantQuery } from '../tenancy/database.ts';
 /** How many due corrections a pass takes: cheap rows, since the reads are shared. */
 export const DUE_PER_PASS = 20;
 
-const AGAIN = `clock_timestamp() + interval '15 seconds'`;
+/**
+ * A schedule moves only forward, as the pin trigger requires: a write racing another pass's
+ * keeps the later of the two times, so a check that lands after a failure's backoff keeps it.
+ */
+const forward = (at: string): string => `greatest(c.next_check_at, ${at})`;
+const AGAIN = forward(`clock_timestamp() + interval '15 seconds'`);
 const LOCATE_FOR = `interval '120 seconds'`;
 
 /** The one site the runner acts for (`SITE_RUNNER_SITE`), as the records compare it. */
@@ -55,9 +60,13 @@ export interface DueCorrection {
   } | null;
 }
 
-/** The due corrections of this business, in turn: never checked first, then oldest. */
+/**
+ * The due corrections of one holder's site (the configured site's holder) in this business, in
+ * turn: never checked first, then oldest. Another holder's corrections are left for its own runner.
+ */
 export async function dueCorrections(
   tx: TenantQuery,
+  holder: string,
   limit: number = DUE_PER_PASS,
 ): Promise<readonly DueCorrection[]> {
   const rows = await tx.query<{
@@ -81,10 +90,11 @@ export async function dueCorrections(
        left join public.party_sites s
          on s.business_id = c.business_id and s.holder = coalesce(c.party_id, c.business_id)
       where c.business_id = $1 and c.state in ('locating', 'requested')
+        and coalesce(c.party_id, c.business_id) = $3::uuid
         and (c.next_check_at is null or c.next_check_at <= clock_timestamp())
       order by c.next_check_at nulls first, c.created_at, c.id
       limit $2`,
-    [tx.businessId, limit],
+    [tx.businessId, limit, holder],
   );
   return rows.map((row) => ({
     id: row.id,
@@ -261,10 +271,10 @@ export async function checksFailed(
             located_at = case when ${aged} then clock_timestamp() else c.located_at end,
             revision = case when ${aged} then c.revision + 1 else c.revision end,
             check_failures = case when ${aged} then c.check_failures else c.check_failures + 1 end,
-            next_check_at = case when ${aged} then c.next_check_at else least(
+            next_check_at = case when ${aged} then c.next_check_at else ${forward(`least(
               clock_timestamp() + least(interval '15 seconds' * power(2, c.check_failures + 1),
                                         interval '120 seconds'),
-              case when c.state = 'locating' then c.created_at + ${LOCATE_FOR} end) end
+              case when c.state = 'locating' then c.created_at + ${LOCATE_FOR} end)`)} end
       where c.business_id = $1 and c.id = any($2::uuid[]) and c.state in ('locating', 'requested')
       returning c.id, c.state`,
     [tx.businessId, ids],
