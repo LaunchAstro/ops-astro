@@ -65,7 +65,7 @@ it('the third call of three settles, ends the attempt call_limit, and a fourth r
   });
   const seen = world.provider.seen.length;
   const fourth = await asAgent('/model/call', work, callBody(work), as);
-  expect(fourth.body['code'], JSON.stringify(fourth.body)).toMatch(/^LEASE_/u);
+  expect(fourth.body['code'], JSON.stringify(fourth.body)).toBe('DELEGATION_NOT_LIVE');
   expect(world.provider.seen.length).toBe(seen);
   await expectCallLimit(work);
 }, 60_000);

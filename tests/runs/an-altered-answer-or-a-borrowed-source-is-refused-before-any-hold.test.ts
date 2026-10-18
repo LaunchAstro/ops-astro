@@ -74,9 +74,11 @@ async function secondTurn(
 ): Promise<{ readonly answer: Answer; readonly sent: number }> {
   const as = await signedIn();
   const first = await firstTurn(work, as);
+  // The parts first: a foreign answer is made by a send of its own.
+  const body = turnBody(work, 1, await parts(first));
   world.provider.script([replied('Done.')]);
   const seen = world.provider.seen.length;
-  const answer = await asAgent('/model/call', work, turnBody(work, 1, await parts(first)), as);
+  const answer = await asAgent('/model/call', work, body, as);
   return { answer, sent: world.provider.seen.length - seen };
 }
 
