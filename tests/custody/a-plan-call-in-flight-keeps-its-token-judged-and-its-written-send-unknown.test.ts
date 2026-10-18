@@ -7,65 +7,12 @@
 // A timeout after the request was written is never told as nothing sent.
 
 import { randomBytes } from 'node:crypto';
-import { createServer, type ServerResponse } from 'node:http';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import type { ServerResponse } from 'node:http';
 import { expect, it } from 'vitest';
-import { startCustody } from '../../packages/core-custody/src/custody.ts';
-import { seed, tempDir, tokens, HOUR } from './fixtures/plan-token-world.ts';
+import { seed, tokens, HOUR } from './fixtures/plan-token-world.ts';
+import { open } from './fixtures/plan-inflight-world.ts';
 import { planRequest } from './fixtures/plan-route-world.ts';
 import { completed, stream } from './fixtures/plan-answer-world.ts';
-
-async function open() {
-  const dir = tempDir();
-  const old = {
-    ...tokens('before', Date.now() + 2 * HOUR),
-    accessToken: randomBytes(48).toString('base64url'),
-    refreshToken: randomBytes(48).toString('base64url'),
-  };
-  await seed(dir.file, { state: 'ready', tokens: old });
-  const credentialsFile = join(dir.dir, 'credentials.json');
-  writeFileSync(credentialsFile, '[]', { mode: 0o600 });
-  let respond!: (response: ServerResponse) => void;
-  let received!: () => void;
-  const arrived = new Promise<void>((done) => {
-    received = done;
-  });
-  const server = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      respond(res);
-      received();
-    });
-  });
-  await new Promise<void>((done) => {
-    server.listen(0, '127.0.0.1', done);
-  });
-  const port = (server.address() as { port: number }).port;
-  const custody = await startCustody({
-    credentialsFile,
-    destinations: [{ key: 'chatgpt_plan', origin: `http://127.0.0.1:${port}` }],
-    plan: { tokenFile: dir.file, issuer: 'https://auth.openai.com' },
-  });
-  expect(await custody.prepare()).toEqual({ ok: true });
-  return {
-    custody,
-    dir,
-    old,
-    arrived,
-    onRequest: (fn: (response: ServerResponse) => void) => {
-      respond = fn;
-    },
-    close: async () => {
-      await custody.stop();
-      server.closeAllConnections();
-      await new Promise<void>((done) => {
-        server.close(() => done());
-      });
-      dir.done();
-    },
-  };
-}
 
 it('a concurrent prepare cannot expose the token of an in-flight call', async () => {
   const w = await open();
