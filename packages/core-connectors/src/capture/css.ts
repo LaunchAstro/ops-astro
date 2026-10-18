@@ -80,7 +80,8 @@ const OPENS = new Map([
 ]);
 /**
  * Whether a style attribute may hide its element: a `display` declaration with any word outside
- * SHOWN. Declarations end at a `;` outside every block, as CSS reads a declaration list.
+ * SHOWN. Declarations end at a `;` outside every block. An at-rule or a block outside every block
+ * may end a declaration without one, as browsers read it, so either counts as hiding.
  */
 export function hiddenStyle(source: string): boolean {
   const css = preprocessed(source);
@@ -91,6 +92,7 @@ export function hiddenStyle(source: string): boolean {
     const raw = css.slice(at, token.end);
     at = token.end;
     if (token.kind === ' ') continue;
+    if (closers.length === 0 && (token.kind.startsWith('@') || raw === '{')) return true;
     const opened = OPENS.get(token.kind === 'url(' ? 'url(' : raw);
     if (opened !== undefined) closers.push(opened);
     else if (raw === closers.at(-1)) closers.pop();
