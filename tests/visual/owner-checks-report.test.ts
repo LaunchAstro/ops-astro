@@ -37,10 +37,7 @@ describe('the owner-check pack page', () => {
       stamp: '73747fda4218',
       made: '18 Oct 2026',
       units: [
-        unit(
-          [{ step: '<img src=x onerror=alert(1)>', outcome: { kind: 'ok' } }],
-          'U06-"x.webm',
-        ),
+        unit([{ step: '<img src=x onerror=alert(1)>', outcome: { kind: 'ok' } }], 'U06-"x.webm'),
       ],
     });
     expect(html).not.toContain('<img src=x');
