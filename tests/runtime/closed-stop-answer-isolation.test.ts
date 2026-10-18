@@ -3,8 +3,8 @@
 // The answers to a budget stop raised on a closed hold, crossed. Each stop
 // here is the no-room stop of `unsent-call-on-a-closed-hold`: the first hold
 // closed at its spend by its ended lease with a call reserved and never sent,
-// so a top-up that applies releases that call uncounted (`releaseUncounted`)
-// and holds afresh. Every crossing below names a stop it may not answer, or
+// which that lease's stop releases uncounted (#1623 R1), so a top-up that
+// applies holds afresh. Every crossing below names a stop it may not answer, or
 // answers as a caller who may not, through the command entry a person or an
 // agent reaches, and then reads that nothing of the other side moved: its
 // calls, holds, asks, answers, approvals and envelope.

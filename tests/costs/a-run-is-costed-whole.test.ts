@@ -94,6 +94,8 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
     const ran = await w.run({
       skill: skill.versionId,
       calls: [{ state: 'settled', minor: 100 }, { state: 'reserved' }],
+      // #1623 R1 (B2): a revoke's stop releases a call never started, so the run stays open.
+      end: 'open',
       hoursAgo: 60,
     });
     const result = await log(around(60));
