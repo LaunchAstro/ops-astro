@@ -199,9 +199,21 @@ const WATCH_AND_PROTECT = [
   end $$`,
   `revoke all on all functions in schema ops_astro_made_up from public`,
   `drop event trigger if exists ${GUARD}`,
-  `create event trigger ${GUARD} on ddl_command_end
-  when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch()`,
-  `alter event trigger ${GUARD} enable always`,
+  // Made only when absent, with its enabling in the same statement: another
+  // install may have made it since this one dropped it. One under the name
+  // that does not call watch() is refused, never kept.
+  `
+  do $$ begin
+    if exists (select from pg_event_trigger where evtname = '${GUARD}'
+        and evtfoid <> 'ops_astro_made_up.watch()'::regprocedure) then
+      raise exception 'made-up-install: an event trigger named ${GUARD} does not call watch()';
+    end if;
+    if not exists (select from pg_event_trigger where evtname = '${GUARD}') then
+      create event trigger ${GUARD} on ddl_command_end
+      when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch();
+    end if;
+    alter event trigger ${GUARD} enable always;
+  end $$`,
 ];
 
 /**
