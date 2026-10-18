@@ -23,6 +23,7 @@ import { isUuid } from '../tenancy/ids.ts';
 import { chatsNow } from '../inbox/access.ts';
 import type { SpineField } from '../tasks/spine.ts';
 import { shownAt, type ReadPosition } from './read-position.ts';
+import { conversationClock, messageTypeOf } from './conversation-clock.ts';
 
 /** The conversation type's key, beside `task_comment`. */
 export const CONVERSATION_TYPE_KEY = 'team_conversation';
@@ -68,8 +69,8 @@ export async function readConversationTypes(
 /** The server's now, to the millisecond a comment's `posted_at` carries. */
 const NOW_MS = `date_trunc('milliseconds', now())`;
 
-/** The wall clock to the millisecond, read after the conversation's lock is held. */
-const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
+/** The conversation's clock, read after its lock is held. */
+const CLOCK_MS = conversationClock('$1', '$2::uuid', messageTypeOf('$1'));
 
 /**
  * Serialise one conversation's message writes and read-marker moves until the
@@ -131,7 +132,7 @@ const POSITION = `c.ts_1 + interval '1 microsecond' * (select count(*) from publ
      and (s.created_at, s.id) <= (c.created_at, c.id))`;
 
 /**
- * Move a member's own read marker to `upTo`, never back and never past now; false when the
+ * Move a member's own read marker to `upTo`, never back and never past the conversation's now; false when the
  * person is not a current member. A marker is a position: the millisecond plus how many of
  * its messages were seen; `now` has seen all, counted before the clock is read, and a read
  * position the ones its reading showed (never more than exist; only the first if past now).
