@@ -127,7 +127,7 @@ it('AW-01 rate limit: past the durable ceiling the call is refused, holding noth
   expect(refused).toEqual({ ok: false, code: 'RATE_LIMITED', callId: expect.any(String) });
   expect(await callCount()).toBe(before + 1);
   expect(await rowsOf((refused as { callId: string }).callId)).toMatchObject([
-    { state: 'refused', reserved_minor: 0 },
+    { state: 'refused', reserved_minor: '0' },
   ]);
   await first;
 });

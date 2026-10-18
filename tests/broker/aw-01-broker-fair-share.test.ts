@@ -103,7 +103,11 @@ async function holdsNothing(reservation: Reservation): Promise<void> {
   const [row] = await s.db.admin.execute(`select * from public.model_calls where id = $1`, [
     reservation.ok ? null : reservation.callId,
   ]);
-  expect(row).toMatchObject({ state: 'refused', reserved_minor: 0, refusal_code: 'RATE_LIMITED' });
+  expect(row).toMatchObject({
+    state: 'refused',
+    reserved_minor: '0',
+    refusal_code: 'RATE_LIMITED',
+  });
 }
 
 /** The refusal as the caller sees it, without the register's shape. */
@@ -165,8 +169,12 @@ it('AW-01 fair share: with another business in flight, a business holds no more 
   expect(outcomeOf(await hold(s, alpha, shared))).toBe('held');
   expect(outcomeOf(await hold(s, alpha, shared))).toBe('held');
   expect(answered(await hold(s, alpha, shared))).toEqual(WAIT);
-  // Bravo's share is untouched by alpha's refusal.
-  expect(outcomeOf(await hold(bravo, theirs, shared))).toBe('held');
+  // Alpha's refusal ended its attempt and released its unsent holds (#1623 R1, B2), so
+  // bravo, alone in flight now, holds up to the route's ceiling of 4 and no further.
+  for (let held = 2; held <= 4; held += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    expect(outcomeOf(await hold(bravo, theirs, shared))).toBe('held');
+  }
   expect(answered(await hold(bravo, theirs, shared))).toEqual(WAIT);
 });
 
