@@ -354,6 +354,12 @@ pnpm cli task list [--board <id> | --mode aggregate] [--person <id>] [--client <
 pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
 pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
 pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
+pnpm cli task block <id> --revision n --blocked-by a,b
+pnpm cli task claim <id> --revision n
+pnpm cli task resolve <id> --revision n --answer <t> --gist <t>
+pnpm cli task close <id> --revision n --reason <t>
+pnpm cli map chart --body-file <path>
+pnpm cli map graduate <id> --revision n --patch <id> --body-file <path>
 pnpm cli map view|frontier <id>
 pnpm cli map list
 ```
