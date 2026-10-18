@@ -16,8 +16,10 @@ export function productionTokenHolder(
 ):
   | { readonly ok: true; readonly holder: TokenHolder }
   | { readonly ok: false; readonly code: IssuerRefusal } {
-  if (!planIssuer(options.tokenUrl)) return { ok: false, code: 'SUBSCRIPTION_ISSUER_REFUSED' };
-  const { file, tokenUrl, now, log } = options;
+  // Judged on a private copy, so the caller's later edit to its URL cannot redirect the holder.
+  const tokenUrl = new URL(options.tokenUrl.href);
+  if (!planIssuer(tokenUrl)) return { ok: false, code: 'SUBSCRIPTION_ISSUER_REFUSED' };
+  const { file, now, log } = options;
   // Rebuilt field by field: no fault-injecting `fs` reaches production.
   return {
     ok: true,

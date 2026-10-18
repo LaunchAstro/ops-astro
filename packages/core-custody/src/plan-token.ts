@@ -23,7 +23,7 @@ import {
   type TokenFs,
 } from './token-file.ts';
 import { withTokenLock, type HeldLock } from './token-lock.ts';
-import { issuerAllowed, refreshOnce, type RefreshResult } from './token-refresh.ts';
+import { issuerCopy, refreshOnce, type RefreshResult } from './token-refresh.ts';
 
 export const REFRESH_AHEAD_MS: number = 5 * 60_000;
 export const PREPARE_HORIZON_MS = 60_000;
@@ -48,7 +48,7 @@ export type PlanLogKind =
   | 'token store recovered';
 export interface TokenHolderOptions {
   readonly file: string;
-  /** The plan issuer, or a 127.0.0.1 issuer for tests only; anything else throws at build. */
+  /** The plan issuer, or a 127.0.0.1 issuer for tests only; anything else throws at build. Copied. */
   readonly tokenUrl: URL;
   readonly now?: () => number;
   readonly log?: (kind: PlanLogKind) => void;
@@ -162,9 +162,8 @@ function fromAnswer(
 
 // oxlint-disable-next-line max-lines-per-function -- one holder's state (held pair, unwritten record, prepare in flight) and the steps that change it
 export function tokenHolder(options: TokenHolderOptions): TokenHolder {
-  const { file, tokenUrl } = options;
-  if (!issuerAllowed(tokenUrl))
-    throw new TypeError('the token URL is not the plan issuer or a 127.0.0.1 test issuer');
+  const { file } = options;
+  const tokenUrl = issuerCopy(options.tokenUrl);
   const now = options.now ?? Date.now;
   const log = options.log ?? (() => {});
   const fs = options.fs ?? {};

@@ -728,4 +728,5 @@ for tests. P2 to P5 remain PARKED.
   `productionTokenHolder` (`plan-token-production.ts`), which accepts only
   `https://auth.openai.com`, with no credentials in the URL, and answers
   anything else, loopback included, `SUBSCRIPTION_ISSUER_REFUSED` at start.
-  P4 wires it.
+  Both holders judge and keep a private copy of the URL, so the caller's
+  later edit to its own URL cannot redirect the refresh. P4 wires it.

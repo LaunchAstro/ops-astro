@@ -41,6 +41,17 @@ export function issuerAllowed(url: URL): boolean {
   return planIssuer(url) || (loopback && bare(url));
 }
 
+/**
+ * A private copy of an allowed token URL, judged after copying, so the
+ * caller's later edit to its own URL cannot redirect the refresh.
+ */
+export function issuerCopy(url: URL): URL {
+  const copy = new URL(url.href);
+  if (!issuerAllowed(copy))
+    throw new TypeError('the token URL is not the plan issuer or a 127.0.0.1 test issuer');
+  return copy;
+}
+
 /** Classifies the issuer's answer, reading at most TOKEN_ANSWER_BYTES of a 200. */
 function readAnswer(res: IncomingMessage, settle: (result: RefreshResult) => void): void {
   const status = res.statusCode ?? 0;
