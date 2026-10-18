@@ -43,6 +43,12 @@ export interface SitePortDependencies extends Omit<BindingDependencies, 'record'
 const ABSENT = { state: 'absent' } as const;
 const UNKNOWN = { state: 'unknown' } as const;
 
+/** Custody's port and the caller's own admission of each call (#1693), where the caller set them. */
+const carried = ({ custody, admit }: SitePortDependencies) => ({
+  ...(custody === undefined ? {} : { custody }),
+  ...(admit === undefined ? {} : { admit }),
+});
+
 /** The runner's ports for one correction's proposal, every provider call guarded. */
 export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies): RunnerPorts {
   const codes: string[] = [];
@@ -51,7 +57,7 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     resolve: deps.resolve,
     credential: deps.credential,
     // A credential answered by reference is sent by custody, never by this process.
-    ...(deps.custody === undefined ? {} : { custody: deps.custody }),
+    ...carried(deps),
     wait: deps.wait,
     record: (code) => codes.push(code),
   };

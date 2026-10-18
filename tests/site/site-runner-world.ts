@@ -16,6 +16,8 @@ import { siteRunnerPorts, type RunnerPorts } from '../../packages/core-commands/
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { doubles } from './c80-runner-doubles.ts';
 import { REV, BEFORE } from './c80-world.ts';
+import { ABOUT, ASTRO_FILE, ASTRO_PAGE, PAGE } from './c80-sites.ts';
+import type { ConfiguredSite } from '../../apps/site-runner/configured.ts';
 import {
   MERGED,
   PROJECT,
@@ -38,6 +40,18 @@ export function useRunnerWorld(): void {
     );
   });
 }
+
+/** The one site the world's runner acts for: party A's, as the providers' double names it. */
+export const configuredSite = (): ConfiguredSite => ({
+  holder: w.partyA,
+  repository: REPOSITORY,
+  defaultBranch: 'main',
+  project: PROJECT,
+  pages: [
+    { pageUrl: PAGE, path: ABOUT },
+    { pageUrl: ASTRO_PAGE, path: ASTRO_FILE },
+  ],
+});
 
 const html = (text: string): Uint8Array =>
   new TextEncoder().encode(`<!doctype html><html><body><main>${text}</main></body></html>`);
@@ -69,6 +83,8 @@ export function world(): World {
   const sites: Sites = {
     propose: (_site, _path, raiseTask) => ({
       connector: site.deps,
+      // The default branch's head is still the base revision.
+      head: () => Promise.resolve({ kind: 'ok', value: REV } as const),
       // The file at a commit; only the base revision is ever asked for here.
       file: (at) => Promise.resolve(at === REV ? ({ kind: 'ok', value: base } as const) : refused),
       branch: () => Promise.resolve(refused),
@@ -148,6 +164,7 @@ export function runnerOn(
   const runner = createSiteRunner({
     db,
     business: w.world.business,
+    site: configuredSite(),
     actorId: lease.holder,
     claims: claims.claims,
     sites: given.sites,

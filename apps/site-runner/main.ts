@@ -2,25 +2,32 @@
 //
 // The site runner process (`docs/local/SITE-RUNNER.md`): `node apps/site-runner/main.ts`, run
 // by launchd on the M5 from a deployed main build
-// (`deploy/m5/ops-astro-site-runner.plist`). It signs in as its own agent
-// actor, starts custody with the two site destinations, opens its own
-// database login (TLS required), and runs a pass every 15 s. After each pass
-// it pings its heartbeat, so a stopped or broken runner goes quiet. SIGTERM,
-// which `launchctl bootout` sends, stops custody and the database and exits.
-// Its settings come from one file only its owner can read (`settings.ts`).
-// Nothing printed carries a password, a key, a bearer, a token or an address.
+// (`deploy/m5/ops-astro-site-runner.plist`). It opens its own database login
+// (TLS required), confirms its one configured site's holder is the business or
+// a client of it, signs in as its own agent actor, starts custody with the two
+// site destinations, and runs a pass every 15 s: the locate (`locate.ts`), then
+// the claims (`runner.ts`), each on its own so a failure in one leaves the
+// other and the heartbeat going. Locate only (`SITE_RUNNER_LOCATE_ONLY=1`)
+// takes no claims and signs in nowhere, and custody routes nothing but reads.
+// After each pass it pings its heartbeat, so a stopped or broken runner goes
+// quiet. SIGTERM, which `launchctl bootout` sends, stops custody and the
+// database and exits. Its settings come from one file only its owner can read
+// (`settings.ts`). Nothing printed carries a password, a key, a bearer, a
+// token or an address.
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createCli, httpTransport, isRefusal, unredirected } from '../cli/client.ts';
 import { agentSignIn } from '../worker/sign-in.ts';
 import { ping } from '../worker/heartbeat.ts';
 import { pinnedTransport, systemResolver } from '../../packages/core-connectors/src/index.ts';
-import { siteDestination, startCustody } from '../../packages/core-custody/src/index.ts';
-import { connect } from '../../packages/core-records/src/index.ts';
+import { startCustody } from '../../packages/core-custody/src/index.ts';
+import { connect, type BusinessId, type Database } from '../../packages/core-records/src/index.ts';
 import { queueClaims, type AgentCall } from './claims.ts';
+import { holderRefuses } from './configured.ts';
+import { locatePass } from './locate.ts';
 import { createSiteRunner, FOLLOW_EVERY_MS, type Claim, type Passed } from './runner.ts';
 import { HOSTING_ORIGIN, readSettings, SOURCE_ORIGIN, type Settings } from './settings.ts';
-import { custodySites } from './sites.ts';
+import { custodySites, siteDestinations, type RunnerSites } from './sites.ts';
 
 /** The agent's calls through the command line's own entry, settled to an `Answer`. */
 function apiCall(settings: Settings, bearer: () => Promise<string>): AgentCall {
@@ -62,29 +69,15 @@ async function signedIn(settings: Settings): Promise<AgentCall | string> {
   return 'because' in bearer ? 'sign-in refused' : apiCall(settings, bearer.current);
 }
 
-/** The runner on custody, the fence and its own database login, and how to stop them. */
-async function hosted(settings: Settings, call: AgentCall) {
-  const business = settings.OPS_ASTRO_BUSINESS_ID as Parameters<typeof queueClaims>[2];
-  const db = connect(settings.SITE_RUNNER_DATABASE_URL, { max: 2 });
-  const custody = await startCustody({
-    credentialsFile: settings.SITE_RUNNER_CREDENTIALS_FILE,
-    destinations: [
-      siteDestination('source_control', SOURCE_ORIGIN),
-      siteDestination('hosting', HOSTING_ORIGIN),
-    ],
-  });
+/** The claims' runner: the queue through the agent's calls, a person task logged by its code. */
+function claimsRunner(
+  settings: Settings,
+  db: Database,
+  call: AgentCall,
+  sites: RunnerSites,
+): () => Promise<readonly Passed[]> {
+  const business = settings.OPS_ASTRO_BUSINESS_ID as BusinessId;
   const claims = queueClaims(call, db, business);
-  const sites = custodySites({
-    custody,
-    resolve: systemResolver,
-    capture: {
-      pool: { agencyPages: settings.pages, otherPages: [], closedPoolReviews: [] },
-      resolve: systemResolver,
-      transport: pinnedTransport(),
-    },
-    wait: async (ms) => await sleep(ms),
-    now: Date.now,
-  });
   const raiseTask = async (claim: Claim, reason: string) => {
     console.error(`site-runner: raised ${reason} on task ${claim.taskId}`);
     await claims.raise(claim, reason);
@@ -92,6 +85,7 @@ async function hosted(settings: Settings, call: AgentCall) {
   const runner = createSiteRunner({
     db,
     business,
+    site: settings.site,
     // Before a pickup an agent may ask nothing but the queue (`agent-envelope.ts`,
     // `BEFORE_PICKUP`), so its actor is the holder the API names in its own pickup
     // answer. Every run is on a claim, so it is read after that pickup.
@@ -103,11 +97,75 @@ async function hosted(settings: Settings, call: AgentCall) {
     raiseTask,
     now: Date.now,
   });
+  return async () => await runner.pass();
+}
+
+/** The runner on custody, the fence and its own database login, and how to stop them. */
+async function hosted(settings: Settings, db: Database, call: AgentCall | undefined) {
+  const business = settings.OPS_ASTRO_BUSINESS_ID as BusinessId;
+  const custody = await startCustody({
+    credentialsFile: settings.SITE_RUNNER_CREDENTIALS_FILE,
+    destinations: siteDestinations(
+      { source: SOURCE_ORIGIN, hosting: HOSTING_ORIGIN },
+      settings.locateOnly,
+    ),
+  });
+  const sites = custodySites(
+    {
+      custody,
+      resolve: systemResolver,
+      capture: {
+        pool: { agencyPages: settings.pages, otherPages: [], closedPoolReviews: [] },
+        resolve: systemResolver,
+        transport: pinnedTransport(),
+      },
+      wait: async (ms) => await sleep(ms),
+      now: Date.now,
+    },
+    settings.site,
+  );
+  const ports = sites.locate();
+  const pass = passFor(settings.locateOnly, {
+    locate: async () => await locatePass({ db, business, site: settings.site, ports }),
+    ...(call === undefined ? {} : { claims: claimsRunner(settings, db, call, sites) }),
+  });
   const stop = async () => {
     await custody.stop();
     await db.close();
   };
-  return { runner, stop };
+  return { pass, stop };
+}
+
+export interface Parts {
+  readonly locate: () => Promise<readonly Passed[]>;
+  /** Absent while locating only: no claim is taken. */
+  readonly claims?: () => Promise<readonly Passed[]>;
+}
+
+/** The pass the host runs: locating only, the claims are never taken. */
+export const passFor =
+  (locateOnly: boolean, parts: Parts) => async (): Promise<readonly Passed[]> =>
+    await bothParts(locateOnly ? { locate: parts.locate } : parts);
+
+/**
+ * One pass: the locate, then the claims, each on its own. A part that fails logs its fault's name
+ * and the other still runs; only when every part failed does the pass fail, so the heartbeat
+ * goes quiet.
+ */
+export async function bothParts({ locate, claims }: Parts): Promise<readonly Passed[]> {
+  const faults: unknown[] = [];
+  const run = async (part: string, work: () => Promise<readonly Passed[]>) =>
+    await work().catch((fault: unknown) => {
+      faults.push(fault);
+      console.error(
+        `site-runner: the ${part} failed: ${fault instanceof Error ? fault.name : 'fault'}`,
+      );
+      return [];
+    });
+  const located = await run('locate', locate);
+  const claimed = claims === undefined ? [] : await run('claims', claims);
+  if (faults.length === (claims === undefined ? 1 : 2)) throw faults[0];
+  return [...located, ...claimed];
 }
 
 export interface Passes {
@@ -144,17 +202,33 @@ async function main(): Promise<number> {
     console.error(`site-runner: ${settings}`);
     return 2;
   }
-  const agent = await signedIn(settings);
+  const db = connect(settings.SITE_RUNNER_DATABASE_URL, { max: 2 });
+  const business = settings.OPS_ASTRO_BUSINESS_ID as BusinessId;
+  // A client holder is confirmed in the business by one read; the business itself needs none.
+  const holder =
+    settings.site.holder === business
+      ? undefined
+      : await db
+          .withBusiness(business, async (tx) => await holderRefuses(tx, settings.site))
+          .catch(() => 'SITE_RUNNER_SITE.holder could not be checked');
+  if (holder !== undefined) {
+    console.error(`site-runner: ${holder}`);
+    await db.close();
+    return 2;
+  }
+  // Locating only takes no claim, so it signs in nowhere.
+  const agent = settings.locateOnly ? undefined : await signedIn(settings);
   if (typeof agent === 'string') {
     console.error(`site-runner: ${agent}`);
+    await db.close();
     return 1;
   }
-  const { runner, stop } = await hosted(settings, agent);
+  const { pass, stop } = await hosted(settings, db, agent);
   // `launchctl bootout` sends SIGTERM: the pass in hand finishes, then everything stops.
   const stopping = new AbortController();
   process.once('SIGTERM', () => stopping.abort());
   await passes({
-    pass: async () => await runner.pass(),
+    pass,
     ping: async () => void (await ping(settings.heartbeat)),
     sleep: async (signal) =>
       void (await sleep(FOLLOW_EVERY_MS, null, { signal }).catch(() => null)),

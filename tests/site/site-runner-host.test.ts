@@ -26,6 +26,7 @@ import {
 import {
   building,
   built,
+  configuredSite,
   merges,
   runnerOn,
   time,
@@ -53,7 +54,7 @@ async function hosted(): Promise<{
   });
   const given: World = {
     site,
-    sites: sitesOver(custody, served.origins, () => time.clock),
+    sites: sitesOver(custody, served.origins, () => time.clock, configuredSite()),
     raised: [],
     captured: [],
   };
@@ -73,6 +74,7 @@ async function firstPassInChild(
     appUrl: String(w.world.db.appUrl),
     business: w.world.business,
     actorId: lease.holder,
+    site: configuredSite(),
     claim: { correctionId: id, taskId: lease.taskId, leaseId: lease.leaseId, fence: lease.fence },
     served: { origins: served.origins, credentialsFile: served.credentialsFile },
   };

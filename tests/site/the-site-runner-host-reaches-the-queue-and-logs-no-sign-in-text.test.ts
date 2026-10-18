@@ -85,10 +85,18 @@ function settingsIn(folder: string, api: string, gotrue: string): string {
     OPS_ASTRO_EMAIL: 'site-runner@example.com',
     OPS_ASTRO_PASSWORD: PASSWORD,
     OPS_ASTRO_GOTRUE_URL: gotrue,
-    // Never reached: the queue is empty, so no pass reads the database.
+    // Unreachable: the locate reads it each pass and fails on its own, the claims still run. The
+    // site's holder is the business, so start-up reads nothing.
     SITE_RUNNER_DATABASE_URL: 'postgres://site_runner:unused@127.0.0.1:9/postgres?sslmode=require',
     SITE_RUNNER_CREDENTIALS_FILE: credentialsFile,
-    SITE_RUNNER_PAGES: 'https://agencyastro.com/about',
+    SITE_RUNNER_SITE: JSON.stringify({
+      business: '6f1c2a54-9d0b-4c1e-8a7f-3b2d1e0f9a8c',
+      holder: '6f1c2a54-9d0b-4c1e-8a7f-3b2d1e0f9a8c',
+      repository: 'LaunchAstro/agency-astro-astro',
+      defaultBranch: 'main',
+      project: 'prj_agency',
+      pages: [{ pageUrl: 'https://agencyastro.com/about', path: 'src/pages/about.astro' }],
+    }),
   };
   writeFileSync(settingsFile, JSON.stringify(settings), { mode: 0o600 });
   chmodSync(settingsFile, 0o600);
@@ -136,7 +144,9 @@ describe('the site runner host, launched as launchd launches it', () => {
       hosted.printed,
     ).toBe(true);
     expect(hosted.asked.filter((path) => path.includes('/session/'))).toEqual([]);
-    expect({ code: hosted.code, printed: hosted.printed }).toEqual({ code: 0, printed: '' });
+    // The locate's fault is named and nothing else is printed.
+    expect(hosted.code).toBe(0);
+    expect(hosted.printed).toMatch(/^(?:site-runner: the locate failed: [A-Za-z]+\n)+$/u);
   }, 120_000);
 
   it('prints a fixed line on a sign-in refusal that echoes the password, never its text', async () => {

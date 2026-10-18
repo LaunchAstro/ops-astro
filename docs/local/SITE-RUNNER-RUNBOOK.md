@@ -28,16 +28,43 @@ secret by name.
 3. **Custody's credential file.** The two site entries, `source_control` and
    `hosting`, written once by the wrapper of #1691, mode 600. The runner reads
    neither value: custody does.
-4. **The settings file.** Mode 600, one JSON object of strings:
+4. **The settings file.** Mode 600, one JSON object:
    `OPS_ASTRO_API_URL`, `OPS_ASTRO_BUSINESS` (the business key),
    `OPS_ASTRO_BUSINESS_ID`, `OPS_ASTRO_EMAIL`, `OPS_ASTRO_PASSWORD`,
    `OPS_ASTRO_GOTRUE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
    `SITE_RUNNER_DATABASE_URL`, `SITE_RUNNER_CREDENTIALS_FILE` (step 3),
-   `SITE_RUNNER_PAGES` (the agency's bound pages, exact, comma-separated:
-   `https://agencyastro.com/about`) and `SITE_RUNNER_HEARTBEAT_URL` (its own
-   heartbeat check). The runner refuses to start when anyone else can read the
-   file, when the database address does not require TLS, or when a page is
-   not an exact https address.
+   `SITE_RUNNER_SITE` (below) and `SITE_RUNNER_HEARTBEAT_URL` (its own
+   heartbeat check). Each is a string except `SITE_RUNNER_SITE`, which may be
+   written as an object. `SITE_RUNNER_LOCATE_ONLY` set to `"1"` runs the
+   locate alone (below).
+
+   `SITE_RUNNER_SITE` is the one site the runner acts for, with exactly these
+   keys. In production:
+
+   ```json
+   {
+     "business": "<OPS_ASTRO_BUSINESS_ID, the same value>",
+     "holder": "<OPS_ASTRO_BUSINESS_ID: the agency's own site>",
+     "repository": "LaunchAstro/agency-astro-astro",
+     "defaultBranch": "main",
+     "project": "prj_ZP8jeokQCN6SJsyuzkz4ISihdlHm",
+     "pages": [{ "pageUrl": "https://agencyastro.com/about", "path": "src/pages/about.astro" }]
+   }
+   ```
+
+   `business` must be `OPS_ASTRO_BUSINESS_ID`. `holder` is the business, or
+   a client of it, which the runner confirms with one read at start-up. Each
+   `pageUrl` is an exact https address and each `path` a page file under
+   `src/pages/`. The capture checks only these pages. The runner refuses to
+   start when anyone else can read the file, when the database address does
+   not require TLS, or when a setting is missing, unknown or malformed. Its
+   one line names the setting and never its value.
+
+   **Locate only.** With `SITE_RUNNER_LOCATE_ONLY` set to `"1"` the runner
+   checks waiting corrections and pins new ones, and takes no claim. Custody
+   then holds the read routes only, so no write can leave whatever is asked.
+   Use it for the first daylight start, before any publish.
+
 5. **The build.** A deployed main build at a released commit, never a lane
    checkout. Fill the `@…@` values in `deploy/m5/ops-astro-site-runner.plist`
    and copy it to `~/Library/LaunchAgents/`.
@@ -52,7 +79,8 @@ secret by name.
   and observes it, never sending twice.
 - **Stop:** park, then remove `~/Library/LaunchAgents/ops-astro-site-runner.plist`.
   To withdraw its database reach too: `drop role site_runner;`.
-- **Check:** each pass logs one line per correction, its id and outcome, and
-  pings the heartbeat. A stopped or failing runner pings nothing, so the
+- **Check:** each pass logs one line per correction it settled, put off or
+  ran, its id and a code, and pings the heartbeat. A correction found bound to
+  any other site logs `<id> SITE_NOT_CONFIGURED`. A stopped or failing runner pings nothing, so the
   watcher mails. A raised person task logs `raised <code> on task <id>` and
   is written as an internal comment on the correction's task.

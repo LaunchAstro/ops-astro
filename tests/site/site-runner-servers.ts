@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Provider } from './c80-site-provider.ts';
 import { REV, PAGE } from './c80-world.ts';
+import type { ConfiguredSite } from '../../apps/site-runner/configured.ts';
 import { custodySites } from '../../apps/site-runner/sites.ts';
 import type { Sites } from '../../apps/site-runner/runner.ts';
 import type { Transport } from '../../packages/core-connectors/src/index.ts';
@@ -59,6 +60,14 @@ function asHost(site: Provider, host: string, authorizations: string[]): Server 
   };
   return createServer((request, response) => {
     void (async () => {
+      // The default branch's head is still the base revision (#1693).
+      if (new URL(request.url ?? '/', 'http://x').pathname.endsWith('/git/ref/heads/main')) {
+        authorizations.push(String(request.headers.authorization ?? ''));
+        response
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ ref: 'refs/heads/main', object: { sha: BASE_REVISION } }));
+        return;
+      }
       if (new URL(request.url ?? '/', 'http://x').searchParams.get('ref') === BASE_REVISION) {
         authorizations.push(String(request.headers.authorization ?? ''));
         response
@@ -134,6 +143,7 @@ export function sitesOver(
   custody: Pick<Custody, 'dispatch'>,
   origins: Served['origins'],
   now: () => number,
+  site: ConfiguredSite,
 ): Sites {
   const transport: Transport = async () => {
     const answer = await fetch(origins.page);
@@ -145,18 +155,21 @@ export function sitesOver(
       body: new Uint8Array(await answer.arrayBuffer()),
     };
   };
-  return custodySites({
-    custody,
-    resolve: (host) =>
-      Promise.resolve([host === 'api.vercel.com' ? '76.76.21.21' : '140.82.112.6']),
-    capture: {
-      pool: { agencyPages: [PAGE], otherPages: [], closedPoolReviews: [] },
-      resolve: () => Promise.resolve(['93.184.216.34']),
-      transport,
+  return custodySites(
+    {
+      custody,
+      resolve: (host) =>
+        Promise.resolve([host === 'api.vercel.com' ? '76.76.21.21' : '140.82.112.6']),
+      capture: {
+        pool: { agencyPages: [PAGE], otherPages: [], closedPoolReviews: [] },
+        resolve: () => Promise.resolve(['93.184.216.34']),
+        transport,
+      },
+      wait: () => Promise.resolve(),
+      now,
     },
-    wait: () => Promise.resolve(),
-    now,
-  });
+    site,
+  );
 }
 
 /** Custody with the two site entries from the canary file, each on its served origin. */

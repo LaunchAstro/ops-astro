@@ -18,6 +18,7 @@ import {
   built,
   merges,
   time,
+  configuredSite,
   useRunnerWorld,
   world,
   type World,
@@ -82,6 +83,7 @@ function runnerFor(given: World, claims = queueClaims(call, w.world.db.app, w.wo
   return createSiteRunner({
     db: w.world.db.app,
     business: w.world.business,
+    site: configuredSite(),
     get actorId() {
       return claims.holder();
     },
