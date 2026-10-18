@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "replies finishing out of order still cut the model's history at the earliest question whose created task the asker lost"
+}
