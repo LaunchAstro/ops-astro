@@ -21,7 +21,9 @@
 // first and a recorder after (read once), and the model's own `callbacks` or
 // `verbose` set by a getter core would run after the guard (core runs a
 // model of its own), and a message whose own type accessor would plant a hook
-// at core's last read (core reads a rebuilt copy). The cases print booleans and counts,
+// at core's last read (core reads a rebuilt copy), and a `metadata` getter
+// that would plant one (core is handed plain copies of `stop` and `tools`
+// only). The cases print booleans and counts,
 // so the planted marker is never printed.
 //
 // LangSmith makes no network call: a real listener stands in for its
@@ -117,6 +119,7 @@ const UNREAD = [
   'none-own-cache-getter-sets-callbacks-after-the-guard',
   'none-own-cache-getter-sets-verbose-after-the-guard',
   'none-generate-message-type-getter-plants-a-hook-at-cores-last-read',
+  'none-invoke-metadata-getter-plants-a-hook',
 ];
 
 // oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes

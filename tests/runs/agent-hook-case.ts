@@ -248,6 +248,10 @@ function hookAfterGuardCases(run: Run): Cases {
   return {
     'none-generate-message-type-getter-plants-a-hook': typePlanted(2),
     'none-generate-message-type-getter-plants-a-hook-at-cores-last-read': typePlanted(3),
+    'none-invoke-metadata-getter-plants-a-hook': async () =>
+      await model().invoke([new HumanMessage(MARKER)], {
+        metadata: Object.defineProperty({}, 'x', { enumerable: true, get: plantAt(1) }),
+      }),
     'none-invoke-configurable-getter-plants-a-hook': async () =>
       await model().invoke([new HumanMessage(MARKER)], {
         configurable: Object.defineProperty({}, 'model', { enumerable: true, get: plantAt(1) }),
