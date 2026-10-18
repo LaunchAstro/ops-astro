@@ -3,7 +3,7 @@
 // `task.propose`: a proposal on a task, through the runtime's locks.
 
 import { raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import type { DelegatingSubject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
@@ -112,7 +112,7 @@ export interface Proposer {
   readonly collection: string;
   readonly taskTypeId: string;
   readonly actorId: string;
-  readonly subjects: readonly Subject[];
+  readonly subjects: readonly DelegatingSubject[];
   /** The Launch delegation an agent proposes under; absent for a person or a pickup's. */
   readonly launchDelegationId?: string;
 }

@@ -47,6 +47,7 @@ export {
   type Scope,
   type ScopeKind,
   type ScopeRequest,
+  type DelegatingSubject,
   type Subject,
 } from './authority/grants.ts';
 export { coveredScopes } from './authority/covered-scopes.ts';

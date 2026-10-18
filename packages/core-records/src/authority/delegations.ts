@@ -54,6 +54,7 @@ import {
   type Action,
   type Scope,
   type ScopeRequest,
+  type DelegatingSubject,
   type Subject,
 } from './grants.ts';
 
@@ -770,7 +771,7 @@ export async function delegatingSubjects(
     Delegation,
     'id' | 'delegatePersonId' | 'mintedByActorId' | 'parentDelegationId'
   >,
-): Promise<readonly Subject[]> {
+): Promise<readonly DelegatingSubject[]> {
   const person = { kind: 'person', id: delegation.delegatePersonId } as const;
   const root = delegation.parentDelegationId ?? delegation.id;
   if (!(await isLaunchDelegation(tx, root))) return [person];

@@ -10,7 +10,7 @@ import type {
   Decision,
   EffectiveGrant,
   ScopeRequest,
-  Subject,
+  DelegatingSubject,
 } from '../../../core-records/src/index.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
 import { closeHold } from '../close-hold.ts';
@@ -478,7 +478,7 @@ export async function affectedByVersions(
  */
 export async function holdCoveringGrants(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  subjects: readonly DelegatingSubject[],
   collection: string,
   // `nowait` is for a hold taken under runtime locks (the top-up's late first
   // approver): it never waits on a grant row there, and contention rolls back.
@@ -486,12 +486,13 @@ export async function holdCoveringGrants(
 ): Promise<readonly string[]> {
   // A subject held within ticked keys (an agent credential) covers only those
   // keys' grants in this collection: one row per ticked action; null is any.
-  const asked = subjects.flatMap((subject): { subject: Subject; action: string | null }[] =>
-    subject.within === undefined
-      ? [{ subject, action: null }]
-      : subject.within
-          .filter((key) => key.startsWith(`${collection}:`))
-          .map((key) => ({ subject, action: key.slice(collection.length + 1) })),
+  const asked = subjects.flatMap(
+    (subject): { subject: DelegatingSubject; action: string | null }[] =>
+      subject.within === undefined
+        ? [{ subject, action: null }]
+        : subject.within
+            .filter((key) => key.startsWith(`${collection}:`))
+            .map((key) => ({ subject, action: key.slice(collection.length + 1) })),
   );
   const held = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
@@ -534,7 +535,7 @@ export async function holdCoveringGrants(
  */
 export async function checkAuthorityAt(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  subjects: readonly DelegatingSubject[],
   request: ScopeRequest,
   at: string,
 ): Promise<Decision<readonly EffectiveGrant[]>> {
