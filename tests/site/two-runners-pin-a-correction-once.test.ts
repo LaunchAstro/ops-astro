@@ -143,6 +143,7 @@ describe.skipIf(serverUrl === undefined)('two runners pin a correction once', ()
 
 describe.skipIf(serverUrl === undefined)('two runners pin a correction once', () => {
   it('reads the 60 s bound after the lock wait, refusing a check that aged while waiting', async () => {
+    expect(codeOf(await w.setApprover(w.ben.personId))).toBe('not-a-refusal');
     const asked = await w.asRaw(w.ava, {
       command: 'live_correction.request',
       taskId: w.taskA,

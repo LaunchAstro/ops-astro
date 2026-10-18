@@ -29,6 +29,7 @@ export const REV: string = `c0ffee${'0'.repeat(34)}`;
 export async function pinFromBefore(
   admin: AgentWorld['db']['admin'],
   correctionId: string,
+  before: string = BEFORE,
 ): Promise<{ readonly versionId: string; readonly versionDigest: string }> {
   const [row] = await admin.execute<{
     readonly target_path: string;
@@ -47,11 +48,11 @@ export async function pinFromBefore(
   if (row.version_id !== null && row.version_digest !== null)
     return { versionId: row.version_id, versionDigest: row.version_digest };
   const target = { path: row.target_path, word: row.word, replacement: row.replacement };
-  const after = replaced(BEFORE, row.word, row.replacement) ?? AFTER;
-  const preImageDigest = contentDigest(BEFORE);
+  const after = replaced(before, row.word, row.replacement) ?? AFTER;
+  const preImageDigest = contentDigest(before);
   const versionDigest = versionDigestOf({
     target,
-    change: { files: [{ path: row.target_path, before: BEFORE, after }] },
+    change: { files: [{ path: row.target_path, before, after }] },
     preImageDigest,
     baseRevision: REV,
     pageUrl: row.page_url,

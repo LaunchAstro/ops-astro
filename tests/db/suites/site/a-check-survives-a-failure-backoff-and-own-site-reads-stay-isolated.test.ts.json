@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1922 races on separate connections: a check that succeeds while a failed check's backoff commits keeps its stamp (schedules move only forward), and own-site correction reads refuse another business, client and person."
+}

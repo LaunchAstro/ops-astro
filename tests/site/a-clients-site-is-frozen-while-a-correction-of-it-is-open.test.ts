@@ -42,7 +42,7 @@ const unbind = async (client: FreshClient, pageUrl: string) =>
 
 /** Ava's request on the client's task for `page`, through the command. */
 const requestOn = async (client: FreshClient, page: Page) =>
-  await w.request(w.ava, { partyId: client.partyId, taskId: client.taskId, ...page });
+  await w.request(w.ava, { taskId: client.taskId, page: page.pageUrl });
 
 /** A latch: `open` lets every `passed` through. */
 function latch(): { readonly open: () => void; readonly passed: Promise<void> } {
