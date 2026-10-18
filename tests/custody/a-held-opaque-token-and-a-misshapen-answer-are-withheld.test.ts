@@ -55,9 +55,9 @@ it('a completed response whose output is not a list is malformed and withheld', 
 it('a throwing send is called once and withheld without its error text', async () => {
   let calls = 0;
   const result = await askPlanOnce(
-    async () => {
+    () => {
       calls += 1;
-      throw new Error(ACCESS);
+      return Promise.reject(new Error(ACCESS));
     },
     () => SECRETS,
   );
