@@ -96,10 +96,23 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another business', 
   });
 });
 
+/** The task's client, as the record's spine holds it. */
+const clientLinkOf = async (taskId: string): Promise<string | null> =>
+  (
+    await w.db.admin.execute<{ readonly client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [taskId],
+    )
+  )[0]?.client ?? null;
+
 describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another client', () => {
   it('a client A editor tags client A’s task, and never lists or touches client B’s', async () => {
     const taskA = await w.fresh(w.alpha, w.ada, 'client A');
     const taskB = await w.fresh(w.alpha, w.ada, 'client B');
+    // A real crossing: two stored clients, both linked, not the same one.
+    const [linkA, linkB] = [await clientLinkOf(taskA), await clientLinkOf(taskB)];
+    expect([linkA, linkB]).not.toContain(null);
+    expect(linkA).not.toBe(linkB);
     const shared = tagIdOf(await w.as(w.alpha, w.ada, { command: 'tag.create', name: 'Shared' }));
     // The business test above made the canary's upper case here; this one is its own.
     const secret = tagIdOf(

@@ -35,16 +35,29 @@ const titleOf = async (recordId: string): Promise<string | null | undefined> =>
     )
   )[0]?.title;
 
+const delegatingPersonOf = async (delegationId: string): Promise<string | undefined> =>
+  (
+    await world.db.admin.execute<{ readonly person: string }>(
+      'select delegate_person_id::text as person from public.delegations where id = $1',
+      [delegationId],
+    )
+  )[0]?.person;
+
 describe.skipIf(serverUrl === undefined)('MP-4-8 isolation', () => {
   it('another person under a live delegation: the agent’s edits reach its own task only', async () => {
     const decider = await world.decider('decider');
-    const other = await world.asPerson(decider, {
+    const maker = decider;
+    const other = await world.asPerson(maker, {
       command: 'task.create',
       operationId: randomUUID(),
       fields: { title: CANARY },
     });
     const otherId = isCommandRefusal(other) ? '' : (other.recordId ?? '');
     const picked = await world.pickUp(decider, 'the agent’s task');
+    // A real crossing: the agent works under the decider's delegation, and the
+    // foreign task is another person's, outside it.
+    expect(await delegatingPersonOf(String(picked.detail['delegationId']))).toBe(decider.personId);
+    expect(maker.personId).not.toBe(decider.personId);
     const send = async (recordId: string, fields: Record<string, unknown>) =>
       await world.asAgent(
         {
