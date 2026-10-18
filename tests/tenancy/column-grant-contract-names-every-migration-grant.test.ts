@@ -201,6 +201,14 @@ const REFUSALS: readonly (readonly [string, string])[] = [
   ],
   ['a client encoding set', "set client_encoding = 'SJIS';"],
   ['a client encoding set with SET NAMES', "set session names 'SJIS';"],
+  [
+    'a column list behind a quote in a comment between string parts',
+    "do $$ begin execute 'grant select ' -- 'on s.t to r\n'(a) on s.t to r'; end $$;",
+  ],
+  [
+    'a setting name joined across a comment holding a quote',
+    "select set_config('standard_conforming' -- '\n'_strings', 'off', false);",
+  ],
 ];
 
 describe('reading a column grant the way PostgreSQL does', () => {
