@@ -21,7 +21,7 @@ describe("production runbook's alerts", () => {
   });
 
   it('does not describe the print-only plan as sending mail or registering checks', () => {
-    const planSentences = ALERTS.replace(/\s+/gu, ' ')
+    const planSentences = ALERTS.replaceAll(/\s+/gu, ' ')
       .split(/(?<=\.) /u)
       .filter((sentence) => /\bplan\b/u.test(sentence));
     expect(planSentences.length).toBeGreaterThan(0);
