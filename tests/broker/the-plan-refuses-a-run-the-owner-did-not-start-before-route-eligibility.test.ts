@@ -230,7 +230,7 @@ describe.skipIf(serverUrl === undefined)('the standing the database records', ()
           [s.business, proposal['versionId'], randomUUID()],
         ),
     );
-    expect(supplied).toStrictEqual([{ proposed_by_owner: false }]);
+    expect(Array.from(supplied)).toStrictEqual([{ proposed_by_owner: false }]);
     await expect(
       s.db.app.withBusiness(s.business, async (tx) => {
         await tx.query(
