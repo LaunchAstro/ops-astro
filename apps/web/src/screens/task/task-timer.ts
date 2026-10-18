@@ -33,6 +33,8 @@ export class TaskTimer {
   private readonly readers = new Set<Set<string>>();
   private readonly readFloors = new Map<string, ReadFlight>();
   private readonly listeners = new Set<() => void>();
+  /** A binding a current read found idle while an attempt was held. */
+  private idle: { readonly binding: TimerBinding; readonly version: number } | null = null;
   private client: OperationsClient;
   private readonly ownerOn: () => boolean;
   private readonly custody: TimerCustody | undefined;
@@ -102,9 +104,11 @@ export class TaskTimer {
   /** Clears a known refusal, or lets go of a refused unknown: `abandoned` until keep() clears its copy. */
   readonly dismiss = (): void => {
     const attempt = this.state.attempt;
-    if (attempt?.status === 'refused') this.put({ ...this.state, attempt: null });
+    const idle = this.idle?.binding === this.state.binding && this.idle?.version === this.version;
+    const binding = idle ? null : this.state.binding;
+    if (attempt?.status === 'refused') this.put({ ...this.state, binding, attempt: null });
     else if (attempt?.status === 'abandoned' || (attempt?.status === 'unknown' && attempt.refusal))
-      this.put({ ...this.state, attempt: { ...attempt, status: 'abandoned' } });
+      this.put({ ...this.state, binding, attempt: { ...attempt, status: 'abandoned' } });
   };
   private begin(command: Attempt['command'], task: TimerTask, expectedEntryId?: string): void {
     this.version += 1;
@@ -266,9 +270,9 @@ export class TaskTimer {
           binding: { task: { id: task.id, key: task.key, title: task.title }, running },
           unavailable: false,
         });
-      } else if (binding?.task.id === task.id && this.state.attempt === null) {
+      } else if (binding?.task.id === task.id && attempt === null) {
         this.put({ ...this.state, binding: null, unavailable: false });
-      }
+      } else if (binding?.task.id === task.id) this.idle = { binding, version: this.version };
       return;
     }
     if (!matches && !attempted) return;
