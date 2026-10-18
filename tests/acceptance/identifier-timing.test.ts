@@ -510,6 +510,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('activation.roll_back', 'activationId', f.automation.activationId, at);
     byAda('activation.turn_off', 'activationId', f.automation.activationId, at);
+    // #1741: bravo's activation named in an alpha history read.
+    byAda('automation.history', 'activationId', f.automation.activationId, (activationId) => ({
+      activationId,
+    }));
     byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
       approvalId,
     }));
@@ -652,11 +656,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 115 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 116 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(115);
-    expect(names).toHaveLength(115);
+    expect(new Set(names).size, 'distinct operations').toBe(116);
+    expect(names).toHaveLength(116);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -571,6 +571,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'agent.mine',
   'agent.rename',
   'approval.revoke',
+  'automation.history',
   'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',

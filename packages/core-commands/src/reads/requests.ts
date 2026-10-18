@@ -22,6 +22,7 @@
 // `200` and no correction, so the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { HistoryOperands } from './history-operands.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
@@ -63,6 +64,7 @@ import type {
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationHistoryResult,
   AutomationRegistryResult,
   MapReadResult,
 } from '../../../core-wire/src/index.ts';
@@ -224,6 +226,7 @@ export interface ReadOperands {
   readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
+  readonly 'automation.history': HistoryOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -293,4 +296,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | AutomationRegistryResult;
+  | AutomationRegistryResult
+  | AutomationHistoryResult;

@@ -107,6 +107,7 @@ export function probeOperands(name: CommandName): Body {
   }
   if (name === 'run.child_handback') return { outcome: 'completed' };
   if (name === 'chat.messages') return { conversationId: randomUUID() };
+  if (name === 'automation.history') return { activationId: randomUUID() };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

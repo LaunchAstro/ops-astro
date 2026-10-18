@@ -108,6 +108,8 @@ export const READ_NAMES = [
   'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.
   'automation.registry',
+  // One activation's history (#1741), opened from its Workflow triggers row.
+  'automation.history',
 ] as const;
 
 /**

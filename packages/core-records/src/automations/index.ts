@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Automations' way into the records package (C33, C52-A): definitions,
-// released versions, activations, occurrences, the registry read, standing
-// approvals and dispatch. The package's index re-exports this list whole;
+// released versions, activations, occurrences, the registry and history reads,
+// standing approvals and dispatch. The package's index re-exports this list whole;
 // what the modules share with each other (the activation columns and row
 // mapper, the activation lock) is not exported.
 
@@ -29,6 +29,12 @@ export {
   type OccurrenceOutcome,
   type OccurrenceRow,
 } from './occurrences.ts';
+export {
+  activationExists,
+  listActivationHistory,
+  type ActivationHistoryCursor,
+  type ActivationHistoryRow,
+} from './history.ts';
 export {
   listRegistry,
   type Registry,

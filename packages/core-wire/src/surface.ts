@@ -889,6 +889,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // a version released under `automation:manage`, both business-wide and
   // never an agent's (the key catalogue: owner and administrators).
   read('automation.registry', SETTINGS_COLLECTION),
+  // One activation's history (#1741), under the same key: never an agent's.
+  read('automation.history', SETTINGS_COLLECTION),
   declare('activation.change', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,

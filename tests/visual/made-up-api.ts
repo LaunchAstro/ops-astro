@@ -36,7 +36,7 @@ import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS_READS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
-import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
+import { AUTOMATION_HISTORY, AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { CONVERSATIONS, DIRECT_MESSAGES, messagesOf } from './made-up-chat.ts';
 import { CONNECTION_READS } from './made-up-connections.ts';
 import { COST_READS } from './made-up-costs.ts';
@@ -192,6 +192,8 @@ const READS = {
   'secret.list': SECRET_LIST,
   // Settings ▸ Workflow triggers (C33).
   'automation.registry': AUTOMATION_REGISTRY,
+  // One activation's history, as its row opens it.
+  'automation.history': AUTOMATION_HISTORY,
   ...CONNECTION_READS,
   ...COST_READS,
   ...WAYFINDER_READS,

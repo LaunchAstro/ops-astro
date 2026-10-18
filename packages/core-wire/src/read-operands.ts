@@ -105,4 +105,5 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'trace.read': RECORD,
   'live_correction.read': { correctionId: 'id' },
   'automation.registry': NONE,
+  'automation.history': { activationId: 'id', cursor: 'text?' },
 };

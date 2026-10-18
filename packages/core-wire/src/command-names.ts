@@ -281,6 +281,7 @@ export type CommandName =
   // `settings:read`; changing an activation is `settings:manage` and releasing
   // a definition version `automation:manage`, neither an agent's.
   | 'automation.registry'
+  | 'automation.history'
   | 'activation.change'
   | 'definition.release'
   // Standing approvals (C52-A): adopting a version, rolling back, turning off

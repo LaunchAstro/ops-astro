@@ -24,6 +24,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'agent.mine': [],
+  'automation.history': ['activationId'],
   'automation.registry': [],
   'chat.conversations': [],
   'chat.messages': ['conversationId'],
@@ -200,6 +201,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.read': BODIES.map(() => null),
   // C33: the Workflow triggers registry takes nothing.
   'automation.registry': BODIES.map(() => null),
+  // An activation's history (#1741), named by the activation, which none of these bodies carries.
+  'automation.history': unsent('activationId', 'Send activationId as the activation’s identifier.'),
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
   'connection.signal': BODIES.map(() => null),

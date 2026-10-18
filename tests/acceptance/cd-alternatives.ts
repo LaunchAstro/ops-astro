@@ -160,6 +160,13 @@ export function alternativeFor(name: CommandName): string | undefined {
       "another business's invitation and a fabricated one by code and raw bytes"
     );
   }
+  if (name === 'automation.history') {
+    // #1741: the activation is the target, not a task.
+    return (
+      'executed alternative: an-activation-history-is-kept-to-settings-readers-of-its-own-business.test.ts ' +
+      "compares another business's activation and a fabricated one by status and body"
+    );
+  }
   if (TARGET_FREE.some(([op]) => op === name)) {
     return (
       `not applicable: target-free (SC2, root ruling 3); identifier-negatives.test.ts ` +
