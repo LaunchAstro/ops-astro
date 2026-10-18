@@ -18,6 +18,7 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Wire contract               | `packages/core-wire`       | The command surface: every command and read, its path and prefix, with tests.                                                                                                                                                                                                          |
 | Payload digest              | `packages/core-digest`     | The canonical payload and its hash, shared by the server and the command line, with tests.                                                                                                                                                                                             |
 | Runtime and agent execution | `packages/core-runtime`    | Propose, decide, pick up, hand back and the recovery classifier, with tests. Nothing dispatches and nothing acts.                                                                                                                                                                      |
+| Agent loop                  | `packages/core-agent`      | The agent on the pinned LangChain stack (#1623): `createAgent` over LangGraph, `MemorySaver` only, its one model the broker's turn with no retry, call limits that raise, and no tracing, inherited or explicit. The only package that imports the stack. With tests.                  |
 | Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, the task type and the refusal register, with tests.                                                                                                                                                                                  |
 | Credential broker           | `packages/core-custody`    | Custody's own process holds provider credentials and is a model call's one egress (AW-01), with tests.                                                                                                                                                                                 |
 | Provider operations         | `packages/core-connectors` | The operation catalogue and the live correction's catalogued operations and envelope (C80); model operations and their twelve declarations, data classes, the replay provider (AW-01), with tests.                                                                                     |
@@ -43,6 +44,7 @@ apps/web ─► core-wire ─(types)─► core-records
 apps/cli ─► core-wire, core-digest
 core-commands ─► core-wire, core-digest
 core-connectors ─► core-digest
+core-agent ─► core-wire
 core-sandbox (a leaf: imports no other package)
 ```
 
