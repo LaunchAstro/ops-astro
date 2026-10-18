@@ -23,6 +23,7 @@ import { describeRefusal } from '../records/submit.ts';
 import { availabilitySaver } from './team/availability-saves.ts';
 import { talkFor } from './team/asked.ts';
 import { useChat } from './team/chat.ts';
+import { useOutboxed } from './team/outbox.ts';
 
 /** A member as the panel draws them: the first name under the face. */
 function teammate(member: TeamMemberView): Teammate {
@@ -72,6 +73,7 @@ export function TeamScreen(props: {
   });
   const [because, setBecause] = useState<string | null>(null);
   const chat = useChat(client, props.grantKey, setBecause);
+  const outboxed = useOutboxed(client, props.grantKey, props.storage ?? null, chat.run);
   const onSetAvailability = useSetAvailability(client, props.grantKey, setBecause, reload);
 
   return (
@@ -84,7 +86,7 @@ export function TeamScreen(props: {
             me={value.you}
             onSetAvailability={onSetAvailability}
             work={null}
-            conversations={talkFor(chat, value.you, props.address)}
+            conversations={outboxed(talkFor(chat, value.you, props.address))}
           />
         )}
       </RecordState>

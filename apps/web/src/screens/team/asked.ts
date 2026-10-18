@@ -5,11 +5,11 @@
 // id, a direct conversation by the teammate in it; one the reader no longer
 // has opens nothing in particular.
 
-import type { TeamConversations } from '@launchastro/ui';
 import { talkOf, type ChatModel } from './chat.ts';
+import type { Talk } from './outbox.ts';
 
 /** The reader's conversations once settled, opened on the one the address asks for. */
-export function talkFor(chat: ChatModel, me: string, address?: string): TeamConversations | null {
+export function talkFor(chat: ChatModel, me: string, address?: string): Talk | null {
   const talk = chat.settled ? talkOf(chat, me) : null;
   const asked = new URLSearchParams(address?.split('?')[1]?.split('#')[0] ?? '').get(
     'conversation',
