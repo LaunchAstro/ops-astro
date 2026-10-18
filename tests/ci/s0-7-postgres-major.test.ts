@@ -144,8 +144,9 @@ function ciOnTheCases1() {
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
     expect(block).toMatch(
-      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} -- pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --without-isolation$/mu,
+      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard "\$SHARD" -- pnpm run db:conformance --shard "\$SHARD" --without-isolation$/mu,
     );
+    expect(block).toContain('          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}\n');
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.
     for (const name of ['database conformance', SHARD_JOB, 'isolation tests', ISOLATION_SHARDS]) {

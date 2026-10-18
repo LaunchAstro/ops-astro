@@ -41,17 +41,18 @@ function commandProblems(job: Job | undefined, check: string, commands: [string,
   const steps = job?.steps ?? [];
   for (const [step, command] of commands) {
     const holding = steps.filter((s) => s.run?.includes(command));
-    const wrapper = `node scripts/ci-shards.ts '${check}' --shard ${SHARD} --step '${step}'`;
+    // The shard arrives through env:, never expanded into the script (#1841).
+    const wrapper = `node scripts/ci-shards.ts '${check}' --shard "$SHARD" --step '${step}'`;
     if (holding.length !== 1) problems.push(`${command}: in ${String(holding.length)} steps`);
     else if (!holding[0]?.run?.includes(wrapper))
       problems.push(`${command}: not through ${wrapper}`);
+    else if (holding[0].env?.['SHARD'] !== SHARD)
+      problems.push(`${command}: SHARD is ${String(holding[0].env?.['SHARD'])}`);
   }
   const named = steps.flatMap((s) =>
-    [
-      ...(s.run ?? '').matchAll(
-        /ci-shards\.ts '[^']+' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --step '([^']+)'/gu,
-      ),
-    ].map((m) => m[1]),
+    [...(s.run ?? '').matchAll(/ci-shards\.ts '[^']+' --shard "\$SHARD" --step '([^']+)'/gu)].map(
+      (m) => m[1],
+    ),
   );
   if (
     named.toSorted().join('|') !==
@@ -144,12 +145,14 @@ describe('the workflow', () => {
       s.run?.includes('scripts/db-conformance.mjs'),
     );
     expect(runner.map((s) => s.run)).toStrictEqual([
-      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard ${SHARD}`,
+      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD"`,
     ]);
-    expect(stepEnv('check', 'browser proofs')).toStrictEqual({ BROWSER_PROOFS: '1' });
+    expect(runner.map((s) => s.env?.['SHARD'])).toStrictEqual([SHARD]);
+    expect(stepEnv('check', 'browser proofs')).toStrictEqual({ BROWSER_PROOFS: '1', SHARD });
     expect(stepEnv('check', 'inbox restart')).toStrictEqual({
       DOCKER: 'docker',
       L5_RUNTIME_PROOFS: '1',
+      SHARD,
     });
   });
 });

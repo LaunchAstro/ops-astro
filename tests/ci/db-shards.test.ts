@@ -58,9 +58,8 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(matrix?.split(',').map((n) => Number(n.trim()))).toEqual(
     Array.from({ length: shardCount }, (_, i) => i + 1),
   );
-  expect(shardJob).toContain(
-    '-- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}',
-  );
+  expect(shardJob).toContain('-- pnpm run db:conformance --shard "$SHARD"');
+  expect(shardJob).toContain('SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}');
   expect(shardJob).toContain('fail-fast: false');
   expect(shardJob).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
