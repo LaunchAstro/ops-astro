@@ -95,28 +95,29 @@ it('withholds one such piece wherever it sits and however it is spelled', () => 
   }
 });
 
-it('judges a number by its text: a whole secret is redacted, a piece withholds', () => {
+/** Whole usage counts with this total. */
+const usage = (total: number): Record<string, number> => ({
+  input_tokens: 1,
+  output_tokens: 2,
+  total_tokens: total,
+});
+
+it('judges a number by its text: a whole secret is redacted, a count that spells one or a piece withholds', () => {
   const digits = '9081726354';
-  const whole = planAnswer(
-    answered(
-      stream({
-        ...completed(['ok']),
-        usage: { input_tokens: 1, output_tokens: 2, total_tokens: Number(digits) },
-      }),
-    ),
-    [digits],
-  );
+  const whole = planAnswer(answered(stream({ ...completed(['ok']), seen: Number(digits) })), [
+    digits,
+  ]);
   expect(whole.ok).toBe(true);
   expect(JSON.stringify(whole)).not.toContain(digits);
-  const piece = planAnswer(
-    answered(
-      stream({
-        ...completed(['ok']),
-        usage: { input_tokens: 1, output_tokens: 2, total_tokens: 817_263 },
-      }),
-    ),
+  const counted = planAnswer(
+    answered(stream({ ...completed(['ok']), usage: usage(Number(digits)) })),
     [digits],
   );
+  expect(counted).toMatchObject(withheld);
+  expect(JSON.stringify(counted)).not.toContain(digits);
+  const piece = planAnswer(answered(stream({ ...completed(['ok']), usage: usage(817_263) })), [
+    digits,
+  ]);
   expect(piece).toMatchObject(withheld);
 });
 
