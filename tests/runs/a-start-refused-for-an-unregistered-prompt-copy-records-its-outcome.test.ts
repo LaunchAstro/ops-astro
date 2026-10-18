@@ -4,7 +4,7 @@
 // registered is refused `COPY_NOT_REGISTERED` at its start and sends nothing.
 // Like every other recorded refusal it ends the attempt, `cancelled /
 // COPY_NOT_REGISTERED`, and releases the lease. Proof by Sol (GPT-6.1-Sol),
-// review of #1896 at 059b30dcd9, finding S1896-1; assertions unchanged.
+// review of #1896 at 2ea3aa5937 (as rebased on main), finding S1896-1; assertions unchanged.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
