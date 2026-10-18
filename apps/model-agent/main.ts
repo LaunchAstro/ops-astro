@@ -2,11 +2,13 @@
 //
 // The model agent's process on the owner's machine (`docs/local/model-agent.md`):
 // its settings, its agent login, custody with Ollama on loopback (and
-// OpenRouter, where its settings name it), then calls carried over Realtime
+// OpenRouter and the owner's ChatGPT plan, where its settings name them), then
+// calls carried over Realtime
 // until stopped. A custody that stops answering its heartbeat ends the
 // process, and launchd starts it again.
 
 import { readFileSync, statSync } from 'node:fs';
+import { CHATGPT_PLAN_PROVIDER } from '../../packages/core-connectors/src/chatgpt-plan.ts';
 import { loadavg } from 'node:os';
 import {
   parseCarryKeys,
@@ -56,31 +58,43 @@ async function untilStopped(custody: ProcessCustody, ref: string): Promise<numbe
   });
 }
 
-/** Custody's destinations: Ollama on loopback, and OpenRouter's stream where it is set. */
+/** Custody's destinations: Ollama on loopback, and OpenRouter's stream and the plan where they are set. */
 export const destinationsOf = (settings: AgentSettings): readonly Destination[] => [
   { key: 'ollama', origin: settings.ollamaOrigin },
   ...(settings.openrouterOrigin === undefined
     ? []
     : [{ key: 'openrouter', origin: settings.openrouterOrigin, stream: 'openai_sse' as const }]),
+  ...(settings.planOrigin === undefined
+    ? []
+    : [{ key: CHATGPT_PLAN_PROVIDER, origin: settings.planOrigin }]),
 ];
+
+/** The value each destination's request goes under: a credential reference, the plan itself, or none. */
+function refFor(settings: Parameters<typeof agentCustody>[0], destination: string) {
+  if (destination === 'openrouter') return settings.openrouterCredentialRef;
+  if (destination !== CHATGPT_PLAN_PROVIDER) return settings.credentialRef;
+  // The plan's token is custody's holder's, never a filed credential.
+  return settings.planTokenFile === undefined ? undefined : CHATGPT_PLAN_PROVIDER;
+}
 
 /**
  * Custody as the agent hands it a call, under the request's own
- * destination's credential; an OpenRouter request with none set is refused,
- * and custody is asked nothing.
+ * destination's credential; an OpenRouter or plan request with none set is
+ * refused, and custody is asked nothing. With the plan set, custody is asked
+ * to prepare its token before each accept.
  */
 export const agentCustody = (
   settings: Pick<AgentSettings, 'credentialRef' | 'openrouterCredentialRef' | 'planTokenFile'>,
   custody: Pick<ProcessCustody, 'dispatchBefore'> & Partial<Pick<ProcessCustody, 'prepare'>>,
 ): AgentCustody => ({
   dispatch: async (request, gate, onPiece) => {
-    const ref =
-      request.destination === 'openrouter'
-        ? settings.openrouterCredentialRef
-        : settings.credentialRef;
+    const ref = refFor(settings, request.destination);
     if (ref === undefined) return { kind: 'refused', started: false, code: 'REQUEST_REFUSED' };
     return await custody.dispatchBefore(ref, request, gate, onPiece);
   },
+  ...(settings.planTokenFile === undefined || custody.prepare === undefined
+    ? {}
+    : { prepare: custody.prepare }),
 });
 
 export async function main(env: NodeJS.ProcessEnv): Promise<number> {
@@ -96,9 +110,13 @@ export async function main(env: NodeJS.ProcessEnv): Promise<number> {
     process.stderr.write('model agent: the agent login was refused\n');
     return 1;
   }
+  const { planTokenFile, planIssuer } = settings;
   const custody = await startCustody({
     credentialsFile: settings.credentialsFile,
     destinations: destinationsOf(settings),
+    ...(planTokenFile === undefined || planIssuer === undefined
+      ? {}
+      : { plan: { tokenFile: planTokenFile, issuer: planIssuer } }),
   });
   const carriage = realtimeCarriage({ url: settings.realtimeUrl, apiKey: settings.providerKey });
   const agent = await startModelAgent({
