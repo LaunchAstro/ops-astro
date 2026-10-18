@@ -15,8 +15,9 @@
 //   choose.
 // - Sources: the tasks an earlier exchange may carry, those its card wrote
 //   (`task-proposal:<reply id>` in the audit chain) and those its snapshot
-//   held. The context leaves out the first exchange with a source the asker
-//   can no longer use, and every exchange after it (`conversation-context.ts`).
+//   held. The context leaves out the first exchange, by its question's place,
+//   with a source the asker can no longer use, and every exchange after it
+//   (`conversation-context.ts`), whatever order the replies finished in.
 
 import type { ConversationTargetsView } from '../../../core-wire/src/index.ts';
 import {
@@ -143,12 +144,18 @@ interface Sourced {
   readonly sources: readonly string[];
 }
 
-/** The tasks each reply of the current epoch may carry: those its card wrote, and those its snapshot held. */
+/**
+ * The tasks each reply of the current epoch may carry, those its card wrote
+ * and those its snapshot held, in its question's order: replies to queued
+ * questions can finish in either order.
+ */
 async function sourcesOf(tx: TenantQuery, conversationId: string): Promise<readonly Sourced[]> {
   const rows = await tx.query<{ readonly from_id: string; readonly task_id: string }>(
-    `select coalesce(m.answers_message_id, m.id) as from_id, s.task_id
+    `select f.id as from_id, s.task_id
        from conversation_messages m
        join conversations c on c.business_id = m.business_id and c.id = m.conversation_id
+       join conversation_messages f
+         on f.business_id = m.business_id and f.id = coalesce(m.answers_message_id, m.id)
        join lateral (
          select a.subject_record_id as task_id from audit_events a
           where a.business_id = m.business_id and a.operation_id = $3 || m.id::text
@@ -160,7 +167,7 @@ async function sourcesOf(tx: TenantQuery, conversationId: string): Promise<reado
        ) s on true
       where m.business_id = $1 and m.conversation_id = $2 and m.role = 'agent'
         and m.context_epoch = c.context_epoch
-      order by m.created_at, m.id, s.task_id`,
+      order by f.created_at, f.id, s.task_id`,
     [tx.businessId, conversationId, CARD_OPERATION],
   );
   const byExchange = new Map<string, string[]>();
