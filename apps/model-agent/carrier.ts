@@ -18,7 +18,7 @@
 //
 // Custody writes only before the deadline and says `written`. The answer is
 // custody's own outcome, sent again until `settled`. Custody lost mid-answer
-// sends nothing, so the call is held. The log names kinds only.
+// sends nothing, so the call is held. The log names kinds only; `accept` once Realtime took it.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -98,9 +98,9 @@ interface Agent {
   stopped: boolean;
 }
 
-/** A message for call `k` under this runner, sealed as the agent's and sent on its line. */
-function say(agent: Agent, k: string, call: Call, event: CarryEvent, body: unknown, seq = 0) {
-  const message = sealed(agent.options.key, {
+/** A message for call `k` under this runner, sealed as the agent's. */
+const sealOf = (agent: Agent, k: string, event: CarryEvent, body: unknown, seq = 0): Sealed =>
+  sealed(agent.options.key, {
     direction: 'agent',
     k,
     runner: agent.runner,
@@ -109,6 +109,10 @@ function say(agent: Agent, k: string, call: Call, event: CarryEvent, body: unkno
     expiresAt: agent.now() + SEAL_LIFE_MS,
     body: JSON.stringify(body),
   });
+
+/** A message for call `k`, sealed and sent on its line. */
+function say(agent: Agent, k: string, call: Call, event: CarryEvent, body: unknown, seq = 0) {
+  const message = sealOf(agent, k, event, body, seq);
   void call.line?.send(event, message);
   return message;
 }
@@ -257,8 +261,8 @@ async function onOffer(agent: Agent, message: unknown): Promise<void> {
   joined.line.hear((event, said) => heard(agent, k, call, event, said));
   call.acceptedAt = agent.now();
   call.state = 'accepted';
-  say(agent, k, call, 'accept', { acceptedAt: call.acceptedAt });
-  agent.log('accept');
+  const accept = sealOf(agent, k, 'accept', { acceptedAt: call.acceptedAt });
+  agent.log((await joined.line.send('accept', accept)) === 'sent' ? 'accept' : 'accept unsent');
 }
 
 export async function startModelAgent(
