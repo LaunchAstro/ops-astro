@@ -285,16 +285,4 @@ export function standIn(
 
 export type StandIn = ReturnType<typeof standIn>;
 
-export {
-  drawer,
-  opened,
-  view,
-  settled,
-  movesIn,
-  tabs,
-  selectedTab,
-  lines,
-  tabTitle,
-  pickedModel,
-} from './replay-drawer.tsx';
-export type { DrawerAt } from './replay-drawer.tsx';
+export * from './replay-drawer.tsx';
