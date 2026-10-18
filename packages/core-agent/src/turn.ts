@@ -5,7 +5,8 @@
 // to what the broker owns, never free text: the system message the run's
 // pinned file, the person's message the run's task at the revision it was
 // read, an assistant message the answer the broker returned for it, byte for
-// byte, and a tool result the task as that tool call read it.
+// byte, and a tool result what that tool call read or stored: the task at
+// its revision, or the correction it requested (#1624 R7), by id.
 //
 // The model does not get to correct itself. Every tool asked for must be in
 // the catalogue, every result must answer exactly one earlier call and none
@@ -30,6 +31,9 @@ export class RunEnd extends Error {
   }
 }
 
+/** What a tool call read or stored, as the broker binds it: never its content. */
+export type ToolRead = { readonly revision: number } | { readonly correctionId: string };
+
 /** What one attempt keeps in this process. The model and every binding of it share it. */
 export interface AttemptState {
   readonly taskId: string;
@@ -45,8 +49,8 @@ export interface AttemptState {
   ended: RunEnd | undefined;
   /** Each answer the broker returned, by its call, as it is carried back. */
   readonly answers: Map<string, TurnPart & { readonly ref: 'answer' }>;
-  /** Each tool call's read of the task: the revision it saw. */
-  readonly reads: Map<string, number>;
+  /** Each tool call's result, by call: the task's revision it read, or the correction it stored. */
+  readonly reads: Map<string, ToolRead>;
 }
 
 export const attemptState = (
@@ -95,11 +99,15 @@ export function partsOf(state: AttemptState, messages: readonly BaseMessage[]): 
     } else if (type === 'tool') {
       const result = message as BaseMessage & { tool_call_id?: string; status?: string };
       const id = String(result.tool_call_id);
-      const revision = state.reads.get(id);
-      if (result.status === 'error' || revision === undefined) throw end(state, 'TOOL_REFUSED');
+      const read = state.reads.get(id);
+      if (result.status === 'error' || read === undefined) throw end(state, 'TOOL_REFUSED');
       if (!asked.has(id) || answered.has(id)) throw end(state, 'TURN_MALFORMED');
       answered.add(id);
-      parts.push({ ref: 'task', taskId: state.taskId, revision, toolCallId: id });
+      parts.push(
+        'correctionId' in read
+          ? { ref: 'correction', correctionId: read.correctionId, toolCallId: id }
+          : { ref: 'task', taskId: state.taskId, revision: read.revision, toolCallId: id },
+      );
     } else {
       throw end(state, 'TURN_MALFORMED');
     }

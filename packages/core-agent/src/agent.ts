@@ -18,13 +18,13 @@ import { createAgent, modelCallLimitMiddleware, toolCallLimitMiddleware } from '
 import { outcomeOf, type EndCode, type RunOutcome } from '../../core-wire/src/index.ts';
 import { isolated, runRefused } from './guard.ts';
 import { OpsAstroChatModel, type BrokerPort } from './model.ts';
-import { RunEnd, type AttemptState } from './turn.ts';
+import { RunEnd, type AttemptState, type ToolRead } from './turn.ts';
 
 /** A tool's own call through the product, under the attempt's credential. */
 export type ToolRun = (
   args: Readonly<Record<string, unknown>>,
 ) => Promise<
-  | { readonly revision: number; readonly content: string }
+  | (ToolRead & { readonly content: string })
   | { readonly refused: EndCode; readonly recorded: boolean }
 >;
 
@@ -62,8 +62,9 @@ function toolsOf(state: AttemptState, ports: AttemptPorts): StructuredToolInterf
             state.ended ??= new RunEnd(read.refused, read.recorded);
             throw state.ended;
           }
-          state.reads.set(String(config.toolCall?.id), read.revision);
-          return read.content;
+          const { content, ...kept } = read;
+          state.reads.set(String(config.toolCall?.id), kept);
+          return content;
         },
         { name, description: `The ${name} operation`, schema: { type: 'object' } },
       ) as StructuredToolInterface,

@@ -279,4 +279,4 @@ export {
   type RunOutcomeView,
   type WorkerEndCode,
 } from './run-outcomes.ts';
-export { AGENT_MODEL_CALL_LIMIT, type ToolCall, type TurnPart } from './turns.ts';
+export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';

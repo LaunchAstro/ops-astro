@@ -14,4 +14,4 @@ export { entryRefused, isolated, runRefused, TRACING_FLAGS } from './guard.ts';
 export { OpsAstroChatModel } from './model.ts';
 export type { BrokerPort, Turn, TurnAnswer } from './model.ts';
 export { attemptState, RunEnd } from './turn.ts';
-export type { AttemptState } from './turn.ts';
+export type { AttemptState, ToolRead } from './turn.ts';
