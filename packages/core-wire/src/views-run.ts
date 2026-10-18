@@ -5,6 +5,8 @@
 // decision read. Split from `views.ts`, which re-exports every one, to keep
 // that file under the 1,000-line cap for product source.
 
+import type { RunOutcomeView } from './run-outcomes.ts';
+
 /**
  * The run's pinned definition reference, as stored: a bootstrap file by path,
  * read at pin time, or a definition version by id. The digest and size are
@@ -85,6 +87,8 @@ export interface ExecutionRun {
   readonly state: string;
   readonly taskRevisionAtRequest: number | null;
   readonly createdAt: string;
+  /** Its latest attempt's stop, as that stop recorded it (#1623 R1), or null while none has. */
+  readonly runOutcome: RunOutcomeView | null;
 }
 
 /** One durable progress event, in the task-wide order. */
