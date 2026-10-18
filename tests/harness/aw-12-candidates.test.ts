@@ -2,8 +2,11 @@
 //
 // AW-12, part one: the candidates, pinned and with their licences read, as
 // recorded data. Nothing is fetched or installed: the licences go through the
-// product's own licence check, and no candidate is anywhere in the product's
-// dependency tree (`AW-12 candidates kept out of the product`). That is not
+// product's own licence check, and no candidate the product did not select is
+// anywhere in its dependency tree (`AW-12 candidates kept out of the product`).
+// The selected stack (#1623 R4: `langchain`, `@langchain/core` and
+// `@langchain/langgraph`) is installed at its own exact pins, which
+// `tests/runs/the-agent-stack-is-pinned-to-one-copy-each.test.ts` holds. That is not
 // the candidate audit: the dependency audit at each pinned commit is part
 // two's, in the candidate's throwaway environment.
 
@@ -51,6 +54,13 @@ function candidatesIn(text: string, names: readonly string[]): string[] {
 }
 
 const ALL_PACKAGES = CANDIDATES.flatMap((candidate) => candidate.packages);
+/** The stack #1623 selected and installs at its own pins; every other candidate stays out. */
+const SELECTED: ReadonlySet<string> = new Set([
+  'langchain',
+  '@langchain/core',
+  '@langchain/langgraph',
+]);
+const KEPT_OUT = ALL_PACKAGES.filter((name) => !SELECTED.has(name));
 
 describe('AW-12 candidates', () => {
   it('the candidates entered are the ones the decision names, the checkpointer entered separately', () => {
@@ -125,14 +135,22 @@ const manifests = (): string[] => [
 ];
 
 describe('AW-12 candidates kept out of the product', () => {
-  it('no candidate is in the product lockfile or any workspace package manifest', () => {
+  it('no candidate but the selected stack is in the product lockfile or any workspace package manifest', () => {
     const lockfile = readFileSync('pnpm-lock.yaml', 'utf8');
     // Control: the scan reads the lockfile's own entries.
     expect(candidatesIn(lockfile, ['vitest', '@types/node'])).toEqual(['vitest', '@types/node']);
-    expect(candidatesIn(lockfile, ALL_PACKAGES)).toEqual([]);
+    expect(candidatesIn(lockfile, KEPT_OUT)).toEqual([]);
+    expect(KEPT_OUT).toEqual(
+      expect.arrayContaining([
+        'deepagents',
+        '@langchain/langgraph-checkpoint-postgres',
+        'langflow',
+        'lfx',
+      ]),
+    );
     expect(manifests().length).toBeGreaterThan(1);
     for (const file of manifests()) {
-      expect(candidatesIn(readFileSync(file, 'utf8'), ALL_PACKAGES), file).toEqual([]);
+      expect(candidatesIn(readFileSync(file, 'utf8'), KEPT_OUT), file).toEqual([]);
     }
   });
 
