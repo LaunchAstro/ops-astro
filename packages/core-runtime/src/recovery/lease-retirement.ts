@@ -4,7 +4,9 @@
 // recorded transitions after a restart, and the cancellation path. The rules
 // it keeps are in `../recovery.ts`, the module's one surface.
 
+import { recordStop } from '../../../core-custody/src/index.ts';
 import { revokeDelegation } from '../../../core-records/src/index.ts';
+import type { EndCode } from '../../../core-wire/src/run-outcomes.ts';
 import type { TenantQuery, Subject } from '../../../core-records/src/index.ts';
 import { raiseAlert } from '../alerts.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
@@ -100,6 +102,16 @@ export async function endLease(
 }
 
 /**
+ * Fence an expired lease for its replacement or the sweep, recording its
+ * attempt's outcome first (#1623 R1): `lease_lost / LEASE_EXPIRED`, or unknown
+ * beside a call still open. Whichever of the two comes first writes it.
+ */
+export async function loseLease(tx: TenantQuery, leaseId: string): Promise<void> {
+  await recordStop(tx, leaseId, 'LEASE_EXPIRED');
+  await endLease(tx, leaseId, 'expired');
+}
+
+/**
  * End the work authority a transition has made obsolete: fence and release
  * each live lease, and revoke the delegation it was issued under. T5 names
  * both halves for cancellation ("releases the live lease and revokes the
@@ -108,16 +120,23 @@ export async function endLease(
  * rather than settled: nothing was handed back, and the next call the agent
  * makes on that credential re-evaluates it and is refused.
  *
+ * Each attempt it retires records its outcome first, under the same locks:
+ * `endCode` names the stop (#1623 R1), and a call still open at the stop
+ * makes the row unknown instead (`recordStop`).
+ *
  * Under the caller's locks, which must include every row named here.
  */
 export async function retireWork(
   tx: TenantQuery,
   work: readonly LiveWork[],
   locks: LockSet,
+  endCode: EndCode,
 ): Promise<void> {
   for (const row of work) {
     locks.require('lease', row.lease_id);
     if (row.delegation_id !== null) locks.require('delegation', row.delegation_id);
+    // eslint-disable-next-line no-await-in-loop
+    await recordStop(tx, row.lease_id, endCode);
     // eslint-disable-next-line no-await-in-loop
     await endLease(tx, row.lease_id, 'released');
     if (row.delegation_id !== null) {
@@ -194,6 +213,7 @@ export async function replayRecordedTransitions(
         tx,
         [{ lease_id: row.lease_id, run_id: row.run_id, delegation_id: row.delegation_id }],
         locks,
+        'AUTHORITY_LOST',
       );
       await reopenRuns(tx, [row.run_id], locks);
     },
@@ -360,7 +380,7 @@ export async function cancelAndClassify(
     raised: { kind: 'cancelled' },
   });
 
-  await retireWork(tx, workAfter, locks);
+  await retireWork(tx, workAfter, locks, 'TASK_CANCELLED');
   // Nothing in this head dispatches, so the ordinary cancellation completes as
   // cancelled (T5). A run already handed back keeps that outcome as history.
   for (const id of runsAfter) locks.require('run', id);
