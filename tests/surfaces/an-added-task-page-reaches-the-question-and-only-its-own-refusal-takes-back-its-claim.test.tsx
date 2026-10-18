@@ -34,12 +34,16 @@ afterAll(async () => {
   await w?.drop();
 });
 
-async function view(address: string) {
+async function view(
+  address: string,
+  beforeReturn?: (name: string, answer: unknown) => Promise<void>,
+) {
   const pending: Promise<unknown>[] = [];
   const client = {
     read: () => Promise.resolve({ unavailable: true, because: 'ancillary reads not needed' }),
     mutate: (name: string, body: Record<string, unknown>) => {
-      const sent = w.as(w.owner, name, body).then((answer) => {
+      const sent = w.as(w.owner, name, body).then(async (answer) => {
+        await beforeReturn?.(name, answer);
         expect(answer.status).toBe(200);
         return { ok: true, value: answer.body };
       });
@@ -67,7 +71,7 @@ async function view(address: string) {
     await press(page, '[data-assistant="input"]', 'Enter');
     await drain();
   };
-  return { page, ask, drain };
+  return { page, ask, drain, client };
 }
 
 it.skipIf(serverUrl === undefined)(
@@ -89,6 +93,9 @@ it.skipIf(serverUrl === undefined)(
     expect(JSON.parse(model.provider.seen.at(-1)!.body).fields.page).toBe(
       JSON.stringify({ task: id, title }),
     );
+    expect(page.text()).toContain(title);
+    await ask('And later?');
+    expect(JSON.parse(model.provider.seen.at(-1)!.body).fields.page).toContain(title);
   },
 );
 
@@ -104,5 +111,72 @@ it.skipIf(serverUrl === undefined)(
     expect(model.provider.seen).toHaveLength(before);
     expect(page.find('[data-message-role="failed"]')).not.toBeNull();
     expect(page.text()).not.toContain('Read this page into context');
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  'an unreadable page before start is refused without claiming it was read',
+  async () => {
+    const { page, ask } = await view('/task/T-absent');
+    await page.click('[data-assistant="add-page"]');
+    const before = model.provider.seen.length;
+    await ask('What is this task?');
+    expect(model.provider.seen).toHaveLength(before);
+    expect(page.text()).not.toContain('Read this page into context');
+    expect(page.text()).toContain('couldn’t be read into context');
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  'a late refusal for the old page does not mark the newly added readable page unreadable',
+  async () => {
+    const made = await w.as(w.owner, 'task.create', {
+      fields: { title: 'READABLE-REPLACEMENT-PAGE' },
+    });
+    expect(made.status).toBe(200);
+    const id = String(made.body['recordId']);
+    let release!: () => void;
+    let arrived!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const responseReady = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    let delayNext = false;
+    const { page, ask, drain, client } = await view('/task/T-missing-old-page', async (name) => {
+      if (delayNext && name === 'conversation.message') {
+        delayNext = false;
+        arrived();
+        await released;
+      }
+    });
+    await ask('Start an ordinary conversation');
+    await page.click('[data-assistant="add-page"]');
+    await drain();
+    delayNext = true;
+    await page.type('[data-assistant="input"]', 'Read the old missing page');
+    await press(page, '[data-assistant="input"]', 'Enter');
+    await responseReady;
+    try {
+      await page.render(
+        <AssistantView
+          client={client}
+          route="agency:task-detail"
+          here={`/task/${id}`}
+          entry={null}
+        />,
+      );
+      await page.click('[data-assistant="add-page"]');
+    } finally {
+      release();
+    }
+    await drain();
+    await ask('Read the new page');
+    expect(JSON.parse(model.provider.seen.at(-1)!.body).fields.page).toContain(
+      'READABLE-REPLACEMENT-PAGE',
+    );
+    expect(page.text()).toContain('READABLE-REPLACEMENT-PAGE');
+    expect(page.text()).not.toContain('This page couldn’t be read into context');
   },
 );
