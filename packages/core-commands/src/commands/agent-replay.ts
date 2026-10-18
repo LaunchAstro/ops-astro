@@ -148,7 +148,7 @@ async function replayTake<O extends object>(
   if ('refusal' in authorised) return authorised.refusal;
   const operands = operation.operands(again.request);
   if (isOperandRefusal(operands)) return operands.refusal;
-  const judged = { call: again, presented, authority: operation.authority };
+  const judged = { call: again, presented, asked: authorised.asked };
   const served = await workJudged(tx, judged, async () => await authorised.run(operands));
   if ('ended' in served) return served.ended;
   if (isRefused(served)) return served.refusal;
