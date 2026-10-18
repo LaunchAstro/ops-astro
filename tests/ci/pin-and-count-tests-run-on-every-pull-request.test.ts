@@ -73,6 +73,25 @@ it('lists every repository pin and catalogue count in the always-run settings', 
   expect(new Set(settings.alwaysRunTests).size).toBe(settings.alwaysRunTests.length);
 });
 
+// The repository-wide rules a merge group would otherwise test first, where one
+// red rebuilds every group behind it: each read the whole tree, and none needs a
+// database.
+it.each([
+  ['named-suite manifest', 'tests/db/named-suite-manifest.test.ts'],
+  ['test files named by behaviour', 'tests/docs/test-files-by-behaviour.test.ts'],
+  ['source comments', 'tests/docs/source-comments.test.ts'],
+  ['source-comment cases', 'tests/docs/source-comment-cases-kept.test.ts'],
+  [
+    'column-grant contract',
+    'tests/tenancy/column-grant-contract-names-every-migration-grant.test.ts',
+  ],
+])('runs the %s rule on every pull request', (_, path) => {
+  const named = readNamedSuites('.');
+  const database = [...named.invariant, ...named.conformance].map((s) => s.split('#')[0]);
+  expect(readScopeMap('scripts/ci-scope.json').alwaysRunTests).toContain(path);
+  expect(database).not.toContain(path);
+});
+
 it.each(['failure', 'cancelled', 'skipped'])(
   'the required local-checks result refuses pin tests that report %s',
   (pins) => {
