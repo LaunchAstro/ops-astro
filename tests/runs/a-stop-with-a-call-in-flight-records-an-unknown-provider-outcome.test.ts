@@ -47,7 +47,7 @@ import {
   shapeOf,
   useStopWorld,
   world,
-} from './sol-1623-stop-world.ts';
+} from './run-stop-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -255,7 +255,7 @@ async function expectRowKept(work: Work): Promise<void> {
 }
 
 for (const stop of ['task.cancel', 'run.end'] as const) {
-  it(`sol-1623 ${stop} committed while a call is dispatched records OPEN_CALL_AT_STOP`, async () => {
+  it(`${stop} committed while a call is dispatched records OPEN_CALL_AT_STOP`, async () => {
     const raced = await race(stop, 'stop');
     expect(shapeOf(await outcomesOf(raced.work)), 'the open call decides the row').toEqual([
       named('unknown_provider_outcome', 'OPEN_CALL_AT_STOP', OWN_CODE[stop]),
@@ -264,7 +264,7 @@ for (const stop of ['task.cancel', 'run.end'] as const) {
     await expectRowKept(raced.work);
   });
 
-  it(`sol-1623 ${stop} after the racing answer settled records its own outcome`, async () => {
+  it(`${stop} after the racing answer settled records its own outcome`, async () => {
     const raced = await race(stop, 'answer');
     expect(shapeOf(await outcomesOf(raced.work)), 'nothing was open at the stop').toEqual([
       named('cancelled', OWN_CODE[stop]),
@@ -273,7 +273,7 @@ for (const stop of ['task.cancel', 'run.end'] as const) {
     await expectRowKept(raced.work);
   });
 
-  it(`sol-1623 control: calls settled first, then a clean ${stop} records the writer's own outcome`, async () => {
+  it(`control: calls settled first, then a clean ${stop} records the writer's own outcome`, async () => {
     const work = await fresh(`${stop} control`);
     world.provider.mode('answer');
     const answer = await modelCall(work);
