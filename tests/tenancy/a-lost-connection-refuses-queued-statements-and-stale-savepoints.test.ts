@@ -125,7 +125,7 @@ async function staleSavepointKeptOut(): Promise<void> {
 }
 
 describe.skipIf(serverUrl === undefined)(
-  'a lost connection with statements queued or a savepoint running (#1774)',
+  'a lost connection with statements queued or a savepoint running',
   () => {
     for (const kind of ['runtime', 'admin'] as const) {
       it(
