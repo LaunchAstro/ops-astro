@@ -10,11 +10,11 @@
 // by, the audit copy and the read's one audit event. The bytes must decode as
 // UTF-8, a BOM kept, and encode back to themselves.
 //
-// The lease is checked once more, on the database clock, after every wait:
-// after the source read and after `workJudged`'s standing, which waits on the
-// delegation, the login and the business's audit chain (`final`, D1904-1). An
-// expiry in any of those waits refuses the read and rolls back its ledger row,
-// copy and event.
+// The lease is checked again on the database clock after `lockFacts`' last
+// lock wait, and once more as the last statement, after the source read and
+// `workJudged`'s standing, which waits on the delegation, the login and the
+// business's audit chain (`final`, D1904-1). An expiry in any of those waits
+// refuses the read and rolls back its ledger row, copy and event.
 //
 // The register keeps the read without its text (`stored`), and the read's event
 // is its only one (`ownEvent`). A replay runs as a fresh call under
@@ -131,6 +131,10 @@ export async function serveDefinitionRead(
   if (!checked.ok) return brokerRefusal(checked.code);
   const { facts } = checked;
   if (again !== undefined && facts.runId !== again.runId) return brokerRefusal('LEASE_NOT_OWNED');
+  // `lockFacts` judged the lease before its reservation wait: one that ended in
+  // that wait is `LEASE_EXPIRED` here, before the pinned read's own check.
+  const ended = await leaseLive(tx, { ...facts, fence: (again ?? operands).fence });
+  if (ended !== undefined) return refused(ended);
   const source = configuredInstructionSource();
   if (source === undefined) {
     return refused(refuseCommand('DEFINITION_UNAVAILABLE', [], NO_ROOT_FIXES));
@@ -222,11 +226,19 @@ export async function leaseStillLive(
 ): Promise<CommandRefusal | undefined> {
   const read = keptRead(ran.detail);
   if (read === undefined) throw new Error('definition.read: an applied read without its lease');
+  return await leaseLive(tx, read);
+}
+
+/** The lease live at its fence on its run, now, on the database clock. */
+async function leaseLive(
+  tx: TenantQuery,
+  at: Pick<KeptRead, 'leaseId' | 'runId' | 'fence'>,
+): Promise<CommandRefusal | undefined> {
   const live = await tx.query(
     `select 1 from public.leases
       where business_id = $1 and id = $2 and run_id = $3 and fence = $4
         and state = 'live' and expires_at > clock_timestamp()`,
-    [tx.businessId, read.leaseId, read.runId, read.fence],
+    [tx.businessId, at.leaseId, at.runId, at.fence],
   );
   return live.length > 0 ? undefined : refuseCommand('LEASE_EXPIRED', [], EXPIRED_FIXES);
 }
