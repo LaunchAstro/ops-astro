@@ -139,6 +139,26 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.conversations where business_id = $1 order by id limit 1) c on true
      returning 1`,
+  // #1666: a reply's snapshot, on the business's first message, and one target on it naming
+  // the business's first record; bravo's name ids that key nothing.
+  'public.conversation_reply_snapshots': `insert into public.conversation_reply_snapshots
+       (business_id, message_id, created)
+     select $1, coalesce(m.id, gen_random_uuid()), 1
+       from (select 1) one
+       left join lateral (
+         select id from public.conversation_messages
+          where business_id = $1 order by id limit 1) m on true
+     returning 1`,
+  'public.conversation_reply_targets': `insert into public.conversation_reply_targets
+       (business_id, message_id, position, task_id, revision)
+     select $1, coalesce(s.message_id, gen_random_uuid()), 1, coalesce(r.id, gen_random_uuid()), 0
+       from (select 1) one
+       left join lateral (
+         select message_id from public.conversation_reply_snapshots
+          where business_id = $1 order by message_id limit 1) s on true
+       left join lateral (
+         select id from public.records where business_id = $1 order by id limit 1) r on true
+     returning 1`,
   // The journey records no check (MP-6-1), so one is written against the
   // business's own lease, run, version and attempt where it has one, as
   // `recordCheck` does; Bravo holds no lease, so its row names ids that key
