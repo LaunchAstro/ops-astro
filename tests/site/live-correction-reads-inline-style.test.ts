@@ -32,6 +32,9 @@ it.each([
   ['an escaped value', String.raw`display: n\one`],
   ['marked important', 'display: none ! important'],
   ['after other declarations', 'color: red; display: none'],
+  ['after an at-rule', '@x{}display:none'],
+  ['after a media rule', '@media x{}display:none'],
+  ['after a block in another declaration', 'color: {} display: none'],
 ])('an inline display:none %s hides its text from the capture', async (_, style) => {
   const html = `<div style="${style}">We walk alongside you.</div><p>Shown text stays.</p>`;
   expect(await capturedText(html)).toBe('Shown text stays.');
@@ -41,24 +44,25 @@ it.each([
   ['a shown display', 'display: block'],
   ['display named in a string', `content: 'display:none'`],
   ['display named in a url', 'background: url(display:none)'],
-  ['display inside a block of another declaration', 'color: {; display: none}'],
   ['a longer property name', 'display-none: none'],
 ])('%s keeps its text in the capture', async (_, style) => {
   const html = `<p style="${style}">We walk alongside you.</p>`;
   expect(await capturedText(html)).toBe('We walk alongside you.');
 });
 
-// A value the reader cannot decide (a variable, an unknown keyword, a layer revert) may hide the
-// element, so its text is never read and a correction inside it never certifies live.
-it.each(['display: var(--shown)', 'display: revert-layer', 'display: nonsense'])(
-  'a correction under the undecidable style %s stays accepted',
-  async (style) => {
-    const source = `<div style="${style}"><p>We walk alongside you.</p></div>\n<p>Shown text stays.</p>\n`;
-    const job = approvedJob(source, 'alongside');
-    expect(await capturedText(source)).toBe('Shown text stays.');
-    expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('accepted');
-  },
-);
+// A value the reader cannot decide (a variable, an unknown keyword, a layer revert), or a style
+// holding an at-rule or a block it does not follow, may hide the element, so its text is never read and a correction inside it never certifies live.
+it.each([
+  'display: var(--shown)',
+  'display: revert-layer',
+  'display: nonsense',
+  '@x{}display:block',
+])('a correction under the undecidable style %s stays accepted', async (style) => {
+  const source = `<div style="${style}"><p>We walk alongside you.</p></div>\n<p>Shown text stays.</p>\n`;
+  const job = approvedJob(source, 'alongside');
+  expect(await capturedText(source)).toBe('Shown text stays.');
+  expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('accepted');
+});
 
 // The source placement leaves a styled-out element out as the capture does.
 it('an inline display:none element elsewhere still lets a shown correction go live', async () => {
