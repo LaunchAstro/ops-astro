@@ -187,6 +187,38 @@ function twoReadCases(run: Run): Cases {
   };
 }
 
+/** Caller code core runs between the guard and its callbacks: a cache getter, a message getter. */
+function afterGuardCases(run: Run): Cases {
+  const model = (): OpsAstroChatModel => new OpsAstroChatModel(run.ports.broker, run.state);
+  const cacheGetter = (key: 'callbacks' | 'verbose', value: unknown) => async () => {
+    const built = model();
+    Object.defineProperty(built, 'cache', {
+      get: () => {
+        Object.assign(built, { [key]: value });
+        return null;
+      },
+    });
+    return await built.invoke([new HumanMessage(MARKER)], {});
+  };
+  return {
+    'none-own-cache-getter-sets-callbacks-after-the-guard': cacheGetter('callbacks', [
+      new Recorder(),
+    ]),
+    'none-own-cache-getter-sets-verbose-after-the-guard': cacheGetter('verbose', true),
+    'none-generate-message-getter-fills-the-list-after-the-guard': async () => {
+      const list: Recorder[] = [];
+      const message = {
+        role: 'user',
+        get content() {
+          list.push(new Recorder());
+          return MARKER;
+        },
+      };
+      return await model().generate([[message as never]], { callbacks: list });
+    },
+  };
+}
+
 /** A getter that reads `first` for its first `times` reads and `after` from then on. */
 function lateRead<T>(first: T, after: T, times = 1): () => T {
   let read = 0;
@@ -208,9 +240,13 @@ const runnerCases = (run: Run): Cases => ({
 async function main(kind: string): Promise<Record<string, unknown>> {
   const run = scripted((n) => (n === 1 ? reads(1) : final(2)));
   plant(kind);
-  const step = { ...modelCases(run), ...ownCases(run), ...twoReadCases(run), ...runnerCases(run) }[
-    kind
-  ];
+  const step = {
+    ...modelCases(run),
+    ...ownCases(run),
+    ...twoReadCases(run),
+    ...afterGuardCases(run),
+    ...runnerCases(run),
+  }[kind];
   if (step === undefined) throw new Error('no such case');
   const result = await attempt(step);
   return { result, seen, marked, sent: run.sent.length, ended: run.ended };

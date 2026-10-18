@@ -11,12 +11,15 @@
 // subclass before it is built, and its own `verbose` set after (#1921); a
 // value that reads one way to the guard and another to core: the model's
 // `verbose` as a getter, a callback manager whose handlers are a getter, an
-// empty list with its own `map`, an empty list behind a proxy (#1925); and
-// the runner with a hook planted. Each is refused
+// empty list with its own `map`, an empty list behind a proxy, a message
+// whose content getter fills the checked list (#1925); and the runner with a
+// hook planted. Each is refused
 // `TRACING_NOT_ALLOWED` before any callback, with nothing sent, or runs
-// isolated with the hook never called. A `generate` whose options read empty
-// first and a recorder after is read once, so the recorder is never
-// configured. The cases print booleans and counts,
+// isolated with the hook never called. Values core never reads are not
+// refused but never reach a handler: a `generate` whose options read empty
+// first and a recorder after (read once), and the model's own `callbacks` or
+// `verbose` set by a getter core would run after the guard (core runs a
+// model of its own). The cases print booleans and counts,
 // so the planted marker is never printed.
 //
 // LangSmith makes no network call: a real listener stands in for its
@@ -103,6 +106,12 @@ const OPTIONS = [
   'none-generate-manager-handlers-read-late',
   'none-invoke-empty-list-with-its-own-map',
   'none-generate-empty-list-behind-a-proxy',
+  'none-generate-message-getter-fills-the-list-after-the-guard',
+];
+const UNREAD = [
+  'none-generate-callbacks-read-late',
+  'none-own-cache-getter-sets-callbacks-after-the-guard',
+  'none-own-cache-getter-sets-verbose-after-the-guard',
 ];
 
 // oxlint-disable-next-line max-lines-per-function -- one listener, every route a handler takes
@@ -119,8 +128,8 @@ describe('an inherited hook or tracer never sees an agent model content', () => 
     expect(run.leaked).toBe(false);
   });
 
-  it('generate reads its options once: callbacks that turn into a recorder later never see content', async () => {
-    const run = await inFreshProcess('none-generate-callbacks-read-late');
+  it.each(UNREAD)('%s: core never reads it, so the recorder never sees content', async (kind) => {
+    const run = await inFreshProcess(kind);
     expect(run).toMatchObject({ seen: 0, marked: false });
     expect(run.leaked).toBe(false);
   });
