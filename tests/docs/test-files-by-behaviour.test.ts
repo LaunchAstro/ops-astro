@@ -335,6 +335,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
+    'packages/core-records/src/site/locate.ts',
+    "the locate's runner-only writes (#1693); the site runner's locate imports it in the stacked #1924, which removes this entry",
+  ],
+  [
     'apps/site-runner/main.ts',
     "the site runner's launchd entry point (deploy/m5/ops-astro-site-runner.plist); nothing imports an entry point but its tests",
   ],

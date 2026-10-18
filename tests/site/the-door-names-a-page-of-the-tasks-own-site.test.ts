@@ -94,10 +94,10 @@ describe.skipIf(serverUrl === undefined)('the door names a page of the task’s 
     );
     expect(bound.ok).toBe(true);
     const marker = `marker-${randomUUID()}`;
-    await w.world.db.admin.execute('update public.records set title = $2 where id = $1', [
-      w.taskB,
-      marker,
-    ]);
+    await w.world.db.admin.execute(
+      `update public.records set data = jsonb_set(data, '{title}', to_jsonb($2::text)) where id = $1`,
+      [w.taskB, marker],
+    );
     const before = [await stored(w.taskA), await stored(client.taskId)];
     const bodies = [
       await w.asRaw(w.ava, asked(w.taskA, 'pricing')),

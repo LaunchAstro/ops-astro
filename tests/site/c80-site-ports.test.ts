@@ -272,7 +272,7 @@ describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approv
   it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
-    const id = await approved({ before, after });
+    const id = await approved(before);
     const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);

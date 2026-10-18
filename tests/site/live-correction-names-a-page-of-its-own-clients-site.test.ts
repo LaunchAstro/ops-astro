@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A live correction is stored only for a page its own client's site holds.
-// The party is the task's client, read in the insert; the page and its source
-// file are read in the same statement, as one pair, spelt exactly. Another
-// client's page and a page nobody holds are refused in the same words, and
-// nothing is stored for either. A site is bound once in the installation, and
+// The party is the task's client, read in the insert, and the page is found on
+// that client's site in the same statement (#1693: the request names the page,
+// never its file). Another client's page and a page nobody holds are refused in
+// the same words, NOT_FOUND, and nothing is stored for either. A site is bound once in the installation, and
 // another business's binding never satisfies a request.
 
 import { randomUUID } from 'node:crypto';
@@ -64,18 +64,15 @@ const rebind = async (
 describe.skipIf(serverUrl === undefined)("a request naming another client's page", () => {
   it("refuses a request on client A's task naming client B's bound page, storing nothing", async () => {
     const before = await storedIn(w.world.business);
-    const crossed = await w.request(w.ava, { pageUrl: B_PAGE, path: B_FILE });
-    expect(codeOf(crossed)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    const crossed = await w.request(w.ava, { page: B_PAGE });
+    expect(codeOf(crossed)).toBe('NOT_FOUND');
     expect(await storedIn(w.world.business)).toBe(before);
   });
 
   it('answers a page no client holds exactly as it answers another client’s page', async () => {
-    const theirs = await w.request(w.ava, { pageUrl: B_PAGE, path: B_FILE });
-    const nobodys = await w.request(w.ava, {
-      pageUrl: 'https://agency.example/nobody/',
-      path: 'src/pages/nobody.md',
-    });
-    expect(codeOf(nobodys)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    const theirs = await w.request(w.ava, { page: B_PAGE });
+    const nobodys = await w.request(w.ava, { page: 'https://agency.example/nobody/' });
+    expect(codeOf(nobodys)).toBe('NOT_FOUND');
     expect(seen(nobodys)).toEqual(seen(theirs));
     const words = JSON.stringify(theirs);
     for (const foreign of [B_PAGE, B_FILE, w.partyB, 'client-b']) {
@@ -83,19 +80,19 @@ describe.skipIf(serverUrl === undefined)("a request naming another client's page
     }
   });
 
-  it("refuses the client's own page with its other client's file, and the reverse", async () => {
-    expect(codeOf(await w.request(w.ava, { path: B_FILE }))).toBe('PAGE_OUTSIDE_PARTY_SITE');
-    expect(codeOf(await w.request(w.ava, { pageUrl: B_PAGE }))).toBe('PAGE_OUTSIDE_PARTY_SITE');
+  it('refuses a request that still names a file or a page address field', async () => {
+    expect(codeOf(await w.request(w.ava, { path: B_FILE }))).toBe('COMMAND_BODY_INVALID');
+    expect(codeOf(await w.request(w.ava, { pageUrl: B_PAGE }))).toBe('COMMAND_BODY_INVALID');
   });
 
   it.each([
-    ['the page in upper case', { pageUrl: PAGE.toUpperCase() }],
-    ['the page without its trailing slash', { pageUrl: PAGE.slice(0, -1) }],
-    ['the page percent-encoded', { pageUrl: PAGE.replace('about', '%61bout') }],
-    ['the file in another case', { path: ABOUT.replace('about', 'About') }],
+    ['the page address in upper case', { page: PAGE.toUpperCase() }],
+    ['the page address without its trailing slash', { page: PAGE.slice(0, -1) }],
+    ['the page address percent-encoded', { page: PAGE.replace('about', '%61bout') }],
+    ['the file path for the page', { page: ABOUT }],
   ])('refuses %s, storing nothing', async (_name, spelling) => {
     const before = await storedIn(w.world.business);
-    expect(codeOf(await w.request(w.ava, spelling))).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    expect(codeOf(await w.request(w.ava, spelling))).toBe('NOT_FOUND');
     expect(await storedIn(w.world.business)).toBe(before);
   });
 });
@@ -107,16 +104,16 @@ describe.skipIf(serverUrl === undefined)("a request on the client's own page", (
     expect(detailOf(own)['state']).toBe('requested');
   });
 
-  it('keeps the refusal of a client that is not the task’s ahead of the page', async () => {
-    const crossed = await w.request(w.ava, { partyId: w.partyB, pageUrl: B_PAGE, path: B_FILE });
-    expect(codeOf(crossed)).toBe('CORRECTION_PARTY_MISMATCH');
+  it('refuses a request that names a party, which the server reads from the task', async () => {
+    const crossed = await w.request(w.ava, { partyId: w.partyB, page: B_PAGE });
+    expect(codeOf(crossed)).toBe('COMMAND_BODY_INVALID');
   });
 
   it('answers a replay of a refused request with the first answer', async () => {
     const operationId = randomUUID();
-    const first = await w.request(w.ava, { operationId, pageUrl: B_PAGE, path: B_FILE });
-    const again = await w.request(w.ava, { operationId, pageUrl: B_PAGE, path: B_FILE });
-    expect(codeOf(first)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    const first = await w.request(w.ava, { operationId, page: B_PAGE });
+    const again = await w.request(w.ava, { operationId, page: B_PAGE });
+    expect(codeOf(first)).toBe('NOT_FOUND');
     expect(seen(again)).toEqual(seen(first));
   });
 
@@ -130,7 +127,7 @@ describe.skipIf(serverUrl === undefined)("a request on the client's own page", (
     expect(bound).toEqual({ ok: true });
     for (const pageUrl of pages) {
       // oxlint-disable-next-line no-await-in-loop -- one request after the other
-      expect(codeOf(await w.request(w.ava, { pageUrl, path }))).toBe('not-a-refusal');
+      expect(codeOf(await w.request(w.ava, { page: pageUrl }))).toBe('not-a-refusal');
     }
   });
 });
@@ -144,7 +141,7 @@ describe.skipIf(serverUrl === undefined)("another business's site", () => {
       pages: [...site.pages, { pageUrl: page, path }],
     }));
     expect(bound).toEqual({ ok: true });
-    expect(codeOf(await w.request(w.ava, { pageUrl: page, path }))).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    expect(codeOf(await w.request(w.ava, { page }))).toBe('NOT_FOUND');
   });
 
   it('reads no site of another business', async () => {

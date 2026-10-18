@@ -98,7 +98,7 @@ function findingThree(): void {
     expect(codeOf(answer)).toBe('applied');
     expect(await file(trashed, clientA)).toStrictEqual({
       ok: false,
-      code: 'CORRECTION_PARTY_MISMATCH',
+      code: 'PAGE_NOT_FOUND',
     });
     expect(await countOf(OF_TASK, trashed)).toBe(0);
   });

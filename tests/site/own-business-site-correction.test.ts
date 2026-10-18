@@ -18,7 +18,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { REV, c80World, type C80World } from './c80-world.ts';
 import { held, seenWaiting } from './party-site-races.ts';
-import { B_FILE, B_PAGE, PAGE, ABOUT } from './c80-sites.ts';
+import { B_PAGE, PAGE } from './c80-sites.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { bindPartySite, readPartySite } from '../../packages/core-records/src/site/party-sites.ts';
 
@@ -79,12 +79,12 @@ async function internalTask(): Promise<string> {
   return String(created.recordId);
 }
 
-/** The one-word request on the business's own about page, under `taskId`. */
+/** The one-word request on `page`, under `taskId`: the server finds the page on the task's site. */
 const ownRequest = (
   taskId: string,
-  pageUrl: string,
+  page: string,
   overrides: Readonly<Record<string, unknown>> = {},
-) => ({ partyId: null, taskId, pageUrl, path: OWN_FILE, ...overrides });
+) => ({ taskId, page, ...overrides });
 
 const storedOn = async (taskId: string): Promise<number> =>
   Number(
@@ -95,6 +95,26 @@ const storedOn = async (taskId: string): Promise<number> =>
       )
     )[0]?.n,
   );
+
+describe.skipIf(serverUrl === undefined)('the operands this suite sends', () => {
+  it('reaches the own site with the operands this suite sends', async () => {
+    const { page, bound } = await ownSite(w.world.business, w.admin.actorId);
+    expect(bound).toEqual({ ok: true });
+    const taskId = await internalTask();
+    expect(
+      codeOf(
+        await w.asRaw(w.ava, {
+          command: 'live_correction.request',
+          taskId,
+          page,
+          word: 'friendly',
+          replacement: 'welcoming',
+        }),
+      ),
+    ).toBe('not-a-refusal');
+    expect(codeOf(await w.request(w.ava, ownRequest(taskId, page)))).toBe('not-a-refusal');
+  });
+});
 
 describe.skipIf(serverUrl === undefined)("a request on the business's own site", () => {
   it('stores an internal task’s request with its base revision and version, and calls no model', async () => {
@@ -138,7 +158,7 @@ describe.skipIf(serverUrl === undefined)("a request on the business's own site",
     const theirs = await ownSite(w.beta, w.eve.actorId);
     const taskId = await internalTask();
     const crossed = await w.request(w.ava, ownRequest(taskId, theirs.page));
-    expect(codeOf(crossed)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    expect(codeOf(crossed)).toBe('NOT_FOUND');
     expect(await storedOn(taskId)).toBe(0);
     for (const foreign of [theirs.page, w.beta]) {
       expect(JSON.stringify(crossed)).not.toContain(foreign);
@@ -147,26 +167,23 @@ describe.skipIf(serverUrl === undefined)("a request on the business's own site",
 });
 
 describe.skipIf(serverUrl === undefined)('a task and a site that do not belong together', () => {
-  it("refuses a client's task on the business's own page, either way the party is named", async () => {
+  it("refuses a client's task on the business's own page, and reads no party from the caller", async () => {
     const { page } = await ownSite(w.world.business, w.admin.actorId);
     const before = await storedOn(w.taskA);
-    const asOwn = await w.request(w.ava, ownRequest(w.taskA, page));
-    const asClient = await w.request(w.ava, ownRequest(w.taskA, page, { partyId: w.partyA }));
-    expect(codeOf(asOwn)).toBe('CORRECTION_PARTY_MISMATCH');
-    expect(codeOf(asClient)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    const asked = await w.request(w.ava, ownRequest(w.taskA, page));
+    const named = await w.request(w.ava, ownRequest(w.taskA, page, { partyId: null }));
+    expect(codeOf(asked)).toBe('NOT_FOUND');
+    expect(codeOf(named)).toBe('COMMAND_BODY_INVALID');
     expect(await storedOn(w.taskA)).toBe(before);
   });
 
-  it("refuses a task with no client on a client's page, either way the party is named", async () => {
+  it("refuses a task with no client on a client's page", async () => {
     await ownSite(w.world.business, w.admin.actorId);
     const taskId = await internalTask();
-    const asOwn = await w.request(w.ava, ownRequest(taskId, PAGE, { path: ABOUT }));
-    const asClient = await w.request(
-      w.ava,
-      ownRequest(taskId, B_PAGE, { path: B_FILE, partyId: w.partyB }),
-    );
-    expect(codeOf(asOwn)).toBe('PAGE_OUTSIDE_PARTY_SITE');
-    expect(codeOf(asClient)).toBe('CORRECTION_PARTY_MISMATCH');
+    const onA = await w.request(w.ava, ownRequest(taskId, PAGE));
+    const onB = await w.request(w.ava, ownRequest(taskId, B_PAGE));
+    expect(codeOf(onA)).toBe('NOT_FOUND');
+    expect(codeOf(onB)).toBe('NOT_FOUND');
     expect(await storedOn(taskId)).toBe(0);
   });
 
@@ -186,7 +203,7 @@ describe.skipIf(serverUrl === undefined)('a task and a site that do not belong t
     const waited = await seenWaiting(w, /insert into public\.live_corrections/u);
     setting.release();
     await setting.done;
-    expect(codeOf(await request)).toBe('CORRECTION_PARTY_MISMATCH');
+    expect(codeOf(await request)).toBe('NOT_FOUND');
     expect(waited).toBe(true);
     expect(await storedOn(taskId)).toBe(0);
   });
