@@ -30,7 +30,7 @@ import {
   shapeOf,
   useStopWorld,
   world,
-} from './sol-1623-stop-world.ts';
+} from './run-stop-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -69,7 +69,7 @@ async function expectLateEndChangesNothing(work: Work, endCode: string): Promise
   expect(await asksOf(work)).toBe(1);
 }
 
-it('sol-1623 a budget stop records budget_wait in its own transaction, and a late run.end changes nothing', async () => {
+it('a budget stop records budget_wait in its own transaction, and a late run.end changes nothing', async () => {
   const work = await liveWork(s, `sol1623 budget stop ${randomUUID()}`, UNDER_ONE_CALL);
   world.provider.mode('answer');
   const sent = world.provider.seen.length;
@@ -82,7 +82,7 @@ it('sol-1623 a budget stop records budget_wait in its own transaction, and a lat
   await expectStoppedOnce(work, sent);
 });
 
-it('sol-1623 a budget stop whose reply is lost after commit records its outcome once', async () => {
+it('a budget stop whose reply is lost after commit records its outcome once', async () => {
   const work = await liveWork(s, `sol1623 budget reply lost ${randomUUID()}`, UNDER_ONE_CALL);
   world.provider.mode('answer');
   const sent = world.provider.seen.length;
@@ -111,7 +111,7 @@ it('sol-1623 a budget stop whose reply is lost after commit records its outcome 
   await expectStoppedOnce(work, sent);
 });
 
-it('sol-1623 control: a ceiling that holds the call lets it proceed, and no outcome is written', async () => {
+it('control: a ceiling that holds the call lets it proceed, and no outcome is written', async () => {
   const work = await liveWork(s, `sol1623 budget control ${randomUUID()}`, 2_000);
   world.provider.mode('answer');
   const sent = world.provider.seen.length;
