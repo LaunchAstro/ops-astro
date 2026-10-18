@@ -4,22 +4,12 @@
 // owner's own Codex folder, the runner's own home, and the fake `codex`
 // binary. Nothing here reaches a model, an account or the real ~/.codex.
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const FAKE_CODEX: string = resolve(import.meta.dirname, 'fake-codex.mjs');
-
-/**
- * Runs a script once as `--version`, so a proof's timeout is not spent on its
- * first start. macOS checks a newly written or checked-out executable on its
- * first run: 165 to 390 ms on a laptop, against about 46 ms after (#1684).
- */
-export function firstRun(file: string): void {
-  spawnSync(file, ['--version'], { stdio: 'ignore', env: { PATH: process.env['PATH'] } });
-}
 export const RUNNER_KEY = 'runner-key-0123456789abcdef0123456789abcdef';
 /** A loopback port nothing listens on just now: one the system hands out and takes back. */
 export async function freePort(): Promise<number> {

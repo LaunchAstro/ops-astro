@@ -12,7 +12,22 @@ import { expect, it } from 'vitest';
 import { createRunner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { FAKE_CODEX, firstRun, makeWorld, RUNNER_KEY } from './world.ts';
+import { makeWorld, RUNNER_KEY } from './world.ts';
+
+// Long enough for a node child to start and answer its first requests on a laptop busy with
+// other runs: a newly written script's first start alone took 165 to 390 ms on macOS, and a
+// 200 ms timeout failed there with the child not yet started (#1684).
+const TIMEOUT_MS = 2_000;
+
+/** Whether a process is still there. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const message = { fields: { message: 'Say hello.' }, stream: true };
 
@@ -26,7 +41,6 @@ it('a timed-out streamed child cannot block the runner on an inherited stdout pi
   writeFileSync(
     wrapper,
     `#!/usr/bin/env node
-if (process.argv[2] === '--version') process.exit(0);
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
@@ -37,10 +51,9 @@ setInterval(() => {}, 1000);
 `,
     { mode: 0o700 },
   );
-  firstRun(wrapper);
   const settings = readSettings({ ...w.env, OPS_LOCAL_AGENT_CODEX_BIN: wrapper }, w.userHome);
   if (!settings.ok) throw new Error(settings.code);
-  const r = await createRunner({ ...settings.settings, timeoutMs: 200 }, () => {});
+  const r = await createRunner({ ...settings.settings, timeoutMs: TIMEOUT_MS }, () => {});
   const controller = new AbortController();
   const running = fetch(`${r.origin}${LOCAL_GPT_PATH}`, {
     method: 'POST',
@@ -54,10 +67,18 @@ setInterval(() => {}, 1000);
     })
     .catch(() => false);
   try {
-    const completed = await Promise.race([running, sleep(900).then(() => false)]);
+    const completed = await Promise.race([running, sleep(TIMEOUT_MS * 3).then(() => false)]);
     expect(existsSync(descendantPid)).toBe(true);
-    // The configured timeout is 200 ms, and this call has had 900 ms to end.
+    // The call has had three times its timeout to end.
     expect(completed).toBe(true);
+    // And the timeout stopped the whole group, the descendant on the pipe included.
+    const descendant = Number(readFileSync(descendantPid, 'utf8'));
+    await expect
+      .poll(() => alive(descendant), {
+        timeout: 1_000,
+        message: 'the timeout stopped the descendant holding the pipe',
+      })
+      .toBe(false);
   } finally {
     if (existsSync(descendantPid)) {
       try {
@@ -71,15 +92,14 @@ setInterval(() => {}, 1000);
     await r.close();
     w.remove();
   }
-});
+}, 15_000);
 
 it('a preparation timeout charges no tokens when turn/start was never sent', async () => {
   const w = makeWorld();
   w.knobs({ prepMs: 10_000 });
-  firstRun(FAKE_CODEX);
   const settings = readSettings(w.env, w.userHome);
   if (!settings.ok) throw new Error(settings.code);
-  const r = await createRunner({ ...settings.settings, timeoutMs: 200 }, () => {});
+  const r = await createRunner({ ...settings.settings, timeoutMs: TIMEOUT_MS }, () => {});
   try {
     const response = await fetch(`${r.origin}${LOCAL_GPT_PATH}`, {
       method: 'POST',
@@ -99,4 +119,4 @@ it('a preparation timeout charges no tokens when turn/start was never sent', asy
     await r.close();
     w.remove();
   }
-});
+}, 15_000);
