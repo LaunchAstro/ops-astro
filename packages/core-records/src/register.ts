@@ -779,6 +779,8 @@ const ROWS_HEAD = [
     source: 'contract 4.4',
     runtime: true,
   },
+  // #1623 R1: a stop that ended its own run; it commits with the refusal (`run.end`, design F1).
+  { code: 'RUN_ENDED', status: 409, meaning: 'The run stopped, its outcome kept', source: '#1623' },
 
   // The bounded runtime, `core-runtime/src/refusals.ts`. Seven of its eighteen
   // are the six above plus `SCOPE_NOT_GRANTED`, already registered by the parts
