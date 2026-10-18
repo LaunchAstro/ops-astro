@@ -28,7 +28,13 @@ export interface ToolCall {
 }
 
 export type TurnPart =
-  | { readonly ref: 'definition'; readonly path: string; readonly digest: string }
+  | {
+      readonly ref: 'definition';
+      readonly path: string;
+      readonly digest: string;
+      /** The file as `definition.read` returned it; the broker binds it by its hash (#1904). */
+      readonly text: string;
+    }
   | {
       readonly ref: 'task';
       readonly taskId: string;

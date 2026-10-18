@@ -199,6 +199,8 @@ export type CommandName =
   // the broker verifies from rows; no person grant carries it. run.end: its stop (#1623 R1).
   | 'model.call'
   | 'run.end'
+  // #1904: the lease holder's read of a file its run pinned, for a definition part.
+  | 'definition.read'
   // A person's two answers to a run waiting at its approved ceiling (AW-05):
   // a top-up under four eyes above the business's threshold, or one click
   // that ends the work and parks the task. No agent answers either.

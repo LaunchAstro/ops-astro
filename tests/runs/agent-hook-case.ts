@@ -77,7 +77,7 @@ type Cases = Record<string, () => Promise<unknown>>;
 
 /** The runner to its end; anything but success throws its end, so its code is printed. */
 async function ran(run: Run, settle: boolean): Promise<void> {
-  const end = await runAttempt(run.state, run.ports, 3, undefined, MARKER);
+  const end = await runAttempt(run.state, run.ports, 3, MARKER);
   if (settle) {
     await awaitAllCallbacks();
     await sleep(1500);
