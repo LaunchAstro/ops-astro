@@ -3,7 +3,8 @@
 // The owner's ChatGPT plan's answer as custody gives it back (#1620 P3).
 // The Responses stream is read whole and folded to its completed response;
 // the deltas never leave custody. Only a stream whose last event is
-// `response.completed`, with a `completed` response, is answered. Anything
+// `response.completed`, with a `completed` response whose id, model, output
+// items and usage counts have their shape (`wellShaped`), is answered. Anything
 // else is withheld, or is a named refusal: 429 or a mid-stream usage limit is
 // the plan allowance, 403 a refusal of this account, 400 an unsupported
 // capability, 401 signing in again, 503 the plan being unavailable. An error
@@ -93,7 +94,49 @@ function terminal(event: Record<string, unknown>): Folded {
   if (tooDeep(response)) return { kind: 'withheld', why: 'too deep' };
   if (event['type'] === 'response.incomplete' || response['status'] !== 'completed')
     return { kind: 'withheld', why: response['status'] === 'failed' ? 'failed' : 'incomplete' };
+  if (!wellShaped(response)) return { kind: 'withheld', why: 'malformed' };
   return { kind: 'completed', response };
+}
+
+const text = (value: unknown): value is string => typeof value === 'string';
+const USAGE_COUNTS = ['input_tokens', 'output_tokens', 'total_tokens'] as const;
+
+/** An output item a reader can index: typed, a message's parts typed with their texts, a call's names and arguments. */
+function itemShaped(item: unknown): boolean {
+  if (!record(item) || !text(item['type'])) return false;
+  if (item['type'] === 'message') {
+    const content = item['content'];
+    return (
+      Array.isArray(content) &&
+      content.every(
+        (part) =>
+          record(part) &&
+          text(part['type']) &&
+          (part['type'] !== 'output_text' || text(part['text'])),
+      )
+    );
+  }
+  if (item['type'] === 'function_call')
+    return (
+      text(item['name']) &&
+      text(item['arguments']) &&
+      (item['call_id'] === undefined || text(item['call_id']))
+    );
+  return true;
+}
+
+/** Whether a completed response has the shape a reader indexes: its id, model, output items and usage counts. */
+function wellShaped(response: Record<string, unknown>): boolean {
+  const { id, model, output, usage } = response;
+  return (
+    text(id) &&
+    text(model) &&
+    Array.isArray(output) &&
+    output.every((item) => itemShaped(item)) &&
+    (usage === undefined ||
+      (record(usage) &&
+        USAGE_COUNTS.every((key) => Number.isSafeInteger(usage[key]) && Number(usage[key]) >= 0)))
+  );
 }
 
 const TERMINAL = /^(?:error|response\.(?:completed|failed|incomplete))$/u;

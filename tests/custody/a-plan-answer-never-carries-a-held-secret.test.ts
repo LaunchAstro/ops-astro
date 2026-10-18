@@ -98,13 +98,23 @@ it('withholds one such piece wherever it sits and however it is spelled', () => 
 it('judges a number by its text: a whole secret is redacted, a piece withholds', () => {
   const digits = '9081726354';
   const whole = planAnswer(
-    answered(stream({ ...completed(['ok']), usage: { total_tokens: Number(digits) } })),
+    answered(
+      stream({
+        ...completed(['ok']),
+        usage: { input_tokens: 1, output_tokens: 2, total_tokens: Number(digits) },
+      }),
+    ),
     [digits],
   );
   expect(whole.ok).toBe(true);
   expect(JSON.stringify(whole)).not.toContain(digits);
   const piece = planAnswer(
-    answered(stream({ ...completed(['ok']), usage: { total_tokens: 817_263 } })),
+    answered(
+      stream({
+        ...completed(['ok']),
+        usage: { input_tokens: 1, output_tokens: 2, total_tokens: 817_263 },
+      }),
+    ),
     [digits],
   );
   expect(piece).toMatchObject(withheld);
@@ -123,9 +133,10 @@ it('withholds a secret split in order across differently named fields', () => {
   expect(judged(stream(split)).result).toMatchObject(withheld);
 });
 
+const part = (text: string): string => Buffer.from(text).toString('base64url');
+
 it("judges a signed token by its signature, so another token's public header passes", () => {
   // Built here, part by part, so no token-shaped text sits in the source.
-  const part = (text: string): string => Buffer.from(text).toString('base64url');
   const header = part('{"alg":"RS256","typ":"JWT"}');
   const signature = part('FOPwlLsrmsGWy5dVqzhbtbMZN8VAKxdmNpRt');
   const signed = [header, part('{"https://api.openai.com/auth":{"user_id":"u"}}'), signature].join(
