@@ -194,7 +194,12 @@ try {
     console.log(`${result.unit}: ${result.video ?? 'no film'}`);
     for (const s of result.steps) console.log(`  ${stepLine(s)}`);
   }
-  const pack = { stamp, made: new Date().toISOString(), units };
+  const pack = {
+    stamp,
+    made: new Date().toISOString(),
+    source: local === undefined ? DEPLOYED.host : 'a local copy of the app',
+    units,
+  };
   writeFileSync(join(out, 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`);
   writeFileSync(join(out, 'index.html'), renderPack(pack));
   console.log(`owner checks: ${out}/index.html (build ${stamp})`);

@@ -29,6 +29,8 @@ export interface UnitResult {
 export interface Pack {
   readonly stamp: string;
   readonly made: string;
+  /** Where the films were made: the deployed made-up build, or a local copy. */
+  readonly source: string;
   readonly units: readonly UnitResult[];
 }
 
@@ -85,7 +87,7 @@ h1{font-size:1.4rem}h2{font-size:1.1rem;margin:0}video{width:100%;border-radius:
 ul{padding-left:18px}li{margin:4px 0}.ok{color:var(--ok)}.red{color:var(--red)}.partly,.not-here{color:var(--part)}a{color:inherit}
 </style></head><body><main>
 <h1>Owner checks, stage 1 (Foundation)</h1>
-<p>Build <b>${escapeHtml(pack.stamp)}</b>, filmed ${escapeHtml(pack.made)} on made-up data on a local copy of the app, never production. ${String(red)} of ${String(pack.units.length)} units red.</p>
+<p>Build <b>${escapeHtml(pack.stamp)}</b>, filmed ${escapeHtml(pack.made)} on made-up data on ${escapeHtml(pack.source)}, never production. ${String(red)} of ${String(pack.units.length)} units red.</p>
 ${cards.join('\n')}
 </main></body></html>
 `;

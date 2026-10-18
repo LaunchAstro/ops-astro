@@ -157,10 +157,21 @@ export const FOUNDATION: readonly Check[] = [
         async (page) => {
           const charts = page.locator('main svg[role="img"], main figure svg, main [data-chart]');
           if ((await charts.count()) === 0) throw red('no chart on the Executive page');
+          // A chart is drawn when it is visible and its marks have real extent:
+          // an empty frame, however wide, draws nothing to read.
           const drawn = await charts.evaluateAll((all) =>
             all.map((one) => {
-              const box = one.getBoundingClientRect();
-              return one.checkVisibility() && box.width > 0 && box.height > 0;
+              const svg = one instanceof SVGSVGElement ? one : one.querySelector('svg');
+              if (svg === null || !one.checkVisibility()) return false;
+              const marks = svg.querySelectorAll<SVGGraphicsElement>(
+                'path, rect, circle, ellipse, polygon, line, polyline',
+              );
+              return [...marks].some((mark) => {
+                const box = mark.getBBox();
+                return mark.tagName === 'line' || mark.tagName === 'polyline'
+                  ? box.width + box.height > 0
+                  : box.width > 0 && box.height > 0;
+              });
             }),
           );
           const undrawn = drawn.indexOf(false);

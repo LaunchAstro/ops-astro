@@ -36,6 +36,7 @@ describe('the owner-check pack page', () => {
     const html = renderPack({
       stamp: '73747fda4218',
       made: '18 Oct 2026',
+      source: 'app.opsastro.com',
       units: [
         unit([{ step: '<img src=x onerror=alert(1)>', outcome: { kind: 'ok' } }], 'U06-"x.webm'),
       ],
@@ -44,6 +45,7 @@ describe('the owner-check pack page', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('src="U06-&quot;x.webm"');
     expect(html).toContain('Build <b>73747fda4218</b>');
+    expect(html).toContain('on made-up data on app.opsastro.com');
     expect(html).toContain('https://github.com/LaunchAstro/ops-astro-roadmap/issues/676');
   });
 });
