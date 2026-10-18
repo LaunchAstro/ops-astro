@@ -136,8 +136,6 @@ export async function createHarness(part: string): Promise<Harness> {
     return Number(rows[0]?.revision ?? '0');
   }
 
-  const { clientTask, ownComment } = ownTaskRecipes({ world, freshTask, asPerson, revisionOf });
-
   const alphaTask = await freshTask('a task every case can name');
   const inBravo = await asPerson('task.create', { fields: { title: 'a bravo task' } }, 'bravo', {
     token: world.bea.token,
@@ -238,6 +236,40 @@ export async function createHarness(part: string): Promise<Harness> {
     return written;
   }
 
+  /** The positive recipes, each fresh task they write on made by `makeTask`. */
+  function bodiesOn(makeTask: (title: string) => Promise<Task>): Harness['positiveBody'] {
+    const own = ownTaskRecipes({ world, freshTask: makeTask, asPerson, revisionOf });
+    return createPositiveBody({
+      ...taskBodyContext(world, alphaTask.id),
+      assigneePersonId: world.mia.personId as string,
+      asPerson: async (name, body) =>
+        await asPerson(name, body, 'alpha', isInvitation(name) ? inviter : world.ada),
+      asAgent,
+      freshTask: makeTask,
+      clientTask: own.clientTask,
+      ownComment: async (author) => await own.ownComment(author as { readonly token: string }),
+      freshInviter,
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
+      ...gateContext(world.db.admin, world.alpha, world.ada.personId as string),
+      brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
+      readyClass: async () =>
+        await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),
+      launchableTask: async (author) => {
+        const task = await makeTask('a task its agent is launched on');
+        const owner = (author as { personId?: string } | undefined)?.personId ?? world.ada.personId;
+        const agent = await agentOwnedBy(world.db.app, world.alpha, owner as string);
+        const [row] = await world.db.admin.execute<{ readonly revision: string }>(
+          `update public.records set data = data || jsonb_build_object('agent', $2::text)
+            where id = $1 returning revision::text as revision`,
+          [task.id, agent],
+        );
+        return { ...task, revision: Number(row?.revision ?? task.revision) };
+      },
+    });
+  }
+
   return {
     world: { ...world, db: { ...world.db, admin: plainRows(world.db.admin) } },
     alphaTask,
@@ -252,35 +284,8 @@ export async function createHarness(part: string): Promise<Harness> {
     freshTask,
     bindClientSite: taskBodyContext(world, alphaTask.id).bindClientSite,
     probeBody,
-    positiveBody: createPositiveBody({
-      ...taskBodyContext(world, alphaTask.id),
-      assigneePersonId: world.mia.personId as string,
-      asPerson: async (name, body) =>
-        await asPerson(name, body, 'alpha', isInvitation(name) ? inviter : world.ada),
-      asAgent,
-      freshTask,
-      clientTask,
-      ownComment: async (author) => await ownComment(author as { readonly token: string }),
-      freshInviter,
-      freshMember: async () =>
-        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
-      freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
-      ...gateContext(world.db.admin, world.alpha, world.ada.personId as string),
-      brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
-      readyClass: async () =>
-        await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),
-      launchableTask: async (author) => {
-        const task = await freshTask('a task its agent is launched on');
-        const owner = (author as { personId?: string } | undefined)?.personId ?? world.ada.personId;
-        const agent = await agentOwnedBy(world.db.app, world.alpha, owner as string);
-        const [row] = await world.db.admin.execute<{ readonly revision: string }>(
-          `update public.records set data = data || jsonb_build_object('agent', $2::text)
-            where id = $1 returning revision::text as revision`,
-          [task.id, agent],
-        );
-        return { ...task, revision: Number(row?.revision ?? task.revision) };
-      },
-    }),
+    positiveBody: bodiesOn(freshTask),
+    positiveBodyOn: bodiesOn,
     approvedReservation,
     reserve,
     activeRoleKeys,
