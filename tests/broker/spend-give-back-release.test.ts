@@ -109,7 +109,10 @@ async function countedUnsent(): Promise<Unsent> {
   world.provider.mode('answer');
   expect(await call(first)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
   expect(await topUp(first, 550)).toMatchObject({ ok: true, value: { heldMinor: '950' } });
-  const work: Work = { ...first, picked: await pickup(s, reservationOf(first)) };
+  // The pickup re-holds on a fresh reservation (`budget-answer.ts`): the call is read on that one.
+  const picked = await pickup(s, reservationOf(first));
+  const decision = { ...first.decision, reservationId: picked['reservationId'] };
+  const work: Work = { ...first, decision, picked };
   await stepOf(work);
   const request = requestFor(work);
   const reserving = await s.db.app.withBusiness(
