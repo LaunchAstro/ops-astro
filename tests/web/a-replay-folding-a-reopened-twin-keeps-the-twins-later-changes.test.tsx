@@ -109,3 +109,29 @@ it("a start still in flight folds a twin reopened meanwhile and keeps the twin's
     'Named in the twin',
   ]);
 });
+
+it('a fold keeps the lines the twin read that were asked elsewhere, and drops only its own', async () => {
+  const api = standIn({ 'conversation.start': ['drop'] });
+  const drawer = await opened(api.client);
+  await drawer.ask(A);
+  const a = conversationOf(api);
+  await drawer.reopen(a);
+  await drawer.ask('Asked elsewhere');
+  await drawer.page.click('[data-chat-close="chat-3"]');
+  await settled();
+  await drawer.reopen(a);
+  expect(tabs(), 'reopened again, read with the line asked elsewhere').toEqual([
+    'chat-1',
+    'chat-2',
+    'chat-4',
+  ]);
+  await drawer.select('chat-2');
+  await drawer.ask(A);
+  expect(tabs()).toEqual(['chat-1', 'chat-2']);
+  const asked = lines().filter((line) => line.startsWith('user: '));
+  expect(asked, "A's question once, the line asked elsewhere kept").toEqual([
+    `user: ${A}`,
+    `user: ${A}`,
+    'user: Asked elsewhere',
+  ]);
+});

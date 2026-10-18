@@ -11,10 +11,9 @@
 // wait, not when it was queued, so a question queued behind a lost start never
 // carries its page either. Only the kept start's own replay carries it.
 //
-// **A replay restores, then writes** (`started.ts`): its answer goes where the
-// restore says, with the edit it proposes bound to what its first attempt read
-// before the line is drawn, and each field the tab changed since goes to the
-// conversation in turn, inside the tab's queue.
+// **A replay restores, then writes** (`started.ts`, `fold.ts`): its answer goes
+// where the restore says, its edit bound to what its first attempt read before
+// the line is drawn, then each field changed since, after the tab's queue.
 
 import type { AssistantPage } from '@launchastro/ui';
 import type {
@@ -28,7 +27,8 @@ import type { Chat, StandingScope } from './chats.ts';
 import { citesOf } from './cites.ts';
 import type { Baseline } from './proposals.ts';
 import type { Asked, Kept, Resends } from './resend.ts';
-import { lost, replayed, started, type Replay, type Write } from './started.ts';
+import { landed, type Write } from './fold.ts';
+import { lost, replayed, replayOf } from './started.ts';
 import type { Store } from './store.ts';
 import type { Subject } from './subject.ts';
 import { withPieces } from './writing.ts';
@@ -77,6 +77,8 @@ export interface Sending {
   readonly store: Store;
   readonly report: (key: string, sent: Sent) => Promise<boolean>;
   readonly replays: Replays;
+  /** Each tab's queue: its start, then its writes in turn (`views/assistant.tsx`). */
+  readonly starts: Map<string, Promise<string | null>>;
 }
 
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
@@ -95,9 +97,8 @@ export function replied(
 
 /** The edit an answer proposes bound to the attempt's own read, before its card is drawn. */
 function bound(reply: ConversationReply | undefined, sent: Attempt, replays: Replays): void {
-  if (reply?.answered === true && reply.plan === undefined) {
+  if (reply?.answered === true && reply.plan === undefined)
     replays.keep(reply, sent.baseline ?? null);
-  }
 }
 
 export const setScope = (
@@ -113,66 +114,54 @@ const written = (client: OperationsClient, conversationId: string, write: Write)
   if (write.kind === 'rename') {
     return client.mutate('conversation.rename', { conversationId, title: write.title });
   }
-  if (write.kind === 'set_model') return setModel(client, conversationId, write.model);
-  return setScope(client, conversationId, write.page);
+  return write.kind === 'set_model'
+    ? setModel(client, conversationId, write.model)
+    : setScope(client, conversationId, write.page);
 };
 
-/** A replay as its first attempt went: what `started.ts` restores from. */
-function replayOf(sent: Attempt, outcome: CommandOutcome, question: string): Replay {
-  const { request } = sent;
-  const title = request['title'];
-  const model = request['model'];
-  const messageId = outcome.detail?.['messageId'];
-  const { reply } = outcome;
-  return {
-    conversationId: String(outcome.detail?.['conversationId']),
-    title: typeof title === 'string' ? title : '',
-    model: typeof model === 'string' ? model : null,
-    page: sent.context?.page ?? null,
-    scope: sent.context?.scope ?? { client: null, task: null },
-    body: sent.question,
-    questionId: typeof messageId === 'string' ? messageId : null,
-    answerId: reply?.answered === true ? reply.messageId : null,
-    asked: question,
-  };
-}
-
 /** A kept start replayed: its restore, its answer where that puts it, then its writes. */
-async function replayIn(
+function replayIn(
   sending: Sending,
   key: string,
   outcome: CommandOutcome,
   replay: { readonly sent: Attempt; readonly question: string },
-): Promise<void> {
-  const { client, store, report, replays } = sending;
+): void {
+  const { store, replays } = sending;
   const { sent, question } = replay;
   const restored = replayed(store.now(), key, replayOf(sent, outcome, question));
-  keptInto(sending, key, String(outcome.detail?.['conversationId']));
   store.update(() => restored.state);
   if (restored.apart) store.line(key, 'note', APART);
   bound(outcome.reply, sent, replays);
   if (restored.answer !== null) {
     replied(store, restored.answer.key, outcome.reply, restored.answer.after);
   }
-  const id = String(outcome.detail?.['conversationId']);
-  for (const write of restored.writes) {
-    // oxlint-disable-next-line no-await-in-loop -- each write in turn, as the tab made them
-    await report(key, written(client, id, write));
-  }
+  follow(sending, key, String(outcome.detail?.['conversationId']), restored);
 }
 
 /**
- * A twin reopened on conversation `id` folds into unstarted tab `key` as its
- * start lands (`started`), so its lost questions move with it: a resend from
- * the folded tab replays its own identity (S1917-1).
+ * A twin's lost questions moved to the tab it folded into, and the writes a
+ * fold or replay leaves, sent after everything queued on that tab and on the
+ * twin, so the server's last write is the value chosen (rule 8).
  */
-function keptInto(sending: Sending, key: string, id: string): void {
-  const { chats } = sending.store.now();
-  const source = chats.find((chat) => chat.key === key);
-  const twin = chats.find((chat) => chat.key !== key && chat.conversationId === id);
-  if (source?.conversationId === null && twin !== undefined) {
-    sending.replays.resent.fold(twin.key, key);
-  }
+function follow(
+  sending: Sending,
+  key: string,
+  id: string,
+  fold: { readonly twin?: string | null; readonly writes: readonly Write[] },
+): void {
+  const { client, report, replays, starts } = sending;
+  const twin = fold.twin ?? null;
+  if (twin !== null) replays.resent.fold(twin, key);
+  if (twin === null && fold.writes.length === 0) return;
+  const waits = [starts.get(key), twin === null ? undefined : starts.get(twin)];
+  const turn = Promise.all(waits).then(async () => {
+    for (const write of fold.writes) {
+      // oxlint-disable-next-line no-await-in-loop -- each write in turn, as the tab made them
+      await report(key, written(client, id, write));
+    }
+    return id;
+  });
+  starts.set(key, turn);
 }
 
 /** A start with no conversation back: why, and the page given up if a lost start kept it. */
@@ -235,15 +224,24 @@ export async function startWith(
     return null;
   }
   if (replaying && settled.kind === 'ok') {
-    await replayIn(sending, chat.key, settled.value, { sent, question });
+    replayIn(sending, chat.key, settled.value, { sent, question });
     return id;
   }
   const reply = settled.kind === 'ok' ? settled.value.reply : undefined;
   bound(reply, sent, replays);
   replied(on, chat.key, reply);
-  keptInto(sending, chat.key, id);
-  store.update((current) => started(current, chat.key, id));
+  const messageId = settled.kind === 'ok' ? settled.value.detail?.['messageId'] : undefined;
+  const fold = landed(store.now(), chat.key, id, {
+    title: chat.title,
+    model: chat.model,
+    page,
+    questionId: typeof messageId === 'string' ? messageId : null,
+    answerId: reply?.answered === true ? reply.messageId : null,
+    queued: true,
+  });
+  store.update(() => fold.state);
   if (page !== null) await report(chat.key, setScope(client, id, page));
+  follow(sending, chat.key, id, fold);
   return id;
 }
 

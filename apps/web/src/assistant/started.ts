@@ -17,11 +17,10 @@
 // missing lands straight after its question. A restore takes values only from
 // the tab's own kept attempt, so it never widens scope.
 
-import type { AssistantMessage, AssistantPage, PlanCardState } from '@launchastro/ui';
+import type { AssistantMessage, AssistantPage } from '@launchastro/ui';
 import {
   blank,
   change,
-  has,
   keyIn,
   READ_LINE,
   selecting,
@@ -30,67 +29,12 @@ import {
   type StandingScope,
 } from './chats.ts';
 import { gaveUp, noted, putBack } from './page-note.ts';
+import type { Asked } from './resend.ts';
+import type { CommandOutcome } from '../operations/client.ts';
+import { landed, type Write } from './fold.ts';
 import { PROPOSAL_LINE } from './proposals.ts';
 
-const staled = (plan: NonNullable<AssistantMessage['plan']>): PlanCardState =>
-  plan.state === 'unknown' ? 'unknown' : 'stale';
-
-/** The cards plan version `version` replaces: every one not approved. */
-export const replaced = (
-  messages: readonly AssistantMessage[],
-  version: number,
-): AssistantMessage[] =>
-  messages.map((each) =>
-    each.plan !== undefined && each.plan.state !== 'approved'
-      ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: version } }
-      : each,
-  );
-
-/**
- * A live tab's first question started its conversation; a closed tab takes nothing.
- * Its reopened twin folds into it, so the conversation is never open twice.
- * Read lines repeat the first question already here. Later lines follow, each
- * plan version replacing older ones; questions still out and lines on their
- * way to the twin belong to this tab.
- */
-export function started(
-  state: AssistantState,
-  key: string,
-  conversationId: string,
-): AssistantState {
-  if (!has(state, key)) return state;
-  const twin = state.chats.find(
-    (chat) => chat.key !== key && chat.conversationId === conversationId,
-  );
-  const since = twin?.messages.filter((message) => !message.id.startsWith(READ_LINE)) ?? [];
-  const single =
-    twin === undefined
-      ? state
-      : {
-          ...state,
-          chats: state.chats.filter((chat) => chat !== twin),
-          folded: { ...state.folded, [twin.key]: key },
-          answering: {
-            ...state.answering,
-            [twin.key]: 0,
-            [key]: (state.answering[key] ?? 0) + (state.answering[twin.key] ?? 0),
-          },
-        };
-  const chosen =
-    twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
-  return change(chosen, key, (chat) => ({
-    ...chat,
-    conversationId,
-    asked: { ...twin?.asked, ...chat.asked },
-    messages: since.reduce<readonly AssistantMessage[]>(
-      (lines, line) => [
-        ...(line.plan === undefined ? lines : replaced(lines, line.plan.version)),
-        line,
-      ],
-      chat.messages,
-    ),
-  }));
-}
+export { started, type Write } from './fold.ts';
 
 /** Tab `key` without `page` if it still holds that very add of it: it went with a lost start. */
 export const lost = (state: AssistantState, key: string, page: AssistantPage): AssistantState =>
@@ -111,11 +55,32 @@ export interface Replay {
   readonly asked: string;
 }
 
-/** A write a replay leaves for its conversation, in this order. */
-export type Write =
-  | { readonly kind: 'rename'; readonly title: string }
-  | { readonly kind: 'set_model'; readonly model: string }
-  | { readonly kind: 'set_scope'; readonly page: AssistantPage };
+/** A replay as its first attempt went (`resend.ts`), and the resend's question line. */
+export function replayOf(
+  sent: Pick<
+    Asked<{ readonly page: AssistantPage | null; readonly scope: StandingScope }>,
+    'request' | 'question' | 'context'
+  >,
+  outcome: CommandOutcome,
+  question: string,
+): Replay {
+  const { request } = sent;
+  const title = request['title'];
+  const model = request['model'];
+  const messageId = outcome.detail?.['messageId'];
+  const { reply } = outcome;
+  return {
+    conversationId: String(outcome.detail?.['conversationId']),
+    title: typeof title === 'string' ? title : '',
+    model: typeof model === 'string' ? model : null,
+    page: sent.context?.page ?? null,
+    scope: sent.context?.scope ?? { client: null, task: null },
+    body: sent.question,
+    questionId: typeof messageId === 'string' ? messageId : null,
+    answerId: reply?.answered === true ? reply.messageId : null,
+    asked: question,
+  };
+}
 
 export interface Restored {
   readonly state: AssistantState;
@@ -124,32 +89,28 @@ export interface Restored {
   /** Whether the asking tab is told the answer went to a tab of its own. */
   readonly apart: boolean;
   readonly writes: readonly Write[];
+  /** The twin folded into the asking tab, whose queue the writes wait for. */
+  readonly twin?: string | null;
 }
-
-const samePage = (one: AssistantPage | null, other: AssistantPage | null): boolean =>
-  one?.address === other?.address && one?.shows === other?.shows;
 
 /** Case 1: the asking tab, still unstarted, becomes A again, keeping what was set on it since. */
 function unstarted(state: AssistantState, from: string, replay: Replay): Restored {
-  const begun = change(started(state, from, replay.conversationId), from, (chat) => {
-    const back =
+  const back = change(state, from, (chat) => {
+    const put =
       chat.page === null && replay.page !== null && chat.gave === replay.page
         ? putBack(chat, replay.page)
         : chat;
-    return { ...back, asked: { ...back.asked, [replay.asked]: replay.page?.address ?? null } };
+    return { ...put, asked: { ...put.asked, [replay.asked]: replay.page?.address ?? null } };
   });
-  const chat = begun.chats.find((each) => each.key === keyIn(begun, from));
-  const writes: Write[] = [];
-  if (chat !== undefined && chat.title !== replay.title) {
-    writes.push({ kind: 'rename', title: chat.title });
-  }
-  if (chat !== undefined && chat.model !== null && chat.model !== replay.model) {
-    writes.push({ kind: 'set_model', model: chat.model });
-  }
-  if (chat !== undefined && chat.page !== null && !samePage(chat.page, replay.page)) {
-    writes.push({ kind: 'set_scope', page: chat.page });
-  }
-  return { state: begun, answer: { key: from, after: replay.asked }, apart: false, writes };
+  const {
+    state: begun,
+    writes,
+    twin,
+  } = landed(back, from, replay.conversationId, {
+    ...replay,
+    queued: false,
+  });
+  return { state: begun, answer: { key: from, after: replay.asked }, apart: false, writes, twin };
 }
 
 /** A's question as a line carrying its server id, so a later read of A matches it. */
