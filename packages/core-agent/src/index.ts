@@ -6,7 +6,9 @@
 // every model call is a broker turn and every tool a product call, through
 // the ports its caller hands it.
 
-export { createOpsAstroAgent, runAttempt } from './agent.ts';
+// `runAttempt` is the only way in: the graph is built and invoked inside its
+// refusals and its fresh store, never handed out to be invoked another way.
+export { runAttempt } from './agent.ts';
 export type { AttemptEnd, AttemptPorts, ToolRun } from './agent.ts';
 export { entryRefused, isolated, runRefused, TRACING_FLAGS } from './guard.ts';
 export { OpsAstroChatModel } from './model.ts';

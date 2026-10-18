@@ -71,7 +71,7 @@ function toolsOf(state: AttemptState, ports: AttemptPorts): StructuredToolInterf
 }
 
 /** The compiled agent, as this package uses it. */
-export interface OpsAstroAgent {
+interface OpsAstroAgent {
   readonly invoke: (
     input: { readonly messages: readonly BaseMessage[] },
     config: { readonly configurable: { readonly thread_id: string } },
@@ -97,7 +97,7 @@ const limits = (limit: number): Middleware =>
   ] as unknown as Middleware;
 
 /** The agent for one attempt. Its model and every binding share `state`. */
-export function createOpsAstroAgent(
+function createOpsAstroAgent(
   state: AttemptState,
   ports: AttemptPorts,
   limit: number,
