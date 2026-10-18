@@ -10,7 +10,9 @@
 // register row and audit event (`agent-envelope.ts`), this takes in order: the
 // presented delegation, the agent actor and the session's login mapping, each
 // `for share`; the business's audit chain; then the subject's and the
-// session's ending keys, shared (`sessionEndedHeld`). Then it reads each again.
+// session's ending keys, shared (`sessionEndedHeld`). Then it reads each again,
+// and the delegation a take hands over (`handsOver`), which the take already
+// holds `for share` from its own judgement (`launch-take.ts`).
 //
 // That order cannot deadlock with a stop of the login, which takes the same
 // rows in the same order and no audit lock, nor with a launched run's
@@ -58,7 +60,7 @@ export async function workJudged(
   const outcome = await inSavepoint(tx, async () => {
     const ran = await work();
     if (isRefused(ran)) return ran;
-    standing.ended = await agentStanding(tx, judged);
+    standing.ended = await agentStanding(tx, judged, ran.handsOver);
     return standing.ended === undefined ? ran : refused(standing.ended);
   });
   return standing.ended === undefined ? outcome : { ended: standing.ended };
@@ -68,6 +70,7 @@ export async function workJudged(
 async function agentStanding(
   tx: TenantQuery,
   { call: { session, credential }, presented, authority }: Judged,
+  handsOver: string | undefined,
 ): Promise<CommandRefusal | undefined> {
   const delegationId =
     credential === undefined || credential === ''
@@ -89,6 +92,12 @@ async function agentStanding(
   }
   if (await sessionEndedHeld(tx, presented)) {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  if (
+    handsOver !== undefined &&
+    (await resolveLiveById(tx, session.actorId, handsOver)) === undefined
+  ) {
+    return refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
   }
   // Only the rows that served under a delegation answer to it. A helper's
   // handback answers to its credential, live or not (`agent-authority.ts`).

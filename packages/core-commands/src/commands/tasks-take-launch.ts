@@ -97,6 +97,7 @@ export async function serveTakeLaunch(
           credential: taken.credential,
         }),
         auditSubjectId: taken.taskId,
+        handsOver: taken.delegationId,
       };
   }
 }

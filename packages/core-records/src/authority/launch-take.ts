@@ -10,7 +10,10 @@
 // launch `for update`, its delegation `for share` (a revocation updates it),
 // the agent's actor `for share` (a deactivation updates it). One judgement
 // follows, at `clock_timestamp()` after the last of them, so a revocation or
-// an expiry that lands while the take waits is the one it reads.
+// an expiry that lands while the take waits is the one it reads. The agent's
+// last judgement (`agent-standing.ts`) then holds the login mapping and the
+// audit chain and reads the login and this delegation again, fresh take or
+// replay, so neither lapses unseen in those later waits.
 //
 // A started launch taken again by its own agent hands back the same
 // credential: that is how a worker that restarted resumes. One that can no
@@ -44,6 +47,7 @@ export type TakeResult =
       readonly kind: 'started';
       readonly launchId: string;
       readonly taskId: string;
+      readonly delegationId: string;
       readonly credential: string;
       /** Whether this take moved it from `waiting`; false when it resumed one already started. */
       readonly moved: boolean;
@@ -212,7 +216,14 @@ export async function takeLaunch(
       [tx.businessId, launchId, TAKEN_FOR],
     );
   }
-  return { kind: 'started', launchId, taskId, credential, moved };
+  return {
+    kind: 'started',
+    launchId,
+    taskId,
+    delegationId: judged.delegation_id,
+    credential,
+    moved,
+  };
 }
 
 /**
