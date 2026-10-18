@@ -6,7 +6,7 @@
 // other holder refusal has its own words.
 
 import { afterEach, expect, it } from 'vitest';
-import { PLAN_WORDS, planRefused } from '../../packages/core-custody/src/plan-answer.ts';
+import { PLAN_WORDS, planRefused } from '../../packages/core-custody/src/plan-words.ts';
 import { tokenHolder, type PlanRefusal } from '../../packages/core-custody/src/plan-token.ts';
 import { seed, tempDir } from './fixtures/plan-token-world.ts';
 
