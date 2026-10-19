@@ -430,8 +430,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, digest, byte_count, body)
      values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
   // C35-X: the journey carries no pin. A next revision of the seeded review, and one lost
-  // carry onto it of the business's first record under its first lease, so its own insert
-  // meets its keys.
+  // carry onto it of the business's first record under the lease the journey picked up, so
+  // Alpha's own insert meets its keys; Bravo holds no lease, so its row names one that keys
+  // nothing, as the check's row does.
   'public.review_pin_carries': `with first as (
        select business_id, id, review_id, created_by_actor_id, created_by_person_id
          from public.review_revisions where business_id = $1 order by id limit 1),
@@ -449,7 +450,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select f.business_id, gen_random_uuid(), f.review_id,
             (select r.id from public.records r where r.business_id = $1 order by r.id limit 1),
             f.id, n.id, 'lost',
-            (select l.id from public.leases l where l.business_id = $1 order by l.id limit 1),
+            coalesce(
+              (select l.id from public.leases l where l.business_id = $1 order by l.id limit 1),
+              gen_random_uuid()),
             1, gen_random_uuid(), f.created_by_actor_id
        from first f cross join next n
      returning 1`,
