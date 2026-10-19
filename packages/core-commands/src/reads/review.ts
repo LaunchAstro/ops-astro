@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's read (#2011), a row of the read catalogue, kept apart for its line cap.
+// C35's reads (#2011), each a row of the read catalogue, kept apart for its line cap.
 //
 // `review.read`: one review, its revisions in number order and each revision's captures by
-// width. The grant is `review:read`, asked at the review's holder inside the query, so a party
-// grant reads no other client's review. A caller holding `review:read` nowhere is refused
-// `SCOPE_NOT_GRANTED` before any id is looked at; for everyone else, not there, in another
-// business, out of reach, a client's or malformed is one `NOT_FOUND`. It is the team's, as the
-// live correction's reads are, and never an agent's.
+// width, with the landed pictures' ids and the observations. `review.picture`: one landed
+// picture's bytes. The grant is `review:read`, asked at the review's holder inside the query,
+// so a party grant reads no other client's review. A caller holding `review:read` nowhere is
+// refused `SCOPE_NOT_GRANTED` before any id is looked at; for everyone else, not there, in
+// another business, out of reach, a client's or malformed is one `NOT_FOUND`. They are the
+// team's, as the live correction's reads are, and never an agent's.
 
 import {
   holdsAnywhere,
   isUuid,
+  readCoveredPicture,
   readCoveredReview,
   REVIEW_COLLECTION,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
-import type { ReviewReadResult } from '../../../core-wire/src/index.ts';
+import type { ReviewPictureResult, ReviewReadResult } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
 import { isInternalReader } from './tasks.ts';
@@ -52,7 +54,7 @@ async function admitted(
 }
 
 export const REVIEW_READS: {
-  readonly [K in 'review.read']: ReadRow<K>;
+  readonly [K in 'review.read' | 'review.picture']: ReadRow<K>;
 } = {
   'review.read': {
     identifiers: ['reviewId'],
@@ -66,6 +68,20 @@ export const REVIEW_READS: {
       if (refusal !== undefined) return refusal;
       const review = await readCoveredReview(tx, reviewId.toLowerCase(), reviewRead(session));
       return review === undefined ? refuseNotFound() : { ok: true, review };
+    },
+  },
+  'review.picture': {
+    identifiers: ['pictureId'],
+    parse: idOperand('pictureId', 'Send pictureId as the landed picture.'),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    disclosed: (answer) => ('picture' in answer ? answer.picture.pictureId : undefined),
+    serve: async (tx, session, { pictureId }): Promise<ReviewPictureResult | CommandRefusal> => {
+      const refusal = await admitted(tx, session, pictureId);
+      if (refusal !== undefined) return refusal;
+      const picture = await readCoveredPicture(tx, pictureId.toLowerCase(), reviewRead(session));
+      return picture === undefined ? refuseNotFound() : { ok: true, picture };
     },
   },
 };

@@ -9,7 +9,8 @@
 // so a party grant on one client reaches no other client's review and a caller
 // with no grant meets the answer a review that is not there gets. The page is
 // one the holder's site binds, read with the site share-locked first and the
-// page key-share locked after, the order an unbind takes them.
+// page key-share locked after, the order an unbind takes them. The capture
+// claim and land are the worker's, in `captures.ts`.
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
