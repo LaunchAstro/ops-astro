@@ -136,6 +136,13 @@ async function signedInWorker(
   });
 }
 
+/** The task a proposal pass left work on: its new proposal, or its own found in the queue. */
+const proposedTask = (outcome: WorkerOutcome | undefined): string | undefined => {
+  if (outcome === undefined) return undefined;
+  if ('proposed' in outcome) return outcome.proposed.taskId;
+  return 'queued' in outcome ? outcome.queued.taskId : undefined;
+};
+
 /**
  * Counts the passes in a row that refused its credentials; at the limit,
  * writes the line naming the setting to check and answers true.
@@ -182,14 +189,16 @@ export async function main(
       process.stderr.write(`worker: no answer from ${shownAddress(api)}\n`);
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
-    if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;
+    proposedOn = proposedTask(outcome) ?? proposedOn;
     if (tooOften(outcome)) return EXIT.refused;
     // oxlint-disable-next-line no-await-in-loop -- one ping per pass the API answered
     if (outcome && !('fault' in outcome || 'refused' in outcome)) await pacedBeat(env[HEARTBEAT]);
     const settled = outcome !== undefined && 'applied' in outcome;
     if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;
-      const ended = ['proposed', 'applied', 'idle', 'dropped'].some((key) => key in outcome);
+      const ended = ['proposed', 'queued', 'applied', 'idle', 'dropped'].some(
+        (key) => key in outcome,
+      );
       if (ended) return EXIT.ok;
       return 'refused' in outcome ? EXIT.refused : EXIT.fault;
     }
