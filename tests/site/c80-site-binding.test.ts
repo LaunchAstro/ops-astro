@@ -14,6 +14,7 @@ import {
   SITE_OPERATIONS,
   mergeAndFind,
   contentDigest,
+  proposeSource,
   versionDigestOf,
   readServed,
   readSiteSource,
@@ -23,12 +24,14 @@ import {
   AFTER,
   APPROVED,
   BEFORE,
+  HEAD,
   MERGED,
   REPOSITORY,
   REVERTED,
   binding,
   json,
   line,
+  proposal,
   proposed,
   type SentRequest,
 } from './c80-site-provider.ts';
@@ -116,23 +119,20 @@ describe('C80 publish binding: only the proposed version is published', () => {
   });
 });
 
-describe('C80 publish binding: one approved file written atomically', () => {
-  it(
-    'writes the approved after-image on the default branch and finds its written commit',
-    writesApprovedImage,
-  );
+describe('C80 publish binding: the default branch advanced from the approved base, atomically', () => {
+  it('advances the default branch to the proposed head and finds that commit', writesApprovedImage);
 
   it(
-    'publishes only the approved file when another file enters the proposal before its write',
+    'never advances to a proposal another file entered before its commit',
     publishesOnlyApprovedFile,
   );
 
-  it.each([409, 422])(
-    'refuses a concurrent default-branch edit at the atomic write with HTTP %s',
+  it.each(['the same file', 'another file'] as const)(
+    'refuses a concurrent default-branch commit touching %s at the fast-forward',
     refusesConcurrentEdit,
   );
 
-  it('writes on the default branch when the human review request is retargeted', async () => {
+  it("advances the default branch, not the request's, when the review request is retargeted", async () => {
     const site = proposed();
     if (site.state.request) site.state.request.base = 'staging';
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toMatchObject({ kind: 'ok' });
@@ -166,14 +166,14 @@ describe('C80 publish binding: the deployment is found by the written commit, a 
     expect(site.waits).toEqual([5000, 5000]);
   });
 
-  it('not found after the tries is accepted, no deployment yet, the write sent once', async () => {
+  it('not found after the tries is accepted, no deployment yet, the advance sent once', async () => {
     const site = proposed();
     site.state.lookupMisses = 99;
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'ok',
-      value: { revision: MERGED, liveUrl: binding.pageUrl },
+      value: { revision: HEAD, liveUrl: binding.pageUrl },
     });
-    expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
+    expect(site.sent.filter((sent) => sent.method === 'PATCH')).toHaveLength(1);
     expect(site.sent.filter((sent) => sent.host === 'api.vercel.com')).toHaveLength(6);
     expect(site.waits).toHaveLength(5);
   });
@@ -269,11 +269,13 @@ describe('C80 publish binding: the revert', () => {
 });
 
 describe('C80 UTF-8 source bytes', () => {
-  it('preserves a UTF-8 byte-order mark in the source read and approved write', async () => {
+  it('preserves a UTF-8 byte-order mark in the source read, the proposed write and the published file', async () => {
     const site = proposed();
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
     site.state.content = before;
+    site.state.branches = ['main'];
+    site.state.request = undefined;
     const pin = {
       ...APPROVED,
       preImageDigest: contentDigest(before),
@@ -288,13 +290,16 @@ describe('C80 UTF-8 source bytes', () => {
     expect(await readSiteSource(bomBinding, site.deps)).toMatchObject({
       value: { content: before },
     });
-    expect(await mergeAndFind(bomBinding, { ...pin, versionDigest }, site.deps)).toMatchObject({
+    expect(await proposeSource({ ...proposal, after, versionDigest }, site.deps)).toMatchObject({
       kind: 'ok',
     });
-    expect(site.state.content).toBe(after);
     const write = site.sent.find((sent) => sent.method === 'PUT');
     expect(Buffer.from(write?.body['content'] ?? '', 'base64').subarray(0, 3)).toEqual(
       Buffer.from([0xef, 0xbb, 0xbf]),
     );
+    expect(await mergeAndFind(bomBinding, { ...pin, versionDigest }, site.deps)).toMatchObject({
+      kind: 'ok',
+    });
+    expect(site.state.content).toBe(after);
   });
 });

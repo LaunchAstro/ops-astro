@@ -13,8 +13,9 @@ import {
   type TransportRequest,
 } from '../../packages/core-connectors/src/index.ts';
 
+// The publish: the default branch advanced to the proposal's head (#1986).
 const publishRegistration = SITE_OPERATIONS.find(
-  (entry) => entry.declaration.operation_name === 'site.publish',
+  (entry) => entry.declaration.operation_name === 'site.source.advance',
 )!;
 
 function httpOf(answer: Awaited<ReturnType<Transport>>): Transport & { seen: TransportRequest[] } {
@@ -42,14 +43,7 @@ const deps = (transport: Transport, recorded: string[] = []) => ({
   record: (code: string) => recorded.push(code),
 });
 
-const params = {
-  repository: 'agency/site',
-  path: 'src/pages/about.astro',
-  branch: 'main',
-  sha: 'blob-before',
-  content: 'PHA+',
-  message: 'Live correction',
-};
+const params = { repository: 'agency/site', branch: 'main', sha: 'c0ffee01' };
 
 const hostileAnswers = [
   [
@@ -76,7 +70,7 @@ const hostileAnswers = [
   ],
   [
     'a schema mismatch',
-    json({ content: { sha: 'blob-after' }, commit: { sha: 1 } }),
+    json({ ref: 'refs/heads/main', object: { sha: 1 } }),
     'PROVIDER_RESPONSE_SCHEMA',
   ],
   [
@@ -95,8 +89,8 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
   it('returns only the declared response fields from a well-formed answer', async () => {
     const transport = httpOf(
       json({
-        content: { sha: 'blob-after' },
-        commit: { sha: 'def456' },
+        ref: 'refs/heads/main',
+        object: { sha: 'def456' },
         message: 'ok',
         token: 'leak',
       }),
@@ -104,7 +98,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     const result = await callConnector(publishRegistration, params, deps(transport));
     expect(result).toEqual({
       kind: 'ok',
-      value: { 'content.sha': 'blob-after', 'commit.sha': 'def456' },
+      value: { 'object.sha': 'def456', ref: 'refs/heads/main' },
     });
     expect(transport.seen[0]?.url.hostname).toBe(publishRegistration.connector.host);
   });
@@ -181,7 +175,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
   });
 
   it('takes the repository as exactly owner and name, so the credential cannot reach another path', async () => {
-    const transport = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
+    const transport = httpOf(json({ ref: 'refs/heads/main', object: { sha: 'def456' } }));
     const results = await Promise.all(
       ['other-org/other-repo/git/refs', 'site', 'agency/site/'].map((repository) =>
         callConnector(publishRegistration, { ...params, repository }, deps(transport)),
@@ -197,7 +191,7 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     const answers = [
       json({ message: 'canary-token-C80-never-shown' }, 401),
       { kind: 'failed' } as const,
-      json({ content: { sha: 'blob-after' }, commit: { sha: 'canary-token-C80-never-shown' } }),
+      json({ ref: 'refs/heads/main', object: { sha: 'canary-token-C80-never-shown' } }),
     ];
     const results: ConnectorResult[] = await Promise.all(
       answers.map((answer) =>
@@ -214,7 +208,7 @@ describe('C80 the guarded provider call', () => {
 
   it('a credential echoed in a declared string field cannot escape', async () => {
     const recorded: string[] = [];
-    const transport = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: canary } }));
+    const transport = httpOf(json({ ref: 'refs/heads/main', object: { sha: canary } }));
     const result = await callConnector(publishRegistration, params, deps(transport, recorded));
     // The provider did get the credential, so the search below is not vacuous.
     expect(transport.seen[0]?.headers['authorization']).toBe(`Bearer ${canary}`);
@@ -228,7 +222,7 @@ describe('C80 the guarded provider call', () => {
     const { timeoutMs } = publishRegistration.connector;
     vi.useFakeTimers();
     try {
-      const stalled = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
+      const stalled = httpOf(json({ ref: 'refs/heads/main', object: { sha: 'def456' } }));
       const pending = callConnector(publishRegistration, params, {
         ...deps(stalled),
         resolve: () => new Promise<readonly string[]>(() => {}),
@@ -240,7 +234,7 @@ describe('C80 the guarded provider call', () => {
         sent: 0,
       });
       // One deadline: a slow answer leaves the transport only what remains of it.
-      const slow = httpOf(json({ content: { sha: 'blob-after' }, commit: { sha: 'def456' } }));
+      const slow = httpOf(json({ ref: 'refs/heads/main', object: { sha: 'def456' } }));
       const call = callConnector(publishRegistration, params, {
         ...deps(slow),
         resolve: () =>

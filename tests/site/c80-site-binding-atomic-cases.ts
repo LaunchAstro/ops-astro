@@ -12,14 +12,12 @@ import {
   APPROVED,
   BEFORE,
   HEAD,
-  MERGED,
   PAGE,
   PROJECT,
   REPOSITORY,
   SEAM,
   VERSION_PIN,
   binding,
-  json,
   line,
   partySite,
   proposed,
@@ -30,26 +28,25 @@ export async function writesApprovedImage(): Promise<void> {
   const site = proposed();
   expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
     kind: 'ok',
-    value: { revision: MERGED, deploymentId: 'dpl_merged', liveUrl: PAGE },
+    value: { revision: HEAD, deploymentId: 'dpl_merged', liveUrl: PAGE },
   });
   expect(site.sent.map(line)).toEqual([
     `GET /repos/${REPOSITORY}/contents/src/pages/about.md?ref=main`,
-    `PUT /repos/${REPOSITORY}/contents/src/pages/about.md`,
-    `GET /v6/deployments?projectId=${PROJECT}&sha=${MERGED}&target=production&limit=1`,
+    `GET /repos/${REPOSITORY}/branches/main/protection`,
+    `GET /repos/${REPOSITORY}/git/ref/heads/main`,
+    `PATCH /repos/${REPOSITORY}/git/refs/heads/main`,
+    `GET /repos/${REPOSITORY}/git/ref/heads/main`,
+    `GET /v6/deployments?projectId=${PROJECT}&sha=${HEAD}&target=production&limit=1`,
   ]);
-  expect(site.sent[1]?.body).toEqual({
-    branch: 'main',
-    sha: 'blob-base',
-    content: Buffer.from(AFTER, 'utf8').toString('base64'),
-    message: `Live correction ${SEAM}`,
-  });
+  expect(site.sent[3]?.body).toEqual({ sha: HEAD });
   expect(site.state.content).toBe(AFTER);
-  expect(site.state.request?.merged).toBe(false);
+  expect(site.state.request?.merged).toBe(true);
 }
 
 export async function publishesOnlyApprovedFile(): Promise<void> {
   const site = proposed();
   site.state.branches = ['main'];
+  site.state.request = undefined;
   site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
   const deps = {
     ...site.deps,
@@ -57,40 +54,38 @@ export async function publishesOnlyApprovedFile(): Promise<void> {
       const answer = await site.deps.transport(request);
       if (request.url.pathname.endsWith('/git/refs')) {
         site.state.proposalExtras['src/pages/contact.md'] = 'unapproved contact';
+        site.state.parents['intruder-commit'] = 'base-commit';
+        site.state.proposalParent = 'intruder-commit';
         site.state.proposalHead = 'c0ffee99';
       }
       return answer;
     },
   };
-  const made = await proposeSource(proposal, deps);
-  expect(made.kind).toBe('ok');
-  if (made.kind !== 'ok') return;
-  expect(made.value.head).toBe('c0ffee99');
-  site.sent.length = 0;
-  expect(
-    await mergeAndFind({ ...binding, proposal: { branch: SEAM, ...made.value } }, APPROVED, deps),
-  ).toMatchObject({ kind: 'ok', value: { revision: MERGED } });
-  expect(site.state.content).toBe(AFTER);
+  // The commit is not one child of the base: no request, so nothing is ever advanced to it.
+  expect(await proposeSource(proposal, deps)).toEqual({
+    kind: 'unknown',
+    code: 'PROPOSAL_NOT_ON_BASE',
+  });
   expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
-  expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-  expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
-  expect(site.state.request?.merged).toBe(false);
+  expect(site.state.mainHead).toBe('base-commit');
+  expect(site.sent.some((sent) => sent.method === 'PATCH')).toBe(false);
+  expect(site.state.request).toBeUndefined();
 }
 
-export async function refusesConcurrentEdit(status: number): Promise<void> {
+/** Another commit lands on the default branch between the head read and the advance. */
+export async function refusesConcurrentEdit(
+  touching: 'the same file' | 'another file',
+): Promise<void> {
   const site = proposed();
   const concurrent = BEFORE + '<p>Another footer.</p>\n';
   const deps = {
     ...site.deps,
     transport: async (request: Parameters<typeof site.deps.transport>[0]) => {
-      if (request.method === 'PUT') {
-        site.state.content = concurrent;
-        site.state.blob = 'blob-concurrent';
-        if (status === 422)
-          site.state.answers[`PUT api.github.com /repos/${REPOSITORY}/contents/`] = json(
-            {},
-            status,
-          );
+      if (request.method === 'PATCH') {
+        if (touching === 'the same file') site.state.content = concurrent;
+        else site.state.defaultExtras['src/pages/contact.md'] = 'edited contact';
+        site.state.parents['concurrent-commit'] = 'base-commit';
+        site.state.mainHead = 'concurrent-commit';
       }
       return await site.deps.transport(request);
     },
@@ -98,12 +93,13 @@ export async function refusesConcurrentEdit(status: number): Promise<void> {
   expect(await mergeAndFind(binding, APPROVED, deps)).toEqual({
     kind: 'refused',
     code: 'PROVIDER_REFUSED',
-    proof: 'sha_mismatch',
+    proof: 'not_fast_forward',
   });
-  expect(site.state.content).toBe(concurrent);
+  expect(site.state.content).toBe(touching === 'the same file' ? concurrent : BEFORE);
+  expect(site.state.mainHead).toBe('concurrent-commit');
   expect(site.state.deployments).toEqual({});
-  expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-  expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+  expect(site.sent.filter((sent) => sent.method === 'PATCH')).toHaveLength(1);
+  expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
   expect(site.state.request?.merged).toBe(false);
 }
 

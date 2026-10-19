@@ -115,6 +115,9 @@ export async function bound(id: string, given: Given = {}): Promise<Bound> {
     branches: ['main', pin.seam],
     proposed: AFTER,
     request: { number: 17, head: HEAD, merged: false },
+    // The default branch at the base the correction was pinned at, its proposal one commit on.
+    mainHead: pin.baseRevision,
+    proposalParent: pin.baseRevision,
   });
   const binding = {
     ...bindingOf(pin, { seam, party: given.party?.() }, given.approved),

@@ -270,6 +270,8 @@ export function provider(start: Partial<ProviderState> & Pick<ProviderState, 'co
     closesRequests: true,
     ...start,
   };
+  // A proposal the double starts with already sits on its parent.
+  if (start.parents === undefined) state.parents[state.proposalHead] = state.proposalParent;
   const sent: SentRequest[] = [];
   const waits: number[] = [];
   const recorded: string[] = [];
@@ -341,7 +343,6 @@ export const proposed = (): Provider =>
     branches: ['main', SEAM],
     proposed: AFTER,
     request: { number: 17, head: HEAD, merged: false },
-    parents: { [HEAD]: 'base-commit' },
   });
 
 /** Party A's site on the double: the About page and its file. */

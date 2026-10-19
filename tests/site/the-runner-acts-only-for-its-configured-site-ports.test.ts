@@ -118,7 +118,8 @@ describe('the site runner acts only for its configured site, at every port', () 
     const own = sites.propose(bound(), PATH, raise);
     const write = { repository: SITE.repository, path: PATH, message: 'm', content: '', sha: HEAD };
     for (const [operation, params] of [
-      ['site.publish', { ...write, branch: 'staging' }],
+      ['site.source.advance', { repository: SITE.repository, branch: 'staging', sha: HEAD }],
+      ['site.source.protection', { repository: SITE.repository, branch: 'staging' }],
       ['site.source.revert', { ...write, branch: 'staging' }],
       ['site.source.head', { repository: SITE.repository, branch: 'staging' }],
       [
@@ -284,15 +285,8 @@ describe('the site runner, locating only', () => {
         Promise.resolve(),
       );
       const written = await callConnector(
-        siteOperation('site.publish'),
-        {
-          repository: SITE.repository,
-          path: PATH,
-          message: 'Live correction',
-          content: Buffer.from('We walk beside you.\n').toString('base64'),
-          sha: HEAD,
-          branch: 'main',
-        },
+        siteOperation('site.source.advance'),
+        { repository: SITE.repository, branch: 'main', sha: HEAD },
         own.connector,
       );
       expect(written).toEqual({ kind: 'refused', code: 'CUSTODY_ROUTE_REFUSED' });
