@@ -55,7 +55,7 @@ import {
   revokeApproval,
   turnOffActivation,
   type BusinessId,
-  type Covering,
+  type Session,
   type Database,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
@@ -472,28 +472,26 @@ export async function send(
 
 export type SendResult = EmailResult | { readonly ok: false; readonly code: string };
 
-/** A covering on the decision key the review's own decisions use, for `member`'s person. */
-export const coveringOf = (personId: string, within?: readonly string[]): Covering => ({
-  subjects: [{ kind: 'person', id: personId, ...(within === undefined ? {} : { within }) }],
-  collection: 'proposal',
-  action: 'decide',
-});
-
-/** `member` approves the send whose digest they saw, under their own covering unless handed one. */
+/**
+ * `member` approves the send whose digest they saw, from their own session; `scope` makes it an
+ * agent credential's call, within the keys it ticked.
+ */
 export async function approveAs(
   side: Side,
   member: Pick<Member, 'personId' | 'actorId'>,
   ask: { readonly sendId: string; readonly digest: string },
-  covering: Covering = coveringOf(member.personId),
+  scope?: readonly string[],
 ): Promise<ShepherdApproveOutcome> {
-  return await inSide(
-    side,
-    async (tx) =>
-      await approveShepherdSendAsPerson(tx, ask, covering, {
-        actorId: member.actorId,
-        personId: member.personId,
-      }),
-  );
+  const session: Session = {
+    businessId: on(side).business,
+    loginId: randomUUID(),
+    personId: member.personId,
+    actorId: member.actorId,
+    roleKey: 'member',
+    assurance: { level: 'aal1', signedInAt: null, factorAt: null },
+    ...(scope === undefined ? {} : { credentialScope: scope }),
+  };
+  return await inSide(side, async (tx) => await approveShepherdSendAsPerson(tx, session, ask));
 }
 
 /** The decider approves the raised send's exact digest. */

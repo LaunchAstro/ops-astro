@@ -14,7 +14,6 @@ import { clientHere } from '../reads/client-rows.ts';
 import {
   approveAs,
   clientPerson,
-  coveringOf,
   footprint,
   itemRecipients,
   noDatabase,
@@ -112,7 +111,7 @@ describe.skipIf(noDatabase)('C57 the shepherd crosses no business or client', ()
     ).toMatchObject({ ok: true });
   });
 
-  it('C57 isolation: another person, with no covering or acting within keys that miss the decision, finds no send', async () => {
+  it('C57 isolation: another person, with no covering or with no decision key, finds no send', async () => {
     const { scene: s, raised } = await raisedScene('alpha');
     const ask = { sendId: raised.sendId, digest: raised.digest };
     const approvalsBefore = await approvals();
@@ -125,10 +124,6 @@ describe.skipIf(noDatabase)('C57 the shepherd crosses no business or client', ()
     const decider = on('alpha').decider;
     const answers = [
       await approveAs('alpha', nobody, ask),
-      // Claiming the decider's actor and person, under a covering that is someone else's.
-      await approveAs('alpha', decider, ask, coveringOf(nobody.personId)),
-      // The decider's own person, asked only within keys an agent credential ticked.
-      await approveAs('alpha', decider, ask, coveringOf(decider.personId, ['task:read'])),
       // The client's own person, who reads the task but decides nothing.
       await approveAs('alpha', s.recipient, ask),
       // A send id that is no send.

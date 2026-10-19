@@ -18,9 +18,10 @@ import {
   isUuid,
   readShepherdPending,
   shepherdRecipients,
+  subjectsOf,
   writeShepherdSend,
   type Covering,
-  type ShepherdApprover,
+  type Session,
   type ShepherdHoldRefusal,
   type ShepherdLease,
   type ShepherdSendRow,
@@ -136,14 +137,23 @@ export type ShepherdApproveOutcome =
       readonly code: 'NOT_FOUND' | 'SHEPHERD_DIGEST_STALE' | 'SHEPHERD_ALREADY_APPROVED';
     };
 
-/** A person approves one exact send they were shown, audited under their own actor. */
+/**
+ * A person approves one exact send they were shown, from their own session: the covering is
+ * built here, on the decision key the review's change requests use (`proposal:decide` at the
+ * review's holder), and the approval and its audit name the session's own actor and person.
+ */
 export async function approveShepherdSendAsPerson(
   tx: TenantQuery,
+  session: Session,
   ask: { readonly sendId: string; readonly digest: string },
-  covering: Covering,
-  by: ShepherdApprover,
 ): Promise<ShepherdApproveOutcome> {
   if (!isUuid(ask.sendId)) return { ok: false, code: 'NOT_FOUND' };
+  const covering: Covering = {
+    subjects: subjectsOf(session),
+    collection: 'proposal',
+    action: 'decide',
+  };
+  const by = { actorId: session.actorId, personId: session.personId };
   const approved = await approveShepherdSend(tx, ask.sendId, ask.digest, covering, by);
   if ('code' in approved) return { ok: false, code: approved.code };
   await writeAuditEvent(tx, {
