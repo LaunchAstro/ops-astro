@@ -29,6 +29,7 @@ import {
   type BrokerRoute,
   type Carriage,
   type Handoff,
+  type ModelCallRequest,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import { taskHandoff } from '../../packages/core-commands/src/commands/task-carriage.ts';
@@ -148,23 +149,24 @@ function adminUrlOf(name: string): string {
   return url.toString();
 }
 
+/** The world over `of`: broker-world's business unless a case names another schedules world. */
 // oxlint-disable-next-line max-lines-per-function -- the hub, the agent and its custody, made once
-export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
-  await s.db.admin.transaction(async (execute) => {
+export async function openCarriedTaskWorld(of: Schedules = s): Promise<CarriedTaskWorld> {
+  await of.db.admin.transaction(async (execute) => {
     await execute(SHIM);
     await execute(POLICY.slice(POLICY.indexOf('do $$')));
   });
-  const hub = await realtimeHub(adminUrlOf(s.db.name));
+  const hub = await realtimeHub(adminUrlOf(of.db.name));
   const key = randomBytes(32).toString('base64url');
   const parsed = parseCarryKeys(key);
   if (!parsed.ok) throw new Error('carry key refused');
   const carrierSub = `model-agent-${randomUUID()}`;
-  const carrierAgent = await s.db.app.withBusiness(s.business, async (tx) => {
+  const carrierAgent = await of.db.app.withBusiness(of.business, async (tx) => {
     const actor = await insertAgentActor(tx);
-    await insertAgentMapping(tx, await insertLogin(tx, carrierSub), actor, s.decider.actorId);
+    await insertAgentMapping(tx, await insertLogin(tx, carrierSub), actor, of.decider.actorId);
     return actor;
   });
-  await holdsRole('owner');
+  await holdsRole('owner', of);
   const plan = await openPlanRouteWorld();
   const box = {
     duringPrepare: async (): Promise<void> => {},
@@ -189,7 +191,7 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
     carriage: hubCarriage(hub),
     keys: parsed.keys,
     key,
-    business: s.business,
+    business: of.business,
     agent: carrierAgent,
     token: async () => await Promise.resolve(carrierToken),
     custody: paused(plan.agentCustody),
@@ -213,10 +215,10 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
       operations: catalogue([PLAN_TASK]),
       providers: new Map([[CHATGPT_PLAN_PROVIDER, { build: planTask, price: () => 0 }]]),
       routes: [PLAN],
-      carrier: { agent: carrierAgent, people: [s.decider.personId] },
+      carrier: { agent: carrierAgent, people: [of.decider.personId] },
     },
-    presented: { ...s.agent, sessionId: randomUUID() },
-    token: await tokenFor(s.agent.subject),
+    presented: { ...of.agent, sessionId: randomUUID() },
+    token: await tokenFor(of.agent.subject),
     get duringPrepare() {
       return box.duringPrepare;
     },
@@ -243,17 +245,21 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
   };
 }
 
-/** The run's call on the plan, carried by the calling agent with its own token. */
+const titleCall = (work: Work): ModelCallRequest =>
+  requestFor(work, {
+    operation: PLAN_TASK.key,
+    fields: [{ name: 'instruction', from: { recordId: work.taskId, key: 'title' } }],
+  });
+
+/** The run's call on the plan, carried by its agent with its token: `ask`'s, else the title's. */
 export async function carriedCall(
   world: CarriedTaskWorld,
   work: Work,
   on: Broker = world.broker,
+  ask: () => Promise<ModelCallRequest> = async () => await Promise.resolve(titleCall(work)),
 ): Promise<ModelCallResult> {
   await stepOf(work);
-  const request = requestFor(work, {
-    operation: PLAN_TASK.key,
-    fields: [{ name: 'instruction', from: { recordId: work.taskId, key: 'title' } }],
-  });
+  const request = await ask();
   const asking = caller(work);
   const reserving = await s.db.app.withBusiness(
     s.business,
