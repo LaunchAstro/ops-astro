@@ -345,9 +345,10 @@ maintenance page on the main address the same way (`maintenance recorded`)
 without asking the database: one static page for every path, nothing that
 runs. Deploying a version again takes it off. The planned form,
 `--maintenance --version <id> --artefacts <store>`, names that version and
-first runs its deploy's checks (the settings, the artefact and its digest, the
-preflight, the sign-in server's version); the page goes up only if all pass,
-and a refusal deploys nothing. The bare form is for an incident and says it
+runs its deploy up to Vercel (the settings, the artefact and its digest, the
+preflight, the sign-in server's version, the copy checked again, and the
+operator's held grant); the page goes up only if all pass, and a refusal
+deploys nothing. The bare form is for an incident and says it
 checked no deploy. The page answers 200, so the
 watcher's web check stays green; its keyword check on the page's marker
 (`alerts.mjs plan`, watch `maintenance`) alerts while it is up.
