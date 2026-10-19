@@ -32,6 +32,19 @@ const turnWith = (calls: readonly unknown[], tools = TOOLS) => {
   return turn;
 };
 
+/** Whether a later turn carrying `calls` is kept: in shape, then its tools (an oversized call is out of shape). */
+function keptLater(calls: readonly unknown[]): boolean {
+  const turn = readTurn({
+    turnOrdinal: 1,
+    tools: TOOLS,
+    parts: [
+      { ref: 'task', taskId: TASK, revision: 1 },
+      { ref: 'answer', callId: 'a1', text: '', toolCalls: calls },
+    ],
+  });
+  return turn !== undefined && toolsKept(turn);
+}
+
 const first = readTurn({
   turnOrdinal: 0,
   tools: TOOLS,
@@ -42,7 +55,7 @@ describe('each tool argument, at the broker', () => {
   it.each(ARGUMENT_CASES)(
     '$name is kept: $kept, carried on a later turn',
     ({ tool, args, kept }) => {
-      expect(toolsKept(turnWith([{ id: 'c1', name: tool, args }]))).toBe(kept);
+      expect(keptLater([{ id: 'c1', name: tool, args }])).toBe(kept);
     },
   );
 
