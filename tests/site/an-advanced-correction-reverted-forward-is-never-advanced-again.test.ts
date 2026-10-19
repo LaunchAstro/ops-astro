@@ -8,7 +8,6 @@
 import { expect, it } from 'vitest';
 import { siteRunnerPorts } from '../../packages/core-commands/src/index.ts';
 import { dispatchToken } from '../../packages/core-connectors/src/index.ts';
-import { doubles } from './c80-runner-doubles.ts';
 import { APPROVED, BEFORE, SEAM, binding, proposed } from './c80-site-provider.ts';
 
 it('reads unknown after a revert, so nothing is advanced twice', async () => {
@@ -16,7 +15,12 @@ it('reads unknown after a revert, so nothing is advanced twice', async () => {
   const raised: string[] = [];
   const ports = siteRunnerPorts(binding, {
     ...site.deps,
-    capture: doubles().capture,
+    // The publish and revert ports capture nothing; a fence that reaches no page stands in.
+    capture: {
+      pool: { agencyPages: [], otherPages: [], closedPoolReviews: [] },
+      resolve: () => Promise.resolve([]),
+      transport: () => Promise.resolve({ kind: 'timeout' }),
+    },
     raiseTask: (reason) => {
       raised.push(reason);
       return Promise.resolve();
