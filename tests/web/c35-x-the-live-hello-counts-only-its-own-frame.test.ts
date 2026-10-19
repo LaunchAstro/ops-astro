@@ -117,6 +117,24 @@ describe('C35-X a live frame that loads another page is checked again', () => {
     selected.dispatchEvent(new Event('load'));
     expect(onLeft).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('C35-X a live frame that stops answering its pings is checked again', () => {
+  it('a live frame that stops answering its pings has left, even with no load', () => {
+    send(hello(), SITE, selected.contentWindow);
+    vi.advanceTimersByTime(LIVE_HELLO_MS);
+    expect(onLeft).toHaveBeenCalledTimes(1);
+  });
+
+  it('a live frame that answers every ping stays', () => {
+    send(hello(), SITE, selected.contentWindow);
+    for (let tick = 0; tick < 40; tick += 1) {
+      vi.advanceTimersByTime(100);
+      send(hello(), SITE, selected.contentWindow);
+    }
+    expect(onLeft).not.toHaveBeenCalled();
+    expect(onExpired).not.toHaveBeenCalled();
+  });
 
   it('a stopped live wait reports nothing', () => {
     send(hello(), SITE, selected.contentWindow);

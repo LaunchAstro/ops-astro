@@ -50,3 +50,38 @@ describe('C35-X a live frame that loads another page is checked again', () => {
     }
   }, 30_000);
 });
+
+describe('C35-X a live frame that stops answering or changes revision is checked again', () => {
+  it('a frame that moves to a page that never finishes loading is hidden, then falls back', async () => {
+    const watched = await open({ page: `${SITE}/embed-then-endless` });
+    try {
+      await tracePhases(watched.page);
+      await watched.page.waitForSelector('[data-live-view="fallback"]', { timeout: 7000 });
+      expect(await phasesSeen(watched.page)).toEqual(['live', 'waiting', 'fallback']);
+    } finally {
+      await watched.context.close();
+    }
+  }, 30_000);
+
+  it('switching back to a revision is a new load that waits for its own hello', async () => {
+    const watched = await open({ page: `${SITE}/embed` });
+    try {
+      await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
+      // Both switches in one task, so no hello can land between them.
+      const after = await watched.page.evaluate(() => {
+        for (const which of ['next', 'previous']) {
+          document.querySelector<HTMLElement>(`[data-${which}-revision]`)?.click();
+        }
+        const frame = document.querySelector<HTMLElement>('[data-live-frame]');
+        return {
+          phase: document.querySelector<HTMLElement>('[data-live-view]')?.dataset['liveView'],
+          hidden: frame?.hidden,
+        };
+      });
+      expect(after).toEqual({ phase: 'waiting', hidden: true });
+      await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
+    } finally {
+      await watched.context.close();
+    }
+  }, 30_000);
+});
