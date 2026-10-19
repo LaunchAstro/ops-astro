@@ -132,12 +132,10 @@ async function delegationFor(taskId: string): Promise<string> {
 }
 
 /**
- * The worker's plan on a fresh task, accepted and not launched. `runner`,
- * when given (a scripted one, or the shipped agent runner), is injected
- * through the worker's options as `runner`; `broker`, when given, is the
- * door's `model.call` broker in place of the world's (one with the turn
- * operation, for the agent runner); `around`, when given, wraps the worker's
- * transport (one that loses an answer in transit).
+ * The worker's plan on a fresh task, accepted and not launched. When given,
+ * `runner` (scripted, or the shipped agent runner) is the worker's own;
+ * `broker` is the door's `model.call` broker (one with the turn operation,
+ * for the agent runner); `around` wraps the worker's transport.
  */
 export async function acceptedPlan(
   title: string,
