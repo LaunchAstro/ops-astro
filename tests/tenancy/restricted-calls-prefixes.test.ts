@@ -267,6 +267,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     author_actor_id: randomUUID(),
     body: 'restricted calls seed',
   },
+  // #1563: no journey step leaves a reply unkept.
+  'public.conversation_answer_copies': {
+    call_id: randomUUID(),
+    conversation_id: randomUUID(),
+    message_id: randomUUID(),
+    body: 'restricted calls seed',
+  },
   'public.conversation_wrap_ups': {
     conversation_id: randomUUID(),
     version: 1,
