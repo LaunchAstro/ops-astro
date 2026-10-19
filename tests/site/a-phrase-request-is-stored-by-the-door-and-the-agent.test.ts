@@ -20,7 +20,8 @@ let w: C80World;
 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
-  w = await c80World('phrase');
+  // A cleanup check that runs this suite names its own part, to watch only its database.
+  w = await c80World(process.env['PHRASE_SUITE_PART'] ?? 'phrase');
 }, 120_000);
 afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
