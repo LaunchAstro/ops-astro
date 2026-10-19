@@ -3,10 +3,10 @@
 //
 // The application's Clients page and dock panel draw no made-up client book:
 // no install, production included, shows sample clients as if they were the
-// business's. A sentence says where clients are added for now.
+// business's. The book the page draws is `client.list`'s
+// (clients-real-book.test.tsx); this holds the made-up names out.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MADE_UP_BOOK } from '../../apps/web/src/data/clients-book.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { open } from './mp-2-1-support.tsx';
 
@@ -18,16 +18,26 @@ afterEach(async () => {
   }
 });
 
-const NOT_YET = 'Clients are added from the command line for now.';
+/** The eight businesses the deleted `data/clients-book.ts` made up. */
+const MADE_UP_NAMES = [
+  'Harbour Physio',
+  'Kestrel Dental',
+  'Banksia Allied Health',
+  'Tidewater Chiropractic',
+  'Wattle Street Podiatry',
+  'Ironbark Legal',
+  'Saltbush Kitchen',
+  'Lorikeet Pilates',
+];
 
 describe('the application draws no made-up client book', () => {
-  it('the Clients page names no sample client and says where clients are added', async () => {
+  it('the Clients page names no sample client and carries no mock mark', async () => {
     const { view } = await open('/clients/');
     live.push(view);
     const text = view.find('.clbook')?.textContent ?? '';
+    expect(view.find('.clbook')).not.toBeNull();
     expect(text).not.toContain('Sample data');
-    for (const made of MADE_UP_BOOK.clients) expect(text).not.toContain(made.name);
+    for (const made of MADE_UP_NAMES) expect(text).not.toContain(made);
     expect(view.find('.clbook [data-provenance="mock"]')).toBeNull();
-    expect(view.find('.clbook__empty')?.textContent).toBe(NOT_YET);
   });
 });
