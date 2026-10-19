@@ -34,4 +34,10 @@ export const REVIEW_ROWS = [
     meaning: 'The picture is past the storage cap',
     source: 'C35, the storage seam',
   },
+  {
+    code: 'REVIEW_ALREADY_DECIDED',
+    status: 409,
+    meaning: "The review's latest revision is approved already",
+    source: 'C35-X, the review decision',
+  },
 ] as const;
