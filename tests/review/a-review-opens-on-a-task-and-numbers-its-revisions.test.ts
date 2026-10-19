@@ -51,6 +51,7 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         carried: [],
         carryDue: false,
         changeRequests: [],
+        differences: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);
