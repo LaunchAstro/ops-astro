@@ -1593,8 +1593,12 @@ both tenancy-scoped with row security forced, and the fair share's count
   that may have acted (`markStepActed`), so the hand-back, the sweep and the
   pass stop on it. A status the operation declared in `nothingHappened`
   (replay: `http_429`) releases the hold whole, and so does custody's own
-  refusal before a send. A release for any other reason proves nothing and is
-  held unknown, the maximum kept (#1623 R1).
+  refusal before a send, a carried call's included when this side's offer,
+  accept or send judgement refused it before the request was written to the
+  M5 (`CUSTODY_NOT_ADMITTED`, the caller told the judgement's reason). A
+  release for any other reason, an M5's refusal after it reported the write
+  among them, proves nothing and is held unknown, the maximum kept (#1623
+  R1). Test: `a-carried-task-call-the-m5-refuses-after-the-write-stays-held-unknown`.
 - Outcomes (#1623 R1, `core-custody/src/broker-stop.ts`): the transaction that
   stops an attempt records its one `run_outcomes` row and retires its work.
   Settlement does it for an unknown hold (`LIABILITY_UNKNOWN`), a release for
