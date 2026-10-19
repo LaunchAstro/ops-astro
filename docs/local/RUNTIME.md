@@ -1666,6 +1666,13 @@ CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
   never bind that answer; a part of that depth is `PROVENANCE_UNBOUND`. The
   turn's class is its strictest source's, kept on the answer as
   `answer_source`, so an answer never becomes less strict on a later turn.
+- The agent's runner (#1624 R7, `apps/worker/agent-runner.ts`): the worker's
+  step runner for an accepted plan before its Launch. It reads the task, then
+  runs `core-agent`'s loop, each turn a `model.call` and each tool the
+  product's own command through the worker's one call port under the run's
+  delegation: `task.read`, and `live_correction.request` as a person sends it.
+  The correction is stored `locating`; the M5 pins its base revision (#1693)
+  and a person decides it. The runner opens no connection of its own.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses

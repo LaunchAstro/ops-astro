@@ -1451,8 +1451,16 @@ A model turn (#1623 R3) is the same route with `kind: 'turn'`, `turnOrdinal`,
 (`model.replay_turn`). Each part is a reference the broker reads under the
 call's locks, never free text: `{ ref: 'task', taskId, revision }` (the
 attempt's own task at its current revision, with `toolCallId` as a tool
-result), and `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
-this attempt, carried back with the bytes it returned). `turnOrdinal` must be
+result), `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
+this attempt, carried back with the bytes it returned), and `{ ref:
+'correction', correctionId, toolCallId }` (#1624 R7: a `live_correction.request`
+result, bound only to a row of this business on the run's task requested under
+the run lease's own delegation, and shown to the model as its id and state
+alone). `tools` is the agent's catalogue (`AGENT_TOOLS`): `task.read` with
+`{ taskId }`, and `live_correction.request` with exactly the operands a person
+sends, `{ taskId, page, word, replacement }`; a tool outside it, a wider or
+narrower request, a typed base revision, and a result answering another tool's
+call are `TURN_MALFORMED`. `turnOrdinal` must be
 the attempt's count of calls. Before any hold, a turn out of shape or order is
 refused `TURN_MALFORMED`, a wrong ordinal `TURN_ORDINAL_STALE`, and a part the
 broker cannot bind (an altered answer, another attempt's or business's answer,
