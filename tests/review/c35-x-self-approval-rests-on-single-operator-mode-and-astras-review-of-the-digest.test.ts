@@ -62,7 +62,7 @@ async function insertDecision(
       );
       return 'stored';
     })
-    .catch((error: unknown) => String(error));
+    .catch(String);
 }
 
 describe.skipIf(serverUrl === undefined)('C35-X self-approval', () => {

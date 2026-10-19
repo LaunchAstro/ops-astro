@@ -516,6 +516,20 @@ const UNREACHED: Readonly<Record<string, string>> = {
          from f returning business_id, id, created_by_actor_id)
      insert into public.docs_page_versions (business_id, page_id, number, title, body, actor_id)
      select business_id, id, 1, 'seed', '', created_by_actor_id from p returning 1`,
+  // C35-X: the journey decides no review. Astra's review of the seeded revision, and its
+  // author's approval carrying the single-operator mark, which the row checks admit.
+  'public.review_astra_reviews': `insert into public.review_astra_reviews
+       (business_id, id, review_id, revision_id, digest, verdict, review, recorded_by_actor_id,
+        recorded_by_person_id)
+     select business_id, gen_random_uuid(), review_id, id, digest, 'approve', 'seed',
+            created_by_actor_id, created_by_person_id
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  'public.review_decisions': `insert into public.review_decisions
+       (business_id, id, review_id, revision_id, digest, response, author_person_id,
+        decided_by_actor_id, decided_by_person_id, single_operator_self_approval)
+     select business_id, gen_random_uuid(), review_id, id, digest, 'approve',
+            created_by_person_id, created_by_actor_id, created_by_person_id, true
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

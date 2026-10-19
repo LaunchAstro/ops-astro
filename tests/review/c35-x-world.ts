@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- the world's commands, one beside the next */
 //
 // C35-X's world (#2014, the version half): C35's, in which eve, beta's one operator, also
 // manages beta's settings, and fay in alpha holds the review keys and no gate key. With the

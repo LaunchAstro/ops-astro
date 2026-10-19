@@ -275,6 +275,8 @@ export const DECLARED: Readonly<
   // C35-X: a pin's carry is history of the old task's review; a duplicate carries none.
   'review.carry_pins': { carry: 'not carried', plant: 'needs a landed revision under a lease' },
   'review.make_change_task': { carry: 'not carried', plant: 'needs an approved change request' },
+  'review.decide': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.record_astra_review': { carry: 'not carried', plant: 'needs a review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
