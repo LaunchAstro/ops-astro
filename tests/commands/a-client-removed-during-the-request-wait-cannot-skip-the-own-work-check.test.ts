@@ -10,21 +10,22 @@ import type { Applied } from '../../packages/core-commands/src/commands/outcome.
 const checks = vi.hoisted(() => ({ scopes: [] as unknown[], finalParties: [] as unknown[] }));
 vi.mock('../../packages/core-records/src/index.ts', async (original) => ({
   ...(await original<typeof import('../../packages/core-records/src/index.ts')>()),
-  checkAuthority: async (_tx: unknown, _subjects: unknown, request: { scope: unknown }) => {
+  checkAuthority: (_tx: unknown, _subjects: unknown, request: { scope: unknown }) => {
     checks.scopes.push(request.scope);
-    return { ok: true }; // The delegator has a live business-wide run:write grant.
+    // The delegator has a live business-wide run:write grant.
+    return Promise.resolve({ ok: true });
   },
 }));
 vi.mock('../../packages/core-commands/src/commands/context.ts', () => ({
-  readTaskSpine: async () => ({ taskTypeId: 'task-type' }),
+  readTaskSpine: () => Promise.resolve({ taskTypeId: 'task-type' }),
 }));
 vi.mock('../../packages/core-commands/src/commands/live-correction-decision-checks.ts', () => ({
-  approverConfigured: async () => true,
+  approverConfigured: () => Promise.resolve(true),
 }));
 vi.mock('../../packages/core-commands/src/commands/live-correction-standing.ts', () => ({
-  standsAfterWaits: async (_tx: unknown, standing: { partyId: unknown }) => {
+  standsAfterWaits: (_tx: unknown, standing: { partyId: unknown }) => {
     checks.finalParties.push(standing.partyId);
-    return 'stands';
+    return Promise.resolve('stands');
   },
 }));
 import { requestOperands } from '../../packages/core-commands/src/commands/live-corrections.ts';
@@ -43,12 +44,14 @@ const delegation = {
   delegatePersonId: person,
 } as unknown as Delegation;
 
+// oxlint-disable-next-line max-lines-per-function -- the request, its storage and the final check under one schedule
 it('a client removed during the request wait cannot bypass the own-work source rule', async () => {
   let party: string | null = client;
   let insertedParty: string | null | undefined;
   let sourceReads = 0;
   const tx = {
     businessId: business,
+    // oxlint-disable-next-line max-lines-per-function, require-await -- one READ COMMITTED schedule, answered query by query
     query: async (sql: string, params: unknown[]) => {
       if (sql.includes('select r.uuid_7 as party')) return [{ party }];
       if (sql.includes('select id from public.records')) return [{ id: task }];
