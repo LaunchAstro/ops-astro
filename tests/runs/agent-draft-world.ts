@@ -28,6 +28,7 @@ import { CLOUD, LOCAL } from '../broker/broker-world.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import {
   approve,
+  createTask,
   freshPurpose,
   pickup,
   propose,
@@ -119,9 +120,16 @@ export const requestOf = (taskId: string, page: string = OWN_PAGE): Detail => ({
   ...WORDS,
 });
 
-/** The owner's task proposed and approved by them, and picked up by the agent. */
-export async function workOn(taskId: string): Promise<Work> {
-  const proposal = await propose(s, taskId, { purpose: freshPurpose() });
+/**
+ * The owner's task proposed and approved by them, and picked up by the agent.
+ * With `lineageId`, the proposal is a new version of that lineage's plan,
+ * which retires the earlier version's lease and its delegation.
+ */
+export async function workOn(taskId: string, lineageId?: string): Promise<Work> {
+  const proposal = await propose(s, taskId, {
+    purpose: freshPurpose(),
+    ...(lineageId === undefined ? {} : { lineageId }),
+  });
   const decision = await approve(s, proposal);
   return { taskId, proposal, decision, picked: await pickup(s, decision['reservationId']) };
 }
@@ -133,14 +141,21 @@ export const requestAsAgent = async (work: Work, body: Detail): Promise<Answer> 
     ...body,
   });
 
-/** The agent's own end of the work, at the door. */
-export const endAsAgent = async (work: Work): Promise<Answer> =>
-  await asWorker(agentDoor(), work, 'run/end', {
-    operationId: randomUUID(),
-    leaseId: work.picked['leaseId'],
-    fence: work.picked['fence'],
-    endCode: 'TOOL_REFUSED',
-  });
+/** A correction asked under an earlier lease on its task: its id, task, and its plan's lineage. */
+export interface Earlier {
+  readonly id: string;
+  readonly taskId: string;
+  readonly lineageId: string;
+}
+
+/** A correction the agent asked on its own task, under a lease a new version of its plan retires. */
+export async function anEarlierLeasesCorrection(): Promise<Earlier> {
+  const work = await workOn(await createTask(s, 'an earlier lease'));
+  const asked = await requestAsAgent(work, requestOf(work.taskId));
+  if (asked.status !== 200) throw new Error(`setup: request ${JSON.stringify(asked.body)}`);
+  const id = String((asked.body['detail'] as Detail | undefined)?.['correctionId']);
+  return { id, taskId: work.taskId, lineageId: String(work.proposal['lineageId']) };
+}
 
 export interface CorrectionRow {
   readonly id: string;
