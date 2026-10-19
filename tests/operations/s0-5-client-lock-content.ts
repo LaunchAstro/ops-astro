@@ -31,6 +31,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'graduation.promote': "a client's graduation row and mandate, not a task",
   'graduation.demote': "a client's graduation row and mandate, not a task",
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
+  // #1623 R1 (T5): its authority loss stops the work under the grant, which is leased work.
+  'grant.revoke': 'a grant: who may act; the work its loss stops already gave the task content',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
   // SL12 (batch 3a): a conversation is its owner's; citing a task writes nothing on it.
