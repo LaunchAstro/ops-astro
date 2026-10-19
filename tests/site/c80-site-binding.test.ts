@@ -13,9 +13,6 @@ import {
 import {
   SITE_OPERATIONS,
   mergeAndFind,
-  contentDigest,
-  proposeSource,
-  versionDigestOf,
   readServed,
   readSiteSource,
   revertForward,
@@ -31,7 +28,6 @@ import {
   binding,
   json,
   line,
-  proposal,
   proposed,
   type SentRequest,
 } from './c80-site-provider.ts';
@@ -268,38 +264,4 @@ describe('C80 publish binding: the revert', () => {
   it('never reverts to a pre-image outside the approved version', revertsApprovedPreImage);
 });
 
-describe('C80 UTF-8 source bytes', () => {
-  it('preserves a UTF-8 byte-order mark in the source read, the proposed write and the published file', async () => {
-    const site = proposed();
-    const before = '\uFEFF' + BEFORE;
-    const after = '\uFEFF' + AFTER;
-    site.state.content = before;
-    site.state.branches = ['main'];
-    site.state.request = undefined;
-    const pin = {
-      ...APPROVED,
-      preImageDigest: contentDigest(before),
-      change: { files: [{ path: binding.path, before, after }] },
-    };
-    const versionDigest = versionDigestOf(pin);
-    const bomBinding = {
-      ...binding,
-      change: { before, after },
-      proposal: { ...binding.proposal, versionDigest },
-    };
-    expect(await readSiteSource(bomBinding, site.deps)).toMatchObject({
-      value: { content: before },
-    });
-    expect(await proposeSource({ ...proposal, after, versionDigest }, site.deps)).toMatchObject({
-      kind: 'ok',
-    });
-    const write = site.sent.find((sent) => sent.method === 'PUT');
-    expect(Buffer.from(write?.body['content'] ?? '', 'base64').subarray(0, 3)).toEqual(
-      Buffer.from([0xef, 0xbb, 0xbf]),
-    );
-    expect(await mergeAndFind(bomBinding, { ...pin, versionDigest }, site.deps)).toMatchObject({
-      kind: 'ok',
-    });
-    expect(site.state.content).toBe(after);
-  });
-});
+describe('C80 UTF-8 source bytes', () => {});

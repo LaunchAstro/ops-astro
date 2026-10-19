@@ -7,13 +7,8 @@
 //
 // - The source is the site file on the default branch, decoded as UTF-8 from
 //   canonical base64 only.
-// - Publish advances the default branch to the proposal's head, its one commit
-//   on the approved base. It is sent only while the file is the pre-image, the
-//   branch's protection refuses any rewind or deletion of it (administrators
-//   included), and its head is the approved base; the provider applies a
-//   fast-forward only. So the branch moves from the approved base to the base
-//   and the approved file, or not at all, and the review request closes as
-//   merged. It counts only once the branch's head reads as the proposal's.
+// - Publish is the advance (`advance.ts`): the default branch moved to the
+//   proposal's head from the approved base, a fast-forward only.
 // - The deployment is found by that commit, a bounded number of tries.
 //   Found for another commit is unknown after the advance; not found yet is not
 //   published yet, accepted without it and looked up again when observed.
@@ -30,13 +25,15 @@
 // that are not the version the proposal names, so a revert writes back only
 // the approved pre-image.
 
-import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
+import {
+  callConnector,
+  type CallDependencies,
+  type ConnectorResult,
+  type ProviderResult,
+} from '../call.ts';
 import { siteOperation } from './operations.ts';
-import type { Published, PublishPorts } from './publish.ts';
-import type { ReadBack } from './reconcile.ts';
-import { checkEnvelope } from './envelope.ts';
 import { findDeployment } from './serving.ts';
-import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
+import { versionDigestOf, type VersionPin } from './version.ts';
 
 export { findDeployment, readServed } from './serving.ts';
 
@@ -163,18 +160,27 @@ const LOOKUP_WAIT_MS = 5_000;
 
 type Deployed = { readonly revision: string; readonly deploymentId: string };
 
-const call = async (
+/** One catalogued site operation through the guarded call. */
+export const call = async (
   name: string,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
-) => await callConnector(siteOperation(name), params, deps);
+): Promise<ConnectorResult> => await callConnector(siteOperation(name), params, deps);
 
-function stop(kind: 'refused' | 'unknown', code: string, deps: CallDependencies) {
+/** A refusal or unknown, its code recorded for the receipt. */
+export function stop<K extends 'refused' | 'unknown'>(
+  kind: K,
+  code: string,
+  deps: CallDependencies,
+): { readonly kind: K; readonly code: string } {
   deps.record(code);
-  return { kind, code } as const;
+  return { kind, code };
 }
 
-const ok = <T>(value: T) => ({ kind: 'ok', value }) as const;
+export const ok = <T>(value: T): { readonly kind: 'ok'; readonly value: T } => ({
+  kind: 'ok',
+  value,
+});
 
 /**
  * The text a provider's base64 encodes, line breaks aside, or undefined
@@ -210,7 +216,7 @@ export async function readSiteSource(
 }
 
 /** `findDeployment`, tried until found or the attempts run out. */
-async function deploymentOf(
+export async function deploymentOf(
   binding: SiteBinding,
   commit: string,
   deps: BindingDependencies,
@@ -220,102 +226,6 @@ async function deploymentOf(
   if (found.kind !== 'ok' || found.value !== undefined || attempt >= LOOKUP_ATTEMPTS) return found;
   await deps.wait(LOOKUP_WAIT_MS);
   return await deploymentOf(binding, commit, deps, attempt + 1);
-}
-
-/** `site.source.head`: the default branch's head commit now. */
-async function headOf(
-  binding: SiteBinding,
-  deps: CallDependencies,
-): Promise<ProviderResult<string>> {
-  const { repository, defaultBranch: branch } = binding;
-  const read = await call('site.source.head', { repository, branch }, deps);
-  return read.kind === 'ok' ? ok(String(read.value['object.sha'])) : read;
-}
-
-/** `site.source.protection`: whether nobody, administrators included, can rewind or delete the default branch. */
-async function rewindRefused(binding: SiteBinding, deps: CallDependencies): Promise<boolean> {
-  const { repository, defaultBranch: branch } = binding;
-  const read = await call('site.source.protection', { repository, branch }, deps);
-  return (
-    read.kind === 'ok' &&
-    read.value['allow_force_pushes.enabled'] === false &&
-    read.value['allow_deletions.enabled'] === false &&
-    read.value['enforce_admins.enabled'] === true
-  );
-}
-
-/**
- * The advance read back by the default branch's head: landed at the proposal's head; absent at
- * the approved base, which a protected branch cannot have left through the head and come back to;
- * anything else, or no answer, unknown.
- */
-export async function readAdvanced(
-  binding: SiteBinding,
-  deps: CallDependencies,
-): Promise<ReadBack<Published>> {
-  const head = await headOf(binding, deps);
-  if (head.kind !== 'ok') return { state: 'unknown' };
-  if (head.value === binding.proposal.head)
-    return { state: 'landed', value: { revision: head.value, liveUrl: binding.pageUrl } };
-  return head.value === binding.baseRevision ? { state: 'absent' } : { state: 'unknown' };
-}
-
-/** `site.request.read`: whether the review request reads merged at the proposal's head, so none is left open. */
-export async function requestClosed(
-  binding: SiteBinding,
-  deps: CallDependencies,
-): Promise<boolean> {
-  const { repository, proposal } = binding;
-  const read = await call('site.request.read', { repository, number: proposal.request }, deps);
-  return (
-    read.kind === 'ok' && read.value['merged'] === true && read.value['head.sha'] === proposal.head
-  );
-}
-
-/** `site.source.advance`: the default branch moved from the approved base to the proposal's head, then its deployment. */
-export async function mergeAndFind(
-  binding: SiteBinding,
-  input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
-  deps: BindingDependencies,
-): Promise<ProviderResult<Published>> {
-  if (input.seam !== binding.proposal.branch) return stop('refused', 'SEAM_MISMATCH', deps);
-  const [file] = input.change.files;
-  if (
-    input.versionDigest !== binding.proposal.versionDigest ||
-    versionDigestOf(input) !== input.versionDigest ||
-    input.baseRevision !== binding.baseRevision ||
-    input.pageUrl !== binding.pageUrl ||
-    input.target.path !== binding.path ||
-    !checkEnvelope(input.change, input.target).ok ||
-    file === undefined ||
-    file.before !== binding.change.before ||
-    file.after !== binding.change.after ||
-    contentDigest(file.before) !== input.preImageDigest
-  ) {
-    return stop('refused', 'PROPOSAL_SUPERSEDED', deps);
-  }
-  const current = await readSiteSource(binding, deps);
-  if (current.kind !== 'ok') return current;
-  if (current.value.content !== file.before) return stop('refused', 'CONTENT_DRIFTED', deps);
-  if (!(await rewindRefused(binding, deps))) return stop('refused', 'ANCESTRY_NOT_ENFORCED', deps);
-  const head = await headOf(binding, deps);
-  if (head.kind !== 'ok') return head;
-  if (head.value !== binding.baseRevision) return stop('refused', 'BASE_MOVED', deps);
-  const { repository, defaultBranch: branch } = binding;
-  const advanced = await call(
-    'site.source.advance',
-    { repository, branch, sha: binding.proposal.head },
-    deps,
-  );
-  if (advanced.kind !== 'ok') return advanced;
-  const back = await readAdvanced(binding, deps);
-  if (back.state !== 'landed') return stop('unknown', 'ADVANCE_NOT_CONFIRMED', deps);
-  const { revision } = back.value;
-  const deployed = await deploymentOf(binding, revision, deps);
-  if (deployed.kind !== 'ok') return deployed;
-  // None found yet is not published yet: accepted, its deployment looked up again when observed.
-  const deploymentId = deployed.value === undefined ? {} : { deploymentId: deployed.value };
-  return ok({ revision, ...deploymentId, liveUrl: binding.pageUrl });
 }
 
 /** `site.source.revert`: the pre-image back over the published change, then its deployment. */

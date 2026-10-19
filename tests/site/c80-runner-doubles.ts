@@ -62,6 +62,7 @@ const pageNow = (seen: Seen): string =>
   seen.dispatched.length > 0 && seen.reverted === 0 ? AFTER : BEFORE;
 
 /** Doubles of the providers, and the fence over a pool holding the agency's page. */
+// eslint-disable-next-line max-lines-per-function -- one double for every runner port, in one object
 export function doubles(
   overrides: Partial<Omit<RunnerPorts, 'capture'>> = {},
   fence: Partial<CaptureOptions> = {},

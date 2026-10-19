@@ -8,13 +8,13 @@
 // After dispatch, the answer is at most accepted, never live (D21-5). An
 // unreadable answer keeps its reference and raises a task (case 6), and late
 // cancellation is an uncertain effect (case 7). Live requires observation.
-// Every send reads back through the seam first; unknown retries are never
-// sent blind (broker contract 3.4). A send whose answer was lost is sent once
-// more only on proof it did not land, and read back after (`attempted`).
+// Every send reads back through the seam first, and a lost answer is resent
+// once only on proof it did not land (`attempted`, broker contract 3.4).
 
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
+  attempted,
   calibrated,
   claimed,
   flipped,
@@ -103,38 +103,6 @@ export type PublishOutcome =
       readonly reference: string;
       readonly dispatchToken: string;
     };
-
-const UNPROVEN = 'RECONCILE_UNPROVEN';
-
-/** What a read back settles: a landing is the answer; anything else stays unknown, under `absent`'s code if absent. */
-function settledBy<T>(back: ReadBack<T>, absent: string): ProviderResult<T> {
-  if (back.state === 'landed') return { kind: 'ok', value: back.value };
-  return { kind: 'unknown', code: back.state === 'absent' ? absent : UNPROVEN };
-}
-
-/**
- * `reconciled`, and once more when the send's answer was lost and a read back then proves it
- * absent: at most two sends, each read back after. A lost answer's send may still land, so from
- * then on a refusal proves nothing (`EARLIER_SEND_UNSETTLED`), and two sends read back absent
- * stay unknown (`ADVANCE_NOT_LANDED`); only a landing settles them.
- */
-async function attempted<T>(
-  back: ReadBack<T>,
-  send: () => Promise<ProviderResult<T>>,
-  readBack: () => Promise<ReadBack<T>>,
-): Promise<ProviderResult<T>> {
-  const first = await reconciled(back, send, readBack);
-  if (first.kind !== 'unknown' || back.state !== 'absent' || first.code === UNPROVEN) return first;
-  const again = await readBack();
-  if (again.state !== 'absent') return settledBy(again, UNPROVEN);
-  const second = await send();
-  if (second.kind === 'ok') return second;
-  const after = await readBack();
-  return settledBy(
-    after,
-    second.kind === 'refused' ? 'EARLIER_SEND_UNSETTLED' : 'ADVANCE_NOT_LANDED',
-  );
-}
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 

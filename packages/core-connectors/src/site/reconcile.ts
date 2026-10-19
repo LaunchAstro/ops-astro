@@ -39,6 +39,38 @@ export async function reconciled<T>(
   return after.state === 'absent' ? answer : unproven;
 }
 
+const UNPROVEN = 'RECONCILE_UNPROVEN';
+
+/** What a read back settles: a landing is the answer; anything else stays unknown, under `absent`'s code if absent. */
+function settledBy<T>(back: ReadBack<T>, absent: string): ProviderResult<T> {
+  if (back.state === 'landed') return { kind: 'ok', value: back.value };
+  return { kind: 'unknown', code: back.state === 'absent' ? absent : UNPROVEN };
+}
+
+/**
+ * `reconciled`, and once more when the send's answer was lost and a read back then proves it
+ * absent: at most two sends, each read back after. A lost answer's send may still land, so from
+ * then on a refusal proves nothing (`EARLIER_SEND_UNSETTLED`), and two sends read back absent
+ * stay unknown (`ADVANCE_NOT_LANDED`); only a landing settles them.
+ */
+export async function attempted<T>(
+  back: ReadBack<T>,
+  send: () => Promise<ProviderResult<T>>,
+  readBack: () => Promise<ReadBack<T>>,
+): Promise<ProviderResult<T>> {
+  const first = await reconciled(back, send, readBack);
+  if (first.kind !== 'unknown' || back.state !== 'absent' || first.code === UNPROVEN) return first;
+  const again = await readBack();
+  if (again.state !== 'absent') return settledBy(again, UNPROVEN);
+  const second = await send();
+  if (second.kind === 'ok') return second;
+  const after = await readBack();
+  return settledBy(
+    after,
+    second.kind === 'refused' ? 'EARLIER_SEND_UNSETTLED' : 'ADVANCE_NOT_LANDED',
+  );
+}
+
 const claims = new Map<string, Promise<unknown>>();
 
 /** One caller per seam and token in this process holds the read back through the send (across runners, the lease). */

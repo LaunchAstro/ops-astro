@@ -5,6 +5,7 @@
 // project. It answers each catalogued request as the provider would and keeps
 // every request it was sent, so a test reads what left and in what order.
 // Nothing leaves the process.
+/* eslint-disable max-lines, max-lines-per-function -- one double of both providers, its routes and state in one place */
 
 import {
   contentDigest,

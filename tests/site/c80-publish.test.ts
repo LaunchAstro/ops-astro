@@ -182,7 +182,6 @@ describe('C80 unknown publish outcome', () => {
         },
       });
       const outcome = await publishCorrection(job(), p);
-      // Read back absent after each lost answer: sent once more, then still unknown.
       expect(outcome).toEqual({
         state: 'unknown',
         code: 'ADVANCE_NOT_LANDED',
