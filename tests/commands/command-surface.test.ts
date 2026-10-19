@@ -139,7 +139,6 @@ const DECLARED_READS = [
   'team.list',
   'trace.read',
 ];
-
 describe('the surface as a table', () => {
   it('declares the forty-eight reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
