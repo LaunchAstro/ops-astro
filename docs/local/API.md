@@ -1367,12 +1367,14 @@ pages the caller's `run:write` reaches, at most 20, each as
 `{ repository, page }` inside the `page` field (`coveredOwnSitePages`,
 `core-records/src/site/party-sites.ts`); a client's site is never listed, and
 no page's file. A reply may end with a `site_change` task block naming one of
-them, the text `before` and `after` (one line, at most 200 characters each),
+them, the text `before` and `after` (each one line of plain words and
+punctuation, single spaces, at most 200 characters: the request's own rule
+from #1987),
 `client` (`internal`) and `estimate` minutes. The exchange's fresh reply
 carries `sitePages`, the list it gave, and `conversation.read` carries
 `sitePages` as the reader's grant reaches them now. The drawer reads such a
 block only on a listed page and draws it as the plan played back; the click
-is the create card's own `task.create`, whose description is the plan's fixed
+is one `task.create` and nothing else (no `task.assign`), whose description is the plan's fixed
 section (`core-wire/src/site-plan.ts`) and whose estimate is the plan's.
 `sitePlanRequest` reads that section back as the `live_correction.request`
 operands the agent asks.
