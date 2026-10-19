@@ -21,6 +21,19 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+/** A revision as the read shows it: undecided, as every revision here is. */
+const shown = (
+  opened: Readonly<Record<string, unknown>>,
+  number: number,
+  captures: readonly unknown[],
+) => ({
+  revisionId: opened['revisionId'],
+  number,
+  digest: opened['digest'],
+  captures,
+  decision: null,
+});
+
 describe.skipIf(serverUrl === undefined)('C35 review records', () => {
   it('C35 a review opens on a task and numbers its revisions', async () => {
     const first = await w.open(w.ava, { sourceRevision: 'rev-1' });
@@ -41,37 +54,10 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         kind: 'page',
         pageUrl: PAGE,
         path: ABOUT,
-        revisions: [
-          {
-            revisionId: one['revisionId'],
-            number: 1,
-            digest: one['digest'],
-            captures: [],
-            decision: null,
-          },
-          {
-            revisionId: two['revisionId'],
-            number: 2,
-            digest: two['digest'],
-            captures: [],
-            decision: null,
-          },
-        ],
+        revisions: [shown(one, 1, []), shown(two, 2, [])],
         // The latest beside the one before it, and no pins yet (#2012).
-        after: {
-          revisionId: two['revisionId'],
-          number: 2,
-          digest: two['digest'],
-          captures: [],
-          decision: null,
-        },
-        before: {
-          revisionId: one['revisionId'],
-          number: 1,
-          digest: one['digest'],
-          captures: [],
-          decision: null,
-        },
+        after: shown(two, 2, []),
+        before: shown(one, 1, []),
         pins: [],
       },
     });
