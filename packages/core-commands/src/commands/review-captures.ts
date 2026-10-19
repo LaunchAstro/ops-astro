@@ -6,8 +6,10 @@
 // working their own pickup (the operator landing pictures from the CLI on
 // staging). The lease is locked and its holder, fence, liveness and the
 // authority behind it re-checked as a check re-checks them (`lockOwnedLease`),
-// then the capture rows are locked: a claim takes a revision's captures once,
-// and a land writes one width only under the lease and fence that claimed it.
+// then the capture rows are locked and all of it judged again at the instant
+// read after that wait, so a lease or a grant that lapsed while the call waited
+// writes nothing. A claim takes a revision's captures once, and a land writes
+// one width only under the lease and fence that claimed it.
 // The operands are judged first, so a picture over the cap or a malformed
 // observation stores nothing. Neither the actor nor the delegation comes from
 // the body.
@@ -16,15 +18,22 @@ import {
   CAPTURE_WIDTHS,
   DATABASE_STORAGE,
   MOST_STORED_BYTES,
-  claimCaptures,
+  checkDelegatedAuthority,
+  claimLockedCaptures,
   isUuid,
   lockClaimedCapture,
+  lockRevisionCaptures,
   writeLandedCapture,
   type CaptureLease,
   type CaptureWidth,
 } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
-import { lockOwnedLease, type LeaseCaller } from '../../../core-runtime/src/index.ts';
+import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  lockOwnedLease,
+  lockedInstant,
+  recheckOwner,
+  type LeaseCaller,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -62,7 +71,7 @@ const REFUSALS = {
 
 /** Who holds the lease: the session's person, or the agent and the delegation it presented. */
 export type CaptureCaller =
-  | { readonly claimant: 'agent'; readonly holderActorId: string; readonly delegationId: string }
+  | { readonly claimant: 'agent'; readonly holderActorId: string; readonly delegation: Delegation }
   | {
       readonly claimant: 'person';
       readonly holderActorId: string;
@@ -91,6 +100,17 @@ const invalidLease = (fields: LeaseFields): string[] => [
   ...(isUuid(fields.revisionId) ? [] : ['revisionId']),
 ];
 
+const leaseCallerOf = (caller: CaptureCaller, leaseId: string, fence: number): LeaseCaller =>
+  caller.claimant === 'agent'
+    ? {
+        claimant: 'agent',
+        holderActorId: caller.holderActorId,
+        delegationId: caller.delegation.id,
+        leaseId,
+        fence,
+      }
+    : { ...caller, leaseId, fence };
+
 /** The lease held and re-checked, or the refusal; a malformed id is a lease not owned. */
 async function holdLease(
   tx: TenantQuery,
@@ -101,14 +121,38 @@ async function holdLease(
     return { refusal: refuseCommand('LEASE_NOT_OWNED', [], [FIXES.notOwned]) };
   }
   const fence = fields.fence as number;
-  const owned = await lockOwnedLease(
-    tx,
-    { ...caller, leaseId: fields.leaseId, fence } as LeaseCaller,
-    FIXES,
-  );
+  const owned = await lockOwnedLease(tx, leaseCallerOf(caller, fields.leaseId, fence), FIXES);
   if (!owned.ok) return { refusal: owned.refusal as CommandRefusal };
   const { taskId } = owned.value;
   return { lease: { taskId, leaseId: fields.leaseId.toLowerCase(), fence } };
+}
+
+/**
+ * After the capture rows' lock wait, at a fresh instant: the lease is still the caller's, live
+ * and current, a person's own write on the task still stands, and an agent's delegating person
+ * still holds the write its call was checked for (`checkDelegatedAuthority` judges grants as
+ * its statement runs). The refusal, or `null` when the write may go ahead.
+ */
+async function stillHeld(
+  tx: TenantQuery,
+  lease: CaptureLease,
+  caller: CaptureCaller,
+): Promise<CommandRefusal | null> {
+  const at = await lockedInstant(tx);
+  const owner = await recheckOwner(
+    tx,
+    leaseCallerOf(caller, lease.leaseId, lease.fence),
+    at,
+    FIXES,
+  );
+  if (!owner.ok) return owner.refusal as CommandRefusal;
+  if (caller.claimant === 'person') return null;
+  const reach = await checkDelegatedAuthority(tx, caller.delegation, {
+    collection: 'task',
+    action: 'write',
+    scope: { kind: 'record', id: lease.taskId },
+  });
+  return reach.ok ? null : reach.refusal;
 }
 
 const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
@@ -126,7 +170,11 @@ export async function claimCapture(
   const held = await holdLease(tx, fields, caller);
   if ('refusal' in held) return refused(held.refusal);
   const revisionId = String(fields.revisionId).toLowerCase();
-  const claimed = await claimCaptures(tx, revisionId, held.lease);
+  const locked = await lockRevisionCaptures(tx, revisionId, held.lease);
+  if ('code' in locked) return refused(REFUSALS[locked.code]);
+  const lapsed = await stillHeld(tx, held.lease, caller);
+  if (lapsed !== null) return refused(lapsed);
+  const claimed = await claimLockedCaptures(tx, locked.ids, held.lease);
   if ('code' in claimed) return refused(REFUSALS[claimed.code]);
   return applied(revisionId, null, { revisionId, widths: claimed.widths });
 }
@@ -136,6 +184,12 @@ interface LandFields extends LeaseFields {
   readonly picture: unknown;
   readonly observation: unknown;
 }
+
+/**
+ * What Postgres refuses to keep in jsonb, as serialised JSON escapes it: a NUL character (22P05)
+ * and half a surrogate pair (22P02). `JSON.stringify` writes a whole pair as itself, never escaped.
+ */
+const UNSTORABLE_ESCAPE = /(?<!\\)(?:\\\\)*\\u(?:0000|d[89a-f][0-9a-f]{2})/u;
 
 const isObservation = (value: unknown): value is Readonly<Record<string, unknown>> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -148,6 +202,13 @@ const isObservation = (value: unknown): value is Readonly<Record<string, unknown
     sheets !== null &&
     !Array.isArray(sheets) &&
     Object.values(sheets).every((digest) => typeof digest === 'string')
+  );
+};
+
+const storable = (observation: Readonly<Record<string, unknown>>): boolean => {
+  const serialised = JSON.stringify(observation);
+  return (
+    Buffer.byteLength(serialised) <= MOST_OBSERVATION_BYTES && !UNSTORABLE_ESCAPE.test(serialised)
   );
 };
 
@@ -164,10 +225,7 @@ export async function landCapture(
     ...invalidLease(fields),
     ...(width === undefined ? ['width'] : []),
     ...(typeof picture === 'string' && picture !== '' && BASE64.test(picture) ? [] : ['picture']),
-    ...(isObservation(observation) &&
-    Buffer.byteLength(JSON.stringify(observation)) <= MOST_OBSERVATION_BYTES
-      ? []
-      : ['observation']),
+    ...(isObservation(observation) && storable(observation) ? [] : ['observation']),
   ];
   if (wrong.length > 0 || width === undefined || !isObservation(observation)) {
     return fieldsRefused(wrong, LAND_FIX);
@@ -180,6 +238,8 @@ export async function landCapture(
   const at = { revisionId, width: width satisfies CaptureWidth };
   const capture = await lockClaimedCapture(tx, at, held.lease);
   if ('code' in capture) return refused(REFUSALS[capture.code]);
+  const lapsed = await stillHeld(tx, held.lease, caller);
+  if (lapsed !== null) return refused(lapsed);
   const stored = await DATABASE_STORAGE.put(tx, body);
   if ('refused' in stored) return refused(REFUSALS.OBJECT_TOO_LARGE);
   await writeLandedCapture(tx, capture.captureId, {
