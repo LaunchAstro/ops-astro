@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // One capture of a revision at one width (C35, #2105): the landed picture, read by its id
-// through `review.picture`, drawn `width` wide in an SVG with each pin's spot outlined and
-// numbered over it. A capture asked and not landed says so. Where the pane takes a spot (the
-// revision under review), a click on the picture marks one for a new pin.
+// through `review.picture`, drawn `width` wide in an SVG with each pin's spot outlined over
+// it and titled with its number in the pin list. A capture asked and not landed says so.
+// Where the pane takes a spot (the revision under review), a click marks one for a new pin.
 
 import type { MouseEvent, ReactElement } from 'react';
 import { Card, Empty } from '@launchastro/ui';
@@ -82,14 +82,7 @@ function Drawn(props: PaneProps & { readonly body: string; readonly size: Size }
         return spot === null ? null : (
           <g key={pin.commentId} data-pin-spot={number}>
             <Outline spot={spot} stroke={stroke} />
-            <text
-              x={spot.x}
-              y={Math.max(stroke * 8, spot.y - stroke)}
-              fontSize={stroke * 8}
-              fill="currentColor"
-            >
-              {number}
-            </text>
+            <title>{`Pin ${String(number)}: ${pin.body}`}</title>
           </g>
         );
       })}

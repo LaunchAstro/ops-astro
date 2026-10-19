@@ -184,6 +184,7 @@ const BUILT_PAGES = [
   'agency:executive',
   'agency:onboarding',
   'agency:enrol',
+  'agency:review-workspace',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
