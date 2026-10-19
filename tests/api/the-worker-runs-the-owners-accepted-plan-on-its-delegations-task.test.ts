@@ -10,7 +10,7 @@
 // refuses it: an agent-proposed run is never owner-started. The worker runs
 // against the served API over a real database, and each plan call goes
 // through the real broker and custody, the replay provider answering for the
-// plan's host.
+// plan's host. The last three cases are review S2113's proofs.
 
 /* eslint-disable max-lines -- one served API and broker, a case per crossing */
 import { createHash, randomUUID } from 'node:crypto';
@@ -456,5 +456,106 @@ describe.skipIf(serverUrl === undefined)("the worker runs the owner's accepted p
     expect(outcome, JSON.stringify(outcome)).toHaveProperty('refused');
     expect(pickups).toEqual([]);
     expect(await reservation(reservationId)).toStrictEqual({ state: 'held', lease_id: null });
+  }, 120_000);
+
+  // Review S2113-1 and S2113-2's proofs and its check of the queue flag, assertions as given.
+  it('a revocation committed after the worker read its delegation, before the pickup, claims nothing and calls no model', async () => {
+    const { taskId, revision, credential, delegationId } = await ownersTask();
+    const reservationId = await acceptedPlan(ownerToken, taskId, revision);
+    const pickups: Pickup[] = [];
+    let revoked = false;
+    const through = callingOn([PLAN_ROUTE], taskId, pickups);
+    const revokeBeforePickup: Transport = async (path, body, bearer, delegation) => {
+      if (path.endsWith('/task/pickup') && !revoked) {
+        revoked = true;
+        await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+          expect(await revokeDelegation(tx, delegationId)).toBeInstanceOf(Date);
+        });
+      }
+      return await through(path, body, bearer, delegation);
+    };
+    const outcome = await workerOn(revokeBeforePickup, credential).applyOnce(taskId);
+    expect({
+      outcome,
+      pickupCount: pickups.length,
+      calls: pickups.flatMap((p) => p.calls).map((c) => c.ok),
+      reservation: await reservation(reservationId),
+    }).toMatchObject({
+      pickupCount: 0,
+      calls: [],
+      reservation: { state: 'held', lease_id: null },
+    });
+  }, 120_000);
+
+  it('owner-proposed work a member approved stays queued', async () => {
+    const { taskId, revision, credential } = await ownersTask();
+    const proposed = detailOf(
+      await as(ownerToken, 'task.propose', {
+        operationId: randomUUID(),
+        recordId: taskId,
+        expectedRevision: revision,
+        purpose: SYNTHETIC_STEP.kind,
+        maximumMinor: 2_500,
+        currency: 'AUD',
+        payload: { change: 'update the About page hours' },
+        step: SYNTHETIC_STEP,
+      }),
+    );
+    // The immutable proposal stamp is owner's; the approving person no longer is.
+    await holdsRole(fixture.db, fixture.business, fixture.member.personId, 'member');
+    const reservationId = await ownerAccepts(proposed);
+    const [stamp] = await fixture.db.admin.execute<{ proposed: boolean; approved: boolean }>(
+      `select v.proposed_by_owner as proposed, d.decided_by_owner as approved
+       from public.proposal_versions v join public.gate_decisions d
+         on d.business_id = v.business_id and d.version_id = v.id
+       where v.business_id = $1 and v.id = $2 and d.decision = 'approve'`,
+      [fixture.business, proposed['versionId']],
+    );
+    expect(stamp).toEqual({ proposed: true, approved: false });
+    await holdsRole(fixture.db, fixture.business, fixture.member.personId, 'owner');
+    const pickups: Pickup[] = [];
+    const outcome = await workerOn(callingOn([PLAN_ROUTE], taskId, pickups), credential).applyOnce(
+      taskId,
+    );
+    expect({
+      outcome,
+      pickupCount: pickups.length,
+      calls: pickups.flatMap((p) => p.calls).map((c) => (c.ok ? 'carried' : c.code)),
+      reservation: await reservation(reservationId),
+    }).toMatchObject({
+      outcome: { idle: { taskId } },
+      calls: [],
+      pickupCount: 0,
+      reservation: { state: 'held', lease_id: null },
+    });
+  }, 120_000);
+
+  it('the queue says the owner proposed it, as a role, never naming the proposer', async () => {
+    const { taskId, revision } = await ownersTask();
+    const reservationId = await acceptedPlan(ownerToken, taskId, revision);
+    const response = await transport(
+      `/api/a/b/${BUSINESS_KEY}${pathOf('task.queue')}`,
+      JSON.stringify({ operationId: randomUUID() }),
+      agentToken,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { detail: { queue: Record<string, unknown>[] } };
+    const row = body.detail.queue.find((q) => q['reservationId'] === reservationId);
+    expect(row).toMatchObject({ taskId, ownerProposed: true, proposedByActorId: null });
+    expect(Object.keys(row ?? {}).toSorted()).toEqual(
+      [
+        'heldMinor',
+        'lineageId',
+        'ownerProposed',
+        'proposedByActorId',
+        'purpose',
+        'reservationId',
+        'runId',
+        'taskId',
+        'versionId',
+      ].toSorted(),
+    );
+    expect(JSON.stringify(row)).not.toContain(fixture.member.actorId);
+    expect(JSON.stringify(row)).not.toContain(fixture.member.personId);
   }, 120_000);
 });
