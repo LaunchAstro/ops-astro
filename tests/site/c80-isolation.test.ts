@@ -169,7 +169,8 @@ describe.skipIf(serverUrl === undefined)('C80 canary', () => {
       const stored = await w.request(w.ava, { replacement: CANARY });
       expect(codeOf(stored)).toBe('not-a-refusal');
       expect(JSON.stringify(stored)).not.toContain(CANARY);
-      const refusedEnvelope = await w.request(w.ava, { replacement: `${CANARY}-changed` });
+      // Over two lines, so the envelope refuses it whatever the phrase rule admits (#1987).
+      const refusedEnvelope = await w.request(w.ava, { replacement: `${CANARY}\nchanged` });
       expect(codeOf(refusedEnvelope)).toBe('CHANGE_ENVELOPE_EXCEEDED');
       expect(JSON.stringify(refusedEnvelope)).not.toContain(CANARY);
       const refusedScope = await w.approve(w.dee, foreign.correctionId, foreign.versionId);
