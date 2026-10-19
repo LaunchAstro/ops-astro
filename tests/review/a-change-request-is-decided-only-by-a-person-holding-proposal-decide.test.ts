@@ -121,6 +121,32 @@ describe.skipIf(serverUrl === undefined)('C57 deciding a change request', () => 
     expect(await stateOf(refusedOne)).toMatchObject({ state: 'refused', created_task_id: null });
   });
 
+  it('C57 two decisions or two filings at once leave one', async () => {
+    // Each call is its own transaction on its own pooled connection.
+    const id = await filed();
+    const decisions = await Promise.all([
+      w.decide(w.ava, id, 'approve'),
+      w.decide(w.ava, id, 'refuse'),
+    ]);
+    expect(decisions.map((answer) => codeOf(answer)).toSorted()).toStrictEqual([
+      'CHANGE_REQUEST_ALREADY_DECIDED',
+      'not-a-refusal',
+    ]);
+    const won = detailOf(decisions.find((answer) => codeOf(answer) === 'not-a-refusal') as never);
+    expect((await stateOf(id))?.state).toBe(won['state']);
+
+    const { clientPin } = await w.pins();
+    const filings = await Promise.all([w.propose(w.ava, clientPin), w.propose(w.ben, clientPin)]);
+    expect(filings.map((answer) => codeOf(answer)).toSorted()).toStrictEqual([
+      'CHANGE_REQUEST_ALREADY_FILED',
+      'not-a-refusal',
+    ]);
+    const onPin = (await w.requests(w.world.business)).filter(
+      (row) => row.comment_id === clientPin,
+    );
+    expect(onPin).toHaveLength(1);
+  });
+
   it('C57 audit readback', async () => {
     const { clientPin } = await w.pins();
     const since = await auditMark();
