@@ -310,10 +310,12 @@ async function transplant(world: World, from: Task, onto: Task): Promise<void> {
     `insert into public.gate_decisions
        (business_id, id, gate_id, version_id, lineage_id, seq, decision, round,
         decided_by_person_id, decided_by_actor_id, payload, payload_digest,
-        evidence_digest, signing_key_id, signature, prev_hash, hash, decided_at)
+        evidence_digest, signing_key_id, signature, prev_hash, hash, decided_at,
+        decided_by_owner)
      select business_id, $3, $4, $5, $6, seq + 1, decision, round,
             decided_by_person_id, decided_by_actor_id, payload, payload_digest,
-            evidence_digest, signing_key_id, signature, hash, hash, decided_at
+            evidence_digest, signing_key_id, signature, hash, hash, decided_at,
+            decided_by_owner
        from public.gate_decisions where business_id = $1 and gate_id = $2`,
     [world.alpha, from.gateId, randomUUID(), onto.gateId, onto.versionId, onto.lineageId],
   );
