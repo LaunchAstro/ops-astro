@@ -34,9 +34,8 @@ import {
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { lockedInstant } from '../../../core-runtime/src/index.ts';
-import { busy, expiresAt, holdSend, recordSend } from './carriage-origin.ts';
-
-const LOST = { ok: false, code: 'AUTHORITY_LOST' } as const;
+import { busy, holdSend, LOST } from './carriage-fence.ts';
+import { expiresAt, recordSend } from './carriage-origin.ts';
 
 interface Asked {
   readonly presented: VerifiedSubject;
