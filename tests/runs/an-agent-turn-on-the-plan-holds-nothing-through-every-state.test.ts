@@ -38,7 +38,7 @@ async function judged(
         `select column_name, udt_name from information_schema.columns
           where table_schema = 'public' and table_name = 'model_calls' order by ordinal_position`,
       );
-      const values = { ...over, id, call_ordinal: null };
+      const values = { ...over, id, call_ordinal: null, call_limit: null };
       const keys = Object.keys(values);
       const list = columns.map(({ column_name: name, udt_name: type }) =>
         keys.includes(name) ? `$${String(keys.indexOf(name) + 2)}::${type}` : name,

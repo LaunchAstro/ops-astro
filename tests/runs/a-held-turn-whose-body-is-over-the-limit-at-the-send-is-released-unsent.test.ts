@@ -46,7 +46,7 @@ describe.skipIf(serverUrl === undefined)('a held turn sized again at its send', 
     );
     expect(sizing.built.map((one) => one.atSend)).toStrictEqual([false, true]);
     expect(world.provider.seen.length - seen, 'custody sent nothing').toBe(0);
-    expect(JSON.stringify(answer.body)).toContain('PROMPT_TOO_LARGE');
+    expect((answer.body['detail'] as { state?: unknown } | undefined)?.state).toBe('released');
     const { states } = await callsAndCopies(leaseOf(work));
     expect(states, 'released unsent, never held').toStrictEqual(['released']);
     const after = await durable(work);

@@ -5,9 +5,10 @@
 // attempt ends `cancelled` with that code: parts that are not a list, more than
 // 64 of them, a system part that is not first, a part with a key of its own, a
 // tool result with no call before it or answered twice, a tool the catalogue
-// does not offer, arguments over 16 KiB or outside the tool's schema, an
-// ordinal that is no whole number, and a body of the wrong kind for its
-// operation, either way.
+// does not offer, arguments over 16 KiB, an ordinal that is no whole number,
+// and a body of the wrong kind for its operation, either way. A call outside
+// its tool's schema never settles to be carried back: its answer is held
+// (#2091, `a-malformed-or-unoffered-tool-call-runs-no-tool.test.ts`).
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -24,15 +25,7 @@ import {
   world,
   type SignedIn,
 } from './run-stop-door-world.ts';
-import {
-  answerPart,
-  firstTurn,
-  replied,
-  taskPart,
-  TURN,
-  turnBody,
-  turnBroker,
-} from './turn-world.ts';
+import { answerPart, firstTurn, taskPart, TURN, turnBody, turnBroker } from './turn-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -120,23 +113,6 @@ const CASES: readonly {
           toolCalls: [{ id: 'call_1', name: 'task.read', args: { taskId: 'x'.repeat(17_000) } }],
         },
       ]),
-  },
-  {
-    name: "tool arguments outside the tool's schema",
-    calls: 1,
-    body: async (work, as) => {
-      world.provider.script([
-        replied('Reading.', [{ id: 'call_1', name: 'task.read', args: { path: '/etc' } }]),
-      ]);
-      const first = await asAgent(
-        '/model/call',
-        work,
-        turnBody(work, 0, [await taskPart(work)]),
-        as,
-      );
-      const detail = (first.body['detail'] ?? {}) as Readonly<Record<string, unknown>>;
-      return turnBody(work, 1, [await taskPart(work), answerPart(detail), await result(work)]);
-    },
   },
   {
     name: 'an ordinal that is no whole number',

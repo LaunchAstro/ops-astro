@@ -61,6 +61,7 @@ const CASES: readonly { readonly name: string; readonly calls: Calls }[] = [
     calls: (t) => [ask('c1', { ...requestOf(t), word: 'a'.repeat(4097) })],
   },
   { name: 'a read with a key of its own', calls: (t) => [read('c1', { taskId: t, extra: 1 })] },
+  { name: 'a read of a path', calls: () => [read('c1', { path: '/etc' })] },
   {
     name: 'a tool the catalogue does not offer',
     calls: (t) => [{ id: 'c1', name: 'run.end', args: { taskId: t } }],
@@ -106,10 +107,13 @@ describe.skipIf(serverUrl === undefined)('a model call out of shape', () => {
     world.provider.script([replied('Reading.', [first]), replied('Again.', [first])]);
     await seam.worker.applyOnce(seam.taskId);
     const verbs = verbsOf(seam);
-    const reads = verbs.filter((verb) => verb === 'task.read').length;
+    const firstCall = verbs.indexOf('model.call');
     const secondCall = verbs.lastIndexOf('model.call');
+    expect(secondCall, 'two model calls').toBeGreaterThan(firstCall);
+    expect(verbs.slice(firstCall + 1, secondCall), 'the first call ran once').toStrictEqual([
+      'task.read',
+    ]);
     expect(verbs.slice(secondCall + 1)).not.toContain('task.read');
-    expect(reads, 'the start read and the first call only').toBe(2);
     expect(await outcomesOf(seam.work())).toMatchObject([{ end_code: 'LIABILITY_UNKNOWN' }]);
   }, 120_000);
 });

@@ -50,8 +50,6 @@ import {
 import {
   agentBroker,
   anEarlierLeasesCorrection,
-  answerPart,
-  askedTurn,
   correctionsOn,
   delegationOfLease,
   namingCorrection,
@@ -206,16 +204,18 @@ describe.skipIf(serverUrl === undefined)('the agent asks only as a person would'
     expect(await correctionsOn(work.taskId)).toEqual([]);
   }, 60_000);
 
-  it('refuses a turn carrying back an ask with an operand a person cannot send', async () => {
+  it('holds an answer asking with an operand a person cannot send, and asks nothing', async () => {
     const work = await workOn(await createTask(s, 'a wider ask'));
-    const first = await askedTurn(work, {
-      ...requestOf(work.taskId),
-      baseRevision: 'b'.repeat(40),
-    });
-    world.provider.script([replied('Done.')]);
-    const { answer, sent } = await turn(work, 1, [await taskPart(work), answerPart(first)]);
-    expect(answer.body['code'], JSON.stringify(answer.body)).toBe('TURN_MALFORMED');
-    expect(sent, 'nothing was sent').toBe(0);
+    const args = { ...requestOf(work.taskId), baseRevision: 'b'.repeat(40) };
+    world.provider.script([
+      replied('Asking.', [{ id: 'call_1', name: 'live_correction.request', args }]),
+    ]);
+    const { answer } = await turn(work, 0, [await taskPart(work)]);
+    const detail = (answer.body['detail'] ?? {}) as Readonly<Record<string, unknown>>;
+    // #2091: the call is judged at its own answer, so it never settles to be carried back.
+    expect(detail['state'], JSON.stringify(answer.body)).toBe('liability_unknown');
+    expect(detail).not.toHaveProperty('toolCalls');
+    expect(await correctionsOn(work.taskId)).toEqual([]);
   }, 60_000);
 });
 
