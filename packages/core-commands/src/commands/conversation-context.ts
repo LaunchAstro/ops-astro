@@ -28,14 +28,14 @@
 //   client's task among them) never rides in later. At most the last ten, at most
 //   `EARLIER_LIMIT` characters in all, and no more than lets the whole GPT
 //   request fit the runner's `LOCAL_GPT_BODY_LIMIT` bytes, the oldest dropped first.
+//   An exchange that carried a task the caller can no longer use is left out
+//   with every one after it (#1666, `conversation-targets.ts`).
+// - Created (#1666): on no page, the model is told only that the chat created
+//   tasks (`{"created":true}`), never an id or a title.
 // - Cites: the page task, by its own key, when the page is sent. Never a
 //   string the model wrote.
 
-import {
-  CONVERSATION_ANSWER,
-  LOCAL_GPT_BODY_LIMIT,
-  localGptAdapter,
-} from '../../../core-connectors/src/index.ts';
+import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import {
   advisoryLock,
@@ -46,6 +46,8 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
+import { earlierOf, earlierRows } from './conversation-earlier.ts';
+import { createdOf, NO_CREATED, type Created } from './conversation-targets.ts';
 
 /** A record the answer read, with the product's own address for it. */
 export interface Cite {
@@ -61,10 +63,11 @@ export interface Context {
   readonly cites: readonly Cite[];
   /** Who wrote each earlier person turn read: a paid call carries only the caller's own. */
   readonly authors: readonly string[];
+  /** The conversation's created tasks and the history cut they make (#1666). */
+  readonly created: Created;
 }
 
-export const EARLIER_COUNT = 10;
-export const EARLIER_LIMIT = 8_000;
+export { EARLIER_COUNT, EARLIER_LIMIT } from './conversation-earlier.ts';
 export const PAGE_TITLE_LIMIT = 200;
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
@@ -74,6 +77,7 @@ const TITLE = 'txt_4';
 
 interface PageRow {
   readonly id: string;
+  readonly revision: string;
   readonly key: string | null;
   readonly title: string | null;
   readonly client: string | null;
@@ -106,7 +110,7 @@ export async function pageOf(
   if (!(await reads(tx, session, taskId))) return 'SCOPE_NOT_GRANTED';
   // A separate select: Postgres refuses FOR SHARE on the nullable side of an outer join.
   const [task] = await tx.query<PageRow>(
-    `select id, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
+    `select id, revision::text as revision, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
        from records
       where business_id = $1 and id = $2 and deleted_at is null
       for ${lock === 'share' ? 'share' : 'share nowait'}`,
@@ -118,27 +122,9 @@ export async function pageOf(
   return (await reads(tx, session, taskId)) ? task : 'SCOPE_NOT_GRANTED';
 }
 
-/** Whether the whole GPT request, as the adapter writes it, fits the runner's body limit. */
-const fits = (fields: Readonly<Record<string, string>>): boolean =>
-  Buffer.byteLength(localGptAdapter(fields).body) <= LOCAL_GPT_BODY_LIMIT;
-
-/** The last ten earlier messages as JSON, oldest dropped until it fits both bounds. */
-function earlierOf(
-  rows: readonly { readonly role: string; readonly body: string }[],
-  around: Readonly<Record<string, string>>,
-): string {
-  let kept = rows.slice(-EARLIER_COUNT).map(({ role, body }) => ({ role, body }));
-  let text = JSON.stringify(kept);
-  while (kept.length > 0 && (text.length > EARLIER_LIMIT || !fits({ ...around, earlier: text }))) {
-    kept = kept.slice(1);
-    text = JSON.stringify(kept);
-  }
-  return kept.length === 0 ? '' : text;
-}
-
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
-const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [] };
+const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [], created: NO_CREATED };
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
 
@@ -223,44 +209,6 @@ export async function waitsFirst(
   return (await reads(tx, session, taskId)) ? null : 'SCOPE_NOT_GRANTED';
 }
 
-/**
- * The last earlier messages before the asked one, each person's with its
- * answer, oldest first; only those of the conversation's current context
- * epoch, which a purge of the task it was opened on bumps under the row lock
- * every message write takes. A reply counts only when its question does too,
- * so one kept after the purge to a question from before it is cut with it.
- */
-interface EarlierRow {
-  readonly role: string;
-  readonly body: string;
-  readonly author: string;
-}
-
-async function earlierRows(tx: TenantQuery, asked: Asked): Promise<readonly EarlierRow[]> {
-  return await tx.query<EarlierRow>(
-    `select role, body, author from (
-       select m.role, m.body, m.created_at, m.id, m.author_actor_id::text as author
-         from conversation_messages m
-         join conversation_messages a
-           on a.business_id = m.business_id and a.conversation_id = m.conversation_id
-         join conversations c on c.business_id = m.business_id and c.id = m.conversation_id
-         left join conversation_messages q
-           on q.business_id = m.business_id and q.id = m.answers_message_id
-        where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
-          and m.role in ('person', 'agent') and m.created_at < a.created_at
-          and m.context_epoch = c.context_epoch
-          and coalesce(q.context_epoch, m.context_epoch) = c.context_epoch
-          and (m.role = 'agent' or exists (
-            select 1 from conversation_messages r
-             where r.business_id = m.business_id and r.conversation_id = m.conversation_id
-               and r.answers_message_id = m.id))
-        order by m.created_at desc, m.id desc
-        limit $4) last
-      order by created_at, id`,
-    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT],
-  );
-}
-
 /** The page and earlier messages for the asked message, in the caller's transaction. */
 export async function contextOf(
   tx: TenantQuery,
@@ -275,7 +223,10 @@ export async function contextOf(
     return marked ? REFUSED : await markRefusedForPage(tx, session, asked, page);
   }
   if (marked) return REFUSED;
-  const rows = await earlierRows(tx, asked);
+  const created = await createdOf(tx, asked.conversationId, scopeRecordId !== null, (id) =>
+    pageOf(tx, session, id),
+  );
+  const rows = await earlierRows(tx, asked, created.cut);
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];
   if (page !== null) {
@@ -287,6 +238,8 @@ export async function contextOf(
         href: `/task/${encodeURIComponent(page.key)}`,
       });
     }
+  } else if ((created.snapshot?.tasks.length ?? 0) > 0) {
+    fields.push({ name: 'page', value: JSON.stringify({ created: true }) });
   }
   const around = Object.fromEntries([
     ...fields.map(({ name, value }) => [name, value]),
@@ -295,5 +248,5 @@ export async function contextOf(
   const earlier = earlierOf(rows, around);
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
   const authors = rows.filter((row) => row.role === 'person').map((row) => row.author);
-  return { refused: false, fields, cites, authors };
+  return { refused: false, fields, cites, authors, created };
 }

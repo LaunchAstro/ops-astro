@@ -232,7 +232,12 @@ export {
   ollamaPieces,
   readOllamaAnswer,
 } from './ollama.ts';
-export { conversationInstructions, TASK_BLOCK_FENCE } from './conversation-prompt.ts';
+export {
+  conversationInstructions,
+  promptPage,
+  TASK_BLOCK_FENCE,
+  type PromptPage,
+} from './conversation-prompt.ts';
 export {
   CONVERSATION_MODELS,
   conversationModelsOf,
