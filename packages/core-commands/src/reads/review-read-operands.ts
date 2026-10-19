@@ -4,11 +4,12 @@
 // `correction-read-operands.ts` is, so the read requests take them without importing
 // the reads' module.
 
-import type { ReviewReadResult } from '../../../core-wire/src/index.ts';
+import type { ReviewPictureResult, ReviewReadResult } from '../../../core-wire/src/index.ts';
 
-/** One review with its revisions and captures. */
+/** One review with its revisions and captures; one landed picture. */
 export interface ReviewReadOperands {
   readonly 'review.read': { readonly reviewId: string };
+  readonly 'review.picture': { readonly pictureId: string };
 }
 
-export type ReviewReadsResult = ReviewReadResult;
+export type ReviewReadsResult = ReviewReadResult | ReviewPictureResult;
