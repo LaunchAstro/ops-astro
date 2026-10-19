@@ -122,12 +122,36 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         pageUrl: PAGE,
         path: ABOUT,
         revisions: [
-          { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
-          { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
+          {
+            revisionId: one['revisionId'],
+            number: 1,
+            digest: one['digest'],
+            captures: [],
+            decision: null,
+          },
+          {
+            revisionId: two['revisionId'],
+            number: 2,
+            digest: two['digest'],
+            captures: [],
+            decision: null,
+          },
         ],
         // The latest beside the one before it, and no change requests yet (#2117).
-        after: { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
-        before: { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
+        after: {
+          revisionId: two['revisionId'],
+          number: 2,
+          digest: two['digest'],
+          captures: [],
+          decision: null,
+        },
+        before: {
+          revisionId: one['revisionId'],
+          number: 1,
+          digest: one['digest'],
+          captures: [],
+          decision: null,
+        },
         ...NO_NOTES,
       },
     });

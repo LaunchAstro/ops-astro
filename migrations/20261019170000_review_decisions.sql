@@ -101,6 +101,10 @@ create or replace function public.review_decisions_decider_and_mark()
   set search_path = pg_catalog, public
 as $$
 begin
+  -- A row outside the caller's business is the restrictive policy's to refuse, not this one's.
+  if new.business_id is distinct from (select public.app_business_id()) then
+    return new;
+  end if;
   if not exists (select 1 from public.actors a
                   where a.business_id = new.business_id and a.id = new.decided_by_actor_id
                     and a.kind = 'person' and a.person_id = new.decided_by_person_id) then

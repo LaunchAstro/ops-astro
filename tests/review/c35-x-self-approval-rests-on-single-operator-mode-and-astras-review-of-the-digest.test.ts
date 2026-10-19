@@ -127,7 +127,7 @@ describe.skipIf(serverUrl === undefined)('C35-X self-approval', () => {
     // An author the revision does not carry is refused by its key, and an agent never decides.
     const asBen = { actorId: w.ben.actorId, personId: w.ben.personId, mark: false };
     expect(
-      await insertDecision(w.world.business, byAgent, { ...asBen, author: w.ben.personId }),
+      await insertDecision(w.world.business, byAgent, { ...asBen, author: w.cal.personId }),
     ).toMatch(/review_decisions_author_fkey/u);
     expect(
       await insertDecision(w.world.business, byAgent, {
