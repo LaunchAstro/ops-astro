@@ -30,6 +30,7 @@ function systems(fields: Readonly<Record<string, string>>): readonly string[] {
   return [...chats, plan.instructions];
 }
 
+// eslint-disable-next-line max-lines-per-function -- each provider's prompt case, on one system message
 describe('every provider’s prompt and the bound site pages', () => {
   it('lists each bound page by repository and address, and says to play the plan back before the block', () => {
     const page = JSON.stringify({ sites: SITES });

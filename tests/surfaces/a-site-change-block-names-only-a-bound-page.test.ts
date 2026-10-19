@@ -41,6 +41,7 @@ const SECTION = [
   'Estimate: 15 minutes',
 ].join('\n');
 
+// eslint-disable-next-line max-lines-per-function -- each case of the block contract, on one reader
 describe('a site change block', () => {
   it('reads a whole block on a bound page as a create carrying the plan, its section and its estimate', () => {
     expect(readProposal(reply(PLAN), PAGES)).toStrictEqual({
