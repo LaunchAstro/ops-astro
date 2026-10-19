@@ -1654,6 +1654,12 @@ run's task `for share` ahead of the lease (class `task` before `lease`), so a
 again under the same locks, and a task that gained a client since the hold
 releases the call unsent. Offered a subscription route, the refusal is
 `SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead (owner line 72, #1619).
+The owner's ChatGPT plan's route (`chatgpt_plan`, #1620 P4) carries a run
+nobody attends, but only one the owner started: the task created, and the run's
+version proposed and every approval of it given, by a person then holding the
+owner role. Any other run, a scheduled one included, is refused
+`SUBSCRIPTION_NOT_OWNER_STARTED` before a route is chosen, and a typed message
+in a conversation never reaches it.
 
 Owner line 72 by source (#1619). Free text goes to a cloud route only when the
 route is a subscription, the owner's own seat, and the broker found the text

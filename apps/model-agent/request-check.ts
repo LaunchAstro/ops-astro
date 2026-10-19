@@ -5,10 +5,20 @@
 // answer size the catalogue gives an Ollama chat. OpenRouter's paid chat,
 // exactly as the broker pins it (`openrouterRequest`), every value checked
 // nested, within its declaration's wait and answer size, so nothing can widen
-// what a reply may cost. Anything else is refused before custody sees it.
+// what a reply may cost. The owner's ChatGPT plan's Responses call, exactly
+// as `chatgptPlanBody` writes it (#1620 P4): one of the plan's two models, the
+// instructions, `{ role, content }` turns, unstored and streamed, and nothing
+// else. Anything else is refused before custody sees it.
 
 import { isDeepStrictEqual } from 'node:util';
 import {
+  CHATGPT_PLAN_ANSWER_BYTES,
+  CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_MODELS,
+  CHATGPT_PLAN_PATH,
+  CHATGPT_PLAN_PROVIDER,
+  CHATGPT_PLAN_TIMEOUT_MS,
+  chatgptPlanBody,
   OLLAMA_MODELS,
   OLLAMA_PATH,
   OPENROUTER_CONVERSATION,
@@ -29,6 +39,10 @@ const BOUNDS: ReadonlyMap<string, { path: string; ms: number; bytes: number }> =
       ms: OPENROUTER_CONVERSATION.timeoutMs,
       bytes: OPENROUTER_CONVERSATION.maxResponseBytes,
     },
+  ],
+  [
+    CHATGPT_PLAN_PROVIDER,
+    { path: CHATGPT_PLAN_PATH, ms: CHATGPT_PLAN_TIMEOUT_MS, bytes: CHATGPT_PLAN_ANSWER_BYTES },
   ],
 ]);
 
@@ -84,7 +98,35 @@ function paidChat(chat: Record<string, unknown>, body: string): boolean {
   );
 }
 
-/** One of the agent's two requests, within the catalogue's bounds. */
+const PLAN_ROLES: ReadonlySet<unknown> = new Set(['user', 'assistant']);
+
+/**
+ * The plan's pinned Responses call: the body sent is exactly `chatgptPlanBody`
+ * of what it holds, so no field, key order, spelling or repeated key the route
+ * does not take can pass, within the route's body limit.
+ */
+function planCall(call: Record<string, unknown>, body: string): boolean {
+  const { model, instructions, input } = call;
+  const turns =
+    Array.isArray(input) &&
+    input.length > 0 &&
+    input.every(
+      (turn: Record<string, unknown> | null) =>
+        typeof turn?.['content'] === 'string' &&
+        PLAN_ROLES.has(turn['role']) &&
+        same(keysOf(turn), 'content,role'),
+    );
+  return (
+    turns &&
+    typeof model === 'string' &&
+    CHATGPT_PLAN_MODELS.includes(model) &&
+    typeof instructions === 'string' &&
+    Buffer.byteLength(body) <= CHATGPT_PLAN_BODY_LIMIT &&
+    chatgptPlanBody({ model, instructions, input }) === body
+  );
+}
+
+/** One of the agent's requests, within the catalogue's bounds. */
 export function chatOf(request: unknown): OutboundRequest | undefined {
   if (typeof request !== 'object' || request === null) return undefined;
   const asked = request as OutboundRequest;
@@ -111,6 +153,8 @@ export function chatOf(request: unknown): OutboundRequest | undefined {
     return undefined;
   }
   if (typeof chat !== 'object' || chat === null || Array.isArray(chat)) return undefined;
+  if (asked.destination === CHATGPT_PLAN_PROVIDER)
+    return planCall(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   if (asked.destination !== 'ollama')
     return paidChat(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   const { model, messages, stream, think } = chat as Record<string, unknown>;

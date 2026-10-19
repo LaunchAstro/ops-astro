@@ -15,7 +15,7 @@ import {
   LOCAL_MODEL_REQUIRED_WORDS,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import { carriesLocally, mayCarry } from './credentials.ts';
+import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
@@ -126,10 +126,9 @@ function refusing(
 }
 
 /**
- * Step 1 in the caller's transaction, so the command layer commits the hold,
- * the copy registration and its own register row as one: a repeat of the
- * operation finds the row, and two at once cannot both hold. A refusal with a
- * `callId` wrote its step; one without wrote nothing.
+ * Step 1 in the caller's transaction, so the command layer commits the hold, the copy
+ * registration and its own register row as one: a repeat of the operation finds the row, and
+ * two at once cannot both hold. A refusal with a `callId` wrote its step; one without wrote nothing.
  */
 export async function reserveModelCall(
   tx: TenantQuery,
@@ -186,11 +185,11 @@ function routeFor(
 ):
   | { readonly ok: true; readonly route: BrokerRoute }
   | { readonly ok: false; readonly code: BrokerRefusal; readonly words?: string } {
-  const choice = eligibleRoutes(
-    operation.fields,
-    fields,
-    broker.routes.filter((route) => route.provider === operation.provider),
-  );
+  const offered = broker.routes.filter((route) => route.provider === operation.provider);
+  // The plan's route is named before the data classes choose, as a client's task is (C60).
+  if (offered.some((route) => carriesOnPlan(route)) && !facts.ownerStarted)
+    return { ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' };
+  const choice = eligibleRoutes(operation.fields, fields, offered);
   const local = {
     ok: false,
     code: 'LOCAL_MODEL_REQUIRED',
@@ -208,6 +207,8 @@ function routeFor(
     credentialInstallation: route.installation,
     localOwnerTesting: carriesLocally(broker, route),
     clientWork: facts.clientId !== null,
+    planRoute: carriesOnPlan(route),
+    ownerStarted: facts.ownerStarted,
   });
   if (!carry.ok) return { ok: false, code: carry.code };
   return { ok: true, route };
@@ -238,12 +239,11 @@ export async function atCeiling(
 }
 
 /**
- * The fair share: whether this business may hold one more call on the route,
- * given every business's calls in flight there. Only the broker's role may ask
- * (migration 0085, `model_route_room`); the application takes it for this one
- * statement and gives it back, transaction-local as the wrapper sets the
- * business (`set_config(..., true)`: no `set` statement is sent). A failed
- * statement aborts the transaction, which undoes the role with the rest.
+ * The fair share: whether this business may hold one more call on the route, given every
+ * business's calls in flight there. Only the broker's role may ask (migration 0085,
+ * `model_route_room`); the application takes it for this one statement and gives it back,
+ * transaction-local as the wrapper sets the business (`set_config(..., true)`: no `set`
+ * statement is sent). A failed statement aborts the transaction, which undoes the role too.
  */
 async function routeHasRoom(tx: TenantQuery, route: BrokerRoute): Promise<boolean> {
   await advisoryLock(tx, `model_route:${route.key}`);
