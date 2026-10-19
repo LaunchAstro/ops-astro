@@ -18,6 +18,7 @@ export const REVIEW_EFFECTS: {
     ...writing(client('review_captures', 'storage_objects')),
     intake: ['page-capture'],
   },
+  'review.carry_pins': writing(client('review_pin_carries')),
   // A pin is a comment on the review's task.
   'review.pin_comment': writing(client('records')),
   // C57: a change request names the review's task and its pin (#2016).

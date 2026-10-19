@@ -61,12 +61,14 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * C35's worker writes: a capture is claimed and landed under the lease on its review's task,
- * which the admin's own pickup holds in case (a); a member's grant names no such lease.
+ * C35's worker writes: a capture is claimed and landed, and its pins carried, under the lease
+ * on its review's task, which the admin's own pickup holds in case (a); a member's grant
+ * names no such lease.
  */
 const ADMIN_LEASE_WORK: ReadonlySet<string> = new Set([
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
 ]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
@@ -860,7 +862,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too, and so does the worker's own stop
       // (#1623 R1), with a code it may end on; the helper's handback by its credential.
-      // C35's claim and land go by the lease, a revision named beside it. C57's task
+      // C35's claim, land and carry go by the lease, a revision named beside it. C57's task
       // making (#2117) names its task through the lease as well.
       const probe = harness.probeBody(declaration);
       const body = [
@@ -873,12 +875,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'run.end',
         'review.capture_claim',
         'review.capture_land',
+        'review.carry_pins',
         'review.make_change_task',
       ].includes(declaration.name)
         ? {
             ...probe,
-            ...(declaration.name === 'review.capture_claim' ||
-            declaration.name === 'review.capture_land'
+            ...(['review.capture_claim', 'review.capture_land', 'review.carry_pins'].includes(
+              declaration.name,
+            )
               ? { revisionId: randomUUID() }
               : {}),
             ...(declaration.name === 'review.capture_land' ? LANDING : {}),

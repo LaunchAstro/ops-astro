@@ -490,6 +490,7 @@ const PINNED_RUNTIME_SHAPED = {
   'run.end': 'leaseId',
   'review.capture_claim': 'leaseId',
   'review.capture_land': 'leaseId',
+  'review.carry_pins': 'leaseId',
   'review.make_change_task': 'leaseId',
 };
 
@@ -542,6 +543,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture': ['revisionId'],
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
+  'review.carry_pins': ['leaseId', 'revisionId'],
   'review.decide_change': ['changeRequestId'],
   'review.make_change_task': ['leaseId', 'changeRequestId'],
   'review.open': ['taskId'],
@@ -707,6 +709,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture',
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.decide_change',
   'review.make_change_task',
   'review.open',
@@ -778,6 +781,7 @@ const PINNED_AGENT_SURFACE = [
   'review.capture',
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.make_change_task',
   'review.open',
   'review.pin_comment',
@@ -1071,6 +1075,7 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'review.capture', operationId: 'op', revisionId: 'v' },
   { command: 'review.capture_claim', operationId: 'op', leaseId: 'l', fence: 1, revisionId: 'v' },
+  { command: 'review.carry_pins', operationId: 'op', leaseId: 'l', fence: 1, revisionId: 'v' },
   {
     command: 'review.capture_land',
     operationId: 'op',
@@ -1305,6 +1310,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.capture': ['askReviewCapture', 'request'],
   'review.capture_claim': ['claimCaptureAsPerson', 'request'],
   'review.capture_land': ['landCaptureAsPerson', 'request'],
+  'review.carry_pins': ['carryPinsAsPerson', 'request'],
   'review.pin_comment': ['pinComment', 'request'],
   'review.propose_change': ['proposeChange', 'request'],
   'review.decide_change': ['decideChange', 'request'],

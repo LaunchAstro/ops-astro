@@ -32,6 +32,12 @@ export type ReviewRequest =
       readonly observation: Readonly<Record<string, unknown>>;
     } & Envelope)
   | ({
+      readonly command: 'review.carry_pins';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly revisionId: string;
+    } & Envelope)
+  | ({
       readonly command: 'review.pin_comment';
       readonly revisionId: string;
       /** The capture's width: 1480 or 390. */

@@ -226,6 +226,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['PICTURE_TOO_LARGE', 422, 'caller'],
   ['CHANGE_REQUEST_ALREADY_FILED', 409, 'caller'],
   ['CHANGE_REQUEST_ALREADY_DECIDED', 409, 'caller'],
+  ['CARRY_NOT_READY', 409, 'caller'],
 ];
 
 /**
