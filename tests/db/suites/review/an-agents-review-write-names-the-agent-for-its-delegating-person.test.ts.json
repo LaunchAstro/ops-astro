@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 under a delegation: the review, revision and captures an agent writes name the agent's actor, its delegating person and its delegation, never the person's own actor."
+}
