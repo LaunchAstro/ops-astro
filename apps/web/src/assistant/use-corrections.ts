@@ -30,7 +30,6 @@
 
 import { useEffect, useState } from 'react';
 import type {
-  CorrectionListItem,
   LiveCorrectionListResult,
   LiveCorrectionReadResult,
   LiveCorrectionReceiptsResult,
@@ -39,6 +38,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../records/use-command.ts';
 import { cardState, refusalWords, type CorrectionAsk, type ProposePort } from './correction.ts';
 import type { Correction } from './correction-desks.ts';
+import { withListed } from './correction-list.ts';
 import { useOrder, type Order } from './correction-order.ts';
 
 export interface Corrections {
@@ -142,28 +142,6 @@ function tracked(change: Change, key: string, work: Promise<void>): void {
   });
 }
 
-/** Where a listed correction stands, as the list answered it. */
-const standing = (item: CorrectionListItem): Partial<Correction> => ({
-  state: cardState(item.state),
-  approver: item.approver,
-  versionId: item.versionId,
-  refusal: null,
-});
-
-/** A listed correction as its card holds it; the page is named by its address. */
-const listed = (item: CorrectionListItem): Correction => ({
-  correctionId: item.correctionId,
-  ask: { page: item.pageUrl, word: item.word, replacement: item.replacement },
-  state: cardState(item.state),
-  approver: item.approver,
-  versionId: item.versionId,
-  verifiedForMs: 0,
-  readAt: null,
-  reason: null,
-  refusal: null,
-  receipts: null,
-});
-
 /** A correction just asked for, before its first read answers. */
 const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   correctionId,
@@ -177,18 +155,6 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   refusal: null,
   receipts: null,
 });
-
-/** The desk with `items` as listed: a card it holds takes the listed state, a new one is added. */
-const withListed = (desk: Held, items: readonly CorrectionListItem[]): Held => {
-  const byId = new Map(items.map((item) => [item.correctionId, item]));
-  const held = desk.list.map((each) => {
-    const item = byId.get(each.correctionId);
-    return item === undefined ? each : { ...each, ...standing(item) };
-  });
-  const known = new Set(desk.list.map((each) => each.correctionId));
-  const fresh = items.filter((item) => !known.has(item.correctionId)).map((item) => listed(item));
-  return { ...desk, listRefusal: null, list: [...held, ...fresh] };
-};
 
 /** The key a desk is held under: the business, then the grant on top. */
 const deskKey = (business: string, grantKey: string | undefined): string =>
@@ -211,7 +177,7 @@ function useListed(client: OperationsClient, at: string, change: Change, order: 
         return;
       }
       const landing = items.filter((item) => order.lands(at, item.correctionId, nth));
-      change(at, (desk) => withListed(desk, landing));
+      change(at, (desk) => ({ ...desk, listRefusal: null, list: withListed(desk.list, landing) }));
     };
     void listing();
     // Read each time the desk is drawn; `change` and `order` only set state, so the first serve.
@@ -314,11 +280,7 @@ export function useCorrections(
     decide: (id, decision) => {
       tracked(change, at, decide(at, id, decision));
     },
-    openReceipts: (id) => {
-      tracked(change, at, receiptsInto(client, amend, at, id));
-    },
-    reread: (id) => {
-      void read(at, id);
-    },
+    openReceipts: (id) => tracked(change, at, receiptsInto(client, amend, at, id)),
+    reread: (id) => void read(at, id),
   };
 }
