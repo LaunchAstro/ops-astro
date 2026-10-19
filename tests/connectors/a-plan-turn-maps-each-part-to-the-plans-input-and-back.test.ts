@@ -189,7 +189,9 @@ describe("an answer's calls as the plan takes them, and back", () => {
       { type: 'function_call_output', call_id: 'call_2', output: '{"correctionId":"k-1"}' },
     ]);
   });
+});
 
+describe("the plan's calls, read back and sent again", () => {
   it("round-trips the plan's calls: read back, then sent on the next turn as the plan wrote them", () => {
     const written = {
       type: 'function_call',

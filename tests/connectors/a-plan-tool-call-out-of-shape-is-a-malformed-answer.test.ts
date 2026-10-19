@@ -7,6 +7,8 @@
 // outside the closed table (a dotted catalogue name included), arguments
 // that are not a JSON object of exactly the tool's operands, each a string
 // of 1 to 4,096 units within 16 KiB, or a call id out of shape or repeated.
+// Arguments no canonical payload can hold (a number past any number) are
+// malformed too, never a throw.
 // Words alone are the answer, with no tool calls.
 
 import { describe, expect, it } from 'vitest';
@@ -69,6 +71,7 @@ const MALFORMED: readonly (readonly [string, readonly Record<string, unknown>[]]
   ['arguments that are a list', [call('task_read', JSON.stringify([TASK]))]],
   ['arguments that are null', [call('task_read', 'null')]],
   ['arguments that are a string', [call('task_read', JSON.stringify(TASK))]],
+  ['a task id past any number', [call('task_read', '{"taskId":1e999}')]],
   ['a read with an extra key', [call('task_read', JSON.stringify({ taskId: TASK, extra: 'x' }))]],
   ['a correction missing a key', [ask({ taskId: TASK, page: 'about', word: 'nine' })]],
   ['a word that is a number', [ask({ ...REQUEST, word: 9 })]],
