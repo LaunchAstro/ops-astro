@@ -67,18 +67,24 @@ describe('C35-X a live frame that stops answering or changes revision is checked
     const watched = await open({ page: `${SITE}/embed` });
     try {
       await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
-      // Both switches in one task, so no hello can land between them.
-      const after = await watched.page.evaluate(() => {
-        for (const which of ['next', 'previous']) {
-          document.querySelector<HTMLElement>(`[data-${which}-revision]`)?.click();
-        }
-        const frame = document.querySelector<HTMLElement>('[data-live-frame]');
-        return {
+      // Both switches in one task, React's render flushed between them by a
+      // microtask, so no hello (a message event, a later task) can land between.
+      const after = await watched.page.evaluate(async () => {
+        // oxlint-disable-next-line unicorn/consistent-function-scoping -- runs in the page, alone
+        const view = (): Record<string, unknown> => ({
           phase: document.querySelector<HTMLElement>('[data-live-view]')?.dataset['liveView'],
-          hidden: frame?.hidden,
-        };
+          hidden: document.querySelector<HTMLElement>('[data-live-frame]')?.hidden,
+          revision: document.querySelector('iframe[data-live-frame]') === null ? 'none' : 'framed',
+        });
+        document.querySelector<HTMLElement>('[data-next-revision]')?.click();
+        await Promise.resolve();
+        const between = view();
+        document.querySelector<HTMLElement>('[data-previous-revision]')?.click();
+        await Promise.resolve();
+        return { between, back: view() };
       });
-      expect(after).toEqual({ phase: 'waiting', hidden: true });
+      expect(after.between).toEqual({ phase: 'waiting', hidden: true, revision: 'framed' });
+      expect(after.back).toEqual({ phase: 'waiting', hidden: true, revision: 'framed' });
       await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
     } finally {
       await watched.context.close();
