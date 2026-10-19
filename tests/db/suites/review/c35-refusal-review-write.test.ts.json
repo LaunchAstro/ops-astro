@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 review:write: a member without the review key and a pickup agent whose delegation never carries review are refused open and capture, storing nothing."
+}
