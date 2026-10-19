@@ -22,6 +22,7 @@ import {
   type ShepherdApprover,
   type ShepherdHoldRefusal,
   type ShepherdLease,
+  type ShepherdSendRow,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
@@ -68,16 +69,7 @@ export async function runReviewShepherd(
   const refused = await holdShepherdRun(tx, request.occurrenceId, request.lease);
   if (refused !== undefined) return { kind: 'refused', code: refused };
   const earlier = await existingShepherdSend(tx, request.occurrenceId, request.reviewId);
-  if (earlier !== undefined) {
-    return {
-      kind: 'raised',
-      sendId: earlier.id,
-      commentId: earlier.commentId,
-      digest: earlier.digest,
-      recipients: 0,
-      replayed: true,
-    };
-  }
+  if (earlier !== undefined) return raised(earlier, 0);
   const pending = await readShepherdPending(tx, request.reviewId);
   if (pending === undefined || pending.partyId === null) {
     return { kind: 'refused', code: 'NOT_FOUND' };
@@ -94,11 +86,31 @@ export async function runReviewShepherd(
     recipients,
     workerActorId: request.lease.workerActorId,
   });
+  await auditRaise(tx, request, pending.taskId, send);
+  return raised(send, recipients.length);
+}
+
+const raised = (send: ShepherdSendRow, recipients: number): ShepherdRunOutcome => ({
+  kind: 'raised',
+  sendId: send.id,
+  commentId: send.commentId,
+  digest: send.digest,
+  recipients,
+  replayed: send.replayed,
+});
+
+/** One `review.shepherd_raise` event by the worker, on the review's task, naming the send. */
+async function auditRaise(
+  tx: TenantQuery,
+  request: ShepherdRunRequest,
+  taskId: string,
+  send: ShepherdSendRow,
+): Promise<void> {
   await writeAuditEvent(tx, {
     actorId: request.lease.workerActorId,
     command: 'review.shepherd_raise',
     outcome: 'applied',
-    subjectRecordId: pending.taskId,
+    subjectRecordId: taskId,
     payloadDigest: sha256(
       JSON.stringify({
         occurrenceId: request.occurrenceId,
@@ -109,14 +121,6 @@ export async function runReviewShepherd(
       }),
     ),
   });
-  return {
-    kind: 'raised',
-    sendId: send.id,
-    commentId: send.commentId,
-    digest: send.digest,
-    recipients: recipients.length,
-    replayed: false,
-  };
 }
 
 export type ShepherdApproveOutcome =

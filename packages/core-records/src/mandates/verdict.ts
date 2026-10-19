@@ -19,13 +19,10 @@
 // question, it never answers one the other way. A malformed question is a
 // caller's mistake and throws, before anything is read.
 
-import {
-  classMatches,
-  isActionClass,
-  isUuid,
-  lockMandateQuestion,
-  type TenantQuery,
-} from '../../core-records/src/index.ts';
+import { isUuid } from '../tenancy/ids.ts';
+import type { TenantQuery } from '../tenancy/database.ts';
+import { classMatches, isActionClass } from './mandates.ts';
+import { lockMandateQuestion } from './question.ts';
 
 export interface MandateQuestion {
   readonly clientId: string;

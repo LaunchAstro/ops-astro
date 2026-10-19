@@ -11,8 +11,6 @@ import { readableNow } from '../inbox/access.ts';
 import { raiseInboxItem } from '../inbox/items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { writeComment } from '../tasks/comments.ts';
-import type { Covering } from '../site/covering.ts';
-import { lockCoveredReview } from './reviews.ts';
 
 /** The lease the worker holds on the occurrence's run, and the worker. */
 export interface ShepherdLease {
@@ -25,7 +23,7 @@ export type ShepherdHoldRefusal = 'LEASE_NOT_OWNED' | 'APPROVAL_NOT_STANDING';
 
 /**
  * The occurrence's run held for this transaction: its lease (the caller's, on the run the
- * occurrence started, its fence current) share-locked first, then the occurrence and its
+ * occurrence's dispatch started, its fence current) share-locked first, then the occurrence and its
  * activation; the clock is read once after the locks, and the lease must be live at it, the
  * activation enabled on the occurrence's version and its standing approval unrevoked.
  */
@@ -36,8 +34,9 @@ export async function holdShepherdRun(
 ): Promise<ShepherdHoldRefusal | undefined> {
   const [held] = await tx.query<{ readonly id: string }>(
     `select l.id from public.leases l
-       join public.activation_occurrences o
-         on o.business_id = l.business_id and o.run_id = l.run_id and o.id = $5
+       join public.occurrence_dispatches d
+         on d.business_id = l.business_id and d.run_id = l.run_id and d.occurrence_id = $5
+            and d.outcome = 'started'
       where l.business_id = $1 and l.id = $2 and l.fence = $3 and l.holder_actor_id = $4
       for share of l`,
     [tx.businessId, lease.leaseId, lease.fence, lease.workerActorId, occurrenceId],
@@ -260,52 +259,4 @@ export async function shepherdSendFor(
     [tx.businessId, commentId],
   );
   return row;
-}
-
-export interface ShepherdApprover {
-  readonly actorId: string;
-  readonly personId: string;
-}
-
-export type ShepherdApproval =
-  | { readonly id: string; readonly digest: string }
-  | { readonly code: 'NOT_FOUND' | 'SHEPHERD_DIGEST_STALE' | 'SHEPHERD_ALREADY_APPROVED' };
-
-/**
- * A person approves one exact send: the digest they saw must be the send's own, and their
- * covering grant must reach its review (`lockCoveredReview`), else nothing is written.
- */
-export async function approveShepherdSend(
-  tx: TenantQuery,
-  sendId: string,
-  sawDigest: string,
-  covering: Covering,
-  by: ShepherdApprover,
-): Promise<ShepherdApproval> {
-  const [named] = await tx.query<{ readonly reviewId: string }>(
-    `select review_id as "reviewId" from public.review_shepherd_sends
-      where business_id = $1 and id = $2`,
-    [tx.businessId, sendId],
-  );
-  if (named === undefined) return { code: 'NOT_FOUND' };
-  if ((await lockCoveredReview(tx, named.reviewId, covering)) === undefined) {
-    return { code: 'NOT_FOUND' };
-  }
-  const [row] = await tx.query<{ readonly id: string; readonly digest: string }>(
-    `update public.review_shepherd_sends
-        set approved_by_actor_id = $4, approved_by_person_id = $5, approved_digest = digest,
-            approved_at = now()
-      where business_id = $1 and id = $2 and digest = $3 and approved_digest is null
-      returning id, digest`,
-    [tx.businessId, sendId, sawDigest, by.actorId, by.personId],
-  );
-  if (row !== undefined) return row;
-  const [current] = await tx.query<{ readonly approved: boolean; readonly digest: string }>(
-    `select approved_digest is not null as approved, digest from public.review_shepherd_sends
-      where business_id = $1 and id = $2`,
-    [tx.businessId, sendId],
-  );
-  return current?.approved === true
-    ? { code: 'SHEPHERD_ALREADY_APPROVED' }
-    : { code: 'SHEPHERD_DIGEST_STALE' };
 }

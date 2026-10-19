@@ -268,9 +268,8 @@ export {
   type RetentionBatch,
 } from './trace-retention.ts';
 export { type ExpiryPorts } from './trace-store.ts';
-export { standingMandateVerdict, type MandateQuestion, type MandateVerdict } from './mandates.ts';
 export {
-  SHEPHERD_ACTION_CLASS,
-  shepherdSendStands,
-  type ShepherdSendVerdict,
-} from './review-shepherd-authority.ts';
+  standingMandateVerdict,
+  type MandateQuestion,
+  type MandateVerdict,
+} from '../../core-records/src/index.ts';
