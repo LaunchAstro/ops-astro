@@ -1636,8 +1636,12 @@ output. Its accept, by `task.decide` or `task.accept_plan`, is the launch, and
 only a lease on a reviewed output may `task.dispatch`. Any other approved
 version is `LAUNCH_NOT_DECIDED` 409 before any mark, and nothing is written.
 The worker (`apps/worker`) answers that refusal by running its step runner's
-compute under the plan's lease (#1623 R3, `apps/worker/step-runner.ts`; the
-synthetic runner computes nothing). A success hands the work back as its
+compute under the plan's lease (#1623 R3, `apps/worker/step-runner.ts`). The
+shipped worker's runner is the agent's (`apps/worker/agent-runner.ts`, #1717
+R8b), its turns `model.replay_turn`, which the API catalogues beside
+`model.replay_compose` in its `api` and `local-gpt` installs; an install with
+no broker refuses the turn, and the attempt ends there. A test may hand the
+synthetic runner, which computes nothing. A success hands the work back as its
 successor (outcome `handedBack`, with the successor's gate and version), and
 the next pass after a person's accept picks up the launch and applies it. Any
 other end (outcome `ended`, with its outcome and code) hands nothing back: the
