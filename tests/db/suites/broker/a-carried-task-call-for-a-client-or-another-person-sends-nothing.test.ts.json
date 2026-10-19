@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Inside one business, a client's task, another agent presenting its own token for the holder's call or joining its line, and a carrier for another person are each refused before any send, nothing offered, and the refusal names no client."
+}

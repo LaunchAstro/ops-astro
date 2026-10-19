@@ -28,6 +28,8 @@ export interface Facts {
   readonly source: TaskSource;
   /** The owner started both the task and the run, and the task has no client (#1620 P4). */
   readonly ownerStarted: boolean;
+  /** The person who proposed the run, or null for an agent or a schedule (#1703). */
+  readonly starterPersonId: string | null;
 }
 
 export type Checked =
@@ -182,6 +184,7 @@ export async function lockFacts(
       clientId: task.clientId,
       source: task.source,
       ownerStarted: task.source.ownerWork && task.ownerRan,
+      starterPersonId: task.starter,
     },
   };
 }

@@ -40,7 +40,13 @@ export type CustodyOutcome =
       readonly credentialKind: StorableKind;
       readonly account: string | null;
     }
-  | { readonly kind: 'refused'; readonly started: false; readonly code: string }
+  | {
+      readonly kind: 'refused';
+      readonly started: false;
+      readonly code: string;
+      /** This side's own judgement refused it before the request was written anywhere. */
+      readonly judged?: boolean;
+    }
   | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' }
   | { readonly kind: 'withheld'; readonly started: true; readonly reason: 'echoed' | 'malformed' };
 

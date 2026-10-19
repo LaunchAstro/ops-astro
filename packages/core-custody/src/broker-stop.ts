@@ -147,10 +147,15 @@ const CUSTODY_UNSENT: ReadonlySet<string> = new Set([
   'NOT_AT_ONCE',
 ]);
 
-/** `CALL_RELEASED`, normalised: a custody code or one of the operation's declared
- * nothing-happened codes maps to one end code; any other reason is `undefined`, held unknown. */
-export function releaseEndOf(reason: string, operation: ModelOperation): EndCode | undefined {
-  if (CUSTODY_UNSENT.has(reason)) {
+/** `CALL_RELEASED`, normalised: a custody code, a refusal this side judged before any write, or
+ * one of the operation's declared nothing-happened codes maps to one end code; any other reason
+ * is `undefined`, held unknown. */
+export function releaseEndOf(
+  released: { readonly reason: string; readonly judged?: boolean },
+  operation: ModelOperation,
+): EndCode | undefined {
+  const { reason } = released;
+  if (released.judged === true || CUSTODY_UNSENT.has(reason)) {
     return reason === 'CARRIAGE_UNAVAILABLE' || reason === 'PROMPT_TOO_LARGE'
       ? reason
       : 'CUSTODY_NOT_ADMITTED';

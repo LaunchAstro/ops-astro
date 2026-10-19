@@ -43,7 +43,7 @@ const SEND = `update model_call_carriers
                      request_at = clock_timestamp(), send_by = clock_timestamp() + interval '5 seconds',
                      answer_by = clock_timestamp() + interval '120 seconds'
                where business_id = $1 and call_id = $2`;
-const REFUSED = /written unset for a dispatched conversation call, set once/u;
+const REFUSED = /written unset for a dispatched call, set once/u;
 
 type Swept = { readonly held: number; readonly released: number };
 

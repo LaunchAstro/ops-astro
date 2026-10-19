@@ -46,7 +46,7 @@ export type Settlement =
       readonly account: string | null;
       readonly credentialKind: CredentialKind;
     }
-  | { readonly kind: 'nothing'; readonly reason: string }
+  | { readonly kind: 'nothing'; readonly reason: string; readonly judged?: boolean }
   | ({ readonly kind: 'unknown' } & Failure);
 
 /**
@@ -62,7 +62,8 @@ export function settlementOf(
   streamed = false,
 ): Settlement {
   if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
-  if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
+  if (outcome.kind === 'refused')
+    return { kind: 'nothing', reason: outcome.code, judged: outcome.judged === true };
   if (outcome.kind === 'withheld') return { kind: 'unknown', ...MALFORMED };
   if (!outcome.outbound.ok) {
     const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
@@ -274,7 +275,7 @@ export async function settle(
     };
     if (settlement.kind === 'unknown') return await unknown(null, settlement);
     if (settlement.kind === 'nothing') {
-      const end = releaseEndOf(settlement.reason, reserved.operation);
+      const end = releaseEndOf(settlement, reserved.operation);
       if (end === undefined) return await unknown(null, UNPROVEN_RELEASE);
       const released = await release(tx, reserved, settlement.reason, broker);
       await giveBack(tx, callId);

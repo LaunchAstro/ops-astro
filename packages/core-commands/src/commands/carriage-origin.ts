@@ -21,7 +21,8 @@
 // `answer_by`), so the sweep never takes a send for none; the request goes only
 // once the send judgement passes after it. That judgement's transaction holds
 // its locks until the agent reports the write or a refusal, or W after the
-// accept was heard, on the pool's one connection: nothing needs a second.
+// accept was heard (`carriage-fence.ts`), on the pool's one connection:
+// nothing needs a second.
 
 import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
 import { SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
@@ -38,16 +39,13 @@ import {
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { lockedInstant } from '../../../core-runtime/src/index.ts';
+import { busy, holdSend, LOST } from './carriage-fence.ts';
 import { heldTasks, holdGrants, readsTasks } from './carriage-grants.ts';
 import { holdsOwnConversations } from './conversations.ts';
 import { pageTaskOf } from './conversation-page-task.ts';
 
 /** After the send's window and the model's wait, ten seconds more: the latest an answer settles. */
 const SETTLE_MARGIN_MS = 10_000;
-
-const LOST = { ok: false, code: 'AUTHORITY_LOST' } as const;
-
-const nothing = (): void => {};
 
 interface Asked {
   readonly presented: VerifiedSubject;
@@ -73,7 +71,7 @@ type Called = Parameters<typeof standsOutside>[1] & {
 };
 
 /** The token's `exp`, in milliseconds; the door verified the token, this reads it. */
-function expiresAt(token: string): number {
+export function expiresAt(token: string): number {
   try {
     const { exp } = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
       exp?: unknown;
@@ -166,12 +164,6 @@ async function judgeCarriage(
   return own ? { ok: true } : LOST;
 }
 
-/** Grant contention under the `nowait` hold: nothing was sent, so the call is released. */
-const busy = (cause: unknown): { readonly ok: false; readonly code: string } => {
-  if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-  return { ok: false, code: 'AUTHORITY_BUSY' };
-};
-
 /** The offer judgement; passing, `offered_at` is set and its trigger rings the doorbell, ids only. */
 async function offer(database: Database, businessId: BusinessId, asked: Asked): Promise<Judged> {
   const judged = await withSession(database, businessId, asked.presented, async (tx, session) => {
@@ -188,7 +180,7 @@ async function offer(database: Database, businessId: BusinessId, asked: Asked): 
 }
 
 /** The send recorded, committed: the runner, `request_at`, `send_by` (the agent's) and `answer_by`. */
-async function recordSend(
+export async function recordSend(
   database: Database,
   businessId: BusinessId,
   callId: string,
@@ -218,55 +210,6 @@ async function recordSend(
   return recorded.length > 0;
 }
 
-type Fenced = Awaited<ReturnType<Handoff['fence']>>;
-
-/** The send judgement, whose transaction holds its locks until released or W after `heardAt`. */
-function holdSend(
-  database: Database,
-  businessId: BusinessId,
-  asked: Asked,
-  accept: { readonly runner: string; readonly heardAt: number },
-): Promise<Fenced> {
-  return new Promise<Fenced>((ready) => {
-    let letGo = nothing;
-    const released = new Promise<void>((resolve) => {
-      letGo = resolve;
-    });
-    const running = withSession(database, businessId, asked.presented, async (tx, session) => {
-      const passed = await judgeCarriage(tx, session, asked, { runner: accept.runner });
-      if (!passed.ok) {
-        ready(passed);
-        return;
-      }
-      await tx.query(`set local idle_in_transaction_session_timeout = '10s'`);
-      ready({
-        ok: true,
-        release: async () => {
-          letGo();
-          await running;
-        },
-      });
-      const left = Math.max(0, accept.heardAt + SEND_WINDOW_MS - Date.now());
-      await Promise.race([
-        released,
-        new Promise((resolve) => {
-          setTimeout(resolve, left);
-        }),
-      ]);
-    })
-      .catch((cause: unknown) => {
-        ready(busy(cause));
-      })
-      .catch(() => {
-        ready({ ok: false, code: 'CARRIAGE_UNAVAILABLE' });
-      })
-      .finally(() => {
-        // A session that no longer resolves answered nothing above: its authority is gone.
-        ready(LOST);
-      });
-  });
-}
-
 /**
  * The handoff for one carried call: its two judgements under the person's
  * own session, with `timeoutMs` the model's wait, which `answer_by` allows for.
@@ -293,7 +236,11 @@ export function carriageHandoff(
         if (!(await recordSend(database, businessId, callId, accept))) {
           return { ok: false, code: 'DECISION_STALE' };
         }
-        return await holdSend(database, businessId, asked, { runner, heardAt });
+        return await holdSend<Session>(
+          async (work) => await withSession(database, businessId, presented, work),
+          async (tx, session) => await judgeCarriage(tx, session, asked, { runner }),
+          heardAt,
+        );
       },
     };
   };

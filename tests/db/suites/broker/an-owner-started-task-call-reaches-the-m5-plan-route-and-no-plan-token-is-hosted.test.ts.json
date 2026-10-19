@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An owner-started task's call is carried to the model agent with the calling agent's own token, reaches the plan's route and settles as a subscription, and neither half of the plan's token appears in anything the hosted side carried, answered or wrote."
+}
