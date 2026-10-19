@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a chat on no task keeps the tasks it created with each reply, gives them only to their owner while usable, and leaves a lost task's exchanges out of history"
+}

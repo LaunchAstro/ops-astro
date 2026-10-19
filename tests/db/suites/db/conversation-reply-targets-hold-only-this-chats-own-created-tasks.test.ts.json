@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1666: a reply snapshot belongs to an agent reply in a chat opened on no task, its targets are only tasks that chat's own applied task.create made, each refused shape names its constraint, the application cannot change or remove a row, and the purge's delete of the messages takes the snapshot and targets with it"
+}

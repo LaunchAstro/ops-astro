@@ -42,7 +42,6 @@
 // words, never the model's or the person's. Words the store cannot hold as
 // sent (a NUL, half a split character) are refused as unusable, never a fault.
 
-import { randomUUID } from 'node:crypto';
 import {
   CONVERSATION_ANSWER,
   OPENROUTER_CONVERSATION_KEY,
@@ -62,10 +61,11 @@ import type {
 import { carriedBy } from './carriage-handoff.ts';
 import { contextOf, type Context } from './conversation-context.ts';
 import { pageTaskOf } from './conversation-page-task.ts';
-import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
+import { heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
 import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
 import { holdsOwnConversations } from './conversations.ts';
 import { requestFor } from './conversation-request.ts';
+import { keep, replyTo } from './conversation-keep.ts';
 import { askedModel } from './conversation-model.ts';
 import {
   answered,
@@ -103,16 +103,15 @@ interface Question {
   readonly page: string | null;
   /** Who wrote the asked message and each earlier person turn read. */
   readonly authors: readonly string[];
-}
-
-/** The kept reply to a message, if there is one. */
-async function replyTo(tx: TenantQuery, asked: Asked): Promise<Kept | undefined> {
-  const [reply] = await tx.query<Kept>(
-    `select id, body from conversation_messages
-      where business_id = $1 and conversation_id = $2 and answers_message_id = $3`,
-    [tx.businessId, asked.conversationId, asked.messageId],
-  );
-  return reply;
+  /** The tasks the earlier exchanges sent may carry (#1666): judged again at a handoff. */
+  readonly sources: readonly string[];
+  /** The answer kept as the reply, with this question's snapshot (#1666). */
+  readonly keep: (
+    tx: TenantQuery,
+    session: Session,
+    asked: Asked,
+    body: string,
+  ) => Promise<Kept | undefined>;
 }
 
 /** The caller's own person message, in a conversation of this business whose body is kept. */
@@ -151,55 +150,17 @@ async function questionOf(
       ownerPersonId: found.owner_person_id,
     },
     body,
-    reply: await replyTo(tx, asked),
+    reply: await replyTo(tx, session, asked),
     context,
     page,
     authors: [found.author, ...context.authors],
+    sources: context.created.sources,
+    keep: async (on, now, ask, text) => await keep(on, now, ask, text, context.created.snapshot),
   };
 }
 
-/** The answer, kept as the reply to the message, or the reply already kept. */
-async function keep(
-  tx: TenantQuery,
-  session: Session,
-  asked: Asked,
-  body: string,
-): Promise<Kept | undefined> {
-  // The conversation's row locked, the session asked, then the grants held
-  // for share and judged at the clock after the locks (`hearingAt`): a
-  // revocation that committed first is seen, and one that comes later waits
-  // for this reply to commit.
-  const at = await hearingAt(tx, session, asked, 'update');
-  if (at === undefined) return undefined;
-  const id = randomUUID();
-  // The reply and the activity are stamped at that same instant, so a reply
-  // that waited behind a message is listed and dated after it (#444). The
-  // instant goes in as text: a timestamptz parameter keeps milliseconds only.
-  const inserted = await tx.query(
-    `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
-        created_at, context_epoch)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz,
-             (select context_epoch from conversations where business_id = $1 and id = $3))
-     on conflict (business_id, conversation_id, answers_message_id)
-       where answers_message_id is not null
-     do nothing
-     returning id`,
-    [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
-  );
-  if (inserted.length === 0) return await replyTo(tx, asked);
-  await activeAt(tx, asked.conversationId, at);
-  return { id, body };
-}
-
-/** The conversation's last activity moved up to `at`, never back. */
-async function activeAt(tx: TenantQuery, conversationId: string, at: string): Promise<void> {
-  await tx.query(
-    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
-      where business_id = $1 and id = $2`,
-    [tx.businessId, conversationId, at],
-  );
-}
+/** What a handoff judges again: the question's model, its page task and its history sources. */
+const judgedAgain = ({ model, page, sources }: Question) => ({ model, page, sources });
 
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
@@ -215,15 +176,15 @@ async function answerOnce(
   const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
   // A read that came back after an earlier answer was kept and its flight ended: read again.
   const reread = async () =>
-    await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+    await withSession(database, businessId, presented, (tx, now) => replyTo(tx, now, asked));
   const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
   const operation = operationFor(question.model);
   const paid =
     operation === OPENROUTER_CONVERSATION_KEY
-      ? paidSeams({ database, businessId, presented, asked, ...question, keep })
+      ? paidSeams({ database, businessId, presented, asked, ...question })
       : undefined;
-  const handoff = { ...by, operation, model: question.model, page: question.page };
+  const handoff = { ...by, operation, ...judgedAgain(question) };
   const result = await callModelInConversation(
     database,
     businessId,
@@ -246,7 +207,7 @@ async function answerOnce(
     database,
     businessId,
     presented,
-    async (tx, now) => await keep(tx, now, asked, result.text),
+    async (tx, now) => await question.keep(tx, now, asked, result.text),
   ).catch(heldElsewhere);
   if (kept === undefined || isCommandRefusal(kept)) return null;
   // The cites are what this call read, even where a twin request's answer was kept first.
