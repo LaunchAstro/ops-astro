@@ -114,8 +114,9 @@ export function mediaCalls(w: C35World, store: MediaStoreDouble): MediaCalls {
         const from = (part.partNumber - 1) * store.partBytes;
         return store.send('PUT', part.url, body.subarray(from, from + store.partBytes)).status;
       }),
-    rows: async (table, business) =>
-      await w.world.db.admin.execute<Record<string, unknown>>(
+    // A plain array: the driver's result carries its own fields, which a strict match counts.
+    rows: async (table, business) => [
+      ...(await w.world.db.admin.execute<Record<string, unknown>>(
         table === 'reviews'
           ? `select id, kind from public.reviews where business_id = $1 and kind = 'media'`
           : table === 'review_revisions'
@@ -124,6 +125,7 @@ export function mediaCalls(w: C35World, store: MediaStoreDouble): MediaCalls {
                 where v.business_id = $1 and c.kind = 'media' order by v.number`
             : `select id, state, revision_id from public.review_media_assets where business_id = $1`,
         [business],
-      ),
+      )),
+    ],
   };
 }
