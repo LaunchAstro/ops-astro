@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent task update whose delegating write grant was revoked during the final standing check lock wait is refused"
+}
