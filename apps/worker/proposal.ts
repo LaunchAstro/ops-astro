@@ -7,10 +7,8 @@
 // second lineage and gate. That id comes from the work itself (#778), so a
 // second worker on the same delegation, or a restarted one, names the same
 // operation. A worker that restarted knows nothing it sent: it looks in the
-// queue first for its own approved proposal (#786), and while an earlier one
-// still waits for a person the server refuses another
-// (`TRANSITION_NOT_PERMITTED`), which reads as nothing to do yet. Like the
-// rest of the worker, this only shapes calls to the API.
+// queue first for its own approved proposal (#786). Like the rest of the
+// worker, this only shapes calls to the API.
 
 import { createHash } from 'node:crypto';
 import type { Answered, Call, Unanswered } from './agent-call.ts';
@@ -22,6 +20,8 @@ export interface Proposer {
   unanswered?: { readonly recordId: string; readonly [field: string]: unknown } | undefined;
   /** The proposal pass under way: a second pass shares it, never starting its own. */
   running?: Promise<Proposed> | undefined;
+  /** Refusals the server settled on this work: each names the next proposal's operation anew. */
+  refusals?: number;
 }
 
 export type Proposed =
@@ -88,12 +88,17 @@ interface LineageSeen {
 
 /**
  * One proposal's operation identity, from the work it proposes: the agent, the
- * task, the revision it read and the step. Every worker and every retry on the
- * same work names the same operation, so the register replays the first.
+ * task, the revision it read, the step, and how many of its proposals the
+ * server refused. Every worker and every retry on the same work names the same
+ * operation, so the register replays the first; a refusal, which the register
+ * keeps too, moves the next to a new one (S2090-3), and a restarted worker
+ * walks the refusals it replays to the same place.
  */
-const proposalIdentity = (actorId: string, taskId: string, revision: unknown, kind: string) =>
+const proposalIdentity = (mine: Proposer, taskId: string, revision: unknown, kind: string) =>
   `proposal:${createHash('sha256')
-    .update(`${actorId}:${taskId}:${String(revision)}:${kind}`)
+    .update(
+      `${String(mine.actorId)}:${taskId}:${String(revision)}:${kind}:${String(mine.refusals ?? 0)}`,
+    )
     .digest('hex')}`;
 
 /** A proposal with no answer, or one whose refusal proves nothing, is sent again as it was. */
@@ -117,7 +122,7 @@ async function proposeAlone(
     const read = await call('task.read', { recordId });
     if (!('body' in read)) return read;
     const task = read.detail['task'] as { revision?: unknown } | undefined;
-    const operationId = proposalIdentity(mine.actorId, recordId, task?.revision, step.kind);
+    const operationId = proposalIdentity(mine, recordId, task?.revision, step.kind);
     mine.unanswered = {
       operationId,
       recordId,
@@ -140,6 +145,7 @@ async function proposeAlone(
     return proposed;
   }
   mine.unanswered = undefined;
+  if ('refused' in proposed) mine.refusals = (mine.refusals ?? 0) + 1;
   return answered(sent.recordId, proposed);
 }
 
