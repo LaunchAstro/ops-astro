@@ -42,14 +42,13 @@ const OUTSIDE_DELEGATION = refuseCommand(
  * the delegation carrying `run` and `write`, and the delegating person's live
  * grant covering `run:write` at the task's client now. Another task is outside
  * the purpose whatever the delegation carries, and the operands' shape is
- * judged after both, so a caller holding nothing is told that first. The
- * party it was asked at (null on the business's own site) goes with it.
+ * judged after both, so a caller holding nothing is told that first.
  */
 async function withinDelegation(
   tx: TenantQuery,
   sent: Readonly<Record<string, unknown>>,
   delegation: Delegation,
-): Promise<Within | { readonly refusal: CommandRefusal }> {
+): Promise<RequestOperands | { readonly refusal: CommandRefusal }> {
   const taskId = sent['taskId'];
   if (typeof taskId !== 'string' || delegation.purposeScope.id !== taskId.toLowerCase()) {
     return { refusal: OUT_OF_PURPOSE };
@@ -66,26 +65,27 @@ async function withinDelegation(
     action: 'write',
     scope: partyId === null ? { kind: 'business', id: null } : { kind: 'party', id: partyId },
   });
-  return covered.ok ? { operands, partyId } : { refusal: covered.refusal };
+  return covered.ok ? operands : { refusal: covered.refusal };
 }
 
-type Within = { readonly operands: RequestOperands; readonly partyId: string | null };
-
 /**
- * On the business's own site (no party), the refusal unless the task is the
+ * The refusal unless a request on the business's own site comes from the
  * owner's own internal work, judged as the broker judges a run's task (S2,
- * owner line 72, R6). A request asks it last, after the agent's own
- * standing waits (`lastCheck`), so a write that names the task without moving
- * its row, committed during any wait, is read too; a replay asks it as well.
+ * owner line 72, R6). It reads the task after the agent's own standing waits
+ * (`lastCheck`): storage took the task's client as the request's party in its
+ * insert and holds the task `for share` until commit, so the client read here
+ * is the party it stored, whatever the task held before the site lock's wait.
+ * A task with a client was judged at that client's grant; a task this cannot
+ * read is refused. A replay asks it as well.
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
-  { operands, partyId }: Within,
+  operands: RequestOperands,
 ): Promise<CommandRefusal | undefined> {
-  if (partyId !== null) return undefined;
   const task = await readPage(tx, operands.taskId);
-  const own = task !== undefined && task.clientId === null && ownersOwn(task.source);
-  return own ? undefined : NOT_OWN_WORK;
+  if (task === undefined) return NOT_OWN_WORK;
+  if (task.clientId !== null) return undefined;
+  return ownersOwn(task.source) ? undefined : NOT_OWN_WORK;
 }
 
 /**
@@ -99,11 +99,11 @@ export async function requestAsAgent(
   sent: Readonly<Record<string, unknown>>,
   delegation: Delegation,
 ): Promise<HandlerOutcome> {
-  const within = await withinDelegation(tx, sent, delegation);
-  if ('refusal' in within) return refused(within.refusal);
-  const stored = await storeAsAgent(tx, agentActorId, within.operands, delegation);
+  const operands = await withinDelegation(tx, sent, delegation);
+  if ('refusal' in operands) return refused(operands.refusal);
+  const stored = await storeAsAgent(tx, agentActorId, operands, delegation);
   if (isRefused(stored)) return stored;
-  return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, within) };
+  return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, operands) };
 }
 
 async function storeAsAgent(
